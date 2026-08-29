@@ -172,8 +172,12 @@ class FrameCounters(BaseModel):
     gaps: int
     emit_errors: int
     subscriber_dropped: int
-    first_seq: int | None
-    last_seq: int | None
+    # PRD F21: frames that reached the visible ``unattributed`` quarantine node
+    # because CrewAI could not tie them to a declared graph node. Defaulted so
+    # a run row written before this field existed still validates.
+    unattributed: int = 0
+    first_seq: int | None = None
+    last_seq: int | None = None
 
 
 class UsageMetrics(BaseModel):

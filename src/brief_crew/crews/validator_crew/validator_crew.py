@@ -11,7 +11,12 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.project import CrewBase, agent, crew, task
 from pydantic import BaseModel, PrivateAttr
 
-from brief_crew.config import CHEAP_MODEL, ESCALATION_MODEL
+from brief_crew.config import (
+    CHEAP_MODEL,
+    ESCALATION_MODEL,
+    VALIDATOR_SYNTHESIST_REASONING_EFFORT,
+    openrouter_reasoning_params,
+)
 from brief_crew.schemas import (
     FeasibilityFindings,
     MarketFindings,
@@ -286,10 +291,19 @@ class SynthesisCrew:
 
     @agent
     def synthesist(self) -> Agent:
+        # F09: the rubric call gets an explicit reasoning effort instead of the
+        # provider default. `LLM(reasoning_effort=...)` is a no-op on
+        # OpenRouter in CrewAI 1.15.18 - see config.openrouter_reasoning_params
+        # for why the setting has to travel in `extra_body`.
         return Agent(
             config=self.agents_config["synthesist"],  # type: ignore[index]
             tools=[],
-            llm=LLM(model=ESCALATION_MODEL),
+            llm=LLM(
+                model=ESCALATION_MODEL,
+                additional_params=openrouter_reasoning_params(
+                    VALIDATOR_SYNTHESIST_REASONING_EFFORT
+                ),
+            ),
             allow_delegation=False,
         )
 

@@ -5,9 +5,12 @@ import unittest
 from pydantic import ValidationError
 
 from brief_crew.schemas import (
+    Competitor,
     DimensionScore,
     Evidence,
     MarketFindings,
+    Repo,
+    Thread,
     Verdict,
 )
 
@@ -39,6 +42,7 @@ def verdict(**overrides: object) -> Verdict:
         "median_market_source_age_months": 12,
         "branches_ok": 3,
         "cheapest_next_test": "Interview five target users.",
+        "kill_criteria": ["Fewer than 2 of 10 clinics keep a manual rota."],
         "composite_score": 99,
         "verdict": "REJECT",
         "confidence": 1,
@@ -122,7 +126,7 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(result.verdict, "NEEDS_WORK")
         self.assertEqual(result.decision_reason, "INSUFFICIENT_EVIDENCE")
         self.assertEqual(result.confidence_band, "LOW")
-        self.assertIn("FLOOR_NO_DEMAND", result.kill_criteria)
+        self.assertIn("FLOOR_NO_DEMAND", result.fatal_floors)
 
     def test_floor_evaluation_order(self) -> None:
         result = verdict(demand=score(0), headroom_over_free=score(0))
@@ -201,6 +205,57 @@ class VerdictTests(unittest.TestCase):
 
         self.assertEqual(result.confidence, 0.51)
 
+    def test_model_kill_criteria_survive_validation(self) -> None:
+        """F09: judgement is kept, arithmetic is overwritten."""
+        supplied = [
+            "Fewer than 2 of 10 clinics keep a manual rota.",
+            "No clinic will pay more than the receptionist hour it replaces.",
+        ]
+
+        result = verdict(demand=score(0), kill_criteria=supplied)
+
+        self.assertEqual(result.kill_criteria, supplied)
+        self.assertEqual(result.fatal_floors, ["FLOOR_NO_DEMAND"])
+
+    def test_fatal_floors_are_recomputed_and_overwrite_the_model(self) -> None:
+        result = verdict(
+            headroom_over_free=score(0),
+            fatal_floors=["FLOOR_NOT_BUILDABLE"],
+        )
+
+        self.assertEqual(result.fatal_floors, ["FLOOR_ALREADY_FREE"])
+        self.assertEqual(result.decision_reason, "FLOOR_ALREADY_FREE")
+
+    def test_a_nonsense_floor_list_is_discarded_rather_than_failing_the_run(self) -> None:
+        """PRD §10.1: a model that miscomputes gets a correct verdict, not an error."""
+        result = verdict(demand=score(0), fatal_floors=["not a floor code at all"])
+
+        self.assertEqual(result.fatal_floors, ["FLOOR_NO_DEMAND"])
+
+    def test_kill_criteria_shape_is_validated(self) -> None:
+        with self.assertRaisesRegex(ValidationError, "must be non-empty"):
+            verdict(kill_criteria=["Real criterion.", "   "])
+        with self.assertRaisesRegex(ValidationError, "duplicates"):
+            verdict(kill_criteria=["Same criterion.", "Same criterion."])
+
+    def test_arithmetic_is_reproducible_whatever_the_judgement_says(self) -> None:
+        """Two runs over one set of scores agree, kill criteria notwithstanding."""
+        first = verdict(kill_criteria=["One phrasing of the falsifier."])
+        second = verdict(kill_criteria=["A completely different phrasing.", "And another."])
+
+        for field_name in (
+            "composite_score",
+            "confidence",
+            "confidence_band",
+            "verdict",
+            "decision_reason",
+            "provisional",
+            "fatal_floors",
+        ):
+            with self.subTest(field=field_name):
+                self.assertEqual(getattr(first, field_name), getattr(second, field_name))
+        self.assertNotEqual(first.kill_criteria, second.kill_criteria)
+
     def test_confidence_band_boundaries(self) -> None:
         moderate = verdict(
             market_coverage=0.35,
@@ -215,6 +270,82 @@ class VerdictTests(unittest.TestCase):
 
         self.assertEqual(moderate.confidence_band, "MODERATE")
         self.assertEqual(high.confidence_band, "HIGH")
+
+
+class SpecFieldTests(unittest.TestCase):
+    """F05, F06 and F07 - fields the spec names that the schemas lacked."""
+
+    def market(self, **overrides: object) -> MarketFindings:
+        source = Evidence(
+            claim="Independent clinics budget for scheduling software.",
+            url="https://example.com/source",
+            publisher="Publisher",
+            dated="2026-08-29",
+            retrieved_via="firecrawl",
+        )
+        values: dict[str, object] = {
+            "sources": [source],
+            "source_urls": [source.url],
+            "gaps": [],
+            "tool_status": "ok",
+            "competitors": [
+                Competitor(name="Incumbent", pricing="not published", vendor_owned=False)
+            ],
+        }
+        values.update(overrides)
+        return MarketFindings.model_validate(values)
+
+    def thread(self, **overrides: object) -> Thread:
+        values: dict[str, object] = {
+            "classification": "HAS_PROBLEM",
+            "quote": "We keep the rota on a whiteboard.",
+            "url": "https://news.ycombinator.com/item?id=1",
+            "date": "2026-07-01",
+        }
+        values.update(overrides)
+        return Thread.model_validate(values)
+
+    def repo(self, **overrides: object) -> Repo:
+        values: dict[str, object] = {
+            "name": "example/project",
+            "license_permits_commercial": True,
+            "months_since_push": 1,
+            "relevance": "PARTIAL",
+            "url": "https://github.com/example/project",
+        }
+        values.update(overrides)
+        return Repo.model_validate(values)
+
+    def test_market_findings_name_paying_segments(self) -> None:
+        self.assertEqual(self.market().paying_segments, [])
+        named = self.market(paying_segments=["Independent physiotherapy clinics"])
+        self.assertEqual(named.paying_segments, ["Independent physiotherapy clinics"])
+
+    def test_paying_segments_reject_blanks_and_duplicates(self) -> None:
+        with self.assertRaisesRegex(ValidationError, "must be non-empty"):
+            self.market(paying_segments=["Clinics", " "])
+        with self.assertRaisesRegex(ValidationError, "duplicates"):
+            self.market(paying_segments=["Clinics", "clinics"])
+
+    def test_thread_counts_default_to_unreported_not_zero(self) -> None:
+        default = self.thread()
+        self.assertIsNone(default.points)
+        self.assertIsNone(default.num_comments)
+
+        counted = self.thread(points=0, num_comments=42)
+        self.assertEqual(counted.points, 0)
+        self.assertEqual(counted.num_comments, 42)
+
+        with self.assertRaises(ValidationError):
+            self.thread(points=-1)
+
+    def test_repo_archived_state_is_tri_state(self) -> None:
+        self.assertIsNone(self.repo().archived)
+        self.assertTrue(self.repo(archived=True).archived)
+        self.assertFalse(self.repo(archived=False).archived)
+
+        with self.assertRaises(ValidationError):
+            self.repo(archived="yes")
 
 
 if __name__ == "__main__":

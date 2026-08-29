@@ -87,3 +87,9 @@ jobs:
       # type-check and the production build in one step.
       - name: Type-check and build
         run: npm run build
+
+      # `npm test` is `vitest run`: a single pass, no watch mode, non-zero exit
+      # on failure. Until these landed the Studio was the only milestone with no
+      # executable tests at all, so nothing here was protected by CI.
+      - name: Unit tests
+        run: npm test

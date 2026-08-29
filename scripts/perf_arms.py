@@ -53,11 +53,12 @@ DEFAULT_STAGE_SECONDS = 0.02
 APPROVE = '{"decision": "approve"}'
 
 SEQUENTIAL_ARM_CAVEAT = (
-    "The sequential arm serializes the three research crews' kickoff() calls with a "
-    "shared lock. The Flow still dispatches three worker threads and still joins with "
-    "and_(), and the per-branch Pinecone cache lookup and evidence indexing still "
-    "overlap. Those overlaps make the sequential arm slightly FASTER than a genuinely "
-    "sequential implementation would be, so the measured speedup is a lower bound."
+    "The sequential arm runs the Flow's own F04/R-3 fallback via the "
+    "`sequential_branches` input, so each branch's whole method body - cache "
+    "lookup, kickoff and evidence write-back - is serialized. This is the "
+    "implementation R-3 would actually ship, so the ratio is a like-for-like "
+    "comparison rather than the conservative lower bound this harness "
+    "originally measured with an external factory lock."
 )
 
 
@@ -443,8 +444,12 @@ def run_arm_once(
 ) -> RunOutcome:
     """Execute one ValidatorFlow run and measure wall clock, memory and frames."""
     concurrency = BranchConcurrency()
-    lock = threading.Lock() if serialize else None
-    factories = instrument_factories(base_factories, lock=lock, concurrency=concurrency)
+    # The sequential arm now drives the Flow's OWN fallback (F04 / R-3) via the
+    # `sequential_branches` input, rather than the external factory lock this
+    # harness used before it existed. The lock only serialized kickoff(); the
+    # real fallback serializes each branch's whole method body, cache work
+    # included, so the comparison is now like-for-like instead of a lower bound.
+    factories = instrument_factories(base_factories, lock=None, concurrency=concurrency)
 
     run_id = f"perf-{arm}-{index}-{uuid.uuid4().hex[:8]}"
     buffer = FrameBuffer()
@@ -459,7 +464,11 @@ def run_arm_once(
             with _flow_sandbox(output_path, isolate_cache=isolate_cache):
                 with capture_events(CaptureContext(run_id=run_id, adapter=adapter)):
                     ValidatorFlow(crew_factories=factories).kickoff(
-                        inputs={"idea": idea, "no_gates": True}
+                        inputs={
+                            "idea": idea,
+                            "no_gates": True,
+                            "sequential_branches": serialize,
+                        }
                     )
         except Exception as exc:  # noqa: BLE001 - a failed run is a reportable result
             error = f"{type(exc).__name__}: {exc}"

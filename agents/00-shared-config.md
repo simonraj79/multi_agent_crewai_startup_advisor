@@ -16,7 +16,7 @@ flagged inline, in §9.
 > |---|---|
 > | `crewai` / `crewai-tools` **1.15.18** is current on PyPI | ✅ confirmed — these are the newest releases, not merely pinned |
 > | OpenRouter is a **native** provider, no `litellm` | ✅ `LLM(model="openrouter/...")` resolves to `crewai.llms.providers.openai_compatible.completion`, `base_url=https://openrouter.ai/api/v1` |
-> | `reasoning_effort` is accepted on `LLM` | ✅ |
+> | `reasoning_effort` is accepted on `LLM` | ⚠️ accepted, then **silently dropped** for every non-o1 model — see §3 |
 > | Every `Agent` / `Task` field §8 relies on exists | ✅ all 16 present, including `Task.guardrails` (plural) and `Agent.mcps` |
 > | Pinecone unreachable natively | ✅ `SupportedProvider = Literal['chromadb', 'qdrant']` |
 > | Embeddings honour `dimensions=768` when called directly | ✅ live call returned 768-dim vectors |
@@ -309,8 +309,27 @@ Two tiers. Prices verified against the live catalogue, USD per million tokens,
 
 > ⚠️ **`glm-5.3-flash` reasons by default, and reasoning bills at the completion
 > rate.** Measured on a one-word prompt: 68 of 71 completion tokens were
-> reasoning. Passing `reasoning_effort: "minimal"` dropped it to 3 tokens and 0
+> reasoning. Setting the effort to `"minimal"` dropped it to 3 tokens and 0
 > reasoning — an **8.8× cost reduction** on short mechanical calls.
+>
+> 🛑 **But `reasoning_effort=` on `LLM` does not reach OpenRouter.** Verified
+> against the installed 1.15.18 wheel: `OpenAICompletion._prepare_completion_params`
+> forwards it only under `if self.is_o1_model`, and `is_o1_model` is
+> `"o1" in model.lower()`. Neither model here matches, so the value is accepted,
+> stored on the object, and then dropped — no error, no warning. The saving
+> below was never actually being collected.
+>
+> The route that works is OpenRouter's unified `reasoning` object, carried in
+> `extra_body`:
+>
+> ```python
+> LLM(model=CHEAP_MODEL,
+>     additional_params={"extra_body": {"reasoning": {"effort": "minimal"}}})
+> ```
+>
+> `config.py::openrouter_reasoning_params()` builds this. Do not pass a
+> top-level `reasoning=` key: the OpenAI SDK's `chat.completions.create` has no
+> `**kwargs` and would raise.
 >
 > | variant | completion | reasoning | cost |
 > |---|---|---|---|
@@ -319,7 +338,7 @@ Two tiers. Prices verified against the live catalogue, USD per million tokens,
 > | `reasoning.exclude: true` | 21 | 18 | $1.34e-05 |
 >
 > Note `reasoning.exclude` only *hides* reasoning — it is still generated and
-> billed. It is not a cost control. Apply `reasoning_effort: "minimal"` to the
+> billed. It is not a cost control. Apply the `extra_body` form above to the
 > Evaluator, and test it on the Researcher. Leave the Analyst reasoning.
 
 Per agent:
@@ -558,7 +577,7 @@ table is wrong and should be corrected, not worked around.
 | `inject_date` | **`True`** | — | — | — | — | Time-sensitive lookups; also required for the staleness gate. |
 | `respect_context_window` | `True` | `True` | `True` | `True` | `True` | The default. Stated on the Researcher only because it is the one agent whose context can actually fill. |
 | `allow_delegation` | `False` | `False` | `False` | **`True`** | `False` | Exactly one agent in the crew delegates. On the Manager it is forced to `True` by `_create_manager_agent()` regardless of what you set (`04-manager.md`). |
-| `reasoning_effort` | — | — | — | — | **`"minimal"`** | `glm-5.3-flash` reasons by default and bills reasoning at the completion rate. Measured 8.8× cheaper on short mechanical calls — see §3. |
+| `reasoning_effort` | — | — | — | — | **`"minimal"`**, via `extra_body` | `glm-5.3-flash` reasons by default and bills reasoning at the completion rate. Measured 8.8× cheaper on short mechanical calls. ⚠️ The `LLM(reasoning_effort=...)` field is silently dropped for non-o1 models — it must go through `additional_params={"extra_body": {"reasoning": {...}}}`. See §3. **Not set in `src/` today, so the saving is unrealised.** |
 | `guardrail_max_retries` | — | — | **2** | — | **2** | Task-level, not agent-level. Default is 3; 2 because each retry re-runs the whole task *plus* a judgement call (`03-writer.md`, `05-evaluator.md`). |
 | `memory` | — | — | — | — | — | **`False`** at the **Crew** level. Keeps the OpenAI embedder unreachable. |
 

@@ -5,8 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol, TypeVar
@@ -18,9 +22,14 @@ from crewai.flow.async_feedback import (
     PendingFeedbackContext,
 )
 from crewai.flow.human_feedback import HumanFeedbackResult, human_feedback
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
-from brief_crew.config import CHEAP_MODEL, VALIDATOR_FEASIBILITY_CACHE_ENABLED
+from brief_crew.config import (
+    CHEAP_MODEL,
+    VALIDATOR_BRANCH_TURN_TIMEOUT_SECONDS,
+    VALIDATOR_FEASIBILITY_CACHE_ENABLED,
+    VALIDATOR_SEQUENTIAL_BRANCHES,
+)
 from brief_crew.crews.validator_crew import (
     FeasibilityCrew,
     MarketCrew,
@@ -50,6 +59,29 @@ from brief_crew.validator_cache import (
 
 OUTPUT_PATH = Path("output") / "validation.md"
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+# The order the three research branches take when the sequential fallback is
+# armed. Left to right on the fixed live topology (service/graph.py positions
+# market at x=35, sentiment at x=430, feasibility at x=825), so a serialized
+# trace reads the same way the graph does.
+BRANCH_ORDER: tuple[BranchName, ...] = ("market", "sentiment", "feasibility")
+
+# Branch -> Flow method name. These ARE the graph node ids: the same strings
+# CrewAI's static structure exposes, that service/graph.py overlays, and that
+# events/registry.py resolves frames onto. Sequential mode changes when a
+# branch runs, never what it is called.
+BRANCH_NODES: dict[BranchName, str] = {
+    "market": "research_market",
+    "sentiment": "research_sentiment",
+    "feasibility": "research_feasibility",
+}
+
+# PRD R-3's escape hatch. Both now live in config.py, where the project rule
+# says constants belong; the module-level names are kept as aliases so the
+# call sites below stay readable. VALIDATOR_SEQUENTIAL_BRANCHES reads an env
+# var, so withdrawing the fan-out is a deploy-time flip, not a code edit.
+SEQUENTIAL_BRANCHES_DEFAULT = VALIDATOR_SEQUENTIAL_BRANCHES
+BRANCH_TURN_TIMEOUT_SECONDS = VALIDATOR_BRANCH_TURN_TIMEOUT_SECONDS
 
 
 class KickoffRunner(Protocol):
@@ -118,6 +150,12 @@ FEEDBACK_PROVIDER = ValidatorFeedbackProvider()
 class ValidatorState(BaseModel):
     idea: str = ""
     no_gates: bool = False
+    # PRD R-3's withdrawal switch. False keeps the shipped parallel fan-out;
+    # True makes the three research branches take one turn each. Part of the
+    # state, not a constructor argument, so it survives a gate pause and is
+    # settable per run through kickoff inputs - which is also how the service
+    # reaches it, since ValidatorFlowRunner passes request inputs straight in.
+    sequential_branches: bool = SEQUENTIAL_BRANCHES_DEFAULT
     namespace: str = ""
     feasibility_cache_enabled: bool = VALIDATOR_FEASIBILITY_CACHE_ENABLED
     source_run_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
@@ -161,6 +199,173 @@ def _gate_payload(feedback: str) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+# ------------------------------------------------------- branch serialization
+
+
+class BranchSequencer:
+    """Give the three research branches one turn each, in ``BRANCH_ORDER``.
+
+    PRD R-3 promises a sequential fallback: *the same agents, the same graph,
+    worse latency*. That rules out the obvious implementation. Collapsing the
+    three sibling ``@listen("scope_approved")`` methods into one method that
+    calls three crews in a row would delete two nodes from the topology, two
+    ``and_()`` join edges from the graph descriptor, and two node identities
+    the UI and the event spine are built on - and it would leave two divergent
+    Flow definitions to keep in step.
+
+    So the Flow definition does not change at all. CrewAI still dispatches all
+    three listeners through ``asyncio.gather`` and still runs each synchronous
+    method in ``asyncio.to_thread(ctx.run, ...)``, which is what gives every
+    branch the copied context the stream sinks and event correlation live in
+    (PRD R-12 - no thread is hand-rolled here, and none may be). What changes
+    is only *when* each branch does its work: a branch waits at this turnstile
+    until the branches ahead of it in ``BRANCH_ORDER`` have finished.
+
+    Serializing the whole method body, not just ``kickoff()``, is the point.
+    ``scripts/perf_arms.py`` locks the crew factories from outside and says so:
+    the per-branch cache lookup and evidence write-back still overlap there.
+    Here they do not, so peak memory and connection pressure fall too.
+    """
+
+    def __init__(self, timeout_s: float = BRANCH_TURN_TIMEOUT_SECONDS) -> None:
+        self._condition = threading.Condition()
+        self._served = 0
+        self._timeout_s = timeout_s
+
+    @property
+    def served(self) -> int:
+        """Turns completed so far, across every fan-out cycle."""
+        with self._condition:
+            return self._served
+
+    @contextmanager
+    def turn(self, branch: BranchName, *, enabled: bool) -> Iterator[None]:
+        """Hold this branch until its turn, or pass straight through."""
+        if not enabled:
+            yield
+            return
+
+        length = len(BRANCH_ORDER)
+        index = BRANCH_ORDER.index(branch)
+        with self._condition:
+            granted = self._condition.wait_for(
+                lambda: self._served % length == index,
+                timeout=self._timeout_s,
+            )
+            if not granted:
+                # A branch that never arrives must not strand the others. Take
+                # the turn, resynchronise the turnstile on this branch, and
+                # degrade to the parallel behaviour rather than deadlocking.
+                print(
+                    f"[validator] sequential turn for {branch} timed out after "
+                    f"{self._timeout_s:.0f}s - proceeding without ordering"
+                )
+                self._served += (index - self._served) % length
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._served += 1
+                self._condition.notify_all()
+
+
+# ---------------------------------------------------------- branch output tag
+
+_branch_prefix: ContextVar[str] = ContextVar(
+    "brief_crew_validator_branch_prefix", default=""
+)
+_stdout_lock = threading.Lock()
+_stdout_state: dict[str, Any] = {"depth": 0, "original": None}
+
+
+class PrefixedStdout:
+    """Stamp every line a research branch prints with its node id (F40).
+
+    Three crews sharing one stdout is PRD 7.5's unreadable trace. The prefix is
+    chosen per *context*, not per stream: CrewAI runs each branch in its own
+    ``asyncio.to_thread(ctx.run, ...)`` worker, so the ContextVar read here is
+    that branch's. Anything written from outside a branch - the CLI's own
+    output, the service, another thread - reads an empty prefix and is passed
+    through untouched.
+
+    Whole lines only. A partial write is buffered per prefix until its newline
+    arrives, so two branches cannot interleave inside one line, and nothing is
+    inserted into the middle of a rich control sequence.
+    """
+
+    def __init__(self, stream: Any) -> None:
+        self._stream = stream
+        self._lock = threading.RLock()
+        self._partials: dict[str, str] = {}
+
+    def __getattr__(self, name: str) -> Any:
+        # Everything this class does not override - encoding, isatty, fileno,
+        # buffer - belongs to the wrapped stream. Reading _stream through
+        # object.__getattribute__ keeps a missing attribute from recursing.
+        return getattr(object.__getattribute__(self, "_stream"), name)
+
+    def write(self, data: str) -> int:
+        prefix = _branch_prefix.get()
+        if not prefix or not data:
+            return self._stream.write(data)
+        with self._lock:
+            pending = self._partials.pop(prefix, "") + data
+            head, newline, tail = pending.rpartition("\n")
+            self._partials[prefix] = tail
+            if newline:
+                self._stream.write(
+                    "".join(f"{prefix} {line}\n" for line in head.split("\n"))
+                )
+        return len(data)
+
+    def writelines(self, lines: Any) -> None:
+        for line in lines:
+            self.write(line)
+
+    def flush(self) -> None:
+        prefix = _branch_prefix.get()
+        if prefix:
+            with self._lock:
+                tail = self._partials.pop(prefix, "")
+            if tail:
+                self._stream.write(f"{prefix} {tail}\n")
+        self._stream.flush()
+
+
+@contextmanager
+def branch_output(node_id: str) -> Iterator[None]:
+    """Prefix this branch's terminal output with its Flow node id.
+
+    Installation is reference counted and the original stream is restored by
+    the last branch out, so a run leaves ``sys.stdout`` exactly as it found it.
+    Nothing here touches the event spine: frames come from CrewAI events, not
+    from stdout.
+    """
+    prefix = f"[{node_id}]"
+    with _stdout_lock:
+        if _stdout_state["depth"] == 0:
+            _stdout_state["original"] = sys.stdout
+            sys.stdout = PrefixedStdout(sys.stdout)
+        _stdout_state["depth"] += 1
+    token = _branch_prefix.set(prefix)
+    try:
+        yield
+    finally:
+        stream = sys.stdout
+        if isinstance(stream, PrefixedStdout):
+            try:
+                stream.flush()
+            except Exception:
+                pass
+        _branch_prefix.reset(token)
+        with _stdout_lock:
+            _stdout_state["depth"] -= 1
+            if _stdout_state["depth"] == 0:
+                if isinstance(sys.stdout, PrefixedStdout):
+                    sys.stdout = _stdout_state["original"]
+                _stdout_state["original"] = None
+
+
 class ValidatorFlow(Flow[ValidatorState]):
     """Scope, fan out three evidence crews, synthesize, review and persist."""
 
@@ -169,6 +374,18 @@ class ValidatorFlow(Flow[ValidatorState]):
         default_factory=ValidatorCrewFactories,
         exclude=True,
     )
+    # Run-local and never serialized: a turnstile is not flow state, and a
+    # resumed flow starts a fresh fan-out anyway.
+    _branch_sequencer: BranchSequencer = PrivateAttr(default_factory=BranchSequencer)
+
+    @contextmanager
+    def _branch_turn(self, branch: BranchName) -> Iterator[None]:
+        """Order and label one research branch without moving its node."""
+        with self._branch_sequencer.turn(
+            branch, enabled=self.state.sequential_branches
+        ):
+            with branch_output(BRANCH_NODES[branch]):
+                yield
 
     @start()
     def scope_idea(self) -> ScopedIdea:
@@ -228,54 +445,60 @@ class ValidatorFlow(Flow[ValidatorState]):
     @listen("scope_approved")
     def research_market(self) -> MarketFindings:
         """Run the market branch in a Flow-managed worker thread."""
-        scope = _require(self.state.scope, "scope")
-        namespace = resolve_namespace(self.state.namespace)
-        cached = self._cached_evidence("market", scope, namespace)
-        with capture_tool_results("market") as tool_results:
-            result = self.crew_factories.market().kickoff(
-                inputs={
-                    "scoped_idea_json": scope.model_dump_json(indent=2),
-                    "market_query": scope.market_query,
-                    "cached_evidence_block": format_cached_evidence(cached),
-                }
-            )
-        self.state.market = _extract_model(result, MarketFindings)
-        self._index_evidence("market", scope, namespace, tool_results)
-        return self.state.market
+        with self._branch_turn("market"):
+            scope = _require(self.state.scope, "scope")
+            namespace = resolve_namespace(self.state.namespace)
+            cached = self._cached_evidence("market", scope, namespace)
+            with capture_tool_results("market") as tool_results:
+                result = self.crew_factories.market().kickoff(
+                    inputs={
+                        "scoped_idea_json": scope.model_dump_json(indent=2),
+                        "market_query": scope.market_query,
+                        "cached_evidence_block": format_cached_evidence(cached),
+                    }
+                )
+            findings = _extract_model(result, MarketFindings)
+            self.state.market = findings
+            self._index_evidence("market", scope, namespace, tool_results)
+        return findings
 
     @listen("scope_approved")
     def research_sentiment(self) -> SentimentFindings:
         """Run the sentiment branch in a Flow-managed worker thread."""
-        scope = _require(self.state.scope, "scope")
-        namespace = resolve_namespace(self.state.namespace)
-        with capture_tool_results("sentiment") as tool_results:
-            result = self.crew_factories.sentiment().kickoff(
-                inputs={
-                    "scoped_idea_json": scope.model_dump_json(indent=2),
-                    "community_queries_block": "\n".join(scope.community_queries),
-                }
-            )
-        self.state.sentiment = _extract_model(result, SentimentFindings)
-        self._index_evidence("sentiment", scope, namespace, tool_results)
-        return self.state.sentiment
+        with self._branch_turn("sentiment"):
+            scope = _require(self.state.scope, "scope")
+            namespace = resolve_namespace(self.state.namespace)
+            with capture_tool_results("sentiment") as tool_results:
+                result = self.crew_factories.sentiment().kickoff(
+                    inputs={
+                        "scoped_idea_json": scope.model_dump_json(indent=2),
+                        "community_queries_block": "\n".join(scope.community_queries),
+                    }
+                )
+            findings = _extract_model(result, SentimentFindings)
+            self.state.sentiment = findings
+            self._index_evidence("sentiment", scope, namespace, tool_results)
+        return findings
 
     @listen("scope_approved")
     def research_feasibility(self) -> FeasibilityFindings:
         """Run the feasibility branch in a Flow-managed worker thread."""
-        scope = _require(self.state.scope, "scope")
-        namespace = resolve_namespace(self.state.namespace)
-        cached = self._cached_evidence("feasibility", scope, namespace)
-        with capture_tool_results("feasibility") as tool_results:
-            result = self.crew_factories.feasibility().kickoff(
-                inputs={
-                    "scoped_idea_json": scope.model_dump_json(indent=2),
-                    "tech_queries_block": "\n".join(scope.tech_queries),
-                    "cached_evidence_block": format_cached_evidence(cached),
-                }
-            )
-        self.state.feasibility = _extract_model(result, FeasibilityFindings)
-        self._index_evidence("feasibility", scope, namespace, tool_results)
-        return self.state.feasibility
+        with self._branch_turn("feasibility"):
+            scope = _require(self.state.scope, "scope")
+            namespace = resolve_namespace(self.state.namespace)
+            cached = self._cached_evidence("feasibility", scope, namespace)
+            with capture_tool_results("feasibility") as tool_results:
+                result = self.crew_factories.feasibility().kickoff(
+                    inputs={
+                        "scoped_idea_json": scope.model_dump_json(indent=2),
+                        "tech_queries_block": "\n".join(scope.tech_queries),
+                        "cached_evidence_block": format_cached_evidence(cached),
+                    }
+                )
+            findings = _extract_model(result, FeasibilityFindings)
+            self.state.feasibility = findings
+            self._index_evidence("feasibility", scope, namespace, tool_results)
+        return findings
 
     @listen(and_(research_market, research_sentiment, research_feasibility))
     def synthesize(self) -> Verdict:
@@ -434,6 +657,7 @@ def validate(
     no_gates: bool = False,
     namespace: str | None = None,
     feasibility_cache_enabled: bool | None = None,
+    sequential_branches: bool | None = None,
     crew_factories: ValidatorCrewFactories | None = None,
 ) -> ValidationReport | HumanFeedbackPending:
     """Run or start the validator without requiring the web studio."""
@@ -451,6 +675,10 @@ def validate(
     }
     if feasibility_cache_enabled is not None:
         inputs["feasibility_cache_enabled"] = feasibility_cache_enabled
+    # Left out entirely when unset, so the state default - and therefore every
+    # existing caller - keeps the parallel fan-out.
+    if sequential_branches is not None:
+        inputs["sequential_branches"] = sequential_branches
     result = flow.kickoff(inputs=inputs)
     if isinstance(result, HumanFeedbackPending):
         return result
@@ -483,11 +711,23 @@ def _run_cli() -> ValidationReport | HumanFeedbackPending:
         default=None,
         help="Use feasibility cache as a GitHub rate-limit shock absorber.",
     )
+    parser.add_argument(
+        "--sequential-branches",
+        action="store_true",
+        default=None,
+        dest="sequential_branches",
+        help=(
+            "Run the three research branches one at a time instead of in "
+            "parallel. Same six agents and same graph; worse latency."
+        ),
+    )
     args = parser.parse_args()
 
     if args.resume:
         flow = ValidatorFlow.from_pending(args.resume)
         flow.state.no_gates = args.no_gates
+        if args.sequential_branches is not None:
+            flow.state.sequential_branches = args.sequential_branches
         resumed = flow.resume(args.feedback)
         result = (
             resumed
@@ -502,6 +742,7 @@ def _run_cli() -> ValidationReport | HumanFeedbackPending:
             no_gates=args.no_gates,
             namespace=args.namespace,
             feasibility_cache_enabled=args.feasibility_cache,
+            sequential_branches=args.sequential_branches,
         )
 
     _print_result(result)

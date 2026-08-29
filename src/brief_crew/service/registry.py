@@ -11,6 +11,7 @@ import json
 import logging
 from queue import Empty, Full, Queue
 from threading import Event, RLock, Thread, current_thread
+from time import monotonic
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
 import uuid
@@ -22,10 +23,12 @@ from crewai.hooks.dispatch import register_scoped, scoped_hooks
 from brief_crew.config import (
     RUN_CONCURRENCY,
     VALIDATOR_FRAME_BATCH_SIZE,
+    VALIDATOR_FRAME_FLUSH_INTERVAL_SECONDS,
     VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS,
     VALIDATOR_GATE_SWEEP_INTERVAL_SECONDS,
     VALIDATOR_GATE_TIMEOUT_SECONDS,
     VALIDATOR_PERSIST_QUEUE_CAPACITY,
+    VALIDATOR_RUN_RETENTION_SECONDS,
     compute_cost_usd,
 )
 from brief_crew.events import (
@@ -48,6 +51,16 @@ from brief_crew.events.serializer import normalize_usage
 
 
 DEFAULT_SUBSCRIBER_CAPACITY = 512
+# PRD F30: statuses a run can never leave on its own. Everything else -
+# QUEUED, RUNNING, CANCELLING and above all WAITING - is still live work and
+# is never evicted from memory, however old it is.
+TERMINAL_STATUSES = frozenset(
+    {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
+)
+# PRD F20: a METRICS snapshot carries one row per (node, model) pair. The frame
+# contract caps a detail sequence at 64 entries, and no declared graph has
+# anywhere near that many, so this only guards against a pathological run.
+MAX_METRICS_NODES = 64
 _USAGE_INTEGER_FIELDS = (
     "successful_requests",
     "prompt_tokens",
@@ -116,15 +129,61 @@ class WorkflowRuntime:
     runner: Runner
 
 
-class _PersistenceWriter:
-    """Single non-blocking ingress with batched database writes."""
+class _FlushMarker:
+    """A queued request to write everything ahead of it, right now.
 
-    def __init__(self, store: Any, on_error: Callable[[str], None]) -> None:
+    A marker rather than a flag on a side channel because the writer parks in
+    ``Queue.get``: a flag would go unnoticed until the next frame or the next
+    interval, while a queued marker wakes it immediately and keeps FIFO order
+    with the frames already in flight. It carries its own completion event, so
+    a caller waiting on a flush can never outlive the writer thread.
+    """
+
+    __slots__ = ("done",)
+
+    def __init__(self) -> None:
+        self.done = Event()
+
+
+_SHUTDOWN = None
+# Matches the join bounds already used for this module's other threads: a
+# caller waits a bounded time for a background thread and then reports, rather
+# than blocking the process forever on one that has gone away.
+_WRITER_JOIN_TIMEOUT_SECONDS = 5.0
+
+
+class _PersistenceWriter:
+    """Single non-blocking ingress with time- and size-bounded batched writes.
+
+    PRD F31. ``enqueue`` is the only call a CrewAI event handler makes, and it
+    is a ``put_nowait`` onto a bounded queue: no database work, no lock the
+    database can hold, no blocking. Everything below runs on this thread.
+
+    The batch closes on whichever comes first - ``VALIDATOR_FRAME_BATCH_SIZE``
+    frames, or ``VALIDATOR_FRAME_FLUSH_INTERVAL_SECONDS`` since the batch
+    opened. Size alone bounds throughput but not latency, so the tail of a
+    quiet run would sit in memory until the next burst, which a reconnecting
+    client reads as a gap and a crash loses outright.
+    """
+
+    def __init__(
+        self,
+        store: Any,
+        on_error: Callable[[str], None],
+        *,
+        batch_size: int = VALIDATOR_FRAME_BATCH_SIZE,
+        flush_interval: float = VALIDATOR_FRAME_FLUSH_INTERVAL_SECONDS,
+    ) -> None:
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
+        if flush_interval <= 0:
+            raise ValueError("flush_interval must be positive")
         self.store = store
         self.on_error = on_error
-        self.queue: Queue[tuple[str, tuple[FrameData, ...]] | None] = Queue(
-            maxsize=VALIDATOR_PERSIST_QUEUE_CAPACITY
-        )
+        self.batch_size = batch_size
+        self.flush_interval = flush_interval
+        self.queue: Queue[Any] = Queue(maxsize=VALIDATOR_PERSIST_QUEUE_CAPACITY)
+        self._closed = Event()
         self.thread = Thread(
             target=self._run,
             name="validator-frame-writer",
@@ -138,44 +197,112 @@ class _PersistenceWriter:
         except Full:
             self.on_error(run_id)
 
-    def flush(self) -> None:
-        self.queue.join()
+    def flush(self, timeout: float = _WRITER_JOIN_TIMEOUT_SECONDS) -> bool:
+        """Write everything already queued without waiting out the interval.
+
+        Returns whether the flush completed. It is bounded on purpose: a
+        caller must never hang because the writer thread is gone, which is
+        exactly what a ``Queue.join`` would do after a shutdown.
+        """
+        if not self.thread.is_alive():
+            return False
+        marker = _FlushMarker()
+        try:
+            self.queue.put(marker, timeout=timeout)
+        except Full:
+            logger.warning("the frame writer queue stayed full for %ss", timeout)
+            return False
+        if marker.done.wait(timeout):
+            return True
+        logger.warning("the frame writer did not flush within %ss", timeout)
+        return False
 
     def close(self) -> None:
+        """Idempotent: a second close must not wait on a stopped thread."""
+        if self._closed.is_set():
+            return
+        self._closed.set()
         self.flush()
-        self.queue.put(None)
-        self.thread.join(timeout=5)
+        self.queue.put(_SHUTDOWN)
+        self.thread.join(timeout=_WRITER_JOIN_TIMEOUT_SECONDS)
+        if self.thread.is_alive():
+            logger.warning(
+                "the frame writer did not stop within %ss",
+                _WRITER_JOIN_TIMEOUT_SECONDS,
+            )
 
     def _run(self) -> None:
-        while True:
-            item = self.queue.get()
-            if item is None:
-                self.queue.task_done()
-                return
-
-            batch = [item]
-            while len(batch) < VALIDATOR_FRAME_BATCH_SIZE:
+        batch: list[tuple[str, tuple[FrameData, ...]]] = []
+        markers: list[_FlushMarker] = []
+        queued_frames = 0
+        deadline: float | None = None
+        try:
+            while True:
+                timeout = (
+                    None if deadline is None else max(0.0, deadline - monotonic())
+                )
                 try:
-                    queued = self.queue.get_nowait()
+                    item = self.queue.get(timeout=timeout)
                 except Empty:
-                    break
-                if queued is None:
-                    self.queue.task_done()
+                    # The coalescing window closed first: write the partial batch.
+                    self._write(batch, markers)
+                    batch, markers, queued_frames, deadline = [], [], 0, None
                     continue
-                batch.append(queued)
 
-            grouped: dict[str, list[FrameData]] = defaultdict(list)
-            for run_id, frames in batch:
-                grouped[run_id].extend(frames)
+                if item is _SHUTDOWN:
+                    self._write(batch, markers)
+                    return
+                if isinstance(item, _FlushMarker):
+                    markers.append(item)
+                    self._write(batch, markers)
+                    batch, markers, queued_frames, deadline = [], [], 0, None
+                    continue
+
+                batch.append(item)
+                queued_frames += len(item[1])
+                if deadline is None:
+                    deadline = monotonic() + self.flush_interval
+                if queued_frames >= self.batch_size:
+                    self._write(batch, markers)
+                    batch, markers, queued_frames, deadline = [], [], 0, None
+        finally:
+            # Never leave a caller blocked on a flush this thread will not do.
+            self._release_stragglers()
+
+    def _write(
+        self,
+        batch: list[tuple[str, tuple[FrameData, ...]]],
+        markers: list[_FlushMarker],
+    ) -> None:
+        grouped: dict[str, list[FrameData]] = defaultdict(list)
+        for run_id, frames in batch:
+            grouped[run_id].extend(frames)
+        try:
+            for run_id, frames in grouped.items():
+                self.store.append_frames(run_id, frames)
+        except Exception:
+            for run_id in grouped:
+                self.on_error(run_id)
+        finally:
+            for marker in markers:
+                marker.done.set()
+
+    def _release_stragglers(self) -> None:
+        """Drain what this thread will never write, and account for it.
+
+        Markers are released so no caller is left blocked, and abandoned frames
+        are reported through ``on_error`` exactly as a queue overflow is, so a
+        shutdown-time loss stays visible in the run's emit-error counter.
+        """
+        while True:
             try:
-                for run_id, frames in grouped.items():
-                    self.store.append_frames(run_id, frames)
-            except Exception:
-                for run_id in grouped:
-                    self.on_error(run_id)
-            finally:
-                for _ in batch:
-                    self.queue.task_done()
+                item = self.queue.get_nowait()
+            except Empty:
+                return
+            if isinstance(item, _FlushMarker):
+                item.done.set()
+            elif item is not _SHUTDOWN:
+                self.on_error(item[0])
 
 
 class FrameSubscription:
@@ -253,6 +380,12 @@ class RunRecord:
     _llm_elapsed_ms: dict[tuple[str, str], int] = field(
         default_factory=dict, init=False
     )
+    # PRD F20: token usage is versioned rather than flagged so the metrics
+    # snapshot can be coalesced. Both counters are guarded by _lock, which is
+    # the lock _record_usage already holds, so marking usage dirty needs no
+    # second lock and cannot invert the emit ordering below.
+    _usage_revision: int = field(default=0, init=False)
+    _metrics_revision: int = field(default=0, init=False)
     _lock: RLock = field(default_factory=RLock, init=False)
     # Deliberately NOT _lock. Emitting takes the capture lock and the capture
     # callback then takes _lock, so a sweeper holding _lock across an emit would
@@ -262,7 +395,10 @@ class RunRecord:
 
     def __post_init__(self) -> None:
         self.inputs = MappingProxyType(dict(self.inputs))
-        self.buffer = FrameBuffer(self.ring_capacity)
+        self.buffer = FrameBuffer(
+            self.ring_capacity,
+            quarantine_node_id=self.node_registry.quarantine_node_id,
+        )
         self.capture = StreamSinkAdapter(
             run_id=self.run_id,
             buffer=self.buffer,
@@ -334,6 +470,14 @@ class RunRecord:
         if subscription is not None:
             subscription.close()
 
+    def has_subscribers(self) -> bool:
+        """PRD F30: a still-connected socket pins this run in memory."""
+        with self._lock:
+            return any(
+                not subscription.closed
+                for subscription in self._subscribers.values()
+            )
+
     def claim_gate_expiry(self, gate_id: str) -> bool:
         """True exactly once per gate, so the F03 frame is not emitted per tick."""
         with self._gate_watch_lock:
@@ -395,6 +539,8 @@ class RunRecord:
                     "gaps": stats.gaps,
                     "emit_errors": stats.emit_errors,
                     "subscriber_dropped": self.subscriber_dropped,
+                    # PRD F21: how much of this run the graph could not place.
+                    "unattributed": stats.unattributed,
                     "first_seq": stats.first_seq,
                     "last_seq": stats.last_seq,
                 },
@@ -409,6 +555,54 @@ class RunRecord:
             dict(self.node_usage[key])
             for key in sorted(self.node_usage)
         ]
+
+    def emit_metrics(self, reason: str) -> FrameData | None:
+        """Push one PRD F20 ``metrics`` snapshot if usage moved since the last.
+
+        Coalesced by design. Live per-call totals already reach the client as
+        ``token`` frames; this frame is the periodic *reconciled* view - run
+        totals, the per-node/per-model breakdown and the capture counters - so
+        a client that reconnected, missed token frames or was replayed from a
+        truncated ring can still show correct numbers. Emitting one per model
+        call would duplicate the token stream and burn the 2,000-frame ring.
+
+        Returns the frame, or ``None`` when nothing changed since the last
+        snapshot. Never emitted while ``_lock`` is held: ``capture.emit`` takes
+        the capture lock and its callback then takes ``_lock``, so holding
+        ``_lock`` across the emit would invert that order.
+        """
+        with self._lock:
+            revision = self._usage_revision
+            if revision == self._metrics_revision:
+                return None
+            stats = self.buffer.stats()
+            details: dict[str, Any] = {
+                "reason": reason,
+                "usage": dict(self.usage),
+                "nodes": self.node_usage_payload()[:MAX_METRICS_NODES],
+                "frames": {
+                    "captured": stats.captured,
+                    "dropped": stats.dropped,
+                    "gaps": stats.gaps,
+                    "emit_errors": stats.emit_errors,
+                    "subscriber_dropped": self.subscriber_dropped,
+                    "unattributed": stats.unattributed,
+                },
+            }
+        frame = self.capture.emit(
+            kind=FrameKind.METRICS,
+            event_type=UIEventType.METRICS_UPDATED,
+            node_id=self.node_registry.workflow_node_id,
+            message="Run metrics updated",
+            details=details,
+        )
+        if frame is None:
+            # The emit failed and was counted as an emit error; leave the run
+            # dirty so the next tick retries rather than losing the snapshot.
+            return None
+        with self._lock:
+            self._metrics_revision = revision
+        return frame
 
     def _on_frames(self, frames: tuple[FrameData, ...]) -> None:
         with self._lock:
@@ -484,6 +678,7 @@ class RunRecord:
         for field_name in _USAGE_INTEGER_FIELDS:
             node[field_name] = int(node[field_name]) + int(measured[field_name])
         node["cost_usd"] = round(float(node["cost_usd"]) + cost_usd, 12)
+        self._usage_revision += 1
 
     def _note_subscriber_drop(self) -> None:
         with self._lock:
@@ -542,6 +737,8 @@ class RunRegistry:
         self._gate_expiries = 0
         self._gate_alerts = 0
         self._gate_sweeps = 0
+        self._metrics_frames = 0
+        self._evicted_runs = 0
         self._sweeper_stop = Event()
         self._sweeper: Thread | None = None
         if self.gate_sweep_interval > 0:
@@ -681,6 +878,7 @@ class RunRegistry:
             future = self._futures.get(run_id)
         if record.status is RunStatus.QUEUED and future is not None and future.cancel():
             record.mark_cancelled()
+            record.emit_metrics("run_cancelled")
             self._persist_status(record)
             return {
                 "run_id": run_id,
@@ -708,6 +906,7 @@ class RunRegistry:
                 details={"status": "cancelled"},
                 level=FrameLevel.WARNING,
             )
+            record.emit_metrics("run_cancelled")
             self._persist_status(record)
             return {
                 "run_id": run_id,
@@ -869,14 +1068,127 @@ class RunRegistry:
             }
 
     def _sweep_loop(self) -> None:
-        # Event.wait parks the thread for the whole interval and returns early
-        # the moment close() sets the flag, so this is neither a busy-wait nor a
-        # source of shutdown latency.
+        # One maintenance tick drives all three periodic jobs, so there is a
+        # single background thread with a single shutdown path rather than one
+        # thread per concern. Event.wait parks it for the whole interval and
+        # returns early the moment close() sets the flag, so this is neither a
+        # busy-wait nor a source of shutdown latency. Each job is isolated:
+        # one failing must not stop the others or kill the thread.
+        jobs: tuple[tuple[Callable[[], Any], str], ...] = (
+            (self.sweep_gates, "the human-gate expiry sweep failed"),
+            (self.sweep_metrics, "the run metrics sweep failed"),
+            (self.evict_stale_runs, "the terminal-run eviction sweep failed"),
+        )
         while not self._sweeper_stop.wait(self.gate_sweep_interval):
-            try:
-                self.sweep_gates()
-            except Exception:
-                logger.exception("the human-gate expiry sweep failed")
+            for job, message in jobs:
+                try:
+                    job()
+                except Exception:
+                    logger.exception(message)
+
+    def sweep_metrics(self) -> int:
+        """Push one coalesced PRD F20 metrics snapshot per changed live run.
+
+        This rides the existing maintenance tick rather than a timer of its
+        own, which fixes the cadence at one frame per run per tick *and only
+        when token usage actually moved*. A run with no model calls emits
+        nothing at all; a busy run costs a few frames a minute against a
+        2,000-frame ring, so the snapshot can never push real frames out.
+
+        Terminal runs are skipped: their final snapshot was already emitted by
+        the transition that made them terminal.
+        """
+        with self._lock:
+            records = tuple(self._records.values())
+        emitted = 0
+        for record in records:
+            if record.status in TERMINAL_STATUSES:
+                continue
+            if record.emit_metrics("interval") is not None:
+                emitted += 1
+        if emitted:
+            with self._lock:
+                self._metrics_frames += emitted
+        return emitted
+
+    def evict_stale_runs(self, *, now: datetime | None = None) -> list[str]:
+        """Drop finished runs from memory once the retention window has passed.
+
+        PRD F30. ``_records`` is a replay and status cache, not the system of
+        record: the run row, its frames, its node metrics and its gates all
+        live in storage, and ``require()`` rebuilds a record from them on the
+        next request. Nothing durable is deleted here.
+
+        A run is evicted only when every one of these holds:
+
+        * it is COMPLETED, FAILED or CANCELLED - so QUEUED, RUNNING,
+          CANCELLING and above all **WAITING** are never evicted at any age. A
+          gate answered late is deliberate wave-2 behaviour (PRD Scenario C),
+          and evicting a waiting run would drop the in-memory
+          ``PendingFeedbackContext`` that its resume needs;
+        * it finished at least ``VALIDATOR_RUN_RETENTION_SECONDS`` ago;
+        * no WebSocket subscriber is still attached to it;
+        * its execution future is finished, so no worker still owns it;
+        * persistence is configured, because without it memory *is* the only
+          copy and eviction would destroy the run.
+        """
+        if self.persistence is None:
+            return []
+        moment = now or _utcnow()
+        horizon = timedelta(seconds=VALIDATOR_RUN_RETENTION_SECONDS)
+        # Two phases so the registry lock is never held while a record lock is
+        # taken. The candidate list is a snapshot; the predicate is rechecked
+        # under the lock before anything is dropped.
+        with self._lock:
+            candidates = tuple(self._records.items())
+        stale = [
+            run_id
+            for run_id, record in candidates
+            if self._is_evictable(record, moment, horizon)
+        ]
+        evicted: list[str] = []
+        with self._lock:
+            for run_id in stale:
+                record = self._records.get(run_id)
+                if record is None or record.status not in TERMINAL_STATUSES:
+                    continue
+                future = self._futures.get(run_id)
+                if future is not None and not future.done():
+                    continue
+                self._records.pop(run_id, None)
+                self._futures.pop(run_id, None)
+                evicted.append(run_id)
+            self._evicted_runs += len(evicted)
+        if evicted:
+            logger.info(
+                "evicted %d terminal run(s) from memory after %ss; storage is "
+                "unchanged and a later read rehydrates them",
+                len(evicted),
+                VALIDATOR_RUN_RETENTION_SECONDS,
+            )
+        return evicted
+
+    @staticmethod
+    def _is_evictable(
+        record: RunRecord,
+        moment: datetime,
+        horizon: timedelta,
+    ) -> bool:
+        if record.status not in TERMINAL_STATUSES:
+            return False
+        finished_at = record.completed_at or record.created_at
+        if finished_at is None or moment - finished_at < horizon:
+            return False
+        return not record.has_subscribers()
+
+    def maintenance_status(self) -> dict[str, int]:
+        """Counters for the periodic jobs - live runs, snapshots, evictions."""
+        with self._lock:
+            return {
+                "tracked_runs": len(self._records),
+                "metrics_frames": self._metrics_frames,
+                "evicted_runs": self._evicted_runs,
+            }
 
     def _open_gates(
         self,
@@ -1078,6 +1390,7 @@ class RunRegistry:
                 level=FrameLevel.WARNING,
             )
             record.mark_cancelled()
+            record.emit_metrics("run_cancelled")
             self._persist_status(record)
             return None
         except Exception as exc:
@@ -1090,6 +1403,7 @@ class RunRegistry:
                 level=FrameLevel.ERROR,
             )
             record.mark_failed(exc)
+            record.emit_metrics("run_failed")
             self._persist_status(record)
             return None
         if isinstance(result, HumanFeedbackPending):
@@ -1097,6 +1411,10 @@ class RunRegistry:
             return result
         self._log_usage_reconciliation(record, result)
         record.mark_completed(result)
+        # Terminal: the last token frame has already been counted, so this
+        # snapshot is the authoritative end-of-run total in the stream, the
+        # NDJSON export and the ZIP export.
+        record.emit_metrics("run_completed")
         if self.persistence is not None and record.flow_id is not None:
             self.persistence.clear_pending_feedback(record.flow_id)
         self._persist_status(record)
@@ -1137,6 +1455,10 @@ class RunRegistry:
             message=str(prompt["title"]),
             details=prompt,
         )
+        # The run is now idle until a human answers, so this is the natural
+        # place for a reconciled snapshot: nothing more will change until the
+        # reply lands, and the next tick would only repeat these numbers.
+        record.emit_metrics("gate_open")
         self._persist_status(record)
 
     @staticmethod
@@ -1228,10 +1550,14 @@ class RunRegistry:
             self._writer.enqueue(run_id, frames)
 
     def _note_persistence_error(self, run_id: str) -> None:
-        try:
-            self.require(run_id).buffer.note_emit_error()
-        except KeyError:
-            pass
+        # Deliberately not require(): this runs on the writer thread, and
+        # require() would read - and after F30 eviction, fully rehydrate - the
+        # run from the database. A counter bump is never worth a database read
+        # on the writer thread, and an evicted run has no live ring to mark.
+        with self._lock:
+            record = self._records.get(run_id)
+        if record is not None:
+            record.buffer.note_emit_error()
 
     def _persist_status(self, record: RunRecord) -> None:
         if self.persistence is None:

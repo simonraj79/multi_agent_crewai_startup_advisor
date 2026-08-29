@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import type { Edge, Node } from '@vue-flow/core'
 import { MOCK_GRAPH } from '../data/mockGraph'
-import { studioApi, type ConnectionStatus, type TransportMode } from '../services/studioApi'
+import { studioApi, type ConnectionStatus, type StudioApiLike, type TransportMode } from '../services/studioApi'
 import type {
   CallChip,
   ChatEntry,
@@ -17,11 +17,13 @@ export interface StudioNodeData extends Record<string, unknown> {
   label: string
   eyebrow: string
   description: string
-  kind: 'agent' | 'gate' | 'output'
+  kind: 'agent' | 'gate' | 'output' | 'quarantine'
   state: NodeRunState
   model?: string
   tool?: string
   usage: UsageMetrics
+  /** Frames the stream attributed to this node. Drives the quarantine badge. */
+  frameCount: number
 }
 
 export interface StudioEdgeData extends Record<string, unknown> {
@@ -42,6 +44,24 @@ const DEFAULT_WORKFLOW_ID = 'idea-validator'
 const SESSION_STORAGE_KEY = 'validator-session-id'
 const ACTIVE_RUN_STORAGE_KEY = 'validator-active-run'
 
+/**
+ * Mirrors `QUARANTINE_NODE_ID` in `src/brief_crew/events/registry.py`. Frames the
+ * backend could not join to a declared node are attributed here on purpose, so
+ * the loss is visible in the graph instead of silently disappearing.
+ */
+export const QUARANTINE_NODE_ID = 'unattributed'
+
+/**
+ * How long a traversal keeps marching after its `edge_taken` frame. Every edge
+ * gets its own timer: the three research branches leave the scope gate at
+ * slightly different moments and must all animate at once, so a single shared
+ * deadline cannot be used to expire them.
+ */
+const EDGE_ACTIVE_MS = 3200
+
+/** A run in one of these states is history: nothing more will stream for it. */
+const TERMINAL_STATUSES: readonly RunStatus[] = ['completed', 'cancelled', 'error']
+
 interface StoredRunContext {
   version: 1
   runId: string
@@ -49,10 +69,38 @@ interface StoredRunContext {
   workflowId: string
 }
 
-function readStoredRun(): StoredRunContext | null {
+/**
+ * Every storage access is guarded. A private window, blocked site data or a
+ * full quota throws on read and on write, and the console must still render.
+ */
+function readStorage(key: string): string | null {
   try {
-    const value = localStorage.getItem(ACTIVE_RUN_STORAGE_KEY)
-    if (!value) return null
+    return globalThis.localStorage?.getItem(key) ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    globalThis.localStorage?.setItem(key, value)
+  } catch {
+    // Storage is unavailable; refresh recovery is lost but the app still runs.
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    globalThis.localStorage?.removeItem(key)
+  } catch {
+    // Same as above: never let storage failure reach the render path.
+  }
+}
+
+function readStoredRun(): StoredRunContext | null {
+  const value = readStorage(ACTIVE_RUN_STORAGE_KEY)
+  if (!value) return null
+  try {
     const parsed = JSON.parse(value) as Partial<StoredRunContext>
     if (parsed.version !== 1 || !parsed.runId || !parsed.sessionId || !parsed.workflowId) return null
     return parsed as StoredRunContext
@@ -62,15 +110,26 @@ function readStoredRun(): StoredRunContext | null {
 }
 
 function persistRun(context: StoredRunContext): void {
-  localStorage.setItem(ACTIVE_RUN_STORAGE_KEY, JSON.stringify(context))
-  localStorage.setItem(SESSION_STORAGE_KEY, context.sessionId)
+  writeStorage(ACTIVE_RUN_STORAGE_KEY, JSON.stringify(context))
+  writeStorage(SESSION_STORAGE_KEY, context.sessionId)
 }
 
-const storedAtLoad = readStoredRun()
-const sessionId = storedAtLoad?.sessionId ?? localStorage.getItem(SESSION_STORAGE_KEY) ?? crypto.randomUUID()
-localStorage.setItem(SESSION_STORAGE_KEY, sessionId)
+function clearStoredRun(): void {
+  removeStorage(ACTIVE_RUN_STORAGE_KEY)
+}
 
-export function useValidatorRun() {
+function newSessionId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.()
+    ?? `session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  )
+}
+
+export function useValidatorRun(api: StudioApiLike = studioApi) {
+  const storedAtLoad = readStoredRun()
+  const sessionId = storedAtLoad?.sessionId ?? readStorage(SESSION_STORAGE_KEY) ?? newSessionId()
+  writeStorage(SESSION_STORAGE_KEY, sessionId)
+
   const descriptor = ref<GraphDescriptor>(structuredClone(MOCK_GRAPH))
   const workflowId = ref(storedAtLoad?.workflowId ?? DEFAULT_WORKFLOW_ID)
   const idea = ref('An AI tool that turns Figma files into production React')
@@ -86,25 +145,31 @@ export function useValidatorRun() {
   const lastError = ref('')
   const lastSequence = ref(0)
   const droppedFrames = ref(0)
-  const activeEdgeId = ref('')
+  const activeEdgeIds = ref(new Set<string>())
   const chatEntries = ref<ChatEntry[]>([])
   const usage = reactive<UsageMetrics>(initialUsage())
   const nodeStates = reactive<Record<string, NodeRunState>>({})
   const nodeUsage = reactive<Record<string, UsageMetrics>>({})
+  const nodeFrames = reactive<Record<string, number>>({})
   const seenFrames = new Set<string>()
   const pendingCallEntries = new Map<string, string[]>()
+  /** Active edge id -> the node it feeds, so a finished branch can end it. */
+  const edgeTargets = new Map<string, string>()
+  const edgeTimers = new Map<string, number>()
   let unsubscribe: (() => void) | undefined
   let receiveQueue = Promise.resolve()
-  let edgeTimer = 0
   let downloadTimer = 0
 
   const resetNodes = () => {
     for (const key of Object.keys(nodeStates)) delete nodeStates[key]
     for (const key of Object.keys(nodeUsage)) delete nodeUsage[key]
+    for (const key of Object.keys(nodeFrames)) delete nodeFrames[key]
     for (const node of descriptor.value.nodes) {
       nodeStates[node.id] = 'idle'
       nodeUsage[node.id] = initialUsage()
+      nodeFrames[node.id] = 0
     }
+    nodeFrames[QUARANTINE_NODE_ID] ??= 0
   }
   resetNodes()
 
@@ -120,11 +185,12 @@ export function useValidatorRun() {
         label: node.label,
         eyebrow: node.eyebrow,
         description: node.description,
-        kind: node.kind === 'gate' ? 'gate' : node.kind === 'output' ? 'output' : 'agent',
+        kind: nodeKind(node.kind),
         state: nodeStates[node.id] ?? 'idle',
         model: node.model,
         tool: node.tool,
         usage: nodeUsage[node.id] ?? initialUsage(),
+        frameCount: nodeFrames[node.id] ?? 0,
       },
     })),
   )
@@ -135,10 +201,11 @@ export function useValidatorRun() {
       source: edge.source,
       target: edge.target,
       type: 'workflow',
-      data: { label: edge.label ?? undefined, active: activeEdgeId.value === edge.id },
+      data: { label: edge.label ?? undefined, active: activeEdgeIds.value.has(edge.id) },
     })),
   )
 
+  const quarantinedFrames = computed(() => nodeFrames[QUARANTINE_NODE_ID] ?? 0)
   const isActive = computed(() => ['queued', 'running', 'waiting', 'stopping'].includes(status.value))
   const canLaunch = computed(() => idea.value.trim().length >= 12 && !isActive.value && !launching.value)
   const primaryLabel = computed(() =>
@@ -151,16 +218,30 @@ export function useValidatorRun() {
         : 'Launch',
   )
 
+  /**
+   * The single place a run status is written. A run that has reached a terminal
+   * state must not be restored again on the next page load, so the saved
+   * pointer is dropped the moment it lands there.
+   */
+  function setStatus(next: RunStatus): void {
+    status.value = next
+    if (!TERMINAL_STATUSES.includes(next)) return
+    clearStoredRun()
+    // Nothing further will stream, so no traversal should still be marching.
+    clearEdgeAnimations()
+  }
+
   async function initialize(): Promise<void> {
-    transportMode.value = await studioApi.initialize()
+    transportMode.value = await api.initialize()
     const storedRun = readStoredRun()
     workflowId.value = storedRun?.workflowId ?? workflowId.value
     try {
-      descriptor.value = await studioApi.getGraph(workflowId.value)
+      descriptor.value = await api.getGraph(workflowId.value)
       resetNodes()
     } catch (error) {
       transportMode.value = 'mock'
       descriptor.value = structuredClone(MOCK_GRAPH)
+      resetNodes()
       lastError.value = error instanceof Error ? error.message : 'Graph could not be loaded.'
     }
 
@@ -174,11 +255,11 @@ export function useValidatorRun() {
     launching.value = true
     lastError.value = ''
     try {
-      const response = await studioApi.startRun(sessionId, idea.value.trim(), workflowId.value)
-      transportMode.value = studioApi.mode
+      const response = await api.startRun(sessionId, idea.value.trim(), workflowId.value)
+      transportMode.value = api.mode
       resetRun()
       runId.value = response.run_id
-      status.value = response.status
+      setStatus(response.status)
       persistRun({
         version: 1,
         runId: response.run_id,
@@ -187,7 +268,7 @@ export function useValidatorRun() {
       })
       connectStream()
     } catch (error) {
-      status.value = runId.value ? previousStatus : 'error'
+      setStatus(runId.value ? previousStatus : 'error')
       lastError.value = error instanceof Error ? error.message : 'The run could not be started.'
     } finally {
       launching.value = false
@@ -198,25 +279,36 @@ export function useValidatorRun() {
     resetRun()
     runId.value = context.runId
     try {
-      const snapshot = await studioApi.getRun(context.runId)
-      const frames = await studioApi.getFrames(context.runId, 0)
+      const snapshot = await api.getRun(context.runId)
+      if (TERMINAL_STATUSES.includes(snapshot.status)) {
+        // Refresh recovery exists for a run that is still in flight. A finished
+        // one is history: drop the pointer so the next load starts clean rather
+        // than re-opening the same stale result forever.
+        clearStoredRun()
+        resetRun()
+        return
+      }
+      const frames = await api.getFrames(context.runId, 0)
       frames.sort((left, right) => left.seq - right.seq).forEach(applyFrame)
       const snapshotSequence = snapshot.frames.last_seq ?? lastSequence.value
-      status.value = snapshot.status
+      setStatus(snapshot.status)
       pendingGate.value = snapshot.pending_gate
       droppedFrames.value = snapshot.frames.dropped
       Object.assign(usage, snapshot.usage)
       frames.filter((frame) => frame.seq > snapshotSequence).forEach(applyPostSnapshotFrame)
       if (['queued', 'running', 'waiting', 'stopping'].includes(status.value)) connectStream()
     } catch (error) {
-      status.value = 'error'
+      // The saved run is unreachable (expired, purged, or a different server).
+      // Keeping the pointer would reproduce this error on every future load.
+      clearStoredRun()
+      setStatus('error')
       lastError.value = error instanceof Error ? error.message : 'The saved run could not be restored.'
     }
   }
 
   function connectStream(): void {
     unsubscribe?.()
-    unsubscribe = studioApi.subscribe(runId.value, sessionId, {
+    unsubscribe = api.subscribe(runId.value, sessionId, {
       onFrame: queueFrame,
       onStatus: (value) => { connection.value = value },
       getAfter: () => lastSequence.value,
@@ -230,12 +322,12 @@ export function useValidatorRun() {
     if (frame.kind === 'gate_closed') {
       pendingGate.value = null
       gateSubmitting.value = false
-      status.value = 'running'
+      setStatus('running')
     }
     if (frame.kind === 'token') applyTokenUsage(frame)
     if (frame.kind === 'metrics') applyMetrics(frame)
     if (frame.kind === 'error') {
-      status.value = 'error'
+      setStatus('error')
       lastError.value = frame.message
     }
   }
@@ -251,7 +343,7 @@ export function useValidatorRun() {
     if (seenFrames.has(key) || frame.run_id !== runId.value) return
 
     if (frame.seq > lastSequence.value + 1) {
-      const replay = await studioApi.getFrames(frame.run_id, lastSequence.value)
+      const replay = await api.getFrames(frame.run_id, lastSequence.value)
       const missing = replay
         .filter((candidate) => candidate.seq < frame.seq)
         .sort((left, right) => left.seq - right.seq)
@@ -268,6 +360,7 @@ export function useValidatorRun() {
     if (seenFrames.has(key)) return
     seenFrames.add(key)
     lastSequence.value = Math.max(lastSequence.value, frame.seq)
+    if (frame.node_id) nodeFrames[frame.node_id] = (nodeFrames[frame.node_id] ?? 0) + 1
 
     if (frame.kind === 'run_state') applyRunState(frame)
     if (frame.kind === 'node_state' && frame.node_id) applyNodeState(frame)
@@ -277,13 +370,13 @@ export function useValidatorRun() {
     if (frame.kind === 'gate_closed') {
       pendingGate.value = null
       gateSubmitting.value = false
-      if (frame.node_id) nodeStates[frame.node_id] = 'completed'
-      status.value = 'running'
+      if (frame.node_id) setNodeState(frame.node_id, 'completed')
+      setStatus('running')
     }
     if (frame.kind === 'token') applyTokenUsage(frame)
     if (frame.kind === 'metrics') applyMetrics(frame)
     if (frame.kind === 'error') {
-      status.value = 'error'
+      setStatus('error')
       lastError.value = frame.message
     }
     if (!['token', 'metrics'].includes(frame.kind)) appendChat(frame)
@@ -292,33 +385,77 @@ export function useValidatorRun() {
   function applyRunState(frame: FrameData): void {
     const next = frame.details.status
     if (next === 'failed') {
-      status.value = 'error'
+      setStatus('error')
     } else if (next === 'cancelling') {
-      status.value = 'stopping'
+      setStatus('stopping')
     } else if (typeof next === 'string' && ['queued', 'running', 'waiting', 'cancelled', 'completed', 'error'].includes(next)) {
-      status.value = next as RunStatus
+      setStatus(next as RunStatus)
     }
   }
 
   function applyNodeState(frame: FrameData): void {
     const nodeId = frame.node_id as string
-    if (frame.event_type.includes('START')) nodeStates[nodeId] = 'running'
+    if (frame.event_type.includes('START')) setNodeState(nodeId, 'running')
     if (frame.event_type.includes('WAITING')) {
-      nodeStates[nodeId] = 'waiting'
-      status.value = 'waiting'
+      setNodeState(nodeId, 'waiting')
+      setStatus('waiting')
     }
-    if (frame.event_type.includes('END') || frame.event_type.includes('COMPLETED')) nodeStates[nodeId] = 'completed'
-    if (frame.event_type.includes('ERROR') || frame.level === 'ERROR') nodeStates[nodeId] = 'error'
+    if (frame.event_type.includes('END') || frame.event_type.includes('COMPLETED')) setNodeState(nodeId, 'completed')
+    if (frame.event_type.includes('ERROR') || frame.level === 'ERROR') setNodeState(nodeId, 'error')
   }
 
+  /**
+   * A node reaching a settled state ends every traversal feeding it. Without
+   * this an edge would keep marching for the rest of its timer after the branch
+   * it points at has already finished.
+   */
+  function setNodeState(nodeId: string, state: NodeRunState): void {
+    nodeStates[nodeId] = state
+    if (state === 'completed' || state === 'error') deactivateEdgesInto(nodeId)
+  }
+
+  /**
+   * The fan-out releases Market, Sentiment and Feasibility as siblings, so
+   * several edges are live at the same time with independent start moments.
+   * Each one is tracked and expired on its own.
+   */
   function applyEdge(frame: FrameData): void {
     const from = typeof frame.details.from === 'string' ? frame.details.from : ''
     const to = typeof frame.details.to === 'string' ? frame.details.to : ''
-    activeEdgeId.value = descriptor.value.edges.find(
+    const edgeId = descriptor.value.edges.find(
       (edge) => edge.source === from && edge.target === to,
     )?.id ?? `${from}-${to}`
-    window.clearTimeout(edgeTimer)
-    edgeTimer = window.setTimeout(() => { activeEdgeId.value = '' }, 3200)
+    activateEdge(edgeId, to)
+  }
+
+  function activateEdge(edgeId: string, target: string): void {
+    if (!edgeId) return
+    const existing = edgeTimers.get(edgeId)
+    if (existing) window.clearTimeout(existing)
+    activeEdgeIds.value.add(edgeId)
+    edgeTargets.set(edgeId, target)
+    edgeTimers.set(edgeId, window.setTimeout(() => deactivateEdge(edgeId), EDGE_ACTIVE_MS))
+  }
+
+  function deactivateEdge(edgeId: string): void {
+    const timer = edgeTimers.get(edgeId)
+    if (timer) window.clearTimeout(timer)
+    edgeTimers.delete(edgeId)
+    edgeTargets.delete(edgeId)
+    activeEdgeIds.value.delete(edgeId)
+  }
+
+  function deactivateEdgesInto(nodeId: string): void {
+    for (const [edgeId, target] of [...edgeTargets]) {
+      if (target === nodeId) deactivateEdge(edgeId)
+    }
+  }
+
+  function clearEdgeAnimations(): void {
+    for (const timer of edgeTimers.values()) window.clearTimeout(timer)
+    edgeTimers.clear()
+    edgeTargets.clear()
+    activeEdgeIds.value.clear()
   }
 
   function applyGate(frame: FrameData): void {
@@ -338,7 +475,7 @@ export function useValidatorRun() {
       verdict: typeof details.verdict === 'string' ? details.verdict : undefined,
       confidence: typeof details.confidence === 'number' ? details.confidence : undefined,
     }
-    status.value = 'waiting'
+    setStatus('waiting')
   }
 
   /**
@@ -412,7 +549,7 @@ export function useValidatorRun() {
     const callId = frame.details.call_id
     if (typeof callId === 'string' && callId) return `${frame.kind}:${callId}`
     const name = String(frame.details.tool ?? frame.details.model ?? frame.kind)
-    return `${frame.node_id ?? 'unattributed'}:${frame.kind}:${name}`
+    return `${frame.node_id ?? QUARANTINE_NODE_ID}:${frame.kind}:${name}`
   }
 
   function completeCallEntry(frame: FrameData): boolean {
@@ -456,7 +593,7 @@ export function useValidatorRun() {
     if (!pendingGate.value || gateSubmitting.value) return
     gateSubmitting.value = true
     try {
-      await studioApi.replyGate(runId.value, pendingGate.value.gateId, { outcome, fields })
+      await api.replyGate(runId.value, pendingGate.value.gateId, { outcome, fields })
     } catch (error) {
       gateSubmitting.value = false
       lastError.value = error instanceof Error ? error.message : 'The gate response was not accepted.'
@@ -465,11 +602,11 @@ export function useValidatorRun() {
 
   async function cancel(): Promise<void> {
     if (!runId.value || !isActive.value || status.value === 'stopping') return
-    status.value = 'stopping'
+    setStatus('stopping')
     try {
-      await studioApi.cancelRun(runId.value)
+      await api.cancelRun(runId.value)
     } catch (error) {
-      status.value = 'running'
+      setStatus('running')
       lastError.value = error instanceof Error ? error.message : 'Cancellation could not be requested.'
     }
   }
@@ -480,7 +617,7 @@ export function useValidatorRun() {
     downloadStatus.value = 'pending'
     downloadMessage.value = 'Preparing log download…'
     try {
-      await studioApi.downloadLogs(runId.value)
+      await api.downloadLogs(runId.value)
       downloadStatus.value = 'success'
       downloadMessage.value = 'Logs downloaded successfully.'
     } catch (error) {
@@ -503,6 +640,7 @@ export function useValidatorRun() {
     unsubscribe = undefined
     seenFrames.clear()
     pendingCallEntries.clear()
+    clearEdgeAnimations()
     resetNodes()
     Object.assign(usage, initialUsage())
     status.value = 'idle'
@@ -513,17 +651,19 @@ export function useValidatorRun() {
     lastError.value = ''
     lastSequence.value = 0
     droppedFrames.value = 0
-    activeEdgeId.value = ''
     chatEntries.value = []
     downloadStatus.value = 'idle'
     downloadMessage.value = ''
   }
 
-  onBeforeUnmount(() => {
+  function teardown(): void {
     unsubscribe?.()
-    window.clearTimeout(edgeTimer)
+    unsubscribe = undefined
+    clearEdgeAnimations()
     window.clearTimeout(downloadTimer)
-  })
+  }
+
+  onBeforeUnmount(teardown)
 
   return {
     descriptor,
@@ -545,6 +685,7 @@ export function useValidatorRun() {
     nodeUsage,
     graphNodes,
     graphEdges,
+    quarantinedFrames,
     isActive,
     canLaunch,
     primaryLabel,
@@ -555,6 +696,13 @@ export function useValidatorRun() {
     downloadLogs,
     dismissError,
   }
+}
+
+function nodeKind(kind: GraphDescriptor['nodes'][number]['kind']): StudioNodeData['kind'] {
+  if (kind === 'gate') return 'gate'
+  if (kind === 'output') return 'output'
+  if (kind === 'quarantine') return 'quarantine'
+  return 'agent'
 }
 
 function usageFromDetails(details: Record<string, unknown>, defaultCalls = 1): UsageMetrics {

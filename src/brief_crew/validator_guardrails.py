@@ -3,6 +3,10 @@
 The one-argument ``check_*`` functions match CrewAI's callable guardrail
 contract. Factories add run-scoped evidence when a check needs tool results or
 upstream findings, while the ``*_problems`` helpers remain framework-free.
+
+Every threshold and every line of rubric text lives in ``brief_crew.config``:
+the Synthesist prompt in ``crews/validator_crew/config/tasks.yaml`` quotes the
+same anchors, and a constant with two copies is a constant that drifts.
 """
 
 from __future__ import annotations
@@ -10,10 +14,24 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Iterable, Mapping
+from datetime import datetime, timezone
+from statistics import median
 from typing import Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from brief_crew.config import (
+    ANCHOR_MATCH_THRESHOLD,
+    COMPETITIVE_ROOM_ANCHORS,
+    DEMAND_ANCHORS,
+    FEASIBILITY_ANCHORS,
+    HEADROOM_ANCHORS,
+    LEVEL_ONE_ANCHOR,
+    MARKET_ANCHORS,
+    RUBRIC_ANCHORS,
+    VALIDATOR_COVERAGE_TARGET_SOURCES,
+    VALIDATOR_DAYS_PER_MONTH,
+)
 from brief_crew.schemas import (
     DimensionScore,
     FeasibilityFindings,
@@ -22,35 +40,12 @@ from brief_crew.schemas import (
     SentimentFindings,
     ValidationReport,
     Verdict,
+    staleness_multiplier,
 )
 
 BranchName = Literal["market", "sentiment", "feasibility"]
 Findings = MarketFindings | SentimentFindings | FeasibilityFindings
 GuardrailResult = tuple[bool, str]
-
-ANCHOR_MATCH_THRESHOLD = 0.85
-LEVEL_ONE_ANCHOR = "Evidence does not reach this question"
-DEMAND_ANCHORS: dict[int, str] = {
-    0: "Every retrieved thread is ADJACENT. Nobody in the evidence describes having this problem.",
-    1: (
-        "Evidence does not reach this question \u2014 the branch returned nothing, "
-        "or fewer than 3 usable threads."
-    ),
-    2: "1\u20132 threads state the problem, or all such threads are older than 36 months.",
-    3: (
-        "\u22653 threads state it, \u22651 within 24 months, but nobody describes a workaround "
-        "or a price paid."
-    ),
-    4: (
-        "Anchor 3, and \u22651 describes a manual workaround they maintain, or names a tool "
-        "they pay for."
-    ),
-    5: (
-        "\u22655 threads within 24 months, \u22652 naming a workaround or a price, and the market "
-        "branch independently names a paying segment."
-    ),
-}
-RUBRIC_ANCHORS: dict[str, dict[int, str]] = {"D": DEMAND_ANCHORS}
 
 _MODEL_BY_BRANCH: dict[BranchName, type[Findings]] = {
     "market": MarketFindings,
@@ -141,6 +136,11 @@ def findings_problems(findings: Findings, allowed_urls: Iterable[str]) -> list[s
             problems.append(
                 f"STATUS_HONESTY: tool_status is {findings.tool_status!r}, so sources must be empty"
             )
+        if isinstance(findings, MarketFindings) and findings.paying_segments:
+            problems.append(
+                f"STATUS_HONESTY: tool_status is {findings.tool_status!r}, so paying_segments "
+                "must be empty"
+            )
         if not findings.gaps:
             problems.append(
                 f"STATUS_HONESTY: tool_status is {findings.tool_status!r}; add a gap explaining "
@@ -170,16 +170,107 @@ def compute_evidence_counts(
             thread.classification == "BUILT_WORKAROUND" for thread in sentiment.sources
         ),
         "feasibility_repos": len(feasibility.sources),
+        "feasibility_relevant_repos": sum(
+            repo.relevance in {"SOLVES_ENTIRELY", "PARTIAL"} for repo in feasibility.sources
+        ),
         "feasibility_complete_repos": sum(
             repo.relevance == "SOLVES_ENTIRELY" for repo in feasibility.sources
         ),
         "feasibility_commercial_repos": sum(
             repo.license_permits_commercial for repo in feasibility.sources
         ),
+        "market_paying_segments": len(market.paying_segments),
         "branches_ok": sum(
             findings.tool_status == "ok" for findings in (market, sentiment, feasibility)
         ),
     }
+
+
+def _age_months(dated: str, now: datetime) -> float | None:
+    """Age of an ISO 8601 date in months, or ``None`` when it is unusable."""
+    normalized = dated[:-1] + "+00:00" if dated.endswith("Z") else dated
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    elapsed_days = (now - parsed.astimezone(timezone.utc)).total_seconds() / 86400.0
+    return max(0.0, elapsed_days) / VALIDATOR_DAYS_PER_MONTH
+
+
+def compute_confidence_inputs(
+    market: MarketFindings,
+    sentiment: SentimentFindings,
+    feasibility: FeasibilityFindings,
+    *,
+    now: datetime | None = None,
+) -> dict[str, float | int | None]:
+    """Recompute every input the confidence formula consumes (PRD §10.3, F11).
+
+    PRD §10.3 calls confidence "separate, mechanical, gating both directions".
+    Mechanical means computed: an LLM-asserted coverage ratio is not a ratio,
+    exactly as an LLM-asserted count is not a count. Every value here comes
+    from the branch lists, so `Verdict` stays deterministic given inputs that
+    are themselves derived rather than claimed.
+    """
+    reference = now or datetime.now(timezone.utc)
+    counts = compute_evidence_counts(market, sentiment, feasibility)
+    target = VALIDATOR_COVERAGE_TARGET_SOURCES
+
+    ages = [
+        age
+        for age in (_age_months(source.dated, reference) for source in market.sources)
+        if age is not None
+    ]
+
+    return {
+        "market_coverage": min(1.0, counts["market_sources"] / target),
+        "sentiment_coverage": min(1.0, counts["sentiment_problem_threads"] / target),
+        "feasibility_coverage": min(1.0, counts["feasibility_relevant_repos"] / target),
+        "branches_ok": counts["branches_ok"],
+        "median_market_source_age_months": round(median(ages), 1) if ages else None,
+    }
+
+
+def confidence_problems(
+    verdict: Verdict,
+    market: MarketFindings,
+    sentiment: SentimentFindings,
+    feasibility: FeasibilityFindings,
+    *,
+    now: datetime | None = None,
+) -> list[str]:
+    """Reject model-asserted confidence inputs that disagree with the evidence."""
+    expected = compute_confidence_inputs(market, sentiment, feasibility, now=now)
+    problems: list[str] = []
+
+    for field_name in ("market_coverage", "sentiment_coverage", "feasibility_coverage"):
+        actual = float(getattr(verdict, field_name))
+        wanted = expected[field_name]
+        assert wanted is not None
+        if round(actual, 2) != round(float(wanted), 2):
+            problems.append(
+                f"COVERAGE_{field_name.split('_')[0].upper()}: set {field_name} to the recomputed "
+                f"{float(wanted):.2f}, not {actual:.2f}"
+            )
+
+    actual_age = verdict.median_market_source_age_months
+    wanted_age = expected["median_market_source_age_months"]
+    if (actual_age is None) != (wanted_age is None):
+        problems.append(
+            "MEDIAN_SOURCE_AGE: set median_market_source_age_months to "
+            f"{wanted_age!r}; it is null exactly when the market branch has no dated source"
+        )
+    elif staleness_multiplier(actual_age) != staleness_multiplier(wanted_age):
+        # Only the staleness band is enforced: the model cannot reproduce a
+        # float age to the hour, but it must not land in a kinder band than the
+        # dated evidence supports.
+        problems.append(
+            "MEDIAN_SOURCE_AGE: the market sources give a recomputed median age of "
+            f"{wanted_age} months, a different staleness band from the asserted {actual_age}"
+        )
+    return problems
 
 
 def token_overlap(actual: str, expected: str) -> float:
@@ -224,15 +315,23 @@ def rubric_problems(
     *,
     anchors: Mapping[str, Mapping[int, str]] = RUBRIC_ANCHORS,
     findings: tuple[MarketFindings, SentimentFindings, FeasibilityFindings] | None = None,
+    now: datetime | None = None,
 ) -> list[str]:
     problems: list[str] = []
     for code, field_name in _DIMENSIONS:
         problems.extend(anchor_problems(code, getattr(verdict, field_name), anchors))
 
+    if not verdict.kill_criteria:
+        problems.append(
+            "KILL_CRITERIA: name at least one observation that would falsify this idea; "
+            "the schema no longer substitutes the computed floor list"
+        )
+
     if findings is None:
         return problems
 
     market, sentiment, feasibility = findings
+    problems.extend(confidence_problems(verdict, market, sentiment, feasibility, now=now))
     expected_counts = compute_evidence_counts(market, sentiment, feasibility)
     if verdict.evidence_counts != expected_counts:
         problems.append(
@@ -383,6 +482,7 @@ def make_rubric_guardrail(
     feasibility: FeasibilityFindings,
     *,
     anchors: Mapping[str, Mapping[int, str]] = RUBRIC_ANCHORS,
+    now: datetime | None = None,
 ) -> Callable[[TaskOutputLike], GuardrailResult]:
     findings = (market, sentiment, feasibility)
 
@@ -392,7 +492,10 @@ def make_rubric_guardrail(
         if error:
             return False, error
         assert verdict is not None
-        return _guardrail_result(raw, rubric_problems(verdict, anchors=anchors, findings=findings))
+        return _guardrail_result(
+            raw,
+            rubric_problems(verdict, anchors=anchors, findings=findings, now=now),
+        )
 
     return guardrail
 
@@ -440,17 +543,25 @@ statement that evidence is thin is a PASS."""
 
 
 __all__ = [
+    # Re-exported from config so the guardrail stays the single import point
+    # for callers that need the rubric text; config.py owns the values.
     "ANCHOR_MATCH_THRESHOLD",
     "CITATION_GUARDRAIL",
+    "COMPETITIVE_ROOM_ANCHORS",
     "DEMAND_ANCHORS",
+    "FEASIBILITY_ANCHORS",
+    "HEADROOM_ANCHORS",
     "LEVEL_ONE_ANCHOR",
+    "MARKET_ANCHORS",
     "RUBRIC_ANCHORS",
     "anchor_problems",
     "check_findings",
     "check_report_mechanics",
     "check_rubric",
     "check_scope",
+    "compute_confidence_inputs",
     "compute_evidence_counts",
+    "confidence_problems",
     "findings_problems",
     "findings_urls",
     "make_report_guardrail",

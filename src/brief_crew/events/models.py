@@ -48,6 +48,10 @@ class UIEventType(str, Enum):
     MEMORY_OPERATION = "MEMORY_OPERATION"
     WORKFLOW_START = "WORKFLOW_START"
     WORKFLOW_END = "WORKFLOW_END"
+    # PRD F20: the event type carried by a FrameKind.METRICS snapshot. The
+    # Studio client already keys metrics handling off the frame kind, so this
+    # only has to name the frame honestly in logs and exports.
+    METRICS_UPDATED = "METRICS_UPDATED"
 
 
 class FrameLevel(str, Enum):

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { Bot, Check, FileText, ShieldCheck, TriangleAlert } from 'lucide-vue-next'
+import { Bot, Check, FileText, Inbox, ShieldCheck, TriangleAlert } from 'lucide-vue-next'
 import type { StudioNodeData } from '../composables/useValidatorRun'
 
 const props = defineProps<{ data: StudioNodeData }>()
@@ -15,19 +15,36 @@ const stateLabel = computed(() => ({
 }[props.data.state]))
 const hasUsage = computed(() => props.data.usage.callCount > 0 || props.data.usage.totalTokens > 0 || props.data.usage.costUsd > 0)
 const tokenCount = computed(() => new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(props.data.usage.totalTokens))
+
+// The quarantine node is a diagnostic, not a stage. It stays faint while it is
+// empty and only asserts itself once the backend has actually parked frames on
+// it, so unattributed events are impossible to miss but never shout at an
+// operator watching a clean run.
+const isQuarantine = computed(() => props.data.kind === 'quarantine')
+const quarantineCount = computed(() => props.data.frameCount)
+const isHolding = computed(() => isQuarantine.value && quarantineCount.value > 0)
+const quarantineLabel = computed(() =>
+  quarantineCount.value === 0
+    ? 'No unattributed frames'
+    : `${quarantineCount.value} unattributed frame${quarantineCount.value === 1 ? '' : 's'}`,
+)
+const ariaLabel = computed(() =>
+  isQuarantine.value ? `${props.data.label}, ${quarantineLabel.value}` : `${props.data.label}, ${stateLabel.value}`,
+)
 </script>
 
 <template>
   <article
     class="workflow-node"
-    :class="[`is-${data.state}`, `is-${data.kind}`]"
+    :class="[`is-${data.state}`, `is-${data.kind}`, { 'is-holding': isHolding, 'is-quiet': isQuarantine && !isHolding }]"
     role="group"
-    :aria-label="`${data.label}, ${stateLabel}`"
+    :aria-label="ariaLabel"
   >
-    <Handle class="node-handle" type="target" :position="Position.Top" />
+    <Handle v-if="!isQuarantine" class="node-handle" type="target" :position="Position.Top" />
 
     <div class="node-icon" aria-hidden="true">
-      <ShieldCheck v-if="data.kind === 'gate'" :size="17" :stroke-width="1.8" />
+      <Inbox v-if="isQuarantine" :size="17" :stroke-width="1.8" />
+      <ShieldCheck v-else-if="data.kind === 'gate'" :size="17" :stroke-width="1.8" />
       <FileText v-else-if="data.kind === 'output'" :size="17" :stroke-width="1.8" />
       <Bot v-else :size="17" :stroke-width="1.8" />
     </div>
@@ -40,21 +57,25 @@ const tokenCount = computed(() => new Intl.NumberFormat('en', { notation: 'compa
         <span v-if="data.model">{{ data.model }}</span>
         <span v-if="data.tool">{{ data.tool }}</span>
       </div>
-      <dl v-if="hasUsage" class="node-usage" aria-label="Node usage">
+      <dl v-if="hasUsage && !isQuarantine" class="node-usage" aria-label="Node usage">
         <div><dt>Calls</dt><dd>{{ data.usage.callCount }}</dd></div>
         <div><dt>Tokens</dt><dd>{{ tokenCount }}</dd></div>
         <div><dt>Cost</dt><dd>${{ data.usage.costUsd.toFixed(4) }}</dd></div>
       </dl>
     </div>
 
-    <div class="node-state" :title="stateLabel">
+    <div v-if="isQuarantine" class="node-state quarantine-count" data-testid="quarantine-count" :title="quarantineLabel">
+      <TriangleAlert v-if="isHolding" :size="13" aria-hidden="true" />
+      <span>{{ quarantineCount }}</span>
+    </div>
+    <div v-else class="node-state" :title="stateLabel">
       <Check v-if="data.state === 'completed'" :size="13" aria-hidden="true" />
       <TriangleAlert v-else-if="data.state === 'error'" :size="13" aria-hidden="true" />
       <span v-else class="state-dot" aria-hidden="true" />
       <span>{{ stateLabel }}</span>
     </div>
 
-    <Handle class="node-handle" type="source" :position="Position.Bottom" />
+    <Handle v-if="!isQuarantine" class="node-handle" type="source" :position="Position.Bottom" />
   </article>
 </template>
 
@@ -105,6 +126,46 @@ const tokenCount = computed(() => new Intl.NumberFormat('en', { notation: 'compa
   --node-gradient: linear-gradient(135deg, var(--err-border), #bd4a4a);
   background-image: linear-gradient(rgba(64, 35, 35, 0.96), rgba(42, 42, 42, 0.98)), var(--node-gradient);
 }
+
+/* Quarantine: recessive while empty. */
+.workflow-node.is-quarantine {
+  width: 230px;
+  min-height: 0;
+  box-shadow: none;
+}
+
+.workflow-node.is-quiet {
+  color: var(--text-muted);
+  background-image: none;
+  background-color: var(--surface-well);
+  border: 1px dashed var(--border-default);
+  opacity: 0.6;
+}
+
+.is-quiet .node-icon { color: var(--text-40); background: transparent; border-color: var(--border-default); }
+.is-quiet .node-copy strong { color: var(--text-muted); font-size: var(--fs-13); }
+.is-quiet .node-copy p { color: var(--text-40); }
+
+/* Quarantine: loud once the backend has actually parked frames on it. */
+.workflow-node.is-holding {
+  --node-gradient: linear-gradient(135deg, var(--warn-text), var(--warn-border));
+  background-image: linear-gradient(rgba(46, 40, 26, 0.98), rgba(42, 42, 42, 0.98)), var(--node-gradient);
+  box-shadow: 0 0 0 1px var(--warn-border), 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+.is-holding .node-icon { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
+.is-holding .node-copy strong { color: var(--warn-text); }
+
+.quarantine-count {
+  gap: 4px;
+  padding: 2px 7px;
+  color: var(--text-40);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-pill);
+}
+
+.is-holding .quarantine-count { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 
 .node-icon {
   display: grid;

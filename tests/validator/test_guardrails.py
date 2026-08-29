@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
+from brief_crew import config as project_config
 from brief_crew.schemas import (
     Competitor,
     DimensionScore,
@@ -18,17 +20,28 @@ from brief_crew.schemas import (
     Verdict,
 )
 from brief_crew.validator_guardrails import (
+    COMPETITIVE_ROOM_ANCHORS,
     DEMAND_ANCHORS,
+    FEASIBILITY_ANCHORS,
+    HEADROOM_ANCHORS,
+    LEVEL_ONE_ANCHOR,
+    MARKET_ANCHORS,
+    RUBRIC_ANCHORS,
     check_findings,
     check_report_mechanics,
     check_rubric,
     check_scope,
+    compute_confidence_inputs,
     compute_evidence_counts,
+    confidence_problems,
     make_report_guardrail,
     make_rubric_guardrail,
     parse_raw_model,
+    rubric_problems,
     token_overlap,
 )
+
+NOW = datetime(2026, 8, 29, tzinfo=timezone.utc)
 
 
 @dataclass
@@ -114,21 +127,24 @@ def synthesis(
     market: MarketFindings,
     sentiment: SentimentFindings,
     feasibility: FeasibilityFindings,
+    /,
+    **overrides: object,
 ) -> Verdict:
-    return Verdict(
-        demand=dimension(3, DEMAND_ANCHORS[3], [THREAD_URL]),
-        market=dimension(3, "Market anchor", [MARKET_URL]),
-        competitive_room=dimension(3, "Competitive anchor", [COMPETITOR_URL]),
-        feasibility=dimension(3, "Feasibility anchor", [REPO_URL]),
-        headroom_over_free=dimension(3, "Headroom anchor", [REPO_URL]),
-        evidence_counts=compute_evidence_counts(market, sentiment, feasibility),
-        market_coverage=0.8,
-        sentiment_coverage=0.7,
-        feasibility_coverage=0.8,
-        median_market_source_age_months=6,
-        branches_ok=3,
-        cheapest_next_test="Interview five target users.",
-    )
+    """A verdict that passes every mechanical check, so a test can break one."""
+    inputs = compute_confidence_inputs(market, sentiment, feasibility, now=NOW)
+    values: dict[str, object] = {
+        "demand": dimension(3, DEMAND_ANCHORS[3], [THREAD_URL]),
+        "market": dimension(3, MARKET_ANCHORS[3], [MARKET_URL]),
+        "competitive_room": dimension(3, COMPETITIVE_ROOM_ANCHORS[3], [COMPETITOR_URL]),
+        "feasibility": dimension(3, FEASIBILITY_ANCHORS[3], [REPO_URL]),
+        "headroom_over_free": dimension(3, HEADROOM_ANCHORS[3], [REPO_URL]),
+        "evidence_counts": compute_evidence_counts(market, sentiment, feasibility),
+        "cheapest_next_test": "Interview five target users.",
+        "kill_criteria": ["Fewer than 2 of 10 clinics keep a manual rota."],
+        **inputs,
+    }
+    values.update(overrides)
+    return Verdict.model_validate(values)
 
 
 class ParsingAndScopeTests(unittest.TestCase):
@@ -210,6 +226,22 @@ class FindingsTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("sources must be empty", message)
 
+    def test_status_honesty_rejects_paying_segments_after_failure(self) -> None:
+        findings = MarketFindings(
+            sources=[],
+            source_urls=[],
+            gaps=["Market lookup failed."],
+            tool_status="failed",
+            competitors=[],
+            paying_segments=["Independent clinics"],
+        )
+        guardrail = check_findings("market", [])
+
+        passed, message = guardrail(Output(findings.model_dump_json()))
+
+        self.assertFalse(passed)
+        self.assertIn("paying_segments must be empty", message)
+
     def test_status_honesty_requires_failure_gap(self) -> None:
         findings = MarketFindings(
             sources=[],
@@ -245,6 +277,95 @@ class RubricTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("ANCHOR_D", message)
 
+    def test_clean_verdict_passes_every_mechanical_check(self) -> None:
+        market = market_findings()
+        sentiment = sentiment_findings()
+        feasibility = feasibility_findings()
+        result = synthesis(market, sentiment, feasibility)
+
+        self.assertEqual(
+            rubric_problems(result, findings=(market, sentiment, feasibility), now=NOW),
+            [],
+        )
+
+    def test_every_rubric_dimension_is_anchored(self) -> None:
+        """F15: four fifths of the rubric used to accept any anchor text."""
+        self.assertEqual(set(RUBRIC_ANCHORS), {"D", "M", "C", "F", "X"})
+        for code, ladder in RUBRIC_ANCHORS.items():
+            with self.subTest(dimension=code):
+                self.assertEqual(sorted(ladder), [0, 1, 2, 3, 4, 5])
+                self.assertTrue(all(text.strip() for text in ladder.values()))
+                self.assertTrue(ladder[1].startswith(LEVEL_ONE_ANCHOR))
+
+    def test_rubric_anchors_are_the_config_constants(self) -> None:
+        """The guardrail and the prompt must read one constant, not two."""
+        self.assertIs(RUBRIC_ANCHORS, project_config.RUBRIC_ANCHORS)
+        self.assertIs(DEMAND_ANCHORS, project_config.DEMAND_ANCHORS)
+        self.assertIs(MARKET_ANCHORS, project_config.MARKET_ANCHORS)
+        self.assertIs(COMPETITIVE_ROOM_ANCHORS, project_config.COMPETITIVE_ROOM_ANCHORS)
+        self.assertIs(FEASIBILITY_ANCHORS, project_config.FEASIBILITY_ANCHORS)
+        self.assertIs(HEADROOM_ANCHORS, project_config.HEADROOM_ANCHORS)
+
+    def test_paraphrase_is_rejected_on_every_dimension(self) -> None:
+        market = market_findings()
+        sentiment = sentiment_findings()
+        feasibility = feasibility_findings()
+        fields = {
+            "D": "demand",
+            "M": "market",
+            "C": "competitive_room",
+            "F": "feasibility",
+            "X": "headroom_over_free",
+        }
+
+        for code, field_name in fields.items():
+            with self.subTest(dimension=code):
+                result = synthesis(market, sentiment, feasibility).model_copy(
+                    update={field_name: dimension(3, "It looks about right to me.", [MARKET_URL])}
+                )
+
+                passed, message = check_rubric(Output(result.model_dump_json()))
+
+                self.assertFalse(passed)
+                self.assertIn(f"ANCHOR_{code}", message)
+
+    def test_verbatim_anchor_is_accepted_on_every_dimension(self) -> None:
+        market = market_findings()
+        sentiment = sentiment_findings()
+        feasibility = feasibility_findings()
+        ladders = {
+            "demand": DEMAND_ANCHORS,
+            "market": MARKET_ANCHORS,
+            "competitive_room": COMPETITIVE_ROOM_ANCHORS,
+            "feasibility": FEASIBILITY_ANCHORS,
+            "headroom_over_free": HEADROOM_ANCHORS,
+        }
+
+        for value in (0, 2, 3, 4, 5):
+            with self.subTest(score=value):
+                result = synthesis(
+                    market,
+                    sentiment,
+                    feasibility,
+                    **{
+                        field_name: dimension(value, ladder[value], [MARKET_URL])
+                        for field_name, ladder in ladders.items()
+                    },
+                )
+
+                self.assertEqual(rubric_problems(result), [])
+
+    def test_missing_kill_criteria_is_rejected(self) -> None:
+        market = market_findings()
+        sentiment = sentiment_findings()
+        feasibility = feasibility_findings()
+        result = synthesis(market, sentiment, feasibility, kill_criteria=[])
+
+        passed, message = check_rubric(Output(result.model_dump_json()))
+
+        self.assertFalse(passed)
+        self.assertIn("KILL_CRITERIA", message)
+
     def test_contextual_rubric_guardrail_recomputes_counts(self) -> None:
         market = market_findings()
         sentiment = sentiment_findings()
@@ -252,7 +373,7 @@ class RubricTests(unittest.TestCase):
         result = synthesis(market, sentiment, feasibility).model_copy(
             update={"evidence_counts": {"market_sources": 99}}
         )
-        guardrail = make_rubric_guardrail(market, sentiment, feasibility)
+        guardrail = make_rubric_guardrail(market, sentiment, feasibility, now=NOW)
 
         passed, message = guardrail(Output(result.model_dump_json()))
 
@@ -271,6 +392,143 @@ class RubricTests(unittest.TestCase):
 
         self.assertFalse(passed)
         self.assertIn("score 1 must use", message)
+
+
+class ConfidenceInputTests(unittest.TestCase):
+    """F11 - the confidence inputs are computed, not accepted."""
+
+    def branches(self):
+        return market_findings(), sentiment_findings(), feasibility_findings()
+
+    def test_inputs_are_derived_from_the_branch_lists(self) -> None:
+        market, sentiment, feasibility = self.branches()
+
+        inputs = compute_confidence_inputs(market, sentiment, feasibility, now=NOW)
+
+        target = project_config.VALIDATOR_COVERAGE_TARGET_SOURCES
+        self.assertEqual(inputs["market_coverage"], 1 / target)
+        self.assertEqual(inputs["sentiment_coverage"], 1 / target)
+        self.assertEqual(inputs["feasibility_coverage"], 1 / target)
+        self.assertEqual(inputs["branches_ok"], 3)
+        # The single market source is dated 2026-08-01, 28 days before NOW.
+        self.assertEqual(inputs["median_market_source_age_months"], 0.9)
+
+    def test_coverage_saturates_at_one(self) -> None:
+        market, sentiment, feasibility = self.branches()
+        threads = [
+            Thread(
+                classification="HAS_PROBLEM",
+                quote=f"Quote {index}.",
+                url=f"https://news.ycombinator.com/item?id={index}",
+                date="2026-07-01",
+            )
+            for index in range(9)
+        ]
+        wide = SentimentFindings(
+            sources=threads,
+            source_urls=[thread.url for thread in threads],
+            gaps=[],
+            tool_status="ok",
+        )
+
+        inputs = compute_confidence_inputs(market, wide, feasibility, now=NOW)
+
+        self.assertEqual(inputs["sentiment_coverage"], 1.0)
+
+    def test_asserted_coverage_is_rejected_against_the_evidence(self) -> None:
+        market, sentiment, feasibility = self.branches()
+        result = synthesis(
+            market,
+            sentiment,
+            feasibility,
+            market_coverage=0.9,
+            sentiment_coverage=0.9,
+            feasibility_coverage=0.9,
+        )
+        guardrail = make_rubric_guardrail(market, sentiment, feasibility, now=NOW)
+
+        passed, message = guardrail(Output(result.model_dump_json()))
+
+        self.assertFalse(passed)
+        self.assertIn("COVERAGE_MARKET", message)
+        self.assertIn("COVERAGE_SENTIMENT", message)
+        self.assertIn("COVERAGE_FEASIBILITY", message)
+        self.assertIn("0.20", message)
+
+    def test_only_relevant_repositories_count_towards_coverage(self) -> None:
+        market, sentiment, _ = self.branches()
+        irrelevant = Repo(
+            name="example/unrelated",
+            license_permits_commercial=True,
+            months_since_push=1,
+            relevance="IRRELEVANT",
+            url="https://github.com/example/unrelated",
+        )
+        feasibility = FeasibilityFindings(
+            sources=[irrelevant],
+            source_urls=[irrelevant.url],
+            gaps=[],
+            tool_status="ok",
+        )
+
+        inputs = compute_confidence_inputs(market, sentiment, feasibility, now=NOW)
+
+        self.assertEqual(inputs["feasibility_coverage"], 0.0)
+
+    def test_stale_median_age_is_rejected_by_staleness_band(self) -> None:
+        market, sentiment, feasibility = self.branches()
+        result = synthesis(
+            market,
+            sentiment,
+            feasibility,
+            median_market_source_age_months=30.0,
+        )
+
+        problems = confidence_problems(result, market, sentiment, feasibility, now=NOW)
+
+        self.assertEqual(len(problems), 1)
+        self.assertIn("MEDIAN_SOURCE_AGE", problems[0])
+
+    def test_a_closer_age_in_the_same_band_is_accepted(self) -> None:
+        market, sentiment, feasibility = self.branches()
+        result = synthesis(
+            market,
+            sentiment,
+            feasibility,
+            median_market_source_age_months=2.0,
+        )
+
+        self.assertEqual(
+            confidence_problems(result, market, sentiment, feasibility, now=NOW), []
+        )
+
+    def test_median_age_is_null_exactly_when_no_market_source_exists(self) -> None:
+        empty = MarketFindings(
+            sources=[],
+            source_urls=[],
+            gaps=["Firecrawl returned nothing."],
+            tool_status="empty",
+            competitors=[],
+        )
+        sentiment = sentiment_findings()
+        feasibility = feasibility_findings()
+
+        inputs = compute_confidence_inputs(empty, sentiment, feasibility, now=NOW)
+        self.assertIsNone(inputs["median_market_source_age_months"])
+
+        asserted = synthesis(
+            empty,
+            sentiment,
+            feasibility,
+            evidence_counts=compute_evidence_counts(empty, sentiment, feasibility),
+            median_market_source_age_months=6.0,
+            branches_ok=2,
+            market_coverage=0.0,
+        )
+        problems = confidence_problems(asserted, empty, sentiment, feasibility, now=NOW)
+
+        self.assertEqual(len(problems), 1)
+        self.assertIn("MEDIAN_SOURCE_AGE", problems[0])
 
 
 class ReportTests(unittest.TestCase):

@@ -12,6 +12,7 @@ from brief_crew.schemas.validator import (
     Thread,
     ValidationReport,
     Verdict,
+    staleness_multiplier,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "Thread",
     "ValidationReport",
     "Verdict",
+    "staleness_multiplier",
 ]

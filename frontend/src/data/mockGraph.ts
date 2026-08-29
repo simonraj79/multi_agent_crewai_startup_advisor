@@ -87,6 +87,17 @@ export const MOCK_GRAPH: GraphDescriptor = {
       description: 'A scored, sourced, one-page recommendation.',
       position: { x: 430, y: 1065 },
     },
+    // Mirrors the node the service appends to every graph descriptor from
+    // QUARANTINE_NODE_ID. It has no edges on purpose: frames land here only
+    // when the backend could not attribute them, and that has to be visible.
+    {
+      id: 'unattributed',
+      label: 'Unattributed',
+      kind: 'quarantine',
+      eyebrow: 'INSTRUMENTATION',
+      description: 'Events that could not be joined to a declared node.',
+      position: { x: 1130, y: 20 },
+    },
   ],
   edges: [
     { id: 'scoper-scope_gate', source: 'scoper', target: 'scope_gate' },

@@ -8,6 +8,7 @@ from threading import RLock
 from typing import Iterable
 
 from brief_crew.events.models import FrameData, FrameDraft, FrameKind
+from brief_crew.events.registry import QUARANTINE_NODE_ID
 
 
 DEFAULT_RING_CAPACITY = 2000
@@ -21,6 +22,11 @@ class FrameBufferStats:
     dropped: int
     gaps: int
     emit_errors: int
+    # PRD F21: frames CrewAI could not attribute to a declared node and that
+    # landed on the visible quarantine node. Counted at push time, so ring
+    # eviction never lowers it and a restored run recomputes the same total
+    # from its replayed frames.
+    unattributed: int
     first_seq: int | None
     last_seq: int | None
 
@@ -28,16 +34,23 @@ class FrameBufferStats:
 class FrameBuffer:
     """A ring that assigns one total order to all frames in a run."""
 
-    def __init__(self, capacity: int = DEFAULT_RING_CAPACITY) -> None:
+    def __init__(
+        self,
+        capacity: int = DEFAULT_RING_CAPACITY,
+        *,
+        quarantine_node_id: str = QUARANTINE_NODE_ID,
+    ) -> None:
         if capacity < 1:
             raise ValueError("capacity must be positive")
         self.capacity = capacity
+        self.quarantine_node_id = quarantine_node_id
         self._frames: deque[FrameData] = deque(maxlen=capacity)
         self._next_seq = 1
         self._captured = 0
         self._dropped = 0
         self._gaps = 0
         self._emit_errors = 0
+        self._unattributed = 0
         self._lock = RLock()
 
     def push(self, run_id: str, draft: FrameDraft) -> FrameData:
@@ -56,6 +69,8 @@ class FrameBuffer:
                 )
                 self._next_seq += 1
                 self._captured += 1
+                if frame.node_id == self.quarantine_node_id:
+                    self._unattributed += 1
                 if len(self._frames) == self.capacity:
                     self._dropped += 1
                     self._gaps += 1
@@ -99,6 +114,7 @@ class FrameBuffer:
                 dropped=self._dropped,
                 gaps=self._gaps,
                 emit_errors=self._emit_errors,
+                unattributed=self._unattributed,
                 first_seq=self._frames[0].seq if self._frames else None,
                 last_seq=self._frames[-1].seq if self._frames else None,
             )

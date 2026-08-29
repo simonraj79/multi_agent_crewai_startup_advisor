@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import sys
 import tempfile
 import threading
 import time
@@ -8,7 +11,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from brief_crew.config import CHEAP_MODEL
+from crewai.flow import build_flow_structure
 from crewai.flow.async_feedback import HumanFeedbackPending, PendingFeedbackContext
+from brief_crew.events import (
+    CaptureContext,
+    FrameBuffer,
+    NodeRegistry,
+    QUARANTINE_NODE_ID,
+    StreamSinkAdapter,
+    UIEventType,
+    capture_events,
+)
 from brief_crew.schemas import (
     DimensionScore,
     Evidence,
@@ -22,9 +35,15 @@ from brief_crew.schemas import (
     Verdict,
 )
 from brief_crew.validator_flow import (
+    BRANCH_NODES,
+    BRANCH_ORDER,
+    BranchSequencer,
+    PrefixedStdout,
     ValidatorCrewFactories,
     ValidatorFeedbackProvider,
     ValidatorFlow,
+    ValidatorState,
+    branch_output,
     validate,
 )
 from brief_crew.validator_guardrails import DEMAND_ANCHORS, compute_evidence_counts
@@ -35,15 +54,25 @@ REPO_URL = "https://github.com/example/project"
 
 
 class FakeRunner:
-    def __init__(self, result: object, tracker: ConcurrencyTracker | None = None) -> None:
+    def __init__(
+        self,
+        result: object,
+        tracker: ConcurrencyTracker | None = None,
+        label: str = "",
+        chatter: str = "",
+    ) -> None:
         self.result = result
         self.tracker = tracker
+        self.label = label
+        self.chatter = chatter
         self.inputs: list[dict[str, object]] = []
 
     def kickoff(self, inputs: dict[str, object]) -> object:
         self.inputs.append(inputs)
+        if self.chatter:
+            print(self.chatter)
         if self.tracker is not None:
-            self.tracker.enter()
+            self.tracker.enter(self.label)
         return self.result
 
 
@@ -51,12 +80,15 @@ class ConcurrencyTracker:
     def __init__(self) -> None:
         self.active = 0
         self.maximum = 0
+        self.order: list[str] = []
         self.lock = threading.Lock()
 
-    def enter(self) -> None:
+    def enter(self, label: str = "") -> None:
         with self.lock:
             self.active += 1
             self.maximum = max(self.maximum, self.active)
+            if label:
+                self.order.append(label)
         time.sleep(0.08)
         with self.lock:
             self.active -= 1
@@ -332,6 +364,353 @@ class ValidatorFlowTests(unittest.TestCase):
 
         self.assertEqual(result, sentiment)
         self.cache_lookup.assert_not_called()
+
+
+class SequentialFallbackTests(unittest.TestCase):
+    """PRD R-3 / F04: the withdrawal decision needs something to withdraw to.
+
+    The fallback must be the *same* six agents on the *same* graph, so every
+    test here also asserts that nothing about the topology moved.
+    """
+
+    def setUp(self) -> None:
+        patch(
+            "brief_crew.validator_flow.lookup_branch_cache", return_value=[]
+        ).start()
+        patch(
+            "brief_crew.validator_flow.index_captured_evidence", return_value=0
+        ).start()
+        self.addCleanup(patch.stopall)
+
+    def _run(
+        self,
+        *,
+        sequential: bool | None,
+        tracker: ConcurrencyTracker | None = None,
+        chatter: dict[str, str] | None = None,
+        capture: CaptureContext | None = None,
+    ) -> tuple[object, ValidationReport]:
+        scope, market, sentiment, feasibility, verdict, report = fixtures()
+        noise = chatter or {}
+        factories = ValidatorCrewFactories(
+            scope=lambda: FakeRunner(scope),
+            market=lambda: FakeRunner(market, tracker, "market", noise.get("market", "")),
+            sentiment=lambda: FakeRunner(
+                sentiment, tracker, "sentiment", noise.get("sentiment", "")
+            ),
+            feasibility=lambda: FakeRunner(
+                feasibility, tracker, "feasibility", noise.get("feasibility", "")
+            ),
+            synthesis=lambda *_: FakeRunner(verdict),
+            report=lambda *_: FakeRunner(report),
+        )
+        inputs: dict[str, object] = {"idea": scope.startup_idea, "no_gates": True}
+        if sequential is not None:
+            inputs["sequential_branches"] = sequential
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "output" / "validation.md"
+            with patch("brief_crew.validator_flow.OUTPUT_PATH", output_path):
+                flow = ValidatorFlow(crew_factories=factories)
+                stack = contextlib.ExitStack()
+                with stack:
+                    if capture is not None:
+                        stack.enter_context(capture_events(capture))
+                    result = flow.kickoff(inputs=inputs)
+            self.assertEqual(
+                output_path.read_text(encoding="utf-8"), report.markdown_body
+            )
+        return result, report
+
+    # ---------------------------------------------------------------- default
+
+    def test_parallel_stays_the_default_for_state_and_for_every_caller(self) -> None:
+        # Nothing about an existing call site may change: no argument, no
+        # kickoff input, no environment - and the fan-out still fans out.
+        self.assertFalse(ValidatorState().sequential_branches)
+        tracker = ConcurrencyTracker()
+        self._run(sequential=None, tracker=tracker)
+        self.assertEqual(tracker.maximum, 3)
+
+    def test_validate_entry_point_keeps_parallel_unless_asked(self) -> None:
+        scope, market, sentiment, feasibility, verdict, report = fixtures()
+        tracker = ConcurrencyTracker()
+        factories = ValidatorCrewFactories(
+            scope=lambda: FakeRunner(scope),
+            market=lambda: FakeRunner(market, tracker, "market"),
+            sentiment=lambda: FakeRunner(sentiment, tracker, "sentiment"),
+            feasibility=lambda: FakeRunner(feasibility, tracker, "feasibility"),
+            synthesis=lambda *_: FakeRunner(verdict),
+            report=lambda *_: FakeRunner(report),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "output" / "validation.md"
+            with patch("brief_crew.validator_flow.OUTPUT_PATH", output_path):
+                parallel = validate(
+                    scope.startup_idea, no_gates=True, crew_factories=factories
+                )
+        self.assertEqual(parallel, report)
+        self.assertEqual(tracker.maximum, 3)
+
+    # ------------------------------------------------------------- sequential
+
+    def test_sequential_mode_runs_one_branch_at_a_time_in_graph_order(self) -> None:
+        tracker = ConcurrencyTracker()
+        self._run(sequential=True, tracker=tracker)
+
+        self.assertEqual(tracker.maximum, 1)
+        self.assertEqual(tracker.order, list(BRANCH_ORDER))
+
+    def test_sequential_and_parallel_produce_the_same_report(self) -> None:
+        sequential, report = self._run(sequential=True)
+        parallel, _ = self._run(sequential=False)
+
+        self.assertIsInstance(sequential, ValidationReport)
+        self.assertEqual(sequential, report)
+        self.assertEqual(parallel, report)
+        self.assertEqual(sequential, parallel)
+
+    def test_sequential_validate_entry_point_serializes_the_branches(self) -> None:
+        scope, market, sentiment, feasibility, verdict, report = fixtures()
+        tracker = ConcurrencyTracker()
+        factories = ValidatorCrewFactories(
+            scope=lambda: FakeRunner(scope),
+            market=lambda: FakeRunner(market, tracker, "market"),
+            sentiment=lambda: FakeRunner(sentiment, tracker, "sentiment"),
+            feasibility=lambda: FakeRunner(feasibility, tracker, "feasibility"),
+            synthesis=lambda *_: FakeRunner(verdict),
+            report=lambda *_: FakeRunner(report),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "output" / "validation.md"
+            with patch("brief_crew.validator_flow.OUTPUT_PATH", output_path):
+                result = validate(
+                    scope.startup_idea,
+                    no_gates=True,
+                    sequential_branches=True,
+                    crew_factories=factories,
+                )
+        self.assertEqual(result, report)
+        self.assertEqual(tracker.maximum, 1)
+
+    # ------------------------------------------------------- identical graph
+
+    def test_flow_definition_and_graph_descriptor_are_identical_in_both_modes(
+        self,
+    ) -> None:
+        # A sequential fallback implemented by adding a second Flow definition
+        # would show up here: two nodes fewer, two join edges fewer, a new
+        # graph version, and a UI drawing a topology that is not the system.
+        from brief_crew.service.graph import (
+            VALIDATOR_GRAPH,
+            VALIDATOR_OVERLAY,
+            VALIDATOR_WORKFLOW_ID,
+            VALIDATOR_WORKFLOW_NAME,
+            build_graph_descriptor,
+        )
+
+        before = build_flow_structure(ValidatorFlow)
+        self._run(sequential=True)
+        after = build_flow_structure(ValidatorFlow)
+        self.assertEqual(before, after)
+
+        descriptor = build_graph_descriptor(
+            ValidatorFlow,
+            workflow_id=VALIDATOR_WORKFLOW_ID,
+            workflow_name=VALIDATOR_WORKFLOW_NAME,
+            overlay=VALIDATOR_OVERLAY,
+        )
+        self.assertEqual(descriptor.version, VALIDATOR_GRAPH.version)
+        self.assertEqual(
+            [node.id for node in descriptor.nodes],
+            [node.id for node in VALIDATOR_GRAPH.nodes],
+        )
+
+        definition = ValidatorFlow.flow_definition()
+        for branch, node_id in BRANCH_NODES.items():
+            self.assertEqual(definition.methods[node_id].listen, "scope_approved")
+            self.assertIn(branch, BRANCH_ORDER)
+        self.assertEqual(
+            set(definition.methods["synthesize"].listen["and"]),
+            set(BRANCH_NODES.values()),
+        )
+
+    def test_frame_attribution_is_identical_in_both_modes(self) -> None:
+        registry = NodeRegistry.from_flow_structure(build_flow_structure(ValidatorFlow))
+
+        def node_counts(sequential: bool) -> dict[str, int]:
+            buffer = FrameBuffer()
+            run_id = f"test-{'seq' if sequential else 'par'}"
+            adapter = StreamSinkAdapter(
+                run_id=run_id, buffer=buffer, registry=registry
+            )
+            self._run(
+                sequential=sequential,
+                capture=CaptureContext(run_id=run_id, adapter=adapter),
+            )
+            counts: dict[str, int] = {}
+            frames = buffer.replay(after=0, limit=500)
+            for frame in frames:
+                if frame.event_type in (UIEventType.NODE_START, UIEventType.NODE_END):
+                    counts[frame.node_id] = counts.get(frame.node_id, 0) + 1
+            return counts
+
+        parallel = node_counts(False)
+        sequential = node_counts(True)
+
+        self.assertEqual(parallel, sequential)
+        for node_id in BRANCH_NODES.values():
+            self.assertEqual(sequential.get(node_id), 2, node_id)
+        self.assertNotIn(QUARANTINE_NODE_ID, sequential)
+
+    # ------------------------------------------------------------- turnstile
+
+    def test_a_branch_that_never_arrives_degrades_instead_of_deadlocking(self) -> None:
+        # Ordering is a readability and memory nicety. It must never be able to
+        # hang a run, or the service run queue stalls behind it forever.
+        sequencer = BranchSequencer(timeout_s=0.05)
+        started = time.monotonic()
+        with sequencer.turn("feasibility", enabled=True):
+            pass
+        self.assertLess(time.monotonic() - started, 5.0)
+        # The turnstile resynchronised rather than drifting: market is next.
+        entered: list[str] = []
+        with sequencer.turn("market", enabled=True):
+            entered.append("market")
+        self.assertEqual(entered, ["market"])
+
+    def test_disabled_turnstile_never_blocks(self) -> None:
+        sequencer = BranchSequencer(timeout_s=0.01)
+        with sequencer.turn("feasibility", enabled=False):
+            pass
+        self.assertEqual(sequencer.served, 0)
+
+
+class BranchOutputPrefixTests(unittest.TestCase):
+    """F40 / PRD 7.5: three crews on one stdout must stay attributable."""
+
+    def setUp(self) -> None:
+        patch(
+            "brief_crew.validator_flow.lookup_branch_cache", return_value=[]
+        ).start()
+        patch(
+            "brief_crew.validator_flow.index_captured_evidence", return_value=0
+        ).start()
+        self.addCleanup(patch.stopall)
+
+    def test_concurrent_branch_output_carries_its_node_name(self) -> None:
+        scope, market, sentiment, feasibility, verdict, report = fixtures()
+        tracker = ConcurrencyTracker()
+        chatter = {
+            "market": "MARKET-LINE",
+            "sentiment": "SENTIMENT-LINE",
+            "feasibility": "FEASIBILITY-LINE",
+        }
+        factories = ValidatorCrewFactories(
+            scope=lambda: FakeRunner(scope),
+            market=lambda: FakeRunner(market, tracker, "market", chatter["market"]),
+            sentiment=lambda: FakeRunner(
+                sentiment, tracker, "sentiment", chatter["sentiment"]
+            ),
+            feasibility=lambda: FakeRunner(
+                feasibility, tracker, "feasibility", chatter["feasibility"]
+            ),
+            synthesis=lambda *_: FakeRunner(verdict),
+            report=lambda *_: FakeRunner(report),
+        )
+
+        buffer = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "output" / "validation.md"
+            with patch("brief_crew.validator_flow.OUTPUT_PATH", output_path):
+                with contextlib.redirect_stdout(buffer):
+                    ValidatorFlow(crew_factories=factories).kickoff(
+                        inputs={"idea": scope.startup_idea, "no_gates": True}
+                    )
+
+        printed = buffer.getvalue()
+        # All three really did overlap, so this is the interleaved case.
+        self.assertEqual(tracker.maximum, 3)
+        for branch, line in chatter.items():
+            node_id = BRANCH_NODES[branch]
+            self.assertIn(f"[{node_id}] {line}", printed)
+        # No copy escaped without its tag.
+        for line in printed.splitlines():
+            for branch, text in chatter.items():
+                if text in line:
+                    self.assertTrue(
+                        line.startswith(f"[{BRANCH_NODES[branch]}]"),
+                        f"untagged branch output: {line!r}",
+                    )
+
+    def test_sequential_branch_output_is_tagged_too(self) -> None:
+        scope, market, sentiment, feasibility, verdict, report = fixtures()
+        factories = ValidatorCrewFactories(
+            scope=lambda: FakeRunner(scope),
+            market=lambda: FakeRunner(market, None, "market", "M"),
+            sentiment=lambda: FakeRunner(sentiment, None, "sentiment", "S"),
+            feasibility=lambda: FakeRunner(feasibility, None, "feasibility", "F"),
+            synthesis=lambda *_: FakeRunner(verdict),
+            report=lambda *_: FakeRunner(report),
+        )
+        buffer = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "output" / "validation.md"
+            with patch("brief_crew.validator_flow.OUTPUT_PATH", output_path):
+                with contextlib.redirect_stdout(buffer):
+                    ValidatorFlow(crew_factories=factories).kickoff(
+                        inputs={
+                            "idea": scope.startup_idea,
+                            "no_gates": True,
+                            "sequential_branches": True,
+                        }
+                    )
+        printed = buffer.getvalue()
+        self.assertIn("[research_market] M", printed)
+        self.assertIn("[research_sentiment] S", printed)
+        self.assertIn("[research_feasibility] F", printed)
+
+    def test_partial_writes_are_held_until_the_line_ends(self) -> None:
+        sink = io.StringIO()
+        stream = PrefixedStdout(sink)
+        with patch.object(sys, "stdout", stream):
+            with branch_output("research_market"):
+                stream.write("half ")
+                self.assertEqual(sink.getvalue(), "")
+                stream.write("a line\nnext")
+                self.assertEqual(sink.getvalue(), "[research_market] half a line\n")
+        self.assertEqual(
+            sink.getvalue(),
+            "[research_market] half a line\n[research_market] next\n",
+        )
+
+    def test_stdout_is_restored_and_untouched_outside_a_branch(self) -> None:
+        sink = io.StringIO()
+        with contextlib.redirect_stdout(sink):
+            original = sys.stdout
+            with branch_output("research_market"):
+                self.assertIsInstance(sys.stdout, PrefixedStdout)
+                print("inside")
+            self.assertIs(sys.stdout, original)
+            print("outside")
+        self.assertEqual(
+            sink.getvalue(), "[research_market] inside\noutside\n"
+        )
+
+    def test_nested_branches_restore_the_stream_only_once_all_have_left(self) -> None:
+        sink = io.StringIO()
+        with contextlib.redirect_stdout(sink):
+            original = sys.stdout
+            with branch_output("research_market"):
+                with branch_output("research_sentiment"):
+                    print("inner")
+                self.assertIsInstance(sys.stdout, PrefixedStdout)
+                print("outer")
+            self.assertIs(sys.stdout, original)
+        self.assertEqual(
+            sink.getvalue(),
+            "[research_sentiment] inner\n[research_market] outer\n",
+        )
 
 
 if __name__ == "__main__":

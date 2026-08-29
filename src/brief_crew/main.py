@@ -27,10 +27,15 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
+from crewai.events import ToolUsageFinishedEvent
+from crewai.events.stream_context import add_stream_sink, reset_stream_sinks
 from crewai.flow import Flow, listen, or_, router, start
 from pydantic import BaseModel, Field
 
@@ -49,6 +54,13 @@ from brief_crew.tools.pinecone_retrieval import retrieve
 DEFAULT_TOPIC = "cashless payments in Singapore"
 OUTPUT_DIR = Path("output")
 
+# CrewAI lowercases and underscores `BaseTool.name` before it reaches an event
+# (`utilities/string_utils.sanitize_tool_name`), so this is the exact string
+# `ToolUsageFinishedEvent.tool_name` carries for
+# `crewai_tools.FirecrawlScrapeWebsiteTool` ("Firecrawl web scrape tool").
+# 06-retrieval-layer.md names the same identifier when it prescribes this fix.
+SCRAPE_TOOL_NAME = "firecrawl_web_scrape_tool"
+
 
 class BriefState(BaseModel):
     """Flow state. Structured, so a typo in a field name is an error, not a shrug."""
@@ -58,9 +70,17 @@ class BriefState(BaseModel):
     retrieved: list[dict[str, Any]] = Field(default_factory=list)
     route: str = ""
     # 07-deployment.md names this field `scraped`. It is `research_notes` here
-    # because what the step actually yields is the Researcher's structured notes,
-    # not raw scraped markdown - and that is what gets indexed.
+    # because what the step actually yields is the Researcher's structured
+    # notes. Those notes are the agent's OWN writing - selected, reworded
+    # claims plus a "Competing views" and an "Unverified / gaps" section it
+    # authored - so they are a conclusion, not captured evidence, and they are
+    # no longer what gets indexed. See `scraped_sources`.
     research_notes: str = ""
+    # 07-deployment.md's `scraped`, finally real: one source document per page
+    # the Researcher's Firecrawl scrape tool actually returned, each carrying
+    # the URL that produced it. This, and only this, is what `index_content`
+    # writes back.
+    scraped_sources: list[dict[str, Any]] = Field(default_factory=list)
     brief: str = ""
     usage: dict[str, Any] = Field(default_factory=dict)
 
@@ -83,6 +103,153 @@ def _format_hits(hits: list[dict[str, Any]]) -> str:
             f"{hit.get('text', '')}"
         )
     return "\n\n".join(blocks)
+
+
+# ------------------------------------------------------- captured provenance
+#
+# 06-retrieval-layer.md: "Subscribe a BaseEventListener to tool-usage events,
+# keep each firecrawl_web_scrape_tool result with the URL that produced it, and
+# index those per page". `validator_cache.py` already does this for the three
+# validator branches; this is the same shape for the Brief Crew, using CrewAI's
+# ContextVar-scoped stream sink rather than a process-global listener so a
+# capture belongs to exactly one run.
+#
+# Why not simply split `research_notes` by URL: those notes are the Researcher
+# agent's prose. Attributing one of its sentences to a publisher's URL would
+# put a model-generated claim into the corpus dressed as that publisher's
+# evidence, and a later run would retrieve it as a source. That is PRD R-15's
+# circular-evidence failure, so the notes stay unindexed and the pages the
+# agent actually opened are indexed instead.
+
+
+def _tool_arguments(event: Any) -> Mapping[str, Any]:
+    arguments = getattr(event, "tool_args", None)
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            return {}
+    return arguments if isinstance(arguments, Mapping) else {}
+
+
+def _payload(output: Any) -> Any:
+    """The tool result as something addressable, or None if it is opaque."""
+    if isinstance(output, str):
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            return None
+    return output
+
+
+def _field(source: Any, *names: str) -> Any:
+    """Read the first present field, tolerating dicts, objects and camelCase."""
+    if source is None:
+        return None
+    for name in names:
+        value = (
+            source.get(name)
+            if isinstance(source, Mapping)
+            else getattr(source, name, None)
+        )
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _source_url(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    parsed = urlsplit(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+    return value.strip()
+
+
+def _page_text(payload: Any, output: Any) -> str:
+    """Prefer the page body; otherwise keep the tool's own rendering verbatim.
+
+    Firecrawl's tool returns a `Document`, and CrewAI hands the agent - and this
+    sink - `str()` of it, so the fallback is not markdown. It is still exactly
+    what the tool produced, which is the property that matters: nothing here is
+    written by a model.
+    """
+    body = _field(payload, "markdown", "content", "summary", "raw_html")
+    if isinstance(body, str) and body.strip():
+        return body
+    return output if isinstance(output, str) else str(output)
+
+
+def _scraped_document(event: Any) -> dict[str, Any] | None:
+    """One indexable source document for one scraped page, or None."""
+    payload = _payload(getattr(event, "output", None))
+    metadata = _field(payload, "metadata")
+    # The URL the agent asked Firecrawl for is the authoritative one: it is the
+    # tool's input, so it cannot have been invented by the response.
+    url = (
+        _source_url(_tool_arguments(event).get("url"))
+        or _source_url(_field(payload, "url"))
+        or _source_url(_field(metadata, "source_url", "sourceURL", "url"))
+    )
+    if url is None:
+        return None
+
+    text = _page_text(payload, getattr(event, "output", None))
+    if not text.strip():
+        return None
+
+    published = _field(
+        metadata,
+        "published_time",
+        "publishedTime",
+        "modified_time",
+        "modifiedTime",
+        "article_published_time",
+    )
+    publisher = _field(metadata, "og_site_name", "ogSiteName", "site_name")
+    finished_at = getattr(event, "finished_at", None)
+    return {
+        "text": text,
+        "url": url,
+        # A hostname is a weak publisher, but it is true. An absent
+        # publication date stays absent rather than borrowing today's, so the
+        # cache cannot present an undated page as freshly published.
+        "publisher": publisher if isinstance(publisher, str) else urlsplit(url).hostname,
+        "published_date": published if isinstance(published, str) else "",
+        "metadata": {
+            "retrieved_via": SCRAPE_TOOL_NAME,
+            "retrieved_at": (
+                finished_at.isoformat()
+                if isinstance(finished_at, datetime)
+                else datetime.now(timezone.utc).isoformat()
+            ),
+        },
+    }
+
+
+@contextmanager
+def _capture_scraped_pages() -> Iterator[list[dict[str, Any]]]:
+    """Collect one document per page scraped inside this block, deduped by URL."""
+    documents: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def sink(source: Any, event: Any) -> None:
+        del source
+        if not isinstance(event, ToolUsageFinishedEvent):
+            return
+        if event.tool_name != SCRAPE_TOOL_NAME or event.failure is not None:
+            return
+        document = _scraped_document(event)
+        if document is None or document["url"] in seen:
+            return
+        seen.add(document["url"])
+        documents.append(document)
+
+    token = add_stream_sink(sink)
+    try:
+        yield documents
+    finally:
+        reset_stream_sinks(token)
 
 
 class BriefFlow(Flow[BriefState]):
@@ -134,35 +301,57 @@ class BriefFlow(Flow[BriefState]):
     def scrape_web(self) -> None:
         """The Researcher, with two tools. Track B: no retrieval tool, no step 0."""
         print("[flow] scraping the live web")
-        result = (
-            BriefCrew(track="B")
-            .crew()
-            .kickoff(inputs={"topic": self.state.topic})
-        )
+        # The sink is installed for the crew's lifetime only, so a page counts
+        # as scraped by this run or not at all.
+        with _capture_scraped_pages() as pages:
+            result = (
+                BriefCrew(track="B")
+                .crew()
+                .kickoff(inputs={"topic": self.state.topic})
+            )
         # On this path the full three-agent crew has already produced the brief,
-        # so capture both the notes (for indexing) and the finished output.
+        # so capture the notes (context for the reader), the pages the
+        # Researcher actually opened (the only indexable material), and the
+        # finished output.
         self.state.research_notes = str(result.tasks_output[0].raw)
+        self.state.scraped_sources = pages
         self.state.brief = str(result.raw)
         self.state.usage = _usage_dict(result)
+        print(f"[flow] captured {len(pages)} scraped source page(s)")
 
     @listen(scrape_web)
     def index_content(self) -> None:
-        """Write back what was scraped. Always, unconditionally, as plumbing.
+        """Write back the pages that were scraped, one document per source URL.
 
         Index what was scraped, not what was used: if write-back were conditional
         on the brief being good, the cache would only ever accumulate material
         that already worked, biasing what future runs can find.
+
+        "What was scraped" means the tool results, not the Researcher's notes
+        about them. Indexing the notes gave every chunk `url=""`, so a later
+        cache hit rendered `url: unknown` above a passage full of real URLs
+        (`_format_hits`), `run_sources.from_cache` had nothing per-source to
+        record, and the Writer's provenance rule had no field to cite. Worse,
+        it put agent-written claims into the corpus as retrievable evidence -
+        PRD R-15. Both are fixed by indexing the pages instead.
         """
-        if not self.state.research_notes:
-            print("[flow] nothing to index")
+        documents = self.state.scraped_sources
+        if not documents:
+            # Honest and quiet: a run whose Researcher searched but opened no
+            # page has no captured source, and inventing one from its prose is
+            # exactly what must not happen.
+            print("[flow] no captured source pages to index")
             return
         try:
             written = index_documents(
-                documents=[{"text": self.state.research_notes, "url": "", "publisher": ""}],
+                documents=documents,
                 topic=self.state.topic,
                 source_run_id=self.state.run_id,
             )
-            print(f"[flow] indexed {written} chunk(s) under run {self.state.run_id}")
+            print(
+                f"[flow] indexed {written} chunk(s) from {len(documents)} "
+                f"source page(s) under run {self.state.run_id}"
+            )
         except Exception as exc:
             # Write-back is an optimisation for the *next* run. Never fail this
             # run because the cache could not be refilled.

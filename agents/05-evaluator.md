@@ -171,7 +171,7 @@ evaluator:
 
 | Setting | Value |
 |---|---|
-| `llm` | `openrouter/z-ai/glm-5.3-flash` with **`reasoning_effort: "minimal"`** |
+| `llm` | `openrouter/z-ai/glm-5.3-flash` with the effort set to **`"minimal"`** — via `additional_params={"extra_body": {"reasoning": {"effort": "minimal"}}}`. The `LLM(reasoning_effort=...)` field is accepted and then silently dropped for non-o1 models in 1.15.18; see `00-shared-config.md` §3. |
 | `tools` | *(none — it checks internal consistency, it does not re-research)* |
 | `max_iter` | `5` |
 | `max_execution_time` | `300` |

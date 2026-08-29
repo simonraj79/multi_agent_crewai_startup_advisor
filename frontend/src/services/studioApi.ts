@@ -30,7 +30,7 @@ interface PendingGateReply {
   timer: number
 }
 
-interface StreamHandlers {
+export interface StreamHandlers {
   onFrame: (frame: FrameData) => void
   onStatus: (status: ConnectionStatus) => void
   getAfter: () => number
@@ -432,5 +432,24 @@ function normalizeUsage(value: Record<string, number>): UsageMetrics {
     elapsedMs: Number(value.elapsed_ms ?? value.elapsedMs ?? 0),
   }
 }
+
+/**
+ * The transport surface `useValidatorRun` depends on. Declaring it lets the
+ * composable be driven by a deterministic double in tests without touching a
+ * socket, exactly as the Python crews take injected factories.
+ */
+export type StudioApiLike = Pick<
+  StudioApi,
+  | 'mode'
+  | 'initialize'
+  | 'getGraph'
+  | 'startRun'
+  | 'getRun'
+  | 'getFrames'
+  | 'subscribe'
+  | 'replyGate'
+  | 'cancelRun'
+  | 'downloadLogs'
+>
 
 export const studioApi = new StudioApi()

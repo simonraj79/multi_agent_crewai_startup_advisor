@@ -31,8 +31,13 @@ market_task:
     Return one MarketFindings JSON object. Every source and competitor URL must
     be copied exactly from a tool result from this run. A competitor may use an
     evidence-page URL when that page is the attributed source. Record pricing
-    as "not published" when the source does not state it. If the tool status is
-    not ok, return no sources or competitors and name the missing evidence in
+    as "not published" when the source does not state it. List in
+    paying_segments each buyer segment an attributed source shows is already
+    spending money on this problem, named as that source names it. Leave
+    paying_segments empty when no source establishes one; a vendor's own
+    marketing claim about who should buy is not a paying segment. If the tool
+    status is not ok, return no sources, competitors or paying segments and
+    name the missing evidence in
     gaps. Do not infer market size from an adjacent category. The cache block is
     evidence context, not a conclusion, and never replaces the required live
     tool call. Copy final source URLs only from the live tool result; the Flow
@@ -52,7 +57,10 @@ sentiment_task:
     Return one SentimentFindings JSON object. Keep at most one representative
     Thread per URL so source_urls remains unique. Preserve a short exact quote
     and classify it as HAS_PROBLEM, PAYS, BUILT_WORKAROUND, OPINION or OFF_TOPIC.
-    Upvotes and positive opinions do not establish demand. Every URL must be
+    Copy the story score into points and the story comment count into
+    num_comments when the tool result reports them, and leave both null when it
+    does not; never substitute a guess or a zero for a count the tool did not
+    give you. Upvotes and positive opinions do not establish demand. Every URL must be
     copied exactly from a tool result from this run. If no call succeeds, return
     no sources and explain the evidence gap.
   expected_output: >
@@ -73,7 +81,10 @@ feasibility_task:
     Return one FeasibilityFindings JSON object. Keep at most one Repo per URL.
     Judge SOLVES_ENTIRELY, PARTIAL or IRRELEVANT from functional overlap; never
     use stars as a maturity, feasibility or saturation signal. Preserve the
-    licence and months-since-push fields from tool results. Every URL must be
+    licence and months-since-push fields from tool results. Set archived from
+    the tool result when it reports repository archive state and leave it null
+    when it does not; an archived repository is not maintained, so it cannot
+    be the free project that already solves the whole job. Every URL must be
     copied exactly from a tool result from this run. If no call succeeds, return
     no sources and explain the evidence gap. The cache block is a rate-limit
     shock absorber and evidence context, not a conclusion; it never replaces
@@ -102,33 +113,74 @@ synthesis_task:
     A human may have requested this revision:
     {human_override}
 
-    Return one Verdict JSON object. Supply only the five anchored scores and
-    their evidence, the mechanically countable inputs, kill criteria candidates
-    and the cheapest next test. The schema computes composite_score, confidence,
-    confidence_band, verdict, decision_reason, kill_criteria and provisional;
-    never try to override those results.
+    Return one Verdict JSON object. You supply the five anchored scores with
+    their evidence URLs, the countable confidence inputs, the kill criteria and
+    the cheapest next test.
 
-    Use these Demand anchors verbatim for the chosen score:
-    0: Every retrieved thread is ADJACENT. Nobody in the evidence describes having this problem.
-    1: Evidence does not reach this question — the branch returned nothing, or fewer than 3 usable threads.
-    2: 1-2 threads state the problem, or all such threads are older than 36 months.
-    3: At least 3 threads state it, at least 1 within 24 months, but nobody describes a workaround or a price paid.
-    4: Anchor 3, and at least 1 describes a manual workaround they maintain, or names a tool they pay for.
-    5: At least 5 threads within 24 months, at least 2 naming a workaround or a price, and the market branch independently names a paying segment.
+    The schema recomputes and overwrites composite_score, confidence,
+    confidence_band, verdict, decision_reason, fatal_floors and provisional.
+    That arithmetic is not yours; anything you send for those fields is
+    discarded. kill_criteria is the opposite: it is judgement, it is kept
+    exactly as you write it, and nothing else in this system can produce it.
+    Give 2 to 4 specific observations that would falsify this idea, each one
+    something a person could go and check. Do not restate the fatal floors
+    there; the schema derives those from the five scores by itself.
 
-    For M, C, F and X, score 1 only when the evidence does not reach the
-    question and set anchor_matched exactly to "Evidence does not reach this
-    question". Otherwise use a countable sentence describing the satisfied
-    evidence threshold. Higher is always better. X=0 only when current evidence
-    shows a maintained, commercially usable project already solves the entire
-    core job. F=0 only when the scoped v1 cannot be shipped by two or three
-    engineers.
+    Choose a score for each dimension and copy that dimension's anchor verbatim
+    into anchor_matched. Partial satisfaction of anchor N scores N-1. Higher is
+    always better on every dimension. Score 1 is reserved for evidence that does
+    not reach the question and must never be reached by inference: weak evidence
+    that exists is a 2, not a 1.
 
-    Set market_coverage to min(1, market_sources / 5), sentiment_coverage to
-    min(1, sentiment_problem_threads / 5), and feasibility_coverage to min(1,
-    relevant feasibility repositories / 5). Set branches_ok to the number of
-    findings with tool_status equal to ok. Compute median market source age in
-    months from dated values, or null when no market source exists.
+    D - Demand. Is anyone actively trying to solve this today?
+      0: Every retrieved thread is ADJACENT. Nobody in the evidence describes having this problem.
+      1: Evidence does not reach this question — the branch returned nothing, or fewer than 3 usable threads.
+      2: 1–2 threads state the problem, or all such threads are older than 36 months.
+      3: ≥3 threads state it, ≥1 within 24 months, but nobody describes a workaround or a price paid.
+      4: Anchor 3, and ≥1 describes a manual workaround they maintain, or names a tool they pay for.
+      5: ≥5 threads within 24 months, ≥2 naming a workaround or a price, and the market branch independently names a paying segment.
+
+    M - Market. Is there money, and can you name whose?
+      0: No market source names a buyer, a budget or a price for this problem.
+      1: Evidence does not reach this question
+      2: At least 1 market source names a buyer segment, but no source states a price or a budget.
+      3: At least 2 market sources name the same buyer segment and at least 1 states a price or a budget.
+      4: Anchor 3, and at least 1 source within 24 months states what that segment pays today.
+      5: Anchor 4, and at least 3 sources within 24 months agree on the segment, and the market branch names that paying segment explicitly.
+
+    C - Competitive room. Is the incumbent set beatable on a stated axis?
+      0: The named incumbents cover the whole job and no source states an axis on which they are beatable.
+      1: Evidence does not reach this question
+      2: At least 1 competitor is named, but no source states an axis on which it is beatable.
+      3: At least 2 competitors are named with stated pricing, and at least 1 source names an axis on which they are beatable.
+      4: Anchor 3, and at least 1 source within 24 months describes a need the named incumbents do not serve.
+      5: Anchor 4, and at least 2 sources within 24 months describe the same unserved need, and no incumbent is vendor owned across the whole job.
+
+    F - Feasibility. Can two or three engineers ship a v1?
+      0: The scoped v1 cannot be shipped by two or three engineers on this evidence.
+      1: Evidence does not reach this question
+      2: At least 1 relevant repository exists, but every one is archived, unmaintained beyond 24 months, or licensed against commercial use.
+      3: At least 1 relevant repository permits commercial use and was pushed within 12 months.
+      4: Anchor 3, and at least 2 relevant repositories permit commercial use and were pushed within 12 months.
+      5: Anchor 4, and at least 3 such repositories together cover the separable parts of the scoped v1.
+
+    X - Headroom over free. Is the core already free and good?
+      0: A maintained, commercially usable repository already solves the entire core job for free.
+      1: Evidence does not reach this question
+      2: A commercially usable repository pushed within 12 months solves most of the core job.
+      3: Every relevant repository is partial, and each one leaves a named part of the core job unsolved.
+      4: Anchor 3, and every repository that covers most of the job is archived, unmaintained beyond 24 months, or licensed against commercial use.
+      5: No repository in the evidence addresses the core job, and no free product is named in the market or sentiment evidence.
+
+    The confidence inputs are counted, not judged, and a guardrail recomputes
+    every one of them from the findings above and rejects a mismatch. Set
+    market_coverage to min(1, market sources / 5), sentiment_coverage to min(1,
+    threads classified HAS_PROBLEM, PAYS or BUILT_WORKAROUND / 5), and
+    feasibility_coverage to min(1, repositories whose relevance is
+    SOLVES_ENTIRELY or PARTIAL / 5). Set branches_ok to the number of findings
+    with tool_status equal to ok. Set median_market_source_age_months to the
+    median age in months of the dated market sources, or null when the market
+    branch has no source. Fill evidence_counts by counting the same lists.
   expected_output: >
     One JSON object matching Verdict exactly, with each evidence URL copied
     from the supplied findings and no prose or code fence.
@@ -154,8 +206,20 @@ reporting_task:
 
     Return one ValidationReport JSON object. markdown_body must be a useful
     Markdown decision brief with a title, summary, scope, five-score rubric,
-    verdict and confidence shown separately, evidence gaps, kill criteria,
-    cheapest next test and Sources. Preserve every computed verdict field
+    verdict and confidence shown separately, evidence gaps, a Risks section,
+    kill criteria, cheapest next test and Sources.
+
+    The Risks section states what could make this verdict wrong, drawn only
+    from the inputs above: the verdict's fatal_floors, any dimension whose
+    evidence_thin is true, any branch whose tool_status is not ok, the named
+    evidence gaps, and specific hazards the sources themselves show such as an
+    incumbent that already covers the job, a licence that forbids commercial
+    use, or an archived or unmaintained repository. Cite each risk that rests
+    on a source. Do not invent a risk the evidence does not support, and do not
+    repeat the kill criteria there: a risk is what threatens the verdict, a
+    kill criterion is the observation that would falsify the idea.
+
+    Preserve every computed verdict field
     exactly. Cite every factual claim with an exact URL supplied above and cite
     every item in sources in markdown_body. Convert cited HN threads and GitHub
     repositories into Evidence entries without changing their URLs; use their

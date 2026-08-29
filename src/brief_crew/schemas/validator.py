@@ -9,6 +9,12 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ToolStatus = Literal["ok", "empty", "rate_limited", "failed"]
+FloorCode = Literal[
+    "FLOOR_NO_DEMAND",
+    "FLOOR_ALREADY_FREE",
+    "FLOOR_NO_MARKET",
+    "FLOOR_NOT_BUILDABLE",
+]
 ThreadClassification = Literal[
     "HAS_PROBLEM",
     "PAYS",
@@ -81,6 +87,20 @@ def _validate_iso8601(value: str, field_name: str) -> str:
     return value
 
 
+def staleness_multiplier(median_source_age_months: float | None) -> float:
+    """The PRD §10.3 staleness band for a median market-source age.
+
+    Exported so the guardrail that recomputes `median_market_source_age_months`
+    can check the model's figure against the only thing confidence actually
+    consumes it for, instead of duplicating the two boundaries.
+    """
+    if median_source_age_months is not None and median_source_age_months <= 12:
+        return 1.00
+    if median_source_age_months is not None and median_source_age_months <= 24:
+        return 0.85
+    return 0.70
+
+
 class Evidence(ValidatorModel):
     claim: str = Field(min_length=1)
     url: str
@@ -116,6 +136,12 @@ class Thread(ValidatorModel):
     quote: str = Field(min_length=1)
     url: str
     date: str
+    # F06. Optional because the HN tool envelope does not carry them yet; a
+    # missing count must stay distinguishable from a genuine zero, so neither
+    # defaults to 0. Never a demand signal on its own (see the Demand ladder) -
+    # they exist so a reader can weigh how public a quoted thread was.
+    points: int | None = Field(default=None, ge=0)
+    num_comments: int | None = Field(default=None, ge=0)
 
     @field_validator("url")
     @classmethod
@@ -134,6 +160,12 @@ class Repo(ValidatorModel):
     months_since_push: int = Field(ge=0)
     relevance: RepoRelevance
     url: str
+    # F07. PRD §10.2 makes archived state load-bearing for the X floor: "a
+    # maintained, permissively licensed, popular project that already does the
+    # whole thing" is the X=0 kill, and an archived project is not maintained.
+    # Optional because the GitHub tool envelope does not surface it yet -
+    # `None` means "not reported", which is not the same claim as `False`.
+    archived: bool | None = None
 
     @field_validator("url")
     @classmethod
@@ -190,6 +222,23 @@ class MarketFindings(ValidatorModel):
     gaps: list[str]
     tool_status: ToolStatus
     competitors: list[Competitor]
+    # F05. The Demand ladder's top anchor requires that "the market branch
+    # independently names a paying segment", and the Market question is "is
+    # there money, and can you name whose?" - neither was expressible before.
+    # Empty is the honest default: no segment was established.
+    paying_segments: list[str] = Field(default_factory=list)
+
+    @field_validator("paying_segments")
+    @classmethod
+    def validate_paying_segments(cls, values: list[str]) -> list[str]:
+        if any(not value.strip() for value in values):
+            raise ValueError(
+                "MarketFindings.paying_segments entries must be non-empty; name the segment "
+                "or omit it"
+            )
+        if len(values) != len({value.casefold() for value in values}):
+            raise ValueError("MarketFindings.paying_segments contains duplicates; name each once")
+        return values
 
     @field_validator("source_urls")
     @classmethod
@@ -264,7 +313,15 @@ class Verdict(ValidatorModel):
     median_market_source_age_months: float | None = Field(default=None, ge=0.0)
     branches_ok: int = Field(ge=0, le=3)
     cheapest_next_test: str = Field(min_length=1)
+    # JUDGEMENT, kept. The model's answer to "what would falsify this idea?" is
+    # qualitative and unreproducible by arithmetic, so overwriting it destroys
+    # the only thing the Synthesist can say here that a formula cannot. It is
+    # validated for shape and left alone (F09).
     kill_criteria: list[str] = Field(default_factory=list)
+    # ARITHMETIC, overwritten. The fatal dimensions follow from the five
+    # integers alone, so they are recomputed on every validation and any
+    # model-supplied value is discarded (PRD §10.2).
+    fatal_floors: list[FloorCode] = Field(default_factory=list)
     composite_score: float = 0.0
     verdict: VerdictLabel = "NEEDS_WORK"
     decision_reason: DecisionReason | None = None
@@ -281,6 +338,31 @@ class Verdict(ValidatorModel):
                 "Verdict.evidence_counts values must be non-negative integers; fix keys "
                 + ", ".join(sorted(invalid))
             )
+        return values
+
+    @field_validator("fatal_floors", mode="before")
+    @classmethod
+    def discard_supplied_floors(cls, _values: object) -> list[str]:
+        """Drop whatever the model sent before it can fail validation.
+
+        PRD §10.1: overwriting rather than validating is deliberate - a model
+        that miscomputes should produce a correct verdict, not a failed run.
+        `compute_mechanical_result` fills this field from the five scores.
+        """
+        return []
+
+    @field_validator("kill_criteria")
+    @classmethod
+    def validate_kill_criteria(cls, values: list[str]) -> list[str]:
+        """Shape only. The content is the model's judgement and is preserved."""
+        if any(not value.strip() for value in values):
+            raise ValueError(
+                "Verdict.kill_criteria entries must be non-empty; state each falsifying "
+                "observation or omit it"
+            )
+        seen = {value.strip().casefold() for value in values}
+        if len(seen) != len(values):
+            raise ValueError("Verdict.kill_criteria contains duplicates; state each criterion once")
         return values
 
     @model_validator(mode="after")
@@ -305,13 +387,7 @@ class Verdict(ValidatorModel):
             1,
         )
 
-        age_months = self.median_market_source_age_months
-        if age_months is not None and age_months <= 12:
-            staleness = 1.00
-        elif age_months is not None and age_months <= 24:
-            staleness = 0.85
-        else:
-            staleness = 0.70
+        staleness = staleness_multiplier(self.median_market_source_age_months)
 
         coverage = (
             0.40 * self.market_coverage
@@ -321,7 +397,7 @@ class Verdict(ValidatorModel):
         branch_penalty = 0.60 if self.branches_ok < 3 else 1.00
         confidence = round(coverage * staleness * branch_penalty, 2)
 
-        floors: list[str] = []
+        floors: list[FloorCode] = []
         if demand == 0:
             floors.append("FLOOR_NO_DEMAND")
         if headroom == 0:
@@ -362,7 +438,7 @@ class Verdict(ValidatorModel):
         object.__setattr__(self, "confidence_band", band)
         object.__setattr__(self, "verdict", label)
         object.__setattr__(self, "decision_reason", reason)
-        object.__setattr__(self, "kill_criteria", floors)
+        object.__setattr__(self, "fatal_floors", floors)
         object.__setattr__(
             self,
             "provisional",

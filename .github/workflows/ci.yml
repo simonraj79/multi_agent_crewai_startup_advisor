@@ -1,0 +1,89 @@
+name: CI
+
+# No-cost only. Every external dependency the suite touches - CrewAI crews,
+# OpenRouter, Pinecone, Cohere, Firecrawl, Hacker News, GitHub - is mocked or
+# replaced with a deterministic test double. Do not add a step that needs a
+# paid credential; the suite is deliberately free to run and must stay that way.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python tests (no-cost)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CREWAI_DISABLE_TELEMETRY: "true"
+      CREWAI_TRACING_ENABLED: "false"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # crewai declares requires-python <3.14. 3.13 is what .python-version
+      # pins and what render.yaml sets via PYTHON_VERSION.
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # `--extra service` is required: fastapi, sqlalchemy and psycopg[binary]
+      # sit in the optional `service` extra, and tests/service plus
+      # tests/integration import the FastAPI app.
+      - name: Install dependencies
+        run: uv sync --frozen --extra service
+
+      - name: Python unit and integration tests
+        run: uv run --no-sync python -m unittest discover -s tests -t . -v
+
+      - name: Deployment manifests parse
+        run: |
+          uv run --no-sync python - <<'PY'
+          import yaml
+          for path in ("render.yaml", ".github/workflows/ci.yml"):
+              with open(path, encoding="utf-8") as handle:
+                  yaml.safe_load(handle)
+              print(f"{path} OK")
+          PY
+
+  frontend:
+    name: Frontend type-check and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run build` is `vue-tsc -b && vite build`, so this is the
+      # type-check and the production build in one step.
+      - name: Type-check and build
+        run: npm run build

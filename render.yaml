@@ -1,0 +1,142 @@
+# Render Blueprint - Validator Studio + Brief Crew (feature F44).
+#
+# Authoritative copy of the manifest specified in agents/07-deployment.md.
+# Writing this file is NOT the same as applying it: creating the Blueprint,
+# and therefore the two web services, is still a deliberate manual step.
+#
+# Corrections against the block previously printed in 07-deployment.md:
+#   * postgresMajorVersion is "18", not "17" - the live instance
+#     dpg-da94gqhf2nfc73e8rh7g-a was upgraded and reports PG 18.
+#   * startCommand targets brief_crew.service.app:create_app as a FACTORY.
+#     There is no `app.main` module in this repository.
+#   * buildCommand installs the `service` optional extra. A bare `uv sync`
+#     resolves without fastapi / sqlalchemy / psycopg and the process dies at
+#     import with ServiceDependencyError.
+#   * The frontend reads VITE_API_URL (see frontend/src/services/studioApi.ts),
+#     not VITE_API_BASE_URL, and it needs a full origin including the scheme.
+
+databases:
+  - name: agentic-crew-ai-db
+    # Live resource: dpg-da94gqhf2nfc73e8rh7g-a, created outside this Blueprint.
+    # These values mirror it exactly so an apply does not try to redefine it.
+    databaseName: agentic_crew_ai_db
+    user: agentic_crew_ai_db_user
+    plan: basic_256mb
+    region: singapore
+    diskSizeGB: 1
+    postgresMajorVersion: "18"
+    # ipAllowList is deliberately omitted: the live database already has an
+    # allow list, and declaring one here would silently overwrite it.
+
+services:
+  # --------------------------------------------------------------------------
+  # Backend - FastAPI + WebSocket service (src/brief_crew/service/)
+  # --------------------------------------------------------------------------
+  - name: agentic-crew-ai-api
+    type: web
+    runtime: python
+    plan: starter
+    region: singapore
+
+    # Render auto-detects uv.lock at the repo root and installs uv.
+    # `--frozen` installs exactly what the lockfile pins, with no re-resolution.
+    # `--extra service` is mandatory: fastapi, sqlalchemy and psycopg[binary]
+    # live in [project.optional-dependencies].service in pyproject.toml.
+    buildCommand: "uv sync --frozen --extra service"
+
+    # The ASGI entry point is a factory, so --factory is required.
+    # `--no-sync` stops uv from re-syncing (and thereby dropping the `service`
+    # extra) at boot; the build step already produced .venv.
+    startCommand: "uv run --no-sync uvicorn brief_crew.service.app:create_app --factory --host 0.0.0.0 --port $PORT"
+
+    healthCheckPath: /healthz
+
+    # 300s is Render's ceiling and the correct choice here, not a comfortable
+    # margin. On SIGTERM the FastAPI lifespan calls RunRegistry.close(), which
+    # does executor.shutdown(wait=True, cancel_futures=True): queued runs are
+    # cancelled but an ALREADY EXECUTING CrewAI step is waited on, and a full
+    # six-agent validator run can exceed five minutes. Frame flushing itself is
+    # cheap (bounded queue drain plus a 5s writer-thread join). A redeploy
+    # during an active run can still be SIGKILLed mid-flight; durable
+    # persistence plus resume is the mitigation, not this number.
+    maxShutdownDelaySeconds: 300
+
+    envVars:
+      # crewai declares requires-python <3.14. Services created after Feb 2026
+      # default to 3.14, which WOULD fail the build. .python-version pins 3.13
+      # as well; this is the belt to that pair of braces.
+      - key: PYTHON_VERSION
+        value: "3.13"
+
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agentic-crew-ai-db
+          property: connectionString
+
+      # One concurrent run is the memory ceiling on a 512 MB starter instance
+      # (~210 MB baseline per run). Matches the code default in config.py.
+      - key: RUN_CONCURRENCY
+        value: "1"
+
+      - key: CREWAI_DISABLE_TELEMETRY
+        value: "true"
+
+      # Traces from Render are EPHEMERAL - not attributed to the AMP org. The
+      # credential is an encrypted tokens.enc written by an interactive
+      # `crewai login`, it expires, there is no env-var equivalent, and it must
+      # never be baked into an image. See agents/08-observability.md section 3.
+      - key: CREWAI_TRACING_ENABLED
+        value: "true"
+
+      # Pin it; otherwise CrewAI derives the storage directory from the CWD name.
+      - key: CREWAI_STORAGE_DIR
+        value: "/tmp/crewai"
+
+      - key: PINECONE_INDEX_NAME
+        value: agentic-crew-ai-index
+
+      # Every credential is `sync: false`: the value is never committed. Render
+      # prompts once at Blueprint creation and stores it as a dashboard secret.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+      # Optional. Absent, GitHub repository search is rate limited to 8
+      # requests/min; present, 24/min (PRD R-7, config.py
+      # VALIDATOR_GITHUB_RATE_LIMIT_UNAUTH / _AUTHED). Leave it blank at the
+      # prompt to run unauthenticated.
+      - key: GITHUB_TOKEN
+        sync: false
+
+  # --------------------------------------------------------------------------
+  # Frontend - Vue 3 + Vue Flow static site (frontend/)
+  # --------------------------------------------------------------------------
+  - name: agentic-crew-ai-web
+    type: web
+    runtime: static
+    # No region: static sites are served from Render's global CDN, so the
+    # singapore pinning that matters for the API and the database does not
+    # apply here.
+    rootDir: frontend
+    buildCommand: "npm ci && npm run build"
+    # Relative to rootDir - frontend/dist.
+    staticPublishPath: dist
+    envVars:
+      # Read by frontend/src/services/studioApi.ts. It is used both as a fetch
+      # prefix AND as the base of `new URL(...)` for the WebSocket, so it MUST
+      # be a full origin with a scheme, e.g.
+      #   https://agentic-crew-ai-api.onrender.com
+      # `fromService ... property: host` yields a bare hostname, which resolves
+      # as a relative path and breaks the /ws connection - hence sync: false,
+      # filled in once the API's real URL is known.
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      # SPA fallback: every unmatched path serves the app shell.
+      - type: rewrite
+        source: /*
+        destination: /index.html

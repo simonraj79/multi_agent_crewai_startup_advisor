@@ -1,0 +1,59 @@
+# Build context exclusions for the API image.
+# The image needs exactly: pyproject.toml, uv.lock, src/. Everything below is
+# either a secret, a local artifact, or dead weight.
+
+# --- secrets and credentials: must never reach an image -------------------
+.env
+.env.*
+# CrewAI AMP tracing credential. It is a secret, it expires, and both
+# agents/07-deployment.md and agents/08-observability.md section 3 forbid
+# baking it into an image.
+tokens.enc
+
+# --- local environments and caches ----------------------------------------
+.venv/
+venv/
+lib/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.checkpoints/
+db/
+
+# --- version control and editor/agent metadata ----------------------------
+.git/
+.gitignore
+.gitattributes
+.github/
+.vscode/
+.idea/
+.claude/
+.agents/
+skills-lock.json
+
+# --- frontend: built and served as a separate static site -----------------
+frontend/
+
+# --- run artifacts and local databases ------------------------------------
+output/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.png
+
+# --- documentation and lecture source -------------------------------------
+*.md
+*.pdf
+agents/
+new features/
+
+# --- tests: exercised in CI, not shipped ----------------------------------
+tests/
+
+# --- deployment manifests: not needed inside the image --------------------
+Dockerfile
+.dockerignore
+render.yaml

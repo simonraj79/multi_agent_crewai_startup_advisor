@@ -12,12 +12,20 @@ Track B: the hosted service. Provisioned resources are real and live as of
 > this file warns about (services created after Feb 2026 default to 3.14, which
 > `crewai` excludes).
 >
-> **Not yet built:** the Postgres schema, the SQLAlchemy layer, the FastAPI
-> `POST /runs` / `GET /runs/{id}` service, and `render.yaml` itself. `persist`
-> currently writes `output/brief.md` and a `output/last_run.json` run record —
-> the same fields the `runs` / `run_metrics` tables want, so moving it to
-> Postgres is a change of destination, not of shape. The two Render web services
-> remain deliberately uncreated.
+> 🔨 **The service is built.** `src/brief_crew/service/` now contains the FastAPI
+> + WebSocket application (`app.py`, factory `create_app`), the SQLAlchemy
+> persistence layer (`persistence.py` — flow states, pending feedback, runs,
+> node metrics, ordered frames, human gates, PostgreSQL or SQLite), the run
+> registry and the flow runners. The endpoint surface is wider than the
+> `POST /runs` / `GET /runs/{id}` pair sketched below; see `CLAUDE.md` §9.
+> `render.yaml`, `Dockerfile`, `.dockerignore` and `.github/workflows/ci.yml`
+> now exist at the repo root.
+>
+> **Still not done:** the raw `runs` / `run_metrics` / `run_sources` DDL below is
+> *not* what ships — `persistence.py` owns its own SQLAlchemy tables — so treat
+> that SQL as design intent, not as a migration to apply. Brief Flow `persist`
+> still writes `output/brief.md` and `output/last_run.json`. The two Render web
+> services remain deliberately uncreated, and the Blueprint has not been applied.
 >
 > One gap this file should record: crew-level `token_usage` is **not split by
 > model**, so the cost figure in `last_run.json` is an upper bound priced at the
@@ -31,16 +39,28 @@ Track B: the hosted service. Provisioned resources are real and live as of
 | Resource | Identifier | Plan | Region | Status |
 |---|---|---|---|---|
 | Pinecone index | `agentic-crew-ai-index` | serverless | aws ap-southeast-1 | **live** |
-| Render Postgres | `agentic-crew-ai-db` · `dpg-da94gqhf2nfc73e8rh7g-a` | `basic_256mb` · PG 17 · 1 GB | singapore | **live** |
+| Render Postgres | `agentic-crew-ai-db` · `dpg-da94gqhf2nfc73e8rh7g-a` | `basic_256mb` · **PG 18** · 1 GB | singapore | **live** |
 | Render backend | `agentic-crew-ai-api` | `starter` | singapore | **not created** |
 | Render frontend | `agentic-crew-ai-web` | static | singapore | **not created** |
 
-The two web services are deliberately **not** created. Render deploys web
-services from a git repository, and there is no repo or application code yet.
-Creating them now would produce two failing services billing $7/mo each. Push the
-code, then apply the Blueprint below.
+The database version was verified against the Render API on 2026-08-29: it
+reports **PostgreSQL 18**, not the 17 this document previously recorded. The
+`postgresMajorVersion` in the Blueprint was corrected to match; a mismatch there
+is not cosmetic, because Render treats the major version as part of the resource
+definition.
+
+The two web services are deliberately **not** created. Creating them before the
+Blueprint is ready would produce two failing services billing $7/mo each. The
+application code and `render.yaml` now exist and the repository has a baseline
+commit, so the remaining prerequisite is a git **remote** — Render deploys from a
+hosted repository, and none is configured yet (`git remote -v` is empty).
 
 Render owner ID: `tea-csps46i3esus73eojjp0`.
+
+`agentic-crew-ai-db` was created by hand, outside any Blueprint. Applying
+`render.yaml` will not silently adopt it: confirm on the Blueprint preview that
+Render is **linking** the existing instance rather than proposing a second
+database before you approve the apply.
 
 ### Running cost
 
@@ -201,13 +221,19 @@ slot and ~210 MB. Construct a fresh `Crew` per run rather than sharing one.
 
 ## `render.yaml`
 
+⚠️ The authoritative copy is now **`render.yaml` at the repo root**. The block
+below is a summary of it; if the two disagree, the file wins. Three errors in the
+version this document used to print are corrected — see "Corrections" below.
+
 ```yaml
 databases:
   - name: agentic-crew-ai-db
+    databaseName: agentic_crew_ai_db
+    user: agentic_crew_ai_db_user
     plan: basic_256mb
     region: singapore
     diskSizeGB: 1
-    postgresMajorVersion: "17"
+    postgresMajorVersion: "18"
 
 services:
   - name: agentic-crew-ai-api
@@ -215,8 +241,8 @@ services:
     runtime: python
     plan: starter
     region: singapore
-    buildCommand: "uv sync"
-    startCommand: "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    buildCommand: "uv sync --frozen --extra service"
+    startCommand: "uv run --no-sync uvicorn brief_crew.service.app:create_app --factory --host 0.0.0.0 --port $PORT"
     healthCheckPath: /healthz
     maxShutdownDelaySeconds: 300
     envVars:
@@ -226,6 +252,8 @@ services:
         fromDatabase:
           name: agentic-crew-ai-db
           property: connectionString
+      - key: RUN_CONCURRENCY
+        value: "1"             # one run is the 512 MB memory ceiling
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"
       - key: CREWAI_TRACING_ENABLED
@@ -242,57 +270,122 @@ services:
         sync: false
       - key: COHERE_API_KEY
         sync: false
+      - key: GITHUB_TOKEN
+        sync: false            # optional — raises GitHub search 8/min → 24/min
 
   - name: agentic-crew-ai-web
     type: web
     runtime: static
-    region: singapore
+    rootDir: frontend
     buildCommand: "npm ci && npm run build"
     staticPublishPath: dist
     envVars:
-      - key: VITE_API_BASE_URL
-        fromService:
-          name: agentic-crew-ai-api
-          type: web
-          property: host
+      - key: VITE_API_URL
+        sync: false            # full origin incl. scheme, e.g. https://…onrender.com
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
 ```
 
+### Corrections against the earlier draft of this block
+
+| Was | Is | Why |
+|---|---|---|
+| `postgresMajorVersion: "17"` | `"18"` | The live instance reports PG 18. Verified against the Render API, 2026-08-29. |
+| `startCommand: uv run uvicorn app.main:app …` | `uv run --no-sync uvicorn brief_crew.service.app:create_app --factory …` | There is no `app.main` module. The real ASGI entry point is a **factory** — `create_app` — so `--factory` is mandatory. `serve()` at the bottom of `src/brief_crew/service/app.py` confirms the target and the `factory=True` flag; it differs only in binding (see the note on `HOST` below). |
+| `buildCommand: uv sync` | `uv sync --frozen --extra service` | fastapi, sqlalchemy and `psycopg[binary]` are in the **optional** `service` extra. A bare `uv sync` omits all three (it does pull `uvicorn` transitively, which makes the failure look like a runtime bug rather than a missing dependency) and `create_app` raises `ServiceDependencyError` at import. |
+| `VITE_API_BASE_URL` via `fromService … property: host` | `VITE_API_URL`, `sync: false` | The frontend reads `VITE_API_URL` (`frontend/src/services/studioApi.ts`). It is also the base of `new URL(...)` for the WebSocket, so a bare hostname resolves as a relative path and `/ws` never connects. It needs the full `https://…` origin, which `fromService` cannot produce. |
+| static site: `region: singapore` | omitted | Static sites are served from a global CDN; the region pin is meaningful only for the API and the database. |
+| static site: no `rootDir` | `rootDir: frontend` | `package.json` lives in `frontend/`, not the repo root. `staticPublishPath` is then relative to `rootDir`. |
+
 Notes:
 
 - `sync: false` means the value is never committed — Render prompts once at
   Blueprint creation and stores it as a dashboard secret. **Every API key uses
-  it.** The only literals here are non-secret configuration.
+  it.** The only literals are non-secret configuration.
 - `uv` is natively supported: Render auto-detects `uv.lock` at the repo root.
   Pin the version with `UV_VERSION` if you need determinism.
+- `--frozen` on the build installs exactly what `uv.lock` pins, with no
+  re-resolution. `--no-sync` on the start command stops `uv run` from re-syncing
+  at boot — an implicit sync there would compute the default dependency set and
+  **remove** the `service` extra the build just installed.
+- `serve` (the `[project.scripts]` console entry, `brief_crew.service.app:serve`)
+  is *not* used as the start command. It honours `$PORT` but defaults `HOST` to
+  `127.0.0.1`, which Render's proxy cannot reach. Either invoke uvicorn
+  explicitly, as above, or set `HOST=0.0.0.0` in the environment first.
 - Python version comes from `PYTHON_VERSION` or a `.python-version` file. Pin it —
   services created after Feb 2026 otherwise default to 3.14, which `crewai`
   excludes (`requires-python <3.14`). **This would fail the build.**
+- `maxShutdownDelaySeconds: 300` is Render's ceiling, not a comfortable margin.
+  On `SIGTERM` the FastAPI lifespan calls `RunRegistry.close()`, which does
+  `executor.shutdown(wait=True, cancel_futures=True)`: queued runs are cancelled,
+  but an already-executing CrewAI step is waited on, and a full six-agent
+  validator run can exceed five minutes. Frame flushing itself is cheap — a
+  bounded queue drain plus a 5-second writer-thread join. A redeploy mid-run can
+  still be `SIGKILL`ed; durable persistence and resume are the mitigation.
 - A static site costs nothing, so the frontend adds no fixed cost.
 - Region is immutable after creation. `singapore` matches both the Postgres
   instance and the Pinecone index.
 
 ---
 
+## Container alternative
+
+`Dockerfile` and `.dockerignore` at the repo root build the **API only** — the
+frontend stays a static site. Two stages: `uv sync --frozen --extra service`
+into `/app/.venv`, then a slim runtime that adds `libgomp1` (onnxruntime, pulled
+in transitively by chromadb via `crewai[tools]`, needs it and `python:*-slim`
+does not ship it) and runs as a non-root user. The project is installed
+**editable**, so `src/` must live at the same absolute path at runtime as at
+build time; both stages use `/app`.
+
+`.dockerignore` excludes `.env`, `.venv/`, `node_modules/` (via `frontend/`),
+`output/`, `.git/` and **`tokens.enc`** — the CrewAI AMP tracing credential, a
+secret that expires and must never reach an image (see `08-observability.md` §3).
+`CREWAI_TRACING_ENABLED` therefore defaults to `false` in the image.
+
+The image has **not** been built or run: no Docker daemon was available on the
+machine where it was written.
+
+---
+
+## CI
+
+`.github/workflows/ci.yml` runs the checks that cost nothing, on every push and
+pull request:
+
+| Job | Command | Notes |
+|---|---|---|
+| `python` | `uv sync --frozen --extra service` then `python -m unittest discover -s tests -t . -v` | Python pinned to 3.13. 65 tests, all external services mocked. Also parses `render.yaml`. |
+| `frontend` | `npm ci && npm run build` in `frontend/` | `npm run build` is `vue-tsc -b && vite build`, so type-check and build in one step. Node 24. |
+
+**Do not add a CI step that needs a paid credential.** The suite is deliberately
+free to run — CrewAI crews, OpenRouter, Pinecone, Cohere, Firecrawl, Hacker News
+and GitHub are all replaced with mocks or deterministic test doubles — and a live
+acceptance run belongs in a manual, explicitly-approved workflow.
+
+---
+
 ## Deployment checklist
 
-Status as of 2026-08-29. Steps 1 and 2's prerequisites are met; nothing has been
-deployed.
+Status as of 2026-08-29, after the F44 deployment-artifact pass. Everything that
+can be done locally is done; nothing has been deployed.
 
 | | Step | Status |
 |---|---|---|
 | 1 | `.env` carries all five credentials plus `PINECONE_INDEX_NAME` | ✅ verified — all four live services answered. The `FIRECRWALL_API_KEY` typo is fixed. |
-| 2a | **`uv.lock` exists at the repo root** | ✅ written by `crewai install` (874 KB). Render auto-detects it. |
+| 2a | **`uv.lock` exists at the repo root** | ✅ written by `crewai install` (874 KB). Render auto-detects it. `uv sync --frozen --extra service` resolves against it cleanly (dry-run verified). |
 | 2b | `.python-version` pins 3.13 | ✅ — this is step 4's failure, pre-empted |
-| 2c | `git init`, commit, push to GitHub | ❌ **not a repo yet.** This is the first blocker: Render deploys from git, and there is nothing to deploy from. |
-| 3 | Create the Blueprint from `render.yaml` | ❌ `render.yaml` is specified above but **not written to disk** |
+| 2c | `git init`, commit, push to GitHub | ⚠️ **partly done.** The repo exists with a baseline commit on `master`. `git remote -v` is empty — **no remote, nothing pushed.** This is now the first blocker. |
+| 2d | `render.yaml` written to disk | ✅ at the repo root, with the PG 18 / factory start command / `--extra service` / `VITE_API_URL` corrections listed above |
+| 2e | `Dockerfile` + `.dockerignore` | ✅ at the repo root. Never built — no Docker daemon available. |
+| 2f | CI workflow | ✅ `.github/workflows/ci.yml`: unittest on Python 3.13 plus the frontend build. No paid credential. Never executed on GitHub — see 2c. |
+| 3 | Create the Blueprint from `render.yaml` | ❌ **not applied.** Writing the manifest is not applying it; this is a deliberate manual step. Check the preview links the existing database rather than creating a second one. |
 | 4 | Confirm backend picked up Python 3.13, not 3.14 | ⏸️ blocked on 3 |
-| 5 | Apply the SQL schema to `agentic-crew-ai-db` | ❌ schema is specified above, never applied. The database is live and empty. |
-| 6 | Smoke-test `POST /runs` | ❌ no FastAPI service exists |
-| 7 | Check `run_metrics.successful_requests` populates | ⏸️ blocked on 5 and 6 — **but the number itself already exists**, see below |
+| 5 | Apply the SQL schema to `agentic-crew-ai-db` | ✅ **no longer a manual step.** `PostgresFlowPersistence.init_db()` runs `metadata.create_all()` at construction. The shipped tables are `flow_states`, `pending_feedback`, `runs`, `run_node_metrics`, `run_frames`, `run_gates` — **not** the `runs` / `run_metrics` / `run_sources` DDL sketched above, which is now design intent only. Never exercised against a real PostgreSQL instance. |
+| 6 | Smoke-test the service | ⚠️ locally only. `uvicorn brief_crew.service.app:create_app --factory --host 0.0.0.0` boots and `GET /healthz` and `GET /readyz` both return 200 with no credentials set. Not smoke-tested on Render. |
+| 7 | Check per-run token metrics populate | ⏸️ blocked on 3 — the numbers exist locally, see below |
 
 ### What already works, and what moving to Postgres actually costs
 

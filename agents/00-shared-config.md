@@ -102,7 +102,7 @@ because that case is the graded question.
 | Vector store | `pinecone` | **9.1.0** (package is `pinecone`, *not* `pinecone-client`) |
 | Rerank | `cohere` | latest |
 | LLM + embeddings | **OpenRouter** — native provider | — |
-| Database | **Render Postgres 17** | `basic_256mb` |
+| Database | **Render Postgres 18** | `basic_256mb` |
 | Hosting | **Render** — web service + static site | `starter` / free |
 | Orchestration | `crewai.flow` — `@start` / `@router` / `@listen` | ships in core |
 | **Observability** | **CrewAI AMP tracing** + Postgres `run_metrics` | Free tier |
@@ -474,7 +474,7 @@ cache-hit cutoff on scores clustered within 0.06.
 | Name | `agentic-crew-ai-db` |
 | ID | `dpg-da94gqhf2nfc73e8rh7g-a` |
 | Plan | `basic_256mb` — $6/mo + $0.30/GB |
-| Version | PostgreSQL 17 · 1 GB disk |
+| Version | PostgreSQL 18 · 1 GB disk |
 | Region | singapore |
 
 > Plan IDs in the Render **API** use underscores (`basic_256mb`); the docs show

@@ -444,10 +444,33 @@ not on shape:
 
 And there is a hard measured ceiling underneath all three: `00-shared-config.md`
 §2 records **~210 MB resident before any work**, against 512 MB on Render
-`starter` — **one concurrent crew run per instance**. Agent-level fan-out on this
-deployment would not buy wall-clock anyway without moving to the 2 GB plan. That
-is the strongest argument available here, and it is a number rather than an
-opinion.
+`starter` — **one concurrent crew run per instance**.
+
+> ⚠️ **Correction — the ceiling is real, but this paragraph used to over-apply
+> it.** An earlier revision continued: *"Agent-level fan-out on this deployment
+> would not buy wall-clock anyway without moving to the 2 GB plan."* That
+> conflates two different things:
+>
+> - **Concurrent *runs*** — each one a fresh `Flow` with its own crews and state.
+>   The ~210 MB baseline genuinely does cap this at one per 512 MB instance, and
+>   that is why `RUN_CONCURRENCY` defaults to `1`.
+> - **Concurrent *branches inside one run*** — sibling `@listen` methods sharing
+>   a single already-resident interpreter, package set and Flow state. These add
+>   per-branch working set, not another baseline.
+>
+> The second case is not bounded by the first, so the memory number is not on its
+> own an argument against in-run fan-out. Validator Studio does exactly that:
+> three sibling research branches inside one run
+> (`src/brief_crew/validator_flow.py`), with run-level concurrency still pinned
+> at 1. See `patterns.md` §4 Option B for the mechanism.
+>
+> What this does **not** license is asserting the fan-out is cheap. The peak-RSS
+> and speedup numbers for the three-branch layout have **not been measured**
+> (feature F42 in `new features/feature-list.md`). Until they are, treat in-run
+> fan-out as permitted-but-unmeasured rather than as proven.
+
+For the three variants in the table above the rejection still stands, on cost and
+on shape rather than on memory.
 
 **⑤ Hierarchical — explicitly warned against.** Slide 18: *"Don't go hierarchical
 until you've proven you need it."* Slide 23: *"patterns 4 & 5 ran slowest and

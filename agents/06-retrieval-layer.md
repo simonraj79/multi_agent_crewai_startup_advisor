@@ -13,8 +13,23 @@ The Pinecone tool, the embedding conventions, and the Cohere rerank pass.
 > | the staleness gate | `config.py` constants, applied in `main.py::check_cache` |
 >
 > `source_run_id` is on every upsert, so one bad run is revocable with a filtered
-> delete. **Per-group namespaces are supported but not set** — `index_documents`
-> takes a `namespace` argument that nothing currently passes.
+> delete.
+>
+> **Updated 2026-08-29 — namespaces and metadata filtering are now both wired,
+> on the validator path only.** An earlier revision of this line said per-group
+> namespaces were "supported but not set" and that `retrieve()` could not filter
+> at all. Both have since changed:
+>
+> | | Then | Now |
+> |---|---|---|
+> | `retrieve()` filtering | no `filter=` argument; per-branch/per-category retrieval impossible | takes `metadata_filter` and forwards it as `filter=` (`pinecone_retrieval.py:84-113`) |
+> | namespace on read | not passed | takes `namespace` and forwards it |
+> | namespace on write | `index_documents` accepted one, nothing passed it | `validator_cache.resolve_namespace()` passes a per-user opaque hash |
+>
+> Both arguments are **additive and default to `None`**, so the Brief Crew path
+> issues exactly the same unfiltered, default-namespace query it always did. The
+> Brief Crew path therefore still gets none of this: see the provenance defect
+> below, which remains open for `main.py::index_content`.
 >
 > Verified live 2026-08-29: direct embedding calls return **768** dims, the index
 > is dimension 768 / cosine, and Cohere separates a relevant from an irrelevant
@@ -250,6 +265,18 @@ per page — several chunks each, with real `url` and `publisher`. That restores
 structured provenance and puts comfortable margin above the ≥3 threshold. It is
 the same listener `08-observability.md` needs for the per-agent cost split, so it
 remains one piece of work serving two gaps.
+
+> **The validator path already does this; the Brief Crew path still does not.**
+> `src/brief_crew/validator_cache.py` captures each tool envelope, indexes **one
+> document per source URL** with real `url`, `publisher`, `branch`, `category`
+> and `idea_hash`, and refuses to index generated `ScopedIdea` / `Verdict` /
+> `ValidationReport` objects. That is the shape described above, implemented.
+>
+> `main.py::index_content` was **not** migrated: it still calls
+> `index_documents(documents=[{"text": research_notes, "url": "", "publisher": ""}])`,
+> and `main.py:78-81` still renders `url: unknown` above passages containing real
+> URLs. This defect is open, and the working reference implementation for fixing
+> it now exists in `validator_cache.py`.
 
 **Do not lower `MIN_RERANK_HITS` to 1.** The threshold is what stops a single
 lucky chunk from certifying a topic as cached.

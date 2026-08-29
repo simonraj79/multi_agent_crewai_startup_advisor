@@ -246,6 +246,17 @@ task triggers `_process_async_tasks`, which joins them all before proceeding.
 Practically: **fan out, then always fan in with a synchronous task.** That shape
 satisfies all four.
 
+**Two properties of this option that the validators do not warn you about:**
+
+1. **Each async task gets a raw daemon thread, and nothing bounds them.**
+   `Task.execute_async` starts `threading.Thread(daemon=True, ...)` per call
+   (`task.py:616-623`) — there is no pool and no ceiling. Ten async tasks are ten
+   OS threads. On a memory-capped host, fan out deliberately.
+2. **Parallel async tasks cannot see each other's outputs.** An async task's
+   context is built from `[last_sync_output]` only (`crew.py:1597-1600`), so
+   sibling branches are invisible to one another until the fan-in task joins
+   them. Design branches to be genuinely independent, not merely concurrent.
+
 ### Option B — inside a Flow: `and_()`
 
 ```python
@@ -263,16 +274,35 @@ def merge(self): ...
 **any** does (`flow/dsl/_conditions.py:22-30`). `and_()` is the Flow's fan-in
 join, and it is more explicit than the Crew's "next sync task" convention.
 
-### Option C — across inputs: `kickoff_for_each`
+**But `and_()` is only the *join*. Say where the parallelism comes from, or
+readers will assume Flow methods run one after another — they do not.** When one
+event triggers several listeners, the runtime builds a task per listener and
+awaits them together with `asyncio.gather`
+(`flow/runtime/__init__.py:3241-3249`). A listener declared `def` rather than
+`async def` is not thereby serialised: the runtime copies the context and runs it
+on a worker thread via `asyncio.to_thread` (`:2966-2972`). So **sibling
+`@listen(same_trigger)` methods are the fan-out**, whether or not they are
+coroutines, and `and_()` is what makes the next method wait for all of them.
+
+This is the mechanism the validator's three research branches rely on — see
+`workflow.md` §8.
+
+### Option C — across inputs: `kickoff_for_each` (⚠️ NOT parallel)
 
 ```python
 results = crew.kickoff_for_each(inputs=[{"topic": t} for t in topics])
-# native async variant:
+# the concurrent variant — this is the one that actually gathers:
 results = await crew.akickoff_for_each(inputs=[...])
 ```
 
-Same crew, many inputs. This is the right tool for "run my pipeline over 20
-topics", not for parallelising *within* one run.
+⚠️ **`kickoff_for_each` is a sequential `for` loop.** It copies the crew and
+calls `kickoff()` once per input, in order (`crew.py:1108-1115`). Nothing about
+it is concurrent, and it belongs under Pattern ③ only as the contrast case. The
+async forms — `akickoff_for_each` / `kickoff_for_each_async` — are the ones that
+build tasks and `asyncio.gather` them (`crews/utils.py:500-505`).
+
+Either way: same crew, many inputs. This is the right tool for "run my pipeline
+over 20 topics", not for parallelising *within* one run.
 
 ### Cost
 
@@ -474,7 +504,7 @@ retries, worst case for one output is **4 task executions + 4 judgement calls**.
 > **Put arithmetic in a callable.** Word counts and "does a Sources section
 > exist" are string operations. Only attribution and faithfulness need a model.
 
-**Four gotchas from source:**
+**Five gotchas from source:**
 
 1. **`guardrails` (plural) overrides `guardrail` (singular)** — setting the list
    nulls the single field; they do **not** combine (`task.py:466-469`).
@@ -482,10 +512,23 @@ retries, worst case for one output is **4 task executions + 4 judgement calls**.
    `ValueError("Agent is required to use non-programmatic guardrails")`
    (`task.py:421-424`). This bites under `Process.hierarchical`, where you are
    told `agent:` is optional.
-3. **Exhaustion raises.** `Task._invoke_guardrail_function` (`task.py:1327`)
-   raises a plain `Exception` — there is **no** best-effort passthrough. In
-   sequential, the run dies.
-4. **Agent-level `guardrail` does not work inside a Crew.** `Agent` has a
+3. **Exhaustion raises.** The guardrail retry loop (`task.py:1382-1391`) raises a
+   plain `Exception` — there is **no** best-effort passthrough. In sequential,
+   the run dies.
+4. ⚠️ **Attaching *any* guardrail suppresses `output_pydantic` conversion —
+   this is the one that silently changes your data.** In `Task._export_output`'s
+   caller, the structured-conversion branch is guarded by
+   `elif not self._guardrails and not self._guardrail:` (`task.py:872-877`); the
+   `else` sets `pydantic_output, json_output = None, None`. So a guarded task
+   returns a `TaskOutput` whose `.pydantic` is `None` no matter what
+   `output_pydantic=` says, and the guardrail itself receives **raw text**, not a
+   model. Two consequences, both load-bearing for this project:
+   - A guardrail must parse `TaskOutput.raw` itself, and must return the
+     successful raw string **unchanged** so nothing downstream is corrupted.
+   - Any Pydantic validation you were relying on has to be re-applied after the
+     task, by the caller. See `src/brief_crew/validator_guardrails.py` and
+     `ValidatorFlow._extract_model`.
+5. **Agent-level `guardrail` does not work inside a Crew.** `Agent` has a
    `guardrail` field, but it fires only on standalone `agent.kickoff()`, never
    when that agent executes a task in a `Crew`. **Task-level is the only option.**
 
@@ -551,6 +594,17 @@ Worth a slide, because three of these look like they should exist:
 | Agent-level guardrails in a Crew | Fires only on standalone `agent.kickoff()` | Task-level `guardrail` |
 | Native Pinecone | `SupportedProvider = Literal["chromadb", "qdrant"]` | A custom `BaseTool` |
 | Cost in `token_usage` | Token counts only, no `cost` field | Compute from a price table |
+
+### What CrewAI *does* give you that this document used to imply it did not
+
+An earlier revision of this section left readers building these by hand. All
+three are native in 1.15.18 and should be used rather than reinvented:
+
+| Capability | Where it lives | Notes |
+|---|---|---|
+| **Flow human-in-the-loop pause/resume** | `flow/async_feedback/`, `flow/human_feedback.py` | `@human_feedback` pauses by raising `HumanFeedbackPending`; `Flow.from_pending(flow_id)` (`flow/runtime/__init__.py:1223`) and `Flow.resume(feedback)` (`:1311`, `resume_async` at `:1364`) restart it. Do **not** hand-roll a gate. |
+| **Durable Flow state persistence** | `flow/persistence/` (`base.py`, `sqlite.py`, `factory.py`, `decorators.py`) | A `FlowPersistence` interface with a shipped SQLite backend. Subclass it for Postgres rather than inventing a state store. |
+| **`Flow.ask()` and native streaming** | `flow/runtime/__init__.py:3452` (`ask`), `:2029` (`astream`) | `astream()` yields scoped public `StreamFrame` objects (`crewai/types/streaming.py:31`) — a supported alternative to the event bus for streaming a run. |
 
 ### Docs that are stale (verified against the 1.15.18 wheel)
 

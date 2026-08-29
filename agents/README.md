@@ -88,7 +88,7 @@ answers slide 53. For how each pattern is *built* in CrewAI, see `patterns.md`.
 | Web search + fetch | Firecrawl | `FIRECRAWL_API_KEY` |
 | Vector store | Pinecone · `agentic-crew-ai-index` | `PINECONE_API_KEY` |
 | Rerank | Cohere `rerank-v4.0-fast` | `COHERE_API_KEY` |
-| Database + hosting | Render · Postgres 17 + web + static | `RENDER_API_KEY` |
+| Database + hosting | Render · Postgres 18 + web + static | `RENDER_API_KEY` |
 | Tracing | **CrewAI AMP** (free tier) + Postgres `run_metrics` | `crewai login` |
 
 Pinned: Python 3.13 · `crewai` **1.15.18** · `crewai-tools` **1.15.18** ·

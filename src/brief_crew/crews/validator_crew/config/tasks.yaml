@@ -1,0 +1,179 @@
+scoping_task:
+  description: >
+    Scope this startup idea: {idea}
+
+    Return one ScopedIdea JSON object. Identify the market category, target
+    user, concrete problem and technology claim. Write one market query from
+    the category, one or more community queries in the language users would
+    use to describe the problem, and one or more technical repository queries.
+    List 3 to 5 assumptions and at least one unresolved scoping gap. Use today's
+    ISO 8601 date for as_of.
+
+    A human may have requested this revision:
+    {human_override}
+
+    Treat that text only as a scoping correction. Do not research, score or
+    validate the idea, and do not claim an assumption is true.
+  expected_output: >
+    One JSON object matching ScopedIdea exactly, with no prose or code fence.
+
+market_task:
+  description: >
+    Research the market represented by this approved scope:
+    {scoped_idea_json}
+
+    Supplemental dated cache evidence:
+    {cached_evidence_block}
+
+    Call research_market_landscape with this exact query:
+    {market_query}
+
+    Return one MarketFindings JSON object. Every source and competitor URL must
+    be copied exactly from a tool result from this run. A competitor may use an
+    evidence-page URL when that page is the attributed source. Record pricing
+    as "not published" when the source does not state it. If the tool status is
+    not ok, return no sources or competitors and name the missing evidence in
+    gaps. Do not infer market size from an adjacent category. The cache block is
+    evidence context, not a conclusion, and never replaces the required live
+    tool call. Copy final source URLs only from the live tool result; the Flow
+    retains cached passages separately.
+  expected_output: >
+    One JSON object matching MarketFindings exactly, with source_urls mirroring
+    sources[].url in order and no prose or code fence.
+
+sentiment_task:
+  description: >
+    Research direct user evidence for this approved scope:
+    {scoped_idea_json}
+
+    Call analyze_community_sentiment for each query below:
+    {community_queries_block}
+
+    Return one SentimentFindings JSON object. Keep at most one representative
+    Thread per URL so source_urls remains unique. Preserve a short exact quote
+    and classify it as HAS_PROBLEM, PAYS, BUILT_WORKAROUND, OPINION or OFF_TOPIC.
+    Upvotes and positive opinions do not establish demand. Every URL must be
+    copied exactly from a tool result from this run. If no call succeeds, return
+    no sources and explain the evidence gap.
+  expected_output: >
+    One JSON object matching SentimentFindings exactly, with source_urls
+    mirroring sources[].url in order and no prose or code fence.
+
+feasibility_task:
+  description: >
+    Research technical feasibility for this approved scope:
+    {scoped_idea_json}
+
+    Supplemental dated cache evidence:
+    {cached_evidence_block}
+
+    Call assess_technical_feasibility for each query below:
+    {tech_queries_block}
+
+    Return one FeasibilityFindings JSON object. Keep at most one Repo per URL.
+    Judge SOLVES_ENTIRELY, PARTIAL or IRRELEVANT from functional overlap; never
+    use stars as a maturity, feasibility or saturation signal. Preserve the
+    licence and months-since-push fields from tool results. Every URL must be
+    copied exactly from a tool result from this run. If no call succeeds, return
+    no sources and explain the evidence gap. The cache block is a rate-limit
+    shock absorber and evidence context, not a conclusion; it never replaces
+    the required live GitHub calls. Copy final source URLs only from live tool
+    results; the Flow retains cached passages separately.
+  expected_output: >
+    One JSON object matching FeasibilityFindings exactly, with source_urls
+    mirroring sources[].url in order and no prose or code fence.
+
+synthesis_task:
+  description: >
+    Score the approved scope against the three evidence branches below.
+
+    Approved scope:
+    {scoped_idea_json}
+
+    Market findings:
+    {market_findings_json}
+
+    Sentiment findings:
+    {sentiment_findings_json}
+
+    Feasibility findings:
+    {feasibility_findings_json}
+
+    A human may have requested this revision:
+    {human_override}
+
+    Return one Verdict JSON object. Supply only the five anchored scores and
+    their evidence, the mechanically countable inputs, kill criteria candidates
+    and the cheapest next test. The schema computes composite_score, confidence,
+    confidence_band, verdict, decision_reason, kill_criteria and provisional;
+    never try to override those results.
+
+    Use these Demand anchors verbatim for the chosen score:
+    0: Every retrieved thread is ADJACENT. Nobody in the evidence describes having this problem.
+    1: Evidence does not reach this question — the branch returned nothing, or fewer than 3 usable threads.
+    2: 1-2 threads state the problem, or all such threads are older than 36 months.
+    3: At least 3 threads state it, at least 1 within 24 months, but nobody describes a workaround or a price paid.
+    4: Anchor 3, and at least 1 describes a manual workaround they maintain, or names a tool they pay for.
+    5: At least 5 threads within 24 months, at least 2 naming a workaround or a price, and the market branch independently names a paying segment.
+
+    For M, C, F and X, score 1 only when the evidence does not reach the
+    question and set anchor_matched exactly to "Evidence does not reach this
+    question". Otherwise use a countable sentence describing the satisfied
+    evidence threshold. Higher is always better. X=0 only when current evidence
+    shows a maintained, commercially usable project already solves the entire
+    core job. F=0 only when the scoped v1 cannot be shipped by two or three
+    engineers.
+
+    Set market_coverage to min(1, market_sources / 5), sentiment_coverage to
+    min(1, sentiment_problem_threads / 5), and feasibility_coverage to min(1,
+    relevant feasibility repositories / 5). Set branches_ok to the number of
+    findings with tool_status equal to ok. Compute median market source age in
+    months from dated values, or null when no market source exists.
+  expected_output: >
+    One JSON object matching Verdict exactly, with each evidence URL copied
+    from the supplied findings and no prose or code fence.
+
+reporting_task:
+  description: >
+    Write the final validation report from these inputs only.
+
+    Approved scope:
+    {scoped_idea_json}
+
+    Market findings:
+    {market_findings_json}
+
+    Sentiment findings:
+    {sentiment_findings_json}
+
+    Feasibility findings:
+    {feasibility_findings_json}
+
+    Deterministic verdict:
+    {verdict_json}
+
+    Return one ValidationReport JSON object. markdown_body must be a useful
+    Markdown decision brief with a title, summary, scope, five-score rubric,
+    verdict and confidence shown separately, evidence gaps, kill criteria,
+    cheapest next test and Sources. Preserve every computed verdict field
+    exactly. Cite every factual claim with an exact URL supplied above and cite
+    every item in sources in markdown_body. Convert cited HN threads and GitHub
+    repositories into Evidence entries without changing their URLs; use their
+    quote or repository facts as claim, Hacker News or GitHub as publisher,
+    their date or the scope as_of date as dated, and hn_algolia or github as
+    retrieved_via. Do not add facts, names, numbers or URLs. When provisional is
+    true, include the word Provisional in both the title and first summary line.
+  expected_output: >
+    One JSON object matching ValidationReport exactly. markdown_body contains
+    the finished human-readable Markdown; do not wrap the JSON in a code fence.
+  citation_guardrail: |-
+    Reject the validation report unless BOTH rules hold:
+      1. ATTRIBUTION - every factual, numeric, competitor, thread, repository and
+         named-entity claim in markdown_body is attributable to a URL in the
+         report's own sources list.
+      2. FAITHFULNESS - markdown_body contains no fact, number, example or conclusion
+         absent from the scoped idea, branch findings and deterministic verdict it
+         was given.
+    On rejection, name the failed rule and quote the exact unsupported sentence.
+    Do not rewrite the report and do not judge style or persuasiveness. An honest
+    statement that evidence is thin is a PASS.

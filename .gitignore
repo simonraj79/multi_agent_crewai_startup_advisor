@@ -1,0 +1,36 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+lib/
+.DS_Store
+
+# Run artifacts - regenerated every run, never committed
+output/
+*.png
+*.log
+
+# CrewAI local state. tokens.enc is the AMP tracing credential: it is a
+# secret, it expires, and it must never reach an image or a repo.
+.checkpoints/
+tokens.enc
+db/
+
+# Vendored CrewAI agent skills, installed by `npx skills add crewaiinc/skills`.
+# COMMITTED deliberately, not ignored - they make the repo self-describing for
+# any coding agent that opens it (Cursor, Codex, Gemini CLI and 12 others read
+# .agents/skills; Claude Code reads .claude/skills). Re-install with the same
+# command to update. Listed here only so the decision is visible:
+#   .agents/skills/    <- kept
+#   .claude/skills/    <- kept
+#
+# uv.lock is also committed - 07-deployment.md requires it at the repo root,
+# because Render auto-detects it to pin the build.
+
+# The global *.png rule above is for run artifacts (plot output, screenshots).
+# Frontend source assets are real code and must survive a fresh clone -
+# frontend/src/components/HelloWorld.vue imports hero.png at build time.
+!frontend/src/assets/**/*.png
+
+# Lecture source material - 20 MB binary, not application source.
+*.pdf

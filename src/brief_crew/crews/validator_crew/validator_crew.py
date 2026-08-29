@@ -1,0 +1,366 @@
+"""YAML-first single-agent crews used by the validator Flow."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+from typing import Any, Literal, TypeVar
+
+from crewai import LLM, Agent, Crew, Process, Task
+from crewai.agents.agent_builder.base_agent import BaseAgent
+from crewai.project import CrewBase, agent, crew, task
+from pydantic import BaseModel, PrivateAttr
+
+from brief_crew.config import CHEAP_MODEL, ESCALATION_MODEL
+from brief_crew.schemas import (
+    FeasibilityFindings,
+    MarketFindings,
+    ScopedIdea,
+    SentimentFindings,
+    ValidationReport,
+    Verdict,
+)
+from brief_crew.tools.github_feasibility import GitHubFeasibilityTool
+from brief_crew.tools.hn_sentiment import HackerNewsSentimentTool
+from brief_crew.tools.market_research import MarketResearchTool
+from brief_crew.validator_guardrails import (
+    CITATION_GUARDRAIL,
+    check_scope,
+    findings_problems,
+    make_report_guardrail,
+    make_rubric_guardrail,
+    parse_raw_model,
+)
+
+BranchName = Literal["market", "sentiment", "feasibility"]
+FindingsModel = MarketFindings | SentimentFindings | FeasibilityFindings
+FindingsT = TypeVar("FindingsT", bound=FindingsModel)
+Guardrail = Callable[[Any], tuple[bool, str]]
+
+
+def _capture_urls(raw: str, urls: set[str]) -> None:
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return
+    if not isinstance(payload, dict):
+        return
+    for result in payload.get("results", []):
+        if isinstance(result, dict) and isinstance(result.get("url"), str):
+            urls.add(result["url"])
+
+
+class _RecordingMarketTool(MarketResearchTool):
+    _captured_urls: set[str] = PrivateAttr(default_factory=set)
+
+    @property
+    def captured_urls(self) -> frozenset[str]:
+        return frozenset(self._captured_urls)
+
+    def _run(self, query: str, limit: int = 5) -> str:
+        raw = super()._run(query=query, limit=limit)
+        _capture_urls(raw, self._captured_urls)
+        return raw
+
+
+class _RecordingSentimentTool(HackerNewsSentimentTool):
+    _captured_urls: set[str] = PrivateAttr(default_factory=set)
+
+    @property
+    def captured_urls(self) -> frozenset[str]:
+        return frozenset(self._captured_urls)
+
+    def _run(
+        self,
+        query: str,
+        story_limit: int = 3,
+        comments_per_story: int = 5,
+    ) -> str:
+        raw = super()._run(
+            query=query,
+            story_limit=story_limit,
+            comments_per_story=comments_per_story,
+        )
+        _capture_urls(raw, self._captured_urls)
+        return raw
+
+
+class _RecordingFeasibilityTool(GitHubFeasibilityTool):
+    _captured_urls: set[str] = PrivateAttr(default_factory=set)
+
+    @property
+    def captured_urls(self) -> frozenset[str]:
+        return frozenset(self._captured_urls)
+
+    def _run(self, query: str, limit: int = 5) -> str:
+        raw = super()._run(query=query, limit=limit)
+        _capture_urls(raw, self._captured_urls)
+        return raw
+
+
+def _dynamic_findings_guardrail(
+    branch: BranchName,
+    model: type[FindingsT],
+    tool: _RecordingMarketTool | _RecordingSentimentTool | _RecordingFeasibilityTool,
+) -> Guardrail:
+    def guardrail(output: Any) -> tuple[bool, str]:
+        raw = output.raw or ""
+        try:
+            findings = parse_raw_model(raw, model)
+        except ValueError as exc:
+            return False, f"SCHEMA: {exc}"
+        problems = findings_problems(findings, tool.captured_urls)
+        return (False, " | ".join(problems)) if problems else (True, raw)
+
+    guardrail.__name__ = f"check_{branch}_findings"
+    return guardrail
+
+
+def _single_agent_crew(agent_instance: BaseAgent, task_instance: Task) -> Crew:
+    return Crew(
+        agents=[agent_instance],
+        tasks=[task_instance],
+        process=Process.sequential,
+        memory=False,
+        verbose=True,
+    )
+
+
+@CrewBase
+class ScopeCrew:
+    agents: list[BaseAgent]
+    tasks: list[Task]
+    agents_config = "config/agents.yaml"
+    tasks_config = "config/tasks.yaml"
+
+    @agent
+    def scoper(self) -> Agent:
+        return Agent(
+            config=self.agents_config["scoper"],  # type: ignore[index]
+            tools=[],
+            llm=LLM(model=ESCALATION_MODEL),
+            allow_delegation=False,
+        )
+
+    @task
+    def scoping_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["scoping_task"],  # type: ignore[index]
+            agent=self.scoper(),
+            output_pydantic=ScopedIdea,
+            guardrails=[check_scope],
+        )
+
+    @crew
+    def crew(self) -> Crew:
+        return _single_agent_crew(self.scoper(), self.scoping_task())
+
+
+@CrewBase
+class MarketCrew:
+    agents: list[BaseAgent]
+    tasks: list[Task]
+    agents_config = "config/agents.yaml"
+    tasks_config = "config/tasks.yaml"
+
+    def __init__(self) -> None:
+        self.tool = _RecordingMarketTool()
+
+    @agent
+    def market_analyst(self) -> Agent:
+        return Agent(
+            config=self.agents_config["market_analyst"],  # type: ignore[index]
+            tools=[self.tool],
+            llm=LLM(model=CHEAP_MODEL),
+            allow_delegation=False,
+        )
+
+    @task
+    def market_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["market_task"],  # type: ignore[index]
+            agent=self.market_analyst(),
+            output_pydantic=MarketFindings,
+            guardrails=[
+                _dynamic_findings_guardrail("market", MarketFindings, self.tool)
+            ],
+        )
+
+    @crew
+    def crew(self) -> Crew:
+        return _single_agent_crew(self.market_analyst(), self.market_task())
+
+
+@CrewBase
+class SentimentCrew:
+    agents: list[BaseAgent]
+    tasks: list[Task]
+    agents_config = "config/agents.yaml"
+    tasks_config = "config/tasks.yaml"
+
+    def __init__(self) -> None:
+        self.tool = _RecordingSentimentTool()
+
+    @agent
+    def sentiment_analyst(self) -> Agent:
+        return Agent(
+            config=self.agents_config["sentiment_analyst"],  # type: ignore[index]
+            tools=[self.tool],
+            llm=LLM(model=CHEAP_MODEL),
+            allow_delegation=False,
+        )
+
+    @task
+    def sentiment_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["sentiment_task"],  # type: ignore[index]
+            agent=self.sentiment_analyst(),
+            output_pydantic=SentimentFindings,
+            guardrails=[
+                _dynamic_findings_guardrail(
+                    "sentiment", SentimentFindings, self.tool
+                )
+            ],
+        )
+
+    @crew
+    def crew(self) -> Crew:
+        return _single_agent_crew(self.sentiment_analyst(), self.sentiment_task())
+
+
+@CrewBase
+class FeasibilityCrew:
+    agents: list[BaseAgent]
+    tasks: list[Task]
+    agents_config = "config/agents.yaml"
+    tasks_config = "config/tasks.yaml"
+
+    def __init__(self) -> None:
+        self.tool = _RecordingFeasibilityTool()
+
+    @agent
+    def feasibility_analyst(self) -> Agent:
+        return Agent(
+            config=self.agents_config["feasibility_analyst"],  # type: ignore[index]
+            tools=[self.tool],
+            llm=LLM(model=CHEAP_MODEL),
+            allow_delegation=False,
+        )
+
+    @task
+    def feasibility_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["feasibility_task"],  # type: ignore[index]
+            agent=self.feasibility_analyst(),
+            output_pydantic=FeasibilityFindings,
+            guardrails=[
+                _dynamic_findings_guardrail(
+                    "feasibility", FeasibilityFindings, self.tool
+                )
+            ],
+        )
+
+    @crew
+    def crew(self) -> Crew:
+        return _single_agent_crew(
+            self.feasibility_analyst(), self.feasibility_task()
+        )
+
+
+@CrewBase
+class SynthesisCrew:
+    agents: list[BaseAgent]
+    tasks: list[Task]
+    agents_config = "config/agents.yaml"
+    tasks_config = "config/tasks.yaml"
+
+    def __init__(
+        self,
+        market: MarketFindings,
+        sentiment: SentimentFindings,
+        feasibility: FeasibilityFindings,
+    ) -> None:
+        self.market = market
+        self.sentiment = sentiment
+        self.feasibility = feasibility
+
+    @agent
+    def synthesist(self) -> Agent:
+        return Agent(
+            config=self.agents_config["synthesist"],  # type: ignore[index]
+            tools=[],
+            llm=LLM(model=ESCALATION_MODEL),
+            allow_delegation=False,
+        )
+
+    @task
+    def synthesis_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["synthesis_task"],  # type: ignore[index]
+            agent=self.synthesist(),
+            output_pydantic=Verdict,
+            guardrails=[
+                make_rubric_guardrail(
+                    self.market,
+                    self.sentiment,
+                    self.feasibility,
+                )
+            ],
+        )
+
+    @crew
+    def crew(self) -> Crew:
+        return _single_agent_crew(self.synthesist(), self.synthesis_task())
+
+
+@CrewBase
+class ReportCrew:
+    agents: list[BaseAgent]
+    tasks: list[Task]
+    agents_config = "config/agents.yaml"
+    tasks_config = "config/tasks.yaml"
+
+    def __init__(self, verdict: Verdict, tool_urls: set[str]) -> None:
+        self.verdict = verdict
+        self.tool_urls = tool_urls
+
+    @agent
+    def reporter(self) -> Agent:
+        return Agent(
+            config=self.agents_config["reporter"],  # type: ignore[index]
+            tools=[],
+            llm=LLM(model=ESCALATION_MODEL),
+            allow_delegation=False,
+        )
+
+    @task
+    def reporting_task(self) -> Task:
+        task_config = dict(self.tasks_config["reporting_task"])  # type: ignore[index]
+        citation_guardrail = str(task_config.pop("citation_guardrail"))
+        if citation_guardrail.strip() != CITATION_GUARDRAIL.strip():
+            raise ValueError(
+                "reporting_task.citation_guardrail must match CITATION_GUARDRAIL"
+            )
+        return Task(
+            config=task_config,
+            agent=self.reporter(),
+            output_pydantic=ValidationReport,
+            guardrails=[
+                make_report_guardrail(self.verdict, self.tool_urls),
+                citation_guardrail,
+            ],
+        )
+
+    @crew
+    def crew(self) -> Crew:
+        return _single_agent_crew(self.reporter(), self.reporting_task())
+
+
+__all__ = [
+    "FeasibilityCrew",
+    "MarketCrew",
+    "ReportCrew",
+    "ScopeCrew",
+    "SentimentCrew",
+    "SynthesisCrew",
+]

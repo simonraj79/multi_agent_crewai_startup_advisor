@@ -1,0 +1,41 @@
+"""Per-run capture scope propagated by CrewAI across worker threads."""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import Iterator
+
+from crewai.events.stream_context import add_stream_sink, reset_stream_sinks
+
+from brief_crew.events.adapter import StreamSinkAdapter
+
+
+ui_run_id: ContextVar[str | None] = ContextVar("brief_crew_ui_run_id", default=None)
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureContext:
+    run_id: str
+    adapter: StreamSinkAdapter
+
+
+current_capture: ContextVar[CaptureContext | None] = ContextVar(
+    "brief_crew_capture", default=None
+)
+
+
+@contextmanager
+def capture_events(context: CaptureContext) -> Iterator[CaptureContext]:
+    """Install one run-local sink and restore all ContextVars on exit."""
+
+    run_token = ui_run_id.set(context.run_id)
+    capture_token = current_capture.set(context)
+    sink_token = add_stream_sink(context.adapter)
+    try:
+        yield context
+    finally:
+        reset_stream_sinks(sink_token)
+        current_capture.reset(capture_token)
+        ui_run_id.reset(run_token)

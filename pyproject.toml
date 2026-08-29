@@ -1,0 +1,54 @@
+[project]
+name = "brief_crew"
+version = "0.1.0"
+description = "One topic in, one one-page brief out - a CrewAI Researcher/Analyst/Writer crew with a warm Pinecone cache."
+authors = [{ name = "Simon", email = "inspiring.resilience@gmail.com" }]
+# crewai requires >=3.10,<3.14. Pinned to 3.13 in .python-version as well:
+# Render services created after Feb 2026 default to 3.14, which would fail the build.
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    # crewai[tools] pins crewai-tools in strict lockstep. Do NOT add
+    # crewai[litellm]: OpenRouter is a native provider in 1.15.18 and litellm is
+    # only a fallback for providers absent from SUPPORTED_NATIVE_PROVIDERS.
+    "crewai[tools]>=1.15.18,<2.0.0",
+    # Must be named explicitly - crewai[tools] does not pull it in.
+    "firecrawl-py>=4.40.0",
+    # Package is `pinecone`, NOT the deprecated `pinecone-client`.
+    "pinecone>=9.1.0",
+    "cohere>=7.1.0",
+    "requests>=2.32.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+# Track B only - the hosted service. Not needed to run the classroom crew.
+service = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg[binary]>=3.2.0",
+]
+
+[project.scripts]
+# Track A - the three-agent sequential crew. Run this first.
+run_crew = "brief_crew.main:run_crew"
+# Track B - the Flow with the cache router.
+kickoff = "brief_crew.main:kickoff"
+plot = "brief_crew.main:plot"
+validate = "brief_crew.validator_flow:validate"
+serve = "brief_crew.service.app:serve"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/brief_crew"]
+
+[tool.crewai]
+type = "flow"
+project_id = "b3bdfe51-686a-4164-ae50-b32b74a1e47b"

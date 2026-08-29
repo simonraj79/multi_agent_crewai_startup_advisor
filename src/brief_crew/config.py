@@ -95,6 +95,20 @@ VALIDATOR_PERSIST_QUEUE_CAPACITY = 4096
 VALIDATOR_GATE_TIMEOUT_SECONDS = 1800
 
 # --------------------------------------------------------------------------
+# Human-gate expiry - PRD F03 and R-2
+#
+# F03: an unanswered gate past VALIDATOR_GATE_TIMEOUT_SECONDS is marked
+# `expired` and a frame is pushed. The run is NOT failed and NOT
+# auto-answered - it stays resumable, so a late reply still resumes it.
+#
+# R-2: `a gate_open with no gate_closed after timeout+60s raises an alert`.
+# The 60 s is that grace period; the sweep interval is how often the server
+# looks. Both belong here, never inlined at the call site.
+# --------------------------------------------------------------------------
+VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS = 60
+VALIDATOR_GATE_SWEEP_INTERVAL_SECONDS = 15.0
+
+# --------------------------------------------------------------------------
 # Validator branch cache - PRD §10.5, F17-F18
 # --------------------------------------------------------------------------
 VALIDATOR_FEASIBILITY_CACHE_ENABLED = os.getenv(
@@ -112,3 +126,43 @@ except ValueError as exc:
     raise ValueError("RUN_CONCURRENCY must be a positive integer") from exc
 if RUN_CONCURRENCY < 1:
     raise ValueError("RUN_CONCURRENCY must be a positive integer")
+
+# --------------------------------------------------------------------------
+# WebSocket inbound control channel - PRD F27/F37
+#
+# The socket now carries operator commands (gate replies), not just the
+# outbound frame stream, so every inbound message is treated as hostile until
+# proved otherwise. These three bounds are the whole defence and belong here,
+# never at the call site.
+#
+# WS_MAX_MESSAGE_BYTES caps a single inbound text/binary frame before it is
+# handed to json.loads, so a multi-megabyte body is rejected without being
+# parsed. 64 KiB is orders of magnitude above the largest legitimate gate
+# reply (a handful of short scope fields) and far below anything that would
+# strain the event loop.
+#
+# WS_MAX_GATE_FIELDS / WS_MAX_GATE_FIELD_CHARS bound the reply payload itself,
+# so a well-formed-but-abusive message cannot push thousands of keys into a
+# persisted gate answer.
+# --------------------------------------------------------------------------
+WS_MAX_MESSAGE_BYTES = 64 * 1024
+WS_MAX_GATE_FIELDS = 32
+WS_MAX_GATE_FIELD_CHARS = 8192
+
+# --------------------------------------------------------------------------
+# Fan-out performance targets - PRD section 13 and F42
+#
+# PRD risk R-3 makes these load-bearing rather than aspirational: if the
+# measured speedup misses the target, the parallel implementation is withdrawn
+# in favour of sequential execution. They live here so the benchmark harness
+# and any future acceptance gate read the same numbers.
+#
+# The RSS ceiling is 400 MB against a 512 MB Render `starter` with a ~210 MB
+# baseline. The comparison is strict (<), so exactly 400 MB is a miss.
+# --------------------------------------------------------------------------
+VALIDATOR_PERF_TARGET_FANOUT_SPEEDUP = 1.8
+VALIDATOR_PERF_TARGET_PEAK_RSS_BYTES = 400 * 1024 * 1024
+VALIDATOR_PERF_TARGET_GATE_RESUME_MS = 500.0
+VALIDATOR_PERF_TARGET_DROPPED_FRAMES = 0
+VALIDATOR_PERF_RUNS_PER_ARM = 5
+VALIDATOR_PERF_SAMPLE_INTERVAL_S = 0.025

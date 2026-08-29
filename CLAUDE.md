@@ -17,8 +17,9 @@ Verified on 2026-08-29:
 
 ```text
 CrewAI: 1.15.18
-Python tests: 65 run, 0 failures, 0 errors, 0 skipped
-Frontend: vue-tsc and Vite production build passed
+Python tests:   254 run, 0 failures, 0 errors, 1 skipped
+Frontend tests:  64 run, 0 failures (Vitest + jsdom)
+Frontend build: vue-tsc and Vite production build passed
 ```
 
 Commands used:
@@ -28,8 +29,19 @@ Commands used:
 
 Push-Location frontend
 npm run build
+npm test
 Pop-Location
 ```
+
+> The Python count was **65 for a long time, and that number was wrong.**
+> `tests/events/` and `tests/service/` had no `__init__.py`, so
+> `unittest discover` walked past them in silence - a green `OK` that never ran
+> the event spine or any of the service layer. Both are packages now. If you
+> ever add a test directory, add its `__init__.py` in the same commit, or
+> discovery will hide it and tell you everything passed.
+>
+> `pyproject.toml` configures pytest, which collects by rootdir and would have
+> caught this - but pytest is not installed in `.venv`.
 
 The test suite is deliberately no-cost: CrewAI crews, external APIs, OpenRouter, Pinecone, Cohere, and Firecrawl are mocked or replaced with deterministic runners where needed.
 
@@ -314,27 +326,105 @@ Tests cover:
 
 ## Remaining Work and Unverified Risks
 
-Do not describe all PRD features as production-complete yet. These items remain:
+Updated 2026-08-29 after the audit-and-implement pass. Items 1-6 of the
+previous list are closed; what follows is what is genuinely left.
 
-1. **Paid live acceptance run:** The fully integrated validator has not been re-run end to end with real OpenRouter, Firecrawl, Hacker News, GitHub, Pinecone, and Cohere after all service/UI work. Unit and integration coverage uses test doubles.
-2. **Fan-out benchmark:** The required five parallel versus five sequential live measurements, $\geq 1.8\times$ speedup, and peak RSS below 400 MB have not been recorded.
-3. **Live PostgreSQL exercise:** SQLAlchemy PostgreSQL DDL is supported, but the current automated suite uses SQLite. Multi-process compare-and-set behavior should be tested against a real PostgreSQL service.
-4. **Deployment artifacts:** No Render manifest, Dockerfile, or CI deployment workflow is present yet.
-5. **WebSocket gate replies:** Gate replies are implemented over HTTP. The WebSocket currently handles stream replay and ping/pong, not gate submission.
-6. **Sprite set:** The PRD's 144 downscaled character PNGs were not imported. The frontend uses the implemented vector/icon identity treatment instead.
-7. **Reporter/Scoper A/B tests:** The optional cheap-tier experiments and operator revision-rate analysis have not been run.
-8. **Firecrawl plan economics:** Actual plan rate limits and per-credit search-plus-scrape cost remain unmeasured.
-9. **Spec reconciliation:** Corrections listed in PRD Appendix B still need to be folded back into the authoritative `agents/` documents where applicable.
-10. **Feature ledger:** Synchronize the status section in `new features/feature-list.md`; its current milestone table is stale.
-11. **Test warning:** FastAPI tests emit a Starlette deprecation warning about `httpx` versus `httpx2`; tests still pass.
+### Needs money or a live host - no agent can close these
+
+1. **Paid live acceptance run.** The integrated validator has never been run end
+   to end against real OpenRouter, Firecrawl, Hacker News, GitHub, Pinecone and
+   Cohere. Every test uses doubles. Zero-fabricated-citation closure over an
+   acceptance set is therefore unverified.
+2. **Live fan-out measurement (F42, Q1).** The harness is built and tested:
+
+   ```powershell
+   .\.venv\Scripts\python.exe scriptsench_fanout.py --live --yes --runs 5
+   ```
+
+   Synthetic mode measures orchestration overhead only and reports the speedup
+   as **advisory**, because in that mode the ratio is a property of
+   `--branch-seconds` rather than of the system. The number that does transfer
+   is ~1.0-1.1 s of fixed serial overhead: clearing speedup `t` needs branch
+   latency `B >= O(t-1)/(3-t)`, i.e. ~0.74 s at `t=1.8`. PRD section 14 puts
+   real Firecrawl scrapes at 10-30 s, projecting 2.8x-2.9x. Two things could
+   still sink it: unequal branch latencies, and GitHub's shared 10 req/min
+   per-IP limit serializing the feasibility branch (R-7).
+3. **Live PostgreSQL 18 exercise.** The database was upgraded from 17 to 18;
+   `render.yaml` and the specs now say 18. Persistence is dialect-agnostic and
+   tested on SQLite, so the untested surface is not the schema but the
+   concurrency: `pending_feedback` and the gate reply both use
+   `UPDATE ... WHERE ... ` + `rowcount` compare-and-set, which SQLite's
+   single-writer model cannot stress. Test two processes replying to one gate.
+4. **Firecrawl plan economics (Q3)** and the **Reporter/Scoper A/B tests (Q4).**
+
+### Decisions for a human, not work to schedule
+
+5. **The M/C/F/X rubric anchors are a derivation, not a transcription.** PRD
+   section 10.2 writes out only the **Demand** ladder, and labels it
+   *"Illustrative"*. The other four ladders did not exist anywhere in the repo,
+   so they were derived from the PRD's stated rules and floor definitions and
+   recorded as such in the `config.py` comment. They are now **binding** at 0.85
+   token overlap and quoted verbatim in `tasks.yaml`. Read them before the paid
+   acceptance run: if they are wrong, every verdict inherits the error and the
+   guardrail enforces it confidently.
+6. **Sprites (F34).** The PRD's 144 downscaled character PNGs are not in the
+   repo, so this cannot be implemented as specified. The frontend ships a
+   vector/icon identity instead. Either amend the criterion or supply the
+   assets.
+7. **Dead scaffold.** `frontend/src/components/HelloWorld.vue` and
+   `src/style.css` are imported by nothing. `HelloWorld.vue` is the only
+   importer of `hero.png`, which `.gitignore` was specifically amended to keep.
+   Delete all three together or keep all three.
+
+### Known gaps with a clear fix
+
+8. **Tool payload fields are dropped before the schema sees them.** `Thread`
+   now has `points` / `num_comments` and `Repo` has `archived`, but
+   `tools/hn_sentiment.py` and `tools/github_feasibility.py` never read those
+   fields out of the API responses they already fetch, so they stay `None`.
+9. **Median source age is biased young.** `tools/market_research._publication_date`
+   falls back to the *retrieval* timestamp when Firecrawl reports no publication
+   date, so `Evidence.dated` can silently be "today" and the staleness
+   multiplier reads optimistic. The envelope already computes a
+   `used_retrieval_date` flag; it needs to carry it.
+10. **Scraped page bodies chunk poorly.** `FirecrawlScrapeWebsiteTool` has no
+    `result_schema`, so CrewAI hands both the agent and the capture sink
+    `str(Document)` - a pydantic repr. Provenance is correct regardless; only
+    chunk quality suffers. A `result_schema` or a thin subclass fixes it.
+11. **`serve()` binds `127.0.0.1`.** Correct for local use, but it means the
+    registered console script cannot be a container entry point without
+    `HOST=0.0.0.0`. `render.yaml` sidesteps this with an explicit uvicorn
+    command.
+12. **Mock and live graphs use different node ids.** `MOCK_GRAPH` uses
+    `scoper` / `market_analyst`; the live descriptor uses Flow method names and
+    adds router/revise nodes the mock lacks. Each is self-consistent, so nothing
+    breaks - but the mock is a stylisation, not a rehearsal of the live topology.
+13. **An intermittent `RecursionError` in CrewAI's `Flow.resume()`** was seen
+    once in ~6 gate-probe runs and never reproduced in a 10-round stress loop.
+    It is in `crewai`, not this repo. Resume is what the whole Scenario C
+    recovery story rests on, so watch for it before production gate work.
+14. **`downloadLogs` has no test** - it calls `URL.createObjectURL`, which jsdom
+    does not implement. It needs a browser-level test to be worth anything.
 
 ## Recommended Next Sequence
 
-1. Reconcile `new features/feature-list.md` against the current tests and this handoff.
-2. Run one real validator idea through both human gates with CrewAI traces enabled and inspect citation closure before sharing the trace link.
-3. Measure fan-out wall time and peak RSS over five parallel and five sequential live runs.
-4. Test `PostgresFlowPersistence` against a real PostgreSQL instance, including restart recovery and duplicate gate replies from two processes.
-5. Add deployment configuration and verify health/readiness, graceful shutdown, and persistence flushing on the target host.
+Everything that can be done without spending money has been done. The next
+three steps all cost something, so they are ordered by what they unblock.
+
+1. **Read the M/C/F/X rubric anchors in `config.py`** (remaining-work item 5).
+   They are binding and they are a derivation. Doing this first means the paid
+   run scores against a rubric you have actually approved.
+2. **Push to a git remote and apply the Blueprint.** The repo has commits but no
+   remote, and Render deploys from a hosted repo - this is the first hard
+   blocker. On apply, check the preview *links* the hand-created
+   `agentic-crew-ai-db` rather than proposing a second instance, and paste
+   `VITE_API_URL` as a full origin once the API URL exists.
+3. **Run one real idea through both gates with traces enabled**, and inspect
+   citation closure before sharing any trace link. This closes item 1 and gives
+   the first live PG 18 exercise (item 3) for free.
+4. **Run the live benchmark** (item 2) once a real run is known to work.
+5. **Re-test two-process gate contention against PG 18** - the one thing a real
+   run does not exercise on its own.
 
 ## CrewAI Traces
 

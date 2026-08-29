@@ -44,31 +44,31 @@ describe('parallel fan-out edge animation', () => {
   })
 
   /**
-   * The regression test for the single-`activeEdgeId` defect: three sibling
-   * branches leave the scope gate together and the graph has to show all three
-   * moving, not just the most recent one.
+   * The regression test for the single-`activeEdgeId` defect: `route_scope`
+   * emits one `scope_approved` event that releases all three branches at once,
+   * and the graph has to show all three moving, not just the most recent one.
    */
   it('animates all three research branches simultaneously', async () => {
-    api.emit(edgeFrame(build, 'scope_gate', 'market_analyst'))
-    api.emit(edgeFrame(build, 'scope_gate', 'sentiment_analyst'))
-    api.emit(edgeFrame(build, 'scope_gate', 'feasibility_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_market'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_sentiment'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_feasibility'))
     await flush()
 
     expect(activeEdges(run)).toEqual([
-      'scope_gate-feasibility_analyst',
-      'scope_gate-market_analyst',
-      'scope_gate-sentiment_analyst',
+      'route_scope->research_feasibility:scope_approved',
+      'route_scope->research_market:scope_approved',
+      'route_scope->research_sentiment:scope_approved',
     ])
   })
 
   it('gives every edge its own lifetime when the branches start apart', async () => {
-    api.emit(edgeFrame(build, 'scope_gate', 'market_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_market'))
     await flush()
     vi.advanceTimersByTime(900)
-    api.emit(edgeFrame(build, 'scope_gate', 'sentiment_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_sentiment'))
     await flush()
     vi.advanceTimersByTime(900)
-    api.emit(edgeFrame(build, 'scope_gate', 'feasibility_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_feasibility'))
     await flush()
 
     expect(activeEdges(run)).toHaveLength(3)
@@ -78,8 +78,8 @@ describe('parallel fan-out edge animation', () => {
     vi.advanceTimersByTime(EDGE_ACTIVE_MS - 1800 + 10)
     await flush()
     expect(activeEdges(run)).toEqual([
-      'scope_gate-feasibility_analyst',
-      'scope_gate-sentiment_analyst',
+      'route_scope->research_feasibility:scope_approved',
+      'route_scope->research_sentiment:scope_approved',
     ])
 
     vi.advanceTimersByTime(EDGE_ACTIVE_MS)
@@ -88,47 +88,47 @@ describe('parallel fan-out edge animation', () => {
   })
 
   it('stops animating an edge as soon as its branch completes', async () => {
-    api.emit(edgeFrame(build, 'scope_gate', 'market_analyst'))
-    api.emit(edgeFrame(build, 'scope_gate', 'sentiment_analyst'))
-    api.emit(edgeFrame(build, 'scope_gate', 'feasibility_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_market'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_sentiment'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_feasibility'))
     await flush()
 
-    api.emit(build('node_state', { event_type: 'NODE_END', node_id: 'market_analyst' }))
+    api.emit(build('node_state', { event_type: 'NODE_END', node_id: 'research_market' }))
     await flush()
 
     expect(activeEdges(run)).toEqual([
-      'scope_gate-feasibility_analyst',
-      'scope_gate-sentiment_analyst',
+      'route_scope->research_feasibility:scope_approved',
+      'route_scope->research_sentiment:scope_approved',
     ])
-    expect(run.graphNodes.value.find((node) => node.id === 'market_analyst')?.data?.state).toBe('completed')
+    expect(run.graphNodes.value.find((node) => node.id === 'research_market')?.data?.state).toBe('completed')
   })
 
   it('stops animating an edge when its branch errors', async () => {
-    api.emit(edgeFrame(build, 'scope_gate', 'sentiment_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_sentiment'))
     await flush()
-    api.emit(build('node_state', { event_type: 'NODE_ERROR', level: 'ERROR', node_id: 'sentiment_analyst' }))
+    api.emit(build('node_state', { event_type: 'NODE_ERROR', level: 'ERROR', node_id: 'research_sentiment' }))
     await flush()
 
     expect(activeEdges(run)).toEqual([])
   })
 
   it('keeps a re-taken edge alive for a fresh interval', async () => {
-    api.emit(edgeFrame(build, 'market_analyst', 'synthesist'))
+    api.emit(edgeFrame(build, 'research_market', 'synthesize'))
     await flush()
     vi.advanceTimersByTime(3000)
-    api.emit(edgeFrame(build, 'sentiment_analyst', 'synthesist'))
+    api.emit(edgeFrame(build, 'research_sentiment', 'synthesize'))
     await flush()
 
     // The first edge is nearly expired, the second has just started.
     vi.advanceTimersByTime(400)
     await flush()
-    expect(activeEdges(run)).toEqual(['sentiment_analyst-synthesist'])
+    expect(activeEdges(run)).toEqual(['research_sentiment->synthesize:'])
   })
 
   it('clears every traversal when the run reaches a terminal state', async () => {
     const baseline = settledTimerCount()
-    api.emit(edgeFrame(build, 'scope_gate', 'market_analyst'))
-    api.emit(edgeFrame(build, 'scope_gate', 'sentiment_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_market'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_sentiment'))
     await flush()
     expect(activeEdges(run)).toHaveLength(2)
 
@@ -141,9 +141,9 @@ describe('parallel fan-out edge animation', () => {
 
   it('carries no edge state or timer across a relaunch', async () => {
     const baseline = settledTimerCount()
-    api.emit(edgeFrame(build, 'scope_gate', 'market_analyst'))
-    api.emit(edgeFrame(build, 'scope_gate', 'sentiment_analyst'))
-    api.emit(edgeFrame(build, 'scope_gate', 'feasibility_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_market'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_sentiment'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_feasibility'))
     await flush()
     expect(settledTimerCount()).toBe(baseline + 3)
 
@@ -157,15 +157,15 @@ describe('parallel fan-out edge animation', () => {
 
     // The fresh run still animates: cleanup did not disable the mechanism.
     const next = frameFactory()
-    api.emit(edgeFrame(next, 'scoper', 'scope_gate'))
+    api.emit(edgeFrame(next, 'scope_idea', 'confirm_scope'))
     await flush()
-    expect(activeEdges(run)).toEqual(['scoper-scope_gate'])
+    expect(activeEdges(run)).toEqual(['scope_idea->confirm_scope:'])
   })
 
   it('leaks no edge timers on unmount', async () => {
     const baseline = settledTimerCount()
-    api.emit(edgeFrame(build, 'scope_gate', 'market_analyst'))
-    api.emit(edgeFrame(build, 'scope_gate', 'feasibility_analyst'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_market'))
+    api.emit(edgeFrame(build, 'route_scope', 'research_feasibility'))
     await flush()
     expect(settledTimerCount()).toBe(baseline + 2)
 

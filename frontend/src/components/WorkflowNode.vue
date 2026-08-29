@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { Bot, Check, FileText, Inbox, ShieldCheck, TriangleAlert } from 'lucide-vue-next'
+import { Bot, Check, Cog, FileText, Inbox, ShieldCheck, Split, TriangleAlert } from 'lucide-vue-next'
 import type { StudioNodeData } from '../composables/useValidatorRun'
 
 const props = defineProps<{ data: StudioNodeData }>()
@@ -28,9 +28,22 @@ const quarantineLabel = computed(() =>
     ? 'No unattributed frames'
     : `${quarantineCount.value} unattributed frame${quarantineCount.value === 1 ? '' : 's'}`,
 )
-const ariaLabel = computed(() =>
-  isQuarantine.value ? `${props.data.label}, ${quarantineLabel.value}` : `${props.data.label}, ${stateLabel.value}`,
-)
+
+// A router decides where the run goes next by reading a structured reply. It
+// makes no model call at all (PRD §7.0), so it is drawn as plumbing between the
+// stages rather than as another stage: compact, flat, dashed, no usage block.
+// Costing and latency belong to the agent cards, and the graph should say so.
+const isRouter = computed(() => props.data.kind === 'router')
+// `step` and `start` nodes are deterministic too - cache reads, index writes,
+// file persistence - so they carry the same "nothing is spent here" marker
+// while keeping a full card, because they do real work.
+const isDeterministic = computed(() => isRouter.value || props.data.kind === 'step')
+
+const ariaLabel = computed(() => {
+  if (isQuarantine.value) return `${props.data.label}, ${quarantineLabel.value}`
+  if (isRouter.value) return `${props.data.label}, deterministic router, no model call, ${stateLabel.value}`
+  return `${props.data.label}, ${stateLabel.value}`
+})
 </script>
 
 <template>
@@ -44,20 +57,28 @@ const ariaLabel = computed(() =>
 
     <div class="node-icon" aria-hidden="true">
       <Inbox v-if="isQuarantine" :size="17" :stroke-width="1.8" />
+      <Split v-else-if="isRouter" :size="15" :stroke-width="1.8" />
       <ShieldCheck v-else-if="data.kind === 'gate'" :size="17" :stroke-width="1.8" />
       <FileText v-else-if="data.kind === 'output'" :size="17" :stroke-width="1.8" />
+      <Cog v-else-if="data.kind === 'step'" :size="17" :stroke-width="1.8" />
       <Bot v-else :size="17" :stroke-width="1.8" />
     </div>
 
     <div class="node-copy">
       <span class="node-eyebrow">{{ data.eyebrow }}</span>
-      <strong>{{ data.label }}</strong>
-      <p>{{ data.description }}</p>
+      <strong :title="isRouter ? data.description : undefined">{{ data.label }}</strong>
+      <p v-if="!isRouter">{{ data.description }}</p>
+      <span
+        v-if="isDeterministic"
+        class="node-deterministic"
+        data-testid="deterministic-tag"
+        title="Deterministic: this node makes no model call."
+      >0 LLM CALLS</span>
       <div v-if="data.model || data.tool" class="node-meta">
         <span v-if="data.model">{{ data.model }}</span>
         <span v-if="data.tool">{{ data.tool }}</span>
       </div>
-      <dl v-if="hasUsage && !isQuarantine" class="node-usage" aria-label="Node usage">
+      <dl v-if="hasUsage && !isQuarantine && !isRouter" class="node-usage" aria-label="Node usage">
         <div><dt>Calls</dt><dd>{{ data.usage.callCount }}</dd></div>
         <div><dt>Tokens</dt><dd>{{ tokenCount }}</dd></div>
         <div><dt>Cost</dt><dd>${{ data.usage.costUsd.toFixed(4) }}</dd></div>
@@ -166,6 +187,52 @@ const ariaLabel = computed(() =>
 }
 
 .is-holding .quarantine-count { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
+
+/*
+ * Routers: plumbing, not a stage. A deterministic branch with zero model calls
+ * behind it must not read like one of the six agents, so it keeps the column
+ * width (the graph stays a clean spine) and gives up everything else - the
+ * gradient border, the card height, the description, the usage block and the
+ * running glow. These rules sit after the state rules on purpose: a router that
+ * is running or completed must still look like a router.
+ */
+.workflow-node.is-router {
+  min-height: 0;
+  padding: 9px 12px;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  color: var(--text-muted);
+  background-image: none;
+  background-color: var(--surface-well);
+  border: 1px dashed var(--border-default);
+  box-shadow: none;
+  animation: none;
+}
+
+.is-router .node-icon { width: 26px; height: 26px; color: var(--text-muted); background: transparent; border-color: var(--border-default); }
+.is-router .node-copy strong { color: var(--text-body); font: 600 var(--fs-13)/1.15 var(--font-mono); }
+.is-router .node-state { top: 9px; right: 11px; }
+
+.workflow-node.is-router.is-running { border-style: solid; border-color: var(--accent-cyan); }
+.workflow-node.is-router.is-running .node-icon { color: var(--accent-cyan); }
+.workflow-node.is-router.is-completed { border-style: solid; border-color: rgba(170, 255, 205, 0.3); }
+.workflow-node.is-router.is-error { border-style: solid; border-color: var(--err-border); }
+
+/* Deterministic marker. Shared with `step`/`start` nodes, which keep a full
+   card because they do real I/O, but spend nothing on a model either. */
+.node-deterministic {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 6px;
+  color: var(--text-40);
+  font: 700 9px/1.3 var(--font-mono);
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-pill);
+}
+
+.is-step .node-icon { color: var(--accent-blue); background: rgba(160, 196, 255, 0.08); border-color: rgba(160, 196, 255, 0.22); }
 
 .node-icon {
   display: grid;

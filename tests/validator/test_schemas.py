@@ -205,6 +205,19 @@ class VerdictTests(unittest.TestCase):
 
         self.assertEqual(result.confidence, 0.51)
 
+    def test_unknown_source_age_takes_the_worst_staleness_band(self) -> None:
+        """A null median is not "no penalty"; it is the 0.70 band already."""
+        coverage: dict[str, object] = {
+            "market_coverage": 1.0,
+            "sentiment_coverage": 1.0,
+            "feasibility_coverage": 1.0,
+        }
+        fresh = verdict(median_market_source_age_months=0.0, **coverage)
+        unknown = verdict(median_market_source_age_months=None, **coverage)
+
+        self.assertEqual(fresh.confidence, 1.00)
+        self.assertEqual(unknown.confidence, 0.70)
+
     def test_model_kill_criteria_survive_validation(self) -> None:
         """F09: judgement is kept, arithmetic is overwritten."""
         supplied = [
@@ -338,6 +351,25 @@ class SpecFieldTests(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             self.thread(points=-1)
+
+    def evidence(self, **overrides: object) -> Evidence:
+        values: dict[str, object] = {
+            "claim": "Independent clinics budget for scheduling software.",
+            "url": "https://example.com/source",
+            "publisher": "Publisher",
+            "dated": "2026-08-29",
+            "retrieved_via": "firecrawl",
+        }
+        values.update(overrides)
+        return Evidence.model_validate(values)
+
+    def test_evidence_flags_a_retrieval_time_fallback(self) -> None:
+        """F12: `dated` alone cannot say whether the page published that date."""
+        self.assertFalse(self.evidence().dated_is_retrieval_time)
+        self.assertTrue(self.evidence(dated_is_retrieval_time=True).dated_is_retrieval_time)
+
+        with self.assertRaises(ValidationError):
+            self.evidence(dated_is_retrieval_time="yes")
 
     def test_repo_archived_state_is_tri_state(self) -> None:
         self.assertIsNone(self.repo().archived)

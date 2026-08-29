@@ -79,6 +79,14 @@ def _claim(item: Any) -> str:
 
 
 def _publication_date(item: Any, fallback: str) -> tuple[str, bool]:
+    """The page's own date, or ``(retrieval time, True)`` when it reports none.
+
+    The second element is the honesty flag. It reaches `Evidence` as
+    `dated_is_retrieval_time` so the confidence path can tell an age it measured
+    from one it merely observed; without it an undated page reads as published
+    today, and the staleness multiplier is kindest exactly where recency is
+    least known.
+    """
     metadata = _metadata(item)
     for key in (
         "published_time",
@@ -193,6 +201,7 @@ class MarketResearchTool(BaseTool):
                     "url": url,
                     "publisher": _publisher(url, item),
                     "dated": dated,
+                    "dated_is_retrieval_time": used_retrieval_date,
                     "retrieved_via": "firecrawl",
                 }
             )
@@ -214,7 +223,9 @@ class MarketResearchTool(BaseTool):
             notes_parts.append(f"Omitted {missing_url_count} result(s) with no source URL.")
         if retrieval_dated_count:
             notes_parts.append(
-                f"Used retrieval time for {retrieval_dated_count} result(s) without a publication date."
+                f"Used retrieval time for {retrieval_dated_count} result(s) without a publication "
+                "date; each is flagged dated_is_retrieval_time=true and must not be reported as "
+                "freshly published."
             )
         return _envelope(
             status="ok",

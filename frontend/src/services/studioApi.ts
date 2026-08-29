@@ -16,6 +16,14 @@ import type {
 export type TransportMode = 'probing' | 'live' | 'mock'
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline'
 
+/** The two shapes `GET /api/runs/{run_id}/logs?format=` will serve. */
+export type LogFormat = 'ndjson' | 'zip'
+
+const LOG_FORMATS: Record<LogFormat, { extension: string; mimeType: string }> = {
+  ndjson: { extension: 'ndjson', mimeType: 'application/x-ndjson' },
+  zip: { extension: 'zip', mimeType: 'application/zip' },
+}
+
 /**
  * How long a gate reply sent over the socket waits for its `gate_ack` or
  * `error` before the operator is told to try again. The server applies the
@@ -321,25 +329,30 @@ export class StudioApi {
     window.setTimeout(() => run.handlers?.onFrame(frame), 380)
   }
 
-  async downloadLogs(runIdValue: string): Promise<void> {
-    let blob: Blob
+  async downloadLogs(runIdValue: string, format: LogFormat = 'ndjson'): Promise<void> {
     if (this.mode === 'live') {
-      const response = await fetch(`${this.baseUrl}/api/runs/${encodeURIComponent(runIdValue)}/logs?format=ndjson`)
+      const response = await fetch(
+        `${this.baseUrl}/api/runs/${encodeURIComponent(runIdValue)}/logs?format=${encodeURIComponent(format)}`,
+      )
       if (!response.ok) throw new Error(`Log download failed (${response.status})`)
-      blob = await response.blob()
-    } else {
-      const content = (this.mockRuns.get(runIdValue)?.emitted ?? [])
-        .map((frame) => JSON.stringify({ type: 'frame', data: frame }))
-        .join('\n')
-      blob = new Blob([content], { type: 'application/x-ndjson' })
+      // The blob is only created once the response is known good, so a failed
+      // request never reaches `saveBlob` and never mints an object URL.
+      saveBlob(await response.blob(), this.logFilename(runIdValue, LOG_FORMATS[format].extension))
+      return
     }
 
-    const href = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = href
-    anchor.download = `validator-${runIdValue.slice(0, 8)}.ndjson`
-    anchor.click()
-    URL.revokeObjectURL(href)
+    // The mock transport has no server to archive anything, so it always hands
+    // back the NDJSON it holds in memory - and names the file for what it is
+    // rather than for what was asked.
+    const content = (this.mockRuns.get(runIdValue)?.emitted ?? [])
+      .map((frame) => JSON.stringify({ type: 'frame', data: frame }))
+      .join('\n')
+    const blob = new Blob([content], { type: LOG_FORMATS.ndjson.mimeType })
+    saveBlob(blob, this.logFilename(runIdValue, LOG_FORMATS.ndjson.extension))
+  }
+
+  private logFilename(runIdValue: string, extension: string): string {
+    return `validator-${runIdValue.slice(0, 8)}.${extension}`
   }
 
   private subscribeMock(runIdValue: string, handlers: StreamHandlers): () => void {
@@ -378,6 +391,37 @@ export class StudioApi {
       throw new Error(detail || `Request failed (${response.status})`)
     }
     return response.json() as Promise<T>
+  }
+}
+
+/**
+ * Hands a blob to the browser's download machinery.
+ *
+ * An object URL is a document-lifetime entry in the blob URL store: nothing
+ * reclaims it, so every one that is minted has to be revoked or the blob stays
+ * resident until the tab closes. The revoke is in `finally` because `click()`
+ * can throw - a blocked popup, a detached document during teardown - and a
+ * throw on the happy path was the one way this could leak.
+ *
+ * The revoke is synchronous, immediately after the click. Chromium and Firefox
+ * both resolve the blob URL while the click is still being dispatched, so the
+ * download is already underway by then. WebKit has historically been less
+ * forgiving; if a Safari download ever comes back empty, this is the line, and
+ * the fix is to defer the revoke rather than to drop it.
+ */
+function saveBlob(blob: Blob, filename: string): void {
+  const href = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = href
+  anchor.download = filename
+  anchor.rel = 'noopener'
+  anchor.style.display = 'none'
+  document.body.append(anchor)
+  try {
+    anchor.click()
+  } finally {
+    anchor.remove()
+    URL.revokeObjectURL(href)
   }
 }
 

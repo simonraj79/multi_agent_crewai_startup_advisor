@@ -25,13 +25,18 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from crewai.utilities.string_utils import sanitize_tool_name
+
 from brief_crew.config import (
     MAX_INDEX_AGE_DAYS,
     MIN_RERANK_HITS,
     MIN_RERANK_SCORE,
 )
+from brief_crew.crews.brief_crew.brief_crew import BriefCrew
+from brief_crew.crews.brief_crew.scrape_tool import ScrapedPage
 from brief_crew.main import (
     DEFAULT_TOPIC,
+    SCRAPE_TOOL_NAME,
     BriefFlow,
     _age_days,
     _usage_dict,
@@ -227,6 +232,42 @@ class PersistOutputTests(unittest.TestCase):
             with patch("brief_crew.main.OUTPUT_DIR", out.parent):
                 flow.persist()
             self.assertTrue((out.parent / "brief.md").is_file())
+
+
+class ResearcherToolContractTests(unittest.TestCase):
+    """The Researcher's tools are wiring the rest of Track B depends on.
+
+    No cost: constructing an `Agent`, an `LLM` and the tool objects issues no
+    request. Nothing here calls `kickoff`.
+    """
+
+    def test_track_a_owns_the_retrieval_tool_and_track_b_does_not(self) -> None:
+        # Under the Flow, retrieval has already run and already failed the
+        # staleness gate before this agent is reached; leaving the tool on
+        # would pay for a second embed and rerank to get the same miss.
+        self.assertEqual(
+            [sanitize_tool_name(tool.name) for tool in BriefCrew(track="A").researcher().tools],
+            ["retrieve_and_rerank", "firecrawl_web_search_tool", SCRAPE_TOOL_NAME],
+        )
+        self.assertEqual(
+            [sanitize_tool_name(tool.name) for tool in BriefCrew(track="B").researcher().tools],
+            ["firecrawl_web_search_tool", SCRAPE_TOOL_NAME],
+        )
+
+    def test_the_scrape_tool_is_the_one_the_capture_sink_listens_for(self) -> None:
+        # `main._capture_scraped_pages` filters tool events on this exact
+        # string. Rename the tool and every capture stops silently: no error,
+        # no empty index, just a corpus that quietly stops growing.
+        scrape = BriefCrew(track="B").researcher().tools[-1]
+        self.assertEqual(sanitize_tool_name(scrape.name), SCRAPE_TOOL_NAME)
+
+    def test_the_scrape_tool_declares_the_result_schema(self) -> None:
+        # Without it CrewAI's `_format_tool_output_for_agent` falls through to
+        # `str(raw_result)`, so the Researcher and the capture sink both get a
+        # pydantic repr: no headings, no blank lines, and a corpus chunked on
+        # character counts. See crews/brief_crew/scrape_tool.py.
+        scrape = BriefCrew(track="B").researcher().tools[-1]
+        self.assertIs(scrape.result_schema, ScrapedPage)
 
 
 class EntryPointTests(unittest.TestCase):

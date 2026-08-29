@@ -84,8 +84,8 @@ describe('run context persistence', () => {
     api.snapshot = { ...emptySnapshot(RUN_ID, 'waiting'), frames: { count: 2, dropped: 1, first_seq: 1, last_seq: 2 } }
     const build = frameFactory()
     api.storedFrames = [
-      build('node_state', { event_type: 'NODE_START', node_id: 'scoper' }),
-      build('node_state', { event_type: 'NODE_END', node_id: 'scoper' }),
+      build('node_state', { event_type: 'NODE_START', node_id: 'scope_idea' }),
+      build('node_state', { event_type: 'NODE_END', node_id: 'scope_idea' }),
     ]
 
     ;[run, app] = withSetup(() => useValidatorRun(api))
@@ -96,7 +96,7 @@ describe('run context persistence', () => {
     expect(run.status.value).toBe('waiting')
     expect(run.lastSequence.value).toBe(2)
     expect(run.droppedFrames.value).toBe(1)
-    expect(run.graphNodes.value.find((node) => node.id === 'scoper')?.data?.state).toBe('completed')
+    expect(run.graphNodes.value.find((node) => node.id === 'scope_idea')?.data?.state).toBe('completed')
     // The stream is reattached from the recovered cursor, not from zero.
     expect(api.subscribeCalls).toEqual([{ runId: RUN_ID, after: 2 }])
     // Still in flight, so the pointer survives for the next refresh.

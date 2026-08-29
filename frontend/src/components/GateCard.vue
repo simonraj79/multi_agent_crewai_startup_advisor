@@ -125,8 +125,11 @@ function submit(outcome: string): void {
           :title="expired ? `${option.label} — recorded as a late reply` : option.label"
           @click="submit(option.id)"
         >
-          <RefreshCw v-if="option.emphasis === 'danger'" :size="15" aria-hidden="true" />
-          <Check v-else :size="15" aria-hidden="true" />
+          <!-- The live service sends `approve` with emphasis "primary" and
+               `revise` with no emphasis at all, so keying the tick off the
+               absence of "danger" put a tick on the revise button. -->
+          <Check v-if="option.emphasis === 'primary'" :size="15" aria-hidden="true" />
+          <RefreshCw v-else :size="15" aria-hidden="true" />
           {{ option.label }}<span v-if="expired" class="late-tag">late</span>
         </button>
       </div>
@@ -160,7 +163,9 @@ function submit(outcome: string): void {
 .gate-field input { width: 100%; min-height: 40px; padding: 8px 9px; color: var(--text-body); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); outline: 0; }
 .gate-field input:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
 .gate-field input[readonly] { color: var(--text-muted); }
-.gate-actions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px; margin-top: 13px; }
+/* The server decides how many options a gate has and in what order, so the row
+   must not assume two with the primary second. */
+.gate-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 13px; }
 .gate-expiry { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--text-40); font-size: var(--fs-11); }
 .gate-expiry time { margin-left: auto; font-family: var(--font-mono); }
 /* Amber, not red: a passed deadline is a notice, not a failure. */

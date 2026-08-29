@@ -1,6 +1,6 @@
 import { createApp, type App } from 'vue'
 import { MOCK_GRAPH } from '../src/data/mockGraph'
-import type { StreamHandlers, StudioApiLike, TransportMode } from '../src/services/studioApi'
+import type { LogFormat, StreamHandlers, StudioApiLike, TransportMode } from '../src/services/studioApi'
 import type {
   FrameData,
   FrameKind,
@@ -67,7 +67,7 @@ export class FakeStudioApi implements StudioApiLike {
   unsubscribeCount = 0
   gateReplies: Array<{ runId: string; gateId: string; reply: GateReply }> = []
   cancelled: string[] = []
-  downloaded: string[] = []
+  downloaded: Array<{ runId: string; format: LogFormat }> = []
   getRunError: Error | null = null
   runIdToIssue = RUN_ID
 
@@ -111,8 +111,8 @@ export class FakeStudioApi implements StudioApiLike {
     this.cancelled.push(runIdValue)
   }
 
-  async downloadLogs(runIdValue: string): Promise<void> {
-    this.downloaded.push(runIdValue)
+  async downloadLogs(runIdValue: string, format: LogFormat = 'ndjson'): Promise<void> {
+    this.downloaded.push({ runId: runIdValue, format })
   }
 
   /** Pushes a frame down the same path the live socket uses. */

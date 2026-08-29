@@ -39,13 +39,13 @@ describe('frame handling', () => {
   })
 
   it('opens a gate and moves the run to waiting', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'scope_gate', level: 'WARNING', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', level: 'WARNING', details: GATE_DETAILS }))
     await flush()
 
     expect(run.status.value).toBe('waiting')
     expect(run.pendingGate.value).toMatchObject({
       gateId: 'scope-confirmation',
-      nodeId: 'scope_gate',
+      nodeId: 'confirm_scope',
       title: 'Confirm scope',
       editable: true,
       expired: false,
@@ -58,10 +58,10 @@ describe('frame handling', () => {
    * the gate stays open, the run stays WAITING and the reply path stays live.
    */
   it('marks an open gate expired without closing it or failing the run', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'scope_gate', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', details: GATE_DETAILS }))
     api.emit(build('gate_expired', {
       event_type: 'GATE_EXPIRED',
-      node_id: 'scope_gate',
+      node_id: 'confirm_scope',
       level: 'WARNING',
       details: { gate_id: 'scope-confirmation', overdue_seconds: 95 },
     }))
@@ -75,10 +75,10 @@ describe('frame handling', () => {
   })
 
   it('raises the alert flag on gate_alert and keeps the gate answerable', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'scope_gate', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', details: GATE_DETAILS }))
     api.emit(build('gate_alert', {
       event_type: 'GATE_ALERT',
-      node_id: 'scope_gate',
+      node_id: 'confirm_scope',
       level: 'WARNING',
       details: { gate_id: 'scope-confirmation', overdue_seconds: 600 },
     }))
@@ -95,7 +95,7 @@ describe('frame handling', () => {
   })
 
   it('ignores an expiry notice aimed at a different gate', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'scope_gate', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', details: GATE_DETAILS }))
     api.emit(build('gate_expired', {
       event_type: 'GATE_EXPIRED',
       details: { gate_id: 'verdict-review', overdue_seconds: 12 },
@@ -106,11 +106,11 @@ describe('frame handling', () => {
   })
 
   it('closes the gate and resumes the run on gate_closed', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'scope_gate', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', details: GATE_DETAILS }))
     await flush()
     api.emit(build('gate_closed', {
       event_type: 'GATE_CLOSED',
-      node_id: 'scope_gate',
+      node_id: 'confirm_scope',
       details: { gate_id: 'scope-confirmation', outcome: 'scope_ok' },
     }))
     await flush()
@@ -118,28 +118,28 @@ describe('frame handling', () => {
     expect(run.pendingGate.value).toBeNull()
     expect(run.gateSubmitting.value).toBe(false)
     expect(run.status.value).toBe('running')
-    expect(run.graphNodes.value.find((node) => node.id === 'scope_gate')?.data?.state).toBe('completed')
+    expect(run.graphNodes.value.find((node) => node.id === 'confirm_scope')?.data?.state).toBe('completed')
   })
 
   it('walks a node through running, waiting, completed and error', async () => {
     const stateOf = (id: string) => run.graphNodes.value.find((node) => node.id === id)?.data?.state
 
-    api.emit(build('node_state', { event_type: 'NODE_START', node_id: 'scoper' }))
+    api.emit(build('node_state', { event_type: 'NODE_START', node_id: 'scope_idea' }))
     await flush()
-    expect(stateOf('scoper')).toBe('running')
+    expect(stateOf('scope_idea')).toBe('running')
 
-    api.emit(build('node_state', { event_type: 'NODE_WAITING', node_id: 'scope_gate' }))
+    api.emit(build('node_state', { event_type: 'NODE_WAITING', node_id: 'confirm_scope' }))
     await flush()
-    expect(stateOf('scope_gate')).toBe('waiting')
+    expect(stateOf('confirm_scope')).toBe('waiting')
     expect(run.status.value).toBe('waiting')
 
-    api.emit(build('node_state', { event_type: 'NODE_END', node_id: 'scoper' }))
+    api.emit(build('node_state', { event_type: 'NODE_END', node_id: 'scope_idea' }))
     await flush()
-    expect(stateOf('scoper')).toBe('completed')
+    expect(stateOf('scope_idea')).toBe('completed')
 
-    api.emit(build('node_state', { event_type: 'NODE_FAILED', level: 'ERROR', node_id: 'market_analyst' }))
+    api.emit(build('node_state', { event_type: 'NODE_FAILED', level: 'ERROR', node_id: 'research_market' }))
     await flush()
-    expect(stateOf('market_analyst')).toBe('error')
+    expect(stateOf('research_market')).toBe('error')
   })
 
   it('does not throw on an unknown frame kind and still logs it', async () => {
@@ -161,7 +161,7 @@ describe('frame handling', () => {
   })
 
   it('deduplicates a frame that arrives twice', async () => {
-    const frame = build('node_state', { event_type: 'NODE_START', node_id: 'scoper' })
+    const frame = build('node_state', { event_type: 'NODE_START', node_id: 'scope_idea' })
     api.emit(frame)
     api.emit(frame)
     await flush()
@@ -172,18 +172,18 @@ describe('frame handling', () => {
 
   it('replays a sequence gap from the frame API instead of dropping it', async () => {
     const missed: FrameData[] = [
-      build('node_state', { event_type: 'NODE_START', node_id: 'scoper' }),
-      build('node_state', { event_type: 'NODE_END', node_id: 'scoper' }),
+      build('node_state', { event_type: 'NODE_START', node_id: 'scope_idea' }),
+      build('node_state', { event_type: 'NODE_END', node_id: 'scope_idea' }),
     ]
     api.storedFrames = missed
-    const next = build('node_state', { event_type: 'NODE_START', node_id: 'scope_gate' })
+    const next = build('node_state', { event_type: 'NODE_START', node_id: 'confirm_scope' })
 
     api.emit(next)
     await flush()
 
     expect(run.lastSequence.value).toBe(next.seq)
     expect(run.droppedFrames.value).toBe(0)
-    expect(run.graphNodes.value.find((node) => node.id === 'scoper')?.data?.state).toBe('completed')
+    expect(run.graphNodes.value.find((node) => node.id === 'scope_idea')?.data?.state).toBe('completed')
   })
 
   it('counts frames the server could not replay as dropped', async () => {
@@ -199,23 +199,23 @@ describe('frame handling', () => {
   })
 
   it('ignores frames belonging to another run', async () => {
-    const foreign = build('node_state', { event_type: 'NODE_START', node_id: 'scoper', run_id: 'someone-elses-run' })
+    const foreign = build('node_state', { event_type: 'NODE_START', node_id: 'scope_idea', run_id: 'someone-elses-run' })
     api.emit(foreign)
     await flush()
 
-    expect(run.graphNodes.value.find((node) => node.id === 'scoper')?.data?.state).toBe('idle')
+    expect(run.graphNodes.value.find((node) => node.id === 'scope_idea')?.data?.state).toBe('idle')
   })
 
   it('accumulates run and per-node token usage', async () => {
     api.emit(build('token', {
       event_type: 'TOKEN_USAGE',
-      node_id: 'scoper',
+      node_id: 'scope_idea',
       details: { usage: { prompt_tokens: 100, completion_tokens: 40, total_tokens: 140, cost_usd: 0.002 } },
     }))
     await flush()
 
     expect(run.usage.totalTokens).toBe(140)
     expect(run.usage.costUsd).toBeCloseTo(0.002, 6)
-    expect(run.nodeUsage.scoper.totalTokens).toBe(140)
+    expect(run.nodeUsage.scope_idea.totalTokens).toBe(140)
   })
 })

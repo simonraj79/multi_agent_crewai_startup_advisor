@@ -6,7 +6,7 @@ import type { PendingGate } from '../src/types/studio'
 function gate(overrides: Partial<PendingGate> = {}): PendingGate {
   return {
     gateId: 'scope-confirmation',
-    nodeId: 'scope_gate',
+    nodeId: 'confirm_scope',
     title: 'Confirm scope',
     summary: 'Check the market, primary user, and technical claim.',
     editable: true,

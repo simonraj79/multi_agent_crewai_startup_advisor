@@ -292,7 +292,7 @@ describe('StudioApi http surface', () => {
       status: 'failed',
       pending_gate: {
         gate_id: 'verdict-review',
-        node_id: 'verdict_gate',
+        node_id: 'review_verdict',
         title: 'Review verdict',
         summary: 'Late but still answerable.',
         editable: false,
@@ -323,7 +323,7 @@ describe('StudioApi http surface', () => {
       status: 'waiting',
       pending_gate: {
         gate_id: 'scope-confirmation',
-        node_id: 'scope_gate',
+        node_id: 'confirm_scope',
         title: 'Confirm scope',
         summary: 'Check the scope.',
         editable: true,

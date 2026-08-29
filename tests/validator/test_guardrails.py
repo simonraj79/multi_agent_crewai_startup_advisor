@@ -5,6 +5,8 @@ import unittest
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from pydantic import ValidationError
+
 from brief_crew import config as project_config
 from brief_crew.schemas import (
     Competitor,
@@ -36,6 +38,7 @@ from brief_crew.validator_guardrails import (
     confidence_problems,
     make_report_guardrail,
     make_rubric_guardrail,
+    median_market_source_age_months,
     parse_raw_model,
     rubric_problems,
     token_overlap,
@@ -501,6 +504,127 @@ class ConfidenceInputTests(unittest.TestCase):
         self.assertEqual(
             confidence_problems(result, market, sentiment, feasibility, now=NOW), []
         )
+
+    def market_with(self, *dates: tuple[str, bool]) -> MarketFindings:
+        """A market branch of `(dated, dated_is_retrieval_time)` sources."""
+        sources = [
+            Evidence(
+                claim=f"Claim {index}.",
+                url=f"https://example.com/source-{index}",
+                publisher="Example",
+                dated=dated,
+                dated_is_retrieval_time=is_fallback,
+                retrieved_via="firecrawl",
+            )
+            for index, (dated, is_fallback) in enumerate(dates)
+        ]
+        return MarketFindings(
+            sources=sources,
+            source_urls=[source.url for source in sources],
+            gaps=[],
+            tool_status="ok",
+            competitors=[],
+        )
+
+    def test_a_retrieval_date_is_not_a_fresh_publication_date(self) -> None:
+        """F12. Every source was fetched today and none published a date.
+
+        The old code took the retrieval timestamp as the publication date, so
+        this branch scored a 0.0-month median and a 1.00 staleness multiplier -
+        maximum confidence about recency it had measured nothing about.
+        """
+        undated = self.market_with(
+            ("2026-08-29T00:00:00Z", True),
+            ("2026-08-29T00:00:00Z", True),
+            ("2026-08-29T00:00:00Z", True),
+        )
+        _, sentiment, feasibility = self.branches()
+
+        inputs = compute_confidence_inputs(undated, sentiment, feasibility, now=NOW)
+
+        self.assertIsNone(inputs["median_market_source_age_months"])
+        self.assertEqual(
+            median_market_source_age_months(undated.sources, NOW),
+            inputs["median_market_source_age_months"],
+        )
+        # The same three rows, if their dates were real, would be maximally fresh.
+        dated = self.market_with(
+            ("2026-08-29T00:00:00Z", False),
+            ("2026-08-29T00:00:00Z", False),
+            ("2026-08-29T00:00:00Z", False),
+        )
+        self.assertEqual(median_market_source_age_months(dated.sources, NOW), 0.0)
+
+    def test_one_fresh_source_cannot_outvote_unknown_recency(self) -> None:
+        mixed = self.market_with(
+            ("2026-08-01", False),
+            ("2026-08-29T00:00:00Z", True),
+            ("2026-08-29T00:00:00Z", True),
+        )
+
+        self.assertIsNone(median_market_source_age_months(mixed.sources, NOW))
+
+    def test_a_dated_majority_reports_a_real_published_age(self) -> None:
+        mixed = self.market_with(
+            ("2026-08-01", False),
+            ("2026-08-01", False),
+            ("2026-08-29T00:00:00Z", True),
+        )
+
+        self.assertEqual(median_market_source_age_months(mixed.sources, NOW), 0.9)
+
+    def test_the_fallback_flag_is_the_only_way_an_age_can_be_unknown(self) -> None:
+        """`Evidence.dated` already refuses anything that will not parse, so a
+        retrieval-time fallback is the one remaining source of unknown recency -
+        and it used to be invisible."""
+        with self.assertRaises(ValidationError):
+            self.market_with(("not a date at all", False))
+
+    def test_unknown_recency_lowers_the_computed_confidence(self) -> None:
+        _, sentiment, feasibility = self.branches()
+        dated = self.market_with(("2026-08-01", False))
+        undated = self.market_with(("2026-08-29T00:00:00Z", True))
+
+        confident = synthesis(
+            dated,
+            sentiment,
+            feasibility,
+            **compute_confidence_inputs(dated, sentiment, feasibility, now=NOW),
+        )
+        cautious = synthesis(
+            undated,
+            sentiment,
+            feasibility,
+            **compute_confidence_inputs(undated, sentiment, feasibility, now=NOW),
+        )
+
+        self.assertEqual(confident.median_market_source_age_months, 0.9)
+        self.assertIsNone(cautious.median_market_source_age_months)
+        # Same coverage, same branches: only the staleness multiplier moved.
+        self.assertEqual(cautious.confidence, round(confident.confidence * 0.70, 2))
+        self.assertLess(cautious.confidence, confident.confidence)
+
+    def test_an_asserted_fresh_age_is_rejected_when_recency_is_unknown(self) -> None:
+        _, sentiment, feasibility = self.branches()
+        undated = self.market_with(
+            ("2026-08-29T00:00:00Z", True),
+            ("2026-08-29T00:00:00Z", True),
+        )
+        result = synthesis(
+            undated,
+            sentiment,
+            feasibility,
+            **{
+                **compute_confidence_inputs(undated, sentiment, feasibility, now=NOW),
+                "median_market_source_age_months": 0.0,
+            },
+        )
+
+        problems = confidence_problems(result, undated, sentiment, feasibility, now=NOW)
+
+        self.assertEqual(len(problems), 1)
+        self.assertIn("MEDIAN_SOURCE_AGE", problems[0])
+        self.assertIn("retrieval-time fallback", problems[0])
 
     def test_median_age_is_null_exactly_when_no_market_source_exists(self) -> None:
         empty = MarketFindings(

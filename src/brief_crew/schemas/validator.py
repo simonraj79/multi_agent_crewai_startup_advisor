@@ -105,7 +105,28 @@ class Evidence(ValidatorModel):
     claim: str = Field(min_length=1)
     url: str
     publisher: str = Field(min_length=1)
-    dated: str
+    dated: str = Field(
+        description=(
+            "The source's own publication date when it reports one; otherwise the "
+            "retrieval timestamp, which must be accompanied by "
+            "dated_is_retrieval_time=true."
+        )
+    )
+    # F12. The market tool falls back to the retrieval timestamp when Firecrawl
+    # reports no publication date, so `dated` alone cannot distinguish a page
+    # published today from a page of unknown age. Confidence consumes market
+    # source age only through `staleness_multiplier`, so an unflagged fallback
+    # scores as maximally fresh - the system is most confident exactly where it
+    # knows least about recency. Copy the tool row's flag; it is what keeps
+    # undated material from being served as current.
+    dated_is_retrieval_time: bool = Field(
+        default=False,
+        description=(
+            "True when `dated` is the retrieval time because the source published "
+            "no date. Copy the value from the tool row; never set it to false for "
+            "a row the tool flagged true."
+        ),
+    )
     retrieved_via: Literal["firecrawl", "hn_algolia", "github", "cached"]
 
     @field_validator("url")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import unittest
 from pathlib import Path
 
@@ -7,8 +8,10 @@ import yaml
 from crewai import LLM
 
 from brief_crew.config import (
+    ANCHOR_MATCH_THRESHOLD,
     CHEAP_MODEL,
     ESCALATION_MODEL,
+    LEVEL_ONE_ANCHOR,
     RUBRIC_ANCHORS,
     VALIDATOR_SYNTHESIST_REASONING_EFFORT,
     openrouter_reasoning_params,
@@ -29,7 +32,11 @@ from brief_crew.schemas import (
     ValidationReport,
     Verdict,
 )
-from brief_crew.validator_guardrails import CITATION_GUARDRAIL, compute_evidence_counts
+from brief_crew.validator_guardrails import (
+    CITATION_GUARDRAIL,
+    compute_evidence_counts,
+    token_overlap,
+)
 
 CONFIG_DIR = (
     Path(__file__).parents[2]
@@ -41,10 +48,16 @@ CONFIG_DIR = (
 )
 
 
-def dimension() -> DimensionScore:
+def dimension(code: str) -> DimensionScore:
+    """A score-1 dimension carrying that ladder's own level-1 anchor.
+
+    `anchor_problems` compares a score of 1 against `RUBRIC_ANCHORS[code][1]`
+    verbatim, and the five level-1 anchors are no longer the same string, so a
+    fixture that hard-codes the shared prefix would be testing nothing.
+    """
     return DimensionScore(
         score=1,
-        anchor_matched="Evidence does not reach this question",
+        anchor_matched=RUBRIC_ANCHORS[code][1],
         evidence_urls=[],
         evidence_thin=True,
     )
@@ -75,13 +88,12 @@ def findings() -> tuple[MarketFindings, SentimentFindings, FeasibilityFindings]:
 
 
 def verdict() -> Verdict:
-    score = dimension()
     return Verdict(
-        demand=score,
-        market=score,
-        competitive_room=score,
-        feasibility=score,
-        headroom_over_free=score,
+        demand=dimension("D"),
+        market=dimension("M"),
+        competitive_room=dimension("C"),
+        feasibility=dimension("F"),
+        headroom_over_free=dimension("X"),
         evidence_counts=compute_evidence_counts(*findings()),
         market_coverage=0.0,
         sentiment_coverage=0.0,
@@ -270,7 +282,116 @@ class ValidatorCrewWiringTests(unittest.TestCase):
         for code, ladder in RUBRIC_ANCHORS.items():
             for value, text in ladder.items():
                 with self.subTest(dimension=code, score=value):
-                    self.assertIn(text, description)
+                    # Exactly once: a second copy is a stale ladder the model
+                    # can still read, and `assertIn` alone would not see it.
+                    self.assertEqual(description.count(text), 1)
+
+    def test_adjacent_anchors_cannot_be_confused_by_the_guardrail(self) -> None:
+        """The anchor check is only binding if the ladders are separable.
+
+        `anchor_problems` accepts `anchor_matched` at >= ANCHOR_MATCH_THRESHOLD
+        token overlap with the anchor for the claimed score. If two anchors in
+        one ladder overlap at or above that threshold, the Synthesist can quote
+        either and pass at either score - the rubric would still be binding on
+        paper and unbinding in fact. Margin matters too: a real answer drops or
+        adds a word, so a pair sitting just under the threshold can cross it.
+        """
+        worst = 0.0
+        for code, ladder in RUBRIC_ANCHORS.items():
+            for low, high in itertools.combinations(sorted(ladder), 2):
+                with self.subTest(dimension=code, pair=(low, high)):
+                    overlap = token_overlap(ladder[low], ladder[high])
+                    worst = max(worst, overlap)
+                    self.assertLess(overlap, ANCHOR_MATCH_THRESHOLD)
+        self.assertLess(worst, 0.75, "anchors are separable but with no margin")
+
+    def test_every_level_one_anchor_names_the_branch_condition(self) -> None:
+        """PRD §10.2 reserves 1 for "the evidence does not reach this question".
+
+        A bare reserved phrase says when 1 means, not when it FIRES, and three
+        of the four hard floors (M=0, F=0, X=0) are decided on exactly that
+        boundary. Every ladder therefore states the branch condition, and the
+        five differ - `anchor_problems` matches a score of 1 verbatim per
+        dimension, so identical strings would make that check dimensionless.
+        """
+        level_ones = {code: ladder[1] for code, ladder in RUBRIC_ANCHORS.items()}
+
+        for code, text in level_ones.items():
+            with self.subTest(dimension=code):
+                self.assertTrue(text.startswith(LEVEL_ONE_ANCHOR))
+                self.assertGreater(len(text), len(LEVEL_ONE_ANCHOR) + 10)
+        self.assertEqual(len(set(level_ones.values())), len(level_ones))
+
+    def test_no_anchor_scores_on_popularity(self) -> None:
+        """PRD §10.2's substantive improvement, asserted rather than trusted.
+
+        `Thread.points` and `Thread.num_comments` ARE populated now, so nothing
+        but this test stops a future edit anchoring Demand on upvotes - which
+        is precisely the tutorial failure the rubric exists to fix: "a single
+        ReAct agent reads HN sentiment as approval of the idea rather than
+        evidence of the problem".
+        """
+        forbidden = ("points", "num_comments", "comment count", "star", "upvote", "popular")
+        for code, ladder in RUBRIC_ANCHORS.items():
+            for value, text in ladder.items():
+                for term in forbidden:
+                    with self.subTest(dimension=code, score=value, term=term):
+                        self.assertNotIn(term, text.casefold())
+
+    def test_the_archived_flag_is_used_only_where_a_null_is_harmless(self) -> None:
+        """`Repo.archived` is tri-state: None means "GitHub did not report it".
+
+        It earns its place in the X floor (PRD: an archived project is not
+        maintained, so it is not the free thing that already does the whole
+        job), but only phrased so an unreported flag scores exactly as it did
+        before the field existed. X=0 requires "not marked archived", which a
+        None satisfies; X=2 requires "marked archived" as one disjunct among
+        licence and staleness, which a None simply does not trigger.
+        """
+        users = {
+            (code, score)
+            for code, ladder in RUBRIC_ANCHORS.items()
+            for score, text in ladder.items()
+            if "archived" in text.casefold()
+        }
+
+        self.assertEqual(users, {("X", 0), ("X", 2)})
+        self.assertIn("is not marked archived", RUBRIC_ANCHORS["X"][0])
+        self.assertIn("marked archived,", RUBRIC_ANCHORS["X"][2])
+
+    def test_shorthand_terms_in_the_anchors_are_defined_for_the_synthesist(self) -> None:
+        """The anchors are short so they stay separable; the prompt carries the
+        definitions that make them countable. A term used and never defined is
+        a judgement call wearing a countable term's clothes."""
+        tasks = yaml.safe_load((CONFIG_DIR / "tasks.yaml").read_text(encoding="utf-8"))
+        description = tasks["synthesis_task"]["description"]
+        # Defined term -> the fragment an anchor must actually contain, which
+        # differs where the anchors inflect the term ("is reusable").
+        terms = {
+            "usable thread": "usable thread",
+            "problem thread": "problem thread",
+            "reusable repository": "reusable",
+            "free substitute": "free substitute",
+            "free product": "free product",
+            "vendor owned": "vendor owned",
+            "dated within 24 months": "dated within 24 months",
+        }
+        anchors = [text.casefold() for ladder in RUBRIC_ANCHORS.values() for text in ladder.values()]
+
+        for term, fragment in terms.items():
+            with self.subTest(term=term):
+                self.assertIn(f"{term} - ", description)
+                self.assertTrue(
+                    any(fragment in text for text in anchors),
+                    f"{term} is defined for the Synthesist but no anchor uses it",
+                )
+
+    def test_market_task_defines_the_flag_the_competitive_ladder_scores_on(self) -> None:
+        """C=0, C=2 and C=5 all turn on `Competitor.vendor_owned`, which no
+        prompt used to define - the model set a bool nobody had specified."""
+        tasks = yaml.safe_load((CONFIG_DIR / "tasks.yaml").read_text(encoding="utf-8"))
+
+        self.assertIn("vendor_owned", tasks["market_task"]["description"])
 
     def test_prompts_request_the_spec_fields_and_a_risks_section(self) -> None:
         """F05, F06, F07 and F13 - a schema field nothing asks for stays null."""

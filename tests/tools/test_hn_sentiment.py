@@ -4,6 +4,8 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from brief_crew.tools.hn_sentiment import HackerNewsSentimentTool
 
 
@@ -20,6 +22,17 @@ class _Response:
         return self._payload
 
 
+ENVELOPE_KEYS = {
+    "status",
+    "tool",
+    "query",
+    "retrieved_at",
+    "result_count",
+    "results",
+    "notes",
+}
+
+
 class HackerNewsSentimentToolTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tool = HackerNewsSentimentTool()
@@ -27,13 +40,30 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
     @patch("brief_crew.tools.hn_sentiment.requests.get")
     def test_fetches_comment_tree_and_cites_hn_item(self, get: MagicMock) -> None:
         get.side_effect = [
-            _Response(200, {"hits": [{"objectID": "123"}]}),
+            # A realistic Algolia story hit: `points` and `num_comments` are
+            # already in the response this tool fetches to find the thread.
+            _Response(
+                200,
+                {
+                    "hits": [
+                        {
+                            "objectID": "123",
+                            "title": "Clinic intake is still fax and paper",
+                            "author": "someone",
+                            "points": 214,
+                            "num_comments": 87,
+                            "created_at": "2026-08-01T00:00:00Z",
+                        }
+                    ]
+                },
+            ),
             _Response(
                 200,
                 {
                     "id": 123,
                     "text": "We <b>pay</b> $200 monthly for clinic intake software.",
                     "created_at": "2026-08-01T00:00:00Z",
+                    "points": 214,
                     "children": [
                         {
                             "id": 124,
@@ -72,6 +102,11 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
             )
         )
         self.assertNotIn("<", envelope["results"][1]["quote"])
+        # Story-level signals, carried on every row cited to that story.
+        self.assertEqual(
+            [(result["points"], result["num_comments"]) for result in envelope["results"]],
+            [(214, 87)] * 3,
+        )
 
         search_call = get.call_args_list[0]
         self.assertEqual(search_call.args[0], "https://hn.algolia.com/api/v1/search")
@@ -80,6 +115,76 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
             get.call_args_list[1].args[0],
             "https://hn.algolia.com/api/v1/items/123",
         )
+
+    @patch("brief_crew.tools.hn_sentiment.requests.get")
+    def test_story_score_falls_back_to_the_item_root(self, get: MagicMock) -> None:
+        """`/items` carries `points` even when the search hit omits it."""
+        get.side_effect = [
+            _Response(200, {"hits": [{"objectID": "321", "num_comments": 0}]}),
+            _Response(
+                200,
+                {
+                    "id": 321,
+                    "text": "We built our own scheduler.",
+                    "created_at": "2026-08-01T00:00:00Z",
+                    "points": 0,
+                    "children": [],
+                },
+            ),
+        ]
+
+        envelope = json.loads(self.tool._run("clinic scheduler", story_limit=1))
+
+        self.assertEqual(envelope["status"], "ok")
+        # A genuine zero is a zero. Only an unreported field is null.
+        self.assertEqual(envelope["results"][0]["points"], 0)
+        self.assertEqual(envelope["results"][0]["num_comments"], 0)
+        self.assertNotIn("null rather than zero", envelope["notes"])
+
+    @patch("brief_crew.tools.hn_sentiment.requests.get")
+    def test_unreported_story_metrics_stay_null_not_zero(self, get: MagicMock) -> None:
+        get.side_effect = [
+            _Response(200, {"hits": [{"objectID": "999"}]}),
+            _Response(
+                200,
+                {
+                    "id": 999,
+                    "text": "This problem wastes time every week.",
+                    "created_at": "2026-08-01T00:00:00Z",
+                    # Neither payload reports a score, and a string is not a count.
+                    "num_comments": "many",
+                    "children": [],
+                },
+            ),
+        ]
+
+        envelope = json.loads(self.tool._run("clinic intake", story_limit=1))
+
+        self.assertEqual(envelope["status"], "ok")
+        self.assertIsNone(envelope["results"][0]["points"])
+        self.assertIsNone(envelope["results"][0]["num_comments"])
+        self.assertIn("null rather than zero", envelope["notes"])
+
+    @patch("brief_crew.tools.hn_sentiment.requests.get")
+    def test_empty_and_failed_envelopes_invent_no_fields(self, get: MagicMock) -> None:
+        get.side_effect = [
+            _Response(200, {"hits": [{"objectID": "1"}]}),
+            _Response(200, {"id": 1, "children": []}),
+        ]
+        empty = json.loads(self.tool._run("clinic intake", story_limit=1))
+
+        self.assertEqual(empty["status"], "empty")
+        self.assertEqual(empty["results"], [])
+        self.assertEqual(empty["result_count"], 0)
+        self.assertEqual(set(empty), ENVELOPE_KEYS)
+
+        get.side_effect = requests.ConnectionError("no route to host")
+        failed = json.loads(self.tool._run("clinic intake", story_limit=1))
+
+        self.assertEqual(failed["status"], "failed")
+        self.assertEqual(failed["results"], [])
+        self.assertEqual(set(failed), ENVELOPE_KEYS)
+        self.assertIn("ConnectionError", failed["notes"])
 
     @patch("brief_crew.tools.hn_sentiment.requests.get")
     def test_comment_tree_429_discards_partial_results(self, get: MagicMock) -> None:
@@ -105,6 +210,7 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
         self.assertEqual(envelope["status"], "rate_limited")
         self.assertEqual(envelope["results"], [])
         self.assertEqual(envelope["result_count"], 0)
+        self.assertEqual(set(envelope), ENVELOPE_KEYS)
         self.assertIn("partial evidence was discarded", envelope["notes"])
 
 

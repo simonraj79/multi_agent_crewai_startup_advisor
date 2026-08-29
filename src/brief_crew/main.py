@@ -133,12 +133,27 @@ def _tool_arguments(event: Any) -> Mapping[str, Any]:
 
 
 def _payload(output: Any) -> Any:
-    """The tool result as something addressable, or None if it is opaque."""
+    """The tool result as something addressable, or None if it is opaque.
+
+    The scrape tool declares a ``result_schema`` (see
+    ``crews/brief_crew/scrape_tool.py``), so its result reaches this sink as a
+    JSON envelope. Two things can still make ``json.loads`` refuse it:
+    CrewAI's ``ToolUsage._format_result`` staples a tool-format reminder onto
+    every third tool result, and any tool without a schema renders as prose.
+    The first is recoverable by reading only the envelope and ignoring the
+    tail; the second is not, and stays opaque.
+    """
     if isinstance(output, str):
         try:
-            return json.loads(output)
+            decoded = json.loads(output)
         except json.JSONDecodeError:
-            return None
+            try:
+                decoded, _ = json.JSONDecoder().raw_decode(output.lstrip())
+            except ValueError:
+                return None
+        # A bare scalar is not an envelope. Treating one as addressable would
+        # make prose that happens to start with a number look structured.
+        return decoded if isinstance(decoded, (dict, list)) else None
     return output
 
 
@@ -167,17 +182,27 @@ def _source_url(value: Any) -> str | None:
 
 
 def _page_text(payload: Any, output: Any) -> str:
-    """Prefer the page body; otherwise keep the tool's own rendering verbatim.
+    """The page body: markdown when the result is addressable, else verbatim.
 
-    Firecrawl's tool returns a `Document`, and CrewAI hands the agent - and this
-    sink - `str()` of it, so the fallback is not markdown. It is still exactly
-    what the tool produced, which is the property that matters: nothing here is
-    written by a model.
+    The scrape tool now declares a `result_schema`, so on the normal path
+    `payload` is the envelope and this returns the page's markdown - real
+    headings and real blank lines, which is what `indexing.chunk_markdown`
+    needs to split on structure instead of on character counts.
+
+    An addressable result carrying no body is a scrape that returned nothing,
+    and it yields no text at all. Indexing the envelope there would file a
+    wrapper in the corpus as though it were the page.
+
+    An opaque result keeps the tool's own rendering verbatim. That is worse to
+    chunk, but it is still exactly what the tool produced - which is the
+    property that matters: nothing here is ever written by a model.
     """
     body = _field(payload, "markdown", "content", "summary", "raw_html")
     if isinstance(body, str) and body.strip():
         return body
-    return output if isinstance(output, str) else str(output)
+    if payload is not None:
+        return ""
+    return output if isinstance(output, str) else ""
 
 
 def _scraped_document(event: Any) -> dict[str, Any] | None:

@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timezone
-from statistics import median
 from typing import Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -34,6 +33,7 @@ from brief_crew.config import (
 )
 from brief_crew.schemas import (
     DimensionScore,
+    Evidence,
     FeasibilityFindings,
     MarketFindings,
     ScopedIdea,
@@ -199,6 +199,52 @@ def _age_months(dated: str, now: datetime) -> float | None:
     return max(0.0, elapsed_days) / VALIDATOR_DAYS_PER_MONTH
 
 
+def _market_source_age_months(source: Evidence, now: datetime) -> float | None:
+    """Age of one market source, or ``None`` when its recency is unknown.
+
+    Two things make an age unknown, and they are the same claim: `dated` will
+    not parse, or `dated` is the retrieval timestamp the tool substituted
+    because the page published no date. Neither is evidence of freshness.
+    """
+    if source.dated_is_retrieval_time:
+        return None
+    return _age_months(source.dated, now)
+
+
+def median_market_source_age_months(
+    sources: Sequence[Evidence],
+    now: datetime,
+) -> float | None:
+    """Median market-source age, with unknown-age sources held at the stale end.
+
+    Confidence consumes this figure only through `staleness_multiplier`, whose
+    unknown case - ``None`` - is already the worst band. So sources of unknown
+    recency keep the oldest positions in the ordering instead of being dropped
+    from it: the result is a real, published age whenever one sits in the
+    middle, and ``None`` as soon as unknown recency reaches the middle. In one
+    line, the figure is non-null exactly when strictly more than half of the
+    market sources carry a usable publication date.
+
+    The two alternatives were rejected for the same reason. Dropping undated
+    sources from the median would leave one fresh page among nine unknowns at a
+    1.00 multiplier while all ten still counted towards `market_coverage` -
+    confidence highest where recency is least known. Substituting a sentinel age
+    would report a month count nobody measured. This repository's rule is that
+    undated material must never be served as current (`main._age_days` applies
+    the same rule to the cache, where missing metadata is a miss, not a hit),
+    and only withholding the number honours it without inventing one.
+    """
+    ages = [_market_source_age_months(source, now) for source in sources]
+    known = sorted(age for age in ages if age is not None)
+    if len(known) * 2 <= len(ages):
+        return None
+
+    middle = len(ages) // 2
+    if len(ages) % 2:
+        return round(known[middle], 1)
+    return round((known[middle - 1] + known[middle]) / 2, 1)
+
+
 def compute_confidence_inputs(
     market: MarketFindings,
     sentiment: SentimentFindings,
@@ -218,18 +264,14 @@ def compute_confidence_inputs(
     counts = compute_evidence_counts(market, sentiment, feasibility)
     target = VALIDATOR_COVERAGE_TARGET_SOURCES
 
-    ages = [
-        age
-        for age in (_age_months(source.dated, reference) for source in market.sources)
-        if age is not None
-    ]
-
     return {
         "market_coverage": min(1.0, counts["market_sources"] / target),
         "sentiment_coverage": min(1.0, counts["sentiment_problem_threads"] / target),
         "feasibility_coverage": min(1.0, counts["feasibility_relevant_repos"] / target),
         "branches_ok": counts["branches_ok"],
-        "median_market_source_age_months": round(median(ages), 1) if ages else None,
+        "median_market_source_age_months": median_market_source_age_months(
+            market.sources, reference
+        ),
     }
 
 
@@ -260,7 +302,9 @@ def confidence_problems(
     if (actual_age is None) != (wanted_age is None):
         problems.append(
             "MEDIAN_SOURCE_AGE: set median_market_source_age_months to "
-            f"{wanted_age!r}; it is null exactly when the market branch has no dated source"
+            f"{wanted_age!r}; it is null unless strictly more than half of the market "
+            "sources carry a real publication date, and a retrieval-time fallback is "
+            "not one"
         )
     elif staleness_multiplier(actual_age) != staleness_multiplier(wanted_age):
         # Only the staleness band is enforced: the model cannot reproduce a
@@ -566,6 +610,7 @@ __all__ = [
     "findings_urls",
     "make_report_guardrail",
     "make_rubric_guardrail",
+    "median_market_source_age_months",
     "parse_raw_model",
     "report_mechanics_problems",
     "rubric_problems",

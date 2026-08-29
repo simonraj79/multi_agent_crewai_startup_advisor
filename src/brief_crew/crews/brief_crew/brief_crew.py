@@ -27,9 +27,10 @@ from typing import Literal
 from crewai import LLM, Agent, Crew, Process, Task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.project import CrewBase, agent, crew, task
-from crewai_tools import FirecrawlScrapeWebsiteTool, FirecrawlSearchTool
+from crewai_tools import FirecrawlSearchTool
 
 from brief_crew.config import CHEAP_MODEL, ESCALATION_MODEL
+from brief_crew.crews.brief_crew.scrape_tool import ScrapeWebsiteTool
 from brief_crew.guardrails import ATTRIBUTION_GUARDRAIL, check_mechanics
 from brief_crew.tools.pinecone_retrieval import PineconeRetrieveRerankTool
 
@@ -72,7 +73,12 @@ class BriefCrew:
         """The only agent with tools, and the only one touching the outside world."""
         tools = [
             FirecrawlSearchTool(config={"limit": 5}),
-            FirecrawlScrapeWebsiteTool(),
+            # Not crewai_tools' scrape tool directly: that one declares no
+            # result_schema, so CrewAI hands both this agent and main.py's
+            # capture sink `str(Document)` - a pydantic repr with the page's
+            # newlines escaped, which chunks on character counts rather than on
+            # headings. See scrape_tool.py.
+            ScrapeWebsiteTool(),
         ]
         if self.track == "A":
             # Track A only. Under the Flow, retrieval has already run and already

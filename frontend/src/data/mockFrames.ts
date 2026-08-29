@@ -5,6 +5,80 @@ export interface MockScriptStep {
   frame: FrameData
 }
 
+/**
+ * Node ids are `ValidatorFlow` method names, exactly as `MOCK_GRAPH` and the
+ * live frame stream use them. Naming them once here keeps the script and the
+ * graph from drifting apart again, and `mockGraph.spec.ts` fails if any of them
+ * stops existing in the descriptor.
+ */
+const NODE = {
+  scope: 'scope_idea',
+  scopeGate: 'confirm_scope',
+  scopeRouter: 'route_scope',
+  market: 'research_market',
+  sentiment: 'research_sentiment',
+  feasibility: 'research_feasibility',
+  synthesis: 'synthesize',
+  verdictGate: 'review_verdict',
+  verdictRouter: 'route_verdict',
+  report: 'write_report',
+  output: 'persist',
+} as const
+
+/**
+ * The service builds gate prompts in `RunRegistry._gate_prompt`: a uuid5
+ * `gate_id`, the Flow method name as `node_id`, `approve`/`revise` options, and
+ * a `fields` map that is the answering model's own dump with every value
+ * stringified. The two prompts below reproduce that shape rather than a tidier
+ * invention, so the gate card is rehearsed against the payload it will really
+ * receive - including how wide the verdict dump is.
+ */
+const SCOPE_GATE_ID = '0f6a1c25-9a41-5c2e-8f0e-2b1d5f6a7c30'
+const VERDICT_GATE_ID = '7c4b8e10-3d52-5a9f-b6c1-4e8a0d2f9b17'
+
+/** `ScopedIdea`, stringified the way the service stringifies it. */
+const SCOPE_FIELDS: Record<string, string> = {
+  startup_idea: 'An AI tool that turns Figma files into production React',
+  category: 'Design-to-code tooling',
+  target_user: 'Frontend product teams shipping React from Figma handoffs',
+  problem: 'Handoff-to-code rework consumes a sprint per redesign',
+  technology_claim: 'Figma node trees can be compiled to typed, themed React components',
+  market_query: 'figma to react code generation tools pricing',
+  community_queries: '["figma handoff pain", "design to code tools worth it"]',
+  tech_queries: '["figma-to-react", "design tokens codegen"]',
+  assumptions: '["Teams re-implement designs by hand", "Component libraries are already in place", "Design files are reasonably structured"]',
+  scoping_gaps: '["No evidence yet on enterprise design-system constraints"]',
+  as_of: '2026-08-29',
+}
+
+/**
+ * `Verdict`, stringified the same way. Nineteen editable inputs is a lot of
+ * gate card - that is the server's payload, not mock exaggeration, and it is
+ * worth raising against `_gate_prompt` rather than quietly trimming here.
+ */
+const VERDICT_FIELDS: Record<string, string> = {
+  demand: '{"score": 2, "anchor_matched": "Scattered complaints, no paid workaround", "evidence_urls": ["https://news.ycombinator.com/item?id=39218841", "https://news.ycombinator.com/item?id=38997120"], "evidence_thin": true}',
+  market: '{"score": 3, "anchor_matched": "Named segment with observable pricing", "evidence_urls": ["https://www.builder.io/pricing", "https://locofy.ai/pricing", "https://anima.app/pricing"], "evidence_thin": false}',
+  competitive_room: '{"score": 2, "anchor_matched": "Several funded incumbents, no clear wedge", "evidence_urls": ["https://www.builder.io/", "https://locofy.ai/", "https://anima.app/"], "evidence_thin": false}',
+  feasibility: '{"score": 4, "anchor_matched": "Open-source prior art covers the core path", "evidence_urls": ["https://github.com/dtinth/figma-to-react", "https://github.com/plugins/figma-api", "https://github.com/tokens-studio/figma-plugin"], "evidence_thin": false}',
+  headroom_over_free: '{"score": 2, "anchor_matched": "Free tiers already cover the common case", "evidence_urls": ["https://www.builder.io/pricing", "https://locofy.ai/pricing"], "evidence_thin": true}',
+  evidence_counts: '{"market": 12, "sentiment": 7, "feasibility": 18}',
+  market_coverage: '0.83',
+  sentiment_coverage: '0.41',
+  feasibility_coverage: '0.9',
+  median_market_source_age_months: '7.5',
+  branches_ok: '3',
+  cheapest_next_test: 'Offer a paid pilot to three teams already paying for a codegen tool.',
+  kill_criteria: '["No team will pay before seeing their own design system reproduced", "Incumbent free tiers close the quality gap within two quarters"]',
+  fatal_floors: '[]',
+  composite_score: '5.2',
+  verdict: 'NEEDS_WORK',
+  decision_reason: 'LOW_CONFIDENCE',
+  confidence: '0.62',
+  confidence_band: 'LOW',
+  provisional: 'true',
+}
+
 export function buildMockSegments(runId: string): MockScriptStep[][] {
   let seq = 0
   const startedAt = Date.now()
@@ -41,85 +115,93 @@ export function buildMockSegments(runId: string): MockScriptStep[][] {
     [
       make('run_state', 'RUN_QUEUED', 'Run accepted and queued.', undefined, { status: 'queued' }, 'INFO', undefined, 180),
       make('run_state', 'RUN_STARTED', 'Validator run started.', undefined, { status: 'running' }, 'INFO', undefined, 380),
-      make('node_state', 'NODE_START', 'Parsing the idea into testable claims.', 'scoper'),
-      make('llm', 'LLM_CALL_STARTED', 'Scoper is structuring the validation scope.', 'scoper', { stage: 'before', call_id: 'scope-llm', model: 'escalation' }),
-      make('token', 'TOKEN_USAGE', 'Scope model usage recorded.', 'scoper', { call_id: 'scope-llm', usage: { prompt_tokens: 682, completion_tokens: 241, total_tokens: 923, cost_usd: 0.0048 } }),
-      make('llm', 'LLM_CALL_COMPLETED', 'Three independent research questions are ready.', 'scoper', { stage: 'after', call_id: 'scope-llm', model: 'escalation' }, 'INFO', 2840),
-      make('node_state', 'NODE_END', 'Scope prepared for operator review.', 'scoper', {}, 'INFO', 3310),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Scope moved to operator review.', undefined, { from: 'scoper', to: 'scope_gate' }),
-      make('node_state', 'NODE_WAITING', 'Waiting for scope confirmation.', 'scope_gate'),
-      make('gate_open', 'GATE_OPEN', 'Confirm the parsed scope before research begins.', 'scope_gate', {
-        gate_id: 'scope-confirmation',
+      make('node_state', 'NODE_START', 'Parsing the idea into testable claims.', NODE.scope),
+      make('llm', 'LLM_CALL_STARTED', 'Scoper is structuring the validation scope.', NODE.scope, { stage: 'before', call_id: 'scope-llm', model: 'escalation' }),
+      make('token', 'TOKEN_USAGE', 'Scope model usage recorded.', NODE.scope, { call_id: 'scope-llm', usage: { prompt_tokens: 682, completion_tokens: 241, total_tokens: 923, cost_usd: 0.0048 } }),
+      make('llm', 'LLM_CALL_COMPLETED', 'Three independent research questions are ready.', NODE.scope, { stage: 'after', call_id: 'scope-llm', model: 'escalation' }, 'INFO', 2840),
+      make('node_state', 'NODE_END', 'Scope prepared for operator review.', NODE.scope, {}, 'INFO', 3310),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Scope moved to operator review.', undefined, { from: NODE.scope, to: NODE.scopeGate }),
+      make('node_state', 'NODE_WAITING', 'Waiting for scope confirmation.', NODE.scopeGate),
+      make('gate_open', 'HUMAN_INTERACTION', 'Confirm scope', NODE.scopeGate, {
+        gate_id: SCOPE_GATE_ID,
+        node_id: NODE.scopeGate,
         title: 'Confirm scope',
-        summary: 'Check the market, primary user, and technical claim before the three research branches begin.',
+        summary: 'Design-to-code tooling',
         editable: true,
         expires_at: new Date(startedAt + 10 * 60 * 1000).toISOString(),
-        fields: {
-          market: 'Design-to-code tooling',
-          audience: 'Frontend product teams using Figma and React',
-          technology: 'Figma-to-production React generation',
-        },
+        fields: SCOPE_FIELDS,
         options: [
-          { id: 'scope_revise', label: 'Revise', emphasis: 'danger' },
-          { id: 'scope_ok', label: 'Approve scope', emphasis: 'primary' },
+          { id: 'approve', label: 'Approve', emphasis: 'primary' },
+          { id: 'revise', label: 'Revise' },
         ],
       }, 'WARNING', undefined, 520),
     ],
     [
-      make('gate_closed', 'GATE_CLOSED', 'Scope approved. Research fan-out released.', 'scope_gate', { gate_id: 'scope-confirmation', outcome: 'scope_ok' }, 'INFO', undefined, 220),
-      make('node_state', 'NODE_END', 'Scope gate approved.', 'scope_gate'),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Market branch released.', undefined, { from: 'scope_gate', to: 'market_analyst' }, 'INFO', undefined, 140),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Demand branch released.', undefined, { from: 'scope_gate', to: 'sentiment_analyst' }, 'INFO', undefined, 140),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Feasibility branch released.', undefined, { from: 'scope_gate', to: 'feasibility_analyst' }, 'INFO', undefined, 140),
-      make('node_state', 'NODE_START', 'Mapping category, segments, and pricing.', 'market_analyst'),
-      make('node_state', 'NODE_START', 'Searching for pain and maintained workarounds.', 'sentiment_analyst', {}, 'INFO', undefined, 120),
-      make('node_state', 'NODE_START', 'Checking implementation paths and incumbents.', 'feasibility_analyst', {}, 'INFO', undefined, 120),
-      make('tool', 'TOOL_CALL_STARTED', 'firecrawl.search · design-to-code market', 'market_analyst', { stage: 'before', tool: 'firecrawl.search' }),
-      make('tool', 'TOOL_CALL_STARTED', 'hn.search · Figma handoff pain', 'sentiment_analyst', { stage: 'before', tool: 'hn.search' }, 'INFO', undefined, 160),
-      make('tool', 'TOOL_CALL_STARTED', 'github.search_repositories · figma react', 'feasibility_analyst', { stage: 'before', tool: 'github.search_repositories' }, 'INFO', undefined, 160),
-      make('tool', 'TOOL_CALL_COMPLETED', '12 market sources retained after dedupe.', 'market_analyst', { stage: 'after', tool: 'firecrawl.search', from_cache: false }, 'INFO', 4160, 780),
-      make('tool', 'TOOL_CALL_COMPLETED', '7 relevant threads classified; 2 are weak.', 'sentiment_analyst', { stage: 'after', tool: 'hn.search', from_cache: false }, 'WARNING', 3290, 420),
-      make('tool', 'TOOL_CALL_COMPLETED', '18 repositories checked for maintenance and licensing.', 'feasibility_analyst', { stage: 'after', tool: 'github.search_repositories', from_cache: false }, 'INFO', 3670, 420),
+      make('gate_closed', 'GATE_CLOSED', 'Scope approved.', NODE.scopeGate, { gate_id: SCOPE_GATE_ID, outcome: 'approve' }, 'INFO', undefined, 220),
+      make('node_state', 'NODE_END', 'Scope gate approved.', NODE.scopeGate),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Reply handed to the scope router.', undefined, { from: NODE.scopeGate, to: NODE.scopeRouter }, 'INFO', undefined, 160),
+      // The router is deterministic: it reads the reply and emits an event.
+      // It is on the graph because the run passes through it, and it finishes
+      // in milliseconds because it never calls a model.
+      make('node_state', 'NODE_START', 'Routing the approved scope.', NODE.scopeRouter, {}, 'INFO', undefined, 140),
+      make('node_state', 'NODE_END', 'Routed to scope_approved with no model call.', NODE.scopeRouter, { route: 'scope_approved' }, 'INFO', 4, 160),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Market branch released.', undefined, { from: NODE.scopeRouter, to: NODE.market }, 'INFO', undefined, 140),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Demand branch released.', undefined, { from: NODE.scopeRouter, to: NODE.sentiment }, 'INFO', undefined, 140),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Feasibility branch released.', undefined, { from: NODE.scopeRouter, to: NODE.feasibility }, 'INFO', undefined, 140),
+      make('node_state', 'NODE_START', 'Mapping category, segments, and pricing.', NODE.market),
+      make('node_state', 'NODE_START', 'Searching for pain and maintained workarounds.', NODE.sentiment, {}, 'INFO', undefined, 120),
+      make('node_state', 'NODE_START', 'Checking implementation paths and incumbents.', NODE.feasibility, {}, 'INFO', undefined, 120),
+      make('tool', 'TOOL_CALL_STARTED', 'firecrawl.search · design-to-code market', NODE.market, { stage: 'before', tool: 'firecrawl.search' }),
+      make('tool', 'TOOL_CALL_STARTED', 'hn.search · Figma handoff pain', NODE.sentiment, { stage: 'before', tool: 'hn.search' }, 'INFO', undefined, 160),
+      make('tool', 'TOOL_CALL_STARTED', 'github.search_repositories · figma react', NODE.feasibility, { stage: 'before', tool: 'github.search_repositories' }, 'INFO', undefined, 160),
+      make('tool', 'TOOL_CALL_COMPLETED', '12 market sources retained after dedupe.', NODE.market, { stage: 'after', tool: 'firecrawl.search', from_cache: false }, 'INFO', 4160, 780),
+      make('tool', 'TOOL_CALL_COMPLETED', '7 relevant threads classified; 2 are weak.', NODE.sentiment, { stage: 'after', tool: 'hn.search', from_cache: false }, 'WARNING', 3290, 420),
+      make('tool', 'TOOL_CALL_COMPLETED', '18 repositories checked for maintenance and licensing.', NODE.feasibility, { stage: 'after', tool: 'github.search_repositories', from_cache: false }, 'INFO', 3670, 420),
       make('token', 'TOKEN_USAGE', 'Parallel analyst usage recorded.', undefined, { usage: { promptTokens: 4210, completionTokens: 1684, totalTokens: 5894, costUsd: 0.0061 } }),
-      make('node_state', 'NODE_END', 'Market landscape complete.', 'market_analyst', {}, 'INFO', 6120),
-      make('node_state', 'NODE_END', 'Demand evidence complete with two thin signals.', 'sentiment_analyst', {}, 'WARNING', 5840, 120),
-      make('node_state', 'NODE_END', 'Technical feasibility assessment complete.', 'feasibility_analyst', {}, 'INFO', 5930, 120),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Market evidence joined synthesis.', undefined, { from: 'market_analyst', to: 'synthesist' }),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Demand evidence joined synthesis.', undefined, { from: 'sentiment_analyst', to: 'synthesist' }, 'INFO', undefined, 130),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Feasibility evidence joined synthesis.', undefined, { from: 'feasibility_analyst', to: 'synthesist' }, 'INFO', undefined, 130),
-      make('node_state', 'NODE_START', 'Applying the deterministic five-dimension rubric.', 'synthesist'),
-      make('llm', 'LLM_CALL_STARTED', 'Synthesist is reconciling evidence and score anchors.', 'synthesist', { stage: 'before', call_id: 'synthesis-llm', model: 'escalation' }),
-      make('token', 'TOKEN_USAGE', 'Synthesis usage recorded.', 'synthesist', { call_id: 'synthesis-llm', usage: { prompt_tokens: 3028, completion_tokens: 812, total_tokens: 3840, cost_usd: 0.0126 } }),
-      make('llm', 'LLM_CALL_COMPLETED', 'Draft verdict: NEEDS_WORK · confidence 0.62.', 'synthesist', { stage: 'after', call_id: 'synthesis-llm', model: 'escalation' }, 'INFO', 4210),
-      make('node_state', 'NODE_END', 'Rubric scored and confidence separated.', 'synthesist', {}, 'INFO', 4680),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Draft verdict moved to operator review.', undefined, { from: 'synthesist', to: 'verdict_gate' }),
-      make('node_state', 'NODE_WAITING', 'Waiting for verdict review.', 'verdict_gate'),
+      make('node_state', 'NODE_END', 'Market landscape complete.', NODE.market, {}, 'INFO', 6120),
+      make('node_state', 'NODE_END', 'Demand evidence complete with two thin signals.', NODE.sentiment, {}, 'WARNING', 5840, 120),
+      make('node_state', 'NODE_END', 'Technical feasibility assessment complete.', NODE.feasibility, {}, 'INFO', 5930, 120),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Market evidence joined synthesis.', undefined, { from: NODE.market, to: NODE.synthesis }),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Demand evidence joined synthesis.', undefined, { from: NODE.sentiment, to: NODE.synthesis }, 'INFO', undefined, 130),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Feasibility evidence joined synthesis.', undefined, { from: NODE.feasibility, to: NODE.synthesis }, 'INFO', undefined, 130),
+      make('node_state', 'NODE_START', 'Applying the deterministic five-dimension rubric.', NODE.synthesis),
+      make('llm', 'LLM_CALL_STARTED', 'Synthesist is reconciling evidence and score anchors.', NODE.synthesis, { stage: 'before', call_id: 'synthesis-llm', model: 'escalation' }),
+      make('token', 'TOKEN_USAGE', 'Synthesis usage recorded.', NODE.synthesis, { call_id: 'synthesis-llm', usage: { prompt_tokens: 3028, completion_tokens: 812, total_tokens: 3840, cost_usd: 0.0126 } }),
+      make('llm', 'LLM_CALL_COMPLETED', 'Draft verdict: NEEDS_WORK · confidence 0.62.', NODE.synthesis, { stage: 'after', call_id: 'synthesis-llm', model: 'escalation' }, 'INFO', 4210),
+      make('node_state', 'NODE_END', 'Rubric scored and confidence separated.', NODE.synthesis, {}, 'INFO', 4680),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Draft verdict moved to operator review.', undefined, { from: NODE.synthesis, to: NODE.verdictGate }),
+      make('node_state', 'NODE_WAITING', 'Waiting for verdict review.', NODE.verdictGate),
       make('metrics', 'METRICS_UPDATED', 'Run metrics updated.', undefined, { elapsed_ms: 18420, call_count: 5 }),
-      make('gate_open', 'GATE_OPEN', 'Review the scored verdict before report generation.', 'verdict_gate', {
-        gate_id: 'verdict-review',
+      make('gate_open', 'HUMAN_INTERACTION', 'Review verdict', NODE.verdictGate, {
+        gate_id: VERDICT_GATE_ID,
+        node_id: NODE.verdictGate,
         title: 'Review verdict',
-        summary: 'Demand evidence is the thinnest dimension. The report will preserve that uncertainty.',
+        summary: 'Offer a paid pilot to three teams already paying for a codegen tool.',
         verdict: 'NEEDS_WORK',
         confidence: 0.62,
-        editable: false,
+        editable: true,
         expires_at: new Date(startedAt + 20 * 60 * 1000).toISOString(),
+        fields: VERDICT_FIELDS,
         options: [
-          { id: 'verdict_revise', label: 'Request revision', emphasis: 'danger' },
-          { id: 'verdict_ok', label: 'Accept verdict', emphasis: 'primary' },
+          { id: 'approve', label: 'Approve', emphasis: 'primary' },
+          { id: 'revise', label: 'Revise' },
         ],
       }, 'WARNING'),
     ],
     [
-      make('gate_closed', 'GATE_CLOSED', 'Verdict accepted. Reporter released.', 'verdict_gate', { gate_id: 'verdict-review', outcome: 'verdict_ok' }, 'INFO', undefined, 220),
-      make('node_state', 'NODE_END', 'Verdict gate approved.', 'verdict_gate'),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Accepted verdict moved to report generation.', undefined, { from: 'verdict_gate', to: 'reporter' }),
-      make('node_state', 'NODE_START', 'Writing the sourced one-page validation brief.', 'reporter'),
-      make('llm', 'LLM_CALL_STARTED', 'Reporter is composing the brief and attribution table.', 'reporter', { stage: 'before', call_id: 'report-llm', model: 'escalation' }),
-      make('token', 'TOKEN_USAGE', 'Reporter usage recorded.', 'reporter', { call_id: 'report-llm', usage: { prompt_tokens: 2489, completion_tokens: 1054, total_tokens: 3543, cost_usd: 0.0157 } }),
-      make('llm', 'LLM_CALL_COMPLETED', 'Brief passed mechanics and source attribution checks.', 'reporter', { stage: 'after', call_id: 'report-llm', model: 'escalation' }, 'INFO', 3890),
-      make('node_state', 'NODE_END', 'Validation brief written.', 'reporter', {}, 'INFO', 4290),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Validated report published.', undefined, { from: 'reporter', to: 'final' }),
-      make('node_state', 'NODE_END', 'output/validation.md is ready.', 'final'),
+      make('gate_closed', 'GATE_CLOSED', 'Verdict accepted.', NODE.verdictGate, { gate_id: VERDICT_GATE_ID, outcome: 'approve' }, 'INFO', undefined, 220),
+      make('node_state', 'NODE_END', 'Verdict gate approved.', NODE.verdictGate),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Reply handed to the verdict router.', undefined, { from: NODE.verdictGate, to: NODE.verdictRouter }, 'INFO', undefined, 160),
+      make('node_state', 'NODE_START', 'Routing the accepted verdict.', NODE.verdictRouter, {}, 'INFO', undefined, 140),
+      make('node_state', 'NODE_END', 'Routed to verdict_approved with no model call.', NODE.verdictRouter, { route: 'verdict_approved' }, 'INFO', 3, 160),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Reporter released.', undefined, { from: NODE.verdictRouter, to: NODE.report }),
+      make('node_state', 'NODE_START', 'Writing the sourced one-page validation brief.', NODE.report),
+      make('llm', 'LLM_CALL_STARTED', 'Reporter is composing the brief and attribution table.', NODE.report, { stage: 'before', call_id: 'report-llm', model: 'escalation' }),
+      make('token', 'TOKEN_USAGE', 'Reporter usage recorded.', NODE.report, { call_id: 'report-llm', usage: { prompt_tokens: 2489, completion_tokens: 1054, total_tokens: 3543, cost_usd: 0.0157 } }),
+      make('llm', 'LLM_CALL_COMPLETED', 'Brief passed mechanics and source attribution checks.', NODE.report, { stage: 'after', call_id: 'report-llm', model: 'escalation' }, 'INFO', 3890),
+      make('node_state', 'NODE_END', 'Validation brief written.', NODE.report, {}, 'INFO', 4290),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Validated report published.', undefined, { from: NODE.report, to: NODE.output }),
+      make('node_state', 'NODE_END', 'output/validation.md is ready.', NODE.output),
       make('metrics', 'METRICS_UPDATED', 'Final usage and cost calculated.', undefined, { elapsed_ms: 27430, call_count: 7 }),
       make('run_state', 'RUN_COMPLETED', 'Run completed with a NEEDS_WORK verdict.', undefined, { status: 'completed' }, 'INFO', 27430),
     ],

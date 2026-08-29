@@ -31,7 +31,11 @@ market_task:
     Return one MarketFindings JSON object. Every source and competitor URL must
     be copied exactly from a tool result from this run. A competitor may use an
     evidence-page URL when that page is the attributed source. Record pricing
-    as "not published" when the source does not state it. List in
+    as "not published" when the source does not state it. Set vendor_owned true
+    only when an attributed source shows the competitor is owned by, or bundled
+    into, a larger platform vendor rather than sold as an independent product;
+    the competitive-room ladder scores on that flag, so a guess there moves the
+    verdict. List in
     paying_segments each buyer segment an attributed source shows is already
     spending money on this problem, named as that source names it. Leave
     paying_segments empty when no source establishes one; a vendor's own
@@ -127,50 +131,78 @@ synthesis_task:
     there; the schema derives those from the five scores by itself.
 
     Choose a score for each dimension and copy that dimension's anchor verbatim
-    into anchor_matched. Partial satisfaction of anchor N scores N-1. Higher is
-    always better on every dimension. Score 1 is reserved for evidence that does
-    not reach the question and must never be reached by inference: weak evidence
+    into anchor_matched. Copy it character for character: a guardrail compares
+    what you wrote against the anchor for the score you claimed and rejects
+    anything below 85% token overlap.
+
+    Two rules govern every ladder. Score the HIGHEST level whose anchor is
+    fully satisfied; an anchor beginning "Anchor N, and" adds its clause to
+    anchor N. Partial satisfaction of anchor N scores N-1. Higher is always
+    better on every dimension. Score 1 is reserved for evidence that does not
+    reach the question and must never be reached by inference: weak evidence
     that exists is a 2, not a 1.
 
+    Score only on facts the findings carry, and never on popularity. A thread's
+    points and comment count and a repository's star count say how visible
+    something was, not that anyone has this problem or that the code is mature.
+    Upvotes are not demand. The one place a repository's archived flag counts is
+    the headroom ladder, where a null flag means "not reported" and never
+    "confirmed still maintained".
+
+    These terms mean exactly this, everywhere below:
+      usable thread - a thread whose classification is not OFF_TOPIC.
+      problem thread - a thread classified HAS_PROBLEM, PAYS or BUILT_WORKAROUND.
+      reusable repository - a repository marked SOLVES_ENTIRELY or PARTIAL whose licence permits commercial use and whose months_since_push is 12 or fewer.
+      free substitute - a repository marked SOLVES_ENTIRELY, which covers the whole core job on its own.
+      free product - a product a market or sentiment source shows is available at no cost; it need not be a repository.
+      vendor owned - a competitor whose vendor_owned flag is true: owned by or bundled into a larger platform vendor rather than sold on its own.
+      dated within 24 months - the source's own date is no more than 24 months before the scope's as_of date.
+
+    F and X read the same GitHub results and ask different questions. F counts
+    reusable repositories, the components you build WITH. X asks whether one
+    free thing is already a substitute for the whole product. Three libraries
+    that each cover a separable part of the v1 are a high F and a high X at the
+    same time; that is the intended reading, not a contradiction.
+
     D - Demand. Is anyone actively trying to solve this today?
-      0: Every retrieved thread is ADJACENT. Nobody in the evidence describes having this problem.
-      1: Evidence does not reach this question — the branch returned nothing, or fewer than 3 usable threads.
-      2: 1–2 threads state the problem, or all such threads are older than 36 months.
-      3: ≥3 threads state it, ≥1 within 24 months, but nobody describes a workaround or a price paid.
-      4: Anchor 3, and ≥1 describes a manual workaround they maintain, or names a tool they pay for.
-      5: ≥5 threads within 24 months, ≥2 naming a workaround or a price, and the market branch independently names a paying segment.
+      0: At least 1 usable thread, and none is a problem thread: nobody in the evidence describes having this problem.
+      1: Evidence does not reach this question — the sentiment branch returned no usable thread.
+      2: 1 or 2 problem threads, or at least 3 problem threads none of which is dated within 24 months.
+      3: At least 3 problem threads, and at least 1 of them dated within 24 months.
+      4: Anchor 3, and at least 1 problem thread is classified BUILT_WORKAROUND or PAYS.
+      5: Anchor 4, and at least 5 problem threads are dated within 24 months, at least 2 of them classified BUILT_WORKAROUND or PAYS, and the market branch names at least 1 paying segment.
 
     M - Market. Is there money, and can you name whose?
-      0: No market source names a buyer, a budget or a price for this problem.
-      1: Evidence does not reach this question
-      2: At least 1 market source names a buyer segment, but no source states a price or a budget.
-      3: At least 2 market sources name the same buyer segment and at least 1 states a price or a budget.
-      4: Anchor 3, and at least 1 source within 24 months states what that segment pays today.
-      5: Anchor 4, and at least 3 sources within 24 months agree on the segment, and the market branch names that paying segment explicitly.
+      0: The market branch returned sources, and none of them names a buyer segment for this problem.
+      1: Evidence does not reach this question — the market branch returned no source.
+      2: At least 1 market source names a buyer segment for this problem.
+      3: Anchor 2, and at least 1 source or competitor states a price or a budget that segment spends.
+      4: Anchor 3, and at least 2 market sources dated within 24 months name that same segment.
+      5: Anchor 4, and the market branch records that segment in paying_segments, supported by at least 3 sources dated within 24 months.
 
     C - Competitive room. Is the incumbent set beatable on a stated axis?
-      0: The named incumbents cover the whole job and no source states an axis on which they are beatable.
-      1: Evidence does not reach this question
-      2: At least 1 competitor is named, but no source states an axis on which it is beatable.
-      3: At least 2 competitors are named with stated pricing, and at least 1 source names an axis on which they are beatable.
-      4: Anchor 3, and at least 1 source within 24 months describes a need the named incumbents do not serve.
-      5: Anchor 4, and at least 2 sources within 24 months describe the same unserved need, and no incumbent is vendor owned across the whole job.
+      0: At least 1 competitor is named, every named competitor is vendor owned, and no source states an axis on which any of them is beatable.
+      1: Evidence does not reach this question — the market branch named no competitor.
+      2: The named competitors include at least 1 that is not vendor owned, but no source states an axis of beatability.
+      3: At least 1 source states an axis on which a named competitor is beatable.
+      4: Anchor 3, and at least 2 competitors are named, and at least 1 source dated within 24 months describes a need the named incumbents do not serve.
+      5: Anchor 4, and at least 2 sources dated within 24 months describe the same unserved need, and no named competitor is vendor owned.
 
     F - Feasibility. Can two or three engineers ship a v1?
-      0: The scoped v1 cannot be shipped by two or three engineers on this evidence.
-      1: Evidence does not reach this question
-      2: At least 1 relevant repository exists, but every one is archived, unmaintained beyond 24 months, or licensed against commercial use.
-      3: At least 1 relevant repository permits commercial use and was pushed within 12 months.
-      4: Anchor 3, and at least 2 relevant repositories permit commercial use and were pushed within 12 months.
-      5: Anchor 4, and at least 3 such repositories together cover the separable parts of the scoped v1.
+      0: The feasibility branch returned repositories, and none of them is marked SOLVES_ENTIRELY or PARTIAL.
+      1: Evidence does not reach this question — the feasibility branch returned no repository.
+      2: At least 1 repository is marked SOLVES_ENTIRELY or PARTIAL, and none of them is reusable.
+      3: At least 1 repository in the feasibility evidence is reusable: marked SOLVES_ENTIRELY or PARTIAL, licensed for commercial use, and pushed within 12 months.
+      4: Anchor 3, and at least 2 reusable repositories are in the evidence.
+      5: Anchor 4, and at least 3 reusable repositories together cover the separable parts of the scoped v1.
 
     X - Headroom over free. Is the core already free and good?
-      0: A maintained, commercially usable repository already solves the entire core job for free.
-      1: Evidence does not reach this question
-      2: A commercially usable repository pushed within 12 months solves most of the core job.
-      3: Every relevant repository is partial, and each one leaves a named part of the core job unsolved.
-      4: Anchor 3, and every repository that covers most of the job is archived, unmaintained beyond 24 months, or licensed against commercial use.
-      5: No repository in the evidence addresses the core job, and no free product is named in the market or sentiment evidence.
+      0: At least 1 free substitute repository is not marked archived, permits commercial use and was pushed within 12 months.
+      1: Evidence does not reach this question — no repository is marked SOLVES_ENTIRELY or PARTIAL and no free product is named.
+      2: At least 1 free substitute repository exists, and every one of them is marked archived, licensed against commercial use, or was last pushed more than 12 months ago.
+      3: No free substitute repository exists, and a market or sentiment source names a free product that covers most of the core job.
+      4: No free substitute and no free product, but a repository marked PARTIAL covers most of the core job.
+      5: No free substitute and no free product, and every repository marked PARTIAL covers only a separable part of the core job, with at least 1 such repository in the evidence.
 
     The confidence inputs are counted, not judged, and a guardrail recomputes
     every one of them from the findings above and rejects a mismatch. Set

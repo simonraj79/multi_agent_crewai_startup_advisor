@@ -166,6 +166,29 @@ def _classify(text: str, query: str) -> str:
     return "OPINION"
 
 
+def _story_metric(*payloads: Any, key: str) -> int | None:
+    """The first non-negative integer ``key`` any payload reports, else ``None``.
+
+    Algolia carries ``points`` and ``num_comments`` on the story record returned
+    by ``/search``, and ``points`` again on the ``/items`` root; comments carry
+    neither. Both are read from responses this tool already fetches, so no extra
+    request is made for them.
+
+    Tri-state on purpose. A story genuinely at zero points and a story whose
+    score Algolia did not report are different claims, so anything that is not a
+    usable count returns ``None`` rather than 0.
+    """
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get(key)
+        if isinstance(value, bool) or not isinstance(value, int):
+            continue
+        if value >= 0:
+            return value
+    return None
+
+
 def _comment_date(comment: dict[str, Any], fallback: str) -> tuple[str, bool]:
     created_at = comment.get("created_at")
     if isinstance(created_at, str) and created_at.strip():
@@ -231,6 +254,7 @@ class HackerNewsSentimentTool(BaseTool):
             results: list[dict[str, Any]] = []
             retrieval_dated_count = 0
             inspected_stories = 0
+            unreported_metric_stories = 0
             for hit in hits[:story_limit]:
                 if not isinstance(hit, dict):
                     continue
@@ -240,6 +264,12 @@ class HackerNewsSentimentTool(BaseTool):
                 item_id = str(item_id).strip()
                 thread = _request_json(HN_ITEM_URL.format(item_id=item_id))
                 inspected_stories += 1
+                # Story-level signals, shared by every row cited to this thread:
+                # the rows all carry the story's HN item URL, so they all
+                # describe how public that one story was.
+                points = _story_metric(hit, thread, key="points")
+                num_comments = _story_metric(hit, thread, key="num_comments")
+                unreported_metric_stories += int(points is None or num_comments is None)
                 for comment in _walk_comments(thread)[:comments_per_story]:
                     quote = _html_to_text(comment.get("text"))
                     if not quote:
@@ -252,6 +282,8 @@ class HackerNewsSentimentTool(BaseTool):
                             "quote": quote[:MAX_QUOTE_CHARS],
                             "url": HN_CITATION_URL.format(item_id=item_id),
                             "date": date,
+                            "points": points,
+                            "num_comments": num_comments,
                         }
                     )
         except _RateLimitedError:
@@ -284,6 +316,11 @@ class HackerNewsSentimentTool(BaseTool):
         if retrieval_dated_count:
             notes += (
                 f" Used retrieval time for {retrieval_dated_count} item(s) without a source date."
+            )
+        if unreported_metric_stories:
+            notes += (
+                f" Algolia reported no score or comment count for {unreported_metric_stories} "
+                "thread(s); those fields are null rather than zero."
             )
         return _envelope(
             status="ok",

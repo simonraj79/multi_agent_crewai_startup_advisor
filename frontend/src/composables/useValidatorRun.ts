@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import type { Edge, Node } from '@vue-flow/core'
 import { MOCK_GRAPH } from '../data/mockGraph'
-import { studioApi, type ConnectionStatus, type StudioApiLike, type TransportMode } from '../services/studioApi'
+import { studioApi, type ConnectionStatus, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
 import type {
   CallChip,
   ChatEntry,
@@ -13,11 +13,18 @@ import type {
   UsageMetrics,
 } from '../types/studio'
 
+/**
+ * How a node is drawn. `router` and `step` are deliberately distinct from
+ * `agent`: both are deterministic, both call zero models, and drawing them as
+ * agent cards would put the cost and latency of the run in the wrong places.
+ */
+export type StudioNodeKind = 'agent' | 'gate' | 'output' | 'quarantine' | 'router' | 'step'
+
 export interface StudioNodeData extends Record<string, unknown> {
   label: string
   eyebrow: string
   description: string
-  kind: 'agent' | 'gate' | 'output' | 'quarantine'
+  kind: StudioNodeKind
   state: NodeRunState
   model?: string
   tool?: string
@@ -611,13 +618,13 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     }
   }
 
-  async function downloadLogs(): Promise<void> {
+  async function downloadLogs(format: LogFormat = 'ndjson'): Promise<void> {
     if (!runId.value || downloadStatus.value === 'pending') return
     window.clearTimeout(downloadTimer)
     downloadStatus.value = 'pending'
     downloadMessage.value = 'Preparing log download…'
     try {
-      await api.downloadLogs(runId.value)
+      await api.downloadLogs(runId.value, format)
       downloadStatus.value = 'success'
       downloadMessage.value = 'Logs downloaded successfully.'
     } catch (error) {
@@ -698,10 +705,23 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
   }
 }
 
-function nodeKind(kind: GraphDescriptor['nodes'][number]['kind']): StudioNodeData['kind'] {
+/**
+ * The descriptor's `kind` comes from the service overlay, which falls back to
+ * CrewAI's own classification (`router` / `start` / `step`) for any node it does
+ * not name. Everything here is a straight pass-through except `start`, which is
+ * a plain deterministic step as far as the canvas is concerned.
+ *
+ * This used to collapse `router`, `start` and `step` into `agent`, which drew
+ * `route_scope` and `route_verdict` as six-agent-style cards. They are
+ * deterministic routers with zero LLM calls (PRD §7.0); an operator reading the
+ * graph for where cost and latency live was being misled by the drawing.
+ */
+function nodeKind(kind: GraphDescriptor['nodes'][number]['kind']): StudioNodeKind {
   if (kind === 'gate') return 'gate'
   if (kind === 'output') return 'output'
   if (kind === 'quarantine') return 'quarantine'
+  if (kind === 'router') return 'router'
+  if (kind === 'step' || kind === 'start') return 'step'
   return 'agent'
 }
 

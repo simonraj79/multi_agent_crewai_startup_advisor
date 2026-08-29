@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   Activity,
   Download,
@@ -10,7 +10,7 @@ import {
   LoaderCircle,
   X,
 } from 'lucide-vue-next'
-import type { ConnectionStatus, TransportMode } from '../services/studioApi'
+import type { ConnectionStatus, LogFormat, TransportMode } from '../services/studioApi'
 import type { RunStatus, UsageMetrics } from '../types/studio'
 
 const props = defineProps<{
@@ -35,7 +35,7 @@ const emit = defineEmits<{
   'update:idea': [value: string]
   launch: []
   cancel: []
-  download: []
+  download: [format: LogFormat]
   dismissError: []
   selectView: [value: 'graph' | 'activity']
 }>()
@@ -47,6 +47,10 @@ const elapsed = computed(() => {
   return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`
 })
 const tokens = computed(() => new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(props.usage.totalTokens))
+
+// The service serves the same run log as NDJSON or as a ZIP; a long run is a
+// much smaller download as the archive, so the operator picks.
+const logFormat = ref<LogFormat>('ndjson')
 </script>
 
 <template>
@@ -122,11 +126,30 @@ const tokens = computed(() => new Intl.NumberFormat('en', { notation: 'compact',
         <Square :size="14" aria-hidden="true" />
         {{ status === 'stopping' ? 'Stopping…' : 'Cancel' }}
       </button>
-      <button class="button button-quiet" type="button" :disabled="!runId || downloadStatus === 'pending'" @click="emit('download')">
-        <LoaderCircle v-if="downloadStatus === 'pending'" class="download-spinner" :size="16" aria-hidden="true" />
-        <Download v-else :size="16" aria-hidden="true" />
-        {{ downloadStatus === 'pending' ? 'Preparing…' : 'Download logs' }}
-      </button>
+      <div class="download-row">
+        <button
+          class="button button-quiet"
+          type="button"
+          :disabled="!runId || downloadStatus === 'pending'"
+          @click="emit('download', logFormat)"
+        >
+          <LoaderCircle v-if="downloadStatus === 'pending'" class="download-spinner" :size="16" aria-hidden="true" />
+          <Download v-else :size="16" aria-hidden="true" />
+          {{ downloadStatus === 'pending' ? 'Preparing…' : 'Download logs' }}
+        </button>
+        <div class="segmented format-picker" role="group" aria-label="Log format">
+          <button
+            v-for="option in (['ndjson', 'zip'] as LogFormat[])"
+            :key="option"
+            type="button"
+            :aria-pressed="logFormat === option"
+            :title="option === 'zip' ? 'Download the run log as a ZIP archive' : 'Download the run log as newline-delimited JSON'"
+            @click="logFormat = option"
+          >
+            {{ option.toUpperCase() }}
+          </button>
+        </div>
+      </div>
       <p
         v-if="downloadMessage"
         class="download-feedback"
@@ -174,6 +197,9 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
 .control-actions { display: grid; gap: 8px; padding: 16px; }
 .error-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; color: var(--err-text); font-size: var(--fs-12); background: var(--err-bg); border-bottom: 1px solid var(--err-border); }
 .error-banner .icon-button { flex: 0 0 auto; }
+.download-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.format-picker { grid-template-columns: 1fr 1fr; }
+.format-picker button { min-height: 34px; padding: 0 10px; font: 600 10px/1 var(--font-mono); }
 .download-feedback { margin: 0; color: var(--text-muted); font-size: var(--fs-11); text-align: center; }
 .download-feedback.is-success { color: var(--accent-mint); }
 .download-feedback.is-error { color: var(--err-text); }

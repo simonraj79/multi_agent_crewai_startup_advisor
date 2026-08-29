@@ -64,7 +64,7 @@ describe('unattributed quarantine node', () => {
     const build = frameFactory()
     api.emit(build('agent', { event_type: 'AGENT_STEP', node_id: QUARANTINE_NODE_ID }))
     api.emit(build('tool', { event_type: 'TOOL_CALL_STARTED', node_id: QUARANTINE_NODE_ID, details: { stage: 'before', tool: 'mystery' } }))
-    api.emit(build('node_state', { event_type: 'NODE_START', node_id: 'scoper' }))
+    api.emit(build('node_state', { event_type: 'NODE_START', node_id: 'scope_idea' }))
     await flush()
 
     expect(run.quarantinedFrames.value).toBe(2)

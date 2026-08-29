@@ -195,6 +195,23 @@ def _license_permits_commercial(repository: dict[str, Any]) -> bool:
     return isinstance(spdx_id, str) and spdx_id in _COMMERCIAL_SPDX_LICENSES
 
 
+def _archived(*payloads: Any) -> bool | None:
+    """GitHub's ``archived`` flag, or ``None`` when no payload reports one.
+
+    Costs no request. ``/search/repositories`` items are full repository
+    representations and already carry ``archived``, and so does the detail
+    payload this tool already fetches per result. The shared 10 req/min per-IP
+    budget (PRD R-7) therefore sees the same 1 + N calls it saw before.
+
+    ``None`` means "not reported", which is not the claim ``False`` makes: an
+    unreported flag must never read as "confirmed still maintained".
+    """
+    for payload in payloads:
+        if isinstance(payload, dict) and isinstance(payload.get("archived"), bool):
+            return bool(payload["archived"])
+    return None
+
+
 def _months_since_push(value: Any, now: datetime) -> int:
     if not isinstance(value, str) or not value.strip():
         return -1
@@ -299,6 +316,7 @@ class GitHubFeasibilityTool(BaseTool):
             results: list[dict[str, Any]] = []
             skipped_count = 0
             unknown_activity_count = 0
+            unreported_archived_count = 0
             for item in items[:limit]:
                 if not isinstance(item, dict):
                     skipped_count += 1
@@ -321,6 +339,8 @@ class GitHubFeasibilityTool(BaseTool):
                     now,
                 )
                 unknown_activity_count += int(months_since_push < 0)
+                archived = _archived(repository, item)
+                unreported_archived_count += int(archived is None)
                 results.append(
                     {
                         "name": str(repository.get("full_name") or full_name),
@@ -328,6 +348,7 @@ class GitHubFeasibilityTool(BaseTool):
                         "months_since_push": months_since_push,
                         "relevance": _relevance(actual_query, repository),
                         "url": url,
+                        "archived": archived,
                     }
                 )
         except _RateLimitedError:
@@ -364,6 +385,11 @@ class GitHubFeasibilityTool(BaseTool):
         if unknown_activity_count:
             notes_parts.append(
                 f"Activity was unknown for {unknown_activity_count} result(s), represented as -1 months."
+            )
+        if unreported_archived_count:
+            notes_parts.append(
+                f"GitHub reported no archive state for {unreported_archived_count} result(s); "
+                "archived is null rather than false."
             )
         return _envelope(
             status="ok",

@@ -39,7 +39,7 @@ Track B: the hosted service. Provisioned resources are real and live as of
 | Resource | Identifier | Plan | Region | Status |
 |---|---|---|---|---|
 | Pinecone index | `agentic-crew-ai-index` | serverless | aws ap-southeast-1 | **live** |
-| Render Postgres | `agentic-crew-ai-db` · `dpg-da94gqhf2nfc73e8rh7g-a` | `basic_256mb` · **PG 18** · 1 GB | singapore | **live** |
+| Render Postgres | `agentic-crew-ai-db` · `dpg-<redacted>-a` | `basic_256mb` · **PG 18** · 1 GB | singapore | **live** |
 | Render backend | `agentic-crew-ai-api` | `starter` | singapore | **not created** |
 | Render frontend | `agentic-crew-ai-web` | static | singapore | **not created** |
 
@@ -55,7 +55,7 @@ application code and `render.yaml` now exist and the repository has a baseline
 commit, so the remaining prerequisite is a git **remote** — Render deploys from a
 hosted repository, and none is configured yet (`git remote -v` is empty).
 
-Render owner ID: `tea-csps46i3esus73eojjp0`.
+Render owner ID: `tea-<redacted>` — see the Render dashboard. Account-specific identifiers are kept out of this public repo.
 
 `agentic-crew-ai-db` was created by hand, outside any Blueprint. Applying
 `render.yaml` will not silently adopt it: confirm on the Blueprint preview that

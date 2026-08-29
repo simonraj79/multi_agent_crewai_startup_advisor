@@ -6,7 +6,7 @@
 #
 # Corrections against the block previously printed in 07-deployment.md:
 #   * postgresMajorVersion is "18", not "17" - the live instance
-#     dpg-da94gqhf2nfc73e8rh7g-a was upgraded and reports PG 18.
+#     the live instance was upgraded and reports PG 18.
 #   * startCommand targets brief_crew.service.app:create_app as a FACTORY.
 #     There is no `app.main` module in this repository.
 #   * buildCommand installs the `service` optional extra. A bare `uv sync`
@@ -17,7 +17,8 @@
 
 databases:
   - name: agentic-crew-ai-db
-    # Live resource: dpg-da94gqhf2nfc73e8rh7g-a, created outside this Blueprint.
+    # Live resource: created by hand outside this Blueprint - check the apply
+    # preview LINKS it rather than proposing a second instance.
     # These values mirror it exactly so an apply does not try to redefine it.
     databaseName: agentic_crew_ai_db
     user: agentic_crew_ai_db_user

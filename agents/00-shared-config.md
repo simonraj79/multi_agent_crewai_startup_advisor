@@ -491,7 +491,7 @@ cache-hit cutoff on scores clustered within 0.06.
 | | |
 |---|---|
 | Name | `agentic-crew-ai-db` |
-| ID | `dpg-da94gqhf2nfc73e8rh7g-a` |
+| ID | `dpg-<redacted>-a` — the live value is in the Render dashboard. Kept out of this public repo: it is the database's **internal hostname**, not a secret, but it is account-specific and of no use to anyone else. |
 | Plan | `basic_256mb` — $6/mo + $0.30/GB |
 | Version | PostgreSQL 18 · 1 GB disk |
 | Region | singapore |

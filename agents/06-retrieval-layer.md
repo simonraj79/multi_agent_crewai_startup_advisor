@@ -27,9 +27,12 @@ The Pinecone tool, the embedding conventions, and the Cohere rerank pass.
 > | namespace on write | `index_documents` accepted one, nothing passed it | `validator_cache.resolve_namespace()` passes a per-user opaque hash |
 >
 > Both arguments are **additive and default to `None`**, so the Brief Crew path
-> issues exactly the same unfiltered, default-namespace query it always did. The
-> Brief Crew path therefore still gets none of this: see the provenance defect
-> below, which remains open for `main.py::index_content`.
+> issues exactly the same unfiltered, default-namespace query it always did —
+> namespaces and metadata filters remain a validator-path feature.
+>
+> The **provenance** defect described below is a separate matter, and it is now
+> **closed on both paths**: `main.py::index_content` indexes one document per
+> scraped source URL. See the correction in that section.
 >
 > Verified live 2026-08-29: direct embedding calls return **768** dims, the index
 > is dimension 768 / cosine, and Cohere separates a relevant from an irrelevant
@@ -243,9 +246,12 @@ research note, or one the Researcher writes with fewer headings, drops below and
 silently reverts to a permanent `cache_miss`. There is no margin and nothing
 reports its absence.
 
-**2. `url` and `publisher` are empty on every chunk — this is the real defect.**
-`index_content` indexes the Researcher's *notes* as one document, and notes have
-no single source URL, so both metadata fields are written as `""`. Consequences:
+**2. `url` and `publisher` were empty on every chunk — this was the real
+defect, and it is now fixed.** The description below is kept in the past tense
+because the reasoning still explains why the current shape is what it is; the
+correction is at the end of this item. `index_content` used to index the
+Researcher's *notes* as one document, and notes have no single source URL, so
+both metadata fields were written as `""`. Consequences, while that held:
 
 - `_format_hits` renders `url: unknown` and `publisher: unknown` above passages
   whose body contains real URLs — actively misleading to the Analyst.
@@ -266,17 +272,26 @@ structured provenance and puts comfortable margin above the ≥3 threshold. It i
 the same listener `08-observability.md` needs for the per-agent cost split, so it
 remains one piece of work serving two gaps.
 
-> **The validator path already does this; the Brief Crew path still does not.**
-> `src/brief_crew/validator_cache.py` captures each tool envelope, indexes **one
-> document per source URL** with real `url`, `publisher`, `branch`, `category`
-> and `idea_hash`, and refuses to index generated `ScopedIdea` / `Verdict` /
-> `ValidationReport` objects. That is the shape described above, implemented.
+> ⚠️ **Correction — both paths now do this. Verified 2026-08-29.** An earlier
+> revision of this block said `main.py::index_content` had not been migrated and
+> still indexed the notes. That is no longer true, and the sentence is corrected
+> rather than deleted so the change is visible.
 >
-> `main.py::index_content` was **not** migrated: it still calls
-> `index_documents(documents=[{"text": research_notes, "url": "", "publisher": ""}])`,
-> and `main.py:78-81` still renders `url: unknown` above passages containing real
-> URLs. This defect is open, and the working reference implementation for fixing
-> it now exists in `validator_cache.py`.
+> `src/brief_crew/validator_cache.py` captures each tool envelope and indexes
+> **one document per source URL** with real `url`, `publisher`, `branch`,
+> `category` and `idea_hash`, refusing to index generated `ScopedIdea` /
+> `Verdict` / `ValidationReport` objects.
+>
+> `main.py` now does the same for the Brief Crew: a capture sink keeps every
+> `firecrawl_web_scrape_tool` result with the URL that produced it in
+> `BriefState.scraped_sources`, and `index_content` calls
+> `index_documents(documents=self.state.scraped_sources, ...)` — one document per
+> page, each with a real `url` and `publisher`. A run that opened no page indexes
+> nothing and says so, rather than inventing a source from the Researcher's
+> prose. `_format_hits`'s `url: unknown` fallback survives, but only for a hit
+> that genuinely carries no URL. `tests/test_brief_crew_regression.py` pins the
+> scrape tool's name and its `result_schema`, which is what keeps the captured
+> page body chunkable.
 
 **Do not lower `MIN_RERANK_HITS` to 1.** The threshold is what stops a single
 lucky chunk from certifying a topic as cached.

@@ -397,9 +397,9 @@ class ValidatorCrewWiringTests(unittest.TestCase):
         """F05, F06, F07 and F13 - a schema field nothing asks for stays null."""
         tasks = yaml.safe_load((CONFIG_DIR / "tasks.yaml").read_text(encoding="utf-8"))
         expected = {
-            "market_task": ["paying_segments"],
-            "sentiment_task": ["points", "num_comments"],
-            "feasibility_task": ["archived"],
+            "market_task": ["paying_segments", "dated_is_retrieval_time"],
+            "sentiment_task": ["points", "num_comments", "date_is_retrieval_time"],
+            "feasibility_task": ["archived", "months_since_push"],
             "reporting_task": ["Risks", "kill criteria", "cheapest next test"],
         }
 
@@ -408,6 +408,55 @@ class ValidatorCrewWiringTests(unittest.TestCase):
             for fragment in fragments:
                 with self.subTest(task=name, fragment=fragment):
                     self.assertIn(fragment, description)
+
+    def test_the_recency_clause_excludes_a_retrieval_time_fallback(self) -> None:
+        """F16. Six anchors across D, M and C turn on "dated within 24 months",
+        and a retrieval-time fallback is always inside that window. The
+        Synthesist has to be told what the guardrail already enforces, or the
+        first thing it learns about the rule is a rejection."""
+        tasks = yaml.safe_load((CONFIG_DIR / "tasks.yaml").read_text(encoding="utf-8"))
+        description = tasks["synthesis_task"]["description"]
+        definition = next(
+            line for line in description.splitlines() if "dated within 24 months - " in line
+        )
+
+        self.assertIn("dated_is_retrieval_time", definition)
+        self.assertIn("date_is_retrieval_time", definition)
+        self.assertIn("never dated within 24 months", definition)
+
+    def test_the_synthesist_is_warned_that_scores_are_checked_against_counts(self) -> None:
+        """A guardrail the prompt does not mention is a guardrail the model
+        discovers by failing. It also has to know the bound is two-sided at 0
+        and 1, or it will reach for a low score to dodge a floor."""
+        tasks = yaml.safe_load((CONFIG_DIR / "tasks.yaml").read_text(encoding="utf-8"))
+        description = tasks["synthesis_task"]["description"]
+
+        self.assertIn("rejects a score the evidence cannot carry", description)
+        self.assertIn("in both directions", description)
+
+    def test_every_countable_anchor_term_is_recomputed_by_a_counter(self) -> None:
+        """F16. The ladders were rewritten to score on countable terms; this
+        asserts the counters that make each one enforceable actually exist,
+        because an anchor whose term nothing recomputes is scored by the model
+        alone."""
+        counts = compute_evidence_counts(
+            MarketFindings(
+                sources=[], source_urls=[], gaps=[], tool_status="empty", competitors=[]
+            ),
+            SentimentFindings(sources=[], source_urls=[], gaps=[], tool_status="empty"),
+            FeasibilityFindings(sources=[], source_urls=[], gaps=[], tool_status="empty"),
+        )
+        required = {
+            "usable thread": "sentiment_usable_threads",
+            "problem thread": "sentiment_problem_threads",
+            "reusable": "feasibility_reusable_repos",
+            "free substitute": "feasibility_live_substitutes",
+            "paying segment": "market_paying_segments",
+        }
+
+        for term, counter in required.items():
+            with self.subTest(term=term):
+                self.assertIn(counter, counts)
 
     def test_owned_implementation_has_no_openai_model_string(self) -> None:
         root = CONFIG_DIR.parent

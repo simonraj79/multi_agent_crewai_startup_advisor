@@ -107,6 +107,11 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
             [(result["points"], result["num_comments"]) for result in envelope["results"]],
             [(214, 87)] * 3,
         )
+        # Every item in this fixture dates itself, one way or the other.
+        self.assertEqual(
+            [result["date_is_retrieval_time"] for result in envelope["results"]],
+            [False, False, False],
+        )
 
         search_call = get.call_args_list[0]
         self.assertEqual(search_call.args[0], "https://hn.algolia.com/api/v1/search")
@@ -115,6 +120,38 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
             get.call_args_list[1].args[0],
             "https://hn.algolia.com/api/v1/items/123",
         )
+
+    @patch("brief_crew.tools.hn_sentiment.requests.get")
+    def test_an_undated_item_is_flagged_not_dated_today(self, get: MagicMock) -> None:
+        """The Demand ladder scores on "dated within 24 months", and a fallback
+        date is always within 24 months. The flag is what stops an item of
+        unknown age carrying D's upper anchors."""
+        get.side_effect = [
+            _Response(200, {"hits": [{"objectID": "77", "points": 5, "num_comments": 2}]}),
+            _Response(
+                200,
+                {
+                    "id": 77,
+                    "text": "We pay a contractor to do this by hand every month.",
+                    "created_at": "2026-08-01T00:00:00Z",
+                    "children": [
+                        # No created_at and no created_at_i: Algolia dates this
+                        # comment neither way.
+                        {"id": 78, "text": "Our workaround is a spreadsheet.", "children": []}
+                    ],
+                },
+            ),
+        ]
+
+        envelope = json.loads(self.tool._run("clinic intake", story_limit=1))
+
+        self.assertEqual(envelope["status"], "ok")
+        dated, undated = envelope["results"]
+        self.assertIs(dated["date_is_retrieval_time"], False)
+        self.assertEqual(dated["date"], "2026-08-01T00:00:00Z")
+        self.assertIs(undated["date_is_retrieval_time"], True)
+        self.assertEqual(undated["date"], envelope["retrieved_at"])
+        self.assertIn("never dated within 24 months", envelope["notes"])
 
     @patch("brief_crew.tools.hn_sentiment.requests.get")
     def test_story_score_falls_back_to_the_item_root(self, get: MagicMock) -> None:

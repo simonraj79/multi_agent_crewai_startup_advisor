@@ -371,6 +371,38 @@ class SpecFieldTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.evidence(dated_is_retrieval_time="yes")
 
+    def test_thread_flags_a_retrieval_time_fallback(self) -> None:
+        """F16: the twin of `Evidence.dated_is_retrieval_time`, on the branch
+        that feeds the heaviest dimension. An undated thread dated "today" is
+        always within 24 months, so D could reach its top anchors on threads of
+        entirely unknown age."""
+        self.assertFalse(self.thread().date_is_retrieval_time)
+        self.assertTrue(self.thread(date_is_retrieval_time=True).date_is_retrieval_time)
+
+        with self.assertRaises(ValidationError):
+            self.thread(date_is_retrieval_time="yes")
+
+    def test_months_since_push_is_required_but_nullable(self) -> None:
+        """F16: the tool reports null for a repository GitHub gave no push date.
+
+        It used to be `int` with `ge=0` against a tool that emitted -1 and said
+        so in its notes, so the honest copy failed validation. Required, so the
+        model must answer; nullable, so it can answer "not reported".
+        """
+        self.assertEqual(self.repo().months_since_push, 1)
+        self.assertIsNone(self.repo(months_since_push=None).months_since_push)
+
+        with self.assertRaises(ValidationError):
+            self.repo(months_since_push=-1)
+        values = {
+            "name": "example/project",
+            "license_permits_commercial": True,
+            "relevance": "PARTIAL",
+            "url": "https://github.com/example/project",
+        }
+        with self.assertRaises(ValidationError):
+            Repo.model_validate(values)
+
     def test_repo_archived_state_is_tri_state(self) -> None:
         self.assertIsNone(self.repo().archived)
         self.assertTrue(self.repo(archived=True).archived)

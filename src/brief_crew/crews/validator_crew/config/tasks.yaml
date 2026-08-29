@@ -31,7 +31,11 @@ market_task:
     Return one MarketFindings JSON object. Every source and competitor URL must
     be copied exactly from a tool result from this run. A competitor may use an
     evidence-page URL when that page is the attributed source. Record pricing
-    as "not published" when the source does not state it. Set vendor_owned true
+    as "not published" when the source does not state it. Copy dated and
+    dated_is_retrieval_time together: a true flag means the tool used the time
+    it fetched the page because the page published no date, and such a source
+    is never dated within 24 months. Never clear the flag to make a source look
+    current. Set vendor_owned true
     only when an attributed source shows the competitor is owned by, or bundled
     into, a larger platform vendor rather than sold as an independent product;
     the competitive-room ladder scores on that flag, so a guess there moves the
@@ -64,7 +68,10 @@ sentiment_task:
     Copy the story score into points and the story comment count into
     num_comments when the tool result reports them, and leave both null when it
     does not; never substitute a guess or a zero for a count the tool did not
-    give you. Upvotes and positive opinions do not establish demand. Every URL must be
+    give you. Copy date and date_is_retrieval_time together: a true flag means
+    the tool used the time it fetched the thread because the item carried no
+    date of its own, and such a thread is never dated within 24 months. Never
+    clear the flag to make a thread look recent. Upvotes and positive opinions do not establish demand. Every URL must be
     copied exactly from a tool result from this run. If no call succeeds, return
     no sources and explain the evidence gap.
   expected_output: >
@@ -84,8 +91,12 @@ feasibility_task:
 
     Return one FeasibilityFindings JSON object. Keep at most one Repo per URL.
     Judge SOLVES_ENTIRELY, PARTIAL or IRRELEVANT from functional overlap; never
-    use stars as a maturity, feasibility or saturation signal. Preserve the
-    licence and months-since-push fields from tool results. Set archived from
+    use stars as a maturity, feasibility or saturation signal. Copy the licence flag from the
+    tool result, and copy months_since_push exactly as the tool reports it,
+    including null, which means GitHub reported no push date. Null is not zero
+    and not "pushed recently": a repository whose months_since_push is null is
+    never reusable and is never a live free substitute. Do not drop a
+    repository or invent an age to avoid the null. Set archived from
     the tool result when it reports repository archive state and leave it null
     when it does not; an archived repository is not maintained, so it cannot
     be the free project that already solves the whole job. Every URL must be
@@ -142,6 +153,14 @@ synthesis_task:
     reach the question and must never be reached by inference: weak evidence
     that exists is a 2, not a 1.
 
+    A guardrail counts the findings and rejects a score the evidence cannot
+    carry, so the anchor you quote has to be true of the lists above and not
+    only of your reading of them. Scoring lower than the evidence supports is
+    allowed everywhere except at 0 and 1, where a low score is itself a strong
+    claim: 0 fires a floor and 1 says the branch found nothing. Do not reach
+    for either to avoid a verdict you dislike; both are checked against the
+    counts, in both directions.
+
     Score only on facts the findings carry, and never on popularity. A thread's
     points and comment count and a repository's star count say how visible
     something was, not that anyone has this problem or that the code is mature.
@@ -156,7 +175,7 @@ synthesis_task:
       free substitute - a repository marked SOLVES_ENTIRELY, which covers the whole core job on its own.
       free product - a product a market or sentiment source shows is available at no cost; it need not be a repository.
       vendor owned - a competitor whose vendor_owned flag is true: owned by or bundled into a larger platform vendor rather than sold on its own.
-      dated within 24 months - the source's own date is no more than 24 months before the scope's as_of date.
+      dated within 24 months - the source's own date is no more than 24 months before the scope's as_of date. A market source flagged dated_is_retrieval_time, or a thread flagged date_is_retrieval_time, carries no date of its own and is therefore never dated within 24 months however recent its timestamp looks.
 
     F and X read the same GitHub results and ask different questions. F counts
     reusable repositories, the components you build WITH. X asks whether one
@@ -211,8 +230,11 @@ synthesis_task:
     feasibility_coverage to min(1, repositories whose relevance is
     SOLVES_ENTIRELY or PARTIAL / 5). Set branches_ok to the number of findings
     with tool_status equal to ok. Set median_market_source_age_months to the
-    median age in months of the dated market sources, or null when the market
-    branch has no source. Fill evidence_counts by counting the same lists.
+    median age in months of the market sources, ordering every source with no
+    publication date of its own after all the dated ones, and set it to null
+    whenever the middle of that ordering has no real publication date - which
+    is the case unless strictly more than half of the market sources carry
+    one. Undated material is never counted as fresh. Fill evidence_counts by counting the same lists.
   expected_output: >
     One JSON object matching Verdict exactly, with each evidence URL copied
     from the supplied findings and no prose or code fence.

@@ -122,6 +122,182 @@ def _usage_from_result(result: Any) -> dict[str, int] | None:
     return None
 
 
+# ----------------------------------------------------------------- gate fields
+
+SCOPE_GATE_NODE = "confirm_scope"
+VERDICT_GATE_NODE = "review_verdict"
+
+# The one field every gate carries, and the only one the verdict gate carries.
+# Both validator routers read the reply's top-level ``feedback`` and hand it to
+# the crew that reruns the step - ``route_scope`` -> ``revise_scope``,
+# ``route_verdict`` -> ``revise_verdict`` - so this is how an operator's
+# judgement re-enters the run rather than being typed over the top of it.
+GATE_NOTE_FIELD = "feedback"
+
+# Matches SerializerLimits.max_string, so a value that survives this bound also
+# survives the frame the gate is announced on and comes back from replay intact.
+MAX_GATE_VALUE_CHARS = 4096
+
+
+class GateFieldError(ValueError):
+    """A gate reply tried to set a field the gate does not accept.
+
+    A ``ValueError`` so a caller that only knows the old contract still refuses
+    the reply, with the offending names attached for a precise message.
+    """
+
+    def __init__(self, gate_id: str, fields: tuple[str, ...], detail: str) -> None:
+        super().__init__(detail)
+        self.gate_id = gate_id
+        self.fields = fields
+
+
+def _parsed_gate_output(output: Any) -> dict[str, Any]:
+    """The gate's model output as a plain mapping, whatever CrewAI handed over.
+
+    One implementation for the prompt and for the reply: they must agree on what
+    the gate is showing, or the reply would fold an edit into a different object
+    than the operator was looking at.
+    """
+    if isinstance(output, str):
+        try:
+            parsed = json.loads(output)
+        except json.JSONDecodeError:
+            return {GATE_NOTE_FIELD: output}
+        return dict(parsed) if isinstance(parsed, Mapping) else {}
+    if isinstance(output, Mapping):
+        return dict(output)
+    model_dump = getattr(output, "model_dump", None)
+    if model_dump is None:
+        return {}
+    dumped = model_dump(mode="json")
+    return dict(dumped) if isinstance(dumped, Mapping) else {}
+
+
+def _gate_derived_keys(node_id: str, parsed: Mapping[str, Any]) -> frozenset[str]:
+    """The keys at this gate whose value an operator edit cannot change.
+
+    ``review_verdict`` shows a ``Verdict``, and every field of that model is one
+    of two things. Seven are arithmetic the schema recomputes and discards on
+    every validation - ``composite_score``, ``confidence``, ``confidence_band``,
+    ``verdict``, ``decision_reason``, ``fatal_floors`` and ``provisional`` - so
+    an edit there is a no-op the operator would watch come back changed. The
+    rest are the inputs to that arithmetic: the five ``DimensionScore`` objects,
+    the three coverages, ``branches_ok``, ``evidence_counts`` and the median
+    source age. Those *are* honoured by the formula, which is exactly why they
+    must not be a text box: ``validator_guardrails`` binds a dimension's
+    ``anchor_matched`` to the rubric ladder and its ``evidence_urls`` to URLs a
+    tool actually returned, and those checks run on the Synthesist's output, not
+    on a gate reply. A hand-typed 5 would therefore produce a composite the
+    report presents as evidence-scored when nothing scored it.
+
+    So the whole verdict is read-only and the operator's lever is
+    ``decision=revise`` plus feedback, which is what the Flow was built for:
+    ``revise_verdict`` sends the Synthesist back to rescore against the same
+    evidence, with the guardrails running again.
+
+    ``confirm_scope`` shows a ``ScopedIdea``. Nothing in it is derived and
+    ``route_scope`` applies the edited object verbatim, so all of it is
+    editable - revising the scope is the entire point of that gate.
+
+    Any other gate keeps the historical behaviour of everything editable: a gate
+    this module has never seen is one whose semantics it cannot assert.
+    """
+    if node_id == VERDICT_GATE_NODE:
+        return frozenset(str(key) for key in parsed)
+    return frozenset()
+
+
+def _gate_field_value(value: Any) -> str:
+    """One editable value as the string the form input carries and returns.
+
+    ``default=str`` so a value CrewAI hands over unserialized degrades to a
+    readable field rather than raising inside the gate-open path and failing
+    the run over a display concern.
+    """
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    return text[:MAX_GATE_VALUE_CHARS]
+
+
+def _gate_display_value(value: Any) -> tuple[str, str]:
+    """One read-only value, plus how it should be rendered.
+
+    ``json`` values are pretty-printed because nothing round-trips them: they
+    exist to be read, and a one-line dump of a ``DimensionScore`` is not.
+    """
+    if isinstance(value, str):
+        return value[:MAX_GATE_VALUE_CHARS], "text"
+    if isinstance(value, Mapping | list | tuple):
+        return json.dumps(value, indent=2, default=str)[:MAX_GATE_VALUE_CHARS], "json"
+    return json.dumps(value, default=str)[:MAX_GATE_VALUE_CHARS], "text"
+
+
+def _display_kind(text: str) -> str:
+    try:
+        return "json" if isinstance(json.loads(text), dict | list) else "text"
+    except (json.JSONDecodeError, TypeError):
+        return "text"
+
+
+def _split_gate_fields(
+    node_id: str,
+    parsed: Mapping[str, Any],
+) -> tuple[dict[str, str], list[dict[str, str]]]:
+    """Separate what an operator may edit from what they may only read.
+
+    ``fields`` is pruned rather than annotated on purpose. A client that has
+    never heard of the split renders exactly the inputs it is given, so pruning
+    means the defect cannot survive a stale UI; an ``editable`` flag beside a
+    full dump would leave an old client inviting the impossible edit forever.
+    """
+    derived_keys = _gate_derived_keys(node_id, parsed)
+    fields: dict[str, str] = {}
+    derived: list[dict[str, str]] = []
+    for key, value in parsed.items():
+        name = str(key)
+        if name in derived_keys:
+            display, kind = _gate_display_value(value)
+            derived.append({"key": name, "value": display, "kind": kind})
+        else:
+            fields[name] = _gate_field_value(value)
+    # setdefault, not assignment: a gate whose output could not be parsed keeps
+    # its raw text under this key rather than having it silently blanked.
+    fields.setdefault(GATE_NOTE_FIELD, "")
+    return fields, derived
+
+
+def _normalize_gate_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
+    """Re-split a ``run_gates.request`` row written before the split existed.
+
+    Such a row lists every field of the model dump as editable and carries no
+    ``derived`` list at all. Recovering it verbatim would put the verdict's
+    recomputed arithmetic straight back into the form, so the same policy is
+    applied to the stored strings on the way out. The values are already
+    stringified; this only moves them between the two buckets.
+    """
+    if "derived" in prompt:
+        return prompt
+    stored = prompt.get("fields")
+    if not isinstance(stored, Mapping):
+        prompt["derived"] = []
+        return prompt
+    derived_keys = _gate_derived_keys(str(prompt.get("node_id") or ""), stored)
+    fields: dict[str, str] = {}
+    derived: list[dict[str, str]] = []
+    for key, value in stored.items():
+        name = str(key)
+        text = value if isinstance(value, str) else _gate_field_value(value)
+        if name in derived_keys:
+            derived.append({"key": name, "value": text, "kind": _display_kind(text)})
+        else:
+            fields[name] = text
+    fields.setdefault(GATE_NOTE_FIELD, "")
+    prompt["fields"] = fields
+    prompt["derived"] = derived
+    prompt["editable"] = bool(fields)
+    return prompt
+
+
 @dataclass(frozen=True, slots=True)
 class WorkflowRuntime:
     graph_version: str
@@ -826,6 +1002,11 @@ class RunRegistry:
         if option_ids and outcome not in option_ids:
             raise ValueError(f"outcome must be one of {sorted(option_ids)}")
 
+        # Before the durable compare-and-set, never after: a refusal that ran
+        # later would have already marked the gate answered and locked the
+        # operator out of a run the server would otherwise finish.
+        self._reject_uneditable_fields(gate_id, prompt, fields or {})
+
         if self.persistence is not None:
             answer = self.persistence.answer_gate(
                 run_id,
@@ -859,6 +1040,53 @@ class RunRegistry:
         )
         feedback = self._feedback(context, outcome, fields or {})
         return self._submit(record, context=context, feedback=feedback)
+
+    @staticmethod
+    def _reject_uneditable_fields(
+        gate_id: str,
+        prompt: Mapping[str, Any],
+        fields: Mapping[str, str],
+    ) -> None:
+        """Refuse an edit the gate never offered, rather than dropping it.
+
+        Silently ignoring one would reproduce the defect this replaced: the
+        operator sets ``verdict`` to VALIDATE, is told 202, and watches REJECT
+        come back. The refusal names the field and points at ``revise``.
+
+        An *unchanged echo* of a value the server itself issued is not an edit,
+        so it passes: a client that posts the whole payload back - or an older
+        one holding a pre-split prompt - still answers its gate. The refusal is
+        derived from the prompt's own ``derived`` list rather than recomputed,
+        so the server never refuses something it presented as editable.
+        """
+        if not fields:
+            return
+        offered = prompt.get("fields") or {}
+        unchanged = {
+            str(item.get("key")): str(item.get("value", ""))
+            for item in prompt.get("derived") or ()
+            if isinstance(item, Mapping)
+        }
+        rejected = tuple(
+            sorted(
+                key
+                for key, value in fields.items()
+                if key not in offered
+                and not (key in unchanged and str(value) == unchanged[key])
+            )
+        )
+        if not rejected:
+            return
+        editable = ", ".join(sorted(offered)) or "none"
+        raise GateFieldError(
+            gate_id,
+            rejected,
+            f"these fields cannot be set at this gate: {', '.join(rejected)}. "
+            f"Editable fields: {editable}. A derived value is recomputed from "
+            "the dimension scores and the evidence behind them, so reply with "
+            f"outcome=revise and say what to reconsider in {GATE_NOTE_FIELD!r} "
+            "instead.",
+        )
 
     def cancel(self, run_id: str) -> dict[str, Any]:
         record = self.require(run_id)
@@ -1466,23 +1694,9 @@ class RunRegistry:
         run_id: str,
         context: PendingFeedbackContext,
     ) -> dict[str, Any]:
-        output = context.method_output
-        if isinstance(output, str):
-            try:
-                parsed = json.loads(output)
-            except json.JSONDecodeError:
-                parsed = {"feedback": output}
-        elif isinstance(output, Mapping):
-            parsed = dict(output)
-        else:
-            model_dump = getattr(output, "model_dump", None)
-            parsed = model_dump(mode="json") if model_dump is not None else {}
-
-        fields = {
-            str(key): value if isinstance(value, str) else json.dumps(value)
-            for key, value in parsed.items()
-        }
-        scope_gate = context.method_name == "confirm_scope"
+        parsed = _parsed_gate_output(context.method_output)
+        fields, derived = _split_gate_fields(context.method_name, parsed)
+        scope_gate = context.method_name == SCOPE_GATE_NODE
         title = "Confirm scope" if scope_gate else "Review verdict"
         summary = (
             str(parsed.get("category") or parsed.get("startup_idea") or context.message)
@@ -1502,14 +1716,18 @@ class RunRegistry:
             "gate_id": gate_id,
             "node_id": context.method_name,
             "title": title,
-            "summary": summary[:4096],
-            "editable": True,
+            "summary": summary[:MAX_GATE_VALUE_CHARS],
+            # Legacy flag, kept for the persisted contract: it now means "this
+            # gate has at least one editable field", not "every field is".
+            # Per-field editability is the fields/derived split itself.
+            "editable": bool(fields),
             "expires_at": expires_at.isoformat(),
             "options": [
                 {"id": "approve", "label": "Approve", "emphasis": "primary"},
                 {"id": "revise", "label": "Revise"},
             ],
             "fields": fields,
+            "derived": derived,
             "verdict": parsed.get("verdict"),
             "confidence": parsed.get("confidence"),
         }
@@ -1520,25 +1738,46 @@ class RunRegistry:
         outcome: str,
         fields: Mapping[str, str],
     ) -> str:
-        decision = "revise" if outcome in {"revise", "scope_revise", "verdict_revise"} else "approve"
+        """Turn one gate reply into the JSON both validator routers parse.
+
+        ``route_scope`` and ``route_verdict`` read three things: ``decision``,
+        an optional ``feedback`` string that becomes the reviving crew's
+        ``human_override``, and an optional edited object. Only fields this gate
+        declared editable are folded into that object, so a reply can never
+        push a value into a model that would discard it (the verdict's
+        arithmetic) or reject it (a mistyped literal, which would fail the run
+        rather than the reply).
+
+        ``outcome`` is compared against ``revise`` alone. The prompt has only
+        ever offered ``approve`` and ``revise``, and ``answer_gate`` refuses any
+        outcome that is not one of the prompt's own option ids, so the
+        ``scope_revise``/``verdict_revise`` aliases this used to accept were
+        unreachable - they are the Flow's *router event* names, which never
+        travel as an outcome.
+        """
+        decision = "revise" if outcome == "revise" else "approve"
         payload: dict[str, Any] = {"decision": decision}
-        if fields:
-            output = context.method_output
-            if isinstance(output, str):
-                try:
-                    original = json.loads(output)
-                except json.JSONDecodeError:
-                    original = {}
-            elif isinstance(output, Mapping):
-                original = dict(output)
-            else:
-                original = {}
-            for key, value in fields.items():
+        note = str(fields.get(GATE_NOTE_FIELD, "")).strip()
+        if note:
+            payload["feedback"] = note
+
+        original = _parsed_gate_output(context.method_output)
+        derived_keys = _gate_derived_keys(context.method_name, original)
+        edits = {
+            key: value
+            for key, value in fields.items()
+            if key != GATE_NOTE_FIELD
+            and key in original
+            and key not in derived_keys
+        }
+        if edits:
+            for key, value in edits.items():
                 try:
                     original[key] = json.loads(value)
                 except json.JSONDecodeError:
                     original[key] = value
-            payload["scope" if context.method_name == "confirm_scope" else "verdict"] = original
+            slot = "scope" if context.method_name == SCOPE_GATE_NODE else "verdict"
+            payload[slot] = original
         return json.dumps(payload)
 
     def _enqueue_frames(
@@ -1639,6 +1878,11 @@ class RunRegistry:
                 prompt["expires_at"] = stored_expiry.isoformat()
             elif stored_expiry:
                 prompt["expires_at"] = str(stored_expiry)
+        if prompt is not None:
+            # A gate opened by an earlier build stored every field as editable.
+            # Re-split it here so recovery shows the same affordance a fresh
+            # gate does, and so the reply check refuses the same edits.
+            prompt = _normalize_gate_prompt(prompt)
         context = None
         flow_id = snapshot.get("flow_id")
         if flow_id and snapshot.get("status") == RunStatus.WAITING.value:

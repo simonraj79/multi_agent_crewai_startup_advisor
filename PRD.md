@@ -1275,9 +1275,11 @@ evidence of the *problem*. Anchoring D on workarounds and payments rather than
 upvotes is the substantive improvement.
 
 Every anchor is stated in countable terms; partial satisfaction of anchor *N*
-scores *N−1*. Illustrative, the Demand ladder:
+scores *N−1*. Illustrative, the Demand ladder — **as first drafted, and
+defective. It is kept verbatim below because this document is a design record;
+do not score against it. Read the correction that follows:**
 
-| | Anchor |
+| | Anchor — *as first drafted. Superseded: see the correction below* |
 |---|---|
 | 0 | Every retrieved thread is ADJACENT. Nobody in the evidence describes having this problem. |
 | **1** | **Evidence does not reach this question** — the branch returned nothing, or fewer than 3 usable threads. |
@@ -1286,12 +1288,126 @@ scores *N−1*. Illustrative, the Demand ladder:
 | 4 | Anchor 3, **and** ≥1 describes a manual workaround they maintain, or names a tool they pay for. |
 | 5 | ≥5 threads within 24 months, ≥2 naming a workaround or a price, **and** the market branch independently names a paying segment. |
 
+#### ⚠️ Correction, 2026-08-29 — three defects in the table above
+
+Found by an audit of `RUBRIC_ANCHORS` in
+[`src/brief_crew/config.py`](src/brief_crew/config.py) and verified against
+[`src/brief_crew/schemas/validator.py`](src/brief_crew/schemas/validator.py).
+All three make the ladder above unscoreable as written, on the dimension
+weighted **0.30** — the heaviest of the five.
+
+**1. D=4 was logically unsatisfiable.** Anchor 3 ended *"**but nobody describes
+a workaround or a price paid**"*; anchor 4 read *"**Anchor 3**, and ≥1 describes
+a manual workaround they maintain, or names a tool they pay for."* Anchor 4
+required anchor 3 to hold **and** required the exact thing anchor 3 excludes. No
+evidence state scores it. D=5 was reachable while D=4 was not, so the ladder
+jumped 3 → 5 and the 0.30-weighted dimension silently lost a level.
+**Fix:** anchor 3 no longer excludes the acted-on case; it is now the neutral
+*"≥3 problem threads, ≥1 dated within 24 months"*, and anchor 4 adds the
+workaround/payment clause on top of it. Anchor 5 builds on anchor 4 in turn.
+
+**2. D=0 scored on `ADJACENT`, which is not a value the schema carries.**
+`ThreadClassification` is `Literal["HAS_PROBLEM", "PAYS", "BUILT_WORKAROUND",
+"OPINION", "OFF_TOPIC"]`. `ADJACENT` is not among them, so *"Every retrieved
+thread is ADJACENT"* could not be evaluated against any field — and D=0 is a
+`FLOOR_NO_DEMAND` **REJECT**.
+**Fix:** D=0 is now stated over classifications that exist — at least one
+*usable* thread (not `OFF_TOPIC`) and no *problem* thread (`HAS_PROBLEM`, `PAYS`
+or `BUILT_WORKAROUND`).
+
+**3. A dead band sat between D=2 and D=3.** D=2 fired on *"all such threads are
+older than **36 months**"*; D=3 required *"≥1 within **24 months**"*. Three
+threads whose newest is 28 months old matched neither anchor, so the dimension
+had no score at all for that evidence state.
+**Fix:** D=2's window is now **24 months**, the same window D=3 uses, which
+closes the band. This is an amendment to this document's own text, not a
+transcription of it.
+
+#### The corrected Demand ladder
+
+Semantically identical to `config.DEMAND_ANCHORS`, in this document's notation.
+**The exact strings in `config.py` are what the guardrail matches** at
+`ANCHOR_MATCH_THRESHOLD` token overlap; this table is the reasoning behind them.
+
+| | Anchor |
+|---|---|
+| 0 | ≥1 usable thread, and none is a problem thread: nobody in the evidence describes having this problem. |
+| **1** | **Evidence does not reach this question** — the sentiment branch returned no usable thread. |
+| 2 | 1–2 problem threads, or ≥3 problem threads none of which is dated within 24 months. |
+| 3 | ≥3 problem threads, ≥1 of them dated within 24 months. |
+| 4 | Anchor 3, **and** ≥1 problem thread is classified `BUILT_WORKAROUND` or `PAYS`. |
+| 5 | Anchor 4, **and** ≥5 problem threads dated within 24 months, ≥2 of them `BUILT_WORKAROUND` or `PAYS`, **and** the market branch names ≥1 paying segment. |
+
+*usable thread* = a `Thread` not classified `OFF_TOPIC`. *problem thread* = a
+`Thread` classified `HAS_PROBLEM`, `PAYS` or `BUILT_WORKAROUND`. Both terms are
+defined once in the Synthesist prompt and reused across all five ladders, so
+anchors stay short — short anchors stay far apart under the overlap metric,
+which is what stops the guardrail accepting the neighbouring level's text.
+
+Two rules make the ladders scoreable, and the Synthesist prompt states both:
+score the **highest** level whose anchor is fully satisfied, treating
+*"Anchor N, and …"* as cumulative; and partial satisfaction of anchor *N* scores
+*N−1*.
+
+#### ⚠️ This section is normative, but superseded where it conflicts with `config.py`
+
+The five shipped ladders live in
+[`src/brief_crew/config.py`](src/brief_crew/config.py) — `DEMAND_ANCHORS`,
+`MARKET_ANCHORS`, `COMPETITIVE_ROOM_ANCHORS`, `FEASIBILITY_ANCHORS`,
+`HEADROOM_ANCHORS`, keyed together as `RUBRIC_ANCHORS`. They are quoted verbatim
+into `crews/validator_crew/config/tasks.yaml` and matched verbatim by
+`validator_guardrails.anchor_problems`, so **they, not this section, decide what
+a run scores.** Where this section and `config.py` disagree, `config.py` is
+correct and this section is the record of how it got there. Read them before the
+paid acceptance run: if an anchor is wrong, every verdict inherits the error and
+the guardrail enforces it confidently.
+
+#### ⚠️ M/C/F/X are a derivation, not a transcription
+
+This section wrote out **only** the Demand ladder, and labelled it
+*"Illustrative"*. **The Market, Competitive-room, Feasibility and
+Headroom-over-free ladders were never written — not here, not in `agents/`, not
+anywhere in the repo.** The four shipped ladders were *derived* from this
+section's stated rules, weights, floor definitions and dimension questions, and
+from the fields the schemas actually carry. They have since been **audited,
+repaired and covered by tests**; they have **never been read by a human.** State
+that plainly rather than presenting them as specification, because the two
+failure modes are different: a transcription error is a typo, and a derivation
+error is a judgement nobody made.
+
+#### ⚠️ Level 1's reservation was under-specified, and three hard floors turned on it
+
 ⚠️ **Level 1 is "the evidence does not reach this", not a low score.** It sits
 deliberately *above* 0 and must never be reached by inference: a model that
 scores 1 because it *judges* demand weak has made an error — weak demand *with*
 evidence is a 2. This is what keeps `composite_score` and `confidence` measuring
 different things, and the guardrail enforces it (a score of 1 whose
 `anchor_matched` is not the level-1 anchor verbatim is rejected).
+
+What this section never said is **when level 1 fires.** The Demand ladder gave a
+condition (*"the branch returned nothing, or fewer than 3 usable threads"*);
+M, C, F and X carried the bare phrase *"evidence does not reach this question"*
+and **no firing condition at all**. That left the boundary between a **fatal
+floor** and *"we didn't look hard enough"* undefined for three of the four hard
+floors — `FLOOR_NO_MARKET` (M=0), `FLOOR_NOT_BUILDABLE` (F=0) and
+`FLOOR_ALREADY_FREE` (X=0) are each decided on exactly that boundary. Under the
+under-specified wording an empty market branch — a Firecrawl 429, an exhausted
+plan — could be scored M=0 and **REJECT an idea on the absence of evidence**,
+which is the single failure §10.3's confidence override exists to prevent.
+
+**Fix:** every shipped ladder now names its own branch condition at level 1 —
+*"the market branch returned no source"*, *"the market branch named no
+competitor"*, *"the feasibility branch returned no repository"*, *"no repository
+is marked SOLVES_ENTIRELY or PARTIAL and no free product is named"* — and every
+level-0 anchor is stated over evidence that **was** returned. A branch that came
+back empty scores 1, never 0.
+
+⚠️ The Demand level-1 condition also **drops this section's "or fewer than 3
+usable threads"**. That test duplicates `DimensionScore.evidence_thin` (which is
+`len(evidence_urls) < 3`) and the coverage term of confidence, and pushing it
+into the score as well is the one thing this section says must not happen. It
+also collided head-on with D=2 (*"1–2 threads state the problem"*), so a run
+with two problem threads matched anchor 1 and anchor 2 at once.
 
 ```python
 composite = round(2 * (0.30*D + 0.20*M + 0.20*C + 0.15*F + 0.15*X), 1)   # 0.0–10.0
@@ -1716,6 +1832,50 @@ sections above. What remains genuinely open:
 Found while verifying this PRD against the installed wheel. **These are defects
 in the authoritative specs and must be folded back**, per §14 R-8. Listed here so
 the debt is visible rather than lost in a diff.
+
+⚠️ **Status, re-verified 2026-08-29.** Most of this appendix has since been
+folded back into the documents it names. Each entry is now marked
+**✓ folded back** or **open**, so the list stops implying work that is already
+done. What was checked, and where:
+
+| Entry | State |
+|---|---|
+| `agents/patterns.md` §4 Option C (`kickoff_for_each` is sequential) | ✓ folded back — §4 now heads it *"⚠️ NOT parallel"*. §10's decision table still recommended it under ③ Parallel and has been corrected in this pass |
+| `agents/patterns.md` §4 Option B (`and_()` is only the join) | ✓ folded back — §4 now names `asyncio.gather` over sibling listeners as the source of parallelism |
+| `agents/patterns.md` §7 gotcha 3 (`task.py` line drift) | ✓ folded back in §7; the §11 source map still pointed at `task.py:1327` for the *raise* and has been corrected to `task.py:1382-1391`. Note 1327 is not wrong everywhere — it is where `Task._invoke_guardrail_function` is **defined**, which is what `agents/03-writer.md` and `agents/05-evaluator.md` cite, and both remain correct |
+| `agents/patterns.md` §9 *"What CrewAI does not give you"* | ✓ folded back — a *"what it does give you"* table now covers Flow HITL, `FlowPersistence`, `Flow.ask()` and `astream()` |
+| `agents/patterns.md` §4 unbounded daemon thread per async task | ✓ folded back |
+| `agents/patterns.md` §7 guardrails suppress `output_pydantic` | ✓ folded back |
+| `agents/workflow.md` §8 memory-ceiling conflation | ✓ folded back, with the runs-versus-branches distinction spelled out and the fan-out marked permitted-but-unmeasured |
+| `crews/brief_crew/config/tasks.yaml` *"a missing input is not an error"* | ✓ corrected — the comment is gone |
+| `tools/pinecone_retrieval.py` no `filter=` | ✓ implemented — `retrieve()` takes `metadata_filter` and `namespace` |
+| `indexing.py` / `main.py::index_content` writing `url: ""` | ✓ implemented — `index_content` now indexes `BriefState.scraped_sources`, one document per scraped URL. `agents/06-retrieval-layer.md` still said this was open and has been corrected in this pass |
+| `agents/08-observability.md` §5 and §7 | ✓ folded back — sync-handler reordering, the stream sink, `LLMStreamChunkEvent`, `astream()`, `source_fingerprint` and the `usage_metrics` caveat are all present |
+| `src/brief_crew/main.py` `check_cache -> str` | ✓ fixed — the annotation is `Literal["cache_hit", "cache_miss"]` and two tests pin it |
+| Environment: `PYTHONIOENCODING=utf-8` | **open** — it is set nowhere in `render.yaml`, the `Dockerfile` or CI. `src/brief_crew/__init__.py` reconfigures `sys.stdout`/`sys.stderr` instead, which is stronger in-process but does not reach a subprocess |
+| §10.2's own Demand ladder | ✓ corrected in place — see the entry immediately below |
+
+The entries below are the original text, kept because the *reason* each was a
+defect is still worth reading.
+
+### This document — §10.2, the Demand ladder
+
+⚠️ **The one entry here that is a defect in *this* PRD rather than in
+`agents/`.** §10.2's own Demand ladder — the only ladder the document ever wrote,
+on the dimension weighted 0.30 — was unscoreable in three separate ways: D=4
+required anchor 3 to hold *and* required the exact thing anchor 3 excludes, so no
+evidence state reached it; D=0 scored on a classification `ADJACENT` that
+`ThreadClassification` does not carry; and a dead band between D=2's "older than
+36 months" and D=3's "within 24 months" left three threads whose newest is 28
+months old matching no anchor at all. **Corrected in place in §10.2**, with the
+original table kept verbatim above the correction — this is a design record, so
+the correction is visible as a correction rather than as a silent rewrite.
+
+Two further points recorded there: §10.2 is **normative but superseded wherever
+it conflicts with `config.RUBRIC_ANCHORS`**, which is what the guardrail actually
+matches; and the M/C/F/X ladders were **never written in this document or
+anywhere in `agents/`** — they are a derivation from §10.2's stated rules, audited
+and tested but not yet reviewed by a human.
 
 ### `agents/patterns.md`
 

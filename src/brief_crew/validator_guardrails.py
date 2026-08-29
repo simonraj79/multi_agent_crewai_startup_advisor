@@ -15,7 +15,7 @@ import json
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timezone
-from typing import Any, Literal, Protocol, TypeVar
+from typing import Any, Literal, NamedTuple, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -28,6 +28,9 @@ from brief_crew.config import (
     LEVEL_ONE_ANCHOR,
     MARKET_ANCHORS,
     RUBRIC_ANCHORS,
+    RUBRIC_RECENCY_GRACE_MONTHS,
+    RUBRIC_RECENCY_MONTHS,
+    RUBRIC_REUSABLE_MAX_PUSH_MONTHS,
     VALIDATOR_COVERAGE_TARGET_SOURCES,
     VALIDATOR_DAYS_PER_MONTH,
 )
@@ -36,8 +39,10 @@ from brief_crew.schemas import (
     Evidence,
     FeasibilityFindings,
     MarketFindings,
+    Repo,
     ScopedIdea,
     SentimentFindings,
+    Thread,
     ValidationReport,
     Verdict,
     staleness_multiplier,
@@ -59,6 +64,14 @@ _DIMENSIONS: tuple[tuple[str, str], ...] = (
     ("F", "feasibility"),
     ("X", "headroom_over_free"),
 )
+_PROBLEM_CLASSIFICATIONS = frozenset({"HAS_PROBLEM", "PAYS", "BUILT_WORKAROUND"})
+_ACTED_CLASSIFICATIONS = frozenset({"PAYS", "BUILT_WORKAROUND"})
+_RELEVANT_RELEVANCE = frozenset({"SOLVES_ENTIRELY", "PARTIAL"})
+# A dimension whose branch returned nothing the ladder can score above the
+# reserved level 1. Not 0: level 0 is a fatal floor with its own anchor and its
+# own precondition, so "no level is reachable" and "the floor fired" must stay
+# different answers.
+NO_LEVEL_ABOVE_ONE = 1
 _URL_RE = re.compile(r"https?://[^\s\)\]<>\"']+")
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _LOW_CONFIDENCE_CLAIMS = ("clearly", "no demand", "proven", "confirms")
@@ -149,19 +162,65 @@ def findings_problems(findings: Findings, allowed_urls: Iterable[str]) -> list[s
     return problems
 
 
+def is_reusable_repository(repo: Repo) -> bool:
+    """The Feasibility ladder's "reusable repository" - a component to build WITH.
+
+    Unknown activity is not recent activity: a `months_since_push` of `None`
+    means GitHub reported no `pushed_at`, and "pushed within 12 months" is a
+    claim nobody can make about it.
+    """
+    return (
+        repo.relevance in _RELEVANT_RELEVANCE
+        and repo.license_permits_commercial
+        and repo.months_since_push is not None
+        and repo.months_since_push <= RUBRIC_REUSABLE_MAX_PUSH_MONTHS
+    )
+
+
+def is_live_free_substitute(repo: Repo) -> bool:
+    """The X=0 kill, exactly: a free substitute that is alive and usable.
+
+    A "free substitute" is a repository marked SOLVES_ENTIRELY - it covers the
+    whole core job on its own. This adds the three conditions X=0 states, and
+    `archived is not True` is deliberate rather than `archived is False`: the
+    flag is tri-state, and an unreported flag must score exactly as it did
+    before the field existed rather than letting a possibly-dead project kill
+    an idea.
+    """
+    return (
+        repo.relevance == "SOLVES_ENTIRELY"
+        and repo.archived is not True
+        and repo.license_permits_commercial
+        and repo.months_since_push is not None
+        and repo.months_since_push <= RUBRIC_REUSABLE_MAX_PUSH_MONTHS
+    )
+
+
 def compute_evidence_counts(
     market: MarketFindings,
     sentiment: SentimentFindings,
     feasibility: FeasibilityFindings,
 ) -> dict[str, int]:
-    """Recompute all synthesis counts from branch lists, never model claims."""
+    """Recompute all synthesis counts from branch lists, never model claims.
+
+    Every counter here is a pure function of the branch lists and carries no
+    date, because `Verdict.evidence_counts` is enforced by exact equality and
+    the model has to be able to reproduce it. Recency-dependent quantities live
+    in `score_support_problems`, which owns its own tolerance.
+    """
     return {
         "market_sources": len(market.sources),
         "market_competitors": len(market.competitors),
         "sentiment_threads": len(sentiment.sources),
+        # F16. The D=0/D=1 boundary is "the branch reached the question and
+        # found nobody with this problem" versus "the branch found nothing" -
+        # and D=0 is a REJECT floor. Nothing could recompute it without a count
+        # of the threads that were on topic at all.
+        "sentiment_usable_threads": sum(
+            thread.classification != "OFF_TOPIC" for thread in sentiment.sources
+        ),
         "sentiment_problem_threads": sum(
-            thread.classification in {"HAS_PROBLEM", "PAYS", "BUILT_WORKAROUND"}
-            for thread in sentiment.sources
+            thread.classification in _PROBLEM_CLASSIFICATIONS for thread in sentiment.sources
         ),
         "sentiment_paying_threads": sum(
             thread.classification == "PAYS" for thread in sentiment.sources
@@ -171,13 +230,21 @@ def compute_evidence_counts(
         ),
         "feasibility_repos": len(feasibility.sources),
         "feasibility_relevant_repos": sum(
-            repo.relevance in {"SOLVES_ENTIRELY", "PARTIAL"} for repo in feasibility.sources
+            repo.relevance in _RELEVANT_RELEVANCE for repo in feasibility.sources
         ),
         "feasibility_complete_repos": sum(
             repo.relevance == "SOLVES_ENTIRELY" for repo in feasibility.sources
         ),
         "feasibility_commercial_repos": sum(
             repo.license_permits_commercial for repo in feasibility.sources
+        ),
+        # F16. F=3/4/5 count reusable repositories and X=0/2 turn on whether a
+        # free substitute is live; neither was recomputable before.
+        "feasibility_reusable_repos": sum(
+            is_reusable_repository(repo) for repo in feasibility.sources
+        ),
+        "feasibility_live_substitutes": sum(
+            is_live_free_substitute(repo) for repo in feasibility.sources
         ),
         "market_paying_segments": len(market.paying_segments),
         "branches_ok": sum(
@@ -317,6 +384,274 @@ def confidence_problems(
     return problems
 
 
+
+def _within_recency_window(dated: str, is_retrieval_time: bool, now: datetime) -> bool:
+    """Whether one source counts as "dated within 24 months" for the ladders.
+
+    A retrieval-time fallback never does. That is the whole point of the two
+    flags: a page or a thread carrying no date of its own is not evidence that
+    anything happened recently, and a fallback date always sits inside any
+    backward-looking window.
+    """
+    if is_retrieval_time:
+        return False
+    age = _age_months(dated, now)
+    return age is not None and age <= RUBRIC_RECENCY_MONTHS + RUBRIC_RECENCY_GRACE_MONTHS
+
+
+def _recent_threads(
+    threads: Sequence[Thread],
+    classifications: frozenset[str],
+    now: datetime,
+) -> int:
+    return sum(
+        thread.classification in classifications
+        and _within_recency_window(thread.date, thread.date_is_retrieval_time, now)
+        for thread in threads
+    )
+
+
+class DimensionSupport(NamedTuple):
+    """What the counted evidence can carry on one dimension."""
+
+    ceiling: int
+    zero_ok: bool
+    one_ok: bool
+    forbidden: frozenset[int]
+    summary: str
+
+
+def rubric_support(
+    market: MarketFindings,
+    sentiment: SentimentFindings,
+    feasibility: FeasibilityFindings,
+    *,
+    now: datetime | None = None,
+) -> dict[str, DimensionSupport]:
+    """Per dimension, the highest level the counted evidence can carry (F16).
+
+    Only clauses that are fully countable contribute. Where an anchor adds a
+    judgement clause on top - F=5's "together cover the separable parts of the
+    scoped v1", X=3 and X=4's "covers most of the core job", M=2's "names a
+    buyer segment", C=3's "states an axis on which a named competitor is
+    beatable" - the judgement half is dropped, which can only raise the
+    ceiling. That is the safe direction: a ceiling that is too generous lets an
+    honest score through, while one that is too tight fails an honest run,
+    after which somebody deletes the guardrail.
+    """
+    reference = now or datetime.now(timezone.utc)
+    counts = compute_evidence_counts(market, sentiment, feasibility)
+
+    usable = counts["sentiment_usable_threads"]
+    problems = counts["sentiment_problem_threads"]
+    acted = counts["sentiment_paying_threads"] + counts["sentiment_workaround_threads"]
+    segments = counts["market_paying_segments"]
+    sources = counts["market_sources"]
+    competitors = counts["market_competitors"]
+    repos = counts["feasibility_repos"]
+    relevant = counts["feasibility_relevant_repos"]
+    complete = counts["feasibility_complete_repos"]
+    reusable = counts["feasibility_reusable_repos"]
+    live = counts["feasibility_live_substitutes"]
+    partial = relevant - complete
+    vendor_owned = sum(competitor.vendor_owned for competitor in market.competitors)
+
+    recent_problems = _recent_threads(sentiment.sources, _PROBLEM_CLASSIFICATIONS, reference)
+    recent_acted = _recent_threads(sentiment.sources, _ACTED_CLASSIFICATIONS, reference)
+    recent_sources = sum(
+        _within_recency_window(source.dated, source.dated_is_retrieval_time, reference)
+        for source in market.sources
+    )
+
+    if problems == 0:
+        demand = NO_LEVEL_ABOVE_ONE
+    elif problems >= 3 and recent_problems >= 1:
+        if acted == 0:
+            demand = 3
+        elif recent_problems >= 5 and recent_acted >= 2 and segments >= 1:
+            demand = 5
+        else:
+            demand = 4
+    else:
+        demand = 2
+
+    if sources == 0:
+        money = NO_LEVEL_ABOVE_ONE
+    elif recent_sources >= 3 and segments >= 1:
+        money = 5
+    elif recent_sources >= 2:
+        money = 4
+    else:
+        money = 3
+
+    if competitors == 0:
+        room = NO_LEVEL_ABOVE_ONE
+    elif competitors >= 2 and recent_sources >= 1:
+        room = 5 if recent_sources >= 2 and vendor_owned == 0 else 4
+    else:
+        room = 3
+
+    if relevant == 0:
+        build = NO_LEVEL_ABOVE_ONE
+    elif reusable >= 3:
+        build = 5
+    elif reusable >= 2:
+        build = 4
+    elif reusable >= 1:
+        build = 3
+    else:
+        build = 2
+
+    # X=3, X=4 and X=5 all open with "No free substitute", so a single
+    # SOLVES_ENTIRELY repository caps the dimension at 2 outright.
+    if complete >= 1:
+        headroom = 2
+    elif partial >= 1:
+        headroom = 5
+    else:
+        headroom = 3
+
+    return {
+        "D": DimensionSupport(
+            ceiling=demand,
+            zero_ok=usable >= 1 and problems == 0,
+            one_ok=usable == 0,
+            forbidden=frozenset(),
+            summary=(
+                f"{usable} usable thread(s), {problems} problem thread(s), "
+                f"{recent_problems} of them dated within {RUBRIC_RECENCY_MONTHS} months, "
+                f"{acted} classified BUILT_WORKAROUND or PAYS ({recent_acted} of those recent), "
+                f"{segments} paying segment(s)"
+            ),
+        ),
+        "M": DimensionSupport(
+            ceiling=money,
+            zero_ok=sources >= 1,
+            one_ok=sources == 0,
+            forbidden=frozenset(),
+            summary=(
+                f"{sources} market source(s), {recent_sources} dated within "
+                f"{RUBRIC_RECENCY_MONTHS} months, {segments} paying segment(s)"
+            ),
+        ),
+        "C": DimensionSupport(
+            ceiling=room,
+            zero_ok=competitors >= 1 and vendor_owned == competitors,
+            one_ok=competitors == 0,
+            forbidden=frozenset(),
+            summary=(
+                f"{competitors} competitor(s) of which {vendor_owned} vendor owned, "
+                f"{recent_sources} market source(s) dated within {RUBRIC_RECENCY_MONTHS} months"
+            ),
+        ),
+        "F": DimensionSupport(
+            ceiling=build,
+            zero_ok=repos >= 1 and relevant == 0,
+            one_ok=repos == 0,
+            forbidden=frozenset(),
+            summary=(
+                f"{repos} repository(ies), {relevant} marked SOLVES_ENTIRELY or PARTIAL, "
+                f"{reusable} reusable"
+            ),
+        ),
+        "X": DimensionSupport(
+            ceiling=headroom,
+            zero_ok=live >= 1,
+            one_ok=relevant == 0,
+            # The only lower bound above level 1. X=2 asserts that every free
+            # substitute is archived, non-commercial or stale; one live
+            # substitute makes that false with no judgement clause left over,
+            # and X=0 - the REJECT the PRD calls this system's most valuable
+            # output - is then the only level left. Without this the X floor is
+            # evadable by scoring 2.
+            forbidden=frozenset({2}) if live >= 1 else frozenset(),
+            summary=(
+                f"{complete} free substitute(s) of which {live} live, "
+                f"{partial} repository(ies) marked PARTIAL"
+            ),
+        ),
+    }
+
+
+def score_support_problems(
+    verdict: Verdict,
+    market: MarketFindings,
+    sentiment: SentimentFindings,
+    feasibility: FeasibilityFindings,
+    *,
+    now: datetime | None = None,
+) -> list[str]:
+    """Reject a score the counted evidence cannot carry (F16).
+
+    `anchor_problems` checks that `anchor_matched` is the TEXT of the anchor for
+    the score claimed. Nothing checked that the EVIDENCE satisfies that text, so
+    a Synthesist could quote the D=5 anchor verbatim over two stale threads and
+    pass every mechanical check in the system.
+
+    Where the line is drawn, and why:
+
+    * Every dimension is bounded from ABOVE. Over-claiming is the failure this
+      exists to stop, and PRD §10.2's "partial satisfaction of anchor N scores
+      N-1" is respected by construction - a ceiling permits N-1 and everything
+      under it, so an honest downgrade never trips.
+    * Only levels 0 and 1 are bounded from BELOW, because those are the two
+      levels where a LOW score is itself a strong claim rather than a cautious
+      one. Level 0 is a fatal floor (D, M and X reject on it; F caps the run at
+      NEEDS_WORK) and level 1 says "the evidence does not reach this question"
+      about a branch that may demonstrably have answered it. Everywhere else,
+      scoring under what the evidence supports is caution, and caution cannot
+      manufacture a false VALIDATE.
+    * Judgement clauses are never enforced. "Names a buyer segment", "states an
+      axis of beatability", "covers most of the core job", "together cover the
+      separable parts of the scoped v1" are prose about prose; each is dropped
+      from the bound, which only ever makes the bound more permissive.
+
+    Between them, three of the four hard floors become arithmetic rather than
+    wording: D=0, F=0 and X=0 are fully determined by the counters. M=0 stays a
+    judgement call, because "none of them names a buyer segment" cannot be
+    settled without reading the sources.
+    """
+    support = rubric_support(market, sentiment, feasibility, now=now)
+    problems: list[str] = []
+
+    for code, field_name in _DIMENSIONS:
+        score = getattr(verdict, field_name).score
+        limits = support[code]
+
+        if score == 1:
+            if not limits.one_ok:
+                problems.append(
+                    f"SCORE_LEVEL_ONE_{code}: score 1 claims the evidence does not reach this "
+                    f"question, but the branch answered it - {limits.summary}"
+                )
+            continue
+
+        if score == 0 and not limits.zero_ok:
+            problems.append(
+                f"SCORE_FLOOR_{code}: the {code}=0 anchor is not satisfied by the findings - "
+                f"{limits.summary}"
+            )
+            continue
+
+        if score in limits.forbidden:
+            problems.append(
+                f"SCORE_FLOOR_{code}: the {code}={score} anchor is contradicted by the findings - "
+                f"{limits.summary}"
+            )
+            continue
+
+        if score > limits.ceiling:
+            supported = (
+                "no score above the reserved level 1"
+                if limits.ceiling == NO_LEVEL_ABOVE_ONE
+                else f"at most {code}={limits.ceiling}"
+            )
+            problems.append(
+                f"SCORE_SUPPORT_{code}: the findings support {supported}, not {code}={score} - "
+                f"{limits.summary}"
+            )
+    return problems
+
 def token_overlap(actual: str, expected: str) -> float:
     """Return symmetric unique-token overlap in the closed interval 0..1."""
     actual_tokens = set(_TOKEN_RE.findall(actual.casefold()))
@@ -376,6 +711,7 @@ def rubric_problems(
 
     market, sentiment, feasibility = findings
     problems.extend(confidence_problems(verdict, market, sentiment, feasibility, now=now))
+    problems.extend(score_support_problems(verdict, market, sentiment, feasibility, now=now))
     expected_counts = compute_evidence_counts(market, sentiment, feasibility)
     if verdict.evidence_counts != expected_counts:
         problems.append(
@@ -608,12 +944,16 @@ __all__ = [
     "confidence_problems",
     "findings_problems",
     "findings_urls",
+    "is_live_free_substitute",
+    "is_reusable_repository",
     "make_report_guardrail",
     "make_rubric_guardrail",
     "median_market_source_age_months",
     "parse_raw_model",
     "report_mechanics_problems",
     "rubric_problems",
+    "rubric_support",
     "scope_problems",
+    "score_support_problems",
     "token_overlap",
 ]

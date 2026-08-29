@@ -6,6 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+from brief_crew.schemas import Repo
 from brief_crew.tools.github_feasibility import (
     AUTHENTICATED_REQUESTS_PER_MINUTE,
     GITHUB_USER_AGENT,
@@ -13,6 +14,7 @@ from brief_crew.tools.github_feasibility import (
     GitHubFeasibilityTool,
     _TOKEN_BUCKETS,
 )
+from brief_crew.validator_guardrails import is_reusable_repository
 
 
 class _Response:
@@ -122,6 +124,7 @@ class GitHubFeasibilityToolTests(unittest.TestCase):
                 "archived": False,
             },
         )
+        self.assertTrue(is_reusable_repository(Repo.model_validate(envelope["results"][0])))
         self.assertEqual(bucket.acquire.call_count, 2)
         self.assertTrue(all(call.kwargs["headers"]["User-Agent"] == GITHUB_USER_AGENT for call in get.call_args_list))
         self.assertTrue(all("Authorization" not in call.kwargs["headers"] for call in get.call_args_list))
@@ -236,6 +239,43 @@ class GitHubFeasibilityToolTests(unittest.TestCase):
 
         self.assertIsNone(envelope["results"][0]["archived"])
         self.assertIn("archived is null rather than false", envelope["notes"])
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("brief_crew.tools.github_feasibility._utc_now")
+    @patch("brief_crew.tools.github_feasibility.requests.get")
+    def test_unknown_push_date_is_null_not_a_negative_sentinel(
+        self,
+        get: MagicMock,
+        utc_now: MagicMock,
+    ) -> None:
+        """The tool used to emit -1, which `Repo.months_since_push` (ge=0)
+        rejects: an honest copy failed validation, so the only routes through
+        were to drop the repository or invent an age."""
+        utc_now.return_value = datetime(2026, 8, 29, tzinfo=timezone.utc)
+
+        envelope, _ = self._run_with_payloads(
+            get,
+            search_item={
+                "full_name": "clinic/intake-automation",
+                "html_url": "https://github.com/clinic/intake-automation",
+            },
+            repository={
+                "full_name": "clinic/intake-automation",
+                "html_url": "https://github.com/clinic/intake-automation",
+                "license": {"spdx_id": "MIT"},
+                "archived": False,
+                # GitHub reported no pushed_at at all.
+            },
+        )
+
+        row = envelope["results"][0]
+        self.assertIsNone(row["months_since_push"])
+        self.assertIn("months_since_push", envelope["notes"])
+        self.assertIn("null is not 'pushed recently'", envelope["notes"])
+        # The row the tool emits is a row the schema accepts.
+        repo = Repo.model_validate(row)
+        self.assertIsNone(repo.months_since_push)
+        self.assertFalse(is_reusable_repository(repo))
 
     @patch.dict(os.environ, {"GITHUB_TOKEN": "test-token"}, clear=True)
     @patch("brief_crew.tools.github_feasibility.requests.get")

@@ -439,6 +439,10 @@ function normalizeGate(gate: BackendGatePrompt) {
     expired: gate.expired === true,
     options: gate.options,
     fields: gate.fields ?? undefined,
+    // Read-only values. An older backend sends none, which reads as "nothing
+    // derived" - the permissive direction for display, and safe for editing
+    // because `fields` is what the form is built from either way.
+    derived: gate.derived ?? undefined,
     verdict: gate.verdict ?? undefined,
     confidence: gate.confidence ?? undefined,
   }

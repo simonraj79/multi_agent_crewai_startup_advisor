@@ -628,7 +628,7 @@ level:
 | One of N specialists should handle this | ② Routing | Flow `@router` |
 | Should this step run at all? | ② Routing | `ConditionalTask` |
 | Independent subtasks, want them faster | ③ Parallel | `async_execution=True` + sync join |
-| Same crew over many inputs | ③ Parallel | `kickoff_for_each` |
+| Same crew over many inputs | ③ Parallel | `akickoff_for_each` — **not** `kickoff_for_each`, which is a sequential `for` loop (§4 Option C) |
 | Who works next depends on the input | ④ Supervisor | `Process.hierarchical` |
 | Work must be rejectable and redone | ④ or ⑥ | manager, or a `guardrail` |
 | Output must meet a checkable standard | ⑥ Evaluator | `Task(guardrail=…)` |
@@ -699,7 +699,7 @@ Paste-able summaries, one per pattern:
 | String guardrail builds a throwaway Agent | `tasks/llm_guardrail.py:70-93` |
 | `guardrails` overrides `guardrail` | `task.py:466-469` |
 | String guardrail needs `task.agent` | `task.py:421-424` |
-| Guardrail exhaustion raises | `task.py:1327` |
+| Guardrail exhaustion raises | `task.py:1382-1391` (async path `:1503-1512`) |
 | `guardrail_max_retries` default 3 | `task.py:279-281` |
 
 All references are to the **`crewai` 1.15.18** wheel, read directly. Where these

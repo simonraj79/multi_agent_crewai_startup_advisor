@@ -469,6 +469,11 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     const details = frame.details
     const options = Array.isArray(details.options) ? details.options : []
     const fields = typeof details.fields === 'object' && details.fields ? details.fields as Record<string, string> : undefined
+    // The server already pruned `fields` to what an edit can reach; everything
+    // else arrives here to be read, not typed into.
+    const derived = Array.isArray(details.derived)
+      ? (details.derived as PendingGate['derived'])
+      : undefined
     pendingGate.value = {
       gateId: String(details.gate_id ?? `gate-${frame.seq}`),
       nodeId: frame.node_id ?? '',
@@ -479,6 +484,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
       expired: details.expired === true,
       options: options.map((option) => option as PendingGate['options'][number]),
       fields,
+      derived,
       verdict: typeof details.verdict === 'string' ? details.verdict : undefined,
       confidence: typeof details.confidence === 'number' ? details.confidence : undefined,
     }

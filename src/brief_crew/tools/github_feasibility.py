@@ -212,13 +212,21 @@ def _archived(*payloads: Any) -> bool | None:
     return None
 
 
-def _months_since_push(value: Any, now: datetime) -> int:
+def _months_since_push(value: Any, now: datetime) -> int | None:
+    """Whole months since ``pushed_at``, or ``None`` when GitHub reported none.
+
+    ``None``, not -1. The sentinel was unrepresentable: `Repo.months_since_push`
+    constrains the field to ``>= 0``, so a model copying the -1 this tool
+    advertised in its own notes failed validation and had to either drop the
+    repository or invent an age. Unknown activity is now sayable, and every
+    "pushed within 12 months" clause treats it as not satisfied.
+    """
     if not isinstance(value, str) or not value.strip():
-        return -1
+        return None
     try:
         pushed_at = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError:
-        return -1
+        return None
     if pushed_at.tzinfo is None:
         pushed_at = pushed_at.replace(tzinfo=timezone.utc)
     elapsed = now - pushed_at.astimezone(timezone.utc)
@@ -338,7 +346,7 @@ class GitHubFeasibilityTool(BaseTool):
                     repository.get("pushed_at") or item.get("pushed_at"),
                     now,
                 )
-                unknown_activity_count += int(months_since_push < 0)
+                unknown_activity_count += int(months_since_push is None)
                 archived = _archived(repository, item)
                 unreported_archived_count += int(archived is None)
                 results.append(
@@ -384,7 +392,8 @@ class GitHubFeasibilityTool(BaseTool):
             notes_parts.append(f"Skipped {skipped_count} malformed or unattributed result(s).")
         if unknown_activity_count:
             notes_parts.append(
-                f"Activity was unknown for {unknown_activity_count} result(s), represented as -1 months."
+                f"Activity was unknown for {unknown_activity_count} result(s); months_since_push "
+                "is null rather than a number, and null is not 'pushed recently'."
             )
         if unreported_archived_count:
             notes_parts.append(

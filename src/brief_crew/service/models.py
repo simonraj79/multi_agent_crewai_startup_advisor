@@ -94,6 +94,24 @@ class GateOption(BaseModel):
     emphasis: Literal["primary", "danger"] | None = None
 
 
+class GateDerivedField(BaseModel):
+    """One value the operator must be able to read but cannot change.
+
+    The verdict gate's whole payload lands here: the schema recomputes the
+    arithmetic and discards whatever it was sent, and the evidence-scored
+    inputs to that arithmetic are bound by guardrails that only run on the
+    Synthesist's output. They are still the basis for approving or revising, so
+    they are carried in full - just not as form inputs.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    value: str
+    # "json" values are pretty-printed and belong in a block, not a line.
+    kind: Literal["text", "json"] = "text"
+
+
 class GatePrompt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -101,13 +119,20 @@ class GatePrompt(BaseModel):
     node_id: str
     title: str
     summary: str
+    # "this gate has at least one editable field", not "every field is". Which
+    # fields those are is the fields/derived split below.
     editable: bool
     expires_at: datetime | None = None
     # PRD F03. Advisory: an expired gate still accepts a reply and still
     # resumes the run, and its run stays WAITING rather than failing.
     expired: bool = False
     options: list[GateOption]
+    # Editable only. A field the operator's edit cannot reach is never offered
+    # as an input, so a client that predates this split cannot render one.
     fields: dict[str, str] | None = None
+    # Defaulted so a gate row persisted before this field existed still
+    # validates on recovery.
+    derived: list[GateDerivedField] = Field(default_factory=list)
     verdict: str | None = None
     confidence: float | None = None
 

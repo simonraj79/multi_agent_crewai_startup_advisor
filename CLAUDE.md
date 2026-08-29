@@ -9,7 +9,11 @@ This repository now contains two applications that share one Python package:
 
 Read [`AGENTS.md`](AGENTS.md) before changing CrewAI code. The specifications in [`agents/`](agents/) remain authoritative for behavior they already cover. [`PRD.md`](PRD.md) extends those specifications for Validator Studio.
 
-The top status table in [`new features/feature-list.md`](new%20features/feature-list.md) predates much of the implementation and is not a reliable completion ledger yet. Use this file plus executable tests until that ledger is reconciled.
+[`new features/feature-list.md`](new%20features/feature-list.md) was reconciled
+against source and tests on 2026-08-29 (second pass): every milestone and
+feature row names the test or source path it rests on, and nothing is Complete
+on a measurement nobody has taken. Read it with this file. Neither is a
+substitute for re-running the suite — the counts move.
 
 ## Verified Baseline
 
@@ -17,10 +21,14 @@ Verified on 2026-08-29:
 
 ```text
 CrewAI: 1.15.18
-Python tests:   254 run, 0 failures, 0 errors, 1 skipped
-Frontend tests:  64 run, 0 failures (Vitest + jsdom)
+Python tests:   341 run, 0 failures, 0 errors, 1 skipped
+Frontend tests: 116 run, 0 failures, 11 files (Vitest + jsdom)
 Frontend build: vue-tsc and Vite production build passed
 ```
+
+⚠️ These counts move. The suite grew 295 → 341 Python and 103 → 116 frontend
+during a single documentation pass. Re-run before quoting a number; the command
+is the contract, not the figure.
 
 Commands used:
 
@@ -151,7 +159,15 @@ It also computes confidence, confidence band, fatal floors, provisional status, 
 - Honest failed/empty/rate-limited status handling.
 - Source URL/list consistency.
 - Evidence-count recomputation.
-- Rubric anchor matching.
+- Rubric anchor matching (`anchor_problems`: the `anchor_matched` text must be
+  the anchor for that dimension at that score).
+- Rubric **evidence support** (`score_support_problems` / `rubric_support`: the
+  counted evidence must be able to carry the score claimed). Anchor matching
+  checks the *wording*; this checks the *findings*, so a Synthesist cannot quote
+  the D=5 anchor verbatim over two stale threads. Scores are bounded from above
+  everywhere and from below only at levels 0 and 1, which are the two levels
+  where a low score is itself a strong claim. Judgement clauses are never
+  enforced.
 - Low-confidence language calibration.
 - Provisional title and summary labels.
 - Final report source closure.
@@ -229,7 +245,17 @@ Implemented behavior includes:
 - Distinct session and run IDs.
 - Queued execution with configurable `RUN_CONCURRENCY` (default 1).
 - Ordered replay, reconnect cursor, deduplication, and ping/pong.
+- Gate replies over **both** HTTP and the WebSocket, sharing one
+  compare-and-set path, with the inbound socket message bounded by
+  `WS_MAX_MESSAGE_BYTES` / `WS_MAX_GATE_FIELDS` / `WS_MAX_GATE_FIELD_CHARS`.
 - Two durable gate round trips.
+- A gate payload split into editable `fields` and read-only `derived` values.
+  At the verdict gate every `Verdict` key is derived, because seven of them are
+  arithmetic the schema recomputes and discards and the rest are inputs the
+  guardrails bind to the rubric and to real tool URLs — neither survives a text
+  box. `fields` is *pruned* rather than annotated, so a stale client cannot go
+  on offering an edit the server would throw away. The operator's lever is
+  `decision=revise` plus feedback.
 - HTTP 409 for duplicate gate replies.
 - Cooperative cancellation at the next CrewAI `PRE_STEP` boundary.
 - NDJSON and ZIP log export.
@@ -323,6 +349,17 @@ Tests cover:
 - Cancellation at the next step boundary.
 - NDJSON/ZIP logs, health/readiness, and usage metrics.
 - SQLite persistence round trips and frame ordering.
+- Gate replies over the WebSocket, including a duplicate, a malformed message
+  and a late reply after expiry.
+- The gate `fields` / `derived` split, server and client.
+- Rubric anchor text *and* rubric evidence support for all five ladders.
+- Brief Crew regression: the cache router's contract, both statically visible
+  branches, `persist`, the tool surfaces, `run_crew()` and `kickoff()`.
+- The fan-out benchmark harness itself (`tests/perf/`), which is not the
+  measurement — see remaining-work item 2.
+- Frontend: Vitest + jsdom over the mock graph against the live descriptor,
+  edge animation, frame handling, gate cards and derived fields, run recovery,
+  the router and quarantine nodes, the API client and log download.
 
 ## Remaining Work and Unverified Risks
 
@@ -335,10 +372,12 @@ previous list are closed; what follows is what is genuinely left.
    to end against real OpenRouter, Firecrawl, Hacker News, GitHub, Pinecone and
    Cohere. Every test uses doubles. Zero-fabricated-citation closure over an
    acceptance set is therefore unverified.
-2. **Live fan-out measurement (F42, Q1).** The harness is built and tested:
+2. **Live fan-out measurement (F42, Q1).** The harness is built and tested
+   (`scripts/bench_fanout.py`, `scripts/perf_arms.py`, `scripts/perf_metrics.py`,
+   58 tests in `tests/perf/`):
 
    ```powershell
-   .\.venv\Scripts\python.exe scriptsench_fanout.py --live --yes --runs 5
+   .\.venv\Scripts\python.exe scripts\bench_fanout.py --live --yes --runs 5
    ```
 
    Synthetic mode measures orchestration overhead only and reports the speedup
@@ -359,61 +398,123 @@ previous list are closed; what follows is what is genuinely left.
 
 ### Decisions for a human, not work to schedule
 
-5. **The M/C/F/X rubric anchors are a derivation, not a transcription.** PRD
-   section 10.2 writes out only the **Demand** ladder, and labels it
-   *"Illustrative"*. The other four ladders did not exist anywhere in the repo,
-   so they were derived from the PRD's stated rules and floor definitions and
-   recorded as such in the `config.py` comment. They are now **binding** at 0.85
-   token overlap and quoted verbatim in `tasks.yaml`. Read them before the paid
-   acceptance run: if they are wrong, every verdict inherits the error and the
-   guardrail enforces it confidently.
+5. **The rubric anchors have been audited, repaired and tested — and still
+   read by no human.** PRD §10.2 writes out only the **Demand** ladder and labels
+   it *"Illustrative"*; M/C/F/X never existed anywhere in the repo and were
+   derived from the PRD's stated rules, weights, floors and dimension questions.
+   An audit on 2026-08-29 found six unsound anchors (including three in the
+   PRD's own Demand ladder — see PRD §10.2's correction block) and rewrote all
+   five ladders. They are covered by tests, **binding** at 0.85 token overlap in
+   `anchor_problems`, bounded against the counted evidence by
+   `score_support_problems`, and quoted verbatim into `tasks.yaml`. What is
+   *not* true is that anyone has read them. Audited is not reviewed: a
+   derivation error is a judgement nobody made, and it cannot be found by
+   running the suite.
+
+   **Read `RUBRIC_ANCHORS` in `config.py` before the paid acceptance run.** These
+   eight are what the audit itself remained unsure of, in the order a reviewer
+   should take them:
+
+   1. **F=0** — now *"repositories returned, none marked SOLVES_ENTIRELY or
+      PARTIAL"*. It over-fires for a v1 whose stack is so ordinary nobody
+      publishes it, and it triggers `FLOOR_NOT_BUILDABLE`. Over-firing was
+      chosen deliberately: the alternative wording rested on no schema field at
+      all, and an unreachable floor is worse than a cautious one.
+   2. **C=0 vs C=2 splits on `vendor_owned`** — the only structured fact
+      `Competitor` carries besides pricing. The *definition* of vendor-owned
+      written into `market_task` is the auditor's, not the spec's.
+   3. **X=3/4/5's "covers most of the core job" vs "a separable part"** — a
+      bounded judgement, not a count, and the hinge the whole X ladder turns on.
+      `rubric_support` drops it rather than enforcing it.
+   4. **D=1 drops the PRD's "<3 usable threads"** — an amendment to the only
+      ladder the PRD ever wrote. Rationale in PRD §10.2: it duplicates
+      `evidence_thin` and collided with D=2.
+   5. **D=2's 24-month boundary replaces the PRD's 36 months**, to close the
+      dead band the PRD ladder left between D=2 and D=3.
+   6. **M=0 is read as "no nameable buyer"**, dropping the PRD floor's "no
+      money" conjunct on the grounds that the dimension's question is *"can you
+      name whose?"*.
+   7. **D=0 vs D=1** — this one has moved. It was unrecomputable because
+      `compute_evidence_counts` had no usable-thread counter; a
+      `sentiment_usable_threads` counter (`classification != "OFF_TOPIC"`) has
+      since landed in `validator_guardrails.py`, and `rubric_support` now makes
+      D=0 mechanical (`zero_ok = usable >= 1 and problems == 0`) and D=1
+      mechanical (`one_ok = usable == 0`). The **classification itself** is still
+      the Sentiment Analyst's judgement, so the REJECT floor now rests on
+      labelling rather than on arithmetic. Verify this against the file rather
+      than against this list — it was landing while this was written.
+   8. **F=5's "together cover the separable parts of the scoped v1"** —
+      inherited from the derivation, still judgement, still unenforced.
 6. **Sprites (F34).** The PRD's 144 downscaled character PNGs are not in the
    repo, so this cannot be implemented as specified. The frontend ships a
-   vector/icon identity instead. Either amend the criterion or supply the
-   assets.
+   vector/icon identity instead: no per-agent palette, no hash-based assignment,
+   no walk cycle. Verified still absent — nothing under `frontend/src` mentions
+   a sprite. Either amend the criterion or supply the assets.
 7. **Dead scaffold.** `frontend/src/components/HelloWorld.vue` and
-   `src/style.css` are imported by nothing. `HelloWorld.vue` is the only
-   importer of `hero.png`, which `.gitignore` was specifically amended to keep.
-   Delete all three together or keep all three.
+   `frontend/src/style.css` are imported by nothing. `HelloWorld.vue` is the
+   only importer of `frontend/src/assets/hero.png`, which `.gitignore` was
+   specifically amended to keep. Verified still true. Delete all three together
+   or keep all three.
 
 ### Known gaps with a clear fix
 
-8. **Tool payload fields are dropped before the schema sees them.** `Thread`
-   now has `points` / `num_comments` and `Repo` has `archived`, but
-   `tools/hn_sentiment.py` and `tools/github_feasibility.py` never read those
-   fields out of the API responses they already fetch, so they stay `None`.
-9. **Median source age is biased young.** `tools/market_research._publication_date`
-   falls back to the *retrieval* timestamp when Firecrawl reports no publication
-   date, so `Evidence.dated` can silently be "today" and the staleness
-   multiplier reads optimistic. The envelope already computes a
-   `used_retrieval_date` flag; it needs to carry it.
-10. **Scraped page bodies chunk poorly.** `FirecrawlScrapeWebsiteTool` has no
-    `result_schema`, so CrewAI hands both the agent and the capture sink
-    `str(Document)` - a pydantic repr. Provenance is correct regardless; only
-    chunk quality suffers. A `result_schema` or a thin subclass fixes it.
-11. **`serve()` binds `127.0.0.1`.** Correct for local use, but it means the
-    registered console script cannot be a container entry point without
-    `HOST=0.0.0.0`. `render.yaml` sidesteps this with an explicit uvicorn
-    command.
-12. **Mock and live graphs use different node ids.** `MOCK_GRAPH` uses
-    `scoper` / `market_analyst`; the live descriptor uses Flow method names and
-    adds router/revise nodes the mock lacks. Each is self-consistent, so nothing
-    breaks - but the mock is a stylisation, not a rehearsal of the live topology.
-13. **An intermittent `RecursionError` in CrewAI's `Flow.resume()`** was seen
-    once in ~6 gate-probe runs and never reproduced in a 10-round stress loop.
-    It is in `crewai`, not this repo. Resume is what the whole Scenario C
-    recovery story rests on, so watch for it before production gate work.
-14. **`downloadLogs` has no test** - it calls `URL.createObjectURL`, which jsdom
-    does not implement. It needs a browser-level test to be worth anything.
+8. **`serve()` binds `127.0.0.1`.** Correct for local use, but it means the
+   registered console script cannot be a container entry point without
+   `HOST=0.0.0.0` (`service/app.py` reads `os.getenv("HOST", "127.0.0.1")`).
+   `render.yaml` sidesteps this with an explicit uvicorn command.
+9. **An intermittent `RecursionError` in CrewAI's `Flow.resume()`** was seen
+   once in ~6 gate-probe runs and never reproduced in a 10-round stress loop.
+   It is in `crewai`, not this repo. Resume is what the whole Scenario C
+   recovery story rests on, so watch for it before production gate work.
+   *Unverified in this pass — reproducing it needs live gate probes.*
+10. **Stale docstrings in the schemas.** `Thread.points` / `num_comments` and
+    `Repo.archived` still carry comments saying the tool envelopes "do not carry
+    them yet". The tools now populate all three (item 11 below); the comments
+    were not updated with them.
+
+### Closed since the last handoff — verified, not assumed
+
+Kept as a short ledger so nobody reopens them from an old note.
+
+11. **Tool payload fields now reach the schema.** `tools/hn_sentiment.py` reads
+    `points` / `num_comments` off the Algolia story record (`_story_metric`, and
+    it notes unreported ones), and `tools/github_feasibility.py` reads
+    `archived` (`_archived`, tri-state, with a note when GitHub reported none).
+12. **Median source age is no longer biased young.** `Evidence` carries
+    `dated_is_retrieval_time`, `market_research` sets it on every row that fell
+    back to the retrieval timestamp, and
+    `validator_guardrails._market_source_age_months` returns `None` for those
+    rows so they cannot read as fresh.
+13. **Scraped page bodies chunk on structure.**
+    `crews/brief_crew/scrape_tool.py` subclasses `FirecrawlScrapeWebsiteTool`
+    with a `ScrapedPage` `result_schema`, so what reaches the agent and the
+    capture sink is a JSON envelope carrying the page markdown verbatim rather
+    than `str(Document)`.
+14. **Mock and live graphs agree.** `frontend/src/data/mockGraph.ts` now uses
+    the live Flow method ids and carries the routers, the revise loops and the
+    quarantine node; `frontend/tests/mockGraph.spec.ts` asserts the node list
+    and edge list against the live descriptor, in order.
+15. **`downloadLogs` is tested.** jsdom 30 implements the blob URL store, so
+    `frontend/tests/downloadLogs.spec.ts` exercises minting, revoking,
+    percent-encoding, the ZIP name and the failure paths for real; only the
+    anchor `click` is stubbed.
+16. **WebSocket gate replies** land through the same compare-and-set path as
+    HTTP (`service/app.py::handle_gate_reply`), bounded by the three `WS_*`
+    limits, and covered by `tests/integration/test_ws_gate_replies.py` (7
+    tests) plus three `studioApi.spec.ts` cases.
+17. **Brief Crew has a regression test.** `tests/test_brief_crew_regression.py`
+    (23 tests) covers the Track A/B behaviour the platform rules forbid
+    regressing.
 
 ## Recommended Next Sequence
 
 Everything that can be done without spending money has been done. The next
 three steps all cost something, so they are ordered by what they unblock.
 
-1. **Read the M/C/F/X rubric anchors in `config.py`** (remaining-work item 5).
-   They are binding and they are a derivation. Doing this first means the paid
-   run scores against a rubric you have actually approved.
+1. **Read all five rubric ladders in `config.py`** (remaining-work item 5),
+   starting with the eight anchors listed there. They are binding, they are a
+   derivation, and they have been audited but not reviewed. Doing this first
+   means the paid run scores against a rubric you have actually approved.
 2. **Push to a git remote and apply the Blueprint.** The repo has commits but no
    remote, and Render deploys from a hosted repo - this is the first hard
    blocker. On apply, check the preview *links* the hand-created

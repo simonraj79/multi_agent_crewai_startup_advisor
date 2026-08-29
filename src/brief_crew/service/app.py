@@ -51,7 +51,12 @@ from brief_crew.service.models import (
     RunStatusResponse,
     WorkflowSummary,
 )
-from brief_crew.service.registry import RunRecord, RunRegistry, WorkflowRuntime
+from brief_crew.service.registry import (
+    GateFieldError,
+    RunRecord,
+    RunRegistry,
+    WorkflowRuntime,
+)
 from brief_crew.service.runner import (
     BriefFlowRunner,
     Runner,
@@ -399,6 +404,15 @@ def create_app(
                 code="gate_not_found",
                 status_code=404,
                 detail="gate not found",
+            ) from exc
+        except GateFieldError as exc:
+            # A distinct code from invalid_outcome: the outcome was fine, the
+            # reply tried to set a value this gate does not accept. Both
+            # transports refuse it identically because both arrive here.
+            raise GateReplyError(
+                code="gate_field_not_editable",
+                status_code=422,
+                detail=str(exc),
             ) from exc
         except ValueError as exc:
             raise GateReplyError(

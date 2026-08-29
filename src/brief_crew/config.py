@@ -372,6 +372,34 @@ RUBRIC_ANCHORS: dict[str, dict[int, str]] = {
 }
 
 # --------------------------------------------------------------------------
+# Making the ladders binding on arithmetic - F16
+#
+# `anchor_problems` only checks that `anchor_matched` is the TEXT of the anchor
+# for the score claimed. It cannot tell whether the EVIDENCE satisfies that
+# text, so a Synthesist could quote the D=5 anchor verbatim over two stale
+# threads and pass every mechanical check. Now that the ladders score on terms
+# `compute_evidence_counts` recomputes, `score_support_problems` closes that:
+# it derives, per dimension, the highest level the counted evidence can carry
+# and rejects a claim above it.
+#
+# The three numbers the anchors quote live here, not in the checker.
+#
+# ⚠️ `RUBRIC_RECENCY_GRACE_MONTHS` is a deliberate slackening, in the only
+# direction that is safe. The bound is an UPPER bound on a claim, so counting
+# one extra source as recent can only let an honest score through; refusing one
+# is what produces a false rejection. Two things make the boundary fuzzy and
+# neither is the Synthesist's fault: `VALIDATOR_DAYS_PER_MONTH` makes 24
+# "months" 720 days, about 23.7 calendar months, so a model reasoning in
+# calendar months disagrees with this file near the edge; and the anchors are
+# written against the scope's `as_of` while the guardrail runs at wall-clock
+# now. A guardrail that fires on honest scores gets disabled, which is worse
+# than no guardrail at all.
+# --------------------------------------------------------------------------
+RUBRIC_RECENCY_MONTHS = 24
+RUBRIC_RECENCY_GRACE_MONTHS = 1.0
+RUBRIC_REUSABLE_MAX_PUSH_MONTHS = 12
+
+# --------------------------------------------------------------------------
 # Mechanical confidence inputs - PRD §10.3, F11
 #
 # Confidence is "separate, mechanical, gating both directions". Mechanical

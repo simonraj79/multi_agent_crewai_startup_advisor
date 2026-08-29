@@ -322,6 +322,155 @@ class DurableRecoveryIntegrationTests(unittest.TestCase):
 
 
 @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class ScopeGateEditIntegrationTests(unittest.TestCase):
+    """The scope gate's edits reach the real Flow, on both of its routes.
+
+    ``confirm_scope`` is the gate where an operator edit is genuinely honoured:
+    nothing in a ``ScopedIdea`` is derived, and ``route_scope`` applies the
+    edited object verbatim before it routes. These two tests pin that against
+    the real ``ValidatorFlow`` - with test doubles for the crews, so no model
+    and no tool is called - because the whole point of pruning the verdict
+    gate's inputs is that the ones that remain are real.
+    """
+
+    def _harness(self):
+        scope, market, sentiment, feasibility, verdict, report = fixtures()
+        runners = {
+            "scope": FakeRunner(scope),
+            "market": FakeRunner(market),
+            "sentiment": FakeRunner(sentiment),
+            "feasibility": FakeRunner(feasibility),
+            "synthesis": FakeRunner(verdict),
+            "report": FakeRunner(report),
+        }
+        factories = ValidatorCrewFactories(
+            scope=lambda: runners["scope"],
+            market=lambda: runners["market"],
+            sentiment=lambda: runners["sentiment"],
+            feasibility=lambda: runners["feasibility"],
+            synthesis=lambda *_: runners["synthesis"],
+            report=lambda *_: runners["report"],
+        )
+        runner = ValidatorFlowRunner(crew_factories=factories)
+        store = PostgresFlowPersistence("sqlite+pysqlite:///:memory:")
+        registry = RunRegistry(
+            graph_version=VALIDATOR_GRAPH.version,
+            node_registry=VALIDATOR_NODE_REGISTRY,
+            runner=runner,
+            workflows={
+                VALIDATOR_GRAPH.id: WorkflowRuntime(
+                    graph_version=VALIDATOR_GRAPH.version,
+                    node_registry=VALIDATOR_NODE_REGISTRY,
+                    runner=runner,
+                )
+            },
+            persistence=store,
+        )
+        self.addCleanup(store.close)
+        self.addCleanup(registry.close)
+        return scope, runners, registry
+
+    def test_an_edited_scope_field_reaches_the_research_branches(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from brief_crew.service.app import create_app
+
+        scope, runners, registry = self._harness()
+        with TemporaryDirectory() as directory:
+            with patch(
+                "brief_crew.validator_flow.OUTPUT_PATH",
+                Path(directory) / "validation.md",
+            ), patch(
+                "brief_crew.validator_flow.lookup_branch_cache", return_value=[]
+            ):
+                with TestClient(create_app(registry=registry)) as client:
+                    run_id = client.post(
+                        "/api/sessions/scope-edit/runs",
+                        json={
+                            "workflow_id": "idea-validator",
+                            "inputs": {"idea": scope.startup_idea},
+                        },
+                    ).json()["run_id"]
+                    registry.wait(run_id, timeout=3)
+
+                    gate = client.get(f"/api/runs/{run_id}").json()["pending_gate"]
+                    self.assertEqual(gate["node_id"], "confirm_scope")
+                    # Every scope field is offered, because every one is honoured.
+                    self.assertIn("target_user", gate["fields"])
+                    self.assertEqual(gate["derived"], [])
+
+                    reply = client.post(
+                        f"/api/runs/{run_id}/gates/{gate['gate_id']}",
+                        json={
+                            "outcome": "approve",
+                            "fields": {"target_user": "Solo practitioners only"},
+                        },
+                    )
+                    self.assertEqual(reply.status_code, 202)
+                    registry.wait(run_id, timeout=3)
+
+        # The edit was applied by route_scope and carried into every branch.
+        for branch in ("market", "sentiment", "feasibility"):
+            with self.subTest(branch=branch):
+                self.assertIn(
+                    "Solo practitioners only",
+                    str(runners[branch].inputs[0]["scoped_idea_json"]),
+                )
+
+    def test_a_revise_reply_sends_the_scoper_back_with_the_note(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from brief_crew.service.app import create_app
+
+        scope, runners, registry = self._harness()
+        with TemporaryDirectory() as directory:
+            with patch(
+                "brief_crew.validator_flow.OUTPUT_PATH",
+                Path(directory) / "validation.md",
+            ), patch(
+                "brief_crew.validator_flow.lookup_branch_cache", return_value=[]
+            ):
+                with TestClient(create_app(registry=registry)) as client:
+                    run_id = client.post(
+                        "/api/sessions/scope-revise/runs",
+                        json={
+                            "workflow_id": "idea-validator",
+                            "inputs": {"idea": scope.startup_idea},
+                        },
+                    ).json()["run_id"]
+                    registry.wait(run_id, timeout=3)
+                    gate = client.get(f"/api/runs/{run_id}").json()["pending_gate"]
+
+                    self.assertEqual(
+                        client.post(
+                            f"/api/runs/{run_id}/gates/{gate['gate_id']}",
+                            json={
+                                "outcome": "revise",
+                                "fields": {
+                                    "feedback": "Narrow it to single-site clinics.",
+                                },
+                            },
+                        ).status_code,
+                        202,
+                    )
+                    registry.wait(run_id, timeout=3)
+
+                    # revise_scope ran and the gate reopened for the new scope.
+                    reopened = client.get(f"/api/runs/{run_id}").json()["pending_gate"]
+                    self.assertEqual(reopened["node_id"], "confirm_scope")
+                    self.assertNotEqual(reopened["gate_id"], gate["gate_id"])
+                    # No branch ran: the run went back, not forward.
+                    self.assertEqual(runners["market"].inputs, [])
+
+        self.assertEqual(len(runners["scope"].inputs), 2)
+        self.assertEqual(runners["scope"].inputs[0]["human_override"], "")
+        self.assertEqual(
+            runners["scope"].inputs[1]["human_override"],
+            "Narrow it to single-site clinics.",
+        )
+
+
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
 class GateExpiryHttpTests(unittest.TestCase):
     """PRD F03 over the HTTP surface the operator's browser actually talks to."""
 

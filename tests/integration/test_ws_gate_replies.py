@@ -200,6 +200,126 @@ class WebSocketGateReplyTests(unittest.TestCase):
 
         self.assertEqual(closed_details(socket_run), closed_details(http_run))
 
+    # -- per-field editability -------------------------------------------
+
+    def _verdict_gate(self, session_id: str) -> tuple[str, dict[str, Any]]:
+        run_id = self.start_run(session_id=session_id)
+        scope_gate = self.pending_gate(run_id)
+        self.client.post(
+            f"/api/runs/{run_id}/gates/{scope_gate['gate_id']}",
+            json={"outcome": "approve", "fields": {}},
+        )
+        self.registry.wait(run_id, timeout=5)
+        gate = self.pending_gate(run_id)
+        self.assertEqual(gate["node_id"], "review_verdict")
+        return run_id, gate
+
+    def test_the_verdict_gate_offers_no_derived_field_on_this_transport(self) -> None:
+        """The socket serves the same split the HTTP snapshot does.
+
+        A field the operator's edit cannot reach - `Verdict` recomputes the
+        composite score, confidence, floors and label from the five dimension
+        scores and discards whatever it was sent - is carried as read-only
+        detail on both transports, never as something to type into.
+        """
+        run_id, gate = self._verdict_gate("ws-derived")
+
+        with self.connect(run_id, session_id="ws-derived", after=0) as websocket:
+            opened = read_until(
+                websocket,
+                lambda message: (
+                    message.get("type") == "frame"
+                    and message["data"]["kind"] == FrameKind.GATE_OPEN.value
+                    and message["data"]["details"]["node_id"] == "review_verdict"
+                ),
+            )
+
+        streamed = opened["data"]["details"]
+        self.assertEqual(list(streamed["fields"]), ["feedback"])
+        self.assertEqual(
+            [item["key"] for item in streamed["derived"]],
+            [item["key"] for item in gate["derived"]],
+        )
+        self.assertIn("verdict", {item["key"] for item in streamed["derived"]})
+
+    def test_a_derived_edit_over_the_socket_is_refused_like_the_http_route(
+        self,
+    ) -> None:
+        """Acceptance 4 on the socket: refused, named, and still answerable."""
+        run_id, gate = self._verdict_gate("ws-refusal")
+
+        with self.connect(
+            run_id, session_id="ws-refusal", after=self.latest_seq(run_id)
+        ) as websocket:
+            websocket.send_json(
+                {
+                    "type": "gate_reply",
+                    "request_id": "derived-edit",
+                    "data": {
+                        "gate_id": gate["gate_id"],
+                        "outcome": "approve",
+                        "fields": {"verdict": "VALIDATE", "composite_score": "9.9"},
+                    },
+                }
+            )
+            error = read_until(websocket, message_of_type("error"))
+            self.assertEqual(error["data"]["code"], "gate_field_not_editable")
+            self.assertEqual(error["data"]["status"], 422)
+            self.assertEqual(error["data"]["request_id"], "derived-edit")
+            self.assertEqual(error["data"]["gate_id"], gate["gate_id"])
+            self.assertIn("composite_score, verdict", error["data"]["message"])
+
+            # The gate is untouched: the refusal is about the field, and a
+            # refused reply must never cost the operator their gate.
+            self.assertEqual(self.pending_gate(run_id)["gate_id"], gate["gate_id"])
+            websocket.send_json(
+                {
+                    "type": "gate_reply",
+                    "request_id": "note-only",
+                    "data": {
+                        "gate_id": gate["gate_id"],
+                        "outcome": "approve",
+                        "fields": {"feedback": "Reads right."},
+                    },
+                }
+            )
+            read_until(websocket, message_of_type("gate_ack"))
+
+        self.registry.wait(run_id, timeout=5)
+        self.assertEqual(
+            self.client.get(f"/api/runs/{run_id}").json()["status"],
+            "completed",
+        )
+
+    def test_both_transports_refuse_a_derived_edit_identically(self) -> None:
+        socket_run, socket_gate = self._verdict_gate("ws-refusal-parity")
+        http_run, http_gate = self._verdict_gate("http-refusal-parity")
+
+        with self.connect(
+            socket_run,
+            session_id="ws-refusal-parity",
+            after=self.latest_seq(socket_run),
+        ) as websocket:
+            websocket.send_json(
+                {
+                    "type": "gate_reply",
+                    "data": {
+                        "gate_id": socket_gate["gate_id"],
+                        "outcome": "approve",
+                        "fields": {"confidence": "0.99"},
+                    },
+                }
+            )
+            socket_error = read_until(websocket, message_of_type("error"))
+
+        http_error = self.client.post(
+            f"/api/runs/{http_run}/gates/{http_gate['gate_id']}",
+            json={"outcome": "approve", "fields": {"confidence": "0.99"}},
+        )
+
+        self.assertEqual(socket_error["data"]["status"], http_error.status_code)
+        self.assertEqual(socket_error["data"]["message"], http_error.json()["detail"])
+
     # -- acceptance criterion 2 ------------------------------------------
 
     def test_duplicate_reply_is_refused_and_the_socket_stays_usable(self) -> None:

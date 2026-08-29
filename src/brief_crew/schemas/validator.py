@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -156,11 +156,33 @@ class Thread(ValidatorModel):
     classification: ThreadClassification
     quote: str = Field(min_length=1)
     url: str
-    date: str
-    # F06. Optional because the HN tool envelope does not carry them yet; a
-    # missing count must stay distinguishable from a genuine zero, so neither
-    # defaults to 0. Never a demand signal on its own (see the Demand ladder) -
-    # they exist so a reader can weigh how public a quoted thread was.
+    date: str = Field(
+        description=(
+            "The comment's own date when Algolia reports one; otherwise the "
+            "retrieval timestamp, which must be accompanied by "
+            "date_is_retrieval_time=true."
+        )
+    )
+    # F16, and the exact twin of `Evidence.dated_is_retrieval_time`. The HN
+    # tool falls back to the retrieval timestamp for an item Algolia dates
+    # neither way, so `date` alone cannot separate a thread posted this week
+    # from a thread of unknown age. This one does not touch confidence - only
+    # market sources feed staleness - it touches something heavier: the Demand
+    # ladder, weight 0.30, turns on "dated within 24 months", and a thread
+    # dated today is always within 24 months. Undated threads could therefore
+    # carry D's top anchors on evidence of no known age.
+    date_is_retrieval_time: bool = Field(
+        default=False,
+        description=(
+            "True when `date` is the retrieval time because the source carried "
+            "no date of its own. Copy the value from the tool row. A thread "
+            "flagged true is never 'dated within 24 months'."
+        ),
+    )
+    # F06. A missing count must stay distinguishable from a genuine zero, so
+    # neither defaults to 0. Never a demand signal on its own (see the Demand
+    # ladder, which uses neither on purpose) - they exist so a reader can weigh
+    # how public a quoted thread was.
     points: int | None = Field(default=None, ge=0)
     num_comments: int | None = Field(default=None, ge=0)
 
@@ -178,14 +200,22 @@ class Thread(ValidatorModel):
 class Repo(ValidatorModel):
     name: str = Field(min_length=1)
     license_permits_commercial: bool
-    months_since_push: int = Field(ge=0)
+    # F16. Required but nullable, not optional: the model must always answer,
+    # and `None` is the honest answer when GitHub reported no `pushed_at`. It
+    # was `int` with `ge=0` while the tool emitted -1 for unknown activity and
+    # said so in its own notes, so an honest copy failed validation and the
+    # only ways through were to drop the repository or invent an age. Every
+    # ladder clause that reads this field ("pushed within 12 months") treats
+    # `None` as not satisfied: unknown activity is not recent activity.
+    months_since_push: Annotated[int, Field(ge=0)] | None
     relevance: RepoRelevance
     url: str
     # F07. PRD §10.2 makes archived state load-bearing for the X floor: "a
     # maintained, permissively licensed, popular project that already does the
     # whole thing" is the X=0 kill, and an archived project is not maintained.
-    # Optional because the GitHub tool envelope does not surface it yet -
-    # `None` means "not reported", which is not the same claim as `False`.
+    # `None` means "not reported", which is not the same claim as `False`, so
+    # X=0 asks for "not marked archived" (which a `None` satisfies) and never
+    # lets an unreported flag kill an idea.
     archived: bool | None = None
 
     @field_validator("url")

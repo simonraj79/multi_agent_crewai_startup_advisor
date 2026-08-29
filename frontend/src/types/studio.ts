@@ -93,11 +93,30 @@ export interface GateOption {
   emphasis?: 'primary' | 'danger'
 }
 
+/**
+ * A value the gate shows but the operator cannot change.
+ *
+ * The verdict gate's entire payload arrives this way: `Verdict` recomputes its
+ * composite score, confidence, band, floors, provisional flag and label from
+ * the five dimension scores and discards whatever it was sent, and the scored
+ * inputs to that arithmetic are bound to the rubric and to tool-returned URLs
+ * by guardrails that only run on the Synthesist's output. They are still the
+ * whole basis for approving or revising, so they are shown in full - as read
+ * detail, never as a form input the edit could not reach.
+ */
+export interface GateDerivedField {
+  key: string
+  value: string
+  /** `json` values are pretty-printed and belong in a block, not a line. */
+  kind: 'text' | 'json'
+}
+
 export interface PendingGate {
   gateId: string
   nodeId: string
   title: string
   summary: string
+  /** Whether this gate has any editable field at all - see `fields`. */
   editable: boolean
   expiresAt?: string
   /**
@@ -111,7 +130,9 @@ export interface PendingGate {
   /** Seconds past the deadline, as reported by the server's sweep. */
   overdueSeconds?: number
   options: GateOption[]
+  /** Editable fields only. The server prunes the rest into `derived`. */
   fields?: Record<string, string>
+  derived?: GateDerivedField[]
   verdict?: string
   confidence?: number
 }
@@ -179,6 +200,7 @@ export interface BackendGatePrompt {
   expired?: boolean
   options: GateOption[]
   fields?: Record<string, string> | null
+  derived?: GateDerivedField[] | null
   verdict?: string | null
   confidence?: number | null
 }

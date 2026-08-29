@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { AlertTriangle, Check, Clock3, RefreshCw, ShieldCheck } from 'lucide-vue-next'
+import { AlertTriangle, Check, Clock3, Lock, RefreshCw, ShieldCheck } from 'lucide-vue-next'
 import type { PendingGate } from '../types/studio'
 
 const props = defineProps<{
@@ -11,6 +11,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   submit: [outcome: string, fields?: Record<string, string>]
 }>()
+
+/**
+ * Mirrors `GATE_NOTE_FIELD` in `src/brief_crew/service/registry.py`. It is the
+ * free-text lever both gates carry, and the only field the verdict gate has:
+ * on a Revise reply the server lifts it to the payload's top level, where
+ * `route_scope` / `route_verdict` read it and hand it to the crew that reruns
+ * the step. Prose, not a value - so it gets a box, not a line.
+ */
+const NOTE_FIELD = 'feedback'
 
 const fields = reactive<Record<string, string>>({})
 const now = ref(Date.now())
@@ -26,6 +35,26 @@ watch(
 )
 
 const confidence = computed(() => props.gate.confidence == null ? '' : `${Math.round(props.gate.confidence * 100)}% confidence`)
+
+/**
+ * Values the operator reads but cannot change. The verdict gate's whole payload
+ * lands here: `Verdict` recomputes the composite score, confidence, band,
+ * floors, provisional flag and label and discards whatever it was sent, and the
+ * scored inputs to that arithmetic are bound to the rubric and to tool-returned
+ * URLs by guardrails that never see a gate reply. Offering any of it as an
+ * input would invite an edit that cannot land - the operator sets VALIDATE,
+ * submits, and watches REJECT come back.
+ *
+ * They are shown in full because they are the reason to approve or revise; the
+ * lever for disagreeing with them is Revise plus a note, which sends the
+ * Synthesist back to rescore against the same evidence.
+ */
+const derived = computed(() => props.gate.derived ?? [])
+
+/** `startup_idea` -> `startup idea`. Every underscore, not just the first. */
+function label(key: string): string {
+  return key.replaceAll('_', ' ')
+}
 const expiryTime = computed(() => props.gate.expiresAt ? Date.parse(props.gate.expiresAt) : 0)
 
 // PRD F03. The server owns expiry: it resolves `expired` on every run-status
@@ -108,10 +137,40 @@ function submit(outcome: string): void {
       </span>
     </p>
 
+    <!-- Read-only, and never rendered as an input. Placed above the form so the
+         operator reads what the validator computed before deciding, and so no
+         control here can be mistaken for something their edit would reach. -->
+    <section v-if="derived.length" class="gate-derived" aria-labelledby="gate-derived-title">
+      <h3 id="gate-derived-title">
+        <Lock :size="12" aria-hidden="true" />
+        <span>Computed by the validator</span>
+      </h3>
+      <p class="gate-derived-note">
+        Recomputed from the five dimension scores and the evidence behind them, so an edit here
+        could not change them. To change the outcome, choose Revise and say what to reconsider.
+      </p>
+      <dl>
+        <template v-for="item in derived" :key="item.key">
+          <dt>{{ label(item.key) }}</dt>
+          <dd>
+            <pre v-if="item.kind === 'json'">{{ item.value }}</pre>
+            <span v-else>{{ item.value }}</span>
+          </dd>
+        </template>
+      </dl>
+    </section>
+
     <form @submit.prevent>
       <label v-for="(_, key) in fields" :key="key" class="gate-field">
-        <span>{{ String(key).replace('_', ' ') }}</span>
-        <input v-model="fields[key]" :readonly="!gate.editable" autocomplete="off" />
+        <span>{{ label(String(key)) }}</span>
+        <textarea
+          v-if="key === NOTE_FIELD"
+          v-model="fields[key]"
+          rows="3"
+          :readonly="!gate.editable"
+          placeholder="What should be reconsidered? Sent with a Revise reply."
+        />
+        <input v-else v-model="fields[key]" :readonly="!gate.editable" autocomplete="off" />
       </label>
 
       <div class="gate-actions">
@@ -160,9 +219,23 @@ function submit(outcome: string): void {
 .late-tag { margin-left: 6px; padding: 1px 5px; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 999px; font: 700 var(--fs-11)/1.4 var(--font-mono); text-transform: uppercase; }
 .gate-field { display: block; margin-top: 9px; }
 .gate-field span { display: block; margin-bottom: 5px; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
-.gate-field input { width: 100%; min-height: 40px; padding: 8px 9px; color: var(--text-body); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); outline: 0; }
-.gate-field input:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
-.gate-field input[readonly] { color: var(--text-muted); }
+.gate-field input,
+.gate-field textarea { width: 100%; min-height: 40px; padding: 8px 9px; color: var(--text-body); font: inherit; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); outline: 0; }
+.gate-field textarea { min-height: 62px; resize: vertical; line-height: 1.45; }
+.gate-field input:focus,
+.gate-field textarea:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
+.gate-field input[readonly],
+.gate-field textarea[readonly] { color: var(--text-muted); }
+
+/* Deliberately not a form. Nothing here is an input, nothing here is focusable,
+   and the lock in the heading says why before the operator reaches for it. */
+.gate-derived { margin-top: 13px; padding: 10px 11px; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); }
+.gate-derived h3 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
+.gate-derived-note { margin: 7px 0 10px; color: var(--text-muted); font-size: var(--fs-11); line-height: 1.5; }
+.gate-derived dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0; }
+.gate-derived dt { color: var(--text-40); font: 700 var(--fs-11)/1.3 var(--font-mono); text-transform: uppercase; }
+.gate-derived dd { margin: 3px 0 0; color: var(--text-body); font-size: var(--fs-12); line-height: 1.45; overflow-wrap: anywhere; }
+.gate-derived pre { max-height: 140px; margin: 0; padding: 7px 8px; overflow: auto; color: var(--text-muted); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); font: 500 var(--fs-11)/1.5 var(--font-mono); }
 /* The server decides how many options a gate has and in what order, so the row
    must not assume two with the primary second. */
 .gate-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 13px; }

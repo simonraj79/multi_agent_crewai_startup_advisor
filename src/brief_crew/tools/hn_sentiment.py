@@ -190,6 +190,14 @@ def _story_metric(*payloads: Any, key: str) -> int | None:
 
 
 def _comment_date(comment: dict[str, Any], fallback: str) -> tuple[str, bool]:
+    """The item's own date, or ``(retrieval time, True)`` when it carries none.
+
+    The second element is the honesty flag. It reaches `Thread` as
+    `date_is_retrieval_time`, because the Demand ladder - the heaviest of the
+    five dimensions - scores on "dated within 24 months", and a fallback date
+    is always within 24 months of today. Without the flag an undated thread
+    silently supports D's top anchors.
+    """
     created_at = comment.get("created_at")
     if isinstance(created_at, str) and created_at.strip():
         return created_at.strip(), False
@@ -282,6 +290,7 @@ class HackerNewsSentimentTool(BaseTool):
                             "quote": quote[:MAX_QUOTE_CHARS],
                             "url": HN_CITATION_URL.format(item_id=item_id),
                             "date": date,
+                            "date_is_retrieval_time": used_retrieval_date,
                             "points": points,
                             "num_comments": num_comments,
                         }
@@ -315,7 +324,9 @@ class HackerNewsSentimentTool(BaseTool):
         notes = f"Inspected {inspected_stories} HN thread(s) and fetched their comment trees."
         if retrieval_dated_count:
             notes += (
-                f" Used retrieval time for {retrieval_dated_count} item(s) without a source date."
+                f" Used retrieval time for {retrieval_dated_count} item(s) without a source "
+                "date; each is flagged date_is_retrieval_time=true and is never dated within "
+                "24 months."
             )
         if unreported_metric_stories:
             notes += (

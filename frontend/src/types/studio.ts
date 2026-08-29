@@ -29,6 +29,11 @@ export type FrameKind =
   | 'token'
   | 'gate_open'
   | 'gate_closed'
+  // PRD F03. Advisory only: the gate passed its deadline, the run stays
+  // WAITING, and a late reply is still accepted and still resumes it.
+  | 'gate_expired'
+  // PRD R-2: a gate_open with no gate_closed past timeout + grace.
+  | 'gate_alert'
   | 'metrics'
   | 'error'
 
@@ -95,6 +100,16 @@ export interface PendingGate {
   summary: string
   editable: boolean
   expiresAt?: string
+  /**
+   * The server's view of PRD F03 expiry, from `pending_gate.expired` and the
+   * `gate_expired` frame. Informational: an expired gate still accepts a
+   * reply, so nothing in the UI may key a disabled state off this.
+   */
+  expired: boolean
+  /** PRD R-2: no reply arrived within timeout + grace. Also informational. */
+  alerting?: boolean
+  /** Seconds past the deadline, as reported by the server's sweep. */
+  overdueSeconds?: number
   options: GateOption[]
   fields?: Record<string, string>
   verdict?: string
@@ -161,6 +176,7 @@ export interface BackendGatePrompt {
   summary: string
   editable: boolean
   expires_at?: string | null
+  expired?: boolean
   options: GateOption[]
   fields?: Record<string, string> | null
   verdict?: string | null

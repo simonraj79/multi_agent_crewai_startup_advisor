@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from datetime import timedelta
 import importlib.util
 import json
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import threading
 from threading import Event
 import unittest
 from unittest.mock import patch
 
+from brief_crew.config import VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS
 from brief_crew.events import FrameKind, UIEventType
+from brief_crew.service import registry as registry_module
 from brief_crew.service.graph import (
     BRIEF_GRAPH,
     BRIEF_NODE_REGISTRY,
@@ -314,6 +319,152 @@ class DurableRecoveryIntegrationTests(unittest.TestCase):
                         output_path.read_text(encoding="utf-8"),
                         report.markdown_body,
                     )
+
+
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class GateExpiryHttpTests(unittest.TestCase):
+    """PRD F03 over the HTTP surface the operator's browser actually talks to."""
+
+    def setUp(self) -> None:
+        logger = logging.getLogger("brief_crew.service.registry")
+        previous = logger.level
+        logger.setLevel(logging.CRITICAL)
+        self.addCleanup(logger.setLevel, previous)
+
+    def test_expired_gate_is_visible_and_still_answerable_over_http(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from brief_crew.service.app import create_app
+
+        sweeper_threads_before = {
+            thread
+            for thread in threading.enumerate()
+            if thread.name == "validator-gate-sweeper"
+        }
+
+        with TestClient(create_app(synthetic=True)) as client:
+            registry = client.app.state.run_registry
+            sweeper_threads = [
+                thread
+                for thread in threading.enumerate()
+                if thread.name == "validator-gate-sweeper"
+                and thread not in sweeper_threads_before
+            ]
+            self.assertEqual(len(sweeper_threads), 1)
+            sweeper = sweeper_threads[0]
+
+            # A gate that opens already past its deadline, with no fake clock.
+            with patch.object(
+                registry_module, "VALIDATOR_GATE_TIMEOUT_SECONDS", 0
+            ):
+                created = client.post(
+                    "/api/sessions/expiry-session/runs",
+                    json={
+                        "workflow_id": "idea-validator",
+                        "inputs": {"idea": "Nobody will answer this gate"},
+                    },
+                )
+                run_id = created.json()["run_id"]
+                registry.wait(run_id, timeout=5)
+
+            waiting = client.get(f"/api/runs/{run_id}").json()
+            gate = waiting["pending_gate"]
+            self.assertEqual(waiting["status"], "waiting")
+            self.assertTrue(gate["expired"])
+
+            deadline = registry_module._gate_deadline(gate)
+            registry.sweep_gates(
+                now=deadline
+                + timedelta(seconds=VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS)
+            )
+
+            # Still waiting, still not answered, still not advanced.
+            after_sweep = client.get(f"/api/runs/{run_id}").json()
+            self.assertEqual(after_sweep["status"], "waiting")
+            self.assertEqual(after_sweep["pending_gate"]["gate_id"], gate["gate_id"])
+            self.assertTrue(after_sweep["pending_gate"]["expired"])
+
+            frames = [
+                envelope["data"]
+                for envelope in client.get(
+                    f"/api/runs/{run_id}/frames?after=0&limit=500"
+                ).json()["frames"]
+            ]
+            kinds = [frame["kind"] for frame in frames]
+            self.assertEqual(kinds.count(FrameKind.GATE_EXPIRED.value), 1)
+            self.assertEqual(kinds.count(FrameKind.GATE_ALERT.value), 1)
+            self.assertEqual(kinds.count(FrameKind.GATE_CLOSED.value), 0)
+            self.assertEqual(
+                [frame["seq"] for frame in frames],
+                list(range(1, len(frames) + 1)),
+            )
+
+            # The R-2 signal a monitor reads.
+            health = client.get("/healthz").json()
+            self.assertEqual(health["status"], "ok")
+            self.assertEqual(health["gates"]["open"], 1)
+            self.assertEqual(health["gates"]["expired"], 1)
+            self.assertEqual(health["gates"]["alerts"], 1)
+            self.assertEqual(client.get("/readyz").status_code, 200)
+
+            # F03: the late reply is accepted and the run resumes.
+            reply = client.post(
+                f"/api/runs/{run_id}/gates/{gate['gate_id']}",
+                json={"outcome": "approve", "fields": {}},
+            )
+            self.assertEqual(reply.status_code, 202)
+            registry.wait(run_id, timeout=5)
+            resumed = client.get(f"/api/runs/{run_id}").json()
+            self.assertEqual(resumed["status"], "waiting")
+            self.assertEqual(resumed["pending_gate"]["node_id"], "review_verdict")
+            self.assertFalse(resumed["pending_gate"]["expired"])
+            self.assertEqual(client.get("/healthz").json()["gates"]["expired"], 0)
+
+        # The lifespan shutdown joined the sweeper; nothing is left running.
+        sweeper.join(timeout=5)
+        self.assertFalse(sweeper.is_alive())
+
+    def test_gate_expired_while_down_is_reported_by_a_new_app(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from brief_crew.service.app import create_app
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "validator-studio.db"
+            database_url = f"sqlite+pysqlite:///{path.as_posix()}"
+
+            with TestClient(
+                create_app(synthetic=True, database_url=database_url)
+            ) as first_client:
+                with patch.object(
+                    registry_module, "VALIDATOR_GATE_TIMEOUT_SECONDS", 0
+                ):
+                    run_id = first_client.post(
+                        "/api/sessions/expiry-recovery/runs",
+                        json={
+                            "workflow_id": "idea-validator",
+                            "inputs": {"idea": "Expire this while the app is down"},
+                        },
+                    ).json()["run_id"]
+                    first_client.app.state.run_registry.wait(run_id, timeout=5)
+                gate_id = first_client.get(f"/api/runs/{run_id}").json()[
+                    "pending_gate"
+                ]["gate_id"]
+
+            with TestClient(
+                create_app(synthetic=True, database_url=database_url)
+            ) as recovered_client:
+                recovered = recovered_client.get(f"/api/runs/{run_id}").json()
+                self.assertEqual(recovered["status"], "waiting")
+                self.assertTrue(recovered["pending_gate"]["expired"])
+                self.assertEqual(recovered["pending_gate"]["gate_id"], gate_id)
+                self.assertEqual(
+                    recovered_client.post(
+                        f"/api/runs/{run_id}/gates/{gate_id}",
+                        json={"outcome": "approve", "fields": {}},
+                    ).status_code,
+                    202,
+                )
 
 
 class BoundaryRunner:

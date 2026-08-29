@@ -16,7 +16,14 @@ import zipfile
 
 import yaml
 
+from pydantic import ValidationError
+
 from brief_crew import config as project_config
+from brief_crew.config import (
+    WS_MAX_GATE_FIELD_CHARS,
+    WS_MAX_GATE_FIELDS,
+    WS_MAX_MESSAGE_BYTES,
+)
 
 from brief_crew.events import FrameKind, MAX_REPLAY_LIMIT
 from brief_crew.service.graph import (
@@ -36,6 +43,7 @@ from brief_crew.service.models import (
     CreateRunResponse,
     ErrorResponse,
     FramePage,
+    GateReplyMessage,
     GateReplyRequest,
     GateReplyResponse,
     GraphDescriptor,
@@ -55,6 +63,41 @@ from brief_crew.service.runner import (
 
 class ServiceDependencyError(RuntimeError):
     pass
+
+
+class GateReplyError(Exception):
+    """One refusal reason for one gate reply, shared by HTTP and the WebSocket.
+
+    PRD F27/F37 requires both transports to reach ``registry.answer_gate``
+    through a single code path, so they must also refuse for the same reasons.
+    ``status_code`` is what the HTTP route returns; ``code`` is the machine
+    token the socket sends. They are defined together here so the two surfaces
+    cannot drift - in particular so a duplicate reply is a 409 on one and
+    ``gate_conflict`` on the other, never a silent no-op on either.
+    """
+
+    __slots__ = ("code", "detail", "status_code")
+
+    def __init__(self, *, code: str, status_code: int, detail: str) -> None:
+        super().__init__(detail)
+        self.code = code
+        self.status_code = status_code
+        self.detail = detail
+
+
+def _validation_detail(error: ValidationError) -> str:
+    """A short, bounded description of the first schema failure.
+
+    Pydantic's full error list is unbounded and echoes the offending input,
+    which is exactly what a hostile client would like reflected back. One
+    location plus one message is enough for a buggy client to fix itself.
+    """
+    errors = error.errors()
+    if not errors:
+        return "message failed validation"
+    first = errors[0]
+    location = ".".join(str(part) for part in first.get("loc", ())) or "message"
+    return f"{location}: {str(first.get('msg', 'is invalid'))[:200]}"
 
 
 def _model_from_config(value: Any) -> str | None:
@@ -182,6 +225,8 @@ def create_app(
     async def lifespan(app: Any):
         yield
         if owns_registry:
+            # registry.close() stops and joins the human-gate expiry sweeper
+            # before shutting the executor down, so nothing outlives the app.
             registry.close()
         if owned_store is not None:
             owned_store.close()
@@ -202,9 +247,13 @@ def create_app(
             for dependency in dependencies.values()
         )
         status = "ok" if not readiness or ready else "not_ready"
-        return {"status": status, "dependencies": dependencies}, (
-            200 if status == "ok" else 503
-        )
+        # PRD R-2 is a monitoring signal, not a readiness one: a gate nobody has
+        # answered means a human is late, not that the service is unhealthy.
+        return {
+            "status": status,
+            "dependencies": dependencies,
+            "gates": registry.gate_watch_status(),
+        }, (200 if status == "ok" else 503)
 
     @app.get("/healthz", response_model=HealthResponse)
     async def healthz() -> HealthResponse:
@@ -309,6 +358,60 @@ def create_app(
             frames=[{"type": "frame", "data": frame} for frame in frames],
         )
 
+    def submit_gate_reply(
+        run_id: str,
+        gate_id: str,
+        *,
+        outcome: str,
+        fields: Mapping[str, str],
+    ) -> GateReplyResponse:
+        """The one gate-reply code path. Synchronous, transport-agnostic.
+
+        ``registry.answer_gate`` resumes a CrewAI Flow, so this blocks: the
+        HTTP route is already dispatched off the event loop by Starlette and
+        the WebSocket handler hands it to a worker thread. Both call exactly
+        this, so lateness handling, option validation, the durable
+        compare-and-set and the duplicate refusal are identical on both.
+        """
+        try:
+            registry.require(run_id)
+        except KeyError as exc:
+            raise GateReplyError(
+                code="run_not_found",
+                status_code=404,
+                detail="run not found",
+            ) from exc
+        try:
+            registry.answer_gate(
+                run_id,
+                gate_id,
+                outcome=outcome,
+                fields=fields,
+            )
+        except FileExistsError as exc:
+            raise GateReplyError(
+                code="gate_conflict",
+                status_code=409,
+                detail="gate already answered",
+            ) from exc
+        except KeyError as exc:
+            raise GateReplyError(
+                code="gate_not_found",
+                status_code=404,
+                detail="gate not found",
+            ) from exc
+        except ValueError as exc:
+            raise GateReplyError(
+                code="invalid_outcome",
+                status_code=422,
+                detail=str(exc),
+            ) from exc
+        return GateReplyResponse(
+            run_id=run_id,
+            gate_id=gate_id,
+            status=registry.require(run_id).status,
+        )
+
     @app.post(
         "/api/runs/{run_id}/gates/{gate_id}",
         response_model=GateReplyResponse,
@@ -322,23 +425,17 @@ def create_app(
     ) -> GateReplyResponse:
         require_run(run_id)
         try:
-            registry.answer_gate(
+            return submit_gate_reply(
                 run_id,
                 gate_id,
                 outcome=request.outcome,
                 fields=request.fields,
             )
-        except FileExistsError as exc:
-            raise HTTPException(status_code=409, detail="gate already answered") from exc
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="gate not found") from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return GateReplyResponse(
-            run_id=run_id,
-            gate_id=gate_id,
-            status=require_run(run_id).status,
-        )
+        except GateReplyError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=exc.detail,
+            ) from exc
 
     @app.post(
         "/api/runs/{run_id}/cancel",
@@ -471,13 +568,188 @@ def create_app(
                 await send(frame.envelope())
                 sent_seq = frame.seq
 
+        async def send_error(
+            code: str,
+            detail: str,
+            *,
+            status: int,
+            request_id: str | None = None,
+            gate_id: str | None = None,
+        ) -> None:
+            """Refuse one message without touching the connection or the run."""
+            data: dict[str, Any] = {
+                "code": code,
+                "message": detail,
+                "status": status,
+            }
+            if request_id is not None:
+                data["request_id"] = request_id
+            if gate_id is not None:
+                data["gate_id"] = gate_id
+            await send({"type": "error", "data": data})
+
+        async def handle_gate_reply(message: Mapping[str, Any]) -> None:
+            # Echoed back on every reply so a client with several in flight can
+            # match an ack or an error to the message that caused it.
+            raw_request_id = message.get("request_id")
+            request_id = raw_request_id if isinstance(raw_request_id, str) else None
+            try:
+                parsed = GateReplyMessage.model_validate(message)
+            except ValidationError as exc:
+                await send_error(
+                    "invalid_gate_reply",
+                    _validation_detail(exc),
+                    status=422,
+                    request_id=request_id,
+                )
+                return
+            payload = parsed.data
+            request_id = parsed.request_id
+            # The socket is already bound to one authorised run; a reply naming
+            # a different one is refused rather than forwarded.
+            if payload.run_id is not None and payload.run_id != run_id:
+                await send_error(
+                    "run_mismatch",
+                    "gate_reply run_id does not match this connection",
+                    status=409,
+                    request_id=request_id,
+                    gate_id=payload.gate_id,
+                )
+                return
+            if len(payload.fields) > WS_MAX_GATE_FIELDS:
+                await send_error(
+                    "gate_fields_too_many",
+                    f"a gate reply carries at most {WS_MAX_GATE_FIELDS} fields",
+                    status=422,
+                    request_id=request_id,
+                    gate_id=payload.gate_id,
+                )
+                return
+            if any(
+                len(value) > WS_MAX_GATE_FIELD_CHARS
+                for value in payload.fields.values()
+            ):
+                await send_error(
+                    "gate_field_too_long",
+                    f"a gate field holds at most {WS_MAX_GATE_FIELD_CHARS} characters",
+                    status=422,
+                    request_id=request_id,
+                    gate_id=payload.gate_id,
+                )
+                return
+
+            try:
+                # answer_gate resumes a CrewAI Flow and touches the durable
+                # store, so it runs on a worker thread: the outgoing stream and
+                # the ping timer keep running while the reply is applied.
+                response = await asyncio.to_thread(
+                    submit_gate_reply,
+                    run_id,
+                    payload.gate_id,
+                    outcome=payload.outcome,
+                    fields=payload.fields,
+                )
+            except GateReplyError as exc:
+                await send_error(
+                    exc.code,
+                    exc.detail,
+                    status=exc.status_code,
+                    request_id=request_id,
+                    gate_id=payload.gate_id,
+                )
+                return
+            except Exception:
+                # A failed reply must not take the socket or the run with it;
+                # the operator can look at the stream and try again.
+                await send_error(
+                    "gate_reply_failed",
+                    "the gate reply could not be applied",
+                    status=500,
+                    request_id=request_id,
+                    gate_id=payload.gate_id,
+                )
+                return
+
+            acknowledgement = response.model_dump(mode="json")
+            acknowledgement["request_id"] = request_id
+            await send({"type": "gate_ack", "data": acknowledgement})
+
         async def incoming() -> None:
             while True:
-                message = await websocket.receive_json()
-                if message == "ping" or (
-                    isinstance(message, dict) and message.get("type") == "ping"
-                ):
+                raw = await websocket.receive()
+                if raw["type"] == "websocket.disconnect":
+                    raise WebSocketDisconnect(
+                        raw.get("code", 1000), raw.get("reason")
+                    )
+                text = raw.get("text")
+                if text is None:
+                    binary = raw.get("bytes")
+                    if binary is None:
+                        await send_error(
+                            "empty_message",
+                            "the message carried no text or binary payload",
+                            status=400,
+                        )
+                        continue
+                    if len(binary) > WS_MAX_MESSAGE_BYTES:
+                        await send_error(
+                            "payload_too_large",
+                            f"messages are limited to {WS_MAX_MESSAGE_BYTES} bytes",
+                            status=413,
+                        )
+                        continue
+                    try:
+                        text = binary.decode("utf-8")
+                    except UnicodeDecodeError:
+                        await send_error(
+                            "invalid_encoding",
+                            "the message is not valid UTF-8",
+                            status=400,
+                        )
+                        continue
+                # A UTF-8 byte count is never below the character count, so
+                # this rejects everything over the cap without paying to encode
+                # the string first.
+                elif len(text) > WS_MAX_MESSAGE_BYTES:
+                    await send_error(
+                        "payload_too_large",
+                        f"messages are limited to {WS_MAX_MESSAGE_BYTES} bytes",
+                        status=413,
+                    )
+                    continue
+
+                try:
+                    message = json.loads(text)
+                except ValueError:
+                    await send_error(
+                        "invalid_json",
+                        "the message body is not valid JSON",
+                        status=400,
+                    )
+                    continue
+
+                if message == "ping":
                     await send({"type": "pong", "data": {"after": sent_seq}})
+                    continue
+                if not isinstance(message, dict):
+                    await send_error(
+                        "invalid_message",
+                        "the message must be a JSON object",
+                        status=400,
+                    )
+                    continue
+                message_type = message.get("type")
+                if message_type == "ping":
+                    await send({"type": "pong", "data": {"after": sent_seq}})
+                    continue
+                if message_type == "gate_reply":
+                    await handle_gate_reply(message)
+                    continue
+                await send_error(
+                    "unknown_message_type",
+                    f"unsupported message type: {str(message_type)[:64]!r}",
+                    status=400,
+                )
 
         outgoing_task = asyncio.create_task(outgoing())
         incoming_task = asyncio.create_task(incoming())

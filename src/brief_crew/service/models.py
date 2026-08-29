@@ -103,6 +103,9 @@ class GatePrompt(BaseModel):
     summary: str
     editable: bool
     expires_at: datetime | None = None
+    # PRD F03. Advisory: an expired gate still accepts a reply and still
+    # resumes the run, and its run stays WAITING rather than failing.
+    expired: bool = False
     options: list[GateOption]
     fields: dict[str, str] | None = None
     verdict: str | None = None
@@ -122,6 +125,33 @@ class GateReplyResponse(BaseModel):
     run_id: str
     gate_id: str
     status: RunStatus
+
+
+class GateReplyMessageData(BaseModel):
+    """The body of an inbound WebSocket ``gate_reply``.
+
+    ``run_id`` is optional and advisory: the socket is already bound to one
+    run, so a mismatch is rejected rather than honoured. Everything else
+    mirrors :class:`GateReplyRequest`, because the two transports must reach
+    ``registry.answer_gate`` with identical arguments.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str | None = Field(default=None, max_length=128)
+    gate_id: str = Field(min_length=1, max_length=128)
+    outcome: str = Field(min_length=1, max_length=64)
+    fields: dict[str, str] = Field(default_factory=dict)
+
+
+class GateReplyMessage(BaseModel):
+    """PRD F27/F37: an operator gate reply arriving on the streaming socket."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["gate_reply"]
+    request_id: str | None = Field(default=None, max_length=128)
+    data: GateReplyMessageData
 
 
 class CancelRunResponse(BaseModel):
@@ -190,11 +220,25 @@ class DependencyStatus(BaseModel):
     workers: int | None = None
 
 
+class GateWatchStatus(BaseModel):
+    """The PRD R-2 signal: unanswered gates, and how far past due they are."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    open: int = 0
+    expired: int = 0
+    alerting: int = 0
+    expiries: int = 0
+    alerts: int = 0
+    sweeps: int = 0
+
+
 class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok", "not_ready"]
     dependencies: dict[str, DependencyStatus]
+    gates: GateWatchStatus = Field(default_factory=GateWatchStatus)
 
 
 class FramePage(BaseModel):

@@ -16,6 +16,20 @@ import type {
 export type TransportMode = 'probing' | 'live' | 'mock'
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline'
 
+/**
+ * How long a gate reply sent over the socket waits for its `gate_ack` or
+ * `error` before the operator is told to try again. The server applies the
+ * reply on a worker thread and answers as soon as it lands, so this only ever
+ * fires if the connection died mid-flight.
+ */
+const GATE_REPLY_ACK_TIMEOUT_MS = 15_000
+
+interface PendingGateReply {
+  resolve: () => void
+  reject: (error: Error) => void
+  timer: number
+}
+
 interface StreamHandlers {
   onFrame: (frame: FrameData) => void
   onStatus: (status: ConnectionStatus) => void
@@ -47,6 +61,9 @@ export class StudioApi {
   mode: TransportMode = 'probing'
   private readonly baseUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
   private readonly mockRuns = new Map<string, MockRun>()
+  private readonly liveSockets = new Map<string, WebSocket>()
+  private readonly pendingGateReplies = new Map<string, PendingGateReply>()
+  private gateReplyCounter = 0
 
   async initialize(force = false): Promise<TransportMode> {
     if (!force && this.mode !== 'probing') return this.mode
@@ -164,6 +181,7 @@ export class StudioApi {
 
       socket.addEventListener('open', () => {
         attempts = 0
+        if (socket) this.liveSockets.set(runIdValue, socket)
         handlers.onStatus('connected')
         pingTimer = window.setInterval(() => {
           if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }))
@@ -171,14 +189,21 @@ export class StudioApi {
       })
       socket.addEventListener('message', (event) => {
         try {
-          const message = JSON.parse(String(event.data)) as StudioFrame | { type: string }
-          if (message.type === 'frame' && 'data' in message) handlers.onFrame(message.data)
+          const message = JSON.parse(String(event.data)) as StudioFrame | { type: string; data?: unknown }
+          if (message.type === 'frame' && 'data' in message) {
+            handlers.onFrame((message as StudioFrame).data)
+            return
+          }
+          // gate_ack / error carry the request_id of the reply they answer.
+          if (message.type === 'gate_ack' || message.type === 'error') this.settleGateReply(message)
         } catch {
           // A malformed server frame is ignored; the sequence gap triggers replay.
         }
       })
       socket.addEventListener('close', () => {
         window.clearInterval(pingTimer)
+        if (this.liveSockets.get(runIdValue) === socket) this.liveSockets.delete(runIdValue)
+        this.failPendingGateReplies('The connection dropped before the gate reply was acknowledged.')
         if (closed) return
         attempts += 1
         handlers.onStatus('reconnecting')
@@ -192,6 +217,7 @@ export class StudioApi {
       closed = true
       window.clearTimeout(reconnectTimer)
       window.clearInterval(pingTimer)
+      if (this.liveSockets.get(runIdValue) === socket) this.liveSockets.delete(runIdValue)
       socket?.close()
       handlers.onStatus('offline')
     }
@@ -199,6 +225,15 @@ export class StudioApi {
 
   async replyGate(runIdValue: string, gateId: string, reply: GateReply): Promise<void> {
     if (this.mode === 'live') {
+      // PRD F27/F37: answer on the connection that is already streaming the
+      // run. HTTP stays the fallback for a reply made while the socket is
+      // down - both land on one server-side code path, so the outcome, the
+      // duplicate refusal and the late-reply handling are identical.
+      const socket = this.liveSockets.get(runIdValue)
+      if (socket?.readyState === WebSocket.OPEN) {
+        await this.replyGateOverSocket(socket, gateId, reply)
+        return
+      }
       await this.fetchJson(`/api/runs/${encodeURIComponent(runIdValue)}/gates/${encodeURIComponent(gateId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -211,6 +246,54 @@ export class StudioApi {
     if (!run || !run.handlers) return
     run.segmentIndex += 1
     this.playMockSegment(run)
+  }
+
+  private replyGateOverSocket(socket: WebSocket, gateId: string, reply: GateReply): Promise<void> {
+    this.gateReplyCounter += 1
+    const requestId = `gate-${this.gateReplyCounter}-${Date.now().toString(36)}`
+    return new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        this.pendingGateReplies.delete(requestId)
+        reject(new Error('The gate reply was not acknowledged. Check the activity stream and try again.'))
+      }, GATE_REPLY_ACK_TIMEOUT_MS)
+      this.pendingGateReplies.set(requestId, { resolve, reject, timer })
+      try {
+        socket.send(
+          JSON.stringify({
+            type: 'gate_reply',
+            request_id: requestId,
+            data: { gate_id: gateId, outcome: reply.outcome, fields: reply.fields ?? {} },
+          }),
+        )
+      } catch (error) {
+        window.clearTimeout(timer)
+        this.pendingGateReplies.delete(requestId)
+        reject(error instanceof Error ? error : new Error('The gate reply could not be sent.'))
+      }
+    })
+  }
+
+  private settleGateReply(message: { type: string; data?: unknown }): void {
+    const data = isRecord(message.data) ? message.data : {}
+    const requestId = typeof data.request_id === 'string' ? data.request_id : ''
+    const pending = this.pendingGateReplies.get(requestId)
+    if (!pending) return
+    window.clearTimeout(pending.timer)
+    this.pendingGateReplies.delete(requestId)
+    if (message.type === 'gate_ack') {
+      pending.resolve()
+      return
+    }
+    const detail = typeof data.message === 'string' ? data.message : 'The gate response was not accepted.'
+    pending.reject(new Error(detail))
+  }
+
+  private failPendingGateReplies(reason: string): void {
+    for (const [requestId, pending] of this.pendingGateReplies) {
+      window.clearTimeout(pending.timer)
+      this.pendingGateReplies.delete(requestId)
+      pending.reject(new Error(reason))
+    }
   }
 
   async cancelRun(runIdValue: string): Promise<void> {
@@ -306,11 +389,19 @@ function normalizeGate(gate: BackendGatePrompt) {
     summary: gate.summary,
     editable: gate.editable,
     expiresAt: gate.expires_at ?? undefined,
+    // The server resolves PRD F03 expiry at read time; the client renders it
+    // rather than deciding it. An older backend without the field reads as
+    // not-expired, which is the permissive direction.
+    expired: gate.expired === true,
     options: gate.options,
     fields: gate.fields ?? undefined,
     verdict: gate.verdict ?? undefined,
     confidence: gate.confidence ?? undefined,
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function isStudioFrame(frame: StudioFrame | FrameData): frame is StudioFrame {

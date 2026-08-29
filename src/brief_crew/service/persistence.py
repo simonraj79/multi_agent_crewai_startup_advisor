@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -38,6 +39,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
+from threading import RLock
 
 from brief_crew.events import FrameData
 
@@ -52,9 +54,12 @@ MAX_CONTAINER_ITEMS = 10_000
 MAX_STRING_LENGTH = 65_536
 MAX_ERROR_LENGTH = 4096
 MAX_FRAME_REPLAY = 500
+MAX_OPEN_GATE_SCAN = 500
 
 _UNSET = object()
 _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
+# F03/R-2 watch ladder for an unanswered gate: open -> expired -> alerted.
+_GATE_WATCH_STATUSES = frozenset({"expired", "alerted"})
 _SECRET_KEYS = frozenset(
     {
         "apikey",
@@ -337,12 +342,26 @@ def _engine_for(database: str | Engine, engine_options: Mapping[str, Any]) -> tu
     return create_engine(database, **options), True
 
 
+def _shares_one_connection(engine: Engine) -> bool:
+    """True when every checkout returns the same DBAPI connection.
+
+    That is the in-memory SQLite case: the database only exists for as long as
+    its one connection does, so StaticPool hands the same connection to every
+    thread with no mutual exclusion. Two threads in ``begin()`` at once then
+    share one transaction, and one thread's COMMIT silently ends the other's
+    unit of work. PostgreSQL and file-backed SQLite pool per checkout instead,
+    so neither pays for the guard below.
+    """
+    return isinstance(engine.pool, StaticPool)
+
+
 class PostgresFlowPersistence(FlowPersistence):
     """Postgres production store with SQLite-compatible tests and local use."""
 
     persistence_type: str = Field(default="PostgresFlowPersistence")
     _engine: Engine = PrivateAttr()
     _owns_engine: bool = PrivateAttr(default=False)
+    _access_lock: Any = PrivateAttr(default=None)
 
     def __init__(
         self,
@@ -356,8 +375,29 @@ class PostgresFlowPersistence(FlowPersistence):
         self._engine, self._owns_engine = _engine_for(
             database, engine_options or {}
         )
+        # Re-entrant, because a few methods read through a helper after their
+        # own transaction has already committed - and one thread must never
+        # block on a lock it already holds.
+        self._access_lock = RLock() if _shares_one_connection(self._engine) else None
         if initialize:
             self.init_db()
+
+    @contextmanager
+    def _begin(self) -> Iterator[Any]:
+        """A write transaction, serialized only on a shared-connection engine."""
+        with self._guard():
+            with self._engine.begin() as connection:
+                yield connection
+
+    @contextmanager
+    def _connect(self) -> Iterator[Any]:
+        """A read connection, serialized only on a shared-connection engine."""
+        with self._guard():
+            with self._engine.connect() as connection:
+                yield connection
+
+    def _guard(self) -> Any:
+        return nullcontext() if self._access_lock is None else self._access_lock
 
     @property
     def engine(self) -> Engine:
@@ -377,7 +417,7 @@ class PostgresFlowPersistence(FlowPersistence):
         """Probe storage without exposing a connection URL or exception text."""
         backend = self._engine.dialect.name
         try:
-            with self._engine.connect() as connection:
+            with self._connect() as connection:
                 connection.execute(select(1)).scalar_one()
         except Exception:
             return {"status": "error", "backend": backend}
@@ -392,7 +432,7 @@ class PostgresFlowPersistence(FlowPersistence):
         flow_uuid = _identifier(flow_uuid, label="flow_uuid")
         method_name = _identifier(method_name, label="method_name", limit=255)
         state = _state_dict(state_data)
-        with self._engine.begin() as connection:
+        with self._begin() as connection:
             self._insert_flow_state(
                 connection, flow_uuid=flow_uuid, method_name=method_name, state=state
             )
@@ -405,7 +445,7 @@ class PostgresFlowPersistence(FlowPersistence):
             .order_by(flow_states.c.id.desc())
             .limit(1)
         )
-        with self._engine.connect() as connection:
+        with self._connect() as connection:
             state = connection.execute(statement).scalar_one_or_none()
         return dict(state) if isinstance(state, Mapping) else None
 
@@ -422,7 +462,7 @@ class PostgresFlowPersistence(FlowPersistence):
         context_data = _bounded_json(context.to_dict(), label="pending feedback")
         now = _utcnow()
 
-        with self._engine.begin() as connection:
+        with self._begin() as connection:
             self._insert_flow_state(
                 connection,
                 flow_uuid=flow_uuid,
@@ -452,7 +492,7 @@ class PostgresFlowPersistence(FlowPersistence):
         from crewai.flow.async_feedback.types import PendingFeedbackContext
 
         flow_uuid = _identifier(flow_uuid, label="flow_uuid")
-        with self._engine.connect() as connection:
+        with self._connect() as connection:
             row = connection.execute(
                 select(pending_feedback.c.state, pending_feedback.c.context).where(
                     pending_feedback.c.flow_uuid == flow_uuid
@@ -466,7 +506,7 @@ class PostgresFlowPersistence(FlowPersistence):
 
     def clear_pending_feedback(self, flow_uuid: str) -> None:
         flow_uuid = _identifier(flow_uuid, label="flow_uuid")
-        with self._engine.begin() as connection:
+        with self._begin() as connection:
             connection.execute(
                 delete(pending_feedback).where(
                     pending_feedback.c.flow_uuid == flow_uuid
@@ -494,7 +534,7 @@ class PostgresFlowPersistence(FlowPersistence):
         safe_inputs = _bounded_json(dict(inputs or {}), label="run inputs")
         now = _as_utc(created_at) or _utcnow()
 
-        with self._engine.begin() as connection:
+        with self._begin() as connection:
             connection.execute(
                 insert(runs).values(
                     id=run_id,
@@ -570,7 +610,7 @@ class PostgresFlowPersistence(FlowPersistence):
                     raise ValueError(f"{column_name} cannot be negative")
                 values[column_name] = numeric_value
 
-        with self._engine.begin() as connection:
+        with self._begin() as connection:
             update_result = connection.execute(
                 update(runs).where(runs.c.id == run_id).values(**values)
             )
@@ -583,7 +623,7 @@ class PostgresFlowPersistence(FlowPersistence):
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")
-        with self._engine.connect() as connection:
+        with self._connect() as connection:
             row = connection.execute(
                 select(runs).where(runs.c.id == run_id)
             ).mappings().one_or_none()
@@ -642,7 +682,7 @@ class PostgresFlowPersistence(FlowPersistence):
             return 0
         ordered_rows = [prepared_by_seq[seq] for seq in sorted(prepared_by_seq)]
         sequences = list(prepared_by_seq)
-        with self._engine.begin() as connection:
+        with self._begin() as connection:
             if connection.execute(
                 select(runs.c.id).where(runs.c.id == run_id)
             ).scalar_one_or_none() is None:
@@ -689,7 +729,7 @@ class PostgresFlowPersistence(FlowPersistence):
                 run_frames.c.kind.in_({_enum_value(kind) for kind in kinds})
             )
         statement = statement.order_by(run_frames.c.seq).limit(limit)
-        with self._engine.connect() as connection:
+        with self._connect() as connection:
             rows = connection.execute(statement).mappings().all()
         return [self._frame_dict(row) for row in rows]
 
@@ -709,7 +749,7 @@ class PostgresFlowPersistence(FlowPersistence):
         safe_request = _bounded_json(dict(request), label="gate request")
         now = _as_utc(opened_at) or _utcnow()
         try:
-            with self._engine.begin() as connection:
+            with self._begin() as connection:
                 if connection.execute(
                     select(runs.c.id).where(runs.c.id == run_id)
                 ).scalar_one_or_none() is None:
@@ -765,7 +805,7 @@ class PostgresFlowPersistence(FlowPersistence):
         safe_response = _bounded_json(reply, label="gate response")
         now = _as_utc(answered_at) or _utcnow()
 
-        with self._engine.begin() as connection:
+        with self._begin() as connection:
             current = connection.execute(
                 select(run_gates).where(
                     run_gates.c.run_id == run_id,
@@ -809,10 +849,26 @@ class PostgresFlowPersistence(FlowPersistence):
             gate=self._gate_dict(stored),
         )
 
-    def expire_gate(self, run_id: str, gate_id: str) -> dict[str, Any]:
+    def expire_gate(
+        self,
+        run_id: str,
+        gate_id: str,
+        *,
+        status: str = "expired",
+    ) -> dict[str, Any]:
+        """Advance an unanswered gate along the F03 watch ladder.
+
+        ``expired`` and ``alerted`` are advisory: ``answered_at`` stays NULL, so
+        ``get_pending_gate`` keeps returning the gate and ``answer_gate`` still
+        accepts a late reply. The run row is untouched - the run stays waiting.
+        """
         run_id = _identifier(run_id, label="run_id")
         gate_id = _identifier(gate_id, label="gate_id")
-        with self._engine.begin() as connection:
+        if status not in _GATE_WATCH_STATUSES:
+            raise ValueError(
+                f"gate watch status must be one of {sorted(_GATE_WATCH_STATUSES)}"
+            )
+        with self._begin() as connection:
             result = connection.execute(
                 update(run_gates)
                 .where(
@@ -820,7 +876,7 @@ class PostgresFlowPersistence(FlowPersistence):
                     run_gates.c.gate_id == gate_id,
                     run_gates.c.answered_at.is_(None),
                 )
-                .values(status="expired", updated_at=_utcnow())
+                .values(status=status, updated_at=_utcnow())
             )
             if result.rowcount == 0:
                 exists = connection.execute(
@@ -839,7 +895,7 @@ class PostgresFlowPersistence(FlowPersistence):
     def get_gate(self, run_id: str, gate_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")
         gate_id = _identifier(gate_id, label="gate_id")
-        with self._engine.connect() as connection:
+        with self._connect() as connection:
             row = connection.execute(
                 select(run_gates).where(
                     run_gates.c.run_id == run_id,
@@ -848,9 +904,34 @@ class PostgresFlowPersistence(FlowPersistence):
             ).mappings().one_or_none()
         return self._gate_dict(row) if row is not None else None
 
+    def list_open_gates(
+        self,
+        *,
+        due_by: datetime | None = None,
+        limit: int = MAX_OPEN_GATE_SCAN,
+    ) -> list[dict[str, Any]]:
+        """Unanswered gates, oldest first - the F03 sweeper's durable input.
+
+        ``due_by`` keeps only gates whose ``expires_at`` has already passed, so a
+        gate that expired while the process was down is found on the next sweep
+        even before any client asks for its run.
+        """
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        statement = select(run_gates).where(run_gates.c.answered_at.is_(None))
+        if due_by is not None:
+            statement = statement.where(
+                run_gates.c.expires_at.is_not(None),
+                run_gates.c.expires_at <= _as_utc(due_by),
+            )
+        statement = statement.order_by(run_gates.c.opened_at).limit(limit)
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [self._gate_dict(row) for row in rows]
+
     def get_pending_gate(self, run_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")
-        with self._engine.connect() as connection:
+        with self._connect() as connection:
             row = connection.execute(
                 select(run_gates)
                 .where(
@@ -894,7 +975,7 @@ class PostgresFlowPersistence(FlowPersistence):
             "cost_usd": Decimal(str(cost_usd)),
             "updated_at": _utcnow(),
         }
-        with self._engine.begin() as connection:
+        with self._begin() as connection:
             result = connection.execute(
                 update(run_node_metrics)
                 .where(
@@ -914,7 +995,7 @@ class PostgresFlowPersistence(FlowPersistence):
 
     def get_node_metrics(self, run_id: str) -> list[dict[str, Any]]:
         run_id = _identifier(run_id, label="run_id")
-        with self._engine.connect() as connection:
+        with self._connect() as connection:
             rows = connection.execute(
                 select(run_node_metrics)
                 .where(run_node_metrics.c.run_id == run_id)

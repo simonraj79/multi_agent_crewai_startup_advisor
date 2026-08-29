@@ -27,6 +27,11 @@ class FrameKind(str, Enum):
     TOKEN = "token"
     GATE_OPEN = "gate_open"
     GATE_CLOSED = "gate_closed"
+    # PRD F03: an unanswered gate whose deadline has passed. Advisory only -
+    # the run stays WAITING and a late reply still resumes it.
+    GATE_EXPIRED = "gate_expired"
+    # PRD R-2: a gate_open with no gate_closed after timeout + grace.
+    GATE_ALERT = "gate_alert"
     METRICS = "metrics"
     ERROR = "error"
 

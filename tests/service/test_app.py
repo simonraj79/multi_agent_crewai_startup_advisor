@@ -67,6 +67,51 @@ class FastAPIContractTests(unittest.TestCase):
             websocket.send_json({"type": "ping"})
             self.assertEqual(websocket.receive_json()["type"], "pong")
 
+    def test_websocket_refuses_control_messages_on_a_gateless_run(self) -> None:
+        """F27/F37 hardening: brief-flow has no gate, so every reply is refused.
+
+        The point is the shape of the refusal - a structured error on a socket
+        that stays open - not the workflow.
+        """
+        create_response = self.client.post(
+            "/api/sessions/session-ws/runs",
+            json={"workflow_id": "brief-flow", "inputs": {"topic": "ws"}},
+        )
+        run_id = create_response.json()["run_id"]
+        registry = self.client.app.state.run_registry
+        registry.wait(run_id, timeout=2)
+        last_seq = self.client.get(f"/api/runs/{run_id}").json()["frames"]["last_seq"]
+
+        with self.client.websocket_connect(
+            f"/ws?session_id=session-ws&run_id={run_id}&after={last_seq}"
+        ) as websocket:
+            websocket.send_json(
+                {
+                    "type": "gate_reply",
+                    "request_id": "no-such-gate",
+                    "data": {"gate_id": "not-a-real-gate", "outcome": "approve"},
+                }
+            )
+            refusal = websocket.receive_json()
+            self.assertEqual(refusal["type"], "error")
+            self.assertEqual(refusal["data"]["code"], "gate_not_found")
+            self.assertEqual(refusal["data"]["status"], 404)
+            self.assertEqual(refusal["data"]["request_id"], "no-such-gate")
+
+            websocket.send_json({"type": "definitely-not-supported"})
+            unknown = websocket.receive_json()
+            self.assertEqual(unknown["type"], "error")
+            self.assertEqual(unknown["data"]["code"], "unknown_message_type")
+
+            # Still connected, still answering, and the run is untouched.
+            websocket.send_json({"type": "ping"})
+            self.assertEqual(websocket.receive_json()["type"], "pong")
+
+        self.assertEqual(
+            self.client.get(f"/api/runs/{run_id}").json()["status"],
+            "completed",
+        )
+
     def test_health_readiness_and_log_exports(self) -> None:
         for path in ("/healthz", "/readyz"):
             response = self.client.get(path)

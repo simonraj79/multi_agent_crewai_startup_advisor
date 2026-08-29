@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 from queue import Empty, Full, Queue
-from threading import Event, RLock, Thread
+from threading import Event, RLock, Thread, current_thread
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
 import uuid
@@ -22,6 +22,8 @@ from crewai.hooks.dispatch import register_scoped, scoped_hooks
 from brief_crew.config import (
     RUN_CONCURRENCY,
     VALIDATOR_FRAME_BATCH_SIZE,
+    VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS,
+    VALIDATOR_GATE_SWEEP_INTERVAL_SECONDS,
     VALIDATOR_GATE_TIMEOUT_SECONDS,
     VALIDATOR_PERSIST_QUEUE_CAPACITY,
     compute_cost_usd,
@@ -59,6 +61,29 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _gate_deadline(prompt: Mapping[str, Any] | None) -> datetime | None:
+    """The gate's ``expires_at`` as an aware datetime, or None if it carries none.
+
+    The prompt round-trips through JSON and through the ``run_gates`` row, so the
+    value arrives as an ISO string on one path and as a datetime on the other.
+    """
+    if not prompt:
+        return None
+    raw = prompt.get("expires_at")
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, datetime):
+        deadline = raw
+    else:
+        try:
+            deadline = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return deadline if deadline.tzinfo is not None else deadline.replace(
+        tzinfo=timezone.utc
+    )
 
 
 def _empty_usage() -> dict[str, int | float]:
@@ -217,6 +242,8 @@ class RunRecord:
     cancel_requested: Event = field(default_factory=Event)
     pending_context: PendingFeedbackContext | None = None
     answered_gates: set[str] = field(default_factory=set)
+    expired_gates: set[str] = field(default_factory=set)
+    alerted_gates: set[str] = field(default_factory=set)
     buffer: FrameBuffer = field(init=False)
     capture: StreamSinkAdapter = field(init=False)
     _subscribers: dict[str, FrameSubscription] = field(default_factory=dict, init=False)
@@ -227,6 +254,11 @@ class RunRecord:
         default_factory=dict, init=False
     )
     _lock: RLock = field(default_factory=RLock, init=False)
+    # Deliberately NOT _lock. Emitting takes the capture lock and the capture
+    # callback then takes _lock, so a sweeper holding _lock across an emit would
+    # invert that order. This lock guards the F03 bookkeeping sets and nothing
+    # else, and is never held while a frame is emitted.
+    _gate_watch_lock: RLock = field(default_factory=RLock, init=False)
 
     def __post_init__(self) -> None:
         self.inputs = MappingProxyType(dict(self.inputs))
@@ -302,6 +334,47 @@ class RunRecord:
         if subscription is not None:
             subscription.close()
 
+    def claim_gate_expiry(self, gate_id: str) -> bool:
+        """True exactly once per gate, so the F03 frame is not emitted per tick."""
+        with self._gate_watch_lock:
+            if gate_id in self.answered_gates or gate_id in self.expired_gates:
+                return False
+            self.expired_gates.add(gate_id)
+            return True
+
+    def claim_gate_alert(self, gate_id: str) -> bool:
+        """True exactly once per gate, so the R-2 alert is not raised per tick."""
+        with self._gate_watch_lock:
+            if gate_id in self.answered_gates or gate_id in self.alerted_gates:
+                return False
+            self.alerted_gates.add(gate_id)
+            return True
+
+    def adopt_gate_watch(self, gate_id: str, status: str) -> None:
+        """Replay a durable watch state so recovery does not re-emit its frames."""
+        with self._gate_watch_lock:
+            if status in {"expired", "alerted"}:
+                self.expired_gates.add(gate_id)
+            if status == "alerted":
+                self.alerted_gates.add(gate_id)
+
+    def pending_gate_payload(
+        self,
+        now: datetime | None = None,
+    ) -> dict[str, Any] | None:
+        """The open gate with F03 expiry resolved at read time.
+
+        Derived rather than stored: the answer is correct between sweep ticks and
+        immediately after a restore, and it never contradicts ``expires_at``.
+        """
+        prompt = self.pending_gate
+        if prompt is None:
+            return None
+        payload = dict(prompt)
+        deadline = _gate_deadline(prompt)
+        payload["expired"] = deadline is not None and deadline <= (now or _utcnow())
+        return payload
+
     def status_payload(self) -> dict[str, Any]:
         stats = self.buffer.stats()
         with self._lock:
@@ -314,7 +387,7 @@ class RunRecord:
                 "created_at": self.created_at,
                 "started_at": self.started_at,
                 "completed_at": self.completed_at,
-                "pending_gate": self.pending_gate,
+                "pending_gate": self.pending_gate_payload(),
                 "frames": {
                     "count": stats.count,
                     "captured": stats.captured,
@@ -430,11 +503,19 @@ class RunRegistry:
         persistence: Any = None,
         max_workers: int | None = None,
         ring_capacity: int = DEFAULT_RING_CAPACITY,
+        gate_sweep_interval: float | None = None,
     ) -> None:
         if max_workers is None:
             max_workers = RUN_CONCURRENCY
         if max_workers < 1:
             raise ValueError("max_workers must be positive")
+        self.gate_sweep_interval = (
+            VALIDATOR_GATE_SWEEP_INTERVAL_SECONDS
+            if gate_sweep_interval is None
+            else float(gate_sweep_interval)
+        )
+        if self.gate_sweep_interval < 0:
+            raise ValueError("gate_sweep_interval cannot be negative")
         self.max_workers = max_workers
         self.graph_version = graph_version
         self.node_registry = node_registry
@@ -458,6 +539,18 @@ class RunRegistry:
             if persistence is not None
             else None
         )
+        self._gate_expiries = 0
+        self._gate_alerts = 0
+        self._gate_sweeps = 0
+        self._sweeper_stop = Event()
+        self._sweeper: Thread | None = None
+        if self.gate_sweep_interval > 0:
+            self._sweeper = Thread(
+                target=self._sweep_loop,
+                name="validator-gate-sweeper",
+                daemon=True,
+            )
+            self._sweeper.start()
 
     def _runtime_for(self, workflow_id: str) -> WorkflowRuntime:
         if self.workflows:
@@ -549,6 +642,10 @@ class RunRegistry:
         elif gate_id in record.answered_gates:
             raise FileExistsError(gate_id)
 
+        deadline = _gate_deadline(prompt)
+        # F03: lateness is recorded, never rejected. An expired gate is advisory,
+        # so the reply is accepted and the run resumes exactly as an on-time one.
+        late = deadline is not None and deadline <= _utcnow()
         record.answered_gates.add(gate_id)
         record.pending_gate = None
         record.capture.emit(
@@ -560,6 +657,7 @@ class RunRegistry:
                 "gate_id": gate_id,
                 "outcome": outcome,
                 "fields": dict(fields or {}),
+                "late": late,
             },
         )
         feedback = self._feedback(context, outcome, fields or {})
@@ -664,6 +762,196 @@ class RunRegistry:
         record = self.require(run_id)
         return record.status_payload()
 
+    def sweep_gates(self, *, now: datetime | None = None) -> dict[str, int]:
+        """Apply the F03/R-2 watch ladder to every unanswered gate.
+
+        Advisory only, by PRD F03: nothing here fails a run, auto-answers a gate
+        or clears ``pending_gate``. The run stays ``WAITING`` and a late reply
+        still resumes it. ``now`` is injectable so tests need no wall clock.
+        """
+        moment = now or _utcnow()
+        grace = timedelta(seconds=VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS)
+        self._hydrate_due_gates(moment)
+        counters = {
+            "open": 0,
+            "expired": 0,
+            "alerting": 0,
+            "expired_now": 0,
+            "alerts_now": 0,
+        }
+        for record, prompt, gate_id, deadline in self._open_gates():
+            counters["open"] += 1
+            if deadline is None or deadline > moment:
+                continue
+            counters["expired"] += 1
+            node_id = self._gate_node_id(record, prompt)
+            title = str(prompt.get("title") or "Gate")
+            overdue = int((moment - deadline).total_seconds())
+            if record.claim_gate_expiry(gate_id):
+                counters["expired_now"] += 1
+                self._persist_gate_watch(record, gate_id, "expired")
+                record.capture.emit(
+                    kind=FrameKind.GATE_EXPIRED,
+                    event_type=UIEventType.HUMAN_INTERACTION,
+                    node_id=node_id,
+                    message=f"{title} expired unanswered; the run stays resumable",
+                    details={
+                        "gate_id": gate_id,
+                        "node_id": node_id,
+                        "title": title,
+                        "status": "expired",
+                        "expires_at": deadline.isoformat(),
+                        "timeout_seconds": VALIDATOR_GATE_TIMEOUT_SECONDS,
+                        "overdue_seconds": overdue,
+                        "auto_answered": False,
+                        "resumable": True,
+                    },
+                    level=FrameLevel.WARNING,
+                )
+            if moment - deadline < grace:
+                continue
+            counters["alerting"] += 1
+            if record.claim_gate_alert(gate_id):
+                counters["alerts_now"] += 1
+                self._persist_gate_watch(record, gate_id, "alerted")
+                record.capture.emit(
+                    kind=FrameKind.GATE_ALERT,
+                    event_type=UIEventType.HUMAN_INTERACTION,
+                    node_id=node_id,
+                    message=f"{title} has no reply {overdue}s past its deadline",
+                    details={
+                        "gate_id": gate_id,
+                        "node_id": node_id,
+                        "title": title,
+                        "status": "alerted",
+                        "alert": "gate_open_without_gate_closed",
+                        "expires_at": deadline.isoformat(),
+                        "timeout_seconds": VALIDATOR_GATE_TIMEOUT_SECONDS,
+                        "grace_seconds": VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS,
+                        "overdue_seconds": overdue,
+                    },
+                    level=FrameLevel.ERROR,
+                )
+                logger.error(
+                    "R-2: gate %s on run %s has no gate_closed %ss past its "
+                    "%ss deadline",
+                    gate_id,
+                    record.run_id,
+                    overdue,
+                    VALIDATOR_GATE_TIMEOUT_SECONDS,
+                )
+        with self._lock:
+            self._gate_sweeps += 1
+            self._gate_expiries += counters["expired_now"]
+            self._gate_alerts += counters["alerts_now"]
+        return counters
+
+    def gate_watch_status(self, *, now: datetime | None = None) -> dict[str, int]:
+        """The R-2 signal a monitoring endpoint reads - counters, not prose."""
+        moment = now or _utcnow()
+        grace = timedelta(seconds=VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS)
+        open_gates = expired = alerting = 0
+        for _, _, _, deadline in self._open_gates():
+            open_gates += 1
+            if deadline is None or deadline > moment:
+                continue
+            expired += 1
+            if moment - deadline >= grace:
+                alerting += 1
+        with self._lock:
+            return {
+                "open": open_gates,
+                "expired": expired,
+                "alerting": alerting,
+                "expiries": self._gate_expiries,
+                "alerts": self._gate_alerts,
+                "sweeps": self._gate_sweeps,
+            }
+
+    def _sweep_loop(self) -> None:
+        # Event.wait parks the thread for the whole interval and returns early
+        # the moment close() sets the flag, so this is neither a busy-wait nor a
+        # source of shutdown latency.
+        while not self._sweeper_stop.wait(self.gate_sweep_interval):
+            try:
+                self.sweep_gates()
+            except Exception:
+                logger.exception("the human-gate expiry sweep failed")
+
+    def _open_gates(
+        self,
+    ) -> list[tuple[RunRecord, Mapping[str, Any], str, datetime | None]]:
+        with self._lock:
+            records = tuple(self._records.values())
+        open_gates: list[
+            tuple[RunRecord, Mapping[str, Any], str, datetime | None]
+        ] = []
+        for record in records:
+            if record.status is not RunStatus.WAITING:
+                continue
+            prompt = record.pending_gate
+            if not prompt:
+                continue
+            gate_id = str(prompt.get("gate_id") or "")
+            if not gate_id or gate_id in record.answered_gates:
+                continue
+            open_gates.append((record, prompt, gate_id, _gate_deadline(prompt)))
+        return open_gates
+
+    def _hydrate_due_gates(self, moment: datetime) -> None:
+        """Pull runs whose gate expired while this process was down into memory."""
+        lister = getattr(self.persistence, "list_open_gates", None)
+        if not callable(lister):
+            return
+        try:
+            due = lister(due_by=moment)
+        except Exception:
+            logger.exception("could not list durable open gates for the sweep")
+            return
+        for gate in due:
+            run_id = str(gate.get("run_id") or "")
+            if not run_id:
+                continue
+            with self._lock:
+                if run_id in self._records:
+                    continue
+            try:
+                self.require(run_id)
+            except KeyError:
+                continue
+            except Exception:
+                logger.exception("could not recover run %s for the sweep", run_id)
+
+    def _persist_gate_watch(
+        self,
+        record: RunRecord,
+        gate_id: str,
+        status: str,
+    ) -> None:
+        expire_gate = getattr(self.persistence, "expire_gate", None)
+        if not callable(expire_gate):
+            return
+        try:
+            expire_gate(record.run_id, gate_id, status=status)
+        except KeyError:
+            pass
+        except Exception:
+            logger.exception(
+                "could not persist gate %s as %s for run %s",
+                gate_id,
+                status,
+                record.run_id,
+            )
+
+    @staticmethod
+    def _gate_node_id(record: RunRecord, prompt: Mapping[str, Any]) -> str:
+        context = record.pending_context
+        node_id = str(
+            prompt.get("node_id")
+            or (context.method_name if context is not None else "")
+        )
+        return node_id or record.node_registry.workflow_node_id
+
     def dependency_status(self) -> dict[str, dict[str, Any]]:
         storage = {"status": "not_configured"}
         if self.persistence is not None:
@@ -731,6 +1019,12 @@ class RunRegistry:
         return result
 
     def close(self) -> None:
+        self._sweeper_stop.set()
+        sweeper = self._sweeper
+        if sweeper is not None and sweeper is not current_thread():
+            sweeper.join(timeout=5)
+            if sweeper.is_alive():
+                logger.warning("gate expiry sweeper did not stop within 5s")
         self._executor.shutdown(wait=True, cancel_futures=True)
         if self._writer is not None:
             self._writer.close()
@@ -1011,6 +1305,14 @@ class RunRegistry:
             if isinstance(stored_gate, Mapping)
             else None
         )
+        if prompt is not None and not prompt.get("expires_at"):
+            # Older prompts predate the deadline in the request body; the
+            # run_gates row has carried it since open_gate() either way.
+            stored_expiry = stored_gate.get("expires_at")
+            if isinstance(stored_expiry, datetime):
+                prompt["expires_at"] = stored_expiry.isoformat()
+            elif stored_expiry:
+                prompt["expires_at"] = str(stored_expiry)
         context = None
         flow_id = snapshot.get("flow_id")
         if flow_id and snapshot.get("status") == RunStatus.WAITING.value:
@@ -1059,6 +1361,18 @@ class RunRegistry:
                 snapshot.get("frames", {}).get("subscriber_dropped", 0)
             ),
         )
+        if isinstance(stored_gate, Mapping):
+            # F03 across a restart: the durable status says which watch frames
+            # this gate already produced, so recovery reports the gate expired
+            # without re-emitting an expiry or a second R-2 alert for it.
+            recovered_gate_id = str(
+                (prompt or {}).get("gate_id") or stored_gate.get("gate_id") or ""
+            )
+            if recovered_gate_id:
+                record.adopt_gate_watch(
+                    recovered_gate_id,
+                    str(stored_gate.get("status") or ""),
+                )
         after = 0
         while True:
             page = self.persistence.replay_frames(

@@ -226,6 +226,7 @@ export function useValidatorRun() {
   function applyPostSnapshotFrame(frame: FrameData): void {
     if (frame.kind === 'run_state') applyRunState(frame)
     if (frame.kind === 'gate_open') applyGate(frame)
+    if (frame.kind === 'gate_expired' || frame.kind === 'gate_alert') applyGateWatch(frame)
     if (frame.kind === 'gate_closed') {
       pendingGate.value = null
       gateSubmitting.value = false
@@ -272,6 +273,7 @@ export function useValidatorRun() {
     if (frame.kind === 'node_state' && frame.node_id) applyNodeState(frame)
     if (frame.kind === 'edge_taken') applyEdge(frame)
     if (frame.kind === 'gate_open') applyGate(frame)
+    if (frame.kind === 'gate_expired' || frame.kind === 'gate_alert') applyGateWatch(frame)
     if (frame.kind === 'gate_closed') {
       pendingGate.value = null
       gateSubmitting.value = false
@@ -330,12 +332,32 @@ export function useValidatorRun() {
       summary: String(details.summary ?? frame.message),
       editable: Boolean(details.editable),
       expiresAt: typeof details.expires_at === 'string' ? details.expires_at : undefined,
+      expired: details.expired === true,
       options: options.map((option) => option as PendingGate['options'][number]),
       fields,
       verdict: typeof details.verdict === 'string' ? details.verdict : undefined,
       confidence: typeof details.confidence === 'number' ? details.confidence : undefined,
     }
     status.value = 'waiting'
+  }
+
+  /**
+   * PRD F03/R-2. `gate_expired` and `gate_alert` are the server telling the
+   * operator the deadline slipped - nothing more. The run stays WAITING, the
+   * gate stays open, and the reply path stays available, so this only ever
+   * annotates the gate the operator is already looking at.
+   */
+  function applyGateWatch(frame: FrameData): void {
+    const gate = pendingGate.value
+    const gateId = typeof frame.details.gate_id === 'string' ? frame.details.gate_id : ''
+    if (!gate || (gateId && gate.gateId !== gateId)) return
+    const overdue = Number(frame.details.overdue_seconds)
+    pendingGate.value = {
+      ...gate,
+      expired: true,
+      alerting: gate.alerting || frame.kind === 'gate_alert',
+      overdueSeconds: Number.isFinite(overdue) ? overdue : gate.overdueSeconds,
+    }
   }
 
   function applyTokenUsage(frame: FrameData): void {
@@ -428,11 +450,10 @@ export function useValidatorRun() {
   }
 
   async function submitGate(outcome: string, fields?: Record<string, string>): Promise<void> {
+    // PRD F03: an expired gate is advisory. The server keeps the run WAITING,
+    // accepts a late reply and records it as late, so the client must never
+    // refuse to send one - that lockout was the whole bug.
     if (!pendingGate.value || gateSubmitting.value) return
-    if (pendingGate.value.expiresAt && Date.parse(pendingGate.value.expiresAt) <= Date.now()) {
-      lastError.value = 'This operator gate has expired and can no longer accept a reply.'
-      return
-    }
     gateSubmitting.value = true
     try {
       await studioApi.replyGate(runId.value, pendingGate.value.gateId, { outcome, fields })

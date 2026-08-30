@@ -137,6 +137,38 @@ class SyntheticRunner:
         return result
 
 
+SYNTHETIC_REPORT_MARKDOWN = """# Validation report - NEEDS_WORK
+
+**Idea.** {idea}
+
+> This report is produced by `SyntheticValidatorRunner`. No model was called
+> and no source was retrieved. It exists so the console's report rendering is
+> exercisable at zero cost.
+
+## Score breakdown
+
+| Dimension | Score | Weight | Note |
+| --- | --- | --- | --- |
+| Demand | 3 | 0.30 | Synthetic placeholder |
+| Market | 3 | 0.20 | Synthetic placeholder |
+| Competitive room | 2 | 0.20 | Synthetic placeholder |
+| Feasibility | 4 | 0.15 | Synthetic placeholder |
+| Headroom over free | 2 | 0.15 | Synthetic placeholder |
+
+Composite **5.6** at `LOW` confidence.
+
+## Cheapest next test
+
+1. Interview five target users.
+2. Price the wedge against the free alternative.
+
+## Sources
+
+- [Synthetic market note](https://example.com/synthetic-market)
+- [Synthetic HN thread](https://news.ycombinator.com/item?id=1)
+"""
+
+
 class SyntheticValidatorRunner:
     """Synthetic validator that exercises two durable pause/resume rounds."""
 
@@ -151,6 +183,13 @@ class SyntheticValidatorRunner:
             details={"status": "running", "inputs": {"idea": idea}},
         )
         self._node(execution, "scope_idea", "Scoper")
+        # Unattended mode runs straight through, the way ValidatorFlow does
+        # when `ValidatorFeedbackProvider` answers its own gates. Without this
+        # branch the toggle would be untestable at zero cost - the double would
+        # pause where the real flow does not, which is the same divergence that
+        # let the missing report body survive behind a green suite.
+        if execution.inputs.get("no_gates"):
+            return self._run_unattended(execution, idea)
         return self._pending(
             execution,
             method_name="confirm_scope",
@@ -163,6 +202,28 @@ class SyntheticValidatorRunner:
             },
             stage=1,
         )
+
+    def _run_unattended(self, execution: RunExecution, idea: str) -> Any:
+        """Both gates auto-approved: every node runs, nothing pauses."""
+        for node_id, label in (
+            ("confirm_scope", "Confirm scope"),
+            ("route_scope", "Scope router"),
+        ):
+            self._node(execution, node_id, label)
+        execution.checkpoint("research_market")
+        for node_id, label in (
+            ("research_market", "Market Analyst"),
+            ("research_sentiment", "Sentiment Analyst"),
+            ("research_feasibility", "Feasibility Analyst"),
+            ("synthesize", "Synthesist"),
+            ("review_verdict", "Review verdict"),
+            ("route_verdict", "Verdict router"),
+        ):
+            self._node(execution, node_id, label)
+        execution.checkpoint("write_report")
+        self._node(execution, "write_report", "Reporter")
+        self._node(execution, "persist", "Validation brief")
+        return self._finish(execution, idea, {"decision": "approve", "unattended": True})
 
     def resume(
         self,
@@ -200,9 +261,28 @@ class SyntheticValidatorRunner:
         execution.checkpoint("write_report")
         self._node(execution, "write_report", "Reporter")
         self._node(execution, "persist", "Validation brief")
+        idea = str(execution.inputs.get("idea", "synthetic idea"))
+        return self._finish(execution, idea, payload)
+
+    @staticmethod
+    def _finish(execution: RunExecution, idea: str, payload: Any) -> Any:
+        # Shaped like `schemas/validator.py::ValidationReport`, because the
+        # console reads `result.markdown_body` and this double used to return a
+        # result with no body at all. That made report rendering *untestable*
+        # on the free path - no unit test, no E2E test and no local synthetic
+        # run could ever exercise it - which is how the client came to drop the
+        # report at three layers behind 133 green tests. Keep this in the real
+        # shape; a double that diverges from its subject certifies nothing.
         result = {
             "synthetic": True,
-            "idea": str(execution.inputs.get("idea", "synthetic idea")),
+            "markdown_body": SYNTHETIC_REPORT_MARKDOWN.format(idea=idea),
+            "provisional": True,
+            "thin_dimensions": ["D", "X"],
+            "sources": [
+                {"url": "https://example.com/synthetic-market", "title": "Synthetic market note"},
+                {"url": "https://news.ycombinator.com/item?id=1", "title": "Synthetic HN thread"},
+            ],
+            "idea": idea,
             "verdict": "NEEDS_WORK",
             "feedback": payload,
         }

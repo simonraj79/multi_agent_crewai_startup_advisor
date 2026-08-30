@@ -9,7 +9,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from brief_crew.config import MAX_RUN_INPUT_BYTES, MAX_RUN_INPUT_KEYS
+from brief_crew.config import (
+    MAX_RUN_INPUT_BYTES,
+    MAX_RUN_INPUT_KEYS,
+    RESERVED_RUN_INPUT_KEYS,
+)
 
 
 class RunStatus(str, Enum):
@@ -100,6 +104,18 @@ class CreateRunRequest(BaseModel):
 
     workflow_id: str = Field(default="brief-flow", min_length=1, max_length=128)
     inputs: dict[str, Any] = Field(default_factory=dict)
+    #: Who answers the scope and verdict gates.
+    #:
+    #: ``human`` pauses at both and waits for an operator - the default, and the
+    #: only mode a public deployment should accept, because the pause is what
+    #: bounds the spend. ``auto`` answers them itself and runs the whole
+    #: pipeline unattended; the handler refuses it unless
+    #: ``VALIDATOR_ALLOW_AUTO_GATES`` is set.
+    #:
+    #: A named mode rather than a bare bool: it reads correctly in OpenAPI, it
+    #: says what the alternative IS instead of what it is not, and it leaves
+    #: room for a third answerer later.
+    gates: Literal["human", "auto"] = "human"
 
     @field_validator("inputs")
     @classmethod
@@ -114,6 +130,20 @@ class CreateRunRequest(BaseModel):
             )
         if len(value) > MAX_RUN_INPUT_KEYS:
             raise ValueError(f"inputs carries at most {MAX_RUN_INPUT_KEYS} keys")
+        # Refuse, rather than silently drop. `inputs` is merged wholesale into
+        # the flow's pydantic state by CrewAI, so before this check every field
+        # on `ValidatorState` was settable from the public request body -
+        # `no_gates` among them, which is the `gates` field above wearing a
+        # disguise and skipping every policy attached to it. Answering 422
+        # tells an honest client its request was misread; dropping the key
+        # would let a stale one think it had switched modes.
+        reserved = sorted(RESERVED_RUN_INPUT_KEYS.intersection(value))
+        if reserved:
+            raise ValueError(
+                "inputs may not carry the reserved control "
+                f"{'keys' if len(reserved) > 1 else 'key'} {', '.join(reserved)}; "
+                "use the request's own fields instead"
+            )
         return value
 
 

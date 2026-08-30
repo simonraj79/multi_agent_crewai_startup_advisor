@@ -202,6 +202,18 @@ class GatePrompt(BaseModel):
     # Defaulted so a gate row persisted before this field existed still
     # validates on recovery.
     derived: list[GateDerivedField] = Field(default_factory=list)
+    # How many `decision: "revise"` replies this gate will still honour, and
+    # the budget that number counts down from. A client displays them ("2 of 5
+    # revisions left"); it must not have to INFER the limit from the absence of
+    # a Revise option, because the absence of an option is also what an older
+    # server looks like.
+    #
+    # Both are defaulted to None so a `run_gates.request` row written before the
+    # cap existed still validates on recovery. None means "this gate predates
+    # the bound", which is a different statement from 0, and 0 is the one that
+    # means "no revises left".
+    revise_turns_remaining: int | None = None
+    max_revise_turns: int | None = None
     verdict: str | None = None
     confidence: float | None = None
 
@@ -318,6 +330,14 @@ class RunStatusResponse(BaseModel):
     # only drift from it.
     verdict: dict[str, Any] | None = None
     error: str | None = None
+    # Why a non-completed run ended, when `status` alone does not say. `None`
+    # for an ordinary end - including an operator pressing Cancel, which is a
+    # human already knowing why. `"cost_ceiling"` means the run stopped itself
+    # on MAX_RUN_COST_USD; `error` carries the sentence and the figures. The
+    # reasons are `registry.COST_CEILING_REASON` and `INTERRUPTED_REASON`, and
+    # this is a string rather than a Literal so adding a third does not become
+    # a breaking API change.
+    stop_reason: str | None = None
 
 
 class DependencyStatus(BaseModel):

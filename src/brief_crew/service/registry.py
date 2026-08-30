@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait as wait_for_futures
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import json
@@ -22,6 +22,7 @@ from crewai.hooks.dispatch import register_scoped, scoped_hooks
 
 from brief_crew.config import (
     RUN_CONCURRENCY,
+    RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS,
     VALIDATOR_FRAME_BATCH_SIZE,
     VALIDATOR_FRAME_FLUSH_INTERVAL_SECONDS,
     VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS,
@@ -137,6 +138,23 @@ GATE_NOTE_FIELD = "feedback"
 # Matches SerializerLimits.max_string, so a value that survives this bound also
 # survives the frame the gate is announced on and comes back from replay intact.
 MAX_GATE_VALUE_CHARS = 4096
+
+
+class RunBusyError(RuntimeError):
+    """A run cannot be (re)submitted because its previous execution is live.
+
+    A ``RuntimeError`` subclass so nothing that already catches the broad type
+    changes behaviour, and its own class so the transport can answer 503
+    ("try again") rather than 500 ("this broke"). ``_submit`` raises it only
+    after waiting ``RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS`` for the previous future,
+    so by the time a caller sees it the run really is still working.
+    """
+
+    __slots__ = ("run_id",)
+
+    def __init__(self, run_id: str) -> None:
+        super().__init__(f"run {run_id} is already executing")
+        self.run_id = run_id
 
 
 class GateFieldError(ValueError):
@@ -875,11 +893,19 @@ class RunRegistry:
         max_workers: int | None = None,
         ring_capacity: int = DEFAULT_RING_CAPACITY,
         gate_sweep_interval: float | None = None,
+        submit_settle_timeout: float | None = None,
     ) -> None:
         if max_workers is None:
             max_workers = RUN_CONCURRENCY
         if max_workers < 1:
             raise ValueError("max_workers must be positive")
+        self.submit_settle_timeout = (
+            RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS
+            if submit_settle_timeout is None
+            else float(submit_settle_timeout)
+        )
+        if self.submit_settle_timeout <= 0:
+            raise ValueError("submit_settle_timeout must be positive")
         self.gate_sweep_interval = (
             VALIDATOR_GATE_SWEEP_INTERVAL_SECONDS
             if gate_sweep_interval is None
@@ -1039,7 +1065,14 @@ class RunRegistry:
             },
         )
         feedback = self._feedback(context, outcome, fields or {})
-        return self._submit(record, context=context, feedback=feedback)
+        try:
+            return self._submit(record, context=context, feedback=feedback)
+        except RunBusyError:
+            # The durable answer above already stood, so leaving it would hand
+            # the operator a run that is RUNNING, has no gate to answer and
+            # returns 409 to every retry. Put the gate back instead.
+            self._reopen_gate(record, gate_id, prompt, context)
+            raise
 
     @staticmethod
     def _reject_uneditable_fields(
@@ -1159,10 +1192,30 @@ class RunRegistry:
         context: PendingFeedbackContext | None = None,
         feedback: str = "",
     ) -> Future[Any]:
+        """Queue one execution, waiting out a previous one that is settling.
+
+        The gate is visible to the client before the run that opened it has
+        finished: ``_mark_pending`` writes the durable gate, marks the record
+        WAITING and pushes GATE_OPEN, and only *then* does ``_execute`` return
+        and its future complete. A reply that arrives in that window is not a
+        second execution - it is the resume of the one that is settling - so
+        refusing it wedged the run: the durable answer stood, no work was
+        queued, and every retry came back 409.
+
+        The wait is deliberately outside ``self._lock``. ``_execute``'s tail
+        emits frames, and a frame emitted while the persistence queue is full
+        reaches ``_note_persistence_error``, which takes ``self._lock``.
+        Holding it here while waiting for that thread would deadlock the
+        process.
+        """
+        with self._lock:
+            current = self._futures.get(record.run_id)
+        if current is not None and not current.done():
+            wait_for_futures([current], timeout=self.submit_settle_timeout)
         with self._lock:
             current = self._futures.get(record.run_id)
             if current is not None and not current.done():
-                raise RuntimeError(f"run {record.run_id} is already executing")
+                raise RunBusyError(record.run_id)
             future = self._executor.submit(
                 self._execute,
                 record,
@@ -1687,6 +1740,79 @@ class RunRegistry:
         # place for a reconciled snapshot: nothing more will change until the
         # reply lands, and the next tick would only repeat these numbers.
         record.emit_metrics("gate_open")
+        self._persist_status(record)
+
+    def _reopen_gate(
+        self,
+        record: RunRecord,
+        gate_id: str,
+        prompt: Mapping[str, Any],
+        context: PendingFeedbackContext,
+    ) -> None:
+        """Roll one accepted-but-unstarted gate reply back to an open gate.
+
+        The reply is durably accepted before the resume is queued, so a resume
+        that never starts leaves the run committed to work nobody is doing:
+        status RUNNING, ``pending_gate`` null, and 409 on every retry - the
+        wedged state this whole path exists to prevent. Rolling back is
+        preferred over failing the run because nothing about the run is
+        actually broken: one resubmission lost a race, the flow state and the
+        pending feedback are untouched on disk, and the same reply sent again
+        resumes it.
+
+        Everything the reply did is undone in the reverse order it happened:
+        the durable compare-and-set, the in-memory answered set, and finally
+        the frames - a GATE_ALERT saying why, then the original GATE_OPEN
+        re-emitted verbatim so a client that already applied GATE_CLOSED gets
+        its card back. Re-emitting is what restores ``pending_gate`` and the
+        WAITING status, because ``_on_frames`` is what set them the first time.
+        """
+        watch_status = "open"
+        if gate_id in record.alerted_gates:
+            watch_status = "alerted"
+        elif gate_id in record.expired_gates:
+            watch_status = "expired"
+        if self.persistence is not None:
+            try:
+                self.persistence.reopen_gate(
+                    record.run_id,
+                    gate_id,
+                    status=watch_status,
+                )
+            except Exception:
+                # A failed rollback must not mask the RunBusyError the caller
+                # is about to see, but it does mean the durable answer stands.
+                logger.exception(
+                    "could not reopen gate %s on run %s after a busy resubmit",
+                    gate_id,
+                    record.run_id,
+                )
+                return
+        record.answered_gates.discard(gate_id)
+        restored = dict(prompt)
+        record.mark_waiting(restored, context)
+        record.capture.emit(
+            kind=FrameKind.GATE_ALERT,
+            event_type=UIEventType.HUMAN_INTERACTION,
+            node_id=context.method_name,
+            message=f"{prompt['title']} reopened; the reply could not be started",
+            details={
+                "gate_id": gate_id,
+                "reason": "run_busy",
+                "detail": (
+                    "the previous execution was still running when the reply "
+                    "was accepted, so the reply was rolled back - send it again"
+                ),
+            },
+            level=FrameLevel.WARNING,
+        )
+        record.capture.emit(
+            kind=FrameKind.GATE_OPEN,
+            event_type=UIEventType.HUMAN_INTERACTION,
+            node_id=context.method_name,
+            message=str(prompt["title"]),
+            details=restored,
+        )
         self._persist_status(record)
 
     @staticmethod

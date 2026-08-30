@@ -141,7 +141,7 @@ Algolia is open, and GitHub search works unauthenticated at a reduced rate limit
 
 ### 2.3 Audit — the reference UI
 
-The screenshot is **DevAll** (`C:\Users\Simon\Downloads\ChatDev-main\ChatDev-main`),
+The screenshot is **DevAll** (a local checkout of `ChatDev-main`),
 a Vue 3 + Vue Flow app served by a FastAPI + WebSocket backend, running at
 `localhost:5173/launch?workflow=…yaml&session=…`.
 
@@ -620,7 +620,7 @@ headless trace has to stay legible on its own.
 
 Derived by reverse-engineering DevAll's `frontend/src/pages/LaunchView.vue`
 (3,705 lines) and its components. File:line references below are into
-`C:\Users\Simon\Downloads\ChatDev-main\ChatDev-main\frontend\`.
+`<local-checkout>/ChatDev-main/frontend/`.
 
 ### 8.1 Layout
 

@@ -849,6 +849,72 @@ class PostgresFlowPersistence(FlowPersistence):
             gate=self._gate_dict(stored),
         )
 
+    def reopen_gate(
+        self,
+        run_id: str,
+        gate_id: str,
+        *,
+        status: str = "open",
+    ) -> dict[str, Any]:
+        """Undo an accepted answer whose resume never started.
+
+        ``answer_gate`` is a durable compare-and-set, so once it accepts, the
+        run is committed to resuming and every later reply is a 409. If the
+        resume then fails to start, that commitment is a lie: the gate is
+        answered, no work is queued, and the operator has no lever left. This
+        is the compensating write - it clears ``answered_at`` and the stored
+        response and puts the run back to ``waiting``, so the same reply can be
+        sent again.
+
+        Compare-and-set in the other direction, for the same reason: it only
+        rewinds a gate that is *currently* answered, so it can never race a
+        legitimate answer into being un-answered twice. ``status`` restores the
+        F03 watch state the answer overwrote, so a gate that was already
+        expired or alerted does not come back looking fresh.
+        """
+        run_id = _identifier(run_id, label="run_id")
+        gate_id = _identifier(gate_id, label="gate_id")
+        if status != "open" and status not in _GATE_WATCH_STATUSES:
+            raise ValueError(
+                "gate reopen status must be open or one of "
+                f"{sorted(_GATE_WATCH_STATUSES)}"
+            )
+        now = _utcnow()
+        with self._begin() as connection:
+            result = connection.execute(
+                update(run_gates)
+                .where(
+                    run_gates.c.run_id == run_id,
+                    run_gates.c.gate_id == gate_id,
+                    run_gates.c.answered_at.is_not(None),
+                )
+                .values(
+                    status=status,
+                    response=None,
+                    answered_at=None,
+                    updated_at=now,
+                )
+            )
+            if result.rowcount == 0:
+                exists = connection.execute(
+                    select(run_gates.c.gate_id).where(
+                        run_gates.c.run_id == run_id,
+                        run_gates.c.gate_id == gate_id,
+                    )
+                ).scalar_one_or_none()
+                if exists is None:
+                    raise KeyError((run_id, gate_id))
+            else:
+                connection.execute(
+                    update(runs)
+                    .where(runs.c.id == run_id)
+                    .values(status="waiting", updated_at=now)
+                )
+        gate = self.get_gate(run_id, gate_id)
+        if gate is None:
+            raise KeyError((run_id, gate_id))
+        return gate
+
     def expire_gate(
         self,
         run_id: str,

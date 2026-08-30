@@ -1,48 +1,197 @@
-# Brief Crew
+# Agentic Crew AI
 
-One topic in, one one-page brief out — a CrewAI Researcher → Analyst → Writer
-pipeline over a warm Pinecone cache.
+Two CrewAI applications sharing one Python package, plus a live web console for
+the second.
 
-Built to the specifications in [`agents/`](agents/), which remain authoritative:
-this code implements them, it does not supersede them. Start with
-[`agents/00-shared-config.md`](agents/00-shared-config.md) (§0 first — *why a
-crew at all*) and [`agents/workflow.md`](agents/workflow.md).
+**Brief Crew** turns one topic into one one-page brief — a Researcher → Analyst →
+Writer pipeline sitting behind a warm vector cache, so repeat runs get cheaper.
+
+**Validator Studio** takes a startup idea and returns a scored, cited verdict.
+Six agents, three of them researching in parallel against real sources, two
+human approval gates that survive a process restart, and a browser UI that draws
+the agent graph and animates it as the run happens.
+
+Neither is a demo of a framework. Both are built around a specific claim: an
+agent's output is only worth what its evidence is worth, so the interesting
+engineering is in the parts that refuse to let a model assert something it
+cannot support.
 
 ---
 
-## Quick start
+## Status — read this before you judge anything
+
+This is a working, tested project that **has never been run end to end against
+paid live services in its integrated form.** That is not false modesty; it is the
+single most important thing to know about it.
+
+| | State |
+|---|---|
+| Python test suite | ✅ 341 tests, 0 failures, 1 skipped |
+| Frontend test suite | ✅ 116 tests across 11 files (Vitest + jsdom) |
+| Frontend type-check + build | ✅ `vue-tsc` and `vite build` clean |
+| Brief Crew, live | ✅ run end to end against real OpenRouter / Firecrawl / Pinecone / Cohere; numbers below are measured |
+| Validator Studio, live | ❌ **never run** against real services after the service and UI landed. Every test uses a double. |
+| Deployed anywhere | ❌ `render.yaml` exists and has never been applied |
+| PostgreSQL | ❌ schema is dialect-agnostic and tested on SQLite only; it has never touched a real PostgreSQL server |
+| Fan-out speedup | ❌ the benchmark harness is built and tested; **the measurement has not been taken** |
+
+The test suite is deliberately free to run. CrewAI crews, OpenRouter, Pinecone,
+Cohere, Firecrawl, Hacker News and GitHub are all mocked or replaced with
+deterministic doubles, so `git clone && npm ci && python -m unittest` costs
+nothing and touches no network. The flip side is the row above: coverage is not
+evidence that the live integration works.
+
+Full, current, unflattering detail lives in [`CLAUDE.md`](CLAUDE.md) under
+*Remaining Work and Unverified Risks*. It is maintained as a working handoff, not
+as marketing, and it is the file to trust when this one and it disagree.
+
+---
+
+## What is actually interesting here
+
+Four things in this repository are unusual enough to be worth your time even if
+you never run it.
+
+### A rubric bound to counted evidence
+
+The validator scores an idea on five dimensions and computes a verdict
+arithmetically:
+
+```
+score = 2 × (0.30·Demand + 0.20·Moat + 0.20·Competition + 0.15·Feasibility + 0.15·Headroom)
+```
+
+Any arithmetic the model supplies is **overwritten**, not trusted. But the real
+work is a layer up. Each dimension has a written ladder of anchors, and two
+independent guardrails police it:
+
+- `anchor_problems` checks the *wording* — the text the model quotes must be the
+  anchor for that dimension at that score, matched at 0.85 token overlap.
+- `score_support_problems` checks the *findings* — the evidence actually counted
+  from tool output must be able to carry the score claimed.
+
+The second exists because the first is not enough. A model that has read the
+rubric can quote the "strong demand" anchor verbatim over two stale forum
+threads. Wording matching catches plagiarism of the rubric; evidence support
+catches the claim. Scores are bounded from above everywhere, and from below only
+at levels 0 and 1 — the two levels where a *low* score is itself a strong claim
+that ought to need support. Judgement clauses are never mechanically enforced,
+because pretending a judgement is a count is how you get confident nonsense.
+
+### A router that makes the one real decision without a model
+
+Brief Crew's cache hit-or-miss decision is the only genuinely dynamic branch in
+the pipeline. It is a CrewAI `@router` returning a `Literal["cache_hit",
+"cache_miss"]`, resolved from three thresholds — at least 3 reranked hits, top
+rerank score at least 0.30, indexed within 60 days — for **zero LLM calls**. A
+manager agent would make the identical binary decision and bill a model call per
+run to do it.
+
+Missing `indexed_at` is treated as stale, never as fresh. The validator's two
+approval gates route the same way: deterministic approve/revise, no model asked.
+
+### Human gates that survive the process dying
+
+Both validator gates use CrewAI's native `@human_feedback`. When a run reaches
+one it raises `HumanFeedbackPending`, the flow state is written to SQL, and the
+process is free to exit. A reply arriving minutes or hours later — over HTTP or
+over the WebSocket, through one shared compare-and-set path — rehydrates the flow
+and resumes it. A duplicate reply gets HTTP 409 rather than a second run.
+
+The gate payload is split into editable `fields` and read-only `derived` values,
+and at the verdict gate *every* key is derived. Seven of them are arithmetic the
+schema recomputes and discards; the rest are inputs the guardrails bind to the
+rubric and to real tool URLs. Neither survives a text box. So `fields` is
+**pruned** rather than annotated — a stale client cannot go on offering an edit
+the server would silently throw away. The operator's lever is `decision=revise`
+plus written feedback, which is the honest one.
+
+### An event spine with a visible quarantine node
+
+The UI is driven by an immutable, versioned frame stream with gapless per-run
+sequence numbers, a bounded 2,000-frame run ring and 512-frame subscriber queues.
+Serialization is field-bounded: it never walks a whole live CrewAI object.
+Capture callbacks do no socket and no database I/O — frames enter a bounded queue
+and a separate batching thread persists them, so database latency never reaches a
+CrewAI event handler.
+
+The part worth stealing: events that cannot be attributed to a known node are not
+dropped and not silently folded into their neighbours. They are routed to a node
+called `unattributed`, which is **rendered in the UI** — quiet when empty, loud
+when it holds frames. An observability layer that hides its own blind spot is
+worse than one that admits it, because you will believe it.
+
+---
+
+## What you need
+
+| | |
+|---|---|
+| Python | 3.10–3.13 (**not 3.14** — CrewAI excludes it). `.python-version` pins 3.13. |
+| Node | 20+ for the frontend (CI uses 24) |
+| [uv](https://docs.astral.sh/uv/) | for the Python environment and the lockfile |
+
+### API keys
+
+Copy [`.env.example`](.env.example) to `.env` and fill it in. That file documents
+every variable and names the source file that reads it. The short version:
+
+| Key | Needed for | Get one |
+|---|---|---|
+| `OPENROUTER_API_KEY` | **everything.** Every agent LLM call and every embedding. | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| `FIRECRAWL_API_KEY` | web search + scrape: Brief Crew's Researcher, the validator's Market Analyst | [firecrawl.dev](https://www.firecrawl.dev/app/api-keys) |
+| `PINECONE_API_KEY` + `PINECONE_INDEX_NAME` | the warm cache (Brief Crew Track B, validator market cache) | [app.pinecone.io](https://app.pinecone.io) |
+| `COHERE_API_KEY` | stage-2 rerank on every retrieval | [dashboard.cohere.com](https://dashboard.cohere.com/api-keys) |
+| `GITHUB_TOKEN` | **optional.** Raises the validator's GitHub search limit from 8 to 24 req/min. No scopes needed. | any GitHub PAT |
+
+You create the Pinecone index yourself: **768 dimensions, cosine, serverless.**
+The dimension is not negotiable — embeddings are truncated to 768 via the
+`dimensions` parameter, and a mismatch fails upserts silently rather than
+raising.
+
+**OpenRouter is the only model provider.** There is no OpenAI fallback and
+`OPENAI_API_KEY` is not used. Every model constant carries an `openrouter/`
+prefix and the service refuses to start if one does not.
+
+You can run the whole test suite with none of these set.
+
+---
+
+## Install
 
 ```bash
 uv venv --python 3.13 .venv
 uv pip install --python .venv -e .
 
-# Track A — the three-agent crew. Start here.
-.venv/Scripts/python -c "from brief_crew.main import run_crew; run_crew('your topic')"
-
-# Track B — the same crew behind a warm-cache router.
-.venv/Scripts/python -c "from brief_crew.main import kickoff; kickoff('your topic')"
+# The hosted service (FastAPI, SQLAlchemy, psycopg) is an optional extra:
+uv pip install --python .venv -e '.[service]'
 ```
 
-The brief lands in `output/brief.md`. Watch the verbose trace while it runs —
-that is the only view you have of who handed off to whom, and it is what slide 53
-asks you to show.
-
-Credentials come from `.env` (five keys, all already provisioned). Nothing else
-needs configuring.
+> ⚠️ `crewai install` runs `uv sync`, which **uninstalls** anything absent from
+> `pyproject.toml`'s default dependencies — including the whole `service` extra.
+> If the API stops importing after you run it, that is why. Reinstall the extra.
 
 ---
 
-## The two tracks
+## Running Brief Crew
 
-| | **Track A** — `run_crew()` | **Track B** — `kickoff()` |
+Two tracks over the same three agents.
+
+|  | **Track A** — `run_crew()` | **Track B** — `kickoff()` |
 |---|---|---|
 | Orchestration | `Process.sequential` | `Flow` with a deterministic `@router` |
-| Who checks the cache | the Researcher, via `retrieve_and_rerank` | the Flow, *before* any agent runs |
+| Who checks the cache | the Researcher, as a tool | the Flow, *before* any agent runs |
 | Researcher tools | 3 | 2 |
-| Infrastructure | none beyond the API keys | Pinecone · Cohere · (Render Postgres) |
+| Needs | API keys only | + Pinecone, Cohere |
 
-**Build and run Track A first.** Every stretch in this repository presupposes a
-working sequential crew.
+**Start with Track A.** Everything else presupposes a working sequential crew.
+
+```bash
+.venv/Scripts/python -c "from brief_crew.main import run_crew; run_crew('your topic')"   # Track A
+.venv/Scripts/python -c "from brief_crew.main import kickoff;  kickoff('your topic')"    # Track B
+```
+
+The brief lands in `output/brief.md`; Track B also writes `output/last_run.json`.
 
 ```
                       ┌──────────────────────┐
@@ -69,151 +218,269 @@ working sequential crew.
                           output/brief.md
 ```
 
+> ⚠️ **Known gap.** Cache write-back carries no structured provenance. The cache
+> genuinely warms — one miss writes chunks, the next run hits — but every chunk
+> is stored with `url=""` and `publisher=""`, because the Flow indexes the
+> Researcher's *notes* rather than the scraped *pages*. Briefs are unaffected
+> (the URLs survive inside the chunk text) but per-source provenance cannot be
+> reconstructed. Detail in [`agents/06-retrieval-layer.md`](agents/06-retrieval-layer.md).
+
+---
+
+## Running Validator Studio
+
+Six agents. Two of them — Scoper and Synthesist — and the Reporter have **no
+tools at all**; that boundary is deliberate, and it is what keeps judgement
+separate from retrieval.
+
+| Agent | Model tier | Tools |
+|---|---|---|
+| Scoper | escalation | none |
+| Market Analyst | cheap | Firecrawl search + scrape |
+| Sentiment Analyst | cheap | Hacker News (Algolia) |
+| Feasibility Analyst | cheap | GitHub repository search |
+| Synthesist | escalation | none |
+| Reporter | escalation | none |
+
+```
+scope ─▶ scope gate ─┬─▶ market      ─┐
+                     ├─▶ sentiment   ─┼─▶ synthesis ─▶ verdict gate ─▶ report
+                     └─▶ feasibility ─┘                                  │
+                                                                         ▼
+                                                            output/validation.md
+```
+
+The three research branches are sibling `@listen` methods on one event, so CrewAI
+runs them concurrently in worker threads, with an `and_()` fan-in before
+synthesis.
+
+### From the command line
+
+```bash
+.venv/Scripts/validate --idea "A scheduling assistant for clinics"
+```
+
+This stops at both human gates and waits for you. To skip them:
+
+```bash
+.venv/Scripts/validate --idea "A scheduling assistant for clinics" --no-gates
+```
+
+> ⚠️ `--no-gates` skips the *approvals*, not the *spending*. A real `--no-gates`
+> run still calls paid models and external tools.
+
+### As a service, with the web console
+
+Two processes. API first:
+
+```bash
+.venv/Scripts/serve                 # http://127.0.0.1:8000
+```
+
+Then the frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev                         # http://localhost:5173
+```
+
+The dev server proxies `/api` and `/ws` to `127.0.0.1:8000`, so no configuration
+is needed locally. Open `http://localhost:5173/`.
+
+**If no backend answers, the UI falls back to a scripted mock and shows a
+complete, entirely fabricated run.** This is deliberate — it makes the UI
+developable and testable without a backend — but it means a misconfigured
+deployment fails by showing you plausible fiction rather than an error. The
+single most common cause is `VITE_API_URL` set to a bare hostname instead of a
+full origin; see [`docs/deploying.md`](docs/deploying.md).
+
+### The API
+
+```
+GET  /healthz
+GET  /readyz
+GET  /api/workflows
+GET  /api/workflows/{workflow_id}/graph
+POST /api/sessions/{session_id}/runs
+GET  /api/runs/{run_id}
+GET  /api/runs/{run_id}/frames
+POST /api/runs/{run_id}/gates/{gate_id}
+POST /api/runs/{run_id}/cancel
+GET  /api/runs/{run_id}/logs?format=ndjson|zip
+WS   /ws?session_id=&run_id=&after=
+```
+
+Run state, frames and gates persist to SQL — SQLite at
+`output/validator-studio.db` by default, PostgreSQL when `DATABASE_URL` is set.
+Cancellation is cooperative and lands at the next CrewAI step boundary.
+
+---
+
+## Tests
+
+```bash
+.venv/Scripts/python -m unittest discover -s tests -t .    # 341 tests
+
+cd frontend
+npm run build                                              # vue-tsc -b && vite build
+npm test                                                   # 116 tests, vitest run
+```
+
+Both are free to run and touch no network.
+
+> ⚠️ **If you add a test directory, add its `__init__.py` in the same commit.**
+> This suite reported 65 passing tests for a long time and that number was a lie:
+> `tests/events/` and `tests/service/` had no `__init__.py`, so `unittest
+> discover` walked straight past the entire event spine and service layer and
+> printed a green `OK`. Discovery does not warn you. (`pyproject.toml` configures
+> pytest, which collects by rootdir and would have caught it — but pytest is not
+> in the default dependency set.)
+
+Test counts move. The command is the contract, not the figure.
+
+---
+
+## What it costs
+
+### Brief Crew — measured, one run each, cold cache
+
+| | Track A | Track B (`cache_miss`) |
+|---|---|---|
+| LLM calls | 9 | 13 |
+| Prompt tokens | 178,711 | 109,104 |
+| Completion tokens | 13,614 | 30,085 |
+| Wall time | ~7 min | ~7 min |
+| Cost | $0.017 – $0.185 | ≤ $0.1946 (upper bound) |
+
+The ranges are wide for an honest reason: crew-level token usage is not split by
+model, so the upper bound prices every call at the escalation tier. Track B's
+four extra calls are the cache round-trip — overhead paid on every miss and
+repaid only by a later hit.
+
+**72% of Track A's completion tokens were reasoning tokens** (9,757 of 13,614),
+billed at the completion rate. That is the largest untaken cost lever in the
+project.
+
+### The architecture only pays for itself if runs repeat
+
+A cache **miss** costs *more* than the plain crew, not less — it does everything
+the crew does plus retrieve, rerank, embed and upsert. A cache **hit** skips
+search and scrape entirely and is markedly cheaper. The first run on any topic is
+always the expensive one. That is the design working, not failing.
+
+### Validator Studio
+
+**Unmeasured.** It has never been run end to end against live services, so any
+figure here would be invented. Structurally it is one escalation-tier scope, three
+cheap-tier research branches with real tool calls, then two escalation-tier
+passes — expect it to cost more than a Brief Crew run, and do not quote a number
+until someone has taken one.
+
+### Hosting
+
+About **$13.30/month** fixed on Render — `$6.30` Postgres `basic_256mb` with 1 GB,
+`$7.00` for the API on `starter`, `$0` for the static frontend. Model tokens,
+Firecrawl calls and Cohere rerank units are on top.
+
+---
+
+## Deploying
+
+`render.yaml` is a complete Render Blueprint for the API, the static frontend and
+a PostgreSQL 18 database. It has never been applied.
+
+There are two ways to get this wrong that fail *silently* rather than loudly, and
+both are covered step by step in **[`docs/deploying.md`](docs/deploying.md)**.
+Read it before you apply the Blueprint.
+
 ---
 
 ## Layout
 
 ```
 src/brief_crew/
-├── config.py                     models · prices · embedding prefixes · thresholds
-├── embeddings.py                 OpenRouter embeddings, called directly
-├── indexing.py                   chunk / embed / upsert — plumbing, not a tool
-├── guardrails.py                 the evaluator gate on writing_task
-├── main.py                       run_crew() = Track A · kickoff() = Track B
-├── crews/brief_crew/
-│   ├── config/agents.yaml        role · goal · backstory · runtime guard rails
-│   ├── config/tasks.yaml         descriptions · expected outputs
-│   └── brief_crew.py             @CrewBase — the wiring
-└── tools/pinecone_retrieval.py   retrieve_and_rerank
+├── config.py                  models · prices · thresholds · rubric anchors
+├── embeddings.py              OpenRouter embeddings, called directly
+├── indexing.py                chunk / embed / upsert
+├── guardrails.py              Brief Crew's evaluator gate
+├── main.py                    run_crew() = Track A · kickoff() = Track B
+├── validator_flow.py          the six-agent flow, gates, routers, fan-out
+├── validator_guardrails.py    scope, URL closure, evidence counts, rubric binding
+├── validator_cache.py         validator cache policy and namespacing
+├── schemas/validator.py       Evidence · Verdict · ValidationReport · …
+├── crews/                     @CrewBase wiring + agents.yaml / tasks.yaml
+├── tools/                     Firecrawl · Hacker News · GitHub · Pinecone
+├── events/                    the frame spine, registry and serializer
+└── service/                   FastAPI, WebSocket, SQL persistence, run registry
+
+frontend/                      Vue 3 + TypeScript + Vite + Vue Flow console
+agents/                        the authoritative specifications
+tests/                         341 tests, all free to run
+docs/                          deployment and licensing notes
 ```
 
-**The prompts are data, the wiring is code, and the constants are neither
-duplicated nor inlined.** `agents.yaml` and `tasks.yaml` hold every word an agent
-reads; `brief_crew.py` holds only what cannot be expressed as data — LLM objects,
-tool instances, the guardrail list, the track switch. Every model name, embedding
-prefix and threshold exists exactly once, in `config.py`.
-
-`agents/00-shared-config.md` §11 maps each file back to the spec section it
-implements.
+**Prompts are data, wiring is code, and constants are neither duplicated nor
+inlined.** `agents.yaml` and `tasks.yaml` hold every word an agent reads;
+`config.py` holds every model name, price, embedding prefix and threshold, exactly
+once. If you find a model name or a threshold inlined in Python, that is a bug.
 
 ---
 
-## Three things worth knowing before you change anything
+## Three things to know before changing anything
 
-**1. `context` is three-valued.** `Task.context` unset means *inherit every prior
-output*; an explicit list means *exactly these*; an empty list means *nothing at
-all*. CrewAI models this with a `_NotSpecified` sentinel rather than `None`. So
-trimming `writing_task`'s context to `[analysis_task]` looks like tidying and
-silently strips every source URL, because the Analyst compresses them away.
+**1. `Task.context` is three-valued.** Unset means *inherit every prior output*;
+an explicit list means *exactly these*; an empty list means *nothing at all*.
+CrewAI models this with a `_NotSpecified` sentinel rather than `None`. Trimming
+`writing_task`'s context to `[analysis_task]` looks like tidying and silently
+strips every source URL, because the Analyst compresses them away.
 
-**2. The Researcher's tool list and its task must change together.** Track A's
-task tells the agent to call `retrieve_and_rerank` first; Track B's does not,
-because the Flow has already retrieved and already failed the staleness gate. An
-agent told to call a tool it does not have will invent the result — that is the
-direct cause of fabricated citations. `BriefCrew` selects both from one `track`
+**2. An agent's tool list and its task description must change together.** Track
+A's task tells the Researcher to call the retrieval tool first; Track B's does
+not, because the Flow already retrieved and already failed the staleness gate. An
+agent told to call a tool it does not have **will invent the result** — that is
+the direct cause of fabricated citations. Both are selected from one `track`
 argument so they cannot be mismatched.
 
 **3. Do not route embeddings through CrewAI.** ChromaDB forwards the `dimensions`
-parameter only when the model name contains `"text-embedding-3"`.
-`google/gemini-embedding-2` fails that test, so `dimensions=768` would be dropped
-silently and 3072-dim vectors would be sent at a 768-dim index — no error, just
-failed upserts a long way from the cause.
+parameter only when the model name contains `"text-embedding-3"`. The model used
+here fails that test, so `dimensions=768` is dropped silently and 3072-dim vectors
+are sent to a 768-dim index — no error, just failed upserts a long way from the
+cause. Call `brief_crew.embeddings` directly, and keep `DOC_PREFIX` and
+`QUERY_PREFIX` paired.
 
 ---
 
-## Testing without spending tokens
+## Documentation
 
-The deterministic half of this system costs nothing to check, and both gates are
-pure functions:
+| File | What it is |
+|---|---|
+| [`CLAUDE.md`](CLAUDE.md) | **The honest handoff.** What is implemented, what is not, and what is unverified. Read it before believing anything else. |
+| [`agents/`](agents/) | The authoritative specifications. Where code and spec disagree, the spec is right and the code is a bug. |
+| [`AGENTS.md`](AGENTS.md) | CrewAI reference for anyone — human or coding agent — changing crew code. |
+| [`PRD.md`](PRD.md) | The requirements document that extends `agents/` into Validator Studio. |
+| [`new features/feature-list.md`](new%20features/feature-list.md) | Feature ledger. Every row names the test or source path it rests on. |
+| [`docs/deploying.md`](docs/deploying.md) | Post-push Render checklist. |
+| [`docs/licensing.md`](docs/licensing.md) | Licence options and the decision still to be made. |
 
-```python
-from brief_crew.guardrails import check_mechanics   # word count, sources
-from brief_crew.main import BriefFlow               # check_cache: the staleness gate
-```
-
-`check_mechanics` runs before the string guardrail precisely so the free check
-rejects first. `check_cache` returns `cache_hit` only for ≥3 hits with a top
-rerank score ≥0.30 indexed within 60 days — and treats missing `indexed_at` as
-stale, never as fresh.
-
----
-
-## Honest cost note
-
-A cache **miss** costs the full pipeline — retrieve, rerank, search, scrape,
-embed, upsert, then three agents — which is *more* than the plain crew, not less.
-A cache **hit** skips search and scrape entirely and is markedly cheaper. The
-architecture only pays for itself if runs repeat.
-
-The first run on any topic is always the expensive one; that is the design
-working, not failing. As of the last `crewai run` the index holds **3 vectors**
-for *cashless payments in Singapore*, and that topic now routes `cache_hit` —
-any other topic still misses.
-
-> ⚠️ **Known gap — write-back carries no structured provenance.** The cache *does*
-> warm: one `cache_miss` run writes 3 chunks and the next run returns `cache_hit`
-> (verified, top rerank 0.7877). But every chunk has `url=""` and `publisher=""`,
-> because the Flow indexes the Researcher's *notes* rather than the scraped
-> *pages*. Briefs are not blocked — the URLs survive inside the chunk text — but
-> `run_sources` cannot be populated, and 3 chunks sits exactly on the ≥3
-> threshold with no margin. Detail and fix in `agents/06-retrieval-layer.md`.
-
-### Measured, 2026-08-29 — one Track A run, cold cache
-
-**9 LLM calls** · 178,711 prompt / 13,614 completion tokens · ~7 minutes ·
-between **$0.017 and $0.185** depending on how the calls split across the two
-tiers. Slide 55 predicted "~10 calls where one good agent makes one"; it was 9.
-
-**72% of every completion token was reasoning** (9,757 of 13,614), and reasoning
-bills at the completion rate. `agents/00-shared-config.md` §3 measured
-`reasoning_effort: "minimal"` at 8.8× cheaper on short mechanical calls — on this
-evidence that is the largest untaken cost lever in the project.
-
-### Measured, 2026-08-29 — one Track B run via `crewai run`, cold cache
-
-**13 LLM calls** · 109,104 prompt / 30,085 completion tokens · ~7 minutes ·
-**≤$0.1946** (upper bound, everything priced at the escalation tier). Route
-`cache_miss`, 3 chunks written back, `output/last_run.json` produced.
-
-Four more calls than the Track A run (13 vs 9) for the same topic and the same
-brief. The Flow adds the retrieval round-trip and re-runs the writer path through
-its own crew construction; that difference is the Track B overhead, paid on every
-miss and only repaid on a subsequent hit.
-
-`agents/02-analyst.md` documents the strongest argument against its own agent's
-existence, and none of the retrieval infrastructure changes it — all of that sits
-upstream. Read it before deciding whether you would keep this shape.
+The four official CrewAI agent skills are vendored into `.agents/skills/` and
+`.claude/skills/` (installed with `npx skills add crewaiinc/skills`, MIT). They
+are committed on purpose, so any coding agent that opens this repository gets the
+same CrewAI guidance without a separate install step.
 
 ---
 
-## Toolchain
+## Licence
 
-The CrewAI CLI is installed globally as a uv tool, so `crewai` works from any
-directory:
+**None yet.** No `LICENSE` file exists, which means default copyright applies and
+you may read this code but not legally reuse it. If you want to use any of it,
+[`docs/licensing.md`](docs/licensing.md) sets out the options and the state of the
+decision — or open an issue and ask.
 
-```bash
-uv tool install crewai        # -> crewai 1.15.18 on PATH
-crewai install                # uv sync + writes uv.lock
-crewai run                    # runs the Flow (pyproject [tool.crewai] type = "flow")
-```
+---
 
-`crewai run` maps to `[project.scripts] kickoff` — the **Track B Flow**. For the
-Track A crew, call `run_crew` directly (see Quick start above).
+## A note on traces
 
-**Agent skills.** The four official CrewAI skills are vendored into the repo by
-`npx skills add crewaiinc/skills`, which writes `.agents/skills/` (read by Cursor,
-Codex, Gemini CLI and a dozen others) and `.claude/skills/` (read by Claude Code).
-They are committed on purpose, so any coding agent that opens this repo gets the
-same CrewAI guidance without a separate install step. Re-run the command to update.
-
-> Two CLI behaviours worth knowing, both documented in
-> `agents/00-shared-config.md` §9:
->
-> - `CREWAI_DMN=true crewai create` **fails** — DMN is non-interactive mode, which
->   makes TYPE and NAME required. Use `CREWAI_DMN=true crewai create flow <name>`.
->   Bare `crewai create` needs a TTY for its picker, so DMN-with-arguments is the
->   only form that works in CI.
-> - `crewai install` runs `uv sync`, which **uninstalls** anything absent from
->   `pyproject.toml`'s default dependencies. That correctly prunes this project's
->   optional `service` extra (`fastapi`, `sqlalchemy`, `psycopg`); install it back
->   with `uv pip install -e '.[service]'` when Track B deployment gets built.
+`crewai traces enable` before a run gives you a shareable trace URL. Traces can
+include prompts, task inputs and outputs, tool arguments and results, and model
+responses. Check what a trace actually contains before you share the link.

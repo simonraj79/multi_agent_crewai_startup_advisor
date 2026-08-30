@@ -39,7 +39,7 @@ describe('frame handling', () => {
   })
 
   it('opens a gate and moves the run to waiting', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', level: 'WARNING', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'HUMAN_INTERACTION', node_id: 'confirm_scope', level: 'WARNING', details: GATE_DETAILS }))
     await flush()
 
     expect(run.status.value).toBe('waiting')
@@ -58,9 +58,9 @@ describe('frame handling', () => {
    * the gate stays open, the run stays WAITING and the reply path stays live.
    */
   it('marks an open gate expired without closing it or failing the run', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'HUMAN_INTERACTION', node_id: 'confirm_scope', details: GATE_DETAILS }))
     api.emit(build('gate_expired', {
-      event_type: 'GATE_EXPIRED',
+      event_type: 'HUMAN_INTERACTION',
       node_id: 'confirm_scope',
       level: 'WARNING',
       details: { gate_id: 'scope-confirmation', overdue_seconds: 95 },
@@ -75,9 +75,9 @@ describe('frame handling', () => {
   })
 
   it('raises the alert flag on gate_alert and keeps the gate answerable', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'HUMAN_INTERACTION', node_id: 'confirm_scope', details: GATE_DETAILS }))
     api.emit(build('gate_alert', {
-      event_type: 'GATE_ALERT',
+      event_type: 'HUMAN_INTERACTION',
       node_id: 'confirm_scope',
       level: 'WARNING',
       details: { gate_id: 'scope-confirmation', overdue_seconds: 600 },
@@ -95,9 +95,9 @@ describe('frame handling', () => {
   })
 
   it('ignores an expiry notice aimed at a different gate', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'HUMAN_INTERACTION', node_id: 'confirm_scope', details: GATE_DETAILS }))
     api.emit(build('gate_expired', {
-      event_type: 'GATE_EXPIRED',
+      event_type: 'HUMAN_INTERACTION',
       details: { gate_id: 'verdict-review', overdue_seconds: 12 },
     }))
     await flush()
@@ -106,10 +106,10 @@ describe('frame handling', () => {
   })
 
   it('closes the gate and resumes the run on gate_closed', async () => {
-    api.emit(build('gate_open', { event_type: 'GATE_OPEN', node_id: 'confirm_scope', details: GATE_DETAILS }))
+    api.emit(build('gate_open', { event_type: 'HUMAN_INTERACTION', node_id: 'confirm_scope', details: GATE_DETAILS }))
     await flush()
     api.emit(build('gate_closed', {
-      event_type: 'GATE_CLOSED',
+      event_type: 'HUMAN_INTERACTION',
       node_id: 'confirm_scope',
       details: { gate_id: 'scope-confirmation', outcome: 'scope_ok' },
     }))
@@ -128,6 +128,13 @@ describe('frame handling', () => {
     await flush()
     expect(stateOf('scope_idea')).toBe('running')
 
+    // `NODE_WAITING` is deliberately left as-is while every other fabricated
+    // event type in this suite has been replaced by a real `UIEventType`. It
+    // has no backend counterpart at all: nothing in the live stream ever puts a
+    // gate node into `waiting` - `applyGate` only moves the *run* there - so a
+    // real gate node currently renders as `running` while it blocks. Renaming
+    // this to a real value would hide that gap rather than close it; the
+    // `waiting` branch of `applyNodeState` still has to be covered meanwhile.
     api.emit(build('node_state', { event_type: 'NODE_WAITING', node_id: 'confirm_scope' }))
     await flush()
     expect(stateOf('confirm_scope')).toBe('waiting')
@@ -137,7 +144,7 @@ describe('frame handling', () => {
     await flush()
     expect(stateOf('scope_idea')).toBe('completed')
 
-    api.emit(build('node_state', { event_type: 'NODE_FAILED', level: 'ERROR', node_id: 'research_market' }))
+    api.emit(build('node_state', { event_type: 'NODE_END', level: 'ERROR', node_id: 'research_market' }))
     await flush()
     expect(stateOf('research_market')).toBe('error')
   })
@@ -153,7 +160,7 @@ describe('frame handling', () => {
   })
 
   it('records a run error frame and surfaces the message', async () => {
-    api.emit(build('error', { event_type: 'RUN_FAILED', level: 'ERROR', message: 'Firecrawl rate limit exhausted.' }))
+    api.emit(build('error', { event_type: 'WORKFLOW_END', level: 'ERROR', message: 'Firecrawl rate limit exhausted.' }))
     await flush()
 
     expect(run.status.value).toBe('error')
@@ -188,7 +195,7 @@ describe('frame handling', () => {
 
   it('counts frames the server could not replay as dropped', async () => {
     api.storedFrames = []
-    const next = build('run_state', { event_type: 'RUN_STARTED', details: { status: 'running' } })
+    const next = build('run_state', { event_type: 'WORKFLOW_START', details: { status: 'running' } })
     next.seq = 5
 
     api.emit(next)
@@ -208,7 +215,7 @@ describe('frame handling', () => {
 
   it('accumulates run and per-node token usage', async () => {
     api.emit(build('token', {
-      event_type: 'TOKEN_USAGE',
+      event_type: 'MODEL_CALL',
       node_id: 'scope_idea',
       details: { usage: { prompt_tokens: 100, completion_tokens: 40, total_tokens: 140, cost_usd: 0.002 } },
     }))

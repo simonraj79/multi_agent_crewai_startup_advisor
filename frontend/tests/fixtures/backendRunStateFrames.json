@@ -1,0 +1,50 @@
+[
+  {
+    "v": 1,
+    "seq": 1,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "run_state",
+    "event_type": "WORKFLOW_START",
+    "level": "INFO",
+    "node_id": "workflow",
+    "message": "ValidatorFlow started",
+    "details": {
+      "status": "running",
+      "inputs": {
+        "idea": "A scheduling assistant for clinics"
+      }
+    }
+  },
+  {
+    "v": 1,
+    "seq": 2,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "run_state",
+    "event_type": "WORKFLOW_END",
+    "level": "INFO",
+    "node_id": "workflow",
+    "message": "ValidatorFlow completed",
+    "details": {
+      "status": "completed",
+      "result": {
+        "verdict": "NEEDS_WORK"
+      }
+    }
+  },
+  {
+    "v": 1,
+    "seq": 3,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "error",
+    "event_type": "WORKFLOW_END",
+    "level": "ERROR",
+    "node_id": "workflow",
+    "message": "ValidatorFlow failed",
+    "details": {
+      "error": "Firecrawl rate limit exhausted."
+    }
+  }
+]

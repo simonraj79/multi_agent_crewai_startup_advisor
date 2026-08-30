@@ -121,7 +121,16 @@ export class FakeStudioApi implements StudioApiLike {
   }
 }
 
-/** Builds gap-free frame sequences; each factory owns its own counter. */
+/**
+ * Builds gap-free frame sequences; each factory owns its own counter.
+ *
+ * `event_type` defaults to a value that is deliberately *not* a `UIEventType`:
+ * every test that cares about the event type overrides it with the real one,
+ * and a caller that leaves the default is stating it does not care. Real-looking
+ * defaults are what let this suite assert against a fiction for so long - the
+ * frames here used to claim `RUN_COMPLETED` and `EDGE_TRAVERSED`, names no
+ * server has ever sent.
+ */
 export function frameFactory(runId = RUN_ID) {
   let seq = 0
   return function build(kind: FrameKind, overrides: Partial<FrameData> = {}): FrameData {
@@ -146,5 +155,5 @@ export function edgeFrame(
   from: string,
   to: string,
 ): FrameData {
-  return build('edge_taken', { event_type: 'EDGE_TRAVERSED', details: { from, to } })
+  return build('edge_taken', { event_type: 'EDGE_PROCESS', details: { from, to } })
 }

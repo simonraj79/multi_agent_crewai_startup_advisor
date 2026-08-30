@@ -106,7 +106,7 @@ describe('parallel fan-out edge animation', () => {
   it('stops animating an edge when its branch errors', async () => {
     api.emit(edgeFrame(build, 'route_scope', 'research_sentiment'))
     await flush()
-    api.emit(build('node_state', { event_type: 'NODE_ERROR', level: 'ERROR', node_id: 'research_sentiment' }))
+    api.emit(build('node_state', { event_type: 'NODE_END', level: 'ERROR', node_id: 'research_sentiment' }))
     await flush()
 
     expect(activeEdges(run)).toEqual([])
@@ -132,7 +132,7 @@ describe('parallel fan-out edge animation', () => {
     await flush()
     expect(activeEdges(run)).toHaveLength(2)
 
-    api.emit(build('run_state', { event_type: 'RUN_COMPLETED', details: { status: 'completed' } }))
+    api.emit(build('run_state', { event_type: 'WORKFLOW_END', details: { status: 'completed' } }))
     await flush()
 
     expect(activeEdges(run)).toEqual([])
@@ -147,7 +147,7 @@ describe('parallel fan-out edge animation', () => {
     await flush()
     expect(settledTimerCount()).toBe(baseline + 3)
 
-    api.emit(build('run_state', { event_type: 'RUN_COMPLETED', details: { status: 'completed' } }))
+    api.emit(build('run_state', { event_type: 'WORKFLOW_END', details: { status: 'completed' } }))
     await flush()
     await run.launch()
 

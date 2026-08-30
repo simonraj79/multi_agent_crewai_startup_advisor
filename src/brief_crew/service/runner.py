@@ -93,7 +93,16 @@ class ValidatorFlowRunner:
 
 
 class SyntheticRunner:
-    """Deterministic no-network runner for tests and local transport checks."""
+    """Deterministic no-network runner for tests and local transport checks.
+
+    The RUN_STATE frames below mirror
+    `events/serializer.py::FieldBoundedSerializer.drafts` field for field -
+    `{"status": ..., "inputs": ...}` on the way in and
+    `{"status": ..., "result": ...}` on the way out. A double that emits a
+    different shape is not a double: this one used to omit `status`, which is
+    the key the Studio client reads, and the omission hid a real defect behind
+    a green suite.
+    """
 
     def __call__(self, execution: RunExecution) -> dict[str, Any]:
         topic = str(execution.inputs.get("topic", "synthetic topic"))
@@ -102,7 +111,7 @@ class SyntheticRunner:
             event_type=UIEventType.WORKFLOW_START,
             node_id="workflow",
             message="Synthetic run started",
-            details={"topic": topic},
+            details={"status": "running", "inputs": {"topic": topic}},
         )
         execution.capture.emit(
             kind=FrameKind.NODE_STATE,
@@ -122,7 +131,7 @@ class SyntheticRunner:
             event_type=UIEventType.WORKFLOW_END,
             node_id="workflow",
             message="Synthetic run completed",
-            details={"result": result},
+            details={"status": "completed", "result": result},
             level=FrameLevel.INFO,
         )
         return result
@@ -139,7 +148,7 @@ class SyntheticValidatorRunner:
             event_type=UIEventType.WORKFLOW_START,
             node_id="workflow",
             message="Synthetic validator started",
-            details={"idea": idea, "status": "running"},
+            details={"status": "running", "inputs": {"idea": idea}},
         )
         self._node(execution, "scope_idea", "Scoper")
         return self._pending(
@@ -202,7 +211,7 @@ class SyntheticValidatorRunner:
             event_type=UIEventType.WORKFLOW_END,
             node_id="workflow",
             message="Synthetic validator completed",
-            details={"status": "completed"},
+            details={"status": "completed", "result": result},
         )
         return result
 

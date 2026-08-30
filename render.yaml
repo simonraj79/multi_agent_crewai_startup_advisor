@@ -79,6 +79,15 @@ services:
       - key: RUN_CONCURRENCY
         value: "1"
 
+      # The static site is a SEPARATE origin, so every request the Vue app
+      # makes is cross-origin and the browser drops the response unless this
+      # names it. Locally the Vite proxy makes everything same-origin, which
+      # is why an empty default is correct there and fatal here. Scheme +
+      # host, no trailing slash - startup refuses a malformed entry and names
+      # the corrected string. Must match the origin serving the static site.
+      - key: CORS_ALLOW_ORIGINS
+        value: "https://agentic-crew-ai-web.onrender.com"
+
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"
 

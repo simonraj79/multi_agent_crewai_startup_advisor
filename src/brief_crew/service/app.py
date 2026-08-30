@@ -53,6 +53,7 @@ from brief_crew.service.models import (
 )
 from brief_crew.service.registry import (
     GateFieldError,
+    RunBusyError,
     RunRecord,
     RunRegistry,
     WorkflowRuntime,
@@ -164,6 +165,7 @@ def create_app(
     try:
         from fastapi import FastAPI, HTTPException, Query, Response, WebSocket
         from fastapi import WebSocketDisconnect
+        from fastapi.middleware.cors import CORSMiddleware
     except ModuleNotFoundError as exc:
         raise ServiceDependencyError(
             "FastAPI is not installed; install the existing project service extra"
@@ -237,6 +239,28 @@ def create_app(
             owned_store.close()
 
     app = FastAPI(title="Validator Studio Service", version="1", lifespan=lifespan)
+
+    # Cross-origin access. In development Vite proxies /api and /ws to this
+    # process, so every request is same-origin and none of this is reached; in
+    # production the Vue app is a separate static site on its own origin and
+    # the browser drops every response that is not opted into by name. The
+    # policy is read from config at construction time - an empty
+    # CORS_ALLOW_ORIGINS is the default and means no cross-origin caller at
+    # all, which leaves local behaviour exactly as it was.
+    #
+    # This does NOT cover /ws. A WebSocket handshake is not subject to CORS,
+    # and Starlette's CORSMiddleware passes non-HTTP scopes straight through,
+    # so any page can open the socket. What it cannot do is guess the uuid4
+    # run_id and the session_id that /ws demands before it sends a frame.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=project_config.CORS_ALLOW_ORIGINS,
+        allow_credentials=project_config.CORS_ALLOW_CREDENTIALS,
+        allow_methods=project_config.CORS_ALLOW_METHODS,
+        allow_headers=project_config.CORS_ALLOW_HEADERS,
+        expose_headers=project_config.CORS_EXPOSE_HEADERS,
+    )
+
     app.state.run_registry = registry
 
     def require_run(run_id: str) -> RunRecord:
@@ -399,6 +423,16 @@ def create_app(
                 status_code=409,
                 detail="gate already answered",
             ) from exc
+        except RunBusyError as exc:
+            # 503, not 500: the reply was well formed and the run is intact -
+            # answer_gate rolled the durable answer back and reopened the gate,
+            # so the same reply sent again is the fix. A 500 would tell the
+            # client the opposite.
+            raise GateReplyError(
+                code="run_busy",
+                status_code=503,
+                detail="run is still executing; retry the reply",
+            ) from exc
         except KeyError as exc:
             raise GateReplyError(
                 code="gate_not_found",
@@ -430,7 +464,11 @@ def create_app(
         "/api/runs/{run_id}/gates/{gate_id}",
         response_model=GateReplyResponse,
         status_code=202,
-        responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+        responses={
+            404: {"model": ErrorResponse},
+            409: {"model": ErrorResponse},
+            503: {"model": ErrorResponse},
+        },
     )
     async def answer_gate(
         run_id: str,
@@ -795,6 +833,24 @@ def create_app(
     return app
 
 
+def _truthy(value: str | None) -> bool:
+    """Read a boolean from the environment the way an operator would write one."""
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def app_from_env() -> Any:
+    """Build the app for ``serve()``, honouring ``SYNTHETIC``.
+
+    ``uvicorn.run`` can only import a factory by name, so it cannot pass
+    ``synthetic=True``. Without this indirection the registered console script
+    could *only* build the paid runners, and anyone starting the service to
+    look at the UI would spend real money on OpenRouter and Firecrawl the
+    moment they pressed Launch. ``SYNTHETIC=1`` selects the same no-cost
+    doubles the integration tests use.
+    """
+    return create_app(synthetic=_truthy(os.getenv("SYNTHETIC")))
+
+
 def serve() -> None:
     """Run the Validator Studio API using environment-configurable binding."""
     try:
@@ -805,7 +861,7 @@ def serve() -> None:
         ) from exc
 
     uvicorn.run(
-        "brief_crew.service.app:create_app",
+        "brief_crew.service.app:app_from_env",
         factory=True,
         host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "8000")),

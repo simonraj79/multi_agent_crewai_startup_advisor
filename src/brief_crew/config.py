@@ -10,6 +10,7 @@ retrieval quality just quietly degrades.
 from __future__ import annotations
 
 import os
+from urllib.parse import urlsplit
 
 # --------------------------------------------------------------------------
 # Models - 00-shared-config.md §3
@@ -486,6 +487,168 @@ except ValueError as exc:
     raise ValueError("RUN_CONCURRENCY must be a positive integer") from exc
 if RUN_CONCURRENCY < 1:
     raise ValueError("RUN_CONCURRENCY must be a positive integer")
+
+# How long a resubmission waits for a still-settling run future before it
+# refuses the caller.
+#
+# The gate is published to the client *before* the worker thread has returned
+# from the run: _mark_pending marks the run WAITING, writes the durable gate
+# and pushes GATE_OPEN, and only then does _execute return and its future
+# complete. A reply that lands inside that window used to be refused outright
+# even though the server had already accepted it durably, which wedged the run
+# in RUNNING with no gate to answer. _submit now waits here instead.
+#
+# Seconds, because that tail is milliseconds: it queues frames rather than
+# writing them and does no network I/O. Anything still running after this
+# window is a genuinely busy run, and refusing it is the correct answer.
+try:
+    RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS = float(
+        os.getenv("RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS", "5.0")
+    )
+except ValueError as exc:
+    raise ValueError(
+        "RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS must be a positive number"
+    ) from exc
+if RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS <= 0:
+    raise ValueError("RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS must be a positive number")
+
+# --------------------------------------------------------------------------
+# Cross-origin access - PRD section 9.6, F44
+#
+# Locally this is invisible: Vite serves the app and proxies /api and /ws to
+# 127.0.0.1:8000 (frontend/vite.config.ts), so every request is same-origin and
+# no CORS header is ever involved. In production the frontend is a SEPARATE
+# static site (render.yaml: agentic-crew-ai-web) that calls the API by absolute
+# URL through VITE_API_URL, so every request IS cross-origin and the browser
+# discards the response unless the API names the caller's origin.
+#
+# CORS_ALLOW_ORIGINS is a comma-separated list of ORIGINS - scheme, host and
+# optional port, nothing else:
+#
+#     CORS_ALLOW_ORIGINS=https://agentic-crew-ai-web.onrender.com
+#     CORS_ALLOW_ORIGINS=https://studio.example.com,http://localhost:5173
+#
+# The default is EMPTY, which is no cross-origin access at all. Same-origin
+# traffic and the Vite proxy do not go through this list, so nothing local
+# changes; what an empty default buys is that a new deployment fails CLOSED and
+# the operator names the frontend origin deliberately, instead of the service
+# shipping "*" and nobody ever revisiting it.
+#
+# A trailing slash is the single most common way this is got wrong. Starlette
+# compares the browser's Origin header against these strings EXACTLY, and a
+# browser never sends a trailing slash, so "https://x.onrender.com/" matches
+# nothing and fails in a way that looks like the middleware is missing. It is
+# refused here at import, with the corrected value in the message, rather than
+# normalised away: what the operator wrote and what the service enforces should
+# never be two different things.
+#
+# The literal "*" is accepted as the WHOLE list for an operator who genuinely
+# wants an open API. That is safe only because CORS_ALLOW_CREDENTIALS is False
+# below - see the note there before changing either.
+# --------------------------------------------------------------------------
+
+CORS_WILDCARD = "*"
+
+
+def _normalise_cors_origin(candidate: str) -> str:
+    """Return one canonical origin, or raise naming what to write instead.
+
+    An origin is scheme + host + optional port. Anything else - a path, a
+    trailing slash, a query, credentials, a scheme no browser will send from a
+    page - can never equal an Origin header, so accepting it would only mean
+    shipping a rule that silently matches nothing.
+    """
+    origin = candidate.strip()
+    if origin == CORS_WILDCARD:
+        return origin
+
+    parts = urlsplit(origin)
+    corrected = ""
+    if parts.scheme in {"http", "https"} and parts.hostname:
+        host = parts.hostname.lower()
+        if ":" in host:  # IPv6 literal, which urlsplit hands back unbracketed
+            host = f"[{host}]"
+        try:
+            port = parts.port
+        except ValueError as exc:
+            raise ValueError(
+                f"CORS_ALLOW_ORIGINS entry {origin!r} has an invalid port"
+            ) from exc
+        corrected = f"{parts.scheme}://{host}"
+        if port is not None:
+            corrected = f"{corrected}:{port}"
+
+    if not corrected:
+        raise ValueError(
+            f"CORS_ALLOW_ORIGINS entry {origin!r} is not an origin; write a "
+            "scheme, host and optional port, e.g. "
+            "https://studio.example.com or http://localhost:5173"
+        )
+    if "@" in parts.netloc:
+        raise ValueError(
+            f"CORS_ALLOW_ORIGINS entry {origin!r} carries credentials; "
+            f"write {corrected} instead"
+        )
+    if parts.path in {"", "/"} and not parts.query and not parts.fragment:
+        if parts.path == "/":
+            raise ValueError(
+                f"CORS_ALLOW_ORIGINS entry {origin!r} has a trailing slash, "
+                "which no browser ever sends in an Origin header; write "
+                f"{corrected} instead"
+            )
+        return corrected
+    raise ValueError(
+        f"CORS_ALLOW_ORIGINS entry {origin!r} is a URL, not an origin; drop "
+        f"the path and any query or fragment and write {corrected} instead"
+    )
+
+
+def _parse_cors_allow_origins(raw: str) -> tuple[str, ...]:
+    """Parse the comma-separated env value into canonical, de-duplicated origins."""
+    origins: list[str] = []
+    for chunk in raw.split(","):
+        if not chunk.strip():
+            continue
+        origin = _normalise_cors_origin(chunk)
+        if origin not in origins:
+            origins.append(origin)
+    if CORS_WILDCARD in origins and len(origins) > 1:
+        raise ValueError(
+            "CORS_ALLOW_ORIGINS mixes '*' with named origins; '*' already "
+            "allows every origin, so the named ones would be dead text"
+        )
+    return tuple(origins)
+
+
+CORS_ALLOW_ORIGINS: tuple[str, ...] = _parse_cors_allow_origins(
+    os.getenv("CORS_ALLOW_ORIGINS", "")
+)
+
+# Deliberately a constant and NOT an env var. Access-Control-Allow-Credentials
+# is what makes "*" dangerous, because it turns every page on the internet into
+# an authenticated caller. This service has no ambient credential to abuse: no
+# cookie, no session middleware, no Authorization header is read anywhere in
+# service/app.py. A run is reached by an unguessable uuid4 run_id the caller
+# must already hold, and the socket additionally requires a matching
+# session_id; a browser sends neither of those automatically, so a hostile page
+# gains nothing from an allowed origin. Leaving credentials off is therefore
+# free, and it is what keeps the "*" escape hatch above survivable.
+# If cookie or header auth is ever added, this flips to True and "*" must be
+# rejected in the same commit.
+CORS_ALLOW_CREDENTIALS = False
+
+# The verbs and request headers the client actually sends
+# (frontend/src/services/studioApi.ts): GET for graph, run, frames and logs;
+# POST for run creation, gate replies and cancel; Accept and Content-Type on
+# those. OPTIONS is the preflight itself. Nothing else is granted.
+CORS_ALLOW_METHODS = ("GET", "POST", "OPTIONS")
+CORS_ALLOW_HEADERS = ("Accept", "Content-Type")
+
+# ETag is NOT on the CORS-safelist for response headers, so a cross-origin
+# reader of /api/workflows/{id}/graph cannot see the graph version unless it is
+# named here. Content-Disposition is deliberately absent: downloadLogs names
+# the file itself from the run id.
+CORS_EXPOSE_HEADERS = ("ETag",)
 
 # --------------------------------------------------------------------------
 # WebSocket inbound control channel - PRD F27/F37

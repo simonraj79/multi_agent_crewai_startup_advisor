@@ -390,7 +390,7 @@ not do embeddings", which is false.
 **Why 768.** Gemini embeddings use Matryoshka representation learning, so
 truncation is lossy but barely: MTEB scores 68.17 at 1536 versus **67.99 at 768**
 — 0.18 points. Degradation only accelerates below 512. 768 cuts Pinecone storage
-and query cost by half against 1536, and matches the 768-dim convention of the pre-existing `agentic-rag-ntu`
+and query cost by half against 1536, and matches the 768-dim convention of a pre-existing index in the same account
 index from the earlier RAG lectures (a *different* index from this project's
 `agentic-crew-ai-index`). `gemini-embedding-2` **auto-normalizes** truncated vectors
 (unlike `gemini-embedding-001`, which requires manual renormalization).
@@ -435,7 +435,7 @@ cause. Call the embeddings endpoint directly. See `06-retrieval-layer.md`.
 | | |
 |---|---|
 | Index | `agentic-crew-ai-index` |
-| Host | `agentic-crew-ai-index-o3j2ojr.svc.aps-d9bb-582b.pinecone.io` |
+| Host | `<index>-<hash>.svc.<region>.pinecone.io` — the live host is in the Pinecone console. Kept out of this public repo: it embeds the project hash and control-plane shard, which are account-scoped and directly probeable. |
 | Dimension | **768** |
 | Metric | cosine |
 | Spec | serverless · aws · **ap-southeast-1** (Singapore) |

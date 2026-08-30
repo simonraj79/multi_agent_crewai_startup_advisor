@@ -389,6 +389,21 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     if (!['token', 'metrics'].includes(frame.kind)) appendChat(frame)
   }
 
+  /**
+   * `details.status` is the frame's own statement about the run and always
+   * wins. The `event_type` fallback below exists because that key has not
+   * always been there: the real serializer emitted `WORKFLOW_END` carrying only
+   * `{result}`, this function read `details.status`, found nothing, and the
+   * console sat on "queued" through an entire finished run. Every double in the
+   * suite happened to send a status, so nothing failed.
+   *
+   * A `run_state` frame carrying `WORKFLOW_END` and no status can only be a
+   * completion. A flow that failed is emitted as `FrameKind.ERROR`
+   * (`events/serializer.py`, `FlowFailedEvent`) and reaches `error` through
+   * `applyFrame` without passing here, and a cancellation is emitted by
+   * `service/registry.py` with an explicit `status: "cancelled"` that the
+   * branch above catches first.
+   */
   function applyRunState(frame: FrameData): void {
     const next = frame.details.status
     if (next === 'failed') {
@@ -397,6 +412,10 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
       setStatus('stopping')
     } else if (typeof next === 'string' && ['queued', 'running', 'waiting', 'cancelled', 'completed', 'error'].includes(next)) {
       setStatus(next as RunStatus)
+    } else if (frame.event_type === 'WORKFLOW_END') {
+      setStatus('completed')
+    } else if (frame.event_type === 'WORKFLOW_START') {
+      setStatus('running')
     }
   }
 

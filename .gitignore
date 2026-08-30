@@ -1,14 +1,54 @@
+# Secrets. `.env.example` is the committed template and is NOT matched by this
+# rule - `.env` matches that exact name only.
 .env
+.env.local
+.env.*.local
+
+# Python environments and bytecode
 .venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
 lib/
+*.egg-info/
+.eggs/
 .DS_Store
+
+# Test, lint and type-check caches. pyproject.toml configures pytest, and a
+# contributor may reasonably run ruff or mypy even though this repo pins
+# neither.
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+
+# Coverage output
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Node, if anyone runs npm from the repo root rather than frontend/
+node_modules/
+
+# Editor and IDE directories. `.vscode/extensions.json` is committed as a
+# workspace recommendation (see frontend/.vscode/), so it is excepted.
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
 
 # Run artifacts - regenerated every run, never committed
 output/
 *.png
 *.log
+
+# Local databases. The service defaults to output/validator-studio.db, which
+# the rule above already covers; these catch a DATABASE_URL pointed elsewhere.
+*.db
+*.sqlite
+*.sqlite3
 
 # CrewAI local state. tokens.enc is the AMP tracing credential: it is a
 # secret, it expires, and it must never reach an image or a repo.

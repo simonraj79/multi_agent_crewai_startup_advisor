@@ -48,11 +48,21 @@ describe('run context persistence', () => {
    * The defect: nothing ever removed the pointer, so a finished run was
    * restored on every later page load and the operator opened the console to
    * a stale result.
+   *
+   * All three end frames carry `WORKFLOW_END`, because that is the only event
+   * type the backend has for the end of a run: `FlowFinishedEvent` in
+   * `events/serializer.py` and both cancellation paths in
+   * `service/registry.py` emit it, and `details.status` is what tells them
+   * apart. These cases used to name `RUN_COMPLETED` / `RUN_CANCELLED` /
+   * `RUN_FAILED`, which are not values of `UIEventType` and never reach a
+   * client. Keeping the real name here also pins the precedence the composable
+   * relies on: an explicit `cancelled` or `failed` status must beat the
+   * `WORKFLOW_END`-means-completed fallback.
    */
   it.each([
-    ['completed', 'RUN_COMPLETED'],
-    ['cancelled', 'RUN_CANCELLED'],
-    ['failed', 'RUN_FAILED'],
+    ['completed', 'WORKFLOW_END'],
+    ['cancelled', 'WORKFLOW_END'],
+    ['failed', 'WORKFLOW_END'],
   ])('clears the saved run when the run ends as %s', async (status, eventType) => {
     ;[run, app] = withSetup(() => useValidatorRun(api))
     await run.initialize()
@@ -73,7 +83,7 @@ describe('run context persistence', () => {
     await run.launch()
 
     const build = frameFactory()
-    api.emit(build('error', { event_type: 'RUN_FAILED', level: 'ERROR', message: 'boom' }))
+    api.emit(build('error', { event_type: 'WORKFLOW_END', level: 'ERROR', message: 'boom' }))
     await flush()
 
     expect(storedRun()).toBeNull()
@@ -159,7 +169,7 @@ describe('run context persistence', () => {
 
     // A terminal run must not throw on the clear path either.
     const build = frameFactory()
-    api.emit(build('run_state', { event_type: 'RUN_COMPLETED', details: { status: 'completed' } }))
+    api.emit(build('run_state', { event_type: 'WORKFLOW_END', details: { status: 'completed' } }))
     await flush()
     expect(run.status.value).toBe('completed')
     expect(run.lastError.value).toBe('')

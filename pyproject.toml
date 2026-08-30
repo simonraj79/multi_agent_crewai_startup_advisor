@@ -1,8 +1,13 @@
 [project]
 name = "brief_crew"
 version = "0.1.0"
-description = "One topic in, one one-page brief out - a CrewAI Researcher/Analyst/Writer crew with a warm Pinecone cache."
+description = "Two CrewAI applications on one package: Brief Crew (Researcher/Analyst/Writer over a warm Pinecone cache) and Validator Studio (a six-agent startup-idea validator with durable human gates, a FastAPI/WebSocket service and a Vue 3 UI)."
+readme = "README.md"
 authors = [{ name = "Simon", email = "inspiring.resilience@gmail.com" }]
+# NOTE: there is no `license` field yet, and no LICENSE file at the repo root.
+# Until one exists, default copyright applies and nobody may legally reuse this
+# code. See docs/licensing.md for the options and what to add here once you
+# have chosen - it is a two-line change (`license` plus a LICENSE file).
 # crewai requires >=3.10,<3.14. Pinned to 3.13 in .python-version as well:
 # Render services created after Feb 2026 default to 3.14, which would fail the build.
 requires-python = ">=3.10,<3.14"
@@ -50,5 +55,22 @@ build-backend = "hatchling.build"
 packages = ["src/brief_crew"]
 
 [tool.crewai]
+# `type` is what `crewai run` reads to pick the Flow entry point. Keep it.
 type = "flow"
-project_id = "b3bdfe51-686a-4164-ae50-b32b74a1e47b"
+
+# `project_id` was removed before this repository was made public. It was an
+# account-scoped CrewAI AMP project UUID: not a credential - you cannot
+# authenticate with it - but account-specific, of no use to anyone else, and
+# sent to the AMP trace backend as the attribution key for every traced run
+# (crewai/events/listeners/tracing/trace_batch_manager.py). Publishing it would
+# have tagged every public clone's traces with this project. Same reasoning the
+# Render owner and database IDs were redacted under.
+#
+# Removing it is behaviour-neutral: crewai_core.project.get_project_id()
+# returns None when the key is absent and never raises.
+#
+# ⚠️ It will come back on its own. `crewai run`, `crewai install` and several
+# other CLI commands call get_or_create_project_id(), which MINTS a new UUID and
+# writes it straight back into this table - CrewAI intends the id to be
+# committed. Check `git diff pyproject.toml` after any `crewai` command and drop
+# the line again if you would rather it stayed out.

@@ -199,10 +199,16 @@ class FieldBoundedSerializer:
             timestamp = datetime.now(timezone.utc)
         node_id = registry.resolve_event(event)
 
+        # A RUN_STATE frame is the transport's statement about the run's status,
+        # and the Studio client reads `details.status` to move out of its
+        # pre-run state. Both drafts below carry it explicitly: without it a
+        # real run streamed to a finished graph while the header still said
+        # "queued". The cancellation frames in `service/registry.py` set the
+        # same key, so every RUN_STATE frame the service emits is self-describing.
         if isinstance(event, FlowStartedEvent):
-            return (self._draft(timestamp, FrameKind.RUN_STATE, UIEventType.WORKFLOW_START, registry.workflow_node_id, f"{event.flow_name} started", {"inputs": self.clip(event.inputs)}),)
+            return (self._draft(timestamp, FrameKind.RUN_STATE, UIEventType.WORKFLOW_START, registry.workflow_node_id, f"{event.flow_name} started", {"status": "running", "inputs": self.clip(event.inputs)}),)
         if isinstance(event, FlowFinishedEvent):
-            return (self._draft(timestamp, FrameKind.RUN_STATE, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} completed", {"result": self.clip(event.result)}),)
+            return (self._draft(timestamp, FrameKind.RUN_STATE, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} completed", {"status": "completed", "result": self.clip(event.result)}),)
         if isinstance(event, FlowFailedEvent):
             return (self._draft(timestamp, FrameKind.ERROR, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} failed", {"error": self.clip(str(event.error))}, FrameLevel.ERROR),)
 

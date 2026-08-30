@@ -1,0 +1,87 @@
+[
+  {
+    "v": 1,
+    "seq": 1,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "run_state",
+    "event_type": "WORKFLOW_START",
+    "level": "INFO",
+    "node_id": "workflow",
+    "message": "ValidatorFlow started",
+    "details": {
+      "status": "running",
+      "inputs": {
+        "idea": "A scheduling assistant for clinics"
+      }
+    }
+  },
+  {
+    "v": 1,
+    "seq": 2,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "agent",
+    "event_type": "AGENT_CALL",
+    "level": "INFO",
+    "node_id": "scope_idea",
+    "message": "AgentExecutor started",
+    "details": {
+      "stage": "before",
+      "flow": "AgentExecutor",
+      "nested": true,
+      "inputs": null
+    }
+  },
+  {
+    "v": 1,
+    "seq": 3,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "agent",
+    "event_type": "AGENT_CALL",
+    "level": "INFO",
+    "node_id": "scope_idea",
+    "message": "AgentExecutor completed",
+    "details": {
+      "stage": "after",
+      "flow": "AgentExecutor",
+      "nested": true,
+      "result": "completed"
+    }
+  },
+  {
+    "v": 1,
+    "seq": 4,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "agent",
+    "event_type": "AGENT_CALL",
+    "level": "ERROR",
+    "node_id": "scope_idea",
+    "message": "AgentExecutor failed",
+    "details": {
+      "stage": "error",
+      "flow": "AgentExecutor",
+      "nested": true,
+      "error": "the agent gave up"
+    }
+  },
+  {
+    "v": 1,
+    "seq": 5,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "run_state",
+    "event_type": "WORKFLOW_END",
+    "level": "INFO",
+    "node_id": "workflow",
+    "message": "ValidatorFlow completed",
+    "details": {
+      "status": "completed",
+      "result": {
+        "verdict": "NEEDS_WORK"
+      }
+    }
+  }
+]

@@ -403,8 +403,19 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
    * `applyFrame` without passing here, and a cancellation is emitted by
    * `service/registry.py` with an explicit `status: "cancelled"` that the
    * branch above catches first.
+   *
+   * `details.nested` is the second lock on that fallback. CrewAI fires flow
+   * lifecycle events for the flows it runs *inside* a run - its own
+   * `AgentExecutor` is a Flow - and the server used to forward them as
+   * `WORKFLOW_END` on the `workflow` node, so a live run reported completing
+   * when its first agent finished. The server now marks them and never sends
+   * them as `run_state` (`events/serializer.py::FlowScope`), but this end reads
+   * the same marker anyway, because the cost of believing one is asymmetric:
+   * `completed` is terminal, and `setStatus` then drops the stored run pointer,
+   * permanently destroying refresh recovery for a run still in flight.
    */
   function applyRunState(frame: FrameData): void {
+    if (frame.details.nested === true) return
     const next = frame.details.status
     if (next === 'failed') {
       setStatus('error')

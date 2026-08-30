@@ -142,6 +142,54 @@ def normalize_usage(
     }
 
 
+@dataclass(slots=True)
+class FlowScope:
+    """Which flow a run-lifecycle frame is allowed to speak for.
+
+    CrewAI fires `FlowStartedEvent` and `FlowFinishedEvent` for *every* Flow it
+    runs, and its own `AgentExecutor` is a Flow. So a real paid run emitted
+    `WORKFLOW_END` carrying `status: "completed"` on the `workflow` node the
+    moment the **first agent** finished, ten frames into a run that had barely
+    started. The Studio client believed it: it flipped the console to Completed,
+    stopped every edge animation and - the damage that does not undo itself -
+    dropped the localStorage pointer refresh recovery reads, for a run that was
+    still in flight.
+
+    The run's own flow is identified by *name*, claimed by the first
+    `FlowStartedEvent` this run sees. Deliberately not a list of CrewAI's inner
+    flow classes: a denylist against an upstream library rots the first time it
+    renames one, and it cannot see a nested flow this repo has not met yet.
+
+    Claiming a name, rather than latching "the first start wins, once", is what
+    keeps resume working. `Flow.resume()` emits a second `FlowStartedEvent` for
+    the same root flow (crewai/flow/runtime/__init__.py: "Emitted
+    unconditionally ... a resumed flow reported finishing without ever having
+    started"), and the run must still be able to finish after it. A run that is
+    recovered into a fresh adapter re-claims the same name from that start.
+
+    Mutated only from `StreamSinkAdapter.__call__`, which holds the capture
+    lock, so the three concurrent research branches cannot race here.
+    """
+
+    root_flow_name: str | None = None
+
+    def is_root(self, flow_name: str | None, *, claim: bool) -> bool:
+        """Report whether `flow_name` is the run's own top-level flow.
+
+        `claim` is true only for a start event. A finish or a failure arriving
+        with no start behind it is still treated as the run's own - there is no
+        other lifecycle statement coming, and a run that can never report
+        finishing is the worse failure - but it does not get to define the root.
+        """
+
+        name = (flow_name or "").strip()
+        if self.root_flow_name is None:
+            if claim:
+                self.root_flow_name = name
+            return True
+        return name == self.root_flow_name
+
+
 @dataclass(frozen=True, slots=True)
 class SerializerLimits:
     max_string: int = 4096
@@ -192,24 +240,51 @@ class FieldBoundedSerializer:
             return f"<{len(value)} bytes>"
         return self._safe_repr(value)
 
-    def drafts(self, source: Any, event: Any, registry: NodeRegistry) -> tuple[FrameDraft, ...]:
+    def drafts(
+        self,
+        source: Any,
+        event: Any,
+        registry: NodeRegistry,
+        *,
+        flow_scope: FlowScope | None = None,
+    ) -> tuple[FrameDraft, ...]:
         del source
         timestamp = getattr(event, "timestamp", None)
         if not isinstance(timestamp, datetime):
             timestamp = datetime.now(timezone.utc)
         node_id = registry.resolve_event(event)
+        # A caller with no per-run scope gets one in which this event is the
+        # run's own, which is all a single isolated conversion can mean.
+        # `StreamSinkAdapter` always passes the run's, so the live path is the
+        # stateful one.
+        scope = flow_scope if flow_scope is not None else FlowScope()
 
         # A RUN_STATE frame is the transport's statement about the run's status,
         # and the Studio client reads `details.status` to move out of its
-        # pre-run state. Both drafts below carry it explicitly: without it a
-        # real run streamed to a finished graph while the header still said
-        # "queued". The cancellation frames in `service/registry.py` set the
-        # same key, so every RUN_STATE frame the service emits is self-describing.
+        # pre-run state. The drafts below say so explicitly: without it a real
+        # run streamed to a finished graph while the header still said "queued".
+        # The cancellation frames in `service/registry.py` set the same key, so
+        # every RUN_STATE frame the service emits is self-describing.
+        #
+        # Each one is gated on `FlowScope`, because that statement is only the
+        # transport's to make about the run's *own* flow. CrewAI fires these
+        # same three events for the flows it runs inside the run - see the
+        # `FlowScope` docstring for what believing them cost.
         if isinstance(event, FlowStartedEvent):
+            if not scope.is_root(event.flow_name, claim=True):
+                return (self._nested_flow_draft(timestamp, node_id, event.flow_name, "started", "before", {"inputs": self.clip(event.inputs)}),)
             return (self._draft(timestamp, FrameKind.RUN_STATE, UIEventType.WORKFLOW_START, registry.workflow_node_id, f"{event.flow_name} started", {"status": "running", "inputs": self.clip(event.inputs)}),)
         if isinstance(event, FlowFinishedEvent):
+            if not scope.is_root(event.flow_name, claim=False):
+                return (self._nested_flow_draft(timestamp, node_id, event.flow_name, "completed", "after", {"result": self.clip(event.result)}),)
             return (self._draft(timestamp, FrameKind.RUN_STATE, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} completed", {"status": "completed", "result": self.clip(event.result)}),)
         if isinstance(event, FlowFailedEvent):
+            # A nested failure is not the run failing either. `FrameKind.ERROR`
+            # is read by the client as exactly that, and `error` is terminal, so
+            # an inner flow that raised would destroy the stored run pointer the
+            # same way a false completion does.
+            if not scope.is_root(event.flow_name, claim=False):
+                return (self._nested_flow_draft(timestamp, node_id, event.flow_name, "failed", "error", {"error": self.clip(str(event.error))}, FrameLevel.ERROR),)
             return (self._draft(timestamp, FrameKind.ERROR, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} failed", {"error": self.clip(str(event.error))}, FrameLevel.ERROR),)
 
         if isinstance(event, MethodExecutionStartedEvent):
@@ -277,6 +352,42 @@ class FieldBoundedSerializer:
         if isinstance(event, CrewKickoffFailedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} failed", {"stage": "error", "error": self.clip(event.error)}, FrameLevel.ERROR),)
         return ()
+
+    def _nested_flow_draft(
+        self,
+        timestamp: datetime,
+        node_id: str,
+        flow_name: str,
+        verb: str,
+        stage: str,
+        payload: Mapping[str, Any],
+        level: FrameLevel = FrameLevel.INFO,
+    ) -> FrameDraft:
+        """A flow CrewAI ran *inside* the run, never a statement about the run.
+
+        Dropping it would lose trace fidelity - an agent executor is often the
+        only frame between a task starting and a tool call - so it is kept, as
+        an agent frame. `FrameKind.AGENT` moves no run status and no node state
+        anywhere in the client, and neither `WORKFLOW_START` nor `WORKFLOW_END`
+        appears on it, so the `event_type` fallback in `applyRunState` cannot
+        fire on it either. `nested` is the marker the client refuses lifecycle
+        frames on, belt to that braces.
+
+        It is attributed to the node that was executing when the inner flow
+        started rather than to the `workflow` node, because that is where it
+        actually happened; an inner flow with no enclosing method resolves to
+        the visible `unattributed` quarantine node like anything else.
+        """
+
+        return self._draft(
+            timestamp,
+            FrameKind.AGENT,
+            UIEventType.AGENT_CALL,
+            node_id,
+            f"{flow_name} {verb}",
+            {"stage": stage, "flow": flow_name, "nested": True, **payload},
+            level,
+        )
 
     def _draft(
         self,

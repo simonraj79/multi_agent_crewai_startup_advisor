@@ -16,7 +16,7 @@ from brief_crew.events.models import (
     UIEventType,
 )
 from brief_crew.events.registry import NodeRegistry
-from brief_crew.events.serializer import FieldBoundedSerializer
+from brief_crew.events.serializer import FieldBoundedSerializer, FlowScope
 
 
 FrameCallback = Callable[[tuple[FrameData, ...]], None]
@@ -39,12 +39,19 @@ class StreamSinkAdapter:
         self.registry = registry
         self.serializer = serializer or FieldBoundedSerializer()
         self.on_frames = on_frames
+        # Per-run, because "which flow is this run's own flow" is a fact about
+        # the run and nothing else. The serializer stays stateless and is free
+        # to be shared; this object is not, and is read and written only under
+        # the capture lock below.
+        self.flow_scope = FlowScope()
         self._capture_lock = Lock()
 
     def __call__(self, source: Any, event: Any) -> None:
         try:
             with self._capture_lock:
-                drafts = self.serializer.drafts(source, event, self.registry)
+                drafts = self.serializer.drafts(
+                    source, event, self.registry, flow_scope=self.flow_scope
+                )
                 frames = self.buffer.push_many(self.run_id, drafts)
                 self._notify(frames)
         except Exception:

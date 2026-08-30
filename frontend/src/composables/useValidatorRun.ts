@@ -507,6 +507,15 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
       verdict: typeof details.verdict === 'string' ? details.verdict : undefined,
       confidence: typeof details.confidence === 'number' ? details.confidence : undefined,
     }
+    // The node the run is parked on must say so. `applyNodeState` looks for a
+    // WAITING event_type, but no member of `UIEventType` contains that word - a
+    // gate arrives as GATE_OPEN / HUMAN_INTERACTION - so that branch never fires
+    // and the paused node stayed `idle`, drawn identically to a node that has
+    // never run. The live graph is the whole premise of this console, and at the
+    // one moment it is asking the operator for something it was pointing at
+    // nothing. `gate_closed` already sets the same node to `completed`, so this
+    // is the missing half of that pair, not a new concept.
+    if (frame.node_id) setNodeState(frame.node_id, 'waiting')
     setStatus('waiting')
   }
 

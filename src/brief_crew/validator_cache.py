@@ -237,11 +237,22 @@ def _source_text(branch: BranchName, result: Mapping[str, Any]) -> str | None:
         return claim.strip() if isinstance(claim, str) and claim.strip() else None
     if branch == "sentiment":
         quote = result.get("quote")
-        classification = result.get("classification")
         if not isinstance(quote, str) or not quote.strip():
             return None
-        return f"classification: {classification}\nquote: {quote.strip()}"
-    required = ("name", "license_permits_commercial", "months_since_push", "relevance")
+        # The matched signal words, not a classification. The tools stopped
+        # emitting `classification` / `relevance` under the schema's own field
+        # names (rubric review F4), so the indexed text follows: a cached
+        # document still carrying a pre-computed label would hand back on the
+        # retrieval path the very answer the tool no longer offers live.
+        signals = result.get("signal_terms_matched")
+        signal_text = ", ".join(signals) if isinstance(signals, list) and signals else "none"
+        return f"signal terms matched: {signal_text}\nquote: {quote.strip()}"
+    required = (
+        "name",
+        "license_permits_commercial",
+        "months_since_push",
+        "query_term_overlap",
+    )
     if any(key not in result for key in required):
         return None
     return json.dumps({key: result[key] for key in required}, sort_keys=True)

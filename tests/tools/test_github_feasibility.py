@@ -49,6 +49,21 @@ ENVELOPE_KEYS = {
 }
 
 
+def _as_repo(row: dict, *, relevance: str) -> dict:
+    """What the Feasibility Analyst has to do to a tool row, minimally.
+
+    Two steps, and both are the point of rubric review finding F4. The
+    `query_term_overlap` evidence is DROPPED - `Repo` sets `extra="forbid"`, so
+    a row pasted straight from the envelope is rejected outright - and
+    `relevance` is SUPPLIED, because the tool no longer offers one. Copying is
+    not merely discouraged now; it does not validate.
+    """
+
+    return {k: v for k, v in row.items() if k != "query_term_overlap"} | {
+        "relevance": relevance
+    }
+
+
 class GitHubFeasibilityToolTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tool = GitHubFeasibilityTool()
@@ -119,12 +134,24 @@ class GitHubFeasibilityToolTests(unittest.TestCase):
                 "name": "clinic/intake-automation",
                 "license_permits_commercial": True,
                 "months_since_push": 2,
-                "relevance": "SOLVES_ENTIRELY",
+                "query_term_overlap": {
+                    "matched": ["automation", "clinic", "intake"],
+                    "query_terms": ["automation", "clinic", "intake"],
+                },
                 "url": "https://github.com/clinic/intake-automation",
                 "archived": False,
             },
         )
-        self.assertTrue(is_reusable_repository(Repo.model_validate(envelope["results"][0])))
+        # The envelope reports the overlap and stops. `relevance` is the
+        # analyst's call, so the row is deliberately NOT a complete `Repo` -
+        # see test_the_envelope_is_not_directly_schema_valid below.
+        self.assertTrue(
+            is_reusable_repository(
+                Repo.model_validate(
+                    _as_repo(envelope["results"][0], relevance="SOLVES_ENTIRELY")
+                )
+            )
+        )
         self.assertEqual(bucket.acquire.call_count, 2)
         self.assertTrue(all(call.kwargs["headers"]["User-Agent"] == GITHUB_USER_AGENT for call in get.call_args_list))
         self.assertTrue(all("Authorization" not in call.kwargs["headers"] for call in get.call_args_list))
@@ -272,8 +299,9 @@ class GitHubFeasibilityToolTests(unittest.TestCase):
         self.assertIsNone(row["months_since_push"])
         self.assertIn("months_since_push", envelope["notes"])
         self.assertIn("null is not 'pushed recently'", envelope["notes"])
-        # The row the tool emits is a row the schema accepts.
-        repo = Repo.model_validate(row)
+        # The schema accepts the row once the analyst has added the judgement
+        # the tool no longer makes for them.
+        repo = Repo.model_validate(_as_repo(row, relevance="PARTIAL"))
         self.assertIsNone(repo.months_since_push)
         self.assertFalse(is_reusable_repository(repo))
 

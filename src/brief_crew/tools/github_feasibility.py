@@ -241,7 +241,29 @@ def _query_terms(query: str) -> set[str]:
     }
 
 
-def _relevance(query: str, repository: dict[str, Any]) -> str:
+def _query_term_overlap(query: str, repository: dict[str, Any]) -> dict[str, Any]:
+    """Which query words appear in the repository's own text - NOT what it does.
+
+    This used to be `_relevance`, returning one of `Repo.relevance`'s own enum
+    values under the envelope key `relevance`. Rubric review finding F4:
+
+    * It handed a schema-valid answer back under the schema's own field name, so
+      copying it was the cheapest valid output a cheap-tier branch agent could
+      produce - and `FLOOR_ALREADY_FREE`, a REJECT, reads `SOLVES_ENTIRELY`.
+    * The answer was word overlap. A repository named `acme/clinic-scheduling`
+      described as "A demo clinic scheduling app, abandoned" scored
+      `SOLVES_ENTIRELY` against the query "clinic scheduling", because the words
+      matched. Whether a dead student demo solves the job is exactly the
+      judgement the Feasibility Analyst exists to make, and the ratio test made
+      it sensitive to *how many words the Scoper put in the query*: adding one
+      word to the query turned the same repository into `PARTIAL`.
+
+    Reporting the overlap keeps everything the heuristic knew and returns the
+    inference to the analyst, who can also see `months_since_push`, `archived`
+    and the licence - the facts that tell a live project from an abandoned one,
+    and which no amount of name-matching can substitute for.
+    """
+
     topics = repository.get("topics")
     topic_text = " ".join(str(topic) for topic in topics) if isinstance(topics, list) else ""
     searchable = " ".join(
@@ -249,15 +271,22 @@ def _relevance(query: str, repository: dict[str, Any]) -> str:
     )
     searchable = f"{searchable} {topic_text}".lower()
     terms = _query_terms(query)
-    if not terms:
-        return "IRRELEVANT"
-    matched = sum(term in searchable for term in terms)
-    ratio = matched / len(terms)
-    if matched >= 2 and ratio >= 0.75:
-        return "SOLVES_ENTIRELY"
-    if matched:
-        return "PARTIAL"
-    return "IRRELEVANT"
+    matched = [term for term in terms if _contains_word(searchable, term)]
+    return {
+        "matched": sorted(set(matched)),
+        "query_terms": sorted(set(terms)),
+    }
+
+
+def _contains_word(haystack: str, term: str) -> bool:
+    """Word-boundary match, not a substring test.
+
+    Without this, reporting the matched terms would only move F4's substring
+    problem into the evidence: a repository called `payments-api` would still
+    report a match for the query word `pay`. Multi-word terms work unchanged.
+    """
+
+    return re.search(rf"\b{re.escape(term)}\b", haystack) is not None
 
 
 def _envelope(
@@ -354,7 +383,7 @@ class GitHubFeasibilityTool(BaseTool):
                         "name": str(repository.get("full_name") or full_name),
                         "license_permits_commercial": _license_permits_commercial(repository),
                         "months_since_push": months_since_push,
-                        "relevance": _relevance(actual_query, repository),
+                        "query_term_overlap": _query_term_overlap(actual_query, repository),
                         "url": url,
                         "archived": archived,
                     }

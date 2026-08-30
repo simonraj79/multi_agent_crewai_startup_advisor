@@ -15,27 +15,48 @@ feature row names the test or source path it rests on, and nothing is Complete
 on a measurement nobody has taken. Read it with this file. Neither is a
 substitute for re-running the suite — the counts move.
 
-That reconciliation predates the 2026-08-30 session, which found three defects
-by *running* the service (see **Deployment** and remaining-work items 10-16),
-so any row it marks Complete on the service or the UI is a claim from before
-those defects were known.
+That reconciliation predates the two 2026-08-30 sessions. The first found three
+defects by *running* the service (see **Deployment** and remaining-work items
+10-16; item 10 has since been fixed), so any row it marks Complete on the
+service or the UI is a claim from before those defects were known. The second,
+commit `e539811`, revised the feature list again while bounding the public run
+endpoint and making the suite runnable without keys - so parts of that file are
+now newer than this paragraph and parts are not.
 
 ## Verified Baseline
 
-Re-measured on 2026-08-30 at commit `5daf401`, working tree clean of source
-changes at the time of measurement:
+Re-measured on 2026-08-30 at commit `e539811`, on Windows, with `src/`,
+`tests/` and `frontend/` clean of uncommitted changes at the time of
+measurement (documentation files were being edited in parallel and do not enter
+these counts):
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:   378 run, 0 failures, 0 errors, 1 skipped
+Python tests:   415 run, 0 failures, 0 errors, 1 skipped - with AND without .env
 Frontend unit:  126 run, 0 failures, 13 files (Vitest + jsdom)
 Frontend build: vue-tsc -b and Vite production build passed
-Playwright E2E:   7 run, 0 failures (local SYNTHETIC=1 backend, real browser)
+Playwright E2E:   7 tests in the file - NOT re-run this pass; it needs a backend
 ```
 
-⚠️ These counts move. The Python suite has gone 65 → 295 → 341 → 378 and the
-frontend 103 → 116 → 126. Re-run before quoting a number; the command is the
-contract, not the figure.
+⚠️ These counts move. The Python suite has gone 65 → 295 → 341 → 378 → 415 and
+the frontend 103 → 116 → 126. Re-run before quoting a number; the command is
+the contract, not the figure.
+
+**CI is green, and 2026-08-30 is the first time in this repository's history
+that it has been.** Run `33293970810` on `e539811`, `ubuntu-latest`, both jobs
+`success`:
+
+```text
+Python tests (no-cost)          success    Ran 415 tests in 15.823s / OK (skipped=1)
+Frontend type-check and build   success
+```
+
+The three pushes before it - `5daf401`, `a3e5268`, `53afa66` - were all
+`failure`, with byte-identical counts. That green also closes the standing
+"never verified on Linux" caveat: the suite now runs on a clean Ubuntu checkout
+with no `.env` and no credential of any kind. `.github/workflows/ci.yml` carries
+no `env:` credentials by design, which is what makes the README's "costs nothing
+and touches no network" claim checkable rather than aspirational.
 
 > **That green was, until 2026-08-30, only ever green on a machine with a
 > `.env`.** `src/brief_crew/__init__.py` calls `load_dotenv(..., override=True)`
@@ -49,19 +70,26 @@ contract, not the figure.
 > FAILED (failures=4, errors=36, skipped=1)
 > ```
 >
-> The runtime is the tell: **5.7s against ~37s.** Nothing ran. GitHub Actions
-> had been red on every push (`5daf401`, `a3e5268`, `53afa66`) with byte-identical
-> counts, while the README claimed `git clone && python -m unittest` "costs
-> nothing and touches no network" — true about money, false about running.
+> The runtime is the tell: **5.7s against ~37s.** Nothing ran, while the README
+> claimed `git clone && python -m unittest` "costs nothing and touches no
+> network" — true about money, false about running.
 >
 > `tests/__init__.py` now `setdefault`s two obviously-fake placeholders before
-> anything imports `brief_crew`. Verified both ways (378 OK with and without
-> `.env`) and under a socket guard: **0 non-loopback connection attempts**. The
-> suite is no-cost *and* now actually runs anywhere. A placeholder is not a
-> credential — it authenticates against nothing — but if you ever add a test
-> asserting key-absent behaviour, it must clear the environment itself, the way
+> anything imports `brief_crew`. Re-verified both ways on 2026-08-30 at
+> `e539811`: **415 OK with `.env` in 72.4s, 415 OK without it in 69.3s** — the
+> runtimes agreeing this time, which is the same tell read the other way. The
+> socket-guard result (**0 non-loopback connection attempts**) is `e539811`'s
+> own measurement and was not re-run here. A placeholder is not a credential —
+> it authenticates against nothing — but if you ever add a test asserting
+> key-absent behaviour, it must clear the environment itself, the way
 > `tests/tools/test_github_feasibility.py` already does with
 > `patch.dict(os.environ, {}, clear=True)`.
+>
+> **Moving `.env` aside is the one hazardous step in this verification**: it
+> holds seven live keys. Restore it from a shell trap that fires on any exit,
+> name the backup so the ignore rules cover it (`.env.*` does — confirm with
+> `git check-ignore -v` on the actual filename, never by reading `.gitignore`;
+> see trap 5), and check the file is back before you finish.
 
 Commands used:
 
@@ -72,6 +100,16 @@ Push-Location frontend
 npm run build
 npm test
 Pop-Location
+```
+
+And the run that actually proves the no-key claim - in Git Bash, because the
+trap is the point:
+
+```bash
+restore() { [ -f .env.ci-bak ] && mv -f .env.ci-bak .env; }
+trap restore EXIT INT TERM
+mv .env .env.ci-bak
+./.venv/Scripts/python.exe -m unittest discover -s tests -t .
 ```
 
 The E2E suite is separate, and it will not start a backend for you.
@@ -118,9 +156,10 @@ this file said the repo had no remote and treated the Blueprint as unapplied.
 | API | `https://agentic-crew-ai-api.onrender.com` — web service, python, **starter**, **singapore** |
 | DB | `agentic-crew-ai-db` — basic_256mb, PostgreSQL 18, singapore. Pre-existing and **reused**, not recreated by the apply |
 | Repo | `https://github.com/simonraj79/multi_agent_crewai_startup_advisor` (**public**), branch `main`, `autoDeploy: yes` on both services |
-| Commit | `5daf401` — *inferred*, not read back: local `main`, `origin/main` and `autoDeploy: yes` agree, and the live CORS behaviour requires `53afa66` or later. The service exposes no version endpoint |
+| Commit | `e539811` — still *inferred*, not read back, because the service exposes no version endpoint. The evidence is now strong: local `main` and `origin/main` are both `e539811` with `autoDeploy: yes`, and three live behaviours — `/docs` 404, the 413 body limit, the 2000-character 422 — did not exist in any earlier commit |
 
-Verified live on 2026-08-30 by querying the deployed API directly:
+Verified live on 2026-08-30 by querying the deployed API directly. The first
+five were measured before the hardening pass, the last four after it:
 
 - `GET /readyz` → `"storage":{"backend":"postgresql"}`.
 - `GET /api/workflows/idea-validator/graph` → **14 nodes, 16 edges**.
@@ -129,9 +168,32 @@ Verified live on 2026-08-30 by querying the deployed API directly:
   disallowed origin.
 - `wss://…/ws?session_id=…&run_id=…` → **HTTP 101** upgrade.
 - `GET https://agentic-crew-ai-web.onrender.com/` → 200.
+- `GET /healthz` → **200**.
+- `GET /docs` and `GET /openapi.json` → **404**. This is also the proof that the
+  deployed instance is **not** synthetic: `expose_docs` is
+  `EXPOSE_API_DOCS or synthetic`, so a synthetic instance would serve them. The
+  deployed service is in paid mode.
+- `POST …/runs` with a 70 KiB body → **413**,
+  `the request body is limited to 65536 bytes`, refused at the ASGI layer
+  before anything parsed it.
+- `POST …/runs` with a 2001-character idea → **422**,
+  `inputs.idea is limited to 2000 characters; this one is 2001`.
 
-What is **not** verified is anything that costs money: no run has been launched
-against the deployed API. See remaining-work item 1.
+Neither POST launches a run, so both probes are free.
+
+> **`/readyz` reported `"gates":{"open":1,"expired":0}` when this was written,
+> and that retires a claim this file used to make here.**
+> `RunRegistry.gate_watch_status()` counts in-memory `RunRecord`s in `WAITING`
+> carrying an unanswered gate, and a gate cannot open without the Scoper crew
+> having executed. `expired: 0` with `VALIDATOR_GATE_TIMEOUT_SECONDS = 1800`
+> puts that gate's opening inside the **half hour** before the measurement, on
+> a service just proven to be in paid mode. So a real run was launched against
+> the deployed API and real money was spent on an escalation-tier model.
+>
+> What remains true is everything the acceptance run is actually *for*: nothing
+> has run end to end, no report exists, and no citation closure has been
+> inspected. Item 1 is amended, not closed. Find out what that run was before
+> treating the spend as accounted for.
 
 > **Probing `/ws` by hand.** `run_id` is a **required** query parameter with no
 > default, so a handshake that omits it is rejected by FastAPI validation
@@ -145,15 +207,18 @@ against the deployed API. See remaining-work item 1.
 
 ### Traps that were hit for real
 
-Each of these cost a debugging cycle. They are recorded because none is
-discoverable from the code.
+Traps 1-5 each cost a debugging cycle; trap 6 cost a wrong claim in a handoff,
+twice. They are recorded because none is discoverable from the code.
 
 1. **The database's `ipAllowList` is empty.** So `DATABASE_URL` must be the
    **internal** connection string, and the API service must stay in
-   `singapore` to reach it. `render.yaml` (line ~29) and `docs/deploying.md`
-   both assert that the live database "already has an allow list" and that
-   declaring one would overwrite it — **they are wrong**, and the comment
-   reads as reassurance about a control that does not exist.
+   `singapore` to reach it. `render.yaml` and `docs/deploying.md` used to
+   assert that the live database "already has an allow list" and that declaring
+   one would overwrite it — reassurance about a control that does not exist.
+   **Both were corrected in `e539811`**: `render.yaml:29-41` and
+   `docs/deploying.md:90` now state the list is `[]` and spell out the two
+   consequences. Re-verified against both files. The trap stays recorded
+   because the *reasoning* has to survive, not because the files still lie.
 2. **`VITE_API_URL` is a Vite *build-time* variable.** Changing it does nothing
    until the static site is redeployed. It must be a **full origin including
    `https://`**: `fromService … property: host` yields a bare hostname, which
@@ -185,6 +250,21 @@ discoverable from the code.
    ignored**, so `git add -A` publishes it — and its own `licensing.md` raises
    an unresolved third-party-IP question while `preflight.md` carries live
    account state. Decide, or ignore it; do not leave it one command away.
+
+6. **A line-anchored `grep` under-reports `config.py`, and has now produced the
+   same wrong answer twice.** The obvious command for "which environment
+   variables does this service read" —
+   `grep -oE 'os\.getenv\("[A-Z_]+"' src/brief_crew/config.py` — returns
+   **seven**. The real answer for that file is **eleven**: the formatter wraps
+   four calls so the name lands on the *next* line, where the pattern cannot
+   see it. The four it hides are `RUN_RATE_LIMIT_WINDOW_SECONDS`,
+   `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR`, `VALIDATOR_FEASIBILITY_CACHE_ENABLED`
+   and `VALIDATOR_SEQUENTIAL_BRANCHES` — all live knobs, one of them the single
+   setting a non-Render deployment *must* change. This has twice been written
+   into a handoff as an authoritative list. Use a multiline match
+   (`grep -Pzo`, `rg -U`, or Python `re.findall` with `re.S`); the exact scan is
+   in section 9. Same lesson as trap 5 one layer up: check the thing, not a
+   pattern that resembles it.
 
 ## Non-Negotiable Platform Rules
 
@@ -399,6 +479,49 @@ Implemented behavior includes:
 - NDJSON and ZIP log export.
 - Health/readiness checks.
 - Startup OpenRouter safety assertion.
+- **Admission control on the one endpoint that spends money.**
+  `POST /api/sessions/{id}/runs` is unauthenticated *by design* — the demo is
+  meant to be clickable — and until `e539811` it was unbounded in every
+  dimension that mattered: a 1 MB body reached the app with no 413 from any
+  layer, and `ThreadPoolExecutor`'s internal queue is unbounded, so
+  `RUN_CONCURRENCY` bounded parallelism and *nothing* bounded admission. Four
+  layers now guard it, five distinct refusals:
+
+  | Condition | Status | Detail |
+  | --- | --- | --- |
+  | declared `Content-Length` > `MAX_REQUEST_BODY_BYTES` (64 KiB) | **413** | `the request body is limited to 65536 bytes` |
+  | client over `RUN_RATE_LIMIT_MAX_RUNS` per `RUN_RATE_LIMIT_WINDOW_SECONDS` (10 / 60 s) | **429** | `too many runs from this client; wait and try again` + computed `Retry-After` |
+  | `inputs` JSON > `MAX_RUN_INPUT_BYTES` (8 KiB) or > `MAX_RUN_INPUT_KEYS` (16) | **422** | pydantic `Value error, …` |
+  | idea/topic > `MAX_RUN_INPUT_CHARS` (2000) | **422** | `inputs.<name> is limited to 2000 characters; this one is N` |
+  | registry at `MAX_QUEUED_RUNS` (8) | **429** | `the service is at capacity; try again shortly` + `Retry-After: 30` |
+
+  The rate limit runs **first** in `create_run`, before the workflow and input
+  checks, so a flood of deliberately malformed bodies is throttled too. It is
+  the only limited endpoint: `/healthz`, `/readyz` and every read-only `GET` are
+  left alone so monitoring and a reconnecting UI are never affected. Two
+  carve-outs are deliberate, and a naive cap gets both wrong:
+
+  - **A run WAITING at a gate holds no admission slot.** `_execute` has already
+    returned by then and its worker thread is free, so a room full of people
+    thinking about a scope costs nobody a launch
+    (`registry.py::_active_slots`).
+  - **Resumes and gate replies bypass admission entirely.** `RunAdmissionError`
+    is raised from exactly one place — `create_run` — and `answer_gate` →
+    `_submit` cannot raise it. A flood must never strand a human mid-run.
+
+  `RunAdmissionError` is deliberately distinct from `RunBusyError`, and the
+  distinction is the whole point: busy means *this* run is mid-execution and
+  resending the reply works (**503**); admission means the server is full
+  (**429**).
+
+  **Honest residual: a chunked POST declares no `Content-Length` and slips past
+  the 413.** `RequestBodySizeLimitMiddleware` says so in its own docstring. The
+  pydantic `inputs` bound and the 2000-character prompt bound behind it still
+  cap what reaches a model, so the *cost* is bounded either way — the body is
+  not.
+- **`/docs`, `/redoc` and `/openapi.json` return 404 unless `EXPOSE_API_DOCS=1`
+  or the instance is synthetic.** Obscurity, not a control, and `app.py` says
+  so where it does it. Verified 404 against the deployed API.
 - CORS middleware driven by `CORS_ALLOW_ORIGINS` in `config.py`:
   comma-separated origins, **empty default, so it fails closed**; a malformed
   entry is refused *at import* with the corrected string in the message rather
@@ -406,8 +529,45 @@ Implemented behavior includes:
   what makes the `"*"` escape hatch survivable. **It does not govern `/ws`** —
   browsers do not apply CORS to a WebSocket handshake and Starlette passes
   non-HTTP scopes straight through. See remaining-work item 13.
+  `CORS_EXPOSE_HEADERS` is `("ETag", "Retry-After")`: neither is
+  CORS-safelisted, and the static site is a separate origin, so without the
+  second entry a rate-limited browser client cannot read the one header that
+  tells it when to come back.
 - Synthetic service mode for no-cost integration and UI testing, selected by
   `SYNTHETIC=1` through `app_from_env()`.
+
+**Environment knobs, and there are exactly fifteen.** Eleven are read in
+`config.py`:
+
+```text
+CORS_ALLOW_ORIGINS   EXPOSE_API_DOCS   MAX_QUEUED_RUNS   PINECONE_INDEX_NAME
+RUN_CONCURRENCY      RUN_RATE_LIMIT_MAX_RUNS   RUN_RATE_LIMIT_WINDOW_SECONDS
+RUN_RATE_LIMIT_TRUST_FORWARDED_FOR   RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS
+VALIDATOR_FEASIBILITY_CACHE_ENABLED  VALIDATOR_SEQUENTIAL_BRANCHES
+```
+
+and four in `service/app.py`: `DATABASE_URL`, `HOST`, `PORT`, `SYNTHETIC`.
+Everything else in the admission path is a genuine constant with no override —
+`MAX_REQUEST_BODY_BYTES` (64 KiB), `MAX_RUN_INPUT_CHARS` (2000),
+`MAX_RUN_INPUT_BYTES` (8 KiB), `MAX_RUN_INPUT_KEYS` (16),
+`RUN_ADMISSION_RETRY_AFTER_SECONDS` (30), `RUN_RATE_LIMIT_MAX_CLIENTS` (4096),
+`RUN_RATE_LIMIT_KEY_MAX_CHARS` (64).
+
+Regenerate the list with a **multiline** scan. A line-anchored `grep` misses
+four of the eleven and has twice been published as authoritative — Deployment
+trap 6:
+
+```bash
+./.venv/Scripts/python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);print(sorted({n for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py') for n in pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))}))"
+```
+
+`render.yaml` sets **none** of the admission knobs, so production runs on the
+defaults above. One of them needs a decision anywhere else:
+`RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` defaults to **on**, which is right behind
+Render's proxy — the socket peer *is* the proxy, so without it every visitor on
+earth shares one bucket and the first person to click Launch rate-limits
+everybody else. Turn it **off** for any deployment reachable directly, where
+`X-Forwarded-For` is attacker-supplied and the limiter stops limiting.
 
 Service entry point:
 
@@ -460,6 +620,11 @@ Implemented UI behavior:
 - Refresh recovery from saved run context and `GET /api/runs/{id}`.
 - Run and per-node token/cost display.
 - Error and reconnect states.
+- A header connection badge that no longer reads "Offline" on a working page.
+  `connectionLabel` (`frontend/src/App.vue:56-61`) reports the probed transport
+  while nothing is streaming and hands back to the socket's own state once a run
+  is in flight; `Mock mode` still surfaces. See closed item 31 for the two
+  things it deliberately does not do.
 - Tablet-responsive layout.
 - Keyboard labels, focus states, reduced-motion support, and Lucide icons.
 - Run completion driven by `details.status` on the `RUN_STATE` frame, with a
@@ -524,6 +689,13 @@ Tests cover:
   covered (`tests/service/test_cors.py`, 16 tests).
 - `serve()`'s environment handling, so `SYNTHETIC=1` really does select the
   no-cost runners (`tests/service/test_serve_env.py`, 5 tests).
+- Public-endpoint admission control, all five refusals and both carve-outs: the
+  413 body limit and the chunked request that evades it, the per-client rate
+  limit and its computed `Retry-After`, the `MAX_QUEUED_RUNS` cap, the
+  2000-character prompt bound, the `inputs` size and key bounds, a gate-waiting
+  run holding no slot, a gate reply admitted while the server is full, and the
+  `/docs` gating (`tests/service/test_run_admission.py`, 37 tests — re-counted
+  by running that module alone).
 - Frontend: Vitest + jsdom over the mock graph against the live descriptor,
   edge animation, frame handling, gate cards and derived fields, run recovery,
   the router and quarantine nodes, the API client and log download.
@@ -564,9 +736,15 @@ it also opened seven new gaps. Numbering is continuous and has shifted.
    News, GitHub, Pinecone or Cohere. Every Python test, every frontend test and
    every one of the seven E2E tests uses doubles or the synthetic runner.
    Zero-fabricated-citation closure over an acceptance set is unverified.
-   Deploying the service did not change this in any way: the live checks in
-   **Deployment** above are all `GET`s, and no run has been launched against
-   the deployed API.
+   **Amended 2026-08-30 — money has now been spent, but the item does not
+   close.** `/readyz` on the deployed API reported
+   `"gates":{"open":1,"expired":0}`, and a gate cannot open without the Scoper
+   having executed on the escalation tier. So at least one real run was launched
+   against the deployed service and is parked at an unanswered gate (see the
+   blockquote under **Deployment**). None of what item 1 exists to establish
+   follows from that: nothing has run end to end, no report has been produced,
+   and no citation closure has been inspected. Establish what that run was
+   before treating the spend as accounted for.
 
    **There is now a standing recommendation against doing this yet.** The
    uncommitted `docs/rubric-review.md` is an independent adversarial pass over
@@ -730,33 +908,57 @@ it also opened seven new gaps. Numbering is continuous and has shifted.
    It is in `crewai`, not this repo. Resume is what the whole Scenario C
    recovery story rests on, so watch for it before production gate work.
    *Unverified in this pass — reproducing it needs live gate probes.*
+32. **A run that is executing when the process restarts is orphaned forever.**
+    Observed in production, not theorised. Run `e0b3b65e-9398-45e9-a9e5-3d72053be28d`
+    was created at 04:01:43 on 2026-08-30, streamed 102 frames, last reconnected
+    its socket at 04:05:49 — and still reports `status: "running"` with
+    `pending_gate: null` and one LLM call, hours later. The API restarted for
+    the `5daf401` redeploy immediately after that last reconnect.
+
+    Persistence can rehydrate a run parked at a **gate**: the durable
+    `run_gates` row is reloaded and `pending_gate` comes back. A run that was
+    *mid-execution* has no such anchor — the future died with the process, the
+    `runs` row still says `running`, and nothing on any code path resumes it.
+    It is indistinguishable at the API from the wedge that item 21 fixed, and
+    it is **not** that bug: the cause is process death, not the settle race.
+
+    This matters more here than it looks, because both Render services carry
+    `autoDeploy: yes`. **Every push to `main` restarts the API**, so any run in
+    flight at that moment is stranded — and a stranded run is invisible except
+    as a row that never reaches a terminal state.
+
+    A fix has to decide something first: on boot, a `running` row with no live
+    future is either resumable from the CrewAI flow state or it is not. If it
+    is, recover it the way `from_pending()` recovers a gate; if it is not, mark
+    it `failed` with a reason at startup so the operator sees a terminal state
+    instead of a lie. Doing neither is the current behaviour. Related: item 24
+    notes there is no retention or purge, so these rows also accumulate.
+
 #### New in this pass — found by running the deployed app, not by reading it
 
-None of items 10-16 is caught by any test, and none was visible locally.
+None of items 10-16 was caught by any test, and none was visible locally.
+Item 10 has since been fixed and is now covered — by the E2E suite, which is the
+layer that found it.
 
-10. **The header says "Offline" whenever no run is in flight.** `App.vue`
-    renders the `connection` ref directly, and that ref tracks the
-    **WebSocket**, which only exists during a run: it initialises to
-    `'offline'` and `resetRun()` puts it back. So "the backend is down" and
-    "you have not launched anything yet" are the same word on the first thing
-    a visitor reads. Nothing polls API reachability. This is what makes the
-    silent mock fallback (Deployment trap 2) so hard to spot.
-
-    **Status: an uncommitted fix was in the working tree when this was
-    written** — a `connectionLabel` computed in `App.vue` that reports the
-    probed transport (`ready` / `connecting`) while nothing is streaming and
-    hands back to the socket once a run is in flight, plus assertions in
-    `frontend/e2e/studio.spec.ts`. That is a *label* fix: it stops the console
-    lying on load, and it still does not poll the API, so a backend that dies
-    between page load and Launch will read `ready`. Verify against `App.vue`
-    rather than against this note, and re-run both suites — the measured counts
-    in **Verified Baseline** predate it.
+10. ~~**The header says "Offline" whenever no run is in flight.**~~ **Fixed and
+    shipped in `e539811`; the full entry is item 31 in the closed ledger.** The
+    number is kept as a stub rather than renumbered, because six other entries
+    and the Next Sequence reference items 11-17 by number.
 11. **The idea textarea resets after a reload even though the run recovers.**
     `useValidatorRun.ts` recovers run context from `localStorage` and
     `GET /api/runs/{id}`, but `idea` is a plain `ref` seeded with a hardcoded
     default and is never assigned anywhere. Refresh mid-run and the graph and
     the gates come back correctly above a text box that has silently reverted
     to *"An AI tool that turns Figma files into production React"*.
+
+    That textarea has a second gap, newer than the first and cheaper to close:
+    **nothing bounds it on the client.** There is no `maxlength` anywhere under
+    `frontend/src`, so a visitor can type past `MAX_RUN_INPUT_CHARS` and only
+    learn about it from a 422 — and `studioApi.ts:389-391` throws
+    `new Error(await response.text())`, so what they are shown is the raw
+    envelope, `{"detail":"inputs.idea is limited to 2000 characters; this one is
+    2001"}`. Nothing reads `Retry-After` on a 429 either. The server bounds are
+    right; the client does not know they exist.
 12. **`applyNodeState`'s `WAITING` branch is dead code against the real
     backend.** It tests `frame.event_type.includes('WAITING')`, and **no member
     of `UIEventType` contains that substring** — the only `WAITING` in
@@ -782,14 +984,17 @@ None of items 10-16 is caught by any test, and none was visible locally.
     tests. The `@launch` test named "accepts a Revise reply at the scope gate
     and keeps the run going" is honestly titled: it proves the reply is
     accepted, not that anything loops back.
-16. **`render.yaml` hardcodes a value that cannot be known when it is written,
-    and asserts a control that does not exist.** `CORS_ALLOW_ORIGINS` is
-    committed as `https://agentic-crew-ai-web.onrender.com` — a URL that only
-    exists *after* the static site is created, so a first apply into a
-    differently-named service ships a wrong value that fails closed and looks
-    like missing middleware. Separately, its `ipAllowList` comment (and
-    `docs/deploying.md` around line 90) says the live database "already has an
-    allow list"; **it is empty**. See Deployment trap 1.
+16. **`render.yaml` hardcodes a value that cannot be known when it is
+    written.** `CORS_ALLOW_ORIGINS` is committed as
+    `https://agentic-crew-ai-web.onrender.com` — a URL that only exists *after*
+    the static site is created, so a first apply into a differently-named
+    service ships a wrong value that fails closed and looks like missing
+    middleware. **Still open**, and the file still carries the literal.
+
+    The second half of this item is **closed**. Its `ipAllowList` comment and
+    `docs/deploying.md:90` no longer claim the live database "already has an
+    allow list"; both now state it is `[]` and name the two consequences.
+    Verified at `e539811` against `render.yaml:29-41`. See Deployment trap 1.
 17. **`docs/` exists locally and is deliberately not committed.** It is *not*
     gitignored — it is simply untracked, which means a `git add -A` would
     publish it. Four files: `licensing.md`, `deploying.md`, `preflight.md`,
@@ -814,7 +1019,8 @@ Kept as a short ledger so nobody reopens them from an old note.
     `num_comments` and `Repo.archived` no longer claim the tool envelopes "do
     not carry them yet"; the comments now explain why each is nullable and how
     the ladders read a `None`. Verified by reading
-    `schemas/validator.py:175-220`. This was item 10 in the previous list.
+    `schemas/validator.py:175-220`. This was item 10 in the 2026-08-29 list — not
+    the item 10 above, which is a different defect that reused the number.
 19. **A gate reply can no longer wedge a run permanently.** `_mark_pending`
     published the gate — durable row, WAITING status, `GATE_OPEN` frame — from
     inside `_execute` *before* the worker returned, so a reply landing in that
@@ -881,11 +1087,31 @@ Kept as a short ledger so nobody reopens them from an old note.
 30. **Brief Crew has a regression test.** `tests/test_brief_crew_regression.py`
     (23 tests, re-counted) covers the Track A/B behaviour the platform rules
     forbid regressing.
+31. **The header no longer reads "Offline" on a working page.** This was item
+    10. `connection` binds the WebSocket, and no socket exists until a run
+    starts, so "the backend is down" and "you have not launched anything yet"
+    were the same word on the first thing a visitor reads — which is also what
+    made the silent mock fallback (Deployment trap 2) so hard to spot.
+    `connectionLabel` (`frontend/src/App.vue:56-61`, rendered at line 97) now
+    reports the probed transport: `ready` when the graph came from the API,
+    `connecting` while probing, `Mock mode` unchanged, and the socket's own
+    state once a run is in flight. Asserted in `frontend/e2e/studio.spec.ts`
+    (`toHaveText(/ready/i)` and `not.toHaveText(/offline/i)`); that suite is
+    still 7 tests, so the count in **Verified Baseline** did not move.
+
+    Two things it deliberately does not do. **Nothing polls the API**, so a
+    backend that dies between page load and Launch still reads `ready` — this
+    fixes the label, not the absence of a health probe. And the badge's CSS
+    class is still bound to the raw ref, not the label, so a `ready` or
+    `connecting` word carries `is-offline` and renders in the muted default
+    rather than the warn colour (`studio.css:123-126` styles `is-connected` and
+    `is-connecting` only). Cosmetic, but colour and word can now disagree.
 
 ## Recommended Next Sequence
 
 The deployment blocker is gone: the repo has a remote, the Blueprint is applied,
-and both services are live. What is left is one decision, then money.
+both services are live, the public endpoint is bounded at four layers, and CI
+has been green since `e539811`. What is left is one decision, then money.
 
 1. **Read `docs/rubric-review.md`, then read all five ladders in
    `RUBRIC_ANCHORS`** (remaining-work item 5). This is a decision only a human
@@ -905,15 +1131,20 @@ and both services are live. What is left is one decision, then money.
    enabled**, and inspect citation closure before sharing any trace link. This
    closes item 1 and puts real concurrent load on PG 18 (item 3). Do it only
    after step 1: the whole point of a paid acceptance run is the verdict, and a
-   verdict against an unapproved rubric buys nothing.
+   verdict against an unapproved rubric buys nothing. Account for the run
+   already parked at a gate on the deployed service first (see **Deployment**)
+   — it means step 3 has effectively been started once, unmeasured.
 4. **Run the live benchmark** (item 2) once a real run is known to work.
 5. **Re-test two-process gate contention against PG 18** — the one thing a
    single real run cannot exercise, and now the *only* untested half of item 3.
    The `reopen_gate()` rollback added this pass is a second compare-and-set that
    has never met a concurrent writer.
 
-Cheap cleanups that need no decision and no money: items 10-16. Item 14 (the
-unhonoured ETag) and item 12 (the dead `WAITING` branch) are each a few lines.
+Cheap cleanups that need no decision and no money: items 11-16, all re-verified
+open on 2026-08-30. Item 14 (the unhonoured ETag — no `If-None-Match` reader
+exists anywhere in `service/`) and item 12 (the dead `WAITING` branch, still at
+`useValidatorRun.ts:425`) are each a few lines; item 11's missing `maxlength` is
+one attribute.
 
 ## CrewAI Traces
 

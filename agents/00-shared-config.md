@@ -128,6 +128,41 @@ service adds:
 | `SYNTHETIC` | local only | `1` makes the `serve` console script build **no-cost doubles** instead of the paid crew runners. Never set it on a deployed service: it would return fabricated verdicts through a UI that gives no sign of it. |
 | `HOST` / `PORT` | service | bind address; `serve` defaults to `127.0.0.1:8000`, which a PaaS proxy cannot reach. |
 | `RUN_CONCURRENCY` | service | concurrent runs, default `1` — the memory ceiling on a 512 MB instance. |
+| `RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS` | service | default `5.0` — how long a resubmission waits for a still-settling run future before refusing the caller. |
+| `MAX_QUEUED_RUNS` | service | default `8` — runs queued or executing, across **every** caller, above which a new run gets `429`. This is the keyless cost bound; it cannot be rotated around. |
+| `RUN_RATE_LIMIT_MAX_RUNS` | service | default `10` — per-client run-creation burst. **`0` disables the limiter**, the intended escape hatch for load testing a private deployment. |
+| `RUN_RATE_LIMIT_WINDOW_SECONDS` | service | default `60.0` — the window that burst refills over. |
+| `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` | service | default **on**. Key the limiter on the leftmost `X-Forwarded-For` entry. Required behind a PaaS proxy, where the socket peer is the proxy and every visitor would otherwise share one bucket. **Turn it off** wherever the service is reachable directly. |
+| `EXPOSE_API_DOCS` | service | default **off**. Serves `/docs`, `/redoc` and `/openapi.json`, which are otherwise `404`. Forced on for a synthetic app. Obscurity, not a control — see §Admission control below. |
+| `VALIDATOR_FEASIBILITY_CACHE_ENABLED` | either | default off — opts the feasibility branch into the warm cache as a GitHub rate-limit shock absorber. |
+| `VALIDATOR_SEQUENTIAL_BRANCHES` | either | default off — withdraws the three-way fan-out to one-at-a-time without a code edit. |
+
+Every variable in both tables above is read at **import time** in
+`config.py`, except `SYNTHETIC`, `HOST`, `PORT` and `DATABASE_URL`, which
+`service/app.py` reads. The numeric ones **stop startup** on a malformed value
+rather than silently coercing it.
+
+> ⚠️ **Do not add an admission knob to this table by inference.** The rest of
+> the admission-control settings are deliberately **constants, not environment
+> variables**, so changing one is a code edit and a commit rather than a
+> dashboard field nobody remembers setting: `MAX_REQUEST_BODY_BYTES` (64 KiB),
+> `MAX_RUN_INPUT_CHARS` (2000), `MAX_RUN_INPUT_KEYS` (16),
+> `MAX_RUN_INPUT_BYTES` (8 KiB), `RUN_ADMISSION_RETRY_AFTER_SECONDS` (30),
+> `RUN_RATE_LIMIT_MAX_CLIENTS` (4096) and `RUN_RATE_LIMIT_KEY_MAX_CHARS` (64).
+>
+> A line-based `grep` over `config.py` **undercounts** the real list, because
+> two of the calls above wrap their name onto the next line. If you are
+> regenerating this table, match across lines:
+>
+> ```bash
+> grep -Pzo '(os\.getenv|_env_[a-z_]+)\(\s*"[A-Z_]+"' src/brief_crew/config.py \
+>   | tr '\0' '\n' | grep -oE '"[A-Z_]+"' | sort -u
+> ```
+>
+> That returns **eleven** names as of 2026-08-30. A `grep -oE` without `-Pzo`
+> returns nine and silently drops `RUN_RATE_LIMIT_WINDOW_SECONDS` and
+> `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` — which is how a previous revision of
+> this table came to describe two live knobs as hard-coded constants.
 
 **No new accounts are required.** In particular no Google key: `gemini-embedding-2`
 is served through OpenRouter. No OpenAI key: `Crew.memory` stays `False`, so the

@@ -134,8 +134,10 @@ because reading them tells you what each part of `src/brief_crew/` is for.
    static site are live on Render, and the schema exists on real PostgreSQL 18.
    An earlier revision of this line said none of that existed; it is stale, not
    cautious. What is *not* done is the thing deployment was clearing the way for:
-   **no validator run has ever been launched against paid services**, so nothing
-   end to end is proven. See the checklist in `07-deployment.md`.
+   **no validator run has ever *finished* against paid services**. Two were
+   started from the deployed console on 2026-08-30 and both stopped at the
+   scope gate, one LLM call each, so nothing end to end is proven — no research
+   branch, no verdict, no citation closure. See the checklist in `07-deployment.md`.
 
 **What remains open**, in the order worth doing it:
 

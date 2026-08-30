@@ -387,6 +387,43 @@ Notes:
   `127.0.0.1`, which Render's proxy cannot reach. Either invoke uvicorn
   explicitly, as above, or set `HOST=0.0.0.0` in the environment first.
 
+- **No new environment variable is required for the public-API hardening.**
+  Every admission knob has a working default and the *strict* behaviour is the
+  default: the body, input and queue bounds are always on, and
+  `EXPOSE_API_DOCS` is off, so `/docs`, `/redoc` and `/openapi.json` return
+  `404` on a paid instance without anyone setting anything. Nothing was added to
+  the `envVars` block above, and nothing needs adding on the live services.
+  Confirmed against the deployed API at `e539811`: `GET /docs` → `404`, an
+  oversized body → `413`, a 2001-character idea → `422`.
+
+  The five that *are* tunable, if you ever need them, are `MAX_QUEUED_RUNS`
+  (default `8`), `RUN_RATE_LIMIT_MAX_RUNS` (`10`, and **`0` disables the
+  limiter**), `RUN_RATE_LIMIT_WINDOW_SECONDS` (`60.0`),
+  `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` (**on**, and it must stay on here —
+  behind Render's proxy the socket peer *is* the proxy, so with it off every
+  visitor on earth shares one bucket and the first person to press Launch rate-
+  limits everybody else) and `EXPOSE_API_DOCS` (off). The remaining bounds are
+  constants in `config.py`, changed by a commit rather than a dashboard field:
+  `MAX_REQUEST_BODY_BYTES`, `MAX_RUN_INPUT_CHARS`, `MAX_RUN_INPUT_KEYS`,
+  `MAX_RUN_INPUT_BYTES`, `RUN_ADMISSION_RETRY_AFTER_SECONDS`,
+  `RUN_RATE_LIMIT_MAX_CLIENTS` and `RUN_RATE_LIMIT_KEY_MAX_CHARS`. Full table in
+  `00-shared-config.md §1`.
+
+  Two carve-outs matter operationally: a run **waiting at a gate holds no
+  admission slot**, so a human thinking about a scope does not consume capacity
+  from anyone else; and a **gate reply is never refused for capacity**, so a
+  flood cannot strand someone mid-run. Both are tested
+  (`tests/service/test_run_admission.py`, 37).
+
+  ⚠️ Honest limit, and it is in `config.py` at length: the per-client rate limit
+  is an **in-process token bucket in one instance**. It resets on every deploy,
+  it multiplies by the instance count if the service is ever scaled past one,
+  and its key comes from `X-Forwarded-For`, which the client writes. It is a
+  courtesy limiter, not a security control. The layer that holds against someone
+  actually trying is `MAX_QUEUED_RUNS`, because that one is keyless. A real
+  limiter means Redis or a proxy rule, not a bigger number here — and note that
+  **scaling this service past one instance silently weakens the limiter**.
+
   `serve` now also reads **`SYNTHETIC`**. Uvicorn can only import a factory *by
   name*, and a string factory drops keyword arguments, so the console script used
   to be able to build only the paid runners — meaning anyone who started the
@@ -439,8 +476,38 @@ pull request:
 
 | Job | Command | Notes |
 |---|---|---|
-| `python` | `uv sync --frozen --extra service` then `python -m unittest discover -s tests -t . -v` | Python pinned to 3.13. **378 tests** as of 2026-08-30, all external services mocked. Also parses `render.yaml`. |
+| `python` | `uv sync --frozen --extra service` then `python -m unittest discover -s tests -t . -v` | Python pinned to 3.13. **415 tests** as of 2026-08-30, all external services mocked. Also parses `render.yaml`. |
 | `frontend` | `npm ci`, then `npm run build`, then `npm test` in `frontend/` | `npm run build` is `vue-tsc -b && vite build`, so type-check and build in one step; `npm test` is `vitest run` — **126 tests** as of 2026-08-30. Node 24. |
+
+**CI went green for the first time at `e539811`** (`Ran 415 tests in 15.823s /
+OK (skipped=1)`, both jobs `success`). The three commits before it all failed,
+and the cause is worth keeping written down because it will recur the moment
+someone adds a test that constructs a client object.
+
+No `.env` is ever committed, so CI starts from a genuinely clean checkout — but
+`brief_crew/__init__.py` calls `load_dotenv(..., override=True)` at import time,
+and around forty tests *construct* real `LLM` and Firecrawl objects purely to
+assert their wiring (which model a crew got, which tools an agent carries, that
+the Reporter has none). Nothing ever calls them, but both constructors demand a
+key in `__init__` and refuse to build without one. The suite therefore passed on
+any developer machine and collapsed on CI at object-construction time — 4
+failures and 36 errors in ~5s rather than a ~38s run.
+
+The fix is `tests/__init__.py`, which runs before anything imports `brief_crew`
+and `setdefault`s two obviously-fake placeholders for `OPENROUTER_API_KEY` and
+`FIRECRAWL_API_KEY`. Three rules govern that file and are written into its
+docstring: **`setdefault`, never assignment**, so a real `.env` still wins;
+values that could not be mistaken for a credential in a traceback or a
+screenshot; and **only the variables an actual failure demands** — it is not a
+mirror of `.env.example`, because `PINECONE_API_KEY` and `COHERE_API_KEY` are
+injected per-test and `GITHUB_TOKEN` is deliberately *cleared* by
+`tests/tools/test_github_feasibility.py` to exercise the unauthenticated rate
+limit, so setting any of them there would mask a real assertion.
+
+The consequence worth stating plainly: `git clone && uv sync && python -m
+unittest` now passes **with no keys and no `.env` at all**. That is a portability
+guarantee about the suite. It is **not** evidence about the product — CI runs the
+same doubles as everything else.
 
 The workflow does **not** run the Playwright suite (`npm run test:e2e`, 7 tests).
 It is free — it runs against the `SYNTHETIC=1` backend and can never launch a
@@ -473,9 +540,9 @@ without launching a paid run is done.
 | 3 | Create the two Render services | ✅ **done, via the Render API rather than the Blueprint.** `agentic-crew-ai-api` (web, `python`, `starter`, singapore) and `agentic-crew-ai-web` (static, global CDN), both from the GitHub repo above with autoDeploy on. |
 | 4 | Confirm backend picked up Python 3.13, not 3.14 | ✅ implied by a successful build — `crewai` declares `requires-python <3.14`, so a 3.14 runtime could not have installed at all. |
 | 5 | Apply the SQL schema to `agentic-crew-ai-db` | ✅ **no longer a manual step, and now exercised for real.** `PostgresFlowPersistence.init_db()` runs `metadata.create_all()` at construction. The shipped tables are `flow_states`, `pending_feedback`, `runs`, `run_node_metrics`, `run_frames`, `run_gates` — **not** the `runs` / `run_metrics` / `run_sources` DDL sketched above, which is design intent only. `/readyz` reports `"backend": "postgresql"`, so the tables were created against PG 18. Still unexercised: **concurrency.** `pending_feedback` and the gate reply both use `UPDATE ... WHERE ...` + `rowcount` compare-and-set, which SQLite's single-writer model cannot stress and which no live run has stressed either. |
-| 6 | Smoke-test the service | ✅ against the deployed origin: `/healthz` and `/readyz` both 200 with `"backend": "postgresql"`; `GET /api/workflows/idea-validator/graph` serves 14 nodes and 16 edges; CORS echoes the allowed origin and refuses an unlisted one with 400; `wss://…/ws` completes a 101 upgrade. **No run launched** — that spends money. |
+| 6 | Smoke-test the service | ✅ against the deployed origin, now running **`e539811`**: `/healthz` and `/readyz` both 200 with `"backend": "postgresql"`; `GET /api/workflows/idea-validator/graph` serves 14 nodes and 16 edges; CORS echoes the allowed origin and refuses an unlisted one with 400; `wss://…/ws` completes a 101 upgrade; the admission bounds fire in production (oversized body → **413**, 2001-character idea → **422**) and `GET /docs` → **404**; a **2-of-2** read-only Playwright smoke test passes under `--grep-invert @launch`. **No run launched** — that spends money. |
 | 7 | Check per-run token metrics populate | ❌ **blocked on a paid run, not on infrastructure.** Nothing has generated a token on the deployed service. The numbers exist locally — see below. |
-| 8 | Run one real idea through both gates | ❌ **not done.** This is the acceptance step everything else was clearing the way for: launch one idea, watch both gates, and inspect citation closure before sharing any trace link. It closes step 7 for free. |
+| 8 | Run one real idea through both gates | ⛔ **not done, and currently advised against.** This is the acceptance step everything else was clearing the way for: launch one idea, watch both gates, and inspect citation closure before sharing any trace link. It closes step 7 for free. **But `docs/rubric-review.md` says "do not spend money on a live acceptance run against this rubric as it stands"**, and its two *Critical* findings are still true at head — nothing in the deployment, admission-control or CI work touched `RUBRIC_ANCHORS`. Being deployed and being green are not the blocker; the rubric is. Read that review and settle the two Critical findings before spending anything here. |
 
 The read-only half of the browser suite runs against the deployed site without
 spending anything:

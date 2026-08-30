@@ -1199,13 +1199,54 @@ behave identically whether the service is running or not.
 |---|---|---|
 | `GET` | `/api/workflows` | registered flows |
 | `GET` | `/api/workflows/{id}/graph` | GraphDescriptor, `ETag: version` |
-| `POST` | `/api/sessions/{sid}/runs` | **`202`** `{run_id, status:"queued", graph_version}` |
+| `POST` | `/api/sessions/{sid}/runs` | **`202`** `{run_id, status:"queued", graph_version}`; `404` unknown workflow; `413` / `422` / `429` per **Admission control** below |
 | `GET` | `/api/runs/{rid}` | status + `pending_gate` + `frames{count,dropped}` + `usage` |
 | `GET` | `/api/runs/{rid}/frames` | `after`, `limit≤500`, `kinds` |
 | `POST` | `/api/runs/{rid}/gates/{gid}` | `202` / `409` if already answered |
 | `POST` | `/api/runs/{rid}/cancel` | `202` + explicit granularity |
 | `GET` | `/api/runs/{rid}/logs` | `?format=ndjson\|zip` |
 | `WS` | `/ws?session_id=&run_id=&after=` | frame stream |
+
+**Admission control.** The deployed service is **unauthenticated by design** —
+it serves an open demo, a login would end it, and `POST /api/sessions/{sid}/runs`
+is the one endpoint that spends the owner's money. The bounds below stand in
+place of authentication. They are specified to be invisible to one honest
+visitor pressing *Launch* and expensive for a script:
+
+| Condition | Status | Response |
+|---|---|---|
+| Body over `MAX_REQUEST_BODY_BYTES` (64 KiB) | **`413`** | `the request body is limited to 65536 bytes`. Enforced by ASGI middleware on the declared `Content-Length`, **before** routing or parsing. Matches `WS_MAX_MESSAGE_BYTES`, so both transports agree on "too big". |
+| Over the per-client rate limit | **`429`** | `too many runs from this client; wait and try again` + computed `Retry-After` |
+| At `MAX_QUEUED_RUNS` | **`429`** | `the service is at capacity; try again shortly` + `Retry-After: 30`. **`429`, not `503`** — nothing is broken and the service is not down for anyone else. |
+| `inputs.idea` / `inputs.topic` over `MAX_RUN_INPUT_CHARS` (2000) | **`422`** | `inputs.{name} is limited to 2000 characters; this one is N` — names the caller's own field rather than quoting their payload back |
+| `inputs` over `MAX_RUN_INPUT_BYTES` (8 KiB) or `MAX_RUN_INPUT_KEYS` (16) | **`422`** | pydantic value error naming the bound |
+
+Ordering is specified, not incidental: the **rate limit runs first**, ahead of
+the workflow and input checks, so a flood of deliberately malformed bodies is
+throttled too. Only this endpoint is limited — `/healthz`, `/readyz` and every
+read-only `GET` are exempt, so monitoring and a reconnecting UI are never
+affected. A chunked request declares no `Content-Length` and slips past the
+`413`; the per-field bounds are what stop that one, which is why both layers are
+required.
+
+Two carve-outs are **normative**:
+
+1. A run **waiting at a gate holds no admission slot.** It has already returned
+   its worker thread, so a human deliberating over a scope must not consume
+   capacity from other callers.
+2. A **gate reply is never refused for capacity.** It belongs to a run the
+   caller already holds, and refusing one would strand a human mid-run. No load
+   condition may do that.
+
+`/docs`, `/redoc` and `/openapi.json` return **`404` unless `EXPOSE_API_DOCS=1`**
+(or the app is synthetic). This is specified as *obscurity, not a control*: the
+endpoints are unchanged and a reader can still find them.
+
+The per-client limiter is likewise specified as a **courtesy control, not a
+security one**. It is an in-process token bucket in a single instance: it resets
+on deploy, multiplies by instance count if scaled out, and keys on
+`X-Forwarded-For`, which the client writes. The bound that holds against a
+determined caller is `MAX_QUEUED_RUNS`, because it is keyless.
 
 **Cross-origin access.** In production the console is a *separate* static site,
 so every `/api` call above is cross-origin. `CORS_ALLOW_ORIGINS` is a

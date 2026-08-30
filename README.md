@@ -20,21 +20,27 @@ cannot support.
 
 ## Status — read this before you judge anything
 
-The service is **deployed and serving**. It has still **never validated an idea
-against paid live services in its integrated form.** Those two sentences are not
-in tension, and holding both is the single most important thing to know about
-this project: a deployment that answers its health checks is not a deployment
-that has done the work.
+The service is **deployed and serving**, and CI is **green**. It has still
+**never validated an idea against paid live services in its integrated form.**
+Those sentences are not in tension, and holding all three is the single most
+important thing to know about this project: a deployment that answers its health
+checks is not a deployment that has done the work, and a green pipeline measures
+the code against doubles, not the product against reality.
+
+There is also a live reason *not* to make that first paid run yet, and it is not
+a scheduling one — see the **Rubric** row below.
 
 | | State |
 |---|---|
-| Python test suite | ✅ 378 tests, 0 failures, 1 skipped |
+| Python test suite | ✅ 415 tests, 0 failures, 1 skipped |
 | Frontend unit tests | ✅ 126 tests across 13 files (Vitest + jsdom) |
 | Frontend end-to-end | ✅ 7 Playwright specs — real browser, real WebSocket, both durable gates, against a no-cost backend |
 | Frontend type-check + build | ✅ `vue-tsc` and `vite build` clean |
+| CI | ✅ green on `ubuntu-latest` — **for the first time**, at `e539811`. The three commits before it all failed. See [CI](#ci-and-the-clean-checkout). |
 | Brief Crew, live | ✅ run end to end against real OpenRouter / Firecrawl / Pinecone / Cohere; numbers below are measured |
 | Deployed | ✅ **live on Render** — API, static site and PostgreSQL 18. See [Live deployment](#live-deployment). |
-| Validator Studio, live | ❌ **no run has ever been launched** against real services — not locally, not in production. Every test uses a double. |
+| Validator Studio, live | ⚠️ **launched, never finished.** Two runs were started from the deployed console on 2026-08-30 (`e0b3b65e…` 04:01, `8b5a0a78…` 05:13) and **both stopped at the scope gate** — one escalation-tier call each, well under a cent. No research branch, verdict or report has ever run against live services, so nothing end to end is proven. Every test still uses a double. |
+| Rubric | ⛔ an independent adversarial pass says **"do not spend money on a live acceptance run against this rubric as it stands"** — two findings rated *Critical* are still true at head. Nothing since has touched `RUBRIC_ANCHORS`. See [`docs/rubric-review.md`](docs/rubric-review.md). |
 | PostgreSQL | ⚠️ the deployed API reports `"backend":"postgresql"` on `/readyz`, so the schema now exists on a real server. The automated suite still runs on SQLite only, and two-process gate contention remains untested. |
 | Fan-out speedup | ❌ the benchmark harness is built and tested; **the measurement has not been taken** |
 
@@ -59,8 +65,12 @@ as marketing, and it is the file to trust when this one and it disagree.
 | Database | `agentic-crew-ai-db` — Render PostgreSQL **18**, `basic_256mb`, `singapore`. Pre-existing; **reused, not recreated.** |
 | Source | https://github.com/simonraj79/multi_agent_crewai_startup_advisor — public, `main`, auto-deploy on |
 
+Both services are running **`e539811`**, redeployed after the admission-control
+and CI work below.
+
 What was verified against the deployed origin:
 
+- `GET /healthz` returns `200`.
 - `GET /readyz` returns `200` with `"storage": {"backend": "postgresql"}` — the
   service is talking to a real PostgreSQL 18 instance, not the SQLite fallback.
 - `GET /api/workflows/idea-validator/graph` serves the full descriptor: **14
@@ -69,6 +79,11 @@ What was verified against the deployed origin:
   `Access-Control-Allow-Origin` for the static site's origin and refuses a
   preflight from an unlisted one with `400`.
 - `wss://agentic-crew-ai-api.onrender.com/ws` completes a `101` upgrade.
+- The admission bounds are live, not just unit-tested: an oversized body is
+  refused with `413` and a 2001-character idea with `422`.
+- `GET /docs` returns `404` — `EXPOSE_API_DOCS` is unset on the paid instance.
+- A **2-of-2 read-only Playwright smoke test** passes against the deployed web
+  console (`--grep-invert @launch`, so nothing spent money).
 
 **What was not verified: anything that costs money.** No validator run has been
 launched against the deployed service. Pressing *Launch* there spends real
@@ -191,7 +206,9 @@ prefix and the service refuses to start if one does not.
 
 You can run the whole test suite with none of these set — and, with
 `SYNTHETIC=1`, the whole application too. See
-[Running Validator Studio](#as-a-service-with-the-web-console).
+[Running Validator Studio](#as-a-service-with-the-web-console). As of `e539811`
+that is checked by a machine that has no keys rather than asserted: CI runs from
+a clean checkout with no `.env`. See [CI](#ci-and-the-clean-checkout).
 
 ### Service configuration
 
@@ -204,6 +221,33 @@ Not secrets. These only matter when you run the hosted service.
 | `HOST` / `PORT` | `127.0.0.1` / `8000` | Bind address. A container or PaaS needs `HOST=0.0.0.0`. |
 | `DATABASE_URL` | *unset* | PostgreSQL when set; SQLite at `output/validator-studio.db` when not. |
 | `RUN_CONCURRENCY` | `1` | Concurrent runs; the rest queue. One run is the memory ceiling on a 512 MB instance. |
+| `RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS` | `5.0` | How long a resubmission waits for a still-settling run future before refusing the caller. |
+| `MAX_QUEUED_RUNS` | `8` | Runs queued or executing, across every caller, above which a **new** run gets `429`. The keyless cost bound. |
+| `RUN_RATE_LIMIT_MAX_RUNS` | `10` | Per-client run-creation burst. **`0` disables the limiter** — the intended escape hatch for load testing. |
+| `RUN_RATE_LIMIT_WINDOW_SECONDS` | `60.0` | The window that burst refills over. |
+| `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` | `true` | Key the limiter on the leftmost `X-Forwarded-For` entry. **Turn it off** where the service is reachable directly and the socket peer is the real client. |
+| `EXPOSE_API_DOCS` | `false` | Serve `/docs`, `/redoc` and `/openapi.json`. Off by default on a paid app; **forced on** for a synthetic one. |
+| `PINECONE_INDEX_NAME` | *unset* | Named above under [API keys](#api-keys); it is read in `config.py` like the rest of this table. |
+| `VALIDATOR_FEASIBILITY_CACHE_ENABLED` | `false` | Opt the feasibility branch into the warm cache as a GitHub rate-limit shock absorber. |
+| `VALIDATOR_SEQUENTIAL_BRANCHES` | `false` | Withdraw the three-way fan-out to one-at-a-time without a code edit. Parallel stays the shipped default. |
+
+Everything above is read at **import time** in
+[`src/brief_crew/config.py`](src/brief_crew/config.py) — except `SYNTHETIC`,
+`HOST`, `PORT` and `DATABASE_URL`, which
+`src/brief_crew/service/app.py` reads. A malformed value for any of the numeric
+ones **stops startup** rather than being silently coerced.
+
+**The rest of the admission-control settings are constants, not knobs.** They
+are deliberately not environment-tunable, so changing one is a code edit and a
+commit rather than a dashboard field nobody remembers setting:
+
+| Constant | Value | What it bounds |
+|---|---|---|
+| `MAX_REQUEST_BODY_BYTES` | 64 KiB | The declared `Content-Length` of any HTTP request. Matches `WS_MAX_MESSAGE_BYTES`, so both transports agree on "too big". |
+| `MAX_RUN_INPUT_CHARS` | 2000 | One run input — `inputs.idea` or `inputs.topic`. This is the token-amplification bound. |
+| `MAX_RUN_INPUT_KEYS` / `MAX_RUN_INPUT_BYTES` | 16 / 8 KiB | The shape of the whole `inputs` mapping, which is typed `dict[str, Any]`. |
+| `RUN_ADMISSION_RETRY_AFTER_SECONDS` | 30 | The `Retry-After` on a capacity refusal — a fixed hint, deliberately not a live queue-depth estimate. |
+| `RUN_RATE_LIMIT_MAX_CLIENTS` / `RUN_RATE_LIMIT_KEY_MAX_CHARS` | 4096 / 64 | The limiter's own memory, since its map is keyed by attacker-supplied text. |
 
 `CORS_ALLOW_ORIGINS` is invisible locally — Vite proxies `/api` and `/ws` to the
 API, so every request is same-origin and no CORS header is ever involved. It is
@@ -392,12 +436,59 @@ Run state, frames and gates persist to SQL — SQLite at
 `output/validator-studio.db` by default, PostgreSQL when `DATABASE_URL` is set.
 Cancellation is cooperative and lands at the next CrewAI step boundary.
 
+`/docs`, `/redoc` and `/openapi.json` return **404 unless `EXPOSE_API_DOCS=1`**
+(or the app is synthetic). That is obscurity, not a control — the endpoints are
+unchanged and a reader can still find them.
+
+### What the run endpoint refuses
+
+`POST /api/sessions/{session_id}/runs` is the only endpoint that spends money and
+it is **unauthenticated** — the deployed API serves an open demo, so anyone may
+call it and the owner pays for the run. These bounds are the defence in depth
+that replaces a login, chosen to be invisible to one honest visitor pressing
+*Launch* and expensive for a script:
+
+| Condition | Status | Response |
+|---|---|---|
+| Body larger than 64 KiB | **413** | `the request body is limited to 65536 bytes` — refused by ASGI middleware on the declared `Content-Length`, before FastAPI or pydantic parses anything |
+| Over the per-client rate limit | **429** | `too many runs from this client; wait and try again`, plus a computed `Retry-After` |
+| Server at the admission cap | **429** | `the service is at capacity; try again shortly`, plus `Retry-After: 30` |
+| `inputs.idea` / `inputs.topic` over 2000 chars | **422** | `inputs.idea is limited to 2000 characters; this one is N` |
+| `inputs` over 8 KiB of JSON, or over 16 keys | **422** | a pydantic value error naming the bound |
+| Unknown `workflow_id` | **404** | `workflow not found` |
+
+Two carve-outs are deliberate and tested:
+
+- **A run waiting at a gate holds no admission slot.** It has already returned
+  its worker thread, so a human thinking about a scope does not consume capacity
+  from anyone else.
+- **A gate reply is never refused for capacity.** It belongs to a run the caller
+  already holds, and refusing one would strand a human mid-run. A flood must not
+  be able to do that.
+
+The rate limit runs *first*, ahead of the workflow and input checks, so a flood
+of deliberately malformed bodies is throttled too. It is the only endpoint
+limited at all — `/healthz`, `/readyz` and every read-only `GET` are left alone,
+so monitoring and a reconnecting UI are never affected.
+
+> ⚠️ **The rate limit is a courtesy limiter, not a security control**, and
+> `config.py` says so at length. It is an in-process token bucket in one
+> instance: it resets on every deploy, it multiplies by the instance count if the
+> service is ever scaled out, and its key is an IP that the client writes via
+> `X-Forwarded-For`. Anyone willing to rotate a header walks past it. The layer
+> that holds against someone actually trying is `MAX_QUEUED_RUNS`, because that
+> one is keyless and cannot be rotated around.
+
+Covered by `tests/service/test_run_admission.py` — 37 tests, including the two
+carve-outs, thread-safety of the bucket, and that hiding the docs does not hide
+the API.
+
 ---
 
 ## Tests
 
 ```bash
-.venv/Scripts/python -m unittest discover -s tests -t .    # 378 tests
+.venv/Scripts/python -m unittest discover -s tests -t .    # 415 tests
 
 cd frontend
 npm run build                                              # vue-tsc -b && vite build
@@ -436,6 +527,37 @@ E2E_BASE_URL=https://agentic-crew-ai-web.onrender.com \
 > runners, so without that flag every smoke test spends real money on a full
 > six-agent run. What is left is the read-only half — topology, and that the page
 > reached the live backend rather than falling through to its mock.
+
+### CI and the clean checkout
+
+GitHub Actions runs the Python suite and the frontend build/unit tests on
+`ubuntu-latest`. As of `e539811` both jobs pass — **the first green run in this
+repository's history.** The three commits before it failed, and it is worth being
+precise about why, because the cause was not a broken test.
+
+No `.env` is ever committed, so CI starts from a genuinely clean checkout. But
+`brief_crew/__init__.py` calls `load_dotenv(..., override=True)` at import time,
+and around 40 tests *construct* real `LLM` and Firecrawl objects in order to
+assert their wiring — which model a crew was given, which tools an agent carries,
+that the Reporter has none. Nothing ever *calls* those objects, but both
+constructors demand a key and refuse to build without one. On a machine with a
+real `.env` the suite passed; on CI it collapsed at object construction in ~5s
+with 4 failures and 36 errors.
+
+The fix is `tests/__init__.py`, which runs before anything imports `brief_crew`
+and `setdefault`s two obviously-fake placeholders. Three rules govern it, and
+they are written out in the module docstring: `setdefault` and never assignment,
+so a developer's real keys still win; a value that could not be mistaken for a
+credential in a traceback or a screenshot; and only the variables an actual
+failure demands, so it does not become a mirror of `.env.example` masking real
+assertions.
+
+The practical consequence is worth stating on its own: **`git clone && uv pip
+install -e . && python -m unittest` now passes with no keys and no `.env` at
+all.**
+
+The Playwright suite is **not** in CI — that job would need the `SYNTHETIC=1`
+backend started alongside it plus a browser download.
 
 > ⚠️ **If you add a test directory, add its `__init__.py` in the same commit.**
 > This suite reported 65 passing tests for a long time and that number was a lie:
@@ -534,7 +656,7 @@ frontend/                      Vue 3 + TypeScript + Vite + Vue Flow console
 ├── tests/                     126 Vitest specs
 └── e2e/                       7 Playwright specs
 agents/                        the authoritative specifications
-tests/                         378 tests, all free to run
+tests/                         415 tests, all free to run
 docs/                          deployment and licensing notes
 ```
 

@@ -50,6 +50,17 @@ Track A; call `run_crew` directly.
 Credentials load automatically from `.env` on package import, with
 `override=True` — a machine-level `PINECONE_API_KEY` would otherwise shadow it.
 
+⚠️ **That import-time `load_dotenv` is why the test suite has its own
+placeholder keys.** `LLM` and the Firecrawl tools demand a key in `__init__`, and
+around forty tests *construct* them purely to assert wiring — which model a crew
+got, which tools an agent carries — without ever calling them. On a machine with
+a `.env` that passes; on a clean checkout it collapses at construction. So
+`tests/__init__.py` `setdefault`s two obviously-fake values before anything
+imports `brief_crew`. **If you add a test that constructs a client object for a
+new provider, add its placeholder there in the same commit** — `setdefault` only,
+never assignment, so a real `.env` still wins — or the suite passes for you and
+fails in CI.
+
 ### Running the Validator Studio service
 
 ```bash

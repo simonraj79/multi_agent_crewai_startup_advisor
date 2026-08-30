@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { VueFlow } from '@vue-flow/core'
@@ -40,6 +40,26 @@ const {
   dismissError,
 } = useValidatorRun()
 
+/**
+ * What the header badge says about the backend.
+ *
+ * `connection` tracks the WebSocket alone, and no socket is opened until a run
+ * is launched - so a freshly loaded console read "Offline" while the API was
+ * answering perfectly, and it is the first thing a visitor sees. "The backend
+ * is down" and "no run yet" were the same word.
+ *
+ * When nothing is streaming, report the transport we actually probed instead:
+ * `live` means the graph on screen came from the API, which is the honest
+ * claim to make at that moment. Once a run is in flight the socket is the
+ * truth again and its own state wins.
+ */
+const connectionLabel = computed(() => {
+  if (transportMode.value === 'mock') return 'Mock mode'
+  if (transportMode.value === 'probing') return 'connecting'
+  if (!isActive.value && connection.value === 'offline') return 'ready'
+  return connection.value
+})
+
 const chatCollapsed = ref(window.matchMedia('(max-width: 860px)').matches)
 const controlsCollapsed = ref(false)
 const activeView = ref<'graph' | 'activity'>('graph')
@@ -74,7 +94,7 @@ onMounted(initialize)
         <span class="workflow-name"><GitBranch :size="14" aria-hidden="true" />{{ descriptor.name }}</span>
         <span class="live-status" :class="`is-${connection}`" aria-live="polite">
           <Radio :size="13" aria-hidden="true" />
-          {{ transportMode === 'mock' ? 'Mock mode' : connection }}
+          {{ connectionLabel }}
         </span>
       </div>
     </header>

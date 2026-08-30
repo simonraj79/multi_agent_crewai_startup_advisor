@@ -5,13 +5,16 @@ calling ``create_app`` reports the exact installation blocker.
 """
 
 import asyncio
+from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from contextlib import asynccontextmanager
 from io import BytesIO
 import json
 import os
 from pathlib import Path
-from typing import Any
+from threading import Lock
+from time import monotonic
+from typing import Any, Callable
 import zipfile
 
 import yaml
@@ -20,6 +23,7 @@ from pydantic import ValidationError
 
 from brief_crew import config as project_config
 from brief_crew.config import (
+    RUN_RATE_LIMIT_KEY_MAX_CHARS,
     WS_MAX_GATE_FIELD_CHARS,
     WS_MAX_GATE_FIELDS,
     WS_MAX_MESSAGE_BYTES,
@@ -53,6 +57,7 @@ from brief_crew.service.models import (
 )
 from brief_crew.service.registry import (
     GateFieldError,
+    RunAdmissionError,
     RunBusyError,
     RunRecord,
     RunRegistry,
@@ -69,6 +74,177 @@ from brief_crew.service.runner import (
 
 class ServiceDependencyError(RuntimeError):
     pass
+
+
+class RequestBodySizeLimitMiddleware:
+    """Refuse an oversized request body before anything parses it.
+
+    This endpoint is public and unauthenticated, and a 1 MB body reached the
+    application with no 413 from any layer: Starlette read it, pydantic parsed
+    it, and whatever survived became the prompt of an escalation-tier model.
+    The check is on the declared ``Content-Length``, so it costs one header
+    lookup and rejects before the body is read at all.
+
+    Pure ASGI rather than ``BaseHTTPMiddleware`` so that WebSocket and lifespan
+    scopes pass through untouched, and so the refusal can be written without
+    building a request object for a request being thrown away.
+
+    WARNING, and it is why the per-field bounds in ``models.py`` exist as well:
+    a chunked request declares no ``Content-Length`` and is NOT caught here.
+    """
+
+    def __init__(self, app: Any, *, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = int(max_bytes)
+
+    @staticmethod
+    def _declared_length(scope: Mapping[str, Any]) -> int | None:
+        for name, value in scope.get("headers", ()):
+            if name == b"content-length":
+                try:
+                    return int(value)
+                except ValueError:
+                    return None
+        return None
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") == "http":
+            declared = self._declared_length(scope)
+            if declared is not None and declared > self.max_bytes:
+                body = json.dumps(
+                    {
+                        "detail": (
+                            "the request body is limited to "
+                            f"{self.max_bytes} bytes"
+                        )
+                    }
+                ).encode("utf-8")
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 413,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"content-length", str(len(body)).encode("ascii")),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self.app(scope, receive, send)
+
+
+class RunRateLimiter:
+    """A thread-safe per-client token bucket over run creation only.
+
+    Read the ``RUN_RATE_LIMIT_*`` block in ``config.py`` before relying on
+    this. In one sentence: it is in-process and single-instance, its key is a
+    client-writable header behind Render's proxy, and it therefore stops a
+    runaway loop or a casual script but not somebody who is actually trying.
+    The bound that holds against that is ``MAX_QUEUED_RUNS``, which is keyless.
+
+    ``clock`` is injectable so the tests can prove refill and recovery without
+    sleeping. Capacity 0 disables the limiter outright, which is the documented
+    escape hatch for load testing.
+    """
+
+    __slots__ = (
+        "_buckets",
+        "_capacity",
+        "_clock",
+        "_lock",
+        "_max_clients",
+        "_refill_per_second",
+    )
+
+    def __init__(
+        self,
+        *,
+        max_runs: int | None = None,
+        window_seconds: float | None = None,
+        max_clients: int | None = None,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        capacity = (
+            project_config.RUN_RATE_LIMIT_MAX_RUNS
+            if max_runs is None
+            else int(max_runs)
+        )
+        window = (
+            project_config.RUN_RATE_LIMIT_WINDOW_SECONDS
+            if window_seconds is None
+            else float(window_seconds)
+        )
+        if capacity < 0:
+            raise ValueError("max_runs cannot be negative")
+        if window <= 0:
+            raise ValueError("window_seconds must be positive")
+        self._capacity = float(capacity)
+        self._refill_per_second = capacity / window
+        self._max_clients = (
+            project_config.RUN_RATE_LIMIT_MAX_CLIENTS
+            if max_clients is None
+            else int(max_clients)
+        )
+        if self._max_clients < 1:
+            raise ValueError("max_clients must be positive")
+        self._clock = monotonic if clock is None else clock
+        # LRU by insertion order: the map is keyed by attacker-supplied text,
+        # so it is bounded and the least recently seen client is evicted first.
+        self._buckets: OrderedDict[str, tuple[float, float]] = OrderedDict()
+        self._lock = Lock()
+
+    @property
+    def enabled(self) -> bool:
+        return self._capacity >= 1.0
+
+    def acquire(self, key: str) -> float:
+        """Spend one token. Returns 0.0 when allowed, else seconds to wait."""
+        if not self.enabled:
+            return 0.0
+        now = self._clock()
+        with self._lock:
+            tokens, last_seen = self._buckets.get(key, (self._capacity, now))
+            elapsed = now - last_seen
+            if elapsed > 0:
+                tokens = min(
+                    self._capacity, tokens + elapsed * self._refill_per_second
+                )
+            allowed = tokens >= 1.0
+            if allowed:
+                tokens -= 1.0
+            self._buckets[key] = (tokens, now)
+            self._buckets.move_to_end(key)
+            while len(self._buckets) > self._max_clients:
+                self._buckets.popitem(last=False)
+        if allowed:
+            return 0.0
+        return (1.0 - tokens) / self._refill_per_second
+
+
+def client_rate_limit_key(request: Any) -> str:
+    """The identity a run-creation request is rate limited under.
+
+    Advisory by construction. Behind Render's proxy the socket peer is the
+    proxy, so X-Forwarded-For is the only thing that distinguishes one visitor
+    from another - and the client writes it. Keying on the peer instead would
+    put every visitor on earth in one bucket, which breaks the demo for the
+    second person to click Launch; that trade is made in ``config.py`` under
+    RUN_RATE_LIMIT_TRUST_FORWARDED_FOR.
+    """
+    if project_config.RUN_RATE_LIMIT_TRUST_FORWARDED_FOR:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            first = forwarded.split(",", 1)[0].strip()
+            if first:
+                return first[:RUN_RATE_LIMIT_KEY_MAX_CHARS]
+    host = getattr(getattr(request, "client", None), "host", None)
+    return (host or "unknown")[:RUN_RATE_LIMIT_KEY_MAX_CHARS]
+
+
+def _retry_after_header(seconds: float) -> dict[str, str]:
+    """Retry-After is whole seconds, and never 0 - that reads as "now"."""
+    return {"Retry-After": str(max(1, int(seconds) + (1 if seconds % 1 else 0)))}
 
 
 class GateReplyError(Exception):
@@ -157,14 +333,16 @@ def create_app(
     synthetic: bool = False,
     ping_interval: float = 15.0,
     database_url: str | None = None,
+    expose_docs: bool | None = None,
+    rate_limiter: RunRateLimiter | None = None,
 ) -> Any:
     """Create the API; inject a runner to keep tests and local demos unmetered."""
 
     _assert_openrouter_startup_safety()
 
     try:
-        from fastapi import FastAPI, HTTPException, Query, Response, WebSocket
-        from fastapi import WebSocketDisconnect
+        from fastapi import FastAPI, HTTPException, Query, Request, Response
+        from fastapi import WebSocket, WebSocketDisconnect
         from fastapi.middleware.cors import CORSMiddleware
     except ModuleNotFoundError as exc:
         raise ServiceDependencyError(
@@ -238,7 +416,27 @@ def create_app(
         if owned_store is not None:
             owned_store.close()
 
-    app = FastAPI(title="Validator Studio Service", version="1", lifespan=lifespan)
+    # /docs, /redoc and /openapi.json publish the exact body shape of the
+    # endpoint that spends money. Off by default on a paid instance, on for a
+    # synthetic one, which is what local development and the E2E suite run.
+    # Obscurity, not a control - see EXPOSE_API_DOCS in config.py.
+    if expose_docs is None:
+        expose_docs = bool(project_config.EXPOSE_API_DOCS) or synthetic
+    app = FastAPI(
+        title="Validator Studio Service",
+        version="1",
+        lifespan=lifespan,
+        docs_url="/docs" if expose_docs else None,
+        redoc_url="/redoc" if expose_docs else None,
+        openapi_url="/openapi.json" if expose_docs else None,
+    )
+
+    # Added BEFORE the CORS middleware so CORS ends up outermost and a 413
+    # still carries the allow-origin header a browser needs to show it.
+    app.add_middleware(
+        RequestBodySizeLimitMiddleware,
+        max_bytes=project_config.MAX_REQUEST_BODY_BYTES,
+    )
 
     # Cross-origin access. In development Vite proxies /api and /ws to this
     # process, so every request is same-origin and none of this is reached; in
@@ -262,6 +460,10 @@ def create_app(
     )
 
     app.state.run_registry = registry
+    run_rate_limiter = RunRateLimiter() if rate_limiter is None else rate_limiter
+    # Exposed for monitoring and for the tests; nothing reads it to decide.
+    app.state.run_rate_limiter = run_rate_limiter
+    app.state.expose_docs = expose_docs
 
     def require_run(run_id: str) -> RunRecord:
         try:
@@ -315,11 +517,36 @@ def create_app(
         "/api/sessions/{session_id}/runs",
         response_model=CreateRunResponse,
         status_code=202,
-        responses={404: {"model": ErrorResponse}},
+        responses={
+            404: {"model": ErrorResponse},
+            413: {"model": ErrorResponse},
+            422: {"model": ErrorResponse},
+            429: {"model": ErrorResponse},
+        },
     )
     async def create_run(
-        session_id: str, request: CreateRunRequest
+        session_id: str,
+        request: CreateRunRequest,
+        http_request: Request,
     ) -> CreateRunResponse:
+        """The only endpoint that spends money, and it is unauthenticated.
+
+        Three refusals guard it, in the order a hostile request meets them: a
+        per-client rate limit, the input bounds, then the server-wide admission
+        cap. Only the last two are load-bearing - see ``config.py``.
+
+        The rate limit runs FIRST, before the workflow and input checks, so a
+        flood of deliberately malformed bodies is throttled too. It is the only
+        endpoint that is limited: /healthz, /readyz and every read-only GET are
+        left alone so monitoring and a reconnecting UI are never affected.
+        """
+        retry_after = run_rate_limiter.acquire(client_rate_limit_key(http_request))
+        if retry_after > 0:
+            raise HTTPException(
+                status_code=429,
+                detail="too many runs from this client; wait and try again",
+                headers=_retry_after_header(retry_after),
+            )
         if request.workflow_id not in WORKFLOWS:
             raise HTTPException(status_code=404, detail="workflow not found")
         input_name = "idea" if request.workflow_id == VALIDATOR_GRAPH.id else "topic"
@@ -329,11 +556,37 @@ def create_app(
                 status_code=422,
                 detail=f"inputs.{input_name} must contain non-whitespace text",
             )
-        record = registry.create_run(
-            session_id=session_id,
-            workflow_id=request.workflow_id,
-            inputs=request.inputs,
-        )
+        # The prompt bound. CreateRunRequest bounds the SHAPE of `inputs` (key
+        # count, total JSON size); this bounds the LENGTH of the one value that
+        # becomes a model prompt - which is the whole token-amplification
+        # vector, and the only attacker-controlled term in the cost of an
+        # anonymous request. It lives here rather than in the schema because
+        # only here is the workflow's input name known, so the operator gets a
+        # sentence naming their own field instead of a schema error list that
+        # would quote their entire payload back at them.
+        if len(input_value) > project_config.MAX_RUN_INPUT_CHARS:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"inputs.{input_name} is limited to "
+                    f"{project_config.MAX_RUN_INPUT_CHARS} characters; "
+                    f"this one is {len(input_value)}"
+                ),
+            )
+        try:
+            record = registry.create_run(
+                session_id=session_id,
+                workflow_id=request.workflow_id,
+                inputs=request.inputs,
+            )
+        except RunAdmissionError as exc:
+            # 429, not 503: nothing is broken and the service is not down for
+            # anyone else. The queue is full and this caller should come back.
+            raise HTTPException(
+                status_code=429,
+                detail="the service is at capacity; try again shortly",
+                headers=_retry_after_header(exc.retry_after_seconds),
+            ) from exc
         registry.start_run(record.run_id)
         return CreateRunResponse(
             run_id=record.run_id,

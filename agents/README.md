@@ -129,11 +129,13 @@ because reading them tells you what each part of `src/brief_crew/` is for.
 4. ~~Assemble Track A and run it end to end~~ — done: `run_crew()`.
 5. ~~Build the retrieval tool from `06`, wire the Flow from `07`~~ — the tool and
    the Flow are built, and the Flow has been run end to end via `crewai run`
-   (route `cache_miss`, 13 calls, 3 chunks written back). **Deployment is not**:
-   no git repo, no Postgres schema, no FastAPI service, no `render.yaml`.
-   `uv.lock` and `.python-version` — two of the Blueprint's prerequisites — do
-   now exist. See the checklist in `07-deployment.md` for exactly what is
-   blocking what.
+   (route `cache_miss`, 13 calls, 3 chunks written back). **Deployment is done
+   too**, as of 2026-08-30: the repo is on GitHub, the FastAPI service and the
+   static site are live on Render, and the schema exists on real PostgreSQL 18.
+   An earlier revision of this line said none of that existed; it is stale, not
+   cautious. What is *not* done is the thing deployment was clearing the way for:
+   **no validator run has ever been launched against paid services**, so nothing
+   end to end is proven. See the checklist in `07-deployment.md`.
 
 **What remains open**, in the order worth doing it:
 
@@ -144,7 +146,7 @@ because reading them tells you what each part of `src/brief_crew/` is for.
 | 2 | **Quality scoring.** Cost is measured; quality is not, so all four A/B comparisons still resolve to "the cheap one won" by construction. | `05` |
 | 3 | **Per-agent cost split.** Crew-level `token_usage` is not broken down by model, so the recorded figure is an upper bound ($0.017–$0.185 on the measured run — a 11× band). Needs a `BaseEventListener` on `LLMCallCompletedEvent`. **The same listener fixes gap 0**, so do them together. | `08`, `06` |
 | 4 | **Namespaces.** `index_documents` takes a `namespace` argument that nothing passes — the blast-radius containment `06` asks for is one keyword away. | `06` |
-| 5 | **Deployment.** Schema, service, Blueprint. | `07` |
+| 5 | **The paid acceptance run.** Everything is deployed and answering health checks; nothing has validated an idea. One real run through both gates, with citation closure inspected, is what turns this from built into working. | `07` |
 
 ### Track A — the minimum runnable crew
 

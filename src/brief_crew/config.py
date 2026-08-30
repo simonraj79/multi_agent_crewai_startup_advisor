@@ -513,6 +513,184 @@ if RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS <= 0:
     raise ValueError("RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS must be a positive number")
 
 # --------------------------------------------------------------------------
+# Public-API admission control - the deployed service is UNAUTHENTICATED
+#
+# https://agentic-crew-ai-api.onrender.com serves an open demo: anyone may POST
+# /api/sessions/{id}/runs and the owner pays for what that run spends. There is
+# deliberately NO mandatory authentication - a login would end the demo - so
+# everything below is defence in depth, chosen to be invisible to one honest
+# visitor pressing Launch and expensive for a script.
+#
+# What each layer actually buys, honestly:
+#
+#   MAX_REQUEST_BODY_BYTES / MAX_RUN_INPUT_* bound the PROMPT. The
+#     `confirm_scope` gate already stops the expensive half of a validator run
+#     (three research branches, Firecrawl, Synthesist and Reporter all sit
+#     behind it), so an anonymous request buys exactly one escalation-tier LLM
+#     call - but `inputs` was `dict[str, Any]` with no length bound at all, so
+#     the PROMPT half of that call was attacker-controlled and a megabyte of
+#     text turned a fraction of a cent into dollars. Bounding the input is what
+#     makes the cost of an anonymous request a constant.
+#   MAX_QUEUED_RUNS bounds AVAILABILITY, and it is the layer that holds against
+#     a determined attacker, because it is keyless. RUN_CONCURRENCY bounds
+#     parallelism, not admission: CPython's ThreadPoolExecutor has an unbounded
+#     internal work queue, so a flood of accepted runs starved the owner's own
+#     run for as long as the flood lasted.
+#   RUN_RATE_LIMIT_* is a courtesy limiter, NOT a security control. See its own
+#     note below.
+# --------------------------------------------------------------------------
+
+
+def _env_positive_int(name: str, default: int, *, minimum: int = 1) -> int:
+    """Read a bounded integer knob, refusing a bad value at import."""
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer >= {minimum}") from exc
+    if value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}")
+    return value
+
+
+def _env_positive_float(name: str, default: float) -> float:
+    """Read a strictly positive float knob, refusing a bad value at import."""
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive number") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive number")
+    return value
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    """Read a boolean knob the way an operator would write one."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# The whole HTTP request body, refused at the ASGI edge on Content-Length
+# before FastAPI parses anything. 64 KiB matches WS_MAX_MESSAGE_BYTES, so the
+# two transports into this service agree on what "too big" means. Every legal
+# body here is a few hundred bytes: a workflow id, an idea, a gate reply.
+# WARNING: a chunked request sends no Content-Length and slips past this check.
+# The per-field bounds below are what actually stops that one, which is why
+# both layers exist.
+MAX_REQUEST_BODY_BYTES = 64 * 1024
+
+# One run input - `inputs.idea` or `inputs.topic` - in characters.
+#
+# 2,000 is deliberately generous: a real startup idea is a sentence or two, the
+# frontend's own default idea is 62 characters, and PRD section 10.1's scoping
+# prompt wants a description, not a document. 2,000 leaves roughly a 30x margin
+# over a typical submission while capping the Scoper's prompt at ~500 tokens -
+# and that number is the point, because the prompt is the only
+# attacker-controlled term in the cost of an anonymous request.
+MAX_RUN_INPUT_CHARS = 2000
+
+# `inputs` is typed `dict[str, Any]`, so the named input is not the only way in.
+# These bound the mapping itself: a key count no legitimate client approaches
+# (the UI sends exactly one key), and a total JSON size that caps the durable
+# run row, the flow state and the frame payloads the run will carry.
+MAX_RUN_INPUT_KEYS = 16
+MAX_RUN_INPUT_BYTES = 8 * 1024
+
+# Runs queued or executing, across every caller, above which a NEW run is
+# refused with 429. Gate replies and resumes are never refused by this: they
+# belong to a run the caller already holds, and refusing one would strand a
+# human at a gate.
+#
+# 8 is sized off what the queue actually drains. A queued run holds a slot only
+# until it reaches the scope gate - one escalation call, ~10-30 s - because a
+# run WAITING on a human has already returned its worker thread. At
+# RUN_CONCURRENCY=1 a full queue therefore clears in a few minutes, so eight
+# simultaneous strangers all get served and the ninth is told to come back
+# instead of silently joining an unbounded queue behind them.
+MAX_QUEUED_RUNS = _env_positive_int("MAX_QUEUED_RUNS", 8)
+
+# The Retry-After sent with an admission refusal. Advisory, and deliberately a
+# fixed hint rather than a computed queue-drain estimate: the live queue depth
+# of a public endpoint is not a number to hand back to whoever is flooding it.
+RUN_ADMISSION_RETRY_AFTER_SECONDS = 30
+
+# --------------------------------------------------------------------------
+# Per-client rate limit, on run creation only
+#
+# WARNING: read this before trusting it. This is an IN-PROCESS token bucket in
+# ONE instance. It is not a distributed rate limit and it is not a security
+# control:
+#
+#   - It resets on every deploy and every restart, and Render restarts a
+#     starter instance for its own reasons.
+#   - If the service is ever scaled past one instance, each instance keeps its
+#     own bucket and the effective limit multiplies by the instance count.
+#   - The key is an IP, and behind Render's proxy the only source for that is
+#     X-Forwarded-For, which the client writes. Anyone willing to rotate a
+#     header bypasses it completely.
+#
+# What it does buy: a runaway client loop, a retry storm from a broken
+# frontend, and casual scripted abuse all stop costing money, and they stop
+# without a legitimate visitor ever noticing. The layer that holds against
+# someone who is actually trying is MAX_QUEUED_RUNS above, because that one is
+# keyless and cannot be rotated around. A real limiter later means Redis or a
+# proxy rule, not a bigger number here.
+#
+# The numbers are deliberately loose, because this is fairness rather than the
+# cost bound. The COST bound is elsewhere and it is arithmetic: at
+# RUN_CONCURRENCY=1 the server drains one scope call at a time, so total
+# throughput is capped by the queue no matter how many clients ask. What a
+# per-client bucket adds is that one caller cannot occupy that queue.
+#
+# 10 runs per 60 s is a burst of ten, refilling at one run per 6 s. A demo
+# visitor does not produce ten launches in a minute; the Playwright E2E suite
+# produces five, and the headroom over it is deliberate - a limiter that fails
+# the project's own tests would just be turned off. Set
+# RUN_RATE_LIMIT_MAX_RUNS=0 to disable it, which is the intended escape hatch
+# for load testing against a private deployment.
+# --------------------------------------------------------------------------
+RUN_RATE_LIMIT_MAX_RUNS = _env_positive_int("RUN_RATE_LIMIT_MAX_RUNS", 10, minimum=0)
+RUN_RATE_LIMIT_WINDOW_SECONDS = _env_positive_float(
+    "RUN_RATE_LIMIT_WINDOW_SECONDS", 60.0
+)
+
+# Distinct client keys held at once, evicted least-recently-seen first, and the
+# ceiling on how much of a key is kept. The map is keyed by attacker-supplied
+# text, so it needs its own bounds or the limiter becomes the
+# memory-exhaustion bug it was added to prevent.
+RUN_RATE_LIMIT_MAX_CLIENTS = 4096
+RUN_RATE_LIMIT_KEY_MAX_CHARS = 64
+
+# Trust the leftmost X-Forwarded-For entry as the client identity.
+#
+# On by default because this service is deployed behind Render's proxy, where
+# the socket peer IS the proxy: without this every visitor on earth shares one
+# bucket and the first person to click Launch rate-limits everybody else. That
+# is a worse failure than the spoofing it admits, and the note above is already
+# explicit that spoofing defeats this limiter. Turn it OFF wherever the service
+# is reachable directly and the peer address is the real one.
+RUN_RATE_LIMIT_TRUST_FORWARDED_FOR = _env_flag(
+    "RUN_RATE_LIMIT_TRUST_FORWARDED_FOR", True
+)
+
+# --------------------------------------------------------------------------
+# Interactive API documentation
+#
+# /docs, /redoc and /openapi.json hand a reader the exact body shape of every
+# endpoint, including the one that spends money. That is useful locally and it
+# is free reconnaissance on a public deployment, so it is OFF by default and ON
+# for a synthetic (no-cost) app - which is what local development and the E2E
+# suite run. Set EXPOSE_API_DOCS=1 to serve them from a paid instance
+# deliberately.
+#
+# This is obscurity, not security: the endpoints are unchanged and a reader can
+# still find them. It is listed as what it is - one cheap subtraction from an
+# attacker's convenience, not a control.
+# --------------------------------------------------------------------------
+EXPOSE_API_DOCS = _env_flag("EXPOSE_API_DOCS", False)
+
+# --------------------------------------------------------------------------
 # Cross-origin access - PRD section 9.6, F44
 #
 # Locally this is invisible: Vite serves the app and proxies /api and /ws to
@@ -648,7 +826,9 @@ CORS_ALLOW_HEADERS = ("Accept", "Content-Type")
 # reader of /api/workflows/{id}/graph cannot see the graph version unless it is
 # named here. Content-Disposition is deliberately absent: downloadLogs names
 # the file itself from the run id.
-CORS_EXPOSE_HEADERS = ("ETag",)
+# Retry-After joins it for the same reason: run creation answers 429 with
+# one, and a cross-origin client cannot read it unless it is named here.
+CORS_EXPOSE_HEADERS = ("ETag", "Retry-After")
 
 # --------------------------------------------------------------------------
 # WebSocket inbound control channel - PRD F27/F37

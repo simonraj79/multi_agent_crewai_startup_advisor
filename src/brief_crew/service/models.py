@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from brief_crew.config import MAX_RUN_INPUT_BYTES, MAX_RUN_INPUT_KEYS
 
 
 class RunStatus(str, Enum):
@@ -72,10 +75,46 @@ class GraphDescriptor(BaseModel):
 
 
 class CreateRunRequest(BaseModel):
+    """The one request on this service that spends the owner's money.
+
+    The endpoint is public and unauthenticated, so ``inputs`` - which stays
+    ``dict[str, Any]`` because each workflow names its own input - is bounded
+    in two places, deliberately:
+
+    * Here: the SHAPE. A key count and a total JSON size, which together bound
+      nesting, key length and every non-string value. A request that trips one
+      of these is a broken or hostile client, not a mistyped idea.
+    * In the ``create_run`` handler: the LENGTH of the one input that becomes a
+      model prompt. That check knows which key the workflow reads, so it can
+      answer with a sentence naming the operator's own field instead of a
+      schema error list - and FastAPI's schema errors echo the offending input
+      back, which is the last thing to do with a megabyte of hostile text.
+
+    The size check runs before anything else for exactly that reason: it caps
+    what a validation failure can quote back.
+
+    See the admission-control block in ``config.py`` for the numbers.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     workflow_id: str = Field(default="brief-flow", min_length=1, max_length=128)
     inputs: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("inputs")
+    @classmethod
+    def _bounded_inputs(cls, value: dict[str, Any]) -> dict[str, Any]:
+        try:
+            encoded = json.dumps(value, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("inputs must be JSON-serialisable") from exc
+        if len(encoded) > MAX_RUN_INPUT_BYTES:
+            raise ValueError(
+                f"inputs is limited to {MAX_RUN_INPUT_BYTES} bytes of JSON"
+            )
+        if len(value) > MAX_RUN_INPUT_KEYS:
+            raise ValueError(f"inputs carries at most {MAX_RUN_INPUT_KEYS} keys")
+        return value
 
 
 class CreateRunResponse(BaseModel):

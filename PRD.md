@@ -1207,6 +1207,21 @@ behave identically whether the service is running or not.
 | `GET` | `/api/runs/{rid}/logs` | `?format=ndjson\|zip` |
 | `WS` | `/ws?session_id=&run_id=&after=` | frame stream |
 
+**Cross-origin access.** In production the console is a *separate* static site,
+so every `/api` call above is cross-origin. `CORS_ALLOW_ORIGINS` is a
+comma-separated list of origins (scheme + host + optional port, no trailing
+slash) and defaults to **empty**, meaning no cross-origin caller: a new
+deployment fails closed rather than shipping `*`. A malformed value stops
+startup and names the corrected string. Locally none of this is reached, because
+Vite proxies `/api` and `/ws` and every request is same-origin.
+
+This does **not** cover `/ws`: browsers do not apply CORS to a WebSocket
+handshake, and Starlette passes non-HTTP scopes through, so any page can open
+the socket. The socket's actual guard is that it demands a uuid4 `run_id` and a
+matching `session_id` the caller must already hold. `Access-Control-Allow-Credentials`
+is a constant `False` — there is no cookie or `Authorization` header anywhere in
+the service to abuse — which is what keeps a wildcard survivable at all.
+
 **Deliberate divergences from DevAll:**
 
 | Divergence | Reason |

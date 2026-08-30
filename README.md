@@ -20,19 +20,22 @@ cannot support.
 
 ## Status — read this before you judge anything
 
-This is a working, tested project that **has never been run end to end against
-paid live services in its integrated form.** That is not false modesty; it is the
-single most important thing to know about it.
+The service is **deployed and serving**. It has still **never validated an idea
+against paid live services in its integrated form.** Those two sentences are not
+in tension, and holding both is the single most important thing to know about
+this project: a deployment that answers its health checks is not a deployment
+that has done the work.
 
 | | State |
 |---|---|
-| Python test suite | ✅ 341 tests, 0 failures, 1 skipped |
-| Frontend test suite | ✅ 116 tests across 11 files (Vitest + jsdom) |
+| Python test suite | ✅ 378 tests, 0 failures, 1 skipped |
+| Frontend unit tests | ✅ 126 tests across 13 files (Vitest + jsdom) |
+| Frontend end-to-end | ✅ 7 Playwright specs — real browser, real WebSocket, both durable gates, against a no-cost backend |
 | Frontend type-check + build | ✅ `vue-tsc` and `vite build` clean |
 | Brief Crew, live | ✅ run end to end against real OpenRouter / Firecrawl / Pinecone / Cohere; numbers below are measured |
-| Validator Studio, live | ❌ **never run** against real services after the service and UI landed. Every test uses a double. |
-| Deployed anywhere | ❌ `render.yaml` exists and has never been applied |
-| PostgreSQL | ❌ schema is dialect-agnostic and tested on SQLite only; it has never touched a real PostgreSQL server |
+| Deployed | ✅ **live on Render** — API, static site and PostgreSQL 18. See [Live deployment](#live-deployment). |
+| Validator Studio, live | ❌ **no run has ever been launched** against real services — not locally, not in production. Every test uses a double. |
+| PostgreSQL | ⚠️ the deployed API reports `"backend":"postgresql"` on `/readyz`, so the schema now exists on a real server. The automated suite still runs on SQLite only, and two-process gate contention remains untested. |
 | Fan-out speedup | ❌ the benchmark harness is built and tested; **the measurement has not been taken** |
 
 The test suite is deliberately free to run. CrewAI crews, OpenRouter, Pinecone,
@@ -44,6 +47,37 @@ evidence that the live integration works.
 Full, current, unflattering detail lives in [`CLAUDE.md`](CLAUDE.md) under
 *Remaining Work and Unverified Risks*. It is maintained as a working handoff, not
 as marketing, and it is the file to trust when this one and it disagree.
+
+---
+
+## Live deployment
+
+| | |
+|---|---|
+| Web console | **https://agentic-crew-ai-web.onrender.com** — Render static site, free plan |
+| API | **https://agentic-crew-ai-api.onrender.com** — Render web service, `python` runtime, `starter`, `singapore` |
+| Database | `agentic-crew-ai-db` — Render PostgreSQL **18**, `basic_256mb`, `singapore`. Pre-existing; **reused, not recreated.** |
+| Source | https://github.com/simonraj79/multi_agent_crewai_startup_advisor — public, `main`, auto-deploy on |
+
+What was verified against the deployed origin:
+
+- `GET /readyz` returns `200` with `"storage": {"backend": "postgresql"}` — the
+  service is talking to a real PostgreSQL 18 instance, not the SQLite fallback.
+- `GET /api/workflows/idea-validator/graph` serves the full descriptor: **14
+  nodes, 16 edges**, matching the graph the tests assert against.
+- CORS behaves as configured — the API echoes
+  `Access-Control-Allow-Origin` for the static site's origin and refuses a
+  preflight from an unlisted one with `400`.
+- `wss://agentic-crew-ai-api.onrender.com/ws` completes a `101` upgrade.
+
+**What was not verified: anything that costs money.** No validator run has been
+launched against the deployed service. Pressing *Launch* there spends real
+OpenRouter, Firecrawl and Cohere credit, so the end-to-end claim in the status
+table above is still open. The deployment is live; the product is unproven.
+
+> ⚠️ The API runs on Render's free-adjacent `starter` plan behind a proxy that
+> idles instances. A first request after a quiet period can take tens of seconds
+> to answer while the service wakes.
 
 ---
 
@@ -134,7 +168,9 @@ worse than one that admits it, because you will believe it.
 ### API keys
 
 Copy [`.env.example`](.env.example) to `.env` and fill it in. That file documents
-every variable and names the source file that reads it. The short version:
+the variables and names the source file that reads each one. (`SYNTHETIC` is not
+in it — it is a per-invocation switch, not configuration; see
+[Service configuration](#service-configuration) below.) The short version:
 
 | Key | Needed for | Get one |
 |---|---|---|
@@ -153,7 +189,37 @@ raising.
 `OPENAI_API_KEY` is not used. Every model constant carries an `openrouter/`
 prefix and the service refuses to start if one does not.
 
-You can run the whole test suite with none of these set.
+You can run the whole test suite with none of these set — and, with
+`SYNTHETIC=1`, the whole application too. See
+[Running Validator Studio](#as-a-service-with-the-web-console).
+
+### Service configuration
+
+Not secrets. These only matter when you run the hosted service.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `SYNTHETIC` | unset | `1` starts `serve` with **no-cost doubles** instead of the paid runners. `src/brief_crew/service/app.py::app_from_env`. |
+| `CORS_ALLOW_ORIGINS` | *empty* | Comma-separated **origins** — scheme, host, optional port, no trailing slash — allowed to call `/api`. Empty means no cross-origin caller at all. |
+| `HOST` / `PORT` | `127.0.0.1` / `8000` | Bind address. A container or PaaS needs `HOST=0.0.0.0`. |
+| `DATABASE_URL` | *unset* | PostgreSQL when set; SQLite at `output/validator-studio.db` when not. |
+| `RUN_CONCURRENCY` | `1` | Concurrent runs; the rest queue. One run is the memory ceiling on a 512 MB instance. |
+
+`CORS_ALLOW_ORIGINS` is invisible locally — Vite proxies `/api` and `/ws` to the
+API, so every request is same-origin and no CORS header is ever involved. It is
+load-bearing in production, where the Vue app is a **separate** static site and
+the browser discards every response the API does not opt into by name. The empty
+default is deliberate: a new deployment fails closed and the operator names the
+frontend origin on purpose, rather than the service shipping `*` and nobody ever
+revisiting it. A malformed value **stops startup** and the error names the
+corrected string — a trailing slash is the common way to get this wrong, because
+a browser never sends one in an `Origin` header, so it would match nothing and
+fail as though the middleware were missing.
+
+It does **not** govern `/ws`. Browsers do not apply CORS to a WebSocket
+handshake, and Starlette's middleware passes non-HTTP scopes straight through, so
+any page can open the socket. What it cannot do is guess the uuid4 `run_id` and
+the `session_id` the socket demands before it sends a frame.
 
 ---
 
@@ -271,10 +337,11 @@ This stops at both human gates and waits for you. To skip them:
 
 ### As a service, with the web console
 
-Two processes. API first:
+Two processes. **Start the API in synthetic mode** — this is the way to try the
+app:
 
 ```bash
-.venv/Scripts/serve                 # http://127.0.0.1:8000
+SYNTHETIC=1 .venv/Scripts/serve     # http://127.0.0.1:8000, spends nothing
 ```
 
 Then the frontend:
@@ -287,6 +354,16 @@ npm run dev                         # http://localhost:5173
 
 The dev server proxies `/api` and `/ws` to `127.0.0.1:8000`, so no configuration
 is needed locally. Open `http://localhost:5173/`.
+
+> ⚠️ **`serve` without `SYNTHETIC=1` is the paid service.** It builds the real
+> crew runners, so the first time anyone presses *Launch* — to look at the graph,
+> to check the UI renders, to see what the thing does — it calls OpenRouter,
+> Firecrawl, Hacker News and GitHub for real and bills you. Nothing in the UI
+> distinguishes the two modes. `SYNTHETIC=1` selects the same no-cost doubles the
+> integration tests use: real frames, real WebSocket, both durable gates, no
+> spend and no API keys required.
+>
+> Use the paid mode when you actually mean to validate an idea.
 
 **If no backend answers, the UI falls back to a scripted mock and shows a
 complete, entirely fabricated run.** This is deliberate — it makes the UI
@@ -320,14 +397,45 @@ Cancellation is cooperative and lands at the next CrewAI step boundary.
 ## Tests
 
 ```bash
-.venv/Scripts/python -m unittest discover -s tests -t .    # 341 tests
+.venv/Scripts/python -m unittest discover -s tests -t .    # 378 tests
 
 cd frontend
 npm run build                                              # vue-tsc -b && vite build
-npm test                                                   # 116 tests, vitest run
+npm test                                                   # 126 tests, vitest run
 ```
 
-Both are free to run and touch no network.
+All three are free to run and touch no network.
+
+### End to end, in a real browser
+
+Seven Playwright specs drive the operator's journey — launch, both durable gate
+round trips over a real WebSocket, the verdict gate's read-only fields, reload
+recovery — against a real FastAPI service. Start the **free** backend first:
+
+```bash
+SYNTHETIC=1 PORT=8099 .venv/Scripts/serve
+
+cd frontend
+npx playwright install chromium     # once
+npm run test:e2e                    # 7 tests
+```
+
+The suite starts its own Vite server (`frontend/e2e/vite.e2e.config.ts`) pointed
+at port 8099, so `vite.config.ts` — which proxies to the *paid* service on 8000 —
+is never used and the suite cannot launch a paid run.
+
+The same specs run against a deployed origin:
+
+```bash
+E2E_BASE_URL=https://agentic-crew-ai-web.onrender.com \
+  npx playwright test --grep-invert @launch
+```
+
+> ⚠️ **`--grep-invert @launch` is not optional against production.** The five
+> tests that press Launch are tagged `@launch`; a deployed API is backed by paid
+> runners, so without that flag every smoke test spends real money on a full
+> six-agent run. What is left is the read-only half — topology, and that the page
+> reached the live backend rather than falling through to its mock.
 
 > ⚠️ **If you add a test directory, add its `__init__.py` in the same commit.**
 > This suite reported 65 passing tests for a long time and that number was a lie:
@@ -387,12 +495,20 @@ Firecrawl calls and Cohere rerank units are on top.
 
 ## Deploying
 
+It is deployed. See [Live deployment](#live-deployment) for the URLs and for
+exactly what was and was not verified there.
+
 `render.yaml` is a complete Render Blueprint for the API, the static frontend and
-a PostgreSQL 18 database. It has never been applied.
+a PostgreSQL 18 database, and it remains the readable description of the target
+shape. **The live services were not created from it** — they were created
+directly against the Render API, against the same GitHub repository, and the
+pre-existing `agentic-crew-ai-db` was reused rather than redefined.
+[`agents/07-deployment.md`](agents/07-deployment.md) records what is actually
+running and where the manifest and the reality differ.
 
 There are two ways to get this wrong that fail *silently* rather than loudly, and
 both are covered step by step in **[`docs/deploying.md`](docs/deploying.md)**.
-Read it before you apply the Blueprint.
+Read it before you touch the deployment.
 
 ---
 
@@ -415,8 +531,10 @@ src/brief_crew/
 └── service/                   FastAPI, WebSocket, SQL persistence, run registry
 
 frontend/                      Vue 3 + TypeScript + Vite + Vue Flow console
+├── tests/                     126 Vitest specs
+└── e2e/                       7 Playwright specs
 agents/                        the authoritative specifications
-tests/                         341 tests, all free to run
+tests/                         378 tests, all free to run
 docs/                          deployment and licensing notes
 ```
 
@@ -461,6 +579,8 @@ cause. Call `brief_crew.embeddings` directly, and keep `DOC_PREFIX` and
 | [`PRD.md`](PRD.md) | The requirements document that extends `agents/` into Validator Studio. |
 | [`new features/feature-list.md`](new%20features/feature-list.md) | Feature ledger. Every row names the test or source path it rests on. |
 | [`docs/deploying.md`](docs/deploying.md) | Post-push Render checklist. |
+| [`docs/preflight.md`](docs/preflight.md) | What to check before the first **paid** validator run — credentials, the live path, cost estimate, failure modes. |
+| [`docs/rubric-review.md`](docs/rubric-review.md) | An independent adversarial pass over the five rubric ladders, `rubric_support` and the verdict arithmetic. Written by an agent that had no part in the derivation — which is not the same as a human having read them. |
 | [`docs/licensing.md`](docs/licensing.md) | Licence options and the decision still to be made. |
 
 The four official CrewAI agent skills are vendored into `.agents/skills/` and

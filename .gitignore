@@ -1,6 +1,17 @@
-# Secrets. `.env.example` is the committed template and is NOT matched by this
-# rule - `.env` matches that exact name only.
+# Secrets.
+#
+# `.env` matches that exact name only, so the three rules below would let a
+# *backup* of it through: `.env.bak`, `.env.ci-bak`, `.env.2026-08-30` are all
+# unmatched, all full of live keys, and all swept up by a single `git add -A`.
+# That is not hypothetical - a tooling step moved `.env` aside mid-session and
+# left exactly such a file sitting untracked in the repo root.
+#
+# `.env.*` closes it, and `!.env.example` keeps the one file that must ship.
+# Add a further negation if another `.env.<something>` ever needs committing;
+# do not widen the rule.
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 
@@ -40,6 +51,9 @@ node_modules/
 *.swp
 
 # Run artifacts - regenerated every run, never committed
+# `.playwright-mcp/` is written by the Playwright MCP browser tools (page
+# snapshots, console dumps, screenshots) wherever they are invoked from.
+.playwright-mcp/
 output/
 *.png
 *.log

@@ -155,11 +155,14 @@ test.describe('Validator Studio', () => {
     await expect(page.locator('.status-panel .stream-line')).not.toContainText('Mock stream')
     await expect(page.locator('.status-panel .read-only-well')).toContainText('Idea Validator')
 
-    // Before a run exists there is no WebSocket, and the header reads
-    // "Offline" even though the API answered. See the report accompanying this
-    // suite: the header binds the socket's state, not the API's reachability.
-    // The live/mock distinction above is what actually proves the API is up;
-    // the header's own connected state is asserted mid-run in the journey test.
+    // Before a run exists there is no WebSocket. The header used to read
+    // "Offline" here even though the API had just answered - the badge binds
+    // the socket's state, so "backend down" and "no run yet" were the same
+    // word on the first thing a visitor reads. It now reports the probed
+    // transport while nothing is streaming, and hands back to the socket once
+    // a run is in flight (asserted as "connected" in the journey test).
+    await expect(page.locator('.live-status')).toHaveText(/ready/i)
+    await expect(page.locator('.live-status')).not.toHaveText(/offline/i)
     await expect(statusBadge(page)).toHaveText(/idle/i)
   })
 

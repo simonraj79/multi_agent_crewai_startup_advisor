@@ -26,8 +26,19 @@ databases:
     region: singapore
     diskSizeGB: 1
     postgresMajorVersion: "18"
-    # ipAllowList is deliberately omitted: the live database already has an
-    # allow list, and declaring one here would silently overwrite it.
+    # ipAllowList is deliberately omitted, but NOT for the reason this comment
+    # used to give. It claimed the live database "already has an allow list"
+    # that an apply would overwrite. Queried against the Render API on
+    # 2026-08-30, `ipAllowList` on dpg-…-a is `[]` - empty. On Render an empty
+    # allow list means no external connections at all: only traffic from inside
+    # the same region reaches it.
+    #
+    # That is the safe state, and omitting the key preserves it. Two
+    # consequences follow, and both are load-bearing:
+    #   1. DATABASE_URL must be the INTERNAL connection string. An external one
+    #      is refused, and the failure surfaces at /readyz, not at startup.
+    #   2. The API service must stay in `singapore`. Move it and the database
+    #      becomes unreachable with no configuration change to blame.
 
 services:
   # --------------------------------------------------------------------------

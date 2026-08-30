@@ -4,6 +4,22 @@ name: CI
 # OpenRouter, Pinecone, Cohere, Firecrawl, Hacker News, GitHub - is mocked or
 # replaced with a deterministic test double. Do not add a step that needs a
 # paid credential; the suite is deliberately free to run and must stay that way.
+#
+# There are no credentials here, and there is nothing to add. `.env` is
+# gitignored, so a runner starts with no keys at all - which for a long time
+# meant this job could not run the suite: `crewai`'s OpenRouter provider and
+# `crewai_tools`' Firecrawl tools both demand a key in `__init__` and refuse to
+# build without one, so ~40 tests died at *object construction* (the tell was
+# the runtime, ~8s instead of ~38s). The tests never call either object; the key
+# is a construction-time formality.
+#
+# `tests/__init__.py` therefore sets OPENROUTER_API_KEY and FIRECRAWL_API_KEY to
+# the string "ci-placeholder-not-a-real-key" via `os.environ.setdefault`, before
+# anything imports `brief_crew`. That value is not a credential and is not a
+# redacted one: it authenticates against nothing, and `setdefault` means a
+# developer with a real `.env` is unaffected. Keep the placeholders in that one
+# file rather than in `env:` blocks here, so a clean local checkout behaves the
+# same way CI does.
 
 on:
   push:
@@ -49,6 +65,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --extra service
 
+      # No `env:` credentials by design - see the header. This step running
+      # green with an empty environment is what makes the README's "costs
+      # nothing and touches no network" claim checkable rather than aspirational.
       - name: Python unit and integration tests
         run: uv run --no-sync python -m unittest discover -s tests -t . -v
 

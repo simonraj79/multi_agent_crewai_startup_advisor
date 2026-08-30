@@ -118,8 +118,16 @@ because that case is the graded question.
 | `RENDER_API_KEY` | deployment / provisioning |
 | `DATABASE_URL` | injected by Render at deploy time, not stored in `.env` |
 
-Plus one non-secret configuration variable, present in `.env` and set in
-`render.yaml`: **`PINECONE_INDEX_NAME`** = `agentic-crew-ai-index`.
+Plus non-secret configuration variables. **`PINECONE_INDEX_NAME`** =
+`agentic-crew-ai-index` is present in `.env` and set on the service. The hosted
+service adds:
+
+| Variable | Set where | Serves |
+|---|---|---|
+| `CORS_ALLOW_ORIGINS` | service only | comma-separated **origins** (scheme + host + optional port, **no trailing slash**) allowed to call `/api`. Default empty = no cross-origin caller. Invisible locally, because Vite proxies `/api` and `/ws` same-origin; mandatory in production, where the static site is a separate origin. A malformed value **stops startup** and names the corrected string. It does **not** govern `/ws` — browsers do not apply CORS to a WebSocket handshake. `07-deployment.md`. |
+| `SYNTHETIC` | local only | `1` makes the `serve` console script build **no-cost doubles** instead of the paid crew runners. Never set it on a deployed service: it would return fabricated verdicts through a UI that gives no sign of it. |
+| `HOST` / `PORT` | service | bind address; `serve` defaults to `127.0.0.1:8000`, which a PaaS proxy cannot reach. |
+| `RUN_CONCURRENCY` | service | concurrent runs, default `1` — the memory ceiling on a 512 MB instance. |
 
 **No new accounts are required.** In particular no Google key: `gemini-embedding-2`
 is served through OpenRouter. No OpenAI key: `Crew.memory` stays `False`, so the

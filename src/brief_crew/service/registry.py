@@ -21,6 +21,8 @@ from crewai.hooks import HookAborted, InterceptionPoint
 from crewai.hooks.dispatch import register_scoped, scoped_hooks
 
 from brief_crew.config import (
+    MAX_QUEUED_RUNS,
+    RUN_ADMISSION_RETRY_AFTER_SECONDS,
     RUN_CONCURRENCY,
     RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS,
     VALIDATOR_FRAME_BATCH_SIZE,
@@ -155,6 +157,32 @@ class RunBusyError(RuntimeError):
     def __init__(self, run_id: str) -> None:
         super().__init__(f"run {run_id} is already executing")
         self.run_id = run_id
+
+
+class RunAdmissionError(RuntimeError):
+    """A NEW run was refused because the server already has enough work.
+
+    Distinct from :class:`RunBusyError`, and the distinction is the whole
+    point. ``RunBusyError`` means *this* run is mid-execution and resending the
+    same reply is the fix, so the transport answers 503. This one means the
+    server is full: nothing is wrong with the request, it is simply not being
+    admitted, which is a 429 with a Retry-After.
+
+    RUN_CONCURRENCY bounded parallelism and nothing bounded admission -
+    CPython's ThreadPoolExecutor queues submissions without limit - so on a
+    public unauthenticated endpoint a flood of accepted runs starved the
+    owner's own run for as long as the flood lasted. This is that bound.
+    """
+
+    __slots__ = ("active", "limit", "retry_after_seconds")
+
+    def __init__(self, *, active: int, limit: int) -> None:
+        super().__init__(
+            f"{active} runs are already queued or executing; the limit is {limit}"
+        )
+        self.active = active
+        self.limit = limit
+        self.retry_after_seconds = RUN_ADMISSION_RETRY_AFTER_SECONDS
 
 
 class GateFieldError(ValueError):
@@ -894,11 +922,17 @@ class RunRegistry:
         ring_capacity: int = DEFAULT_RING_CAPACITY,
         gate_sweep_interval: float | None = None,
         submit_settle_timeout: float | None = None,
+        max_queued_runs: int | None = None,
     ) -> None:
         if max_workers is None:
             max_workers = RUN_CONCURRENCY
         if max_workers < 1:
             raise ValueError("max_workers must be positive")
+        self.max_queued_runs = (
+            MAX_QUEUED_RUNS if max_queued_runs is None else int(max_queued_runs)
+        )
+        if self.max_queued_runs < 1:
+            raise ValueError("max_queued_runs must be positive")
         self.submit_settle_timeout = (
             RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS
             if submit_settle_timeout is None
@@ -927,6 +961,12 @@ class RunRegistry:
         self.ring_capacity = ring_capacity
         self._records: dict[str, RunRecord] = {}
         self._futures: dict[str, Future[Any]] = {}
+        # Runs admitted by create_run that do not have a future yet. Without
+        # this the admission check and the submission would be two separate
+        # critical sections, and concurrent creations could all read the same
+        # "one slot left".
+        self._reserved: set[str] = set()
+        self._refused_runs = 0
         self._lock = RLock()
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="brief-run"
@@ -959,6 +999,28 @@ class RunRegistry:
                 raise KeyError(workflow_id) from exc
         return self._default_runtime
 
+    def _active_slots(self) -> int:
+        """Executions submitted-but-unfinished, plus admitted-but-unsubmitted.
+
+        Caller must hold ``self._lock``. A run WAITING at a human gate is
+        deliberately NOT counted: ``_execute`` has already returned by then and
+        its worker thread is free, so a room full of people thinking about a
+        scope costs no admission slots.
+        """
+        active = sum(
+            1 for future in self._futures.values() if not future.done()
+        )
+        return active + len(self._reserved)
+
+    def admission_status(self) -> dict[str, int]:
+        """What the admission bound currently sees. Monitoring, not a control."""
+        with self._lock:
+            return {
+                "active": self._active_slots(),
+                "limit": self.max_queued_runs,
+                "refused": self._refused_runs,
+            }
+
     def create_run(
         self,
         *,
@@ -966,8 +1028,58 @@ class RunRegistry:
         workflow_id: str,
         inputs: Mapping[str, Any],
     ) -> RunRecord:
+        """Admit and register one NEW run.
+
+        Raises :class:`RunAdmissionError` when too much work is already queued
+        or executing. The check happens BEFORE the durable row is written, so a
+        refused run leaves nothing behind to clean up, and it reserves the slot
+        inside the same critical section so two simultaneous callers cannot
+        both take the last one.
+
+        Resumes do not come through here - they go straight to ``_submit`` -
+        which is deliberate: a gate reply must never be refused for capacity,
+        or a flood would strand every operator mid-run.
+
+        CONTRACT: an admitted run must reach ``start_run`` (or ``_submit``),
+        which is where the reservation is handed over to the run's future. A
+        caller that admits a run and then abandons it holds one slot for the
+        life of the process. Every path in ``service/app.py`` submits on the
+        next line, and ``_submit`` releases the reservation before it can
+        refuse or raise, so the only way to leak one is to invent a third
+        caller that does neither.
+        """
         runtime = self._runtime_for(workflow_id)
         run_id = str(uuid.uuid4())
+        with self._lock:
+            active = self._active_slots()
+            if active >= self.max_queued_runs:
+                self._refused_runs += 1
+                raise RunAdmissionError(active=active, limit=self.max_queued_runs)
+            self._reserved.add(run_id)
+        try:
+            return self._register_run(
+                run_id,
+                runtime=runtime,
+                session_id=session_id,
+                workflow_id=workflow_id,
+                inputs=inputs,
+            )
+        except BaseException:
+            # The slot is only held for a run that exists. A durable write that
+            # failed must not leak one for the life of the process.
+            with self._lock:
+                self._reserved.discard(run_id)
+            raise
+
+    def _register_run(
+        self,
+        run_id: str,
+        *,
+        runtime: WorkflowRuntime,
+        session_id: str,
+        workflow_id: str,
+        inputs: Mapping[str, Any],
+    ) -> RunRecord:
         flow_id = run_id if hasattr(runtime.runner, "resume") else None
         record = RunRecord(
             run_id=run_id,
@@ -1213,6 +1325,10 @@ class RunRegistry:
         if current is not None and not current.done():
             wait_for_futures([current], timeout=self.submit_settle_timeout)
         with self._lock:
+            # The admission reservation ends here, whichever way this goes: the
+            # future below replaces it as the thing that holds the slot, and a
+            # refusal means the run never occupies one at all.
+            self._reserved.discard(record.run_id)
             current = self._futures.get(record.run_id)
             if current is not None and not current.done():
                 raise RunBusyError(record.run_id)

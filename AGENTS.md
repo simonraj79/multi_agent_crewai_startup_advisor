@@ -8,11 +8,20 @@ repository and overrides it** wherever the two differ.
 
 ### What this project is
 
-One topic in, one one-page brief out: a Researcher → Analyst → Writer crew over a
-warm Pinecone cache. `README.md` is the orientation; `agents/` holds the
-specifications and **they are authoritative** — where code and spec disagree, the
-spec is right and the code is a bug. `agents/00-shared-config.md` §11 maps every
-spec section to the file implementing it.
+Two applications over one Python package.
+
+**Brief Crew:** one topic in, one one-page brief out — a Researcher → Analyst →
+Writer crew over a warm Pinecone cache. Everything in this section is about it
+unless stated otherwise.
+
+**Validator Studio:** an additive six-agent startup validator with a
+FastAPI/WebSocket service and a Vue 3 + Vue Flow console, deployed on Render.
+`PRD.md` extends the specifications for it; `CLAUDE.md` is the current handoff.
+
+`README.md` is the orientation; `agents/` holds the specifications and **they are
+authoritative** — where code and spec disagree, the spec is right and the code is
+a bug. `agents/00-shared-config.md` §11 maps every spec section to the file
+implementing it.
 
 ### Conventions that are not negotiable here
 
@@ -40,6 +49,25 @@ Track A; call `run_crew` directly.
 
 Credentials load automatically from `.env` on package import, with
 `override=True` — a machine-level `PINECONE_API_KEY` would otherwise shadow it.
+
+### Running the Validator Studio service
+
+```bash
+SYNTHETIC=1 .venv/Scripts/serve    # no-cost doubles — use this to look at the UI
+.venv/Scripts/serve                # THE PAID SERVICE
+```
+
+⚠️ **Plain `serve` builds the real crew runners.** Pressing *Launch* once in the
+browser then calls OpenRouter, Firecrawl, Hacker News and GitHub for real, and
+nothing in the UI distinguishes the two modes. `SYNTHETIC=1` selects the same
+doubles the integration tests use — real frames, real WebSocket, both durable
+gates, no spend, no keys needed. Reach for the paid mode only when you mean to
+validate an idea.
+
+The same rule governs the browser suite: `frontend/e2e/` runs against its own
+`SYNTHETIC=1` backend, and the five run-launching specs are tagged `@launch` so
+that a smoke test against the deployed origin can exclude them with
+`--grep-invert @launch`. Without that flag it spends money per run.
 
 ### CLI gotchas specific to this repo
 

@@ -22,10 +22,10 @@ from crewai.flow.async_feedback import (
     PendingFeedbackContext,
 )
 from crewai.flow.human_feedback import HumanFeedbackResult, human_feedback
+from crewai.flow.types import FlowMethodName
 from pydantic import BaseModel, Field, PrivateAttr
 
 from brief_crew.config import (
-    CHEAP_MODEL,
     VALIDATOR_BRANCH_TURN_TIMEOUT_SECONDS,
     VALIDATOR_FEASIBILITY_CACHE_ENABLED,
     VALIDATOR_SEQUENTIAL_BRANCHES,
@@ -399,6 +399,40 @@ class ValidatorFlow(Flow[ValidatorState]):
     @listen("scope_revise")
     def revise_scope(self) -> ScopedIdea:
         """Regenerate scope from the operator's requested correction."""
+        # Re-arm the scope gate before re-running the Scoper.
+        #
+        # `confirm_scope` listens on a *multi-event* `or_(scope_idea,
+        # revise_scope)`, and CrewAI fires such a listener at most once per flow
+        # object: `_find_triggered_methods` records the name in
+        # `_fired_or_listeners` and skips it for the rest of the run
+        # (crewai/flow/runtime/__init__.py:3288-3290). The one automatic re-arm
+        # (:1067-1092) only discards a listener whose own condition contains the
+        # label the router just emitted - `route_scope` emits "scope_revise",
+        # which `confirm_scope` does not listen on - so it never matches here.
+        #
+        # Without this line a revise answered *in process* burns an
+        # escalation-tier Scoper call and then ends the flow silently: no second
+        # gate, no research, no report, and an ordinary return value that reads
+        # as success. It is latent rather than absent today only because every
+        # shipped gate reply goes through `from_pending()`/`resume()`, and
+        # `_fired_or_listeners` is a PrivateAttr that is never persisted, so a
+        # resumed flow starts with an empty set. Anything that answers a gate on
+        # a live flow object - a scripted provider, a future auto mode, a test -
+        # walks straight into it.
+        #
+        # Private API, knowingly. CrewAI's own cyclic-flow support leans on the
+        # same hook family: the runtime calls the coarser `_clear_or_listeners()`
+        # in three places and `ConversationalFlowMixin` declares it in its typed
+        # protocol (conversational_mixin.py:279, called at :1148). The declared
+        # alternative was to move the `or_()` onto a router, which routers are
+        # exempt from (`and not is_router` at :3288) - correct, but it adds two
+        # nodes and two edges to a topology that `service/graph.py`'s
+        # VALIDATOR_OVERLAY, the mock graph, `crewStages.ts` and the E2E
+        # node/edge counts are all pinned to, for two pass-through nodes
+        # carrying no agent and no decision. If a CrewAI upgrade ever removes
+        # this hook, the guard test in tests/validator/test_flow.py fails loudly
+        # and the router variant is still available.
+        self._discard_or_listener(FlowMethodName("confirm_scope"))
         result = self.crew_factories.scope().kickoff(
             inputs={
                 "idea": self.state.idea,
@@ -414,7 +448,16 @@ class ValidatorFlow(Flow[ValidatorState]):
             "decision=revise plus feedback and an optional edited scope object."
         ),
         emit=None,
-        llm=CHEAP_MODEL,
+        # `llm=None`, deliberately. `emit=None` means CrewAI never collapses the
+        # reply to an outcome, so the gate LLM is unreachable - but
+        # `_run_human_feedback_step` deserializes it *before* it checks `emit`
+        # (crewai/flow/runtime/__init__.py:3608-3611), so naming a model here
+        # built two OpenAICompatibleCompletion clients per run, four httpx
+        # pools and four SSL trust stores, and discarded all of it: 0.73s of
+        # measured wall clock buying nothing. `_validate_human_feedback_options`
+        # only requires `llm` when `emit is not None`
+        # (crewai/flow/human_feedback.py:211-218), so None is legal here.
+        llm=None,
         provider=FEEDBACK_PROVIDER,
     )
     @listen(or_(scope_idea, revise_scope))
@@ -508,6 +551,12 @@ class ValidatorFlow(Flow[ValidatorState]):
     @listen("verdict_revise")
     def revise_verdict(self) -> Verdict:
         """Re-run synthesis using the operator's requested correction."""
+        # The same re-arm, for the verdict gate: `review_verdict` listens on
+        # `or_(synthesize, revise_verdict)` and `route_verdict` emits
+        # "verdict_revise", which is not in that condition, so CrewAI will not
+        # re-arm it either. See `revise_scope` for why this is needed at all and
+        # why it is a private call.
+        self._discard_or_listener(FlowMethodName("review_verdict"))
         return self._run_synthesis(self.state.verdict_revision)
 
     @human_feedback(
@@ -516,7 +565,16 @@ class ValidatorFlow(Flow[ValidatorState]):
             "decision=revise plus feedback and an optional edited verdict object."
         ),
         emit=None,
-        llm=CHEAP_MODEL,
+        # `llm=None`, deliberately. `emit=None` means CrewAI never collapses the
+        # reply to an outcome, so the gate LLM is unreachable - but
+        # `_run_human_feedback_step` deserializes it *before* it checks `emit`
+        # (crewai/flow/runtime/__init__.py:3608-3611), so naming a model here
+        # built two OpenAICompatibleCompletion clients per run, four httpx
+        # pools and four SSL trust stores, and discarded all of it: 0.73s of
+        # measured wall clock buying nothing. `_validate_human_feedback_options`
+        # only requires `llm` when `emit is not None`
+        # (crewai/flow/human_feedback.py:211-218), so None is legal here.
+        llm=None,
         provider=FEEDBACK_PROVIDER,
     )
     @listen(or_(synthesize, revise_verdict))

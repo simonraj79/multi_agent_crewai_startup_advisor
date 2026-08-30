@@ -13,6 +13,8 @@ import type {
   UsageMetrics,
 } from '../types/studio'
 
+export type GatesMode = 'human' | 'auto'
+
 export type TransportMode = 'probing' | 'live' | 'mock'
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline'
 
@@ -100,13 +102,25 @@ export class StudioApi {
     return structuredClone(MOCK_GRAPH)
   }
 
-  async startRun(sessionId: string, idea: string, workflowId = 'idea-validator'): Promise<StartRunResponse> {
+  /**
+   * `gates` names who answers the scope and verdict gates. It is sent as a
+   * declared request field and never as an entry in `inputs`: the server
+   * refuses the reserved key `no_gates` there with a 422, because that
+   * undeclared path used to reach the flow's state directly and start an
+   * unattended run with no policy attached to it.
+   */
+  async startRun(
+    sessionId: string,
+    idea: string,
+    workflowId = 'idea-validator',
+    gates: GatesMode = 'human',
+  ): Promise<StartRunResponse> {
     await this.initialize(this.mode === 'mock')
     if (this.mode === 'live') {
       return this.fetchJson<StartRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow_id: workflowId, inputs: { idea } }),
+        body: JSON.stringify({ workflow_id: workflowId, inputs: { idea }, gates }),
       })
     }
 
@@ -129,6 +143,10 @@ export class StudioApi {
         pending_gate: snapshot.pending_gate ? normalizeGate(snapshot.pending_gate) : null,
         frames: snapshot.frames,
         usage: normalizeUsage(snapshot.usage),
+        // The finished report. Dropping this here is what made a completed run
+        // show less than a mid-flight one: the body arrives on every snapshot
+        // and had no field to land in.
+        result: snapshot.result ?? null,
       }
     }
     const run = this.mockRuns.get(id)

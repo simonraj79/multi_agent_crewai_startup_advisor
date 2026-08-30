@@ -3,14 +3,16 @@ import { computed, ref } from 'vue'
 import {
   Activity,
   Download,
+  FastForward,
   GitBranch,
   Play,
+  UserCheck,
   RotateCcw,
   Square,
   LoaderCircle,
   X,
 } from 'lucide-vue-next'
-import type { ConnectionStatus, LogFormat, TransportMode } from '../services/studioApi'
+import type { ConnectionStatus, GatesMode, LogFormat, TransportMode } from '../services/studioApi'
 import type { RunStatus, UsageMetrics } from '../types/studio'
 
 const props = defineProps<{
@@ -26,6 +28,7 @@ const props = defineProps<{
   isActive: boolean
   primaryLabel: string
   activeView: 'graph' | 'activity'
+  gatesMode: GatesMode
   error: string
   downloadStatus: 'idle' | 'pending' | 'success' | 'error'
   downloadMessage: string
@@ -38,6 +41,7 @@ const emit = defineEmits<{
   download: [format: LogFormat]
   dismissError: []
   selectView: [value: 'graph' | 'activity']
+  'update:gatesMode': [value: GatesMode]
 }>()
 
 const statusLabel = computed(() => props.status === 'stopping' ? 'Stopping…' : props.status.replace('_', ' '))
@@ -83,6 +87,37 @@ const logFormat = ref<LogFormat>('ndjson')
         <span>Idea Validator</span>
         <span class="version">M2</span>
       </div>
+    </div>
+
+    <div class="control-section compact-section">
+      <span class="control-label">GATES</span>
+      <div class="segmented" role="group" aria-label="Who answers the gates">
+        <button
+          type="button"
+          :aria-pressed="gatesMode === 'human'"
+          :disabled="isActive"
+          @click="emit('update:gatesMode', 'human')"
+        >
+          <UserCheck :size="14" aria-hidden="true" /> Review
+        </button>
+        <button
+          type="button"
+          :aria-pressed="gatesMode === 'auto'"
+          :disabled="isActive"
+          @click="emit('update:gatesMode', 'auto')"
+        >
+          <FastForward :size="14" aria-hidden="true" /> Unattended
+        </button>
+      </div>
+      <p class="control-hint">
+        <template v-if="gatesMode === 'human'">
+          Pauses for you at the scope and verdict gates.
+        </template>
+        <template v-else>
+          Runs the whole pipeline without stopping. Costs more, and the
+          deployment must allow it.
+        </template>
+      </p>
     </div>
 
     <div class="control-section compact-section">
@@ -163,6 +198,14 @@ const logFormat = ref<LogFormat>('ndjson')
 </template>
 
 <style scoped>
+.control-hint {
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-11);
+  line-height: 1.45;
+}
+.segmented button:disabled { cursor: not-allowed; opacity: 0.5; }
+
 .status-panel { min-width: 0; }
 .control-section { padding: 16px; border-bottom: 1px solid var(--border-default); }
 .compact-section { padding-block: 13px; }

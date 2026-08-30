@@ -166,6 +166,23 @@ export interface ChatEntry {
   calls: CallChip[]
 }
 
+/**
+ * The validator's finished report, as `GET /api/runs/{id}` returns it under
+ * `result` and the terminal `WORKFLOW_END` frame carries under
+ * `details.result`. Mirrors `schemas/validator.py::ValidationReport`.
+ *
+ * `markdown_body` is exempted from the frame serializer's 4096-character clip
+ * by `RUN_RESULT_BODY_KEYS` and re-read from the source at
+ * `MAX_RUN_RESULT_BODY_CHARS` (64 KiB), so the snapshot copy is the whole
+ * report while the frame copy may be truncated. Prefer the snapshot.
+ */
+export interface RunResult {
+  markdown_body?: string | null
+  provisional?: boolean | null
+  thin_dimensions?: string[] | null
+  sources?: Array<{ url?: string | null; title?: string | null }> | null
+}
+
 export interface RunSnapshot {
   run_id: string
   status: RunStatus
@@ -177,6 +194,7 @@ export interface RunSnapshot {
     last_seq?: number | null
   }
   usage: UsageMetrics
+  result?: RunResult | null
 }
 
 export interface StartRunResponse {
@@ -216,6 +234,7 @@ export interface BackendRunSnapshot {
     last_seq?: number | null
   }
   usage: Record<string, number>
+  result?: RunResult | null
 }
 
 export interface BackendFramePage {

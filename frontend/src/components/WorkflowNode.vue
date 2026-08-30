@@ -128,8 +128,13 @@ const ariaLabel = computed(() => {
   --node-gradient: var(--gradient-brand);
 }
 
+/* Running is CYAN, completed is MINT. They used to share `--gradient-brand`
+   verbatim, so the only thing separating "this agent is working" from "this
+   agent is done" was a state chip that the graph's own default fit renders at
+   under 5px. Two states that look identical are one state. */
 .workflow-node.is-running {
-  --node-gradient: var(--gradient-brand);
+  --node-gradient: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  box-shadow: 0 0 0 1px rgba(153, 234, 249, 0.3), 0 14px 34px rgba(0, 0, 0, 0.35);
   animation: node-glowing 4s linear infinite, node-pulse 2s ease-in-out infinite;
 }
 
@@ -139,8 +144,8 @@ const ariaLabel = computed(() => {
 }
 
 .workflow-node.is-completed {
-  --node-gradient: var(--gradient-brand);
-  background-image: linear-gradient(rgba(42, 52, 48, 0.98), rgba(42, 48, 52, 0.98)), var(--node-gradient);
+  --node-gradient: linear-gradient(135deg, var(--accent-mint), rgba(170, 255, 205, 0.55));
+  background-image: linear-gradient(rgba(38, 48, 43, 0.98), rgba(40, 46, 44, 0.98)), var(--node-gradient);
 }
 
 .workflow-node.is-error {

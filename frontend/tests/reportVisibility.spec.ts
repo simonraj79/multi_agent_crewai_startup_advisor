@@ -115,7 +115,20 @@ describe('report visibility', () => {
     await flush()
 
     expect(run.pendingGate.value).toBeNull()
-    expect(run.verdictSummary.value).toEqual({ verdict: 'NEEDS_WORK', confidence: 0.62 })
+    // The gate is the FALLBACK carrier and says so. It has the headline and
+    // nothing else - no composite, no floors, no scorecard - which is exactly
+    // why the `verdict` frame exists; see `verdictFrame.spec.ts`.
+    expect(run.verdictSummary.value).toEqual({
+      verdict: 'NEEDS_WORK',
+      confidence: 0.62,
+      compositeScore: null,
+      confidenceBand: null,
+      provisional: null,
+      fatalFloors: [],
+      decisionReason: null,
+      dimensions: null,
+      source: 'gate',
+    })
   })
 
   it('leaves the verdict alone when a scope gate closes', async () => {

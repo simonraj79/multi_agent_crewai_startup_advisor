@@ -64,7 +64,7 @@ The three things that most determine the answer:
 | **F1** | **Critical** | X | `FLOOR_ALREADY_FREE` counts only repositories. A free *product* covering the whole core job maxes out at the X=3 anchor, which passes `min>=3`. | 5 market sources, 2 competitors, 1 paying segment, 5 problem threads (2 acted), 3 PARTIAL repos, and a market source naming a free product that covers most of the job. Scored D5 M5 C5 F5 **X3**. | `VALIDATE`, composite **9.4**, confidence **0.90 HIGH**, no guardrail problems. The one kill the PRD says justifies the system is unreachable for non-GitHub substitutes. |
 | **F2** | **Critical** | D | `zero_ok = usable >= 1`. One usable thread with no problem thread fires the REJECT floor, and `sentiment_coverage` counts *problem* threads, so it is 0 exactly when D=0 fires — the confidence override is structurally unable to intervene. | 5 market sources, 4 PARTIAL repos, sentiment branch returns **one** `OPINION` thread. Scored D0 M5 C3 F4 X5. | `REJECT / FLOOR_NO_DEMAND`, confidence **0.60**, **`provisional=False`** — a final "nobody wants this" on one off-hand comment. No guardrail problems. |
 | **F3** | **High** | M | `zero_ok = sources >= 1`. Any market branch that worked at all permits M=0, which with D≤2 is a REJECT floor. It is the only floor of the four with no mechanical guard, and `score_support_problems`' own docstring concedes this. | 5 dated market sources, 2 competitors, a named paying segment, 2 problem threads. Synthesist scores **M0**, D2. | `REJECT / FLOOR_NO_MARKET`, composite 5.4, confidence **0.69**, non-provisional, **zero guardrail problems** over five healthy sources. |
-| **F4** | **High** | F, X | The two dimensions that gate VALIDATE are decided by tool-side keyword heuristics that arrive pre-filled in schema-shaped fields. | `_relevance("clinic scheduling", repo "acme/clinic-scheduling", desc "A demo clinic scheduling app, abandoned")` → **`SOLVES_ENTIRELY`**. Add one word to the query and the same repo becomes `PARTIAL`. `_classify("Payload CMS handles this already.")` → **`PAYS`**. | `FLOOR_ALREADY_FREE` (a REJECT) can fire on a dead student demo whose *name* matches the query; and D=4/D=5's "acted" clause reduces to the substring `pay`. The hardest verdict the system issues becomes sensitive to how many words the Scoper put in a query. |
+| **F4** ✅ **FIXED 2026-08-30** | **High** | F, X | The two dimensions that gate VALIDATE are decided by tool-side keyword heuristics that arrive pre-filled in schema-shaped fields. | `_relevance("clinic scheduling", repo "acme/clinic-scheduling", desc "A demo clinic scheduling app, abandoned")` → **`SOLVES_ENTIRELY`**. Add one word to the query and the same repo becomes `PARTIAL`. `_classify("Payload CMS handles this already.")` → **`PAYS`**. | `FLOOR_ALREADY_FREE` (a REJECT) can fire on a dead student demo whose *name* matches the query; and D=4/D=5's "acted" clause reduces to the substring `pay`. The hardest verdict the system issues becomes sensitive to how many words the Scoper put in a query. |
 | **F5** | **High** | X | **Dead band.** A named free product that covers only *part* of the core job, with PARTIAL repos present, satisfies no anchor: 0 and 2 need a repository substitute, 1 needs "no free product is named", 3 needs "covers most", 4 and 5 need "no free product". | Repos: 1 PARTIAL. Market source names a free tool covering ~40% of the job. | No anchor is true. The Synthesist must still quote one at ≥85% overlap, so it quotes a false one — most likely X=3 or X=5. Same class of defect as the PRD's original D2/D3 dead band. |
 | **F6** | **Medium-High** | X | X=4 and X=5 both open "No free substitute **and no free product**", and nothing in the system ever searches for free alternatives. `ScopedIdea` carries one `market_query`, community queries and tech queries — none about free or open substitutes. "No free product named" is the default state. | 5 market sources, 4 problem threads, 2 PARTIAL repos, no free product mentioned because nobody looked. Scored X5. | `VALIDATE`, composite **8.3**, confidence 0.78 HIGH. The top of the headroom ladder is earned by the absence of a search. |
 | **F7** | **Medium** | D, M | `market_paying_segments` is a list of free-text strings with no URL closure and no source binding; only its **length** is checked. Length ≥1 is the final clause of **both** D=5 and M=5 — 0.50 of the total weight. | Identical evidence, `paying_segments=[]` vs `["clinic administrators"]`. | Composite **9.0 → 10.0**. One unverifiable string is worth a full point out of ten, and it is the one place D and M genuinely double-count. |
@@ -508,7 +508,7 @@ small, mechanical, and in my view must land before any paid run.
    usable threads", `rubric_support`'s `zero_ok` becomes `usable >= 3 and
    problems == 0`. Removes the silent non-provisional false REJECT. Also update
    the D=0 line in `tasks.yaml`, which quotes the anchor verbatim.
-2. **F4 — rename the tool label fields.** `github_feasibility` emits `relevance`
+2. ~~**F4 — rename the tool label fields.**~~ **DONE, and further than recommended.** `github_feasibility` emits `relevance`
    and `hn_sentiment` emits `classification` under the exact schema field names.
    Rename them in the envelopes (`query_term_overlap`, `signal_terms_matched`) so
    copying is no longer a valid schema value, and note in each branch prompt that
@@ -523,6 +523,32 @@ small, mechanical, and in my view must land before any paid run.
 6. **F9 — F=0 precondition**, after decision D3.
 7. **F8, F11, F12, F13** — lower value; take them with whichever of the above
    touches the same file.
+
+### F4 — resolved 2026-08-30
+
+The recommendation was to rename the envelope keys. That was done
+(`relevance` → `query_term_overlap`, `classification` → `signal_terms_matched`
+plus `query_terms_present`), and two things were taken further because a rename
+alone leaves the label copyable under a new name:
+
+1. **The values stopped being labels.** The tools now report the evidence — which
+   query words overlapped, which signal words appeared — and no longer compute a
+   verdict. `_relevance` and `_classify` are deleted, not renamed.
+2. **The match is word-anchored, not a substring test.** Reporting matched terms
+   would otherwise have moved the problem into the evidence: `"Payload CMS"`
+   still matched `pay`. It no longer does, and neither does `unpaid` match
+   `paid`, while `cost us` and other multi-word terms are unaffected.
+
+Two consequences worth recording. `Repo` and `Thread` set `extra="forbid"`, so an
+envelope row pasted into the schema is now **rejected outright** — copying does
+not merely produce a poor answer, it fails validation. And the reviewer's
+sharpest example is gone: the same repository produced a different relevance
+label depending on how many words the Scoper put in the query, and the reported
+overlap is now identical in both cases.
+
+`tests/validator/test_rubric_f4_tool_labels.py` (12 tests) pins all of it,
+including at the envelope level — an earlier draft tested only the helpers, and
+reinstating the label at the emit site slipped past every one of them.
 
 Whatever is changed, re-run `tests/validator/` — `test_crews.py` and
 `test_guardrails.py` assert anchor text, anchor separation and support bounds

@@ -1102,11 +1102,22 @@ cross-references keep resolving.
      non-provisional** `REJECT — no demand` at confidence 0.60. The review's own
      repair applied literally deadlocks the ladder, so the floor and D=1's
      lower bound moved together and orphan states fall to level 1.
-   - **F4 (High, F and X) — STILL OPEN.** Three of the four floors and the
-     entire VALIDATE gate turn on labels the *tools* pre-compute by substring
-     match, shipped in the envelope under the same field names the schema uses —
-     so copying them is the cheapest valid output a cheap-tier branch agent can
-     produce. Verified unchanged at head.
+   - **F4 (High, F and X) — FIXED 2026-08-30.** Three of the four floors and
+     the entire VALIDATE gate turned on labels the *tools* pre-computed by
+     substring match, shipped under the schema's own field names, so copying
+     them was the cheapest valid output a cheap-tier branch agent could produce.
+     The tools now report evidence and no verdict: `query_term_overlap` and
+     `signal_terms_matched` / `query_terms_present` replace `relevance` and
+     `classification`, `_relevance` and `_classify` are deleted rather than
+     renamed, and matching is word-anchored so `Payload` no longer matches
+     `pay`. Because `Repo` and `Thread` set `extra="forbid"`, an envelope row
+     pasted into the schema is now **rejected outright** — copying fails
+     validation rather than merely scoring badly. The reviewer's sharpest
+     example is also gone: the same repository used to change relevance label
+     with the number of words in the Scoper's query, and the reported overlap is
+     now identical either way. Pinned by
+     `tests/validator/test_rubric_f4_tool_labels.py` (12 tests), including at
+     the envelope level.
    - **F3, F5-F13 — untouched.**
 
    The review is emphatic that the *machinery* held under attack — the level-1

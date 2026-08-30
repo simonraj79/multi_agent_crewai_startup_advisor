@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from brief_crew.tools.hn_sentiment import HackerNewsSentimentTool
+from brief_crew.tools.hn_sentiment import _SIGNAL_TERMS, HackerNewsSentimentTool
+
+_ALL_SIGNAL_TERMS = {term for terms in _SIGNAL_TERMS.values() for term in terms}
 
 
 class _Response:
@@ -91,9 +93,16 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
         self.assertEqual(envelope["tool"], "analyze_community_sentiment")
         self.assertEqual(envelope["query"], "clinic intake automation")
         self.assertEqual(envelope["result_count"], 3)
-        self.assertEqual(
-            {result["classification"] for result in envelope["results"]},
-            {"PAYS", "BUILT_WORKAROUND", "OPINION"},
+        # Matched signal WORDS, not classifications. `PAYS` is the analyst's
+        # conclusion to draw; the tool only says which terms it saw.
+        matched = {
+            term
+            for result in envelope["results"]
+            for term in result["signal_terms_matched"]
+        }
+        self.assertTrue(matched <= _ALL_SIGNAL_TERMS, matched - _ALL_SIGNAL_TERMS)
+        self.assertTrue(
+            all("query_terms_present" in result for result in envelope["results"])
         )
         self.assertTrue(
             all(

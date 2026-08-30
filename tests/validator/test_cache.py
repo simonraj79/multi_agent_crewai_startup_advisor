@@ -184,13 +184,21 @@ class ValidatorCacheTests(unittest.TestCase):
                 "retrieved_at": "2026-08-29T00:00:00Z",
                 "results": [
                     {
-                        "classification": "HAS_PROBLEM",
+                        # The live envelope shape since rubric review F4: the
+                        # tool reports which signal WORDS it saw, never a
+                        # `Thread.classification`. A fixture still carrying the
+                        # old label would pass - the sentiment branch simply
+                        # renders "none" for a missing key - while testing a
+                        # shape the tools no longer produce.
+                        "signal_terms_matched": ["problem"],
+                        "query_terms_present": True,
                         "quote": "We do this manually.",
                         "url": "https://news.ycombinator.com/item?id=1",
                         "date": "2026-08-01",
                     },
                     {
-                        "classification": "BUILT_WORKAROUND",
+                        "signal_terms_matched": ["i built", "spreadsheet"],
+                        "query_terms_present": True,
                         "quote": "I built a spreadsheet.",
                         "url": "https://news.ycombinator.com/item?id=1",
                         "date": "2026-08-01",
@@ -208,6 +216,10 @@ class ValidatorCacheTests(unittest.TestCase):
         self.assertIn("We do this manually", documents[0]["text"])
         self.assertIn("I built a spreadsheet", documents[0]["text"])
         self.assertEqual(documents[0]["publisher"], "Hacker News")
+        # The indexed text carries the evidence, not a conclusion, so the
+        # retrieval path cannot hand back a label the live path withholds.
+        self.assertIn("signal terms matched: problem", documents[0]["text"])
+        self.assertNotIn("HAS_PROBLEM", documents[0]["text"])
 
     @patch("brief_crew.validator_cache.index_documents", return_value=1)
     def test_indexing_uses_only_captured_source_envelopes(

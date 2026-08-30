@@ -154,16 +154,68 @@ def _query_terms(query: str) -> set[str]:
     }
 
 
-def _classify(text: str, query: str) -> str:
+def _signal_terms_matched(text: str) -> list[str]:
+    """Which signal words appear in the comment - NOT what they mean.
+
+    This used to be `_classify`, returning one of `Thread.classification`'s own
+    enum values under the envelope key `classification`. Two things were wrong
+    with that, and rubric review finding F4 is about both:
+
+    * It shipped a schema-valid answer under the schema's own field name, so
+      copying it was the cheapest valid output a cheap-tier branch agent could
+      produce. Three of the four fatal floors and the whole VALIDATE gate turn
+      on labels the analysts are supposed to *judge*.
+    * The judgement it offered was a substring test. `_classify("Payload CMS
+      handles this already.")` returned `PAYS`, because "Payload" contains
+      "pay". D=4 and D=5's "someone acted on it" clause therefore reduced to
+      whether the substring `pay` occurred anywhere in a sentence.
+
+    Reporting the matched terms keeps everything the heuristic actually knows -
+    the analyst can still see that "pay" occurred - while making the inference
+    theirs. A flat list, deliberately: grouping the terms under their old
+    classification keys would hand the label straight back.
+    """
+
     lowered = text.lower()
-    for classification in ("PAYS", "BUILT_WORKAROUND", "HAS_PROBLEM"):
-        if any(term in lowered for term in _SIGNAL_TERMS[classification]):
-            return classification
+    matched = [
+        term
+        for terms in _SIGNAL_TERMS.values()
+        for term in terms
+        if _contains_word(lowered, term)
+    ]
+    # Stable order, no duplicates, so the envelope is reproducible.
+    return sorted(set(matched))
+
+
+def _contains_word(haystack: str, term: str) -> bool:
+    """Word-boundary match, not a substring test.
+
+    Reporting the matched terms instead of a label would have moved the F4
+    substring problem rather than fixed it: `"Payload CMS handles this"` still
+    matched `pay`, so the analyst would be handed misleading evidence in place
+    of a misleading conclusion. Anchoring on word boundaries is what actually
+    stops `pay` firing on `Payload`, `paid` on `unpaid`, and `cost us` on
+    `cost usage`. Multi-word terms work unchanged - the boundary is around the
+    whole phrase.
+    """
+
+    return re.search(rf"\b{re.escape(term)}\b", haystack) is not None
+
+
+def _query_terms_present(text: str, query: str) -> bool:
+    """Whether any word of the query appears at all.
+
+    The one part of the old `_classify` worth keeping mechanical: "this comment
+    is about something else entirely" is closer to a fact than a judgement, and
+    `OFF_TOPIC` gates the usable-thread count that D=0 and D=1 rest on. Reported
+    as the observation rather than as the label, so the analyst still decides.
+    """
 
     terms = _query_terms(query)
-    if terms and not any(term in lowered for term in terms):
-        return "OFF_TOPIC"
-    return "OPINION"
+    if not terms:
+        return True
+    lowered = text.lower()
+    return any(term in lowered for term in terms)
 
 
 def _story_metric(*payloads: Any, key: str) -> int | None:
@@ -286,7 +338,10 @@ class HackerNewsSentimentTool(BaseTool):
                     retrieval_dated_count += int(used_retrieval_date)
                     results.append(
                         {
-                            "classification": _classify(quote, actual_query),
+                            "signal_terms_matched": _signal_terms_matched(quote),
+                            "query_terms_present": _query_terms_present(
+                                quote, actual_query
+                            ),
                             "quote": quote[:MAX_QUOTE_CHARS],
                             "url": HN_CITATION_URL.format(item_id=item_id),
                             "date": date,

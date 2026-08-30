@@ -85,6 +85,11 @@ sentiment_task:
     Return one SentimentFindings JSON object. Keep at most one representative
     Thread per URL so source_urls remains unique. Preserve a short exact quote
     and classify it as HAS_PROBLEM, PAYS, BUILT_WORKAROUND, OPINION or OFF_TOPIC.
+    The tool reports signal_terms_matched and query_terms_present: those are
+    word matches, not a classification, and they are not the answer. A comment
+    matching "pay" may be quoting a product name; a comment matching nothing may
+    still describe a real problem in its own words. Read the quote and decide.
+    PAYS needs someone stating they paid or budgeted, not the word appearing.
     Copy the story score into points and the story comment count into
     num_comments when the tool result reports them, and leave both null when it
     does not; never substitute a guess or a zero for a count the tool did not
@@ -117,7 +122,13 @@ feasibility_task:
 
     Return one FeasibilityFindings JSON object. Keep at most one Repo per URL.
     Judge SOLVES_ENTIRELY, PARTIAL or IRRELEVANT from functional overlap; never
-    use stars as a maturity, feasibility or saturation signal. Copy the licence flag from the
+    use stars as a maturity, feasibility or saturation signal. The tool reports
+    query_term_overlap: those are word matches between the query and the
+    repository's name, description and topics. They are not a relevance
+    judgement and they are not the answer. A repository whose name happens to
+    contain the query words may be an abandoned demo; one that matches no word
+    may still do the job under a different name. Weigh months_since_push,
+    archived and the licence, and decide from what the repository does. Copy the licence flag from the
     tool result, and copy months_since_push exactly as the tool reports it,
     including null, which means GitHub reported no push date. Null is not zero
     and not "pushed recently": a repository whose months_since_push is null is

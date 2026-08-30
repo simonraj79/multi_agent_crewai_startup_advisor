@@ -24,8 +24,18 @@ VALIDATOR_WORKFLOW_NAME = "Idea Validator"
 BRIEF_OVERLAY: dict[str, dict[str, Any]] = {
     "retrieve_cached": {"label": "Retrieve cached", "kind": "start", "eyebrow": "01 - CACHE", "position": {"x": 430, "y": 20}},
     "check_cache": {"label": "Check cache", "kind": "router", "eyebrow": "ROUTE", "position": {"x": 430, "y": 180}},
-    "scrape_web": {"label": "Research live web", "kind": "agent", "eyebrow": "02 - RESEARCH", "position": {"x": 780, "y": 350}, "model": "Cheap tier", "tool": "Web search"},
+    # Three agents run at this one node - BriefCrew(track="B") wires a researcher
+    # on CHEAP_MODEL and an analyst and a writer on ESCALATION_MODEL - so the
+    # badge names the most expensive tier present, not the first agent's. It read
+    # "Cheap tier / Web search" until 2026-08-30, which was false twice over: two
+    # of the three agents are escalation tier, and the researcher carries two
+    # Firecrawl tools, not one invented category. See _assert_overlay_tiers.
+    "scrape_web": {"label": "Research live web", "kind": "agent", "eyebrow": "02 - RESEARCH", "position": {"x": 780, "y": 350}, "model": "Mixed tier", "tool": "Firecrawl search + scrape"},
     "index_content": {"label": "Index content", "kind": "step", "eyebrow": "03 - INDEX", "position": {"x": 780, "y": 520}},
+    # Escalation tier only on the cache_hit path. On cache_miss this method
+    # returns immediately having made zero model calls, because scrape_web's
+    # crew already wrote the brief (main.py). The badge is conditional and the
+    # node card cannot express that, so it names the path that does spend.
     "write_brief": {"label": "Write brief", "kind": "agent", "eyebrow": "04 - WRITE", "position": {"x": 430, "y": 700}, "model": "Escalation tier"},
     "persist": {"label": "Brief", "kind": "output", "eyebrow": "OUTPUT", "position": {"x": 430, "y": 870}},
 }

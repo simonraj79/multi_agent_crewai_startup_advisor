@@ -14,6 +14,12 @@ from brief_crew.events import (
     StreamSinkAdapter,
     UIEventType,
 )
+from brief_crew.events.verdict import (
+    VERDICT_NODE_ID,
+    verdict_frame_details,
+    verdict_frame_message,
+)
+from brief_crew.schemas.validator import DimensionScore, Verdict
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +143,7 @@ class SyntheticRunner:
         return result
 
 
-SYNTHETIC_REPORT_MARKDOWN = """# Validation report - NEEDS_WORK
+SYNTHETIC_REPORT_MARKDOWN = """# Validation report - {verdict}
 
 **Idea.** {idea}
 
@@ -149,13 +155,13 @@ SYNTHETIC_REPORT_MARKDOWN = """# Validation report - NEEDS_WORK
 
 | Dimension | Score | Weight | Note |
 | --- | --- | --- | --- |
-| Demand | 3 | 0.30 | Synthetic placeholder |
-| Market | 3 | 0.20 | Synthetic placeholder |
-| Competitive room | 2 | 0.20 | Synthetic placeholder |
-| Feasibility | 4 | 0.15 | Synthetic placeholder |
-| Headroom over free | 2 | 0.15 | Synthetic placeholder |
+| Demand | {demand} | 0.30 | Synthetic placeholder |
+| Market | {market} | 0.20 | Synthetic placeholder |
+| Competitive room | {competitive_room} | 0.20 | Synthetic placeholder |
+| Feasibility | {feasibility} | 0.15 | Synthetic placeholder |
+| Headroom over free | {headroom_over_free} | 0.15 | Synthetic placeholder |
 
-Composite **5.6** at `LOW` confidence.
+Composite **{composite}** at `{band}` confidence.
 
 ## Cheapest next test
 
@@ -167,6 +173,58 @@ Composite **5.6** at `LOW` confidence.
 - [Synthetic market note](https://example.com/synthetic-market)
 - [Synthetic HN thread](https://news.ycombinator.com/item?id=1)
 """
+
+
+def _synthetic_report_markdown(idea: str) -> str:
+    """The report body, agreeing with `_synthetic_verdict()` by construction."""
+    verdict = _synthetic_verdict()
+    return SYNTHETIC_REPORT_MARKDOWN.format(
+        idea=idea,
+        verdict=verdict.verdict,
+        demand=verdict.demand.score,
+        market=verdict.market.score,
+        competitive_room=verdict.competitive_room.score,
+        feasibility=verdict.feasibility.score,
+        headroom_over_free=verdict.headroom_over_free.score,
+        composite=f"{verdict.composite_score:.1f}",
+        band=verdict.confidence_band,
+    )
+
+
+def _synthetic_verdict() -> Verdict:
+    """A real `Verdict`, not a hand-written summary of one.
+
+    Built through the schema so `compute_mechanical_result` decides the label,
+    the composite, the band and the floors here exactly as it does on the paid
+    path. A dict of plausible-looking numbers would be a double that certifies
+    nothing - the same trap `_finish` records for the report body - and the
+    arithmetic is precisely what this frame exists to carry.
+
+    The inputs are chosen so the answer matches what this runner's verdict gate
+    already shows: three coverages of 0.62 with a fresh median source age and
+    all three branches reporting gives confidence 0.62, and five 3s give a
+    composite of 6.0, which is NEEDS_WORK with no floor and no override.
+    """
+
+    dimension = DimensionScore(
+        score=3,
+        anchor_matched="Synthetic evidence supports a middling score.",
+        evidence_urls=["https://example.com/synthetic-market"],
+    )
+    return Verdict(
+        demand=dimension,
+        market=dimension,
+        competitive_room=dimension,
+        feasibility=dimension,
+        headroom_over_free=dimension,
+        evidence_counts={"market_sources": 1, "sentiment_sources": 1},
+        market_coverage=0.62,
+        sentiment_coverage=0.62,
+        feasibility_coverage=0.62,
+        median_market_source_age_months=1,
+        branches_ok=3,
+        cheapest_next_test="Interview five target users.",
+    )
 
 
 class SyntheticValidatorRunner:
@@ -216,6 +274,13 @@ class SyntheticValidatorRunner:
             ("research_sentiment", "Sentiment Analyst"),
             ("research_feasibility", "Feasibility Analyst"),
             ("synthesize", "Synthesist"),
+        ):
+            self._node(execution, node_id, label)
+        # Unattended is the mode where this frame is the ONLY way the score
+        # reaches anyone: no verdict gate opens, so there is no `derived` block
+        # to read it out of.
+        self._verdict(execution)
+        for node_id, label in (
             ("review_verdict", "Review verdict"),
             ("route_verdict", "Verdict router"),
         ):
@@ -244,6 +309,7 @@ class SyntheticValidatorRunner:
                 ("synthesize", "Synthesist"),
             ):
                 self._node(execution, node_id, label)
+            self._verdict(execution)
             return self._pending(
                 execution,
                 method_name="review_verdict",
@@ -275,7 +341,13 @@ class SyntheticValidatorRunner:
         # shape; a double that diverges from its subject certifies nothing.
         result = {
             "synthetic": True,
-            "markdown_body": SYNTHETIC_REPORT_MARKDOWN.format(idea=idea),
+            # Rendered from the SAME `Verdict` the verdict frame carries, not from
+            # hardcoded numbers. They disagreed once - the scorecard read 6.0
+            # while the prose underneath it read 5.6 - and a double whose two
+            # halves contradict each other is worse than no double, because it
+            # teaches whoever reads it that one of the two is lying without
+            # saying which.
+            "markdown_body": _synthetic_report_markdown(idea),
             "provisional": True,
             "thin_dimensions": ["D", "X"],
             "sources": [
@@ -294,6 +366,25 @@ class SyntheticValidatorRunner:
             details={"status": "completed", "result": result},
         )
         return result
+
+    @staticmethod
+    def _verdict(execution: RunExecution) -> None:
+        """Publish the deterministic score the way the real serializer does.
+
+        The paid path raises a `VerdictComputedEvent` and the serializer turns
+        it into this frame; a synthetic run has no flow to raise one, so it
+        emits the frame directly - through the same payload builder, so the two
+        cannot drift.
+        """
+
+        verdict = _synthetic_verdict()
+        execution.capture.emit(
+            kind=FrameKind.VERDICT,
+            event_type=UIEventType.VERDICT_COMPUTED,
+            node_id=VERDICT_NODE_ID,
+            message=verdict_frame_message(verdict),
+            details=verdict_frame_details(verdict),
+        )
 
     @staticmethod
     def _node(execution: RunExecution, node_id: str, label: str) -> None:

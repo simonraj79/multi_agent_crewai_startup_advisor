@@ -45,7 +45,14 @@ from brief_crew.events.models import (
     UIEventType,
 )
 from brief_crew.events.registry import NodeRegistry
+from brief_crew.events.verdict import (
+    VERDICT_NODE_ID,
+    VerdictComputedEvent,
+    verdict_frame_details,
+    verdict_frame_message,
+)
 from brief_crew.config import compute_cost_usd
+from brief_crew.schemas.validator import Verdict
 
 
 _USAGE_ALIASES = {
@@ -316,6 +323,14 @@ class FieldBoundedSerializer:
                 return (self._nested_flow_draft(timestamp, node_id, event.flow_name, "failed", "error", {"error": self.clip(str(event.error))}, FrameLevel.ERROR),)
             return (self._draft(timestamp, FrameKind.ERROR, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} failed", {"error": self.clip(str(event.error))}, FrameLevel.ERROR),)
 
+        # The run's product, not a lifecycle transition - see `events/verdict.py`
+        # for why it is an event at all. Placed here, with the flow-level
+        # statements, because that is what it is: `synthesize` and
+        # `revise_verdict` both raise it, and both mean "the deterministic
+        # rubric has an answer now".
+        if isinstance(event, VerdictComputedEvent):
+            return (self._verdict_draft(timestamp, registry, event.verdict),)
+
         if isinstance(event, MethodExecutionStartedEvent):
             return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_START, node_id, f"{event.method_name} started", {"stage": "before", "params": self.clip(event.params)}),)
         if isinstance(event, MethodExecutionFinishedEvent):
@@ -486,6 +501,35 @@ class FieldBoundedSerializer:
         if isinstance(value, str):
             return value[: self.limits.max_tool_field]
         return self._safe_repr(value)[: self.limits.max_tool_field]
+
+    def _verdict_draft(
+        self,
+        timestamp: datetime,
+        registry: NodeRegistry,
+        verdict: Verdict,
+    ) -> FrameDraft:
+        """The deterministic score, as the frame contract the client reads.
+
+        The payload itself is built in `events/verdict.py`, which is also where
+        the reasoning for its shape lives and where the synthetic runner reads it
+        from. What this method decides is the *frame*: the kind, the event type
+        and the node.
+
+        Attributed to `VERDICT_NODE_ID` rather than to the resolved calling
+        method, so the revise loop republishes onto the node it corrects. A graph
+        that does not declare that node - Brief Flow - gets the visible
+        quarantine node, which is the honest answer rather than an invented one.
+        """
+
+        node_id = registry.declared_node(VERDICT_NODE_ID) or registry.quarantine_node_id
+        return self._draft(
+            timestamp,
+            FrameKind.VERDICT,
+            UIEventType.VERDICT_COMPUTED,
+            node_id,
+            verdict_frame_message(verdict),
+            verdict_frame_details(verdict),
+        )
 
     def _nested_flow_draft(
         self,

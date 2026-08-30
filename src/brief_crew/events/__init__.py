@@ -19,6 +19,11 @@ from brief_crew.events.models import (
 )
 from brief_crew.events.registry import NodeRegistry, QUARANTINE_NODE_ID, WORKFLOW_NODE_ID
 from brief_crew.events.serializer import FieldBoundedSerializer, SerializerLimits
+from brief_crew.events.verdict import (
+    VERDICT_NODE_ID,
+    VerdictComputedEvent,
+    publish_verdict,
+)
 
 
 __all__ = [
@@ -39,8 +44,11 @@ __all__ = [
     "StreamSinkAdapter",
     "UIEventListener",
     "UIEventType",
+    "VERDICT_NODE_ID",
+    "VerdictComputedEvent",
     "WORKFLOW_NODE_ID",
     "capture_events",
     "current_capture",
+    "publish_verdict",
     "ui_run_id",
 ]

@@ -650,6 +650,11 @@ class RunRecord:
     result: Any = None
     error: str | None = None
     pending_gate: dict[str, Any] | None = None
+    # The last deterministic score this run published, mirrored off its own
+    # `verdict` frame. Read `_on_frames` for why the frame is the source: it is
+    # already the one thing both gate modes produce, and re-deriving the summary
+    # here would be a second implementation of a frozen contract.
+    verdict: dict[str, Any] | None = None
     usage: dict[str, int | float] = field(default_factory=_empty_usage)
     node_usage: dict[tuple[str, str], dict[str, int | float | str]] = field(
         default_factory=dict
@@ -842,6 +847,7 @@ class RunRecord:
                 "usage": dict(self.usage),
                 "node_usage": self.node_usage_payload(),
                 "result": self.result,
+                "verdict": self.verdict,
                 "error": self.error,
             }
 
@@ -912,6 +918,13 @@ class RunRecord:
                 elif frame.kind is FrameKind.GATE_CLOSED:
                     self.pending_gate = None
                     self.status = RunStatus.RUNNING
+                elif frame.kind is FrameKind.VERDICT:
+                    # `to_dict()` rather than `dict(frame.details)`: details is
+                    # a frozen `MappingProxyType` tree, and the nested
+                    # `dimensions` map inside a shallow copy would still be one.
+                    # This is the same thawing the transport does, and it runs
+                    # at most twice per run.
+                    self.verdict = frame.to_dict()["details"]
             subscribers = tuple(self._subscribers.values())
         for subscription in subscribers:
             subscription.publish(frames)
@@ -2535,6 +2548,16 @@ class RunRegistry:
             )
             if not page:
                 break
+            # Recovered from the frames rather than from the `runs` row, which
+            # has no column for it. That is not a workaround: the durable frame
+            # IS the record of the verdict, so this reconstruction cannot
+            # disagree with what the client replays, and it needs no migration
+            # for a value the run already persists. Replay is ordered, so the
+            # last one wins - a revise re-scores, and the corrected verdict is
+            # the one this run stands behind.
+            for frame in page:
+                if str(frame["kind"]) == FrameKind.VERDICT.value:
+                    record.verdict = dict(frame.get("details", {}))
             drafts = [
                 FrameDraft(
                     ts=datetime.fromisoformat(str(frame["ts"]).replace("Z", "+00:00")),

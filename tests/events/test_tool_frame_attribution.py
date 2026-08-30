@@ -728,10 +728,18 @@ class LiveCrewAIProbeTests(ScopedTestCase):
 
         The paid run showed three `started` and three `completed` per tool. Both
         executor paths emit exactly one pair per invocation (the two tests
-        above: two frames each, from one call). The multiplier is real work -
-        `Task.guardrail_max_retries` defaults to 3, and a guardrail rejection
-        re-runs the whole agent loop, tool calls included. Collapsing them would
-        hide two thirds of a branch's spend and two thirds of its queries.
+        above: two frames each, from one call). The multiplier is real work: a
+        guardrail rejection re-runs the whole agent loop, tool calls included.
+        Collapsing them would hide two thirds of a branch's spend and two thirds
+        of its queries.
+
+        That paid run predates the retry cap. `Task.guardrail_max_retries`
+        defaults to 3 in CrewAI (`crewai/task.py:279`), which is what produced
+        the three attempts observed; the six validator tasks now set it to 2 in
+        `crews/validator_crew/config/tasks.yaml`, so a live branch bottoms out
+        at two attempts per guardrail. The frame arithmetic under test is
+        unchanged either way - this note exists so the "defaults to 3" reasoning
+        is not mistaken for the shipped value.
         """
 
         attempts = {"n": 0}

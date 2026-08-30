@@ -469,3 +469,29 @@ class ValidatorCrewWiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class GuardrailRetryBoundTests(unittest.TestCase):
+    """Every validator task caps its guardrail retries.
+
+    CrewAI defaults `guardrail_max_retries` to 3 (`crewai/task.py:279`) and
+    counts it PER guardrail (`:303-305`), so `reporting_task` - which carries
+    two, one of them an LLM judge CrewAI builds with the reporter's own
+    escalation-tier model (`:435`) - allowed up to eight full report
+    regenerations plus four judge calls. Nothing pinned the cap, so a YAML edit
+    that dropped the key would silently restore that and leave the suite green.
+    """
+
+    def test_all_six_tasks_bound_their_guardrail_retries(self) -> None:
+        import yaml
+        from pathlib import Path
+
+        config = yaml.safe_load(
+            Path("src/brief_crew/crews/validator_crew/config/tasks.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        missing = [name for name, task in config.items() if "guardrail_max_retries" not in task]
+        self.assertEqual(missing, [], f"unbounded guardrail retries in: {missing}")
+        for name, task in config.items():
+            with self.subTest(task=name):
+                self.assertLessEqual(task["guardrail_max_retries"], 2)

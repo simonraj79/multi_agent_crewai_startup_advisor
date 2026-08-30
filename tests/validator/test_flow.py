@@ -292,8 +292,12 @@ class ValidatorFlowTests(unittest.TestCase):
         self.assertIsNotNone(verdict_gate)
         self.assertIsNone(scope_gate.emit)
         self.assertIsNone(verdict_gate.emit)
-        self.assertEqual(scope_gate.llm, CHEAP_MODEL)
-        self.assertEqual(verdict_gate.llm, CHEAP_MODEL)
+        # No gate LLM. With `emit=None` CrewAI can never call it, but it
+        # deserializes the value before it checks `emit`, so naming a model
+        # here costs two discarded completion clients per run. Pinned as None
+        # so a future edit cannot quietly reintroduce that cost.
+        self.assertIsNone(scope_gate.llm)
+        self.assertIsNone(verdict_gate.llm)
         self.assertTrue(definition.methods["route_scope"].router)
         self.assertTrue(definition.methods["route_verdict"].router)
 
@@ -715,3 +719,89 @@ class BranchOutputPrefixTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class InProcessGateReviseTests(unittest.TestCase):
+    """The revise loop when the gate is answered on a live flow object.
+
+    Every shipped gate reply travels ``from_pending()`` -> ``resume()``, which
+    builds a *new* flow, and CrewAI's one-shot suppression of a multi-event
+    ``or_()`` listener lives in a ``PrivateAttr`` that is never persisted. So
+    the durable path has always closed the loop and always will. These tests
+    cover the other half - answering a gate in process - which is what a
+    scripted provider, a future auto mode, and any in-process test actually do,
+    and where the suppression used to end the run silently after a paid model
+    call.
+    """
+
+    def setUp(self) -> None:
+        patch("brief_crew.validator_flow.lookup_branch_cache", return_value=[]).start()
+        self.addCleanup(patch.stopall)
+
+    def test_in_process_revise_reopens_both_gates_and_still_reports(self) -> None:
+        scope, market, sentiment, feasibility, verdict, report = fixtures()
+        factories = ValidatorCrewFactories(
+            scope=lambda: FakeRunner(scope),
+            market=lambda: FakeRunner(market),
+            sentiment=lambda: FakeRunner(sentiment),
+            feasibility=lambda: FakeRunner(feasibility),
+            synthesis=lambda *_: FakeRunner(verdict),
+            report=lambda *_: FakeRunner(report),
+        )
+        replies = [
+            '{"decision": "revise", "feedback": "narrow it to dental clinics"}',
+            '{"decision": "approve"}',
+            '{"decision": "revise", "feedback": "recheck the demand score"}',
+            '{"decision": "approve"}',
+        ]
+        asked: list[str] = []
+
+        def scripted(_provider: object, context: object, _flow: object) -> str:
+            asked.append(context.method_name)
+            return replies.pop(0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "output" / "validation.md"
+            with patch("brief_crew.validator_flow.OUTPUT_PATH", output_path), patch.object(
+                ValidatorFeedbackProvider, "request_feedback", scripted
+            ):
+                flow = ValidatorFlow(crew_factories=factories)
+                result = flow.kickoff(inputs={"idea": scope.startup_idea})
+
+            # Each gate is asked twice: once for the revise, once for the
+            # approve that follows it. Before the fix this list was
+            # ["confirm_scope"] and the run ended there, having returned a
+            # ScopedIdea that reads exactly like success.
+            self.assertEqual(
+                asked,
+                ["confirm_scope", "confirm_scope", "review_verdict", "review_verdict"],
+            )
+            self.assertEqual(result, report)
+            self.assertEqual(flow.state.scope_revision, "narrow it to dental clinics")
+            self.assertEqual(flow.state.verdict_revision, "recheck the demand score")
+            self.assertEqual(flow.state.scope_route, "scope_approved")
+            self.assertEqual(flow.state.verdict_route, "verdict_approved")
+            self.assertEqual(
+                output_path.read_text(encoding="utf-8"), report.markdown_body
+            )
+
+    def test_crewai_still_exposes_the_or_listener_rearm_hook(self) -> None:
+        """Pin the private CrewAI hook the revise loop depends on.
+
+        ``revise_scope`` and ``revise_verdict`` call ``_discard_or_listener``
+        because CrewAI offers no public way to re-arm a fired multi-event
+        ``or_()`` listener. If an upgrade renames or removes it, fail here with
+        a legible message rather than deep inside a paid run - and the two
+        preconditions the call sites rely on are asserted with it: it takes one
+        name, and it is a no-op when that listener has not fired, which is
+        exactly the state on the durable resume path.
+        """
+        flow = ValidatorFlow()
+        discard = getattr(flow, "_discard_or_listener", None)
+        self.assertTrue(
+            callable(discard),
+            "crewai no longer exposes Flow._discard_or_listener; the revise "
+            "loop in validator_flow.py needs the router variant instead",
+        )
+        self.assertEqual(flow._fired_or_listeners, set())
+        discard("confirm_scope")
+        self.assertEqual(flow._fired_or_listeners, set())

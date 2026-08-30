@@ -21,6 +21,8 @@ scoping_task:
     validate the idea, and do not claim an assumption is true.
   expected_output: >
     One JSON object matching ScopedIdea exactly, with no prose or code fence.
+  # Bounded, not left at CrewAI's default of 3. A retry re-runs the whole task.
+  guardrail_max_retries: 2
 
 market_task:
   description: >
@@ -69,6 +71,8 @@ market_task:
   expected_output: >
     One JSON object matching MarketFindings exactly, with source_urls mirroring
     sources[].url in order and no prose or code fence.
+  # Bounded, not left at CrewAI's default of 3. A retry re-runs the whole task.
+  guardrail_max_retries: 2
 
 sentiment_task:
   description: >
@@ -97,6 +101,8 @@ sentiment_task:
   expected_output: >
     One JSON object matching SentimentFindings exactly, with source_urls
     mirroring sources[].url in order and no prose or code fence.
+  # Bounded, not left at CrewAI's default of 3. A retry re-runs the whole task.
+  guardrail_max_retries: 2
 
 feasibility_task:
   description: >
@@ -132,6 +138,8 @@ feasibility_task:
   expected_output: >
     One JSON object matching FeasibilityFindings exactly, with source_urls
     mirroring sources[].url in order and no prose or code fence.
+  # Bounded, not left at CrewAI's default of 3. A retry re-runs the whole task.
+  guardrail_max_retries: 2
 
 synthesis_task:
   description: >
@@ -263,6 +271,8 @@ synthesis_task:
   expected_output: >
     One JSON object matching Verdict exactly, with each evidence URL copied
     from the supplied findings and no prose or code fence.
+  # Bounded, not left at CrewAI's default of 3. A retry re-runs the whole task.
+  guardrail_max_retries: 2
 
 reporting_task:
   description: >
@@ -320,3 +330,10 @@ reporting_task:
     On rejection, name the failed rule and quote the exact unsupported sentence.
     Do not rewrite the report and do not judge style or persuasiveness. An honest
     statement that evidence is thin is a PASS.
+  # Two guardrails run here, and CrewAI counts retries PER guardrail
+  # (crewai/task.py:304), so the unset default of 3 allowed up to 8 full report
+  # regenerations plus 4 judge calls - all on the escalation tier, because
+  # CrewAI builds an LLM guardrail with the agent's own llm (task.py:435).
+  # Two attempts: if a focused retry has not fixed the citation, the defect is
+  # upstream in the branch findings, not in the writing.
+  guardrail_max_retries: 2

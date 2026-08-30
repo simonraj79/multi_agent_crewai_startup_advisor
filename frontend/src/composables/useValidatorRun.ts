@@ -1,8 +1,9 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import type { Edge, Node } from '@vue-flow/core'
 import { MOCK_GRAPH } from '../data/mockGraph'
-import { studioApi, type ConnectionStatus, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
+import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
 import type {
+  RunResult,
   CallChip,
   ChatEntry,
   FrameData,
@@ -140,6 +141,13 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
   const descriptor = ref<GraphDescriptor>(structuredClone(MOCK_GRAPH))
   const workflowId = ref(storedAtLoad?.workflowId ?? DEFAULT_WORKFLOW_ID)
   const idea = ref('An AI tool that turns Figma files into production React')
+  /**
+   * Who answers the two gates. `human` pauses at both, which is the default and
+   * the only mode a public deployment accepts unless it sets
+   * VALIDATOR_ALLOW_AUTO_GATES; `auto` runs the whole pipeline unattended and
+   * comes back 403 otherwise.
+   */
+  const gatesMode = ref<GatesMode>('human')
   const status = ref<RunStatus>('idle')
   const transportMode = ref<TransportMode>('probing')
   const connection = ref<ConnectionStatus>('offline')
@@ -150,6 +158,20 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
   const downloadStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
   const downloadMessage = ref('')
   const lastError = ref('')
+  /**
+   * The finished validation report. The backend has always delivered this -
+   * `GET /api/runs/{id}` returns it as `result` and the terminal frame carries
+   * `details.result` - and the client discarded it at three separate layers,
+   * so a completed run showed strictly LESS than a mid-flight one.
+   */
+  const report = ref<RunResult | null>(null)
+  /**
+   * The verdict headline, captured from the verdict gate the moment before it
+   * closes. `gate_closed` nulls `pendingGate`, and that gate card was the only
+   * place the score was ever rendered - so answering it destroyed the run's
+   * conclusion. Held separately because it outlives the gate.
+   */
+  const verdictSummary = ref<{ verdict: string; confidence: number | null } | null>(null)
   const lastSequence = ref(0)
   const droppedFrames = ref(0)
   const activeEdgeIds = ref(new Set<string>())
@@ -231,11 +253,15 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
    * pointer is dropped the moment it lands there.
    */
   function setStatus(next: RunStatus): void {
+    const wasTerminal = TERMINAL_STATUSES.includes(status.value)
     status.value = next
     if (!TERMINAL_STATUSES.includes(next)) return
     clearStoredRun()
     // Nothing further will stream, so no traversal should still be marching.
     clearEdgeAnimations()
+    // The frame's copy of the report is clipped at 4096 characters; the
+    // snapshot's is not. Collect the full one exactly once per run.
+    if (!wasTerminal && next === 'completed') void fetchFullReport()
   }
 
   async function initialize(): Promise<void> {
@@ -262,7 +288,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     launching.value = true
     lastError.value = ''
     try {
-      const response = await api.startRun(sessionId, idea.value.trim(), workflowId.value)
+      const response = await api.startRun(sessionId, idea.value.trim(), workflowId.value, gatesMode.value)
       transportMode.value = api.mode
       resetRun()
       runId.value = response.run_id
@@ -291,8 +317,45 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
         // Refresh recovery exists for a run that is still in flight. A finished
         // one is history: drop the pointer so the next load starts clean rather
         // than re-opening the same stale result forever.
+        //
+        // The report is the exception. It is what the operator came back for,
+        // and the already-cleared pointer bounds how long it can linger - this
+        // shows the conclusion once, not forever.
         clearStoredRun()
         resetRun()
+        runId.value = context.runId
+        // Replay the frames, do not merely take the result.
+        //
+        // The body alone restores a report with no verdict badge, no
+        // confidence and an entirely idle graph, because BOTH of those come
+        // from frames: `applyGate` puts the score on `pendingGate`, `closeGate`
+        // rescues it into `verdictSummary` as the gate closes, and node state
+        // is per-frame. `ValidationReport` carries no verdict field
+        // (`schemas/validator.py:547-551`), so there is nowhere else to get it.
+        //
+        // Ordering matters. The frames are replayed first so the terminal
+        // RUN_STATE inside them lands while `runId` is set, then the snapshot's
+        // result is applied last - it is the unclipped copy, and
+        // `captureResult` keeps the longer body either way.
+        try {
+          const frames = await api.getFrames(context.runId, 0)
+          frames.sort((left, right) => left.seq - right.seq).forEach(applyFrame)
+        } catch {
+          // Frames expire before results do. A report with no verdict badge is
+          // still the thing the operator came back for.
+        }
+        captureResult(snapshot.result)
+        // Re-open ONLY if there is something to show. A finished run whose
+        // report has aged out leaves a dead graph under a "completed" badge and
+        // nothing to read, which is worse than the clean console the operator
+        // would otherwise get - so in that case the original contract stands
+        // and the run is dropped as history.
+        if (!report.value) {
+          resetRun()
+          return
+        }
+        Object.assign(usage, snapshot.usage)
+        setStatus(snapshot.status)
         return
       }
       const frames = await api.getFrames(context.runId, 0)
@@ -302,6 +365,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
       pendingGate.value = snapshot.pending_gate
       droppedFrames.value = snapshot.frames.dropped
       Object.assign(usage, snapshot.usage)
+      captureResult(snapshot.result)
       frames.filter((frame) => frame.seq > snapshotSequence).forEach(applyPostSnapshotFrame)
       if (['queued', 'running', 'waiting', 'stopping'].includes(status.value)) connectStream()
     } catch (error) {
@@ -327,8 +391,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     if (frame.kind === 'gate_open') applyGate(frame)
     if (frame.kind === 'gate_expired' || frame.kind === 'gate_alert') applyGateWatch(frame)
     if (frame.kind === 'gate_closed') {
-      pendingGate.value = null
-      gateSubmitting.value = false
+      closeGate()
       setStatus('running')
     }
     if (frame.kind === 'token') applyTokenUsage(frame)
@@ -375,8 +438,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     if (frame.kind === 'gate_open') applyGate(frame)
     if (frame.kind === 'gate_expired' || frame.kind === 'gate_alert') applyGateWatch(frame)
     if (frame.kind === 'gate_closed') {
-      pendingGate.value = null
-      gateSubmitting.value = false
+      closeGate()
       if (frame.node_id) setNodeState(frame.node_id, 'completed')
       setStatus('running')
     }
@@ -414,8 +476,71 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
    * `completed` is terminal, and `setStatus` then drops the stored run pointer,
    * permanently destroying refresh recovery for a run still in flight.
    */
+  /**
+   * Keep the score before the gate card that carried it disappears. Only the
+   * verdict gate supplies these, so a scope gate closing leaves the value
+   * untouched rather than blanking it.
+   */
+  function closeGate(): void {
+    const gate = pendingGate.value
+    if (gate?.verdict) {
+      verdictSummary.value = { verdict: gate.verdict, confidence: gate.confidence ?? null }
+    }
+    pendingGate.value = null
+    gateSubmitting.value = false
+  }
+
+  /**
+   * Accept a report from either carrier, keeping whichever body is LONGER.
+   *
+   * The two carriers are not equivalent and the difference is not cosmetic.
+   * The terminal `RUN_STATE` frame goes through `FieldBoundedSerializer.clip`,
+   * which cuts every string at `SerializerLimits.max_string` = 4096 with no
+   * marker (`events/serializer.py:214,241,309`). Only the SNAPSHOT copy is
+   * exempted, by `registry.py::_clip_run_result` re-reading the body at
+   * `MAX_RUN_RESULT_BODY_CHARS` (64 KiB).
+   *
+   * So the frame arrives first and is usually truncated mid-sentence, and a
+   * naive first-wins rule showed the operator a quarter of their report with
+   * no ellipsis and no warning. Longest-wins makes the two carriers safe to
+   * apply in either order, which matters because the snapshot fetch below is
+   * asynchronous and races the frame.
+   */
+  function captureResult(value: unknown): void {
+    if (!isRecord(value)) return
+    const body = value.markdown_body
+    if (typeof body !== 'string' || !body.trim()) return
+    const existing = report.value?.markdown_body
+    if (typeof existing === 'string' && existing.length >= body.length) return
+    report.value = value as RunResult
+  }
+
+  /**
+   * Fetch the unclipped report once the run is over.
+   *
+   * Nothing else on the live path ever calls `getRun` - `restoreRun` is its
+   * only other caller, and that runs on page load - so without this the
+   * complete body is fetched by nobody and the 64 KiB exemption the server
+   * goes to trouble to provide is never collected.
+   *
+   * Failures are swallowed deliberately: the clipped frame body is already on
+   * screen, and replacing a partial report with an error banner would be a
+   * downgrade. The run is finished either way.
+   */
+  async function fetchFullReport(): Promise<void> {
+    const id = runId.value
+    if (!id) return
+    try {
+      const snapshot = await api.getRun(id)
+      captureResult(snapshot.result)
+    } catch {
+      /* keep whatever the frame delivered */
+    }
+  }
+
   function applyRunState(frame: FrameData): void {
     if (frame.details.nested === true) return
+    captureResult(frame.details.result)
     const next = frame.details.status
     if (next === 'failed') {
       setStatus('error')
@@ -432,13 +557,15 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
 
   function applyNodeState(frame: FrameData): void {
     const nodeId = frame.node_id as string
+    // Only START and END are real. `UIEventType` has twelve members and not one
+    // contains WAITING, COMPLETED or ERROR, so the three tests that used to sit
+    // here could never fire against this backend - they matched only the mock
+    // transport's invented `NODE_WAITING`, which is how they survived. The
+    // waiting state is set by `applyGate`, which is the only thing that knows a
+    // human is being asked; the error state comes off the frame's own level.
     if (frame.event_type.includes('START')) setNodeState(nodeId, 'running')
-    if (frame.event_type.includes('WAITING')) {
-      setNodeState(nodeId, 'waiting')
-      setStatus('waiting')
-    }
-    if (frame.event_type.includes('END') || frame.event_type.includes('COMPLETED')) setNodeState(nodeId, 'completed')
-    if (frame.event_type.includes('ERROR') || frame.level === 'ERROR') setNodeState(nodeId, 'error')
+    if (frame.event_type.includes('END')) setNodeState(nodeId, 'completed')
+    if (frame.level === 'ERROR') setNodeState(nodeId, 'error')
   }
 
   /**
@@ -701,6 +828,8 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     pendingGate.value = null
     gateSubmitting.value = false
     lastError.value = ''
+    report.value = null
+    verdictSummary.value = null
     lastSequence.value = 0
     droppedFrames.value = 0
     chatEntries.value = []
@@ -720,6 +849,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
   return {
     descriptor,
     idea,
+    gatesMode,
     status,
     transportMode,
     connection,
@@ -730,10 +860,13 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     downloadStatus,
     downloadMessage,
     lastError,
+    report,
+    verdictSummary,
     lastSequence,
     droppedFrames,
     chatEntries,
     usage,
+    nodeStates,
     nodeUsage,
     graphNodes,
     graphEdges,

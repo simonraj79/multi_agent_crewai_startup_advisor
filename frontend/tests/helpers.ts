@@ -79,7 +79,15 @@ export class FakeStudioApi implements StudioApiLike {
     return structuredClone(this.graph)
   }
 
-  async startRun(): Promise<StartRunResponse> {
+  startRunCalls: Array<{ idea: string; workflowId: string; gates: string }> = []
+
+  async startRun(
+    _sessionId: string,
+    idea: string,
+    workflowId = 'idea-validator',
+    gates = 'human',
+  ): Promise<StartRunResponse> {
+    this.startRunCalls.push({ idea, workflowId, gates })
     return { run_id: this.runIdToIssue, status: 'queued', graph_version: this.graph.version }
   }
 

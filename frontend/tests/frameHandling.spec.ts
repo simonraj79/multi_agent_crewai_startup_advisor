@@ -128,14 +128,15 @@ describe('frame handling', () => {
     await flush()
     expect(stateOf('scope_idea')).toBe('running')
 
-    // `NODE_WAITING` is deliberately left as-is while every other fabricated
-    // event type in this suite has been replaced by a real `UIEventType`. It
-    // has no backend counterpart at all: nothing in the live stream ever puts a
-    // gate node into `waiting` - `applyGate` only moves the *run* there - so a
-    // real gate node currently renders as `running` while it blocks. Renaming
-    // this to a real value would hide that gap rather than close it; the
-    // `waiting` branch of `applyNodeState` still has to be covered meanwhile.
-    api.emit(build('node_state', { event_type: 'NODE_WAITING', node_id: 'confirm_scope' }))
+    // A real `gate_open`, not the fabricated `NODE_WAITING` this used to send.
+    // The comment that stood here justified the fake event on the grounds that
+    // "nothing in the live stream ever puts a gate node into waiting" - true
+    // when it was written, and untrue since `applyGate` started setting the
+    // node. The `applyNodeState` branch it existed to cover was unreachable
+    // against any real backend (no `UIEventType` member contains WAITING) and
+    // has now been deleted, so this asserts the path the server actually
+    // drives.
+    api.emit(build('gate_open', { event_type: 'HUMAN_INTERACTION', node_id: 'confirm_scope', details: GATE_DETAILS }))
     await flush()
     expect(stateOf('confirm_scope')).toBe('waiting')
     expect(run.status.value).toBe('waiting')

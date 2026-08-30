@@ -3,9 +3,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { VueFlow } from '@vue-flow/core'
-import { Activity, ChevronLeft, ChevronRight, CircleDot, GitBranch, Radio } from 'lucide-vue-next'
+import { Activity, ChevronLeft, ChevronRight, CircleDot, FileText, GitBranch, Radio } from 'lucide-vue-next'
 import ChatRail from './components/ChatRail.vue'
+import CrewProgress from './components/CrewProgress.vue'
 import GateCard from './components/GateCard.vue'
+import ReportPanel from './components/ReportPanel.vue'
 import StatusPanel from './components/StatusPanel.vue'
 import WorkflowEdge from './components/WorkflowEdge.vue'
 import WorkflowNode from './components/WorkflowNode.vue'
@@ -14,6 +16,7 @@ import { useValidatorRun } from './composables/useValidatorRun'
 const {
   descriptor,
   idea,
+  gatesMode,
   status,
   transportMode,
   connection,
@@ -23,10 +26,13 @@ const {
   downloadStatus,
   downloadMessage,
   lastError,
+  report,
+  verdictSummary,
   lastSequence,
   droppedFrames,
   chatEntries,
   usage,
+  nodeStates,
   graphNodes,
   graphEdges,
   isActive,
@@ -59,6 +65,27 @@ const connectionLabel = computed(() => {
   if (!isActive.value && connection.value === 'offline') return 'ready'
   return connection.value
 })
+
+/**
+ * The report sheet opens itself the first time a body arrives and stays
+ * dismissible after that. Auto-opening is the point: the previous behaviour
+ * was that a finished run showed no conclusion at all, and a reveal the
+ * operator has to discover is barely better than none.
+ *
+ * Keyed on the run id as well as the body so a relaunch re-arms it.
+ */
+const reportOpen = ref(false)
+let announcedReport = ''
+watch(
+  () => [runId.value, report.value?.markdown_body] as const,
+  ([id, body]) => {
+    if (!body) return
+    const key = `${id}:${body.length}`
+    if (key === announcedReport) return
+    announcedReport = key
+    reportOpen.value = true
+  },
+)
 
 const chatCollapsed = ref(window.matchMedia('(max-width: 860px)').matches)
 const controlsCollapsed = ref(false)
@@ -114,6 +141,8 @@ onMounted(initialize)
           </div>
         </div>
 
+        <CrewProgress :node-states="nodeStates" :descriptor="descriptor" :active="isActive" />
+
         <VueFlow
           class="validator-flow"
           :nodes="graphNodes"
@@ -138,6 +167,23 @@ onMounted(initialize)
           <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />
           <Controls position="bottom-left" :show-interactive="false" />
         </VueFlow>
+
+        <ReportPanel
+          :report="report"
+          :verdict="verdictSummary"
+          :open="reportOpen"
+          @close="reportOpen = false"
+        />
+
+        <button
+          v-if="report && !reportOpen"
+          class="report-reopen"
+          type="button"
+          @click="reportOpen = true"
+        >
+          <FileText :size="14" aria-hidden="true" />
+          View validation report
+        </button>
       </section>
 
       <aside class="control-rail" aria-label="Validation controls">
@@ -173,6 +219,7 @@ onMounted(initialize)
             :is-active="isActive"
             :primary-label="primaryLabel"
             :active-view="activeView"
+            v-model:gates-mode="gatesMode"
             :error="lastError"
             :download-status="downloadStatus"
             :download-message="downloadMessage"

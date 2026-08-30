@@ -23,11 +23,14 @@ from crewai.flow.async_feedback import (
 )
 from crewai.flow.human_feedback import HumanFeedbackResult, human_feedback
 from crewai.flow.types import FlowMethodName
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 from brief_crew.config import (
+    GATE_REVISE_TURNS_METADATA_KEY,
     VALIDATOR_BRANCH_TURN_TIMEOUT_SECONDS,
     VALIDATOR_FEASIBILITY_CACHE_ENABLED,
+    VALIDATOR_MAX_GATE_TURNS,
+    VALIDATOR_MAX_METHOD_CALLS,
     VALIDATOR_SEQUENTIAL_BRANCHES,
 )
 from brief_crew.crews.validator_crew import (
@@ -85,6 +88,60 @@ SEQUENTIAL_BRANCHES_DEFAULT = VALIDATOR_SEQUENTIAL_BRANCHES
 BRANCH_TURN_TIMEOUT_SECONDS = VALIDATOR_BRANCH_TURN_TIMEOUT_SECONDS
 
 
+# ------------------------------------------------------------- gate turn bound
+
+GateName = Literal["scope", "verdict"]
+
+# Gate node id -> the short name the state fields are keyed on. The node ids
+# are the Flow method names, which is what `PendingFeedbackContext.method_name`
+# carries and what `service/registry.py` calls SCOPE_GATE_NODE /
+# VERDICT_GATE_NODE. Kept as a mapping rather than two `if`s so a third gate
+# would be one line here and nothing else.
+GATE_NODES: dict[str, GateName] = {
+    "confirm_scope": "scope",
+    "review_verdict": "verdict",
+}
+
+# Gate -> (turns-used field, capped field) on `ValidatorState`. Both are
+# declared fields, so both are persisted by CrewAI and reloaded by
+# `from_pending()`. That is the entire point: see the long note on
+# VALIDATOR_MAX_GATE_TURNS in config.py for why `Flow.max_method_calls` cannot
+# carry this bound.
+GATE_TURN_FIELDS: dict[GateName, tuple[str, str]] = {
+    "scope": ("scope_revise_turns", "scope_revise_capped"),
+    "verdict": ("verdict_revise_turns", "verdict_revise_capped"),
+}
+
+
+def revise_turns_used(state: ValidatorState, gate: GateName) -> int:
+    """Revise replies this gate has already spent. Never negative."""
+    used_field, _ = GATE_TURN_FIELDS[gate]
+    return max(0, int(getattr(state, used_field)))
+
+
+def claim_revise_turn(state: ValidatorState, gate: GateName) -> bool:
+    """Spend one revise turn at ``gate``, or refuse because the cap is reached.
+
+    Returns True when the revise is honoured, having recorded the spend on the
+    persisted state. Returns False at the cap, having recorded *that* - the
+    `_capped` flag is the "why" behind a reply the operator sent as a revise
+    and the run treated as an approval, and it is the only durable trace of it,
+    because `scope_route` legitimately reads "scope_approved" in both cases.
+
+    Read-modify-write on the flow's own state, called only from a router. Both
+    routers run on the Flow's single execution path (never inside the three
+    branch worker threads), so no lock is needed and adding one would be
+    misleading about where concurrency lives in this file.
+    """
+    used_field, capped_field = GATE_TURN_FIELDS[gate]
+    used = revise_turns_used(state, gate)
+    if used >= VALIDATOR_MAX_GATE_TURNS:
+        setattr(state, capped_field, True)
+        return False
+    setattr(state, used_field, used + 1)
+    return True
+
+
 class KickoffRunner(Protocol):
     def kickoff(self, inputs: dict[str, Any]) -> Any: ...
 
@@ -129,6 +186,21 @@ class ValidatorCrewFactories:
     report: Callable[[Verdict, set[str]], KickoffRunner] = _report_runner
 
 
+def _edit_error_summary(error: ValidationError) -> str:
+    """One readable sentence naming the fields that failed, for an operator.
+
+    Pydantic's own string carries the whole model schema and a docs URL, which
+    is noise in a gate reply. Field names and messages are the actionable part.
+    Bounded, because this reaches a frame and a report.
+    """
+
+    parts = [
+        f"{'.'.join(str(item) for item in problem['loc']) or '(root)'}: {problem['msg']}"
+        for problem in error.errors()[:5]
+    ]
+    return "the edit was not applied - " + "; ".join(parts)
+
+
 class ValidatorFeedbackProvider(HumanFeedbackProvider):
     """Auto-approve explicit no-gates runs; otherwise pause for native resume."""
 
@@ -139,6 +211,28 @@ class ValidatorFeedbackProvider(HumanFeedbackProvider):
     ) -> str:
         if getattr(flow.state, "no_gates", False):
             return json.dumps({"decision": "approve"})
+        # Stamp how many revise turns this gate has already spent, so the layer
+        # that builds the operator's prompt can stop OFFERING a Revise button
+        # the router would decline to honour. This is the only place that holds
+        # both halves: the provider is handed the live flow (and therefore the
+        # persisted counters) and the context that is about to be written to
+        # `pending_feedback`. `service/registry.py` reads it back out.
+        #
+        # A NEW dict, never a mutation of the existing one.
+        # `_run_human_feedback_step` builds the context with
+        # `metadata=metadata or {}` taken straight off the `@human_feedback`
+        # definition (crewai/flow/runtime/__init__.py:3630-3641), so when a
+        # decorator does declare metadata the context shares that object with
+        # every other run of the same flow. Ours declares none, so the `or {}`
+        # branch gives a fresh dict today - but writing in place would make
+        # adding `metadata=` to the decorator a cross-run data leak, which is
+        # not a trap worth leaving armed.
+        gate = GATE_NODES.get(context.method_name)
+        if gate is not None:
+            context.metadata = {
+                **context.metadata,
+                GATE_REVISE_TURNS_METADATA_KEY: revise_turns_used(flow.state, gate),
+            }
         raise HumanFeedbackPending(
             context=context,
             callback_info={"gate": context.method_name},
@@ -172,6 +266,29 @@ class ValidatorState(BaseModel):
     verdict_revision: str = ""
     scope_route: str = ""
     verdict_route: str = ""
+    # Revise turns spent at each gate, and whether a revise was ever converted
+    # to an approval because the cap had been reached.
+    #
+    # These are DECLARED fields, and that word is doing all the work. CrewAI
+    # persists the state model and `from_pending()` reloads it, so a counter
+    # here survives the fresh flow object every gate reply builds - which is
+    # precisely what `Flow._method_call_counts` does not do, being a
+    # `PrivateAttr`. Nothing else in this file is durable across a resume, so
+    # nothing else could hold this bound.
+    #
+    # Counting semantics: `*_revise_turns` counts revises ALREADY HONOURED, so
+    # it is 0 when the gate first opens and the operator has spent nothing.
+    # With VALIDATOR_MAX_GATE_TURNS = N the Nth revise is honoured and the
+    # (N+1)th is not.
+    scope_revise_turns: int = 0
+    verdict_revise_turns: int = 0
+    scope_revise_capped: bool = False
+    # Why an operator's edit was dropped, if it was. Carried on the state
+    # rather than raised, so the run survives and the reason still reaches the
+    # operator instead of dying in a stack trace.
+    scope_edit_error: str = ""
+    verdict_edit_error: str = ""
+    verdict_revise_capped: bool = False
 
 
 def _extract_model(result: Any, model: type[ModelT]) -> ModelT:
@@ -375,6 +492,29 @@ class ValidatorFlow(Flow[ValidatorState]):
         default_factory=ValidatorCrewFactories,
         exclude=True,
     )
+    # CrewAI's in-process loop guard, lowered from its shipped 100 to something
+    # proportionate to a 14-node flow. `max_method_calls` is a plain pydantic
+    # Field on `Flow` (crewai/flow/runtime/__init__.py:614), so redeclaring it
+    # here is the supported way to change it from a subclass: `from_pending()`
+    # builds the instance with `cls(persistence=..., **kwargs)`, so every
+    # resumed flow gets this default too.
+    #
+    # Note which of the two `max_method_calls` is upstream, because the obvious
+    # guess is backwards. `FlowDefinition.config.max_method_calls`
+    # (crewai/flow/flow_definition.py:219) reads like the declared knob, but
+    # `_build_config_definition` (crewai/flow/dsl/_utils.py:221-238) builds that
+    # config by copying CLASS FIELD defaults into it, and the enforcement at
+    # runtime/__init__.py:3333 reads `self.max_method_calls`, the instance
+    # field. So this line is the source and the definition merely reflects it;
+    # writing the definition's config instead would have been a no-op that read
+    # as a fix. Both directions are asserted in
+    # `tests/validator/test_gate_turns.py`, and the enforcement itself is
+    # proved there by a deliberately-too-low cap raising RecursionError.
+    #
+    # This is the backstop, never the bound: it resets on every resume, so on
+    # the durable service path it can never see more than two calls of any
+    # method. The durable bound is VALIDATOR_MAX_GATE_TURNS on the state above.
+    max_method_calls: int = Field(default=VALIDATOR_MAX_METHOD_CALLS)
     # Run-local and never serialized: a turnstile is not flow state, and a
     # resumed flow starts a fresh fan-out anyway.
     _branch_sequencer: BranchSequencer = PrivateAttr(default_factory=BranchSequencer)
@@ -475,9 +615,37 @@ class ValidatorFlow(Flow[ValidatorState]):
         payload = _gate_payload(result.feedback)
         edited_scope = payload.get("scope")
         if isinstance(edited_scope, dict):
-            self.state.scope = ScopedIdea.model_validate(edited_scope)
+            # Degrade, do not die.
+            #
+            # This used to be a bare `model_validate`, and a mistyped value in a
+            # field the gate ITSELF offered for editing - `assumptions: "5"`
+            # where a list belongs - raised here, inside the router, after the
+            # gate had already been durably answered. The run ended `failed`
+            # with no gate to retry and no recovery, discarding an
+            # escalation-tier Scoper call, and the operator had been told
+            # `202 Accepted`.
+            #
+            # A malformed edit is a client defect, not a reason to destroy a
+            # paid run. The operator's *decision* is still legible and is still
+            # honoured; only the edit is dropped, and the reason is recorded on
+            # the state so it reaches the report and the frames instead of
+            # vanishing into a stack trace. No revise turn is spent on it -
+            # charging the operator a turn for their client sending the wrong
+            # JSON type would be punishing the wrong party.
+            try:
+                self.state.scope = ScopedIdea.model_validate(edited_scope)
+            except ValidationError as error:
+                self.state.scope_edit_error = _edit_error_summary(error)
         decision = str(payload.get("decision", "approve")).strip().lower()
-        if decision == "revise":
+        # `claim_revise_turn` is evaluated only when the operator asked to
+        # revise, so an approve never spends a turn and never trips the cap.
+        # At the cap the revise becomes an approval and the run goes forward:
+        # the alternatives are worse. Failing the run would discard an
+        # escalation-tier scope the operator already paid for; refusing the
+        # reply would leave the run parked at a gate with nothing left to do
+        # but expire. Going forward is the only outcome that keeps the money
+        # already spent and still bounds the money not yet spent.
+        if decision == "revise" and claim_revise_turn(self.state, "scope"):
             self.state.scope_revision = str(
                 payload.get("feedback") or result.feedback
             )
@@ -592,9 +760,20 @@ class ValidatorFlow(Flow[ValidatorState]):
         payload = _gate_payload(result.feedback)
         edited_verdict = payload.get("verdict")
         if isinstance(edited_verdict, dict):
-            self.state.verdict = Verdict.model_validate(edited_verdict)
+            # Unreachable from a client today - every `Verdict` field is
+            # `derived`, so `_feedback` never builds a verdict edit - but the
+            # scope gate's version of this line survived precisely because
+            # nobody checked the twin. Defensive, and cheap.
+            try:
+                self.state.verdict = Verdict.model_validate(edited_verdict)
+            except ValidationError as error:
+                self.state.verdict_edit_error = _edit_error_summary(error)
         decision = str(payload.get("decision", "approve")).strip().lower()
-        if decision == "revise":
+        # Same bound, same reasoning as `route_scope`, and the counters are
+        # per-gate: five revises spent on the scope leave all five available on
+        # the verdict. They are separate conversations about separate artefacts
+        # and they re-run different crews.
+        if decision == "revise" and claim_revise_turn(self.state, "verdict"):
             self.state.verdict_revision = str(
                 payload.get("feedback") or result.feedback
             )

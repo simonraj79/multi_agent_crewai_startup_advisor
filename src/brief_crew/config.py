@@ -687,6 +687,24 @@ def _env_positive_float(name: str, default: float) -> float:
     return value
 
 
+def _env_non_negative_float(name: str, default: float) -> float:
+    """Read a float knob where 0 is a meaningful value, not a mistake.
+
+    Separate from `_env_positive_float` because a knob whose zero means
+    "disabled" cannot share a reader that refuses zero. A NEGATIVE value is
+    still refused: it would be an operator asking for something the code cannot
+    express, and silently clamping it to "disabled" is how a spend cap goes
+    missing without anyone being told.
+    """
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number >= 0") from exc
+    if value < 0:
+        raise ValueError(f"{name} must be a number >= 0")
+    return value
+
+
 def _env_flag(name: str, default: bool) -> bool:
     """Read a boolean knob the way an operator would write one."""
     raw = os.getenv(name)
@@ -738,6 +756,76 @@ MAX_QUEUED_RUNS = _env_positive_int("MAX_QUEUED_RUNS", 8)
 # fixed hint rather than a computed queue-drain estimate: the live queue depth
 # of a public endpoint is not a number to hand back to whoever is flooding it.
 RUN_ADMISSION_RETRY_AFTER_SECONDS = 30
+
+# --------------------------------------------------------------------------
+# The per-run spend ceiling - the only limit here denominated in DOLLARS
+#
+# Every other admission limit above bounds a COUNT: bytes, characters, keys,
+# queued runs, runs per minute. None of them bounds what one admitted run may
+# spend once it is executing, and until this constant existed nothing did:
+# `compute_cost_usd` priced each call and `RunRecord._record_usage` added it to
+# a running total that was never compared to anything. A single run that loops
+# inside an agent's `max_iter`, or a revise cycle nobody is watching, was
+# bounded only by the agents' own patience.
+#
+# THE DEFAULT, AND WHY IT IS THIS NUMBER. Measured on run `8b5a0a78` recovered
+# from the deployed API - 11 calls, 128,069 tokens, $0.1309 total:
+#
+#   escalation call (google/gemini-3.7-flash)   $0.024488 average
+#   cheap call      (z-ai/glm-5.3-flash)        $0.001417 average  - 17.3:1
+#   typical clean run                           $0.13 - $0.18
+#   observed worst case                         $2 - $4
+#   observed tail                               $7
+#
+# A ceiling has to sit ABOVE the most expensive legitimate run and BELOW an
+# unbounded one, and the only honest anchor for "legitimate" is that observed
+# $7 tail. $10 clears it by 1.4x, which is the margin that matters: a ceiling
+# that fires on an honest run gets raised or turned off, and then it protects
+# nothing. Against the runs anyone actually sees it is enormous - ~55x the
+# $0.18 clean run, and ~2.5x the $4 worst case - and that asymmetry is the
+# point. This is a RUNAWAY brake, not a budget: it converts "unbounded" into
+# "at most about ten dollars", and it is not the knob for holding a demo to a
+# few cents. An operator who wants that sets MAX_RUN_COST_USD lower and accepts
+# that some real runs will be cut short.
+#
+# What the worst legitimate run is made of, so the number can be re-derived
+# rather than re-guessed: VALIDATOR_MAX_GATE_TURNS (5) revises at each of two
+# gates is 10 extra escalation-tier calls on top of the 11 a clean run makes,
+# and the verdict-gate ones re-run the Synthesist at reasoning_effort=high.
+# Raise VALIDATOR_MAX_GATE_TURNS and this ceiling has to be re-checked with it.
+#
+# 0 DISABLES THE CEILING; UNSET DOES NOT. Leaving the variable out gives the
+# default above, so a deployment that does nothing still gets a brake; turning
+# it off takes a deliberate `MAX_RUN_COST_USD=0`. That is the same escape-hatch
+# spelling RUN_RATE_LIMIT_MAX_RUNS already uses, and it is the right way round
+# for a cost control: the failure mode of an over-tight ceiling is a cut-short
+# run, and the failure mode of a missing one is a bill.
+#
+# ⚠️ THREE THINGS THIS CEILING DOES NOT DO. None is a defect to be fixed later
+# by tuning the number; each is structural, and enforcement in
+# `registry.RunRecord._record_usage` repeats all three where it acts on them.
+#
+#   1. IT ENFORCES AN ESTIMATE, NOT AN INVOICE. `compute_cost_usd`'s own
+#      docstring says so: CrewAI never asks OpenRouter for its per-generation
+#      cost, so every figure here is recomputed from the PRICES table. Cached
+#      prompt discounts, BYOK fees, per-request rounding and any price change
+#      made after that table was written all move the billed number away from
+#      the enforced one, in either direction.
+#   2. IT CANNOT STOP A CALL ALREADY IN FLIGHT. The total only moves when a
+#      call COMPLETES, and the stop then takes effect at the next CrewAI
+#      PRE_STEP boundary. Granularity is therefore one LLM call plus the tail
+#      of the current step: expect to overshoot by roughly one escalation call,
+#      ~$0.05 at the measured average, and more if that call is unusually long.
+#      The ceiling bounds the order of magnitude, never the cent.
+#   3. IT IS BLIND TO EVERYTHING THAT IS NOT AN LLM CALL. Embeddings, Cohere
+#      rerank and Firecrawl never raise an `LLMCallCompletedEvent`, so they
+#      never reach `_record_usage` and are absent from the total this ceiling
+#      reads. That is roughly $0.006-$0.02 per run of real money the reported
+#      figure structurally UNDERCOUNTS - so the enforced total is always a
+#      lower bound on the true spend, and the true stop is always a little
+#      later than the number here suggests.
+# --------------------------------------------------------------------------
+MAX_RUN_COST_USD = _env_non_negative_float("MAX_RUN_COST_USD", 10.0)
 
 # --------------------------------------------------------------------------
 # The terminal result - what a COMPLETED run hands back over HTTP
@@ -857,6 +945,80 @@ RUN_RATE_LIMIT_TRUST_FORWARDED_FOR = _env_flag(
 # a human sitting at the console.
 VALIDATOR_ALLOW_AUTO_GATES = _env_flag("VALIDATOR_ALLOW_AUTO_GATES", False)
 
+# --------------------------------------------------------------------------
+# Revise turns per human gate
+# --------------------------------------------------------------------------
+# How many times an operator may answer ONE gate with `decision: "revise"`
+# before the next revise is honoured as an approval instead.
+#
+# What a turn costs, which is why this is bounded at all. A revise at
+# `confirm_scope` re-runs the Scoper; a revise at `review_verdict` re-runs the
+# Synthesist. Both are ESCALATION_MODEL agents - the two most expensive calls
+# in the pipeline, and the Synthesist runs at reasoning_effort=high. Nothing
+# else about a revise is cheap either: it is unauthenticated (the gate reply
+# endpoint deliberately bypasses admission control so a flood can never strand
+# a human mid-run), it is unlimited in wall-clock (a WAITING run holds no
+# admission slot, so a revise loop occupies no queue an operator would notice),
+# and it never terminates on its own - `route_scope` -> `revise_scope` ->
+# `confirm_scope` is a genuine cycle in the flow graph. So the only thing
+# standing between one run and unbounded escalation-tier spend was an
+# operator's patience.
+#
+# CrewAI's own loop guard cannot serve here, and this is the whole reason the
+# bound lives on the state. `Flow.max_method_calls` (crewai/flow/runtime/
+# __init__.py:614, enforced at :3333) counts calls in `_method_call_counts`,
+# which is a `PrivateAttr` (:756) - never serialized, never restored. Every
+# shipped gate reply travels `ValidatorFlow.from_pending()` -> `resume()`,
+# which builds a BRAND NEW flow object per reply, so that counter reads 1 on
+# every single revise no matter how many came before it. A durable bound has to
+# live somewhere `from_pending()` reloads, and `ValidatorState`'s declared
+# fields are the only such place. `max_method_calls` is still set below, as the
+# in-process backstop it can actually be.
+#
+# 5 is a working default rather than a principled one: enough that a real
+# scoping conversation ("narrow it to dental clinics", "no, outpatient only")
+# is not cut short, few enough that six escalation-tier calls is the worst a
+# single anonymous run can do at one gate. Set 0 for a deployment where the
+# only offered replies are approve and cancel - `minimum=0` is deliberate, and
+# the gate stops offering Revise at all in that mode.
+VALIDATOR_MAX_GATE_TURNS = _env_positive_int("VALIDATOR_MAX_GATE_TURNS", 5, minimum=0)
+
+# The in-process backstop, and NOT a substitute for the durable bound above.
+#
+# CrewAI ships `max_method_calls=100` for a flow of any size. This one has 14
+# nodes, so 100 is not a loop guard, it is a rounding error: at the measured
+# ceiling below it would allow 99 revises at one gate before complaining.
+#
+# The ceiling is exact and was measured, not reasoned. `_method_call_counts` is
+# keyed by METHOD NAME, so what matters is the most-called single method in one
+# flow object. Running the in-process revise loop with T revises at each gate
+# gives `confirm_scope: T+1`, `route_scope: T+1`, `revise_scope: T` and 1 for
+# every other method - the gate method is entered once to ask, then once more
+# after each revise. So T+1 is the highest legitimate count, and T+2 leaves
+# exactly one call of headroom for a CrewAI re-entry this derivation has not
+# modelled. `tests/validator/test_gate_turns.py` pins the derivation and the
+# measurement together, so a raised VALIDATOR_MAX_GATE_TURNS cannot silently
+# start tripping the backstop.
+#
+# On the durable service path no method reaches even 2, because each resume is
+# a fresh object. This value only ever binds an in-process caller: `no_gates`,
+# a scripted `HumanFeedbackProvider`, a test, or a future auto mode.
+VALIDATOR_MAX_METHOD_CALLS = VALIDATOR_MAX_GATE_TURNS + 2
+
+# The `PendingFeedbackContext.metadata` key carrying how many revise turns this
+# gate has already spent. It lives here because it is the one string two
+# modules that CANNOT import each other have to agree on: `validator_flow`
+# writes it (the feedback provider is the only code holding both the flow state
+# and the context), and `service/registry` reads it to decide whether this
+# gate still offers a Revise button. The service deliberately does not import
+# `validator_flow` - `service/runner.py` defers that import so the FastAPI app
+# does not drag in six crews - so a shared constant here is the seam.
+#
+# CrewAI persists `metadata` verbatim through `PendingFeedbackContext.to_dict`
+# / `from_dict`, so the count survives a process restart the same way the gate
+# row does.
+GATE_REVISE_TURNS_METADATA_KEY = "revise_turns_used"
+
 # Keys a caller must never be able to set through the free-form `inputs` map.
 # `ValidatorState` is a pydantic model and CrewAI merges kickoff inputs into it
 # wholesale (`{**current_state, **inputs}` then `model_validate`), so every
@@ -905,6 +1067,23 @@ RESERVED_RUN_INPUT_KEYS: frozenset[str] = frozenset(
         "verdict_gate_reply",
         "verdict_revision",
         "verdict_route",
+        # Gate turn accounting. Reserved for the most direct reason on this
+        # list: these four ARE the bound. A caller who could post
+        # `{"scope_revise_turns": -1000}` would not be tweaking a preference,
+        # they would be handing themselves an unbounded number of
+        # escalation-tier Scoper calls on an unauthenticated endpoint - the
+        # exact spend VALIDATOR_MAX_GATE_TURNS exists to cap. The `_capped`
+        # flags are reserved too, because a pre-set True is a lie about what
+        # the operator was told at the gate.
+        "scope_revise_turns",
+        "verdict_revise_turns",
+        "scope_revise_capped",
+        "verdict_revise_capped",
+        # Why an operator edit was dropped. Server-written explanations; a
+        # caller seeding them would be forging the system's own account of
+        # what happened.
+        "scope_edit_error",
+        "verdict_edit_error",
     }
 )
 

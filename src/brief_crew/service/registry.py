@@ -21,7 +21,9 @@ from crewai.hooks import HookAborted, InterceptionPoint
 from crewai.hooks.dispatch import register_scoped, scoped_hooks
 
 from brief_crew.config import (
+    GATE_REVISE_TURNS_METADATA_KEY,
     MAX_QUEUED_RUNS,
+    MAX_RUN_COST_USD,
     MAX_RUN_RESULT_BODY_CHARS,
     RUN_ADMISSION_RETRY_AFTER_SECONDS,
     RUN_CONCURRENCY,
@@ -32,6 +34,7 @@ from brief_crew.config import (
     VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS,
     VALIDATOR_GATE_SWEEP_INTERVAL_SECONDS,
     VALIDATOR_GATE_TIMEOUT_SECONDS,
+    VALIDATOR_MAX_GATE_TURNS,
     VALIDATOR_ORPHAN_RUN_GRACE_SECONDS,
     VALIDATOR_ORPHAN_RUN_RECOVERY,
     VALIDATOR_PERSIST_QUEUE_CAPACITY,
@@ -79,6 +82,30 @@ INTERRUPTED_ERROR = (
     "before it finished, and a run that was mid-method carries no resumable "
     "checkpoint - relaunch it"
 )
+# The same one-reason-string pattern for the OTHER way a run stops without
+# anybody asking it to: it ran out of money. A budget stop travels the
+# cooperative-cancellation path, so without this it would be indistinguishable
+# at the API from an operator pressing Cancel - `status: "cancelled"`, `error:
+# null`, and no way to tell "I stopped this" from "this stopped itself". The
+# reason goes on the terminal frame's `details.reason` and the sentence goes in
+# the durable `error` column, which is what `GET /api/runs/{run_id}` returns.
+COST_CEILING_REASON = "cost_ceiling"
+# `stop_reason` is in-memory only and is NOT a `runs` column, deliberately:
+# `metadata.create_all()` creates missing tables and never adds a column to an
+# existing one, so a new column would be silently absent on the live PostgreSQL
+# database and every insert naming it would fail. The durable carrier is the
+# `error` column, which already exists and is already returned by
+# `GET /api/runs/{run_id}`; this prefix is how a restored record recovers the
+# reason from it. Keep the two in step - `_restore_record` matches on it.
+COST_CEILING_ERROR_PREFIX = "stopped by the per-run cost ceiling:"
+COST_CEILING_ERROR = (
+    f"{COST_CEILING_ERROR_PREFIX} this run's estimated spend reached "
+    "${spent:.4f} against a MAX_RUN_COST_USD ceiling of ${ceiling:.2f}. The "
+    "figure is an estimate recomputed from brief_crew.config.PRICES, it counts "
+    "only completed LLM calls, and it excludes embedding, rerank and Firecrawl "
+    "spend - so the real bill is higher than the number in this message."
+)
+
 # PRD F20: a METRICS snapshot carries one row per (node, model) pair. The frame
 # contract caps a detail sequence at 64 entries, and no declared graph has
 # anywhere near that many, so this only guards against a pathological run.
@@ -96,6 +123,22 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _restored_stop_reason(stored_error: Any) -> str | None:
+    """Recover `stop_reason` from the durable `error` column.
+
+    `stop_reason` has no column of its own on purpose - see
+    COST_CEILING_ERROR_PREFIX - so a run reloaded after a restart would
+    otherwise come back as an ordinary cancel with a puzzling error string
+    attached. The `error` text IS the durable record; this reads the reason back
+    out of it.
+    """
+    if not isinstance(stored_error, str):
+        return None
+    if stored_error.startswith(COST_CEILING_ERROR_PREFIX):
+        return COST_CEILING_REASON
+    return None
 
 
 def _gate_deadline(prompt: Mapping[str, Any] | None) -> datetime | None:
@@ -204,6 +247,15 @@ VERDICT_GATE_NODE = "review_verdict"
 # judgement re-enters the run rather than being typed over the top of it.
 GATE_NOTE_FIELD = "feedback"
 
+# The two prompt keys that tell a client how much of the revise budget is left.
+# `revise_turns_remaining` is what a client displays; `max_revise_turns` is what
+# turns "2" into "2 of 5". Both are computed when the gate OPENS, from the
+# count the flow stamped on the pending context, so a replayed GATE_OPEN frame
+# and the stored `run_gates.request` row report the same numbers the operator
+# was actually shown.
+GATE_REVISE_REMAINING_KEY = "revise_turns_remaining"
+GATE_REVISE_MAX_KEY = "max_revise_turns"
+
 # Matches SerializerLimits.max_string, so a value that survives this bound also
 # survives the frame the gate is announced on and comes back from replay intact.
 MAX_GATE_VALUE_CHARS = 4096
@@ -285,6 +337,22 @@ def _parsed_gate_output(output: Any) -> dict[str, Any]:
         return {}
     dumped = model_dump(mode="json")
     return dict(dumped) if isinstance(dumped, Mapping) else {}
+
+
+def _metadata_turns_used(context: PendingFeedbackContext) -> int:
+    """Revise turns already spent at this gate, per the pending context.
+
+    Defensive about the value because ``metadata`` is a free-form dict that has
+    been through JSON on the way to and from ``pending_feedback``: a float, a
+    numeric string or a missing key all have to resolve to a whole number of
+    turns rather than raise inside gate construction, which would fail the run
+    at the exact moment a human was about to be asked something.
+    """
+    raw = (context.metadata or {}).get(GATE_REVISE_TURNS_METADATA_KEY, 0)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _gate_derived_keys(node_id: str, parsed: Mapping[str, Any]) -> frozenset[str]:
@@ -655,6 +723,16 @@ class RunRecord:
     # already the one thing both gate modes produce, and re-deriving the summary
     # here would be a second implementation of a frozen contract.
     verdict: dict[str, Any] | None = None
+    # Why this run stopped, when "stopped" is not the whole story. `status`
+    # already says CANCELLED; this says whether a human asked for that (None)
+    # or the run hit its own limit (COST_CEILING_REASON). Read by `_execute`'s
+    # HookAborted branch, which is the only place a frame CAN be emitted for a
+    # budget stop - see `_enforce_cost_ceiling`.
+    stop_reason: str | None = None
+    # The per-run spend ceiling in USD, 0 meaning none. A field rather than a
+    # direct read of the constant so a registry - and a test - can set one
+    # without reaching into the environment at import time.
+    max_cost_usd: float = MAX_RUN_COST_USD
     usage: dict[str, int | float] = field(default_factory=_empty_usage)
     node_usage: dict[tuple[str, str], dict[str, int | float | str]] = field(
         default_factory=dict
@@ -849,6 +927,10 @@ class RunRecord:
                 "result": self.result,
                 "verdict": self.verdict,
                 "error": self.error,
+                # None for an operator cancel, COST_CEILING_REASON for a run
+                # that stopped itself. Both arrive as `status: "cancelled"`, so
+                # without this the API cannot tell them apart.
+                "stop_reason": self.stop_reason,
             }
 
     def node_usage_payload(self) -> list[dict[str, int | float | str]]:
@@ -988,6 +1070,10 @@ class RunRecord:
             float(self.usage.get("cost_usd", 0.0)) + priced,
             12,
         )
+        # Every priced call in the process flows through the line above, so this
+        # is the one place a per-run spend ceiling can be enforced without a
+        # second accounting path to keep in step with the first.
+        self._enforce_cost_ceiling()
 
         key = (frame.node_id, model)
         node = self.node_usage.setdefault(
@@ -1002,6 +1088,77 @@ class RunRecord:
             node[field_name] = int(node[field_name]) + int(measured[field_name])
         node["cost_usd"] = round(float(node["cost_usd"]) + priced, 12)
         self._usage_revision += 1
+
+    def _enforce_cost_ceiling(self) -> None:
+        """Ask this run to stop once its estimated spend reaches ``max_cost_usd``.
+
+        Called from ``_record_usage``, which holds ``_lock`` - an ``RLock``, so
+        the ``mark_cancelling()`` below re-acquires it on the same thread rather
+        than deadlocking. That re-entrancy is load-bearing and is asserted in
+        ``tests/service/test_cost_ceiling.py``.
+
+        WHY IT DOES NOT RAISE, AND WHY IT EMITS NO FRAME. This method runs
+        inside a CrewAI event handler: ``StreamSinkAdapter.__call__`` holds a
+        plain (non-reentrant) ``threading.Lock`` while it notifies
+        ``_on_frames``, which is what called this. Emitting from here would
+        deadlock the capture thread on that lock, and raising would surface as a
+        counted emit error rather than as a stopped run. So this sets the
+        ``cancel_requested`` Event that ``_cancel_guard`` and
+        ``RunExecution.checkpoint`` already test at each CrewAI ``PRE_STEP``
+        boundary, and ``_execute``'s ``HookAborted`` branch does the announcing.
+
+        WHAT IT IS ENFORCING, honestly, in the three ways it falls short of
+        "this run cost at most N dollars". The knob's comment in ``config.py``
+        carries the full derivation; these are the same three facts stated where
+        the code acts on them:
+
+        * AN ESTIMATE, NOT AN INVOICE. ``compute_cost_usd`` recomputes from the
+          ``PRICES`` table because OpenRouter's own per-generation cost never
+          reaches a CrewAI event. Cached-prompt discounts, BYOK fees and any
+          price change since that table was written all move the billed number.
+        * ONE CALL OF GRANULARITY, SO IT OVERSHOOTS. The total only moves when a
+          call *completes*, and the stop lands at the next step boundary - a
+          call already in flight runs to the end and is paid for. Expect to
+          exceed the ceiling by about one escalation-tier call, ~$0.05 at the
+          measured average, and by more if that call is a long one.
+        * BLIND TO EVERYTHING THAT IS NOT AN LLM CALL. Embeddings, Cohere rerank
+          and Firecrawl raise no ``LLMCallCompletedEvent``, never reach
+          ``_record_usage`` and are absent from ``usage["cost_usd"]``. That is
+          ~$0.006-$0.02 per run the total structurally UNDERCOUNTS, so the
+          enforced figure is a lower bound on the real spend and the stop
+          always comes a little later than it looks.
+
+        An unpriced model contributes ``0.0`` here, because ``compute_cost_usd``
+        returns ``None`` - never ``0.0`` - for a model absent from ``PRICES``
+        and ``_record_usage`` adds ``priced`` rather than the ``None``. So a run
+        made entirely of unpriced calls can never trip this ceiling however many
+        tokens it burns. That is deliberate: guessing a price in order to
+        enforce a limit would be inventing the number the whole ``None``
+        convention exists to refuse. The warning ``_record_usage`` already logs
+        by model name is where that gap is reported.
+        """
+        ceiling = float(self.max_cost_usd or 0.0)
+        if ceiling <= 0:
+            return  # MAX_RUN_COST_USD=0 - explicitly no ceiling.
+        if self.stop_reason == COST_CEILING_REASON:
+            return  # Already tripped; do not re-announce on every later call.
+        spent = float(self.usage.get("cost_usd", 0.0))
+        # `>=` and not `>`: the ceiling is a budget, not a target, and a run
+        # that has spent exactly it has no headroom left for the next call.
+        if spent < ceiling:
+            return
+        self.stop_reason = COST_CEILING_REASON
+        self.error = COST_CEILING_ERROR.format(spent=spent, ceiling=ceiling)
+        logger.warning(
+            "run %s reached the per-run cost ceiling: estimated $%.4f spent "
+            "against MAX_RUN_COST_USD=$%.2f. Requesting cancellation at the "
+            "next step boundary; the call in flight will still be paid for, "
+            "and this estimate excludes embedding, rerank and Firecrawl spend.",
+            self.run_id,
+            spent,
+            ceiling,
+        )
+        self.mark_cancelling()
 
     def _note_subscriber_drop(self) -> None:
         with self._lock:
@@ -1026,11 +1183,21 @@ class RunRegistry:
         max_queued_runs: int | None = None,
         orphan_grace: float | None = None,
         recover_orphans: bool | None = None,
+        max_run_cost_usd: float | None = None,
     ) -> None:
         if max_workers is None:
             max_workers = RUN_CONCURRENCY
         if max_workers < 1:
             raise ValueError("max_workers must be positive")
+        # The per-run spend ceiling every record this registry creates inherits.
+        # 0 is a legal value and means "no ceiling"; negative is not, for the
+        # same reason `_env_non_negative_float` refuses it - a nonsense value
+        # must not silently become "disabled".
+        self.max_run_cost_usd = (
+            MAX_RUN_COST_USD if max_run_cost_usd is None else float(max_run_cost_usd)
+        )
+        if self.max_run_cost_usd < 0:
+            raise ValueError("max_run_cost_usd cannot be negative")
         self.max_queued_runs = (
             MAX_QUEUED_RUNS if max_queued_runs is None else int(max_queued_runs)
         )
@@ -1228,6 +1395,7 @@ class RunRegistry:
             flow_id=flow_id,
             on_frames=self._enqueue_frames,
             ring_capacity=self.ring_capacity,
+            max_cost_usd=self.max_run_cost_usd,
         )
         if self.persistence is not None:
             self.persistence.create_run(
@@ -1275,6 +1443,18 @@ class RunRegistry:
             if isinstance(option, Mapping)
         }
         if option_ids and outcome not in option_ids:
+            # Say *why* when the missing option is Revise and the reason is the
+            # turn cap. "outcome must be one of ['approve']" is true but leaves
+            # an operator who just watched the button disappear guessing at a
+            # bug; naming the budget makes the refusal self-explanatory, and it
+            # is the same number the prompt has been carrying all along.
+            if outcome == "revise" and prompt.get(GATE_REVISE_REMAINING_KEY) == 0:
+                raise ValueError(
+                    "this gate has used all "
+                    f"{prompt.get(GATE_REVISE_MAX_KEY, VALIDATOR_MAX_GATE_TURNS)} "
+                    "of its revise turns; reply with outcome=approve to continue "
+                    "or cancel the run"
+                )
             raise ValueError(f"outcome must be one of {sorted(option_ids)}")
 
         # Before the durable compare-and-set, never after: a refusal that ran
@@ -2132,12 +2312,32 @@ class RunRegistry:
                             feedback=feedback,
                         )
         except HookAborted:
+            # A budget stop and an operator cancel arrive here by the same
+            # path - both set `cancel_requested` and both abort at a PRE_STEP
+            # boundary - so this is where the two are told apart. The frame
+            # carries `reason` exactly as `_fail_interrupted` does for a
+            # restart, and the run keeps the `error` sentence
+            # `_enforce_cost_ceiling` already wrote, so the trace, the API and
+            # the durable row all say the same thing. This is also the only
+            # place a frame CAN be emitted for a budget stop: the ceiling is
+            # detected inside a capture callback that already holds the
+            # adapter's non-reentrant lock.
+            budget_stop = record.stop_reason == COST_CEILING_REASON
+            details: dict[str, Any] = {"status": "cancelled"}
+            if budget_stop:
+                details["reason"] = COST_CEILING_REASON
+                details["cost_usd"] = float(record.usage.get("cost_usd", 0.0))
+                details["ceiling_usd"] = float(record.max_cost_usd)
             record.capture.emit(
                 kind=FrameKind.RUN_STATE,
                 event_type=UIEventType.WORKFLOW_END,
                 node_id=record.node_registry.workflow_node_id,
-                message="Run cancelled at a step boundary",
-                details={"status": "cancelled"},
+                message=(
+                    "Run stopped at a step boundary: it reached its cost ceiling"
+                    if budget_stop
+                    else "Run cancelled at a step boundary"
+                ),
+                details=details,
                 level=FrameLevel.WARNING,
             )
             record.mark_cancelled()
@@ -2308,6 +2508,27 @@ class RunRegistry:
         expires_at = context.requested_at + timedelta(
             seconds=VALIDATOR_GATE_TIMEOUT_SECONDS
         )
+        # How much of this gate's revise budget is left, and therefore whether
+        # Revise is offered at all.
+        #
+        # Pruning the option rather than annotating it is the same policy the
+        # fields/derived split follows, for the same reason: a client that has
+        # never heard of turn limits renders exactly the options it is given,
+        # so a gate that has run out of revises cannot present a button the
+        # router would decline to honour. `answer_gate` already refuses any
+        # outcome that is not one of the prompt's own option ids, so removing
+        # the option IS the transport-level refusal - no second check needed.
+        #
+        # The count comes off `context.metadata`, stamped by
+        # `ValidatorFeedbackProvider` from the persisted state. A context
+        # without it - the synthetic runner, or a gate opened by some other
+        # flow - reads 0 used, which is the honest answer for a run that has
+        # never spent a turn.
+        used = _metadata_turns_used(context)
+        remaining = max(0, VALIDATOR_MAX_GATE_TURNS - used)
+        options = [{"id": "approve", "label": "Approve", "emphasis": "primary"}]
+        if remaining > 0:
+            options.append({"id": "revise", "label": "Revise"})
         return {
             "gate_id": gate_id,
             "node_id": context.method_name,
@@ -2318,10 +2539,9 @@ class RunRegistry:
             # Per-field editability is the fields/derived split itself.
             "editable": bool(fields),
             "expires_at": expires_at.isoformat(),
-            "options": [
-                {"id": "approve", "label": "Approve", "emphasis": "primary"},
-                {"id": "revise", "label": "Revise"},
-            ],
+            "options": options,
+            GATE_REVISE_REMAINING_KEY: remaining,
+            GATE_REVISE_MAX_KEY: VALIDATOR_MAX_GATE_TURNS,
             "fields": fields,
             "derived": derived,
             "verdict": parsed.get("verdict"),
@@ -2513,6 +2733,12 @@ class RunRegistry:
             flow_id=str(flow_id) if flow_id else None,
             on_frames=self._enqueue_frames,
             ring_capacity=self.ring_capacity,
+            max_cost_usd=self.max_run_cost_usd,
+            # A recovered run keeps spending against the ceiling in force NOW,
+            # not the one it was admitted under, and its already-spent total
+            # comes back with it in `usage` below - so a run restored mid-flight
+            # trips at the same place it would have without the restart.
+            stop_reason=_restored_stop_reason(snapshot.get("error")),
             status=RunStatus(str(snapshot["status"])),
             created_at=snapshot["created_at"],
             started_at=snapshot.get("started_at"),

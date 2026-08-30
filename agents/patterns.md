@@ -11,24 +11,33 @@ Every mechanism below was verified against the **`crewai` 1.15.18** wheel —
 file and line references are to that source, not to `docs.crewai.com`, which is
 stale in several of the places that matter (§9).
 
+Five of the six pattern names are Anthropic's, from
+[*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents):
+prompt chaining, routing, parallelisation, orchestrator-workers and
+evaluator-optimizer. The sixth — ⑤ **nested teams** — is this repository's own
+addition, and §6 is the argument for why it earns a slot. The ①–⑥ numbering is
+this repository's own, used so that this file, `workflow.md`, `PRD.md` and the
+agent specs all refer to the same things by the same numbers. Everything about
+**CrewAI** below is this repository's own work against the 1.15.18 source.
+
 ---
 
-## 1. The one-slide summary
+## 1. The six at a glance
 
-| # | Pattern (slide 13) | CrewAI mechanism | LLM calls to *decide* | Native? |
-|---|---|---|---|---|
-| ① | **Sequential Pipeline** | `Process.sequential` + `context=[...]` | 0 | ✅ one word |
-| ② | **Routing / Handoff** | `ConditionalTask(condition=…)` · or Flow `@router` | **0** | ⚠️ no `handoff()` |
-| ③ | **Parallel Fan-out** | `Task(async_execution=True)` + a sync join · or Flow `and_()` | 0 | ✅ but constrained |
-| ④ | **Supervisor / Workers** | `Process.hierarchical` + `manager_agent=` | **1+ per step** | ✅ one word |
-| ⑤ | **Hierarchical (nested)** | **nothing native** — compose Flows over Crews | varies | ❌ |
-| ⑥ | **Evaluator–Optimizer** | `Task(guardrail=…, guardrail_max_retries=N)` | 0 if callable, 1 per check if string | ✅ |
+| # | Pattern | Anthropic's name | CrewAI mechanism | LLM calls to *decide* | Native? |
+|---|---|---|---|---|---|
+| ① | **Sequential Pipeline** | prompt chaining | `Process.sequential` + `context=[...]` | 0 | ✅ one word |
+| ② | **Routing / Handoff** | routing | `ConditionalTask(condition=…)` · or Flow `@router` | **0** | ⚠️ no `handoff()` |
+| ③ | **Parallel Fan-out** | parallelisation | `Task(async_execution=True)` + a sync join · or Flow `and_()` | 0 | ✅ but constrained |
+| ④ | **Supervisor / Workers** | orchestrator-workers | `Process.hierarchical` + `manager_agent=` | **1+ per step** | ✅ one word |
+| ⑤ | **Hierarchical (nested)** | *(none — this repo's own)* | **nothing native** — compose Flows over Crews | varies | ❌ |
+| ⑥ | **Evaluator–Optimizer** | evaluator-optimizer | `Task(guardrail=…, guardrail_max_retries=N)` | 0 if callable, 1 per check if string | ✅ |
 
-### The slide-worthy correction
+### The correction worth making
 
-Slide 45 says CrewAI is **four nouns** — Agent · Task · Crew · Process — and that
-*"two of the six patterns are one word each."* That is exactly right, and it is
-also the whole story of what `Process` covers. From source:
+CrewAI is usually introduced as **four nouns** — Agent · Task · Crew · Process —
+and two of the six patterns really are a single keyword each. That is exactly
+right, and it is also the whole story of what `Process` covers. From source:
 
 ```python
 class Process(str, Enum):
@@ -38,12 +47,12 @@ class Process(str, Enum):
 ```
 
 **Two members. Two patterns.** The other four are not process types at all —
-they live in a **fifth noun the deck's slide 45 does not mention:**
+they live in a **fifth noun that introduction leaves out:**
 
 > **Flow** — `@start` · `@router` · `@listen` · `and_()` / `or_()`
 
-Patterns ②, ③ and ⑤ are most naturally Flow constructs; ⑥ is a Task field. If
-you are reworking slide 45, the honest version is:
+Patterns ②, ③ and ⑤ are most naturally Flow constructs; ⑥ is a Task field. The
+honest version of the noun list is:
 
 | The nouns | Covers |
 |---|---|
@@ -55,8 +64,8 @@ you are reworking slide 45, the honest version is:
 
 ## 2. Pattern ① — Sequential Pipeline
 
-> *Fixed-order stages; output feeds the next.* — slide 13
-> Deck example: `Researcher → Writer → Editor` (slide 14)
+> **In one line:** fixed-order stages, each consuming the previous one's output.
+> Anthropic calls this **prompt chaining**.
 
 ```
 Researcher ──▶ Analyst ──▶ Writer ──▶ Output
@@ -88,14 +97,15 @@ additive:
 | `context=[]` | **nothing at all** |
 
 So an explicit `context=[...]` is redundant *only while the list is complete*.
-Trim it and you silently narrow what the agent sees, with **no error**. Slide 46
-writes `context=[research, angle]` on the final task precisely because the Writer
-needs the Researcher's URLs, which the Analyst compresses away.
+Trim it and you silently narrow what the agent sees, with **no error**. This
+project writes `context=[research, angle]` on the final task precisely because
+the Writer needs the Researcher's URLs, which the Analyst compresses away.
 
 ### Cost
 
-One LLM call per task, minimum — more if the agent uses tools. Slide 65: three
-agents ≈ **5–10 calls per request**.
+One LLM call per task, minimum — more if the agent uses tools. Measured on this
+project's three-agent Track A run: **9 calls** for one brief
+(`agents/README.md`).
 
 ### Use when
 
@@ -106,8 +116,8 @@ this is the answer and anything fancier is overhead.
 
 ## 3. Pattern ② — Routing / Handoff
 
-> *Classify once, hand control to a specialist.* — slide 13
-> *OpenAI Agents SDK made this a first-class primitive: `handoff()`.* — slide 15
+> **In one line:** classify the input once, then hand control to one specialist.
+> Anthropic calls this **routing**.
 
 ```
 Input ──▶ Router ──┬──▶ Specialist A     (exactly one fires)
@@ -115,9 +125,9 @@ Input ──▶ Router ──┬──▶ Specialist A     (exactly one fires)
                    └──▶ Specialist C
 ```
 
-> ⚠️ **CrewAI has no `handoff()`.** That is the OpenAI Agents SDK's primitive,
-> and slide 15 says so explicitly. In CrewAI you build routing yourself, three
-> ways, and they differ enormously in cost.
+> ⚠️ **CrewAI has no `handoff()`.** That is the OpenAI Agents SDK's primitive.
+> In CrewAI you build routing yourself, three ways, and they differ enormously
+> in cost.
 
 ### Option A — `ConditionalTask` (deterministic skip, 0 LLM calls)
 
@@ -178,7 +188,7 @@ A router **returns a string label**; `@listen("label")` picks it up. `emit=[...]
 declares the label set for static analysis and visualisation — otherwise a
 `Literal`/`Enum` return annotation is used (`flow/dsl/_router.py:97-140`).
 
-**This is the real Pattern 2**, and it costs **zero LLM calls if the decision is
+**This is the real Pattern ②**, and it costs **zero LLM calls if the decision is
 code**. Only put a model in the router when the classification genuinely needs
 judgement — a threshold check does not.
 
@@ -203,9 +213,10 @@ sometimes.
 
 ## 4. Pattern ③ — Parallel Fan-out / Fan-in
 
-> *Run independent subtasks at the same time.* — slide 13
-> *Sectioning* (different subtasks) and *Voting* (same task N times) — slide 16
-> *Trade tokens for speed. Parallelise what's independent.*
+> **In one line:** run independent subtasks at the same time, then merge —
+> *sectioning* (different subtasks) or *voting* (the same task N times). The trade
+> is tokens for wall-clock. Anthropic calls this **parallelisation**, and
+> *sectioning* and *voting* are its two named modes.
 
 ```
           ┌──▶ Agent A ──┐
@@ -306,8 +317,8 @@ over 20 topics", not for parallelising *within* one run.
 
 ### Cost
 
-**Parallelism does not reduce tokens — only wall-clock.** Slide 16's framing is
-exact: *trade tokens for speed*. Voting mode multiplies cost by N for one output.
+**Parallelism does not reduce tokens — only wall-clock.** You are trading tokens
+for speed, and nothing else. Voting mode multiplies cost by N for one output.
 
 ### Use when
 
@@ -318,9 +329,10 @@ pattern does not apply no matter how much you want it to.
 
 ## 5. Pattern ④ — Supervisor / Orchestrator-Workers
 
-> *A manager plans and delegates to workers.* — slide 13
-> *It decides dynamically: which worker, what task, when to stop.* — slide 17
-> *"The workhorse of production multi-agent."*
+> **In one line:** a manager plans, delegates, and decides dynamically which
+> worker runs next and when to stop. Anthropic calls this
+> **orchestrator-workers**; it is the shape most production multi-agent systems
+> settle on.
 
 ```
         Supervisor
@@ -346,7 +358,8 @@ crew = Crew(
 1. **`manager_agent` or `manager_llm` is required.** Neither set →
    `PydanticCustomError("missing_manager_llm_or_manager_agent", "Attribute
    'manager_llm' or 'manager_agent' is required when using hierarchical
-   process.")` (`crew.py:722-732`). Slide 51: *"Forget the manager and it breaks."*
+   process.")` (`crew.py:722-732`). Forget the manager and it breaks at
+   construction.
 2. **The manager must NOT be in `agents=[...]`.** Both → `PydanticCustomError(
    "manager_agent_in_agents", "Manager agent should not be included in agents
    list.")` (`crew.py:734-741`).
@@ -367,15 +380,15 @@ to any agent with `allow_delegation=True`:
 | `"Delegate work to coworker"` | hand a whole subtask to another agent |
 | `"Ask question to coworker"` | query another agent without transferring the task |
 
-So a supervisor is **an ordinary agent holding two extra tools.** That is worth a
-slide on its own — it demystifies the pattern completely.
+So a supervisor is **an ordinary agent holding two extra tools.** That is worth
+saying plainly — it demystifies the pattern completely.
 
 ### Cost
 
-The manager reasons **before and after every step**. Slide 23: *"patterns 4 & 5
-ran slowest and priciest."* You are buying one genuine capability — **rejection**,
-which `Process.sequential` cannot express at all — and paying manager reasoning
-on every hand-off to get it.
+The manager reasons **before and after every step**, which makes ④ the most
+expensive of the six to run and ⑤ (§6) that cost compounded per tier. You are
+buying one genuine capability — **rejection**, which `Process.sequential` cannot
+express at all — and paying manager reasoning on every hand-off to get it.
 
 ### Use when
 
@@ -386,8 +399,13 @@ the same, a supervisor is overhead with no job.
 
 ## 6. Pattern ⑤ — Hierarchical (Nested Teams)
 
-> *Supervisors of supervisors; nested teams.* — slide 13
-> *Don't go hierarchical until you've proven you need it.* — slide 18
+> **In one line:** supervisors of supervisors — nested teams.
+>
+> **This is the one pattern with no entry in Anthropic's article**, and it is
+> carried here as this repository's own sixth. It earns its slot for exactly one
+> reason: CrewAI spells pattern ④ `Process.hierarchical`, and without a separate
+> name for the nested case that word collision cannot be discussed. The naming
+> trap below is the whole justification for keeping ⑤ in the vocabulary.
 
 ```
               CEO agent
@@ -397,14 +415,14 @@ the same, a supervisor is overhead with no job.
     Eng     Eng     Mktg    Mktg
 ```
 
-> ⚠️ **NAMING TRAP — the single most common mistake with these slides.**
-> CrewAI spells **Pattern ④** `Process.hierarchical`. The deck's **Pattern ⑤** is
+> ⚠️ **NAMING TRAP — and it is the reason ⑤ has a name at all.**
+> CrewAI spells **Pattern ④** `Process.hierarchical`. **Pattern ⑤** here is
 > *also* called *Hierarchical* and means something different: nested teams,
 > supervisors of supervisors.
 >
-> **`Process.hierarchical` gives you Pattern 4, not Pattern 5.**
-> A student who builds a manager crew and reports "we used Pattern 5" is wrong,
-> and the word collision is why. Worth an explicit callout on your slide.
+> **`Process.hierarchical` gives you Pattern ④, not Pattern ⑤.**
+> Build a manager crew, report "we used Pattern ⑤", and you are wrong — the word
+> collision is why. Say which one you mean, every time.
 
 ### Mechanism: there isn't one
 
@@ -435,8 +453,7 @@ class Company(Flow[State]):
 ```
 
 Each `Crew` may internally be `Process.hierarchical` — so you get Pattern ④
-inside Pattern ⑤, which is what the deck's slide-22 demo (*CEO → 2 Leads → 4
-workers → Integrator*, 9 agents) actually is.
+inside Pattern ⑤, which is what a three-tier org chart of agents actually is.
 
 **B · A Crew wrapped as a `BaseTool`** — a parent agent calls a whole sub-crew as
 a tool. Compact, but the sub-crew's trace is buried inside a tool call, which
@@ -444,22 +461,23 @@ makes Pattern ⑤'s main risk — *debugging* — considerably worse.
 
 ### Cost
 
-Slide 18: *"coordination overhead grows with depth."* Slide 22's Pattern-5 demo
-was the longest run of the six. Slide 54 is the counterweight: **almost every
-real system is 2–5 agents.** Most production systems use flat supervisor-worker.
+Coordination overhead grows with depth. Every tier adds a manager reasoning
+before and after every step below it, so ⑤ is ④'s cost compounded — the worst of
+the six on both wall-clock and spend. The counterweight is that working systems
+tend to be small: a flat supervisor over a handful of workers, not an org chart.
 
 ### Use when
 
-Genuinely large agent organisations with real reporting lines. In a workshop,
-almost never — and the deck says so twice.
+Genuinely large agent organisations with real reporting lines. Almost never, in
+practice — and never before you have proven that a flat supervisor cannot do it.
 
 ---
 
 ## 7. Pattern ⑥ — Evaluator–Optimizer
 
-> *A generator and a critic loop to quality.* — slide 13
-> *Separate the creator from the critic.* — slide 19
-> Deck demo: *Generator ⇄ Evaluator (**max 3**)*, *"fails round 1, passes by 2–3."*
+> **In one line:** a generator and a critic loop until a stated quality bar is
+> met — separate the creator from the critic. Anthropic calls this
+> **evaluator-optimizer**.
 
 ```
 Generator ──▶ Evaluator ──▶ pass ──▶ Output
@@ -489,7 +507,7 @@ writing_task = Task(
 On failure the agent receives the message back and **re-runs the same task**.
 That is the evaluator–optimizer loop, complete, with no second agent.
 
-**Cost — the intuition is wrong, so state it on the slide:**
+**Cost — the intuition is wrong, so say it out loud:**
 
 | Guardrail type | Cost per evaluation |
 |---|---|
@@ -553,7 +571,8 @@ def regenerate(self):
         return self.write()
 ```
 
-**Always bound the loop.** Slide 22's own demo caps at **3**.
+**Always bound the loop.** CrewAI's own `guardrail_max_retries` default is 3;
+whatever number you pick, pick one and write it down.
 
 ### Use when
 
@@ -564,8 +583,8 @@ down, an evaluator agent will just produce agreeable noise.
 
 ## 8. Composition — the real shape
 
-Slide 20: *"Most real systems are LEGO compositions of the six — not a single
-clean pattern."*
+Most real systems are compositions of several of the six rather than one clean
+pattern.
 
 ```
 Query ──▶ Router ② ──▶ Supervisor ④ ──▶ Evaluator ⑥ ──▶ Answer
@@ -584,11 +603,11 @@ This project is a composition of **① + ② + ⑥** — see `workflow.md` §7.
 
 ## 9. What CrewAI does *not* give you
 
-Worth a slide, because three of these look like they should exist:
+Three of these look like they should exist:
 
 | Missing | Reality | Do this instead |
 |---|---|---|
-| `handoff()` | OpenAI Agents SDK primitive (slide 15). No CrewAI equivalent. | Flow `@router` + `@listen(label)` |
+| `handoff()` | An OpenAI Agents SDK primitive. No CrewAI equivalent. | Flow `@router` + `@listen(label)` |
 | Nested crews | No `sub_crew` / crew-of-crews type in 1.15.18 | Flow over multiple Crews (§6) |
 | A `consensual` process | `# TODO` comment in `process.py`. Not implemented. | — |
 | Agent-level guardrails in a Crew | Fires only on standalone `agent.kickoff()` | Task-level `guardrail` |
@@ -619,8 +638,7 @@ three are native in 1.15.18 and should be used rather than reinvented:
 
 ## 10. Choosing a pattern — the decision table
 
-Adapted from slide 32's shape, at the pattern level rather than the framework
-level:
+At the pattern level rather than the framework level:
 
 | If your problem is… | Pattern | CrewAI |
 |---|---|---|
@@ -633,19 +651,21 @@ level:
 | Work must be rejectable and redone | ④ or ⑥ | manager, or a `guardrail` |
 | Output must meet a checkable standard | ⑥ Evaluator | `Task(guardrail=…)` |
 | Large org with real reporting lines | ⑤ Hierarchical | Flow over Crews |
-| **You are not sure you need multi-agent** | — | **One agent.** Slides 32, 33, 55. |
+| **You are not sure you need multi-agent** | — | **One agent.** See the note below. |
 
-> Slide 33, quoting Anthropic: *"Find the simplest solution possible, and only
-> increase complexity when needed."* Slide 55: *"Most things you'll want to build
-> as a crew are cheaper, faster, and more reliable as one agent."*
+> Anthropic's rule: *"find the simplest solution possible, and only increasing
+> complexity when needed"*, adding complexity *"only when it demonstrably
+> improves outcomes"*
+> ([*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents)).
 > The default is one agent. Every pattern here is a cost you should be able to
-> justify.
+> justify — `workflow.md` §2 is this repository trying to justify its own, and
+> scoring two out of five.
 
 ---
 
 ## 11. Cost, per pattern
 
-Slide 65's complexity tax, refined by which mechanism you pick:
+The complexity tax, by which mechanism you pick:
 
 | Pattern | Extra LLM calls over a plain pipeline | Extra wall-clock |
 |---|---|---|
@@ -659,18 +679,20 @@ Slide 65's complexity tax, refined by which mechanism you pick:
 | ⑥ Evaluator — callable guardrail | **0** unless it fails | +1 task re-run per failure |
 | ⑥ Evaluator — string guardrail | **+1 per check**, pass or fail | +1 turn per check |
 
-Slide 55: *"Your crew made ~10 LLM calls for one brief. A single good agent might
-have made one. That gap is the tax."* Slides 55 and 65: production teams report
-**3–10×** single-agent cost.
+Measured on this project: Track A's three-agent crew made **9** LLM calls for one
+brief (`agents/README.md`). What one well-prompted agent would have spent on the
+same topic has never been measured, and `workflow.md` §10 records that as the
+cheapest experiment this repository has left.
 
 **The cheapest patterns are ② and ③ done in code.** The expensive ones are ④ and
-⑤ — which is exactly what slide 23 observed in the live demo.
+⑤ — and ⑤ is ④ compounded per tier.
 
 ---
 
-## 12. Slide-ready one-liners
+## 12. One line each, in CrewAI terms
 
-Paste-able summaries, one per pattern:
+A summary of §§2–7. Everything to the right of the pattern names is this
+repository's own reading of the 1.15.18 source.
 
 | # | Pattern | One line |
 |---|---|---|

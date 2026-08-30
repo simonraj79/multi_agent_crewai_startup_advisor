@@ -731,9 +731,15 @@ class CounterTests(unittest.TestCase):
         self.assertTrue(support.one_ok)
         self.assertFalse(support.zero_ok)
 
+        # One usable thread that is not a problem thread no longer satisfies the
+        # D=0 floor. It used to: `zero_ok = usable >= 1 and problems == 0`, which
+        # let a single off-hand OPINION produce a final REJECT / FLOOR_NO_DEMAND
+        # at confidence 0.60 with provisional=False - "nobody wants this", on one
+        # comment. The floor now needs RUBRIC_FLOOR_MIN_USABLE_THREADS, and the
+        # 1-2 thread states fall to level 1 rather than becoming unscorable.
         support = rubric_support(market, found_no_problem, feasibility, now=NOW)["D"]
-        self.assertFalse(support.one_ok)
-        self.assertTrue(support.zero_ok)
+        self.assertTrue(support.one_ok)
+        self.assertFalse(support.zero_ok)
 
     def test_reusable_repositories_need_a_licence_and_a_known_recent_push(self) -> None:
         market, sentiment = market_findings(), sentiment_findings()
@@ -958,8 +964,18 @@ class ScoreSupportTests(unittest.TestCase):
         self.assertIn("SCORE_FLOOR_D", problems[0])
         self.assertIn("5 problem thread(s)", problems[0])
 
-        found_no_problem = self.threads(("OPINION", "2026-01-01"))
+        # The floor is still claimable over threads that carry no problem - but it
+        # now takes RUBRIC_FLOOR_MIN_USABLE_THREADS of them, not one. This case
+        # was the defect: a single OPINION thread was enough to assert that
+        # nobody has the problem.
+        found_no_problem = self.threads(*[("OPINION", "2026-01-01")] * 3)
         self.assertEqual(self.problems("D", 0, sentiment=found_no_problem), [])
+
+        # And one thread is now refused, which is the whole point of the change.
+        too_thin = self.threads(("OPINION", "2026-01-01"))
+        thin_problems = self.problems("D", 0, sentiment=too_thin)
+        self.assertEqual(len(thin_problems), 1)
+        self.assertIn("SCORE_FLOOR_D", thin_problems[0])
 
     def test_the_feasibility_floor_cannot_be_claimed_over_relevant_repositories(self) -> None:
         problems = self.problems("F", 0)

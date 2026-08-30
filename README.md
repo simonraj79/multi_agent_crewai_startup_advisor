@@ -712,12 +712,27 @@ same CrewAI guidance without a separate install step.
 
 ---
 
-## Licence
+## Author and licence
 
-**None yet.** No `LICENSE` file exists, which means default copyright applies and
-you may read this code but not legally reuse it. If you want to use any of it,
-[`docs/licensing.md`](docs/licensing.md) sets out the options and the state of the
-decision — or open an issue and ask.
+**Author: Simon Raj.** Every word of prose and every line of code in this
+repository is his own work — the CrewAI implementation, the six-agent validator,
+the event spine, the FastAPI / WebSocket service, the Vue 3 console, the
+specifications in [`agents/`](agents/), the scoring rubric and every test.
+Copyright © 2026 Simon Raj.
+
+Where it builds on published thinking it cites a public source. Five of the six
+orchestration *pattern names* used in
+[`agents/workflow.md`](agents/workflow.md) §3 — prompt chaining, routing,
+parallelisation, orchestrator-workers, evaluator-optimizer — are Anthropic's,
+from [*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents),
+and are cited there directly; the sixth is this repository's own. The analysis of
+how each pattern maps onto CrewAI 1.15.18 is original throughout. The only
+third-party *files* in the repository are the four vendored MIT CrewAI skills
+noted above.
+
+**No `LICENSE` file exists**, which means default copyright applies: you may read
+this code but not legally reuse it. [`docs/licensing.md`](docs/licensing.md) sets
+out the options — or open an issue and ask.
 
 ---
 

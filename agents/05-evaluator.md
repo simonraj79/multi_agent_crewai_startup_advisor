@@ -1,7 +1,8 @@
 # 05 · Evaluator — *stretch*
 
-**Pattern 6 — Evaluator–Optimizer.** Slide 62: *"Add an evaluator gate: a fourth
-agent that rejects any brief without sources. Pattern 6, in a few lines."*
+**Pattern 6 — Evaluator–Optimizer** (`patterns.md` §7). The gate this crew needs
+is narrow: reject any brief that has no sources. The obvious shape is a fourth
+agent; this file argues for a task guardrail instead.
 
 > 🔨 **Option A is implemented; Option B is not.** `writing_task` carries
 > `guardrails=[check_mechanics, ATTRIBUTION_GUARDRAIL]` with
@@ -21,14 +22,16 @@ agent that rejects any brief without sources. Pattern 6, in a few lines."*
 > Still open: the `run_scores` table and the four-axis quality scoring below.
 > Cost is measured; quality is not.
 
-Derived from slide 25's Human Swarm **Critic** — *CAN: approve or reject with a
-written reason. CANNOT: search, calculate, or write.* See `workflow.md` §4.
+The **Critic** in this repository's role decomposition: it may approve or reject
+with a written reason; it may not search, calculate, or write. See `workflow.md`
+§4.
 
-> **Agent Spec Card** (slide 28) — describing **Option B**, the visible fourth
-> agent. Note the file's *recommended* path is **Option A**, a task guardrail
-> with no agent at all: it has no Role, no Tools and no persona, because it is a
-> validator rather than a crew member. Read "Read this before you build it"
-> before filling this card in.
+> **Agent contract** — **Role · Tools · Inputs · Outputs · Guardrail**
+> (`workflow.md` §4) — describing **Option B**, the visible fourth agent. Note
+> the file's *recommended* path is **Option A**, a task guardrail with no agent
+> at all: it has no Role, no Tools and no persona, because it is a validator
+> rather than a crew member. Read "Read this before you build it" before filling
+> this contract in.
 
 | Field | Value |
 |---|---|
@@ -252,8 +255,7 @@ evaluation_task:
 
 ## What to look for in the trace
 
-- **A real rejection.** Slide 22 notes the lecture's own Pattern 6 demo *"fails
-  round 1, passes by 2-3"*. A gate that passes first time on every run is not
+- **A real rejection.** A gate that passes first time on every run is not
   demonstrating anything — check the rules are actually binding.
 - **The retry, under Option A.** The Writer running twice, second time carrying
   the failure message. That is the pattern, visible in one place.
@@ -264,8 +266,9 @@ evaluation_task:
 
 ## Scoring the brief, not just gating it
 
-Slide 66's sixth production problem is **evaluation** — *"score per-agent AND the
-whole system."* Everything above this line is a **gate**: pass/fail on one brief
+The sixth failure mode in `workflow.md` §9 is **evaluation** — nothing scores the
+output, per-agent or end to end. Everything above this line is a **gate**:
+pass/fail on one brief
 against a fixed checklist. That is not a score, and the difference matters
 because this repository proposes four comparisons and **none of them is
 resolvable as currently specified**:
@@ -275,13 +278,13 @@ resolvable as currently specified**:
 | Writer on cheap tier vs escalation tier | `03-writer.md` | yes | **no** |
 | Two agents vs three (merge Analyst + Writer) | `02-analyst.md` | yes | **no** |
 | Code `@router` vs LLM Manager | `04-manager.md` | yes | **no** |
-| `Process.sequential` vs `Process.hierarchical` | slide 62 | yes | **no** |
+| `Process.sequential` vs `Process.hierarchical` | `04-manager.md` | yes | **no** |
 
 `08-observability.md` measures tokens, calls and dollars per agent. Nothing
 measures whether the brief got better. So every one of those A/Bs currently
 resolves to "the cheap one won", which is true by construction and answers
-nothing. Slide 53 asks *whether you'd keep it* — a cost number alone cannot
-answer that.
+nothing. *Would you keep it?* is the question these comparisons exist to answer,
+and a cost number alone cannot answer it.
 
 **The smallest thing that fixes it:**
 
@@ -302,8 +305,8 @@ answer that.
    quality a query rather than a memory.
 
 This is one more table and one more prompt. Without it the project can say what
-its crew *costs* and not what it is *worth* — and the honest answer to slide 53
-needs both numbers, not one.
+its crew *costs* and not what it is *worth* — and the honest answer needs both
+numbers, not one.
 
 > Judge on the cheap tier with `reasoning_effort: "minimal"`, exactly as this
 > agent does. A scorer that costs more than the thing it scores will not get run
@@ -318,6 +321,6 @@ deterministic string operations. They need no model, cost nothing, and catch the
 most common failure.
 
 Before adding a fourth agent, consider whether a plain function guardrail
-already gets you most of the value. Then you can answer slide 53's *"whether
-you'd keep it"* with something better than a working feature: a measured judgement
-about whether it needed to be an agent at all.
+already gets you most of the value. Then you can answer *would you keep it* with
+something better than a working feature: a measured judgement about whether it
+needed to be an agent at all.

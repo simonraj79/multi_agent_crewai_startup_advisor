@@ -3,7 +3,7 @@ name = "brief_crew"
 version = "0.1.0"
 description = "Two CrewAI applications on one package: Brief Crew (Researcher/Analyst/Writer over a warm Pinecone cache) and Validator Studio (a six-agent startup-idea validator with durable human gates, a FastAPI/WebSocket service and a Vue 3 UI)."
 readme = "README.md"
-authors = [{ name = "Simon", email = "inspiring.resilience@gmail.com" }]
+authors = [{ name = "Simon Raj", email = "inspiring.resilience@gmail.com" }]
 # NOTE: there is no `license` field yet, and no LICENSE file at the repo root.
 # Until one exists, default copyright applies and nobody may legally reuse this
 # code. See docs/licensing.md for the options and what to add here once you

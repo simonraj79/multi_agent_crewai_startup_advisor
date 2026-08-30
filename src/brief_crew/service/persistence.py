@@ -55,9 +55,14 @@ MAX_STRING_LENGTH = 65_536
 MAX_ERROR_LENGTH = 4096
 MAX_FRAME_REPLAY = 500
 MAX_OPEN_GATE_SCAN = 500
+MAX_STALE_RUN_SCAN = 500
 
 _UNSET = object()
 _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
+# Statuses that assert "a worker somewhere is supposed to be doing this".
+# `waiting` is deliberately absent: it is durably anchored by run_gates and
+# pending_feedback, so it survives a restart and must never be swept.
+_LIVE_RUN_STATUSES = ("queued", "running", "cancelling")
 # F03/R-2 watch ladder for an unanswered gate: open -> expired -> alerted.
 _GATE_WATCH_STATUSES = frozenset({"expired", "alerted"})
 _SECRET_KEYS = frozenset(
@@ -994,6 +999,70 @@ class PostgresFlowPersistence(FlowPersistence):
         with self._connect() as connection:
             rows = connection.execute(statement).mappings().all()
         return [self._gate_dict(row) for row in rows]
+
+    def list_stale_runs(
+        self,
+        *,
+        updated_before: datetime | None = None,
+        statuses: Sequence[str] = _LIVE_RUN_STATUSES,
+        limit: int = MAX_STALE_RUN_SCAN,
+    ) -> list[dict[str, Any]]:
+        """Rows that still claim live work, oldest first - the orphan sweeper's input.
+
+        A run interrupted by a process restart leaves no anchor behind: the
+        future died with the process and the row keeps saying ``running``. This
+        is how the next process finds those rows without waiting for someone to
+        ask about one.
+
+        ``updated_before`` is the liveness cut. ``updated_at`` is bumped by
+        every persisted frame batch and every status write, so it is a real
+        heartbeat rather than a creation timestamp, and filtering on it keeps a
+        run that is genuinely executing right now out of the result.
+
+        Deliberately NOT ``get_run``: this scan runs on a maintenance tick and
+        must not pay ``get_run``'s per-run frame-statistics and open-gate
+        subqueries for every live row. The caller rehydrates the few rows it
+        actually acts on.
+        """
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        wanted = tuple(
+            _identifier(_enum_value(status), label="status", limit=32)
+            for status in statuses
+        )
+        if not wanted:
+            return []
+        statement = select(
+            runs.c.id,
+            runs.c.status,
+            runs.c.flow_id,
+            runs.c.session_id,
+            runs.c.workflow_id,
+            runs.c.created_at,
+            runs.c.started_at,
+            runs.c.updated_at,
+        ).where(runs.c.status.in_(wanted))
+        if updated_before is not None:
+            statement = statement.where(runs.c.updated_at <= _as_utc(updated_before))
+        # created_at, not updated_at: ix_runs_status_created already covers
+        # (status, created_at), and the sweeper does not care about the order
+        # beyond "oldest interruption first".
+        statement = statement.order_by(runs.c.created_at).limit(limit)
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [
+            {
+                "run_id": row["id"],
+                "status": row["status"],
+                "flow_id": row["flow_id"],
+                "session_id": row["session_id"],
+                "workflow_id": row["workflow_id"],
+                "created_at": _as_utc(row["created_at"]),
+                "started_at": _as_utc(row["started_at"]),
+                "updated_at": _as_utc(row["updated_at"]),
+            }
+            for row in rows
+        ]
 
     def get_pending_gate(self, run_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")

@@ -190,7 +190,7 @@ overturns the first and must be honest about the second.
 
 | §8's argument | Status under the validator |
 |---|---|
-| *"No independent subtasks — every stage consumes its predecessor's entire output."* | **No longer true.** Market landscape, community sentiment and technical feasibility depend only on the scoped idea. They share no inputs and never read each other. This is slide 16's *sectioning* mode, literally. |
+| *"No independent subtasks — every stage consumes its predecessor's entire output."* | **No longer true.** Market landscape, community sentiment and technical feasibility depend only on the scoped idea. They share no inputs and never read each other. This is Anthropic's *sectioning* mode, literally. |
 | *"~210 MB resident caps a Render `starter` at one concurrent run, so fan-out buys no wall-clock."* | **Misapplied to this case.** That 210 MB is a per-**process** import cost (`chromadb`/`lancedb`/`onnxruntime` load whether used or not). Fan-out inside one run is *threads in that same process* (§2.5), so it shares the baseline. §8's ceiling caps concurrent **runs**, not concurrent **branches within a run**. The work is network-bound (Firecrawl scrapes at 10–30 s each), so those threads spend their time in I/O wait. |
 
 Peak RSS and wall-clock are still M3 exit criteria (§12, §13) — the mechanism is
@@ -1662,8 +1662,8 @@ confirmed it. Cache lookup therefore moves **inside each branch method** — whi
 is the opposite of the Brief Flow's shape, where `retrieve_cached` is the first
 thing that happens. Do not copy that structure across.
 
-⚠️ **Namespace per user.** `agents/06-retrieval-layer.md` recommends per-group for
-the classroom; here the stakes are different. A shared index would hold one
+⚠️ **Namespace per user.** `agents/06-retrieval-layer.md` already recommends
+namespacing to contain the blast radius; here the stakes are higher still. A shared index would hold one
 founder's scoped market research and serve it as a warm cache to a competitor
 validating the same idea. `index_documents` already accepts `namespace` and
 nothing currently passes it. Pass it.
@@ -1898,7 +1898,7 @@ done. What was checked, and where:
 |---|---|
 | `agents/patterns.md` §4 Option C (`kickoff_for_each` is sequential) | ✓ folded back — §4 now heads it *"⚠️ NOT parallel"*. §10's decision table still recommended it under ③ Parallel and has been corrected in this pass |
 | `agents/patterns.md` §4 Option B (`and_()` is only the join) | ✓ folded back — §4 now names `asyncio.gather` over sibling listeners as the source of parallelism |
-| `agents/patterns.md` §7 gotcha 3 (`task.py` line drift) | ✓ folded back in §7; the §11 source map still pointed at `task.py:1327` for the *raise* and has been corrected to `task.py:1382-1391`. Note 1327 is not wrong everywhere — it is where `Task._invoke_guardrail_function` is **defined**, which is what `agents/03-writer.md` and `agents/05-evaluator.md` cite, and both remain correct |
+| `agents/patterns.md` §7 gotcha 3 (`task.py` line drift) | ✓ folded back in §7; the §13 source map still pointed at `task.py:1327` for the *raise* and has been corrected to `task.py:1382-1391`. Note 1327 is not wrong everywhere — it is where `Task._invoke_guardrail_function` is **defined**, which is what `agents/03-writer.md` and `agents/05-evaluator.md` cite, and both remain correct |
 | `agents/patterns.md` §9 *"What CrewAI does not give you"* | ✓ folded back — a *"what it does give you"* table now covers Flow HITL, `FlowPersistence`, `Flow.ask()` and `astream()` |
 | `agents/patterns.md` §4 unbounded daemon thread per async task | ✓ folded back |
 | `agents/patterns.md` §7 guardrails suppress `output_pydantic` | ✓ folded back |

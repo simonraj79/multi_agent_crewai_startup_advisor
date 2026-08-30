@@ -44,7 +44,18 @@ market_task:
     only when an attributed source shows the competitor is owned by, or bundled
     into, a larger platform vendor rather than sold as an independent product;
     the competitive-room ladder scores on that flag, so a guess there moves the
-    verdict. List in
+    verdict. Set free_core_coverage for every competitor: WHOLE_JOB when
+    an attributed source shows this competitor already does the whole scoped
+    core job for the scoped user at no cost, MOST_OF_JOB when the free
+    offering covers most of that job but not all of it, SEPARABLE_PART when
+    it covers one part of it, and NONE when a source shows nothing here is
+    free. Leave it null when no source settles the question; null is not
+    NONE, and a guess is worse than a null. WHOLE_JOB is the single most
+    consequential value in this branch - it is by itself enough to reject
+    the idea - so set it only on an attributed source, never on a vendor
+    page implying a free plan exists. A free product that competes with this
+    idea is a competitor even when nobody sells it: record it here with its
+    pricing as "free" rather than leaving it out. List in
     paying_segments each buyer segment an attributed source shows is already
     spending money on this problem, named as that source names it. Leave
     paying_segments empty when no source establishes one; a vendor's own
@@ -186,7 +197,8 @@ synthesis_task:
       problem thread - a thread classified HAS_PROBLEM, PAYS or BUILT_WORKAROUND.
       reusable repository - a repository marked SOLVES_ENTIRELY or PARTIAL whose licence permits commercial use and whose months_since_push is 12 or fewer.
       free substitute - a repository marked SOLVES_ENTIRELY, which covers the whole core job on its own.
-      free product - a product a market or sentiment source shows is available at no cost; it need not be a repository.
+      free product - a named competitor whose free_core_coverage is WHOLE_JOB, MOST_OF_JOB or SEPARABLE_PART: a no-cost offering covering that much of the core job. A null free_core_coverage is not a free product and is not evidence that none exists, and neither is NONE a free product.
+      covers the whole core job - free_core_coverage WHOLE_JOB. covers most of the core job - free_core_coverage MOST_OF_JOB, which means most of it but not all. covers a separable part - free_core_coverage SEPARABLE_PART.
       vendor owned - a competitor whose vendor_owned flag is true: owned by or bundled into a larger platform vendor rather than sold on its own.
       dated within 24 months - the source's own date is no more than 24 months before the scope's as_of date. A market source flagged dated_is_retrieval_time, or a thread flagged date_is_retrieval_time, carries no date of its own and is therefore never dated within 24 months however recent its timestamp looks.
 
@@ -197,8 +209,8 @@ synthesis_task:
     same time; that is the intended reading, not a contradiction.
 
     D - Demand. Is anyone actively trying to solve this today?
-      0: At least 1 usable thread, and none is a problem thread: nobody in the evidence describes having this problem.
-      1: Evidence does not reach this question — the sentiment branch returned no usable thread.
+      0: At least 3 usable threads, and none of them is a problem thread: nobody in the evidence describes having this problem.
+      1: Evidence does not reach this question — the sentiment branch returned fewer than 3 usable threads and no problem thread.
       2: 1 or 2 problem threads, or at least 3 problem threads none of which is dated within 24 months.
       3: At least 3 problem threads, and at least 1 of them dated within 24 months.
       4: Anchor 3, and at least 1 problem thread is classified BUILT_WORKAROUND or PAYS.
@@ -229,10 +241,10 @@ synthesis_task:
       5: Anchor 4, and at least 3 reusable repositories together cover the separable parts of the scoped v1.
 
     X - Headroom over free. Is the core already free and good?
-      0: At least 1 free substitute repository is not marked archived, permits commercial use and was pushed within 12 months.
+      0: At least 1 free substitute repository is not marked archived, permits commercial use and was pushed within 12 months, or at least 1 free product covers the whole core job.
       1: Evidence does not reach this question — no repository is marked SOLVES_ENTIRELY or PARTIAL and no free product is named.
-      2: At least 1 free substitute repository exists, and every one of them is marked archived, licensed against commercial use, or was last pushed more than 12 months ago.
-      3: No free substitute repository exists, and a market or sentiment source names a free product that covers most of the core job.
+      2: At least 1 free substitute repository exists, and every one of them is marked archived, licensed against commercial use, or was last pushed more than 12 months ago; or at least 1 free product covers most of the core job.
+      3: No free substitute repository exists, and at least 1 free product is named, none covering more than a separable part of the core job.
       4: No free substitute and no free product, but a repository marked PARTIAL covers most of the core job.
       5: No free substitute and no free product, and every repository marked PARTIAL covers only a separable part of the core job, with at least 1 such repository in the evidence.
 

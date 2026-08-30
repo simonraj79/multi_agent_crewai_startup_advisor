@@ -246,10 +246,12 @@ twice. They are recorded because none is discoverable from the code.
    `.gitignore` would have shown three reassuring `.env` lines. Check the path,
    never the pattern.
 
-   The same class of hazard is still open: **`docs/` is untracked but NOT
-   ignored**, so `git add -A` publishes it — and its own `licensing.md` raises
-   an unresolved third-party-IP question while `preflight.md` carries live
-   account state. Decide, or ignore it; do not leave it one command away.
+   That hazard was real and has since been decided rather than left pending:
+   `docs/` was published in `add21d1`, and the two things that made it risky
+   were corrected in the commit after. Note what history means here — the
+   original text is still in `add21d1` and in any clone taken from it, so the
+   durable mitigation for the account state was never redaction but the spend
+   cap `preflight.md` now tells you to set.
 
 6. **A line-anchored `grep` under-reports `config.py`, and has now produced the
    same wrong answer twice.** The obvious command for "which environment
@@ -995,26 +997,35 @@ layer that found it.
     `docs/deploying.md:90` no longer claim the live database "already has an
     allow list"; both now state it is `[]` and name the two consequences.
     Verified at `e539811` against `render.yaml:29-41`. See Deployment trap 1.
-17. **`docs/` exists locally and is deliberately not committed.** It is *not*
-    gitignored — it is simply untracked, which means a `git add -A` would
-    publish it. Four files: `licensing.md`, `deploying.md`, `preflight.md`,
-    `rubric-review.md`. Two reasons to hold them:
+17. **`docs/` is published, and the two problems that held it back are fixed.**
+    All four files (`licensing.md`, `deploying.md`, `preflight.md`,
+    `rubric-review.md`) went public in `add21d1`. What was corrected after:
 
-    - `licensing.md` raises an **unresolved third-party-IP question** about the
-      repo's own contents (`agents/workflow.md` §3-§4 and `agents/patterns.md`
-      §12 reproduce a named person's lecture deck at length; PRD §8
-      reverse-engineers a third-party frontend with a Lift/Adapt/Drop plan
-      against a licence nobody has recorded). It also notes the repo has no
-      `LICENSE` at all, which for a **public** repo means all rights reserved.
-    - `preflight.md` documents live account state — the credential regime, the
-      OpenRouter catalogue checked against live prices, and spend bounds.
+    - **The third-party teaching material is removed, not reduced**
+      (2026-08-30). An earlier pass cut it back to summaries plus per-page
+      citations; this one deleted it. Every such citation, the source's author
+      name and filename, every remaining quoted phrase, and every claim resting
+      on that source alone are gone from every `.md` file, verified by a
+      repo-wide case-insensitive grep for the author's name and the presentation
+      vocabulary (`docs/licensing.md` records the pass).
+      `agents/workflow.md` and `agents/patterns.md` were restructured around
+      Anthropic's *Building Effective Agents* vocabulary, which they now cite
+      directly; the sixth pattern (⑤ nested teams) has no Anthropic entry and is
+      declared as this repo's own in `patterns.md` §6. The CrewAI 1.15.18
+      analysis, the `Process.hierarchical` naming trap, the role decomposition
+      implemented in `config/agents.yaml`, and the measured runs were **kept** —
+      they were always original. ⚠️ Git history still contains the removed text
+      (public in `add21d1` and earlier); no history rewrite was done.
+      `docs/licensing.md` records the line-drawing.
+    - **`preflight.md` no longer publishes account state.** Balances, the
+      OpenRouter `limit: null`, and the Pinecone vector count are gone; each is
+      now the *check* to run rather than the answer. The per-variable `.env`
+      inventory became the method (compare by SHA-256, never print).
 
-    Decide publish-or-not deliberately. Do not let it happen by accident.
-
-### Closed since the last handoff — verified, not assumed
-
-Kept as a short ledger so nobody reopens them from an old note.
-
+    Still open and unrelated: **PRD §8** reverse-engineers a third-party
+    frontend with a Lift/Adapt/Drop plan against a licence nobody has recorded,
+    and the repo still has **no `LICENSE`**, which for a public repo means all
+    rights reserved. Neither was touched.
 18. **The stale schema docstrings are gone.** `Thread.points` /
     `num_comments` and `Repo.archived` no longer claim the tool envelopes "do
     not carry them yet"; the comments now explain why each is nullable and how

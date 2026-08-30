@@ -16,7 +16,7 @@ The Pinecone tool, the embedding conventions, and the Cohere rerank pass.
 > delete.
 >
 > **Updated 2026-08-29 — namespaces and metadata filtering are now both wired,
-> on the validator path only.** An earlier revision of this line said per-group
+> on the validator path only.** An earlier revision of this line said per-tenant
 > namespaces were "supported but not set" and that `retrieve()` could not filter
 > at all. Both have since changed:
 >
@@ -300,13 +300,14 @@ lucky chunk from certifying a topic as cached.
 
 ## ⚠️ The cache is shared mutable state
 
-Slide 66 names **state management** — *"who owns shared, mutable state?"* — and
-**security & trust** as two of the six production problems. The Pinecone index is
-where both land, and it is the only thing in this system that outlives a run.
+**State management** - the question of who owns shared, mutable state - and
+**security & trust** are failure modes #5 and #4 in `workflow.md` §9. The
+Pinecone index is where both land, and it is the only thing in this system that
+outlives a run.
 
 `Crew.memory=False` means CrewAI writes nothing durable. That makes this index
 **the** shared mutable state of the project: written by a Flow step, read by
-every subsequent run — and, in a classroom, by every other group.
+every subsequent run — and, in a shared deployment, by every other user.
 
 **Nobody owns it.** No agent file states what state its agent may read or write.
 The Researcher does not even write to it directly; `index_content` does, on its
@@ -322,15 +323,15 @@ and fresh, which the Writer will present with full confidence and a real URL.
 
 Freshness is gated. **Trustworthiness is not.** A poisoned chunk is
 indistinguishable from a good one at query time, and it is durable and
-cross-group in a way a bad single run is not. This is the more serious of the
+cross-tenant in a way a bad single run is not. This is the more serious of the
 two security exposures in this design (the other is in `01-researcher.md`).
 
 ### Minimum viable containment
 
 - **`source_run_id` on every upsert.** Without it a bad run is irrevocable; with
   it, deleting everything one run wrote is one filtered delete.
-- **Namespace per group** in the classroom, so one group cannot poison another's
-  retrieval. Costs nothing and removes the blast radius entirely.
+- **Namespace per user**, so one user cannot poison another's retrieval. Costs
+  nothing and removes the blast radius entirely.
 - **Do not write back from a failed run.** A run that scrapes, indexes, then
   fails currently leaves the cache mutated. `runs.status='failed'` records it;
   nothing compensates for it.

@@ -32,6 +32,8 @@ from brief_crew.config import (
     VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS,
     VALIDATOR_GATE_SWEEP_INTERVAL_SECONDS,
     VALIDATOR_GATE_TIMEOUT_SECONDS,
+    VALIDATOR_ORPHAN_RUN_GRACE_SECONDS,
+    VALIDATOR_ORPHAN_RUN_RECOVERY,
     VALIDATOR_PERSIST_QUEUE_CAPACITY,
     VALIDATOR_RUN_RETENTION_SECONDS,
     compute_cost_usd,
@@ -61,6 +63,21 @@ DEFAULT_SUBSCRIBER_CAPACITY = 512
 # is never evicted from memory, however old it is.
 TERMINAL_STATUSES = frozenset(
     {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
+)
+# Remaining-work item 32: statuses that assert "a worker is doing this right
+# now". WAITING is deliberately absent - it is durably anchored by the
+# run_gates row and the pending_feedback row, so it survives a restart and
+# resumes. These three do not: their Future died with the process.
+INTERRUPTIBLE_STATUSES = frozenset(
+    {RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.CANCELLING}
+)
+# One reason string, used by the frame, the durable `error` column and the
+# gate row, so the trace, the API and the database all say the same thing.
+INTERRUPTED_REASON = "service_restart"
+INTERRUPTED_ERROR = (
+    "interrupted by a service restart: the process executing this run exited "
+    "before it finished, and a run that was mid-method carries no resumable "
+    "checkpoint - relaunch it"
 )
 # PRD F20: a METRICS snapshot carries one row per (node, model) pair. The frame
 # contract caps a detail sequence at 64 entries, and no declared graph has
@@ -994,6 +1011,8 @@ class RunRegistry:
         gate_sweep_interval: float | None = None,
         submit_settle_timeout: float | None = None,
         max_queued_runs: int | None = None,
+        orphan_grace: float | None = None,
+        recover_orphans: bool | None = None,
     ) -> None:
         if max_workers is None:
             max_workers = RUN_CONCURRENCY
@@ -1018,6 +1037,22 @@ class RunRegistry:
         )
         if self.gate_sweep_interval < 0:
             raise ValueError("gate_sweep_interval cannot be negative")
+        # How long a run may claim live work with no durable write before this
+        # process treats it as interrupted. See VALIDATOR_ORPHAN_RUN_GRACE_
+        # SECONDS in config.py for what has to fit inside the window; zero is
+        # allowed so a test can sweep without inventing a clock.
+        self.orphan_grace = (
+            VALIDATOR_ORPHAN_RUN_GRACE_SECONDS
+            if orphan_grace is None
+            else float(orphan_grace)
+        )
+        if self.orphan_grace < 0:
+            raise ValueError("orphan_grace cannot be negative")
+        self.recover_orphans = (
+            VALIDATOR_ORPHAN_RUN_RECOVERY
+            if recover_orphans is None
+            else bool(recover_orphans)
+        )
         self.max_workers = max_workers
         self.graph_version = graph_version
         self.node_registry = node_registry
@@ -1052,6 +1087,8 @@ class RunRegistry:
         self._gate_sweeps = 0
         self._metrics_frames = 0
         self._evicted_runs = 0
+        self._interrupted_runs = 0
+        self._readopted_gates = 0
         self._sweeper_stop = Event()
         self._sweeper: Thread | None = None
         if self.gate_sweep_interval > 0:
@@ -1061,6 +1098,22 @@ class RunRegistry:
                 daemon=True,
             )
             self._sweeper.start()
+        # Remaining-work item 32. A restart is exactly this: a brand-new
+        # registry looking at a database full of rows the dead process was
+        # responsible for. Running the reconciliation once here - rather than
+        # only on the first maintenance tick - means a run stranded by the
+        # PREVIOUS boot is terminal before the operator's first page load,
+        # instead of a `running` row that is still lying for another interval.
+        # A run stranded seconds before THIS boot is still inside the grace
+        # window and is picked up by a later tick, which is why the sweep has
+        # to be periodic as well as eager.
+        #
+        # Never fatal: a storage problem must degrade the recovery, not stop
+        # the service from starting.
+        try:
+            self.recover_orphaned_runs()
+        except Exception:
+            logger.exception("the interrupted-run recovery sweep failed at startup")
 
     def _runtime_for(self, workflow_id: str) -> WorkflowRuntime:
         if self.workflows:
@@ -1546,6 +1599,10 @@ class RunRegistry:
             (self.sweep_gates, "the human-gate expiry sweep failed"),
             (self.sweep_metrics, "the run metrics sweep failed"),
             (self.evict_stale_runs, "the terminal-run eviction sweep failed"),
+            (
+                self.recover_orphaned_runs,
+                "the interrupted-run recovery sweep failed",
+            ),
         )
         while not self._sweeper_stop.wait(self.gate_sweep_interval):
             for job, message in jobs:
@@ -1636,6 +1693,215 @@ class RunRegistry:
             )
         return evicted
 
+    def recover_orphaned_runs(self, *, now: datetime | None = None) -> list[str]:
+        """Reconcile runs whose worker died with the process. Item 32.
+
+        The defect this closes: a run executing when the API restarts is
+        orphaned forever. The ``Future`` dies with the process, the ``runs``
+        row still says ``running``, no code path resumes it, and ``cancel()``
+        only reaches CANCELLING because there is no live future left to hit a
+        PRE_STEP boundary. The operator is left with a run that lies and no
+        lever at all.
+
+        **Such a run is not resumable, and this does not pretend otherwise.**
+        A gate has a durable anchor - the ``run_gates`` row plus the
+        ``pending_feedback`` row CrewAI writes when ``HumanFeedbackPending`` is
+        raised - and ``from_pending()``/``resume()`` rebuilds it. A run that
+        was mid-method has neither: ``Flow.from_pending()`` raises
+        ``ValueError`` without that row, and ``kickoff(inputs={"id": ...})``
+        reloads the STATE with an empty completed-method set, which re-runs the
+        flow from ``@start`` at full price rather than resuming it. So the
+        honest terminal state is a failure with a reason.
+
+        Three guards keep a live run out of this:
+
+        * status. Only QUEUED, RUNNING and CANCELLING are considered; WAITING
+          is anchored and is never touched, at any age.
+        * a live future or an admission reservation in THIS registry, which is
+          what "something is still executing it" means inside one process.
+        * the grace window on ``runs.updated_at``, which every frame batch
+          bumps. That is what covers the two windows the future test cannot
+          see: a deploy where the draining instance is still working, and
+          ``_submit``'s settle wait, during which a healthy run is RUNNING with
+          no future installed yet.
+
+        One case genuinely IS resumable and is healed rather than failed: a
+        process that died between ``open_gate`` and the status write leaves
+        ``running`` on the row with a real open gate behind it. That run is put
+        back to WAITING with its pending context, exactly as a gate recovery
+        would.
+        """
+        if not self.recover_orphans or self.persistence is None:
+            return []
+        lister = getattr(self.persistence, "list_stale_runs", None)
+        if not callable(lister):
+            return []
+        moment = now or _utcnow()
+        cutoff = moment - timedelta(seconds=self.orphan_grace)
+        try:
+            stale = lister(updated_before=cutoff)
+        except Exception:
+            logger.exception("could not list interrupted runs for recovery")
+            return []
+        recovered: list[str] = []
+        readopted = 0
+        for row in stale:
+            run_id = str(row.get("run_id") or "")
+            if not run_id or self._has_live_work(run_id):
+                continue
+            try:
+                record = self.require(run_id)
+            except KeyError:
+                continue
+            except Exception:
+                logger.exception("could not load interrupted run %s", run_id)
+                continue
+            # Re-checked now that the row is in memory. The first check asked
+            # about a run this process had never heard of; this one asks again
+            # after require() may have raced a live submission into _futures.
+            if self._has_live_work(run_id):
+                continue
+            if record.status not in INTERRUPTIBLE_STATUSES:
+                continue
+            try:
+                if self._adopt_interrupted_gate(record):
+                    readopted += 1
+                    continue
+                self._fail_interrupted(record)
+            except Exception:
+                logger.exception("could not reconcile interrupted run %s", run_id)
+                continue
+            recovered.append(run_id)
+        if recovered or readopted:
+            with self._lock:
+                self._interrupted_runs += len(recovered)
+                self._readopted_gates += readopted
+            logger.warning(
+                "reconciled %d run(s) interrupted by a service restart and "
+                "re-adopted %d gate(s); nothing durable was deleted",
+                len(recovered),
+                readopted,
+            )
+        return recovered
+
+    def _has_live_work(self, run_id: str) -> bool:
+        """True while THIS process still owns the run's execution.
+
+        An admission reservation counts: ``create_run`` holds one between the
+        durable write and ``_submit``, and in that window a perfectly healthy
+        run has a ``queued`` row and no future yet.
+        """
+        with self._lock:
+            if run_id in self._reserved:
+                return True
+            future = self._futures.get(run_id)
+            return future is not None and not future.done()
+
+    def _adopt_interrupted_gate(self, record: RunRecord) -> bool:
+        """Heal the one interrupted shape that really is resumable.
+
+        ``_mark_pending`` writes the pending feedback and the gate row, and
+        only then marks the record WAITING and persists the status. A process
+        that died between those leaves ``running`` on a run that is in fact
+        parked at a gate, with both durable anchors intact. Failing it would
+        throw away a resumable run, so it is put back to WAITING instead and
+        the operator answers the gate as normal.
+        """
+        prompt = record.pending_gate
+        if prompt is None or not record.flow_id or self.persistence is None:
+            return False
+        loader = getattr(self.persistence, "load_pending_feedback", None)
+        if not callable(loader):
+            return False
+        loaded = loader(record.flow_id)
+        if loaded is None:
+            return False
+        _, context = loaded
+        record.mark_waiting(dict(prompt), context)
+        self._persist_status(record)
+        logger.warning(
+            "run %s was interrupted at gate %s and has been restored to "
+            "waiting; the gate is answerable again",
+            record.run_id,
+            prompt.get("gate_id"),
+        )
+        return True
+
+    def _fail_interrupted(self, record: RunRecord) -> None:
+        """Take one orphaned run to a terminal state, loudly.
+
+        The frames deliberately reuse the two shapes ``_execute`` already
+        emits - ``ERROR``/``WORKFLOW_END`` for a failure, ``RUN_STATE``/
+        ``WORKFLOW_END`` with ``status: cancelled`` for a cancellation - so
+        every existing client reaches a terminal state with no change: the
+        Studio maps an ``error`` frame to a terminal error and reads its
+        ``message``, and ``normalizeRunStatus`` already maps ``failed`` to
+        ``error`` on a refresh.
+
+        CANCELLING becomes CANCELLED rather than FAILED. The operator asked
+        for the run to stop; it stopped, in the least graceful way available.
+        Reporting that as a failure would blame the run for doing what it was
+        told.
+        """
+        cancelling = record.status is RunStatus.CANCELLING
+        node_id = record.node_registry.workflow_node_id
+        # A durable gate that could not be adopted must not stay open, or the
+        # F03 sweeper keeps finding a gate on a terminal run forever.
+        self._close_interrupted_gate(record)
+        record.pending_gate = None
+        record.pending_context = None
+        if cancelling:
+            record.capture.emit(
+                kind=FrameKind.RUN_STATE,
+                event_type=UIEventType.WORKFLOW_END,
+                node_id=node_id,
+                message=(
+                    "Run cancelled: the service restarted before it reached a "
+                    "step boundary"
+                ),
+                details={"status": "cancelled", "reason": INTERRUPTED_REASON},
+                level=FrameLevel.WARNING,
+            )
+            record.mark_cancelled()
+            record.emit_metrics("run_cancelled")
+        else:
+            record.capture.emit(
+                kind=FrameKind.ERROR,
+                event_type=UIEventType.WORKFLOW_END,
+                node_id=node_id,
+                message="Run interrupted by a service restart",
+                details={
+                    "error": INTERRUPTED_ERROR,
+                    "reason": INTERRUPTED_REASON,
+                    "interrupted_status": record.status.value,
+                },
+                level=FrameLevel.ERROR,
+            )
+            record.mark_failed(RuntimeError(INTERRUPTED_ERROR))
+            record.emit_metrics("run_failed")
+        self._persist_status(record)
+
+    def _close_interrupted_gate(self, record: RunRecord) -> None:
+        gate_id = str((record.pending_gate or {}).get("gate_id") or "")
+        if not gate_id or self.persistence is None:
+            return
+        try:
+            answer = self.persistence.answer_gate(
+                record.run_id,
+                gate_id,
+                outcome=INTERRUPTED_REASON,
+            )
+        except Exception:
+            logger.exception(
+                "could not close gate %s on interrupted run %s",
+                gate_id,
+                record.run_id,
+            )
+            return
+        if answer.accepted and record.flow_id:
+            self.persistence.clear_pending_feedback(record.flow_id)
+        record.answered_gates.add(gate_id)
+
     @staticmethod
     def _is_evictable(
         record: RunRecord,
@@ -1656,6 +1922,10 @@ class RunRegistry:
                 "tracked_runs": len(self._records),
                 "metrics_frames": self._metrics_frames,
                 "evicted_runs": self._evicted_runs,
+                # Item 32: runs this process took to a terminal state because
+                # the process that owned them is gone, and gates it put back.
+                "interrupted_runs": self._interrupted_runs,
+                "readopted_gates": self._readopted_gates,
             }
 
     def _open_gates(

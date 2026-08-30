@@ -3,6 +3,14 @@
 Prepared 2026-08-29. Scope: verify credentials, trace the live path, estimate
 cost, and name the failure modes — **before** anyone spends money.
 
+> **Editorial note (2026-08-30).** This document originally recorded the live
+> *answers* to each check — account balances, spend limits, index counts. Those
+> are the author's own account state, they go stale the moment a run happens, and
+> they do not belong in a public repository. They have been replaced with the
+> check to run and the answer you need to see. Every figure that survives below
+> is either a published price, a documented platform limit, or a measurement
+> taken from this repository's own artifacts.
+
 ---
 
 ## I spent nothing
@@ -35,15 +43,21 @@ and only the boolean result was displayed.
 
 ## Task 1 — Credentials
 
-### Summary table
+### The checks, and what each answer has to be
 
-| Service | Present | Authenticates | Limits / headroom | Notes |
-| --- | --- | --- | --- | --- |
-| **OpenRouter** | Yes (`.env`) | **Yes** — HTTP 200 | **No spend cap.** `limit: null`, `limit_remaining: null`. Lifetime usage $0.138860835 | Paid tier (`is_free_tier: false`), never expires, not a provisioning key. **See risk F.** |
-| **Firecrawl** | Yes (`.env`) | **Yes** — HTTP 200 | **39,290 credits** remaining; 589,350 tokens remaining. Period ends 2027-08-29 | Enormous headroom. Plan quota is 5,000 credits/period, so the balance is topped up well beyond it. |
-| **Pinecone** | Yes (`.env`) | **Yes** | Index `agentic-crew-ai-index` **Ready**, dim 768 (matches `EMBED_DIMENSIONS`), cosine, serverless AWS `ap-southeast-1`, on-demand | **`total_vector_count` = 3.** The cache is effectively empty — see risk J. |
-| **Cohere** | Yes (`.env`) | **Yes** — HTTP 200, 32 models visible | Rate/quota not exposed by `/v1/models` — **unverified** | `RERANK_MODEL = "rerank-v4.0-fast"` **is present** in the catalogue. |
-| **GitHub token** | Yes (`.env`) | **Yes** — HTTP 200 | `core` 5000/hr, **`search` 30/min**, `code_search` 10/min | Full remaining on all three. See regime note below. |
+Every row is a check **to run**, not a balance to read off this page. The answers
+are account state and are deliberately not published here.
+
+| Service | Check | What you need to see | Why it matters |
+| --- | --- | --- | --- |
+| **OpenRouter** | `GET /api/v1/key` | HTTP 200, and a **non-null `limit`** | A `null` `limit` means the key has no spend cap at all. **See risk F** — this is the single check most worth acting on. Also confirm it is a normal inference key, not a provisioning key. |
+| **Firecrawl** | `GET /v2/team/credit-usage`, `GET /v2/team/token-usage` | Enough credits for the run, and a period end that is not imminent | Sizing is under *Non-token costs*: one run's market branch is 5–10 scraped results. Compare that against your own balance and plan quota. |
+| **Pinecone** | `describe_index` + `describe_index_stats` on `PINECONE_INDEX_NAME` | Status **Ready**; dimension equal to `EMBED_DIMENSIONS` (768); cosine metric | A dimension mismatch breaks every cache read and write. Note the vector count **before** the run so you can compare afterwards — see risk J. |
+| **Cohere** | `GET /v1/models` | HTTP 200, and `RERANK_MODEL` present in the catalogue | `/v1/models` exposes no quota, so key validity is provable this way and remaining balance is not. |
+| **GitHub token** | `GET /rate_limit` | HTTP 200, with headroom on `core`, `search` and `code_search` | The documented authenticated ceilings are 5,000/hr `core`, **30/min `search`**, 10/min `code_search`. See the regime note below. |
+
+All five authenticated when this document was written. Re-run them: a key that
+worked in August is not a key that works today.
 
 ### The GitHub regime the run would be in — answered
 
@@ -55,9 +69,9 @@ headers = _headers(token)
 bucket = _TOKEN_BUCKETS[bool(token)]
 ```
 
-`GITHUB_TOKEN` is present, non-empty, and authenticates. **The run will use the
-authenticated bucket: `VALIDATOR_GITHUB_RATE_LIMIT_AUTHED = 24` req/min.**
-GitHub's live limit for this token is **30 search req/min**. The tool's own
+With `GITHUB_TOKEN` present and authenticating, **the run uses the authenticated
+bucket: `VALIDATOR_GITHUB_RATE_LIMIT_AUTHED = 24` req/min.**
+GitHub's documented authenticated search limit is **30 req/min**. The tool's own
 bucket sits below GitHub's ceiling, so the token bucket binds first and there is
 6 req/min of slack. PRD R-7's "10 req/min per IP" describes the *unauthenticated*
 regime, which this run will not be in.
@@ -67,39 +81,33 @@ bucket is shared across threads *within one process only*. Two processes (CLI +
 service, or two benchmark shells) each get their own 24/min bucket — 48/min
 against a real 30/min ceiling. See risk D.
 
-### Environment shadowing — a mismatch exists, and it is already handled
+### Environment shadowing — check it, because `.env` is not the only source
 
-`agents/00-shared-config.md` documents a case where `PINECONE_API_KEY` existed as
-a machine-level variable with a different value from `.env`. **That condition is
-live on this machine right now.**
+`agents/00-shared-config.md` documents a case where a credential exists **both**
+in `.env` and as a machine-level OS variable, with different values. That is not
+hypothetical: it has been observed here for `PINECONE_API_KEY` on a development
+machine.
 
-| Variable | In `.env` | In OS env | Verdict |
-| --- | --- | --- | --- |
-| `PINECONE_API_KEY` | Yes | **Yes (User scope)** | **Values differ — a mismatch exists** |
-| `OPENROUTER_API_KEY` | Yes | No | clean |
-| `FIRECRAWL_API_KEY` | Yes | No | clean |
-| `COHERE_API_KEY` | Yes | No | clean |
-| `GITHUB_TOKEN` | Yes | No | clean |
-| `PINECONE_INDEX_NAME` | Yes | No | clean |
-| `OPENAI_API_KEY` | No | **No** | absent both — correct, and confirms no OpenAI fallback is even possible |
-| `DATABASE_URL` | No | No | absent — service will use `output/validator-studio.db` |
+**The check.** For each credential the run uses, compare the `.env` value against
+the OS environment — **by digest, never by printing.** A SHA-256 of each and a
+boolean equality result is all you need, and all that should ever reach a
+document. While you are there, confirm `OPENAI_API_KEY` is absent from *both*,
+which is what makes an accidental OpenAI fallback impossible rather than merely
+unlikely, and note whether `DATABASE_URL` is set — unset means the service falls
+back to `output/validator-studio.db`.
 
-I am reporting only *that* the two `PINECONE_API_KEY` values differ. I did not
-display either, and the comparison was by digest.
+**A mismatch is not automatically a defect.** `src/brief_crew/__init__.py:56`
+runs `load_dotenv(_ENV_PATH, override=True)` at package import, deliberately and
+with a docstring explaining exactly this scenario, so `.env` wins. The
+consequence for verification: authenticate **after** importing `brief_crew`, so
+you exercise the credential the run will actually use.
 
-**This is not currently a defect.** `src/brief_crew/__init__.py:56` runs
-`load_dotenv(_ENV_PATH, override=True)` at package import, deliberately and with
-a docstring explaining exactly this scenario. `.env` wins. The Pinecone
-authentication I verified was performed **after** importing `brief_crew`, so it
-exercised the `.env` credential — the one the run will actually use — and it
-works against the live index.
-
-The residual risk is narrow but real: anything that touches Pinecone **without**
+The residual risk is narrow but real: anything that touches a provider **without**
 importing `brief_crew` first would silently use the OS credential instead. Nothing
 on the validator path does that today.
 
-Also checked: no `.env` value carries stray whitespace or an embedded CR, despite
-the file having CRLF line endings.
+Also worth checking: that no `.env` value carries stray whitespace or an embedded
+CR. The file has CRLF line endings, and that has caught people out.
 
 ### Unverified, with the reason
 
@@ -107,7 +115,7 @@ the file having CRLF line endings.
 | --- | --- |
 | **`EMBED_MODEL = "google/gemini-embedding-2"`** | OpenRouter's `/api/v1/models` lists **no embedding models at all** (0 of 396 ids contain "embed"), and `?category=embedding` returns HTTP 400. The only way to confirm the id and its price is to call `POST /api/v1/embeddings`, **which is billed**. I did not. Consequence: if this id is wrong, every cache lookup and every evidence write fails — see risk J for why that is non-fatal. |
 | **Cohere quota / rate limit** | `/v1/models` authenticates but exposes no quota. Cohere has no free quota-introspection endpoint I could confirm. Key validity is proven; remaining balance is not. |
-| **Firecrawl per-credit dollar cost** | PRD Q3 says this is unmeasured, and it still is. I have the credit *balance* (39,290) but not what a credit costs on this plan. I have not invented a number. |
+| **Firecrawl per-credit dollar cost** | PRD Q3 says this is unmeasured, and it still is. The credit *balance* is readable from the account; what a credit costs on this plan is not exposed anywhere I could read for free. I have not invented a number. |
 | **Pinecone per-operation billing** | Not exposed by the control plane. Estimated from published serverless rates below, not measured. |
 
 ---
@@ -277,8 +285,9 @@ Brief Crew `cache_miss` run: 13 requests, 109,104 prompt + 30,085 completion =
 139,189 tokens. That is 3 agents, 2 with tools, and it gives a credible
 per-request scale (~8.4k prompt/request once a scrape lands in context).
 `output/perf/*.json` contains **no** token data — those runs were synthetic.
-OpenRouter reports $0.1389 lifetime usage, all of it today, which is consistent
-with that run being essentially the only paid activity so far.
+After a live run, reconcile the estimate below against your own OpenRouter
+activity page; the useful comparison is *that run's* reported usage against this
+table, not an account total.
 
 ### One gated run — central estimate
 
@@ -333,20 +342,20 @@ the **real** Pinecone namespace, and multiplies Firecrawl/GitHub/HN load by 10.
 `Firecrawl(...).search(query, limit=limit, scrape_options=ScrapeOptions(formats=["markdown"]))`
 with `limit` defaulting to 5 (schema max 10). Billing is per result **fetched and
 scraped**. **PRD Q3 says the per-credit economics are unmeasured, and they still
-are — I am not inventing a rate.** What I can say from the live balance: at
+are — I am not inventing a rate.** What is safe to state is the *shape*: at
 roughly 1 credit per scraped result, one run's market branch costs **5–10
-credits**; even at 5 credits per result it is ~25–50. Against **39,290 credits
-remaining**, a single run is under 0.03% of the balance and the 10-run benchmark
-under 0.3%. **Credit headroom is not a constraint on any of the three options.**
-The open question is the dollar value of a credit, not the supply.
+credits**; even at 5 credits per result it is ~25–50, and the 10-run benchmark is
+ten times that. Check those figures against your own balance before running — on
+a topped-up account they are noise, against a bare plan quota they are not. The
+question no balance answers is the dollar value of a credit.
 
 **Cohere rerank.** `RETRIEVE_CANDIDATES = 20` documents per call, one call per
 cache lookup — market is always on, feasibility only with the flag. So **1–2
 rerank calls per run**. Cohere bills a "search unit" as one query against up to
 100 documents, so 20 documents is 1 unit. At published rerank pricing (~$2 per
 1,000 search units) that is **~$0.002–0.004 per run**, ~$0.04 for the benchmark.
-In practice likely **$0**, because with 3 vectors in the index retrieval returns
-too little to rerank.
+In practice likely **$0** on a cold index, because retrieval returns too little
+to rerank.
 
 **Pinecone.** Serverless, on-demand. Per run: 1–2 queries plus upserts for
 indexed evidence (order 20–60 vectors). At published serverless rates
@@ -474,20 +483,26 @@ a *worthless but fully paid-for* verdict with F and X scored at the level-1
 
 ### E. Output overwrite
 
-`output/validation.md` **does not currently exist**, so the first run is safe.
-`persist()` does an unconditional `write_text`, so **the second run silently
-overwrites the first.** Copy the report before re-running. The benchmark is fine —
+`persist()` does an unconditional `write_text`, so **any later run silently
+overwrites `output/validation.md`.** Check whether the file already exists and
+copy it before re-running. The benchmark is fine —
 it writes to `output/perf/runs/<arm>-NN-validation.md`.
 
-### F. No spend cap on the OpenRouter key
+### F. Nothing in this repository bounds total spend
 
-`limit: null`, `limit_remaining: null`. Nothing anywhere — not in the key, not in
-`config.py`, not in CrewAI — bounds total spend. The estimates above say a
-runaway is unlikely to exceed ~$1, but nothing *enforces* that.
+Not `config.py`, not CrewAI, not the Flow. `max_rpm` throttles rate and `max_iter`
+bounds one agent's loop; neither is a budget. The only thing that can cap the bill
+is a **credit limit on the OpenRouter key itself**, and that lives in the provider
+dashboard, not in code.
+
+**The check: `GET /api/v1/key` and read `limit` / `limit_remaining`. A `null`
+`limit` means the key is uncapped.** The estimates above say a runaway is unlikely
+to exceed ~$1, but nothing *enforces* that.
 
 **This is the highest-value pre-check and it is free:** set a credit limit on the
 key in the OpenRouter dashboard before the run. Even a $5 cap converts an
-unbounded tail risk into a bounded one.
+unbounded tail risk into a bounded one. Do it before deploying or publishing
+anything that can trigger a run on that key.
 
 ### G. Guardrail exhaustion is fatal and lands late
 
@@ -522,28 +537,30 @@ guillotine.
 
 ### I. Traces are currently OFF
 
-`C:\Users\<you>\AppData\Local\CrewAI\MultiAgentSystem\.crewai_user.json` shows
-`"trace_consent": false`. If you want the trace, run `crewai traces enable`
-**before** the run.
+Trace consent is recorded per machine in
+`C:\Users\<you>\AppData\Local\CrewAI\MultiAgentSystem\.crewai_user.json` as
+`trace_consent`, and it is off unless you turned it on. Check it, and if you want
+the trace run `crewai traces enable` **before** the run.
 
 Per `CLAUDE.md`: a trace can contain prompts, task inputs/outputs, tool arguments
 and results, and model responses. For this workflow that specifically includes
 the idea text and **scraped third-party page content** from Firecrawl. Confirm
 no secrets or personal data were processed before sharing a trace URL.
 
-### J. The Pinecone cache is empty — expect no cache contribution
+### J. A cold cache contributes nothing — and a broken one looks identical
 
-`total_vector_count = 3`. The market cache lookup will return essentially
-nothing. This is **not** a failure: `validator_flow.py:607-615` and `:624-633`
+Read `describe_index_stats` before the run. On a cold or near-empty index the
+market cache lookup returns essentially nothing. That is **not** a failure:
+`validator_flow.py:607-615` and `:624-633`
 wrap both `_cached_evidence` and `_index_evidence` in bare
 `except Exception: return []` / `pass`. Cache and embedding failures are
 swallowed silently and the branch proceeds on live research.
 
 Two consequences: (1) an empty cache block in the output is expected on run 1,
 not a bug; (2) **if `EMBED_MODEL` is wrong** (the unverified item from Task 1),
-you will never see an error — it will just silently never cache. Check
-`describe_index_stats` after the run: if `total_vector_count` has not grown, the
-embedding path is broken.
+you will never see an error — it will just silently never cache. Read
+`describe_index_stats` again after the run: if the vector count has not grown
+against the figure you noted beforehand, the embedding path is broken.
 
 ### K. Branch failure produces a confident, worthless verdict
 
@@ -565,15 +582,16 @@ work to schedule — but the money is spent scoring against them.
 
 ### Pre-flight checklist
 
-- [ ] Set a credit limit on the OpenRouter key (risk F) — free, highest value
+- [ ] Confirm `limit` is non-null on the OpenRouter key — and set one if it is not (risk F). Free, highest value
 - [ ] `uv pip install -e .` so `validate`/`serve` exist, or use the module form (A)
 - [ ] Read the five rubric ladders in `config.py` (L)
 - [ ] `cd D:\MultiAgentSystem` and stay there for all invocations (B)
 - [ ] Confirm nothing else is running that touches GitHub (D)
 - [ ] `crewai traces enable` if a trace is wanted (I)
 - [ ] Decide: `--no-gates` first (recommended, avoids `resume()` entirely — C)
-- [ ] Note `output/validation.md` does not exist yet; back it up before run 2 (E)
-- [ ] After the run: check branch statuses (K) and `total_vector_count` (J)
+- [ ] Back up `output/validation.md` if it already exists — the next run overwrites it (E)
+- [ ] Record the index vector count before the run (J)
+- [ ] After the run: check branch statuses (K), and whether the vector count grew (J)
 
 ---
 
@@ -702,14 +720,16 @@ a single run is known to work.
 
 ## Bottom line
 
-Every credential authenticates. Both models exist and **every price in
-`config.py` matches OpenRouter's live catalogue** — the cost telemetry is sound.
-No test double can reach the live path. The `PINECONE_API_KEY` shadowing the spec
-warned about **is live on this machine**, but `override=True` already handles it.
+Every credential in the table authenticated when this was written. Both models
+exist and **every price in `config.py` matched OpenRouter's live catalogue** —
+the cost telemetry is sound. No test double can reach the live path. Credential
+shadowing of the kind `agents/00-shared-config.md` warns about is real on at
+least one machine here, but `override=True` already handles it.
 
-Two things I would fix before spending anything: **`validate.exe` does not
-exist** (the documented command fails outright), and **the OpenRouter key has no
-spend cap**. Both are free to fix and take a minute.
+Two things to settle before spending anything: **the console scripts may not be
+installed** (the documented `validate.exe` command fails outright when the
+editable install is stale), and **the OpenRouter key may have no spend cap**.
+Both are free to check and take a minute.
 
 One recommendation worth the emphasis: **make the first paid run `--no-gates`.**
 Same six agents, same tools, same guardrails, same money — and it never touches

@@ -1,8 +1,15 @@
 # Agent Specifications — Brief Crew
 
-Specifications for the CrewAI build defined in
-`shaun-chong-multi-agent-orchestration-20260829.pdf` (slides 47–51, 62), extended
-into a hosted service.
+Specifications for a three-agent CrewAI pipeline — Researcher → Analyst → Writer
+— extended into a hosted service with a warm vector cache.
+
+> **Attribution.** Five of the six orchestration pattern *names* used across
+> these files are Anthropic's, from
+> [*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents);
+> the sixth is this repository's own, and `workflow.md` §3 says which and why.
+> Everything else here — the CrewAI analysis, the role decomposition, the
+> retrieval layer, the Flow, the deployment, the measurements — is this
+> project's own work.
 
 **Goal:** one topic in → one finished one-page brief out, backed by a warm vector
 cache so repeat runs get cheaper.
@@ -12,10 +19,9 @@ implementation exists** — `src/brief_crew/` is these documents as running code
 and `00-shared-config.md` §11 maps every spec section to the file that implements
 it. Where code and spec disagree, the spec is right and the code is a bug.
 
-The deck's method (slide 50) is **"Steer, don't type"** — describe intent to your
-AI assistant, read what it writes, tweak, re-run. Each file here is the intent,
-written precisely enough to hand over verbatim, and that is exactly how the
-`role` / `goal` / `backstory` / `description` blocks reached
+**These files are written to be handed over verbatim.** Describe the intent
+precisely, read what the assistant writes, tweak, re-run — that is exactly how
+the `role` / `goal` / `backstory` / `description` blocks reached
 `config/agents.yaml` and `config/tasks.yaml`: pasted, not paraphrased.
 
 ---
@@ -51,12 +57,13 @@ written precisely enough to hand over verbatim, and that is exactly how the
 Orchestrated by a **CrewAI Flow**. The cache-hit/miss branch is the only genuinely
 dynamic decision in the system, and a `@router` resolves it deterministically.
 
-**In the deck's vocabulary this is Pattern ① (Sequential Pipeline) with a
-Pattern ② (Routing) branch resolved in code instead of by a classifier agent,
-and a Pattern ⑥ (Evaluator–Optimizer) gate on the final task.** Patterns ③
-Parallel and ④/⑤ Supervisor/Hierarchical are deliberately not used. Full
-mapping, with the reasons, in `workflow.md` §7–§8 — that is the file that
-answers slide 53. For how each pattern is *built* in CrewAI, see `patterns.md`.
+**In the pattern vocabulary of `workflow.md` §3 this is Pattern ① (Sequential
+Pipeline) with a Pattern ② (Routing) branch resolved in code instead of by a
+classifier agent, and a Pattern ⑥ (Evaluator–Optimizer) gate on the final
+task.** Patterns ③ Parallel and ④/⑤ Supervisor/Nested are deliberately not used.
+Full mapping, with the reasons, in `workflow.md` §7–§8 — that is the file that
+argues which patterns are worth keeping. For how each pattern is *built* in
+CrewAI, see `patterns.md`.
 
 ---
 
@@ -65,8 +72,8 @@ answers slide 53. For how each pattern is *built* in CrewAI, see `patterns.md`.
 | File | What it specifies |
 |---|---|
 | `00-shared-config.md` | Tech stack, credentials, models, prices, guard rails, documentation traps. **Read first.** |
-| `workflow.md` | **The workflow map.** How the deck's six patterns land in *this* build, how the five agents derive from the Human Swarm, per-agent I/O contracts, and every declared deviation. **Read second.** |
-| `patterns.md` | **Agent design patterns.** How each of the six is implemented in CrewAI generically — mechanisms, code, constraints and cost, verified against the 1.15.18 source. The reference for the slides. |
+| `workflow.md` | **The workflow map.** How the six patterns land in *this* build, the role decomposition behind the five agents, per-agent I/O contracts, and every design decision and declared gap. **Read second.** |
+| `patterns.md` | **Agent design patterns.** How each of the six is implemented in CrewAI generically — mechanisms, code, constraints and cost, verified against the 1.15.18 source. |
 | `01-researcher.md` | Stage 1 — retrieval-first, then Firecrawl on a miss. The only agent with tools. |
 | `02-analyst.md` | Stage 2 — judgement. No tools, deliberately. |
 | `03-writer.md` | Stage 3 — the brief, and provenance rules. |
@@ -152,8 +159,8 @@ because reading them tells you what each part of `src/brief_crew/` is for.
 
 ### Track A — the minimum runnable crew
 
-Slide 48 step 4 is `kickoff(topic)`, and it is the step most likely to get
-skipped when the specs are this detailed. This is the whole of it.
+The last step is `kickoff(topic)`, and it is the one most likely to get skipped
+when the specs are this detailed. This is the whole of it.
 
 > ✅ **The retrieval tool now exists, so this is *full* Track A** — three tools
 > and step 0 included. Earlier revisions of this block described a two-tool
@@ -199,15 +206,14 @@ class BriefCrew:
                     verbose=True)
 ```
 
-`verbose=True` is not decoration — it is the trace slide 50 tells you to watch,
-and the only view you have of who handed off to whom. `token_usage` is what turns
-slide 53's *"whether you'd keep it"* into a number.
+`verbose=True` is not decoration — it is the only view you have of who handed off
+to whom. `token_usage` is what turns *keep it or drop it* into a number.
 
 ### Choosing your topic
 
-Slide 47: *"Pick a topic your group actually cares about."* Beyond that, these
-specs imply four hard constraints, and picking badly is the direct cause of the
-most common failure in `01-researcher.md`:
+Pick a topic you actually care about. Beyond that, these specs imply four hard
+constraints, and picking badly is the direct cause of the most common failure in
+`01-researcher.md`:
 
 - **Narrow enough to converge.** "Topic too broad" is `01`'s top failure mode,
   and the fix is a narrower topic, never a higher `max_iter`.
@@ -222,31 +228,18 @@ most common failure in `01-researcher.md`:
 
 ---
 
-## What to bring to the demo
+## What a finished run leaves you with
 
-Per slide 53, three minutes each:
+Four artifacts, and they are what every claim in these specs resolves back to:
 
-- **Your topic** — one sentence, and why your group picked it. See "Choosing
-  your topic" above.
-- **One run** — the brief, or the trace of it being produced. `output/brief.md`
-  plus the verbose log; have both open.
-- **One surprise** — a hallucination, a strange hand-off, or — for this build —
-  a stale cache hit. (The deck's own example is a manager rejection.) The
-  failure tables in `01`, `03` and `06` are a catalogue of candidates.
-- **One pattern** — which of the six you used, and whether you'd keep it.
-  **The answer is in `workflow.md` §7**: a composition of ① Sequential Pipeline
-  + ② Routing + ⑥ Evaluator–Optimizer.
-
-### Running the 70 minutes (slide 50)
-
-- **Steer, don't type.** Describe each agent and task to the assistant, read what
-  it writes, tweak.
-- **Rotate the driver** every ~20 minutes; everyone touches the crew.
-- **Stuck more than 5 minutes?** Flag it rather than burning the block.
-- **Before the end**, pick your demo rep and the one run you want to show — do
-  not leave this to the last two minutes.
-- Slide 52's checkpoint, half-way: a crew that runs end to end, a brief, a
-  verbose log you can point at, and a rep.
+- **The brief** — `output/brief.md`, written by the Writer and nothing else.
+- **The trace** — the verbose log, or an AMP trace. This is the only view of who
+  handed off to whom.
+- **The run record** — `run_metrics` in Postgres: calls, tokens, computed cost,
+  and `runs.route`. See `07-deployment.md` and `08-observability.md`.
+- **The failures.** A hallucinated citation, a strange hand-off, a stale cache
+  hit. The failure tables in `01`, `03` and `06` are a catalogue of what to look
+  for; the section below is what this build actually produced.
 
 ---
 
@@ -254,7 +247,7 @@ Per slide 53, three minutes each:
 
 Two real runs on *cashless payments in Singapore*, both against a **cold cache**
 (the index held 0 vectors, so both took the expensive path by construction).
-This is the evidence slide 53 asks for.
+These are the numbers every cost claim in these specs resolves to.
 
 | | Track A — `run_crew()` | Track B — `crewai run` |
 |---|---|---|
@@ -283,8 +276,10 @@ The detail below is the Track A run.
 | Guardrails | both ran, both passed **first attempt** — no retry |
 | Wall clock | ~7 minutes |
 
-**Slide 55 predicted "~10 LLM calls" where one good agent makes one. It was 9.**
-That is the multi-agent premium, measured on this build rather than assumed.
+**Nine LLM calls for one brief**, where a single well-prompted agent would
+plausibly have made one or two. That is the multi-agent premium, measured on this
+build rather than assumed — and the single-agent arm that would turn *plausibly*
+into a number is still unrun (`workflow.md` §10).
 
 **The reasoning finding is the actionable one.** 72% of every completion token
 this crew produced was reasoning, and reasoning bills at the completion rate —
@@ -311,8 +306,8 @@ the cost:
   against 82% continuing cash use — which is exactly what `02-analyst.md` means
   by "do not flatten recorded disagreement".
 
-**Three failures worth demoing** (slide 53 asks for one surprise; there are
-three, and the best two are the ones that did not look like failures):
+**Three failures worth recording** (the best two are the ones that did not look
+like failures):
 
 1. **The first run died with `TimeoutError` and produced nothing**, at the
    spec'd `max_execution_time: 300`. Under `Process.sequential` a task timeout is
@@ -336,7 +331,7 @@ measurement did.
 
 ## Honest cost note
 
-The deck is blunt about this (slides 55, 65) and the specs inherit it.
+The arithmetic is unforgiving, and the specs inherit it.
 
 A cache **miss** costs the full pipeline — retrieval, rerank, search, scrape,
 embed, upsert, then three agents — which is *more* than the original crew, not
@@ -348,8 +343,8 @@ overhead.
 
 `02-analyst.md` still documents the strongest case against its own existence, and
 none of the new infrastructure changes that argument — all of it sits upstream.
-Read it before the demo — slide 53's "whether you'd keep it" is a graded
-question.
+Read it before quoting any of this: *would you keep it?* is the question these
+numbers exist to answer.
 
 The measurement is built in: `run_metrics.successful_requests` in Postgres, from
 `CrewOutput.token_usage`, with the dollar figure **computed** from those token

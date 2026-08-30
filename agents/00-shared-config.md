@@ -30,19 +30,19 @@ flagged inline, in §9.
 The word "Track" appears throughout these specs. It means one of exactly two
 things:
 
-| | **Track A — the classroom crew** | **Track B — the hosted service** |
+| | **Track A — the sequential crew** | **Track B — the hosted service** |
 |---|---|---|
-| What it is | Slides 45–48's build: three agents, three tasks, one `Crew` | Track A plus a Pinecone warm cache, Postgres run history, and Render hosting |
+| What it is | The base build: three agents, three tasks, one `Crew` | Track A plus a Pinecone warm cache, Postgres run history, and Render hosting |
 | Orchestration | `Process.sequential` | `crewai.flow` with a deterministic `@router` |
 | Retrieval | the Researcher's own `retrieve_and_rerank` tool | the Flow's `retrieve_cached` `@start` step, *before* any agent runs |
 | Researcher tools | 3 — but **2 until `06`'s retrieval tool is built**, and step 0 of the task comes out until then (see README's Track A block) | 2 — see `01-researcher.md` §"Which track are you building?" |
 | Infrastructure | none — runs on a laptop | Pinecone · Cohere · Render Postgres · Render web |
-| Where specified | slides 45–48, `01`–`03`, `workflow.md` §5a | this file, `06`, `07`, `08`, `workflow.md` §5b |
+| Where specified | `01`–`03`, `workflow.md` §5a | this file, `06`, `07`, `08`, `workflow.md` §5b |
 
 **Build Track A first and get it running end to end.** Every stretch in this
 repository — the MCP swap (`01`), the Manager comparison (`04`), the evaluator
-gate (`05`) — presupposes a working sequential crew. Slide 52's half-way
-checkpoint is *"a crew of three agents that runs end to end"*, not a Flow.
+gate (`05`) — presupposes a working sequential crew. The checkpoint that matters
+is a three-agent crew running end to end, not a Flow.
 
 Sections below are Track B unless marked otherwise; where Track A differs, it is
 called out inline.
@@ -51,23 +51,19 @@ called out inline.
 
 ## 0. Why a crew at all
 
-Read this before building anything. Slide 55 is blunt: *"Most things you'll want
-to build as a crew are cheaper, faster, and more reliable as one agent."* Slide
-33 and slide 43 both quote Anthropic: *"Find the simplest solution possible, and
-only increase complexity when needed."*
+Read this before building anything. Anthropic's rule is the starting position:
+*"find the simplest solution possible, and only increasing complexity when
+needed"*, and add complexity *"only when it demonstrably improves outcomes"*
+([*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents)).
+Most of what you would build as a crew is cheaper, faster and more reliable as
+one agent.
 
-Slide 09 names five ceilings that justify going multi-agent. This build clears
-**two of five**:
+`workflow.md` §2 tests this build against five conditions that would justify a
+crew. It clears **two of five** — cognitive scatter (four verbs, four owners) and
+specialisation (two model tiers). It does not clear speed, tool pressure, or
+context pressure.
 
-| # | Ceiling (slide 09) | Cleared? | Why |
-|---|---|---|---|
-| 1 | Context overload | **Partly** | Scraped markdown is bulky, but one topic is one domain. |
-| 2 | Tool overload | **No** | Three tools, all on one agent. The deck's warning starts at 20+. |
-| 3 | Cognitive scatter | **Yes** | *"Research AND analyse AND write AND critique → mediocre at each."* Four verbs, four owners. This is the real justification. |
-| 4 | Speed | **No** | The pipeline is strictly serial; every stage consumes its predecessor's whole output. And §2's ~210 MB footprint caps a `starter` instance at one concurrent run anyway. |
-| 5 | Specialisation | **Yes** | Two model tiers, deliberately split (§3). |
-
-Against slide 56's GO/STAY test the honest reading is uncomfortable:
+Five more specific questions, and the honest reading is uncomfortable:
 
 - ✅ *Genuinely different expertise domains* — arguable; see `02-analyst.md`'s
   closing argument, which contests it.
@@ -78,15 +74,15 @@ Against slide 56's GO/STAY test the honest reading is uncomfortable:
 - ❌ *Single-agent tried and **measurably failed*** — **this has not been done.**
   There is no single-agent baseline anywhere in this repository.
 
-That last line is the most important sentence in this file. Slide 55 predicts
-your crew makes **~10 LLM calls** where one good agent makes one, and slides 55
-and 65 both put the multi-agent premium at **3–10×**. Running that baseline is
-the cheapest experiment available and the strongest evidence you can bring to
-slide 53's *"whether you'd keep it"*. `workflow.md` §10 records it as a declared
-gap rather than pretending otherwise.
+That last line is the most important sentence in this file. The measured Track A
+run made **9** LLM calls for one brief (`agents/README.md`); what one good agent
+would have spent on the same topic is unknown, and that unknown is the entire
+argument for the crew. Running the baseline is the cheapest experiment available
+and the strongest evidence this project could produce. `workflow.md` §10 records
+it as a declared gap rather than pretending otherwise.
 
-Build the crew — it is the assignment. But build it knowing the case against it,
-because that case is the graded question.
+Build the crew — but build it knowing the case against it, because that case is
+the one a reader will make first.
 
 ---
 
@@ -433,8 +429,9 @@ not do embeddings", which is false.
 **Why 768.** Gemini embeddings use Matryoshka representation learning, so
 truncation is lossy but barely: MTEB scores 68.17 at 1536 versus **67.99 at 768**
 — 0.18 points. Degradation only accelerates below 512. 768 cuts Pinecone storage
-and query cost by half against 1536, and matches the 768-dim convention of a pre-existing index in the same account
-index from the earlier RAG lectures (a *different* index from this project's
+and query cost by half against 1536, and matches the 768-dim convention of a
+pre-existing index in the same account, built for an earlier RAG project (a
+*different* index from this project's
 `agentic-crew-ai-index`). `gemini-embedding-2` **auto-normalizes** truncated vectors
 (unlike `gemini-embedding-001`, which requires manual renormalization).
 
@@ -597,14 +594,14 @@ misreading of these specs.
 
 | Sense | What it is | Where it lives |
 |---|---|---|
-| **1. The deck's guardrail** (slide 28) | A *prompt-level* "what this agent must NOT do" — one of the five Agent Spec Card fields | The `Constraints:` block inside each task's `description`, and the **Guardrail** row of the spec card at the top of `01`–`05` |
+| **1. The prompt-level guardrail** | A *"what this agent must NOT do"* line in the prompt — one of the five fields of the agent contract (`workflow.md` §4) | The `Constraints:` block inside each task's `description`, and the **Guardrail** row of the contract table at the top of `01`–`05` |
 | **2. CrewAI's `guardrail`** | A *post-hoc output validator* on a Task. Re-runs the task on failure. A **string** guardrail costs an LLM call every evaluation; a **callable** costs nothing | `03-writer.md` (word count) and `05-evaluator.md` (sourcing gate) — attached to `writing_task` only |
 | **3. Runtime guard rails** | Execution limits: `max_iter`, `max_rpm`, `max_execution_time` | The table immediately below |
 | **4. `Agent.guardrail`** | A field that exists and **does nothing inside a Crew** — it fires only on standalone `agent.kickoff()` | Nowhere, deliberately. `05-evaluator.md` says not to reach for it. |
 
 So "every agent has a guardrail" is true in sense 1 and false in sense 2 — only
-`writing_task` carries a CrewAI `guardrail:`. A student filling in slide 28's
-spec card wants sense 1.
+`writing_task` carries a CrewAI `guardrail:`. Filling in the **Guardrail** row of
+an agent contract means sense 1.
 
 ### Per-agent guard rails
 
@@ -707,10 +704,9 @@ run here it swallowed the tool calls, the task failure and the crew failure
 alike; the only reason the cause was visible at all was the Python traceback
 underneath.
 
-The trace is not a debugging convenience in this project — slide 50 says watch
-it, slide 53 asks you to show it, and `00` §8 calls `verbose=True` "the only view
-you have of who handed off to whom". Losing it silently is losing the
-deliverable.
+The trace is not a debugging convenience in this project — it *is* the
+deliverable. §8 calls `verbose=True` "the only view you have of who handed off to
+whom", and losing it silently is losing that view without being told.
 
 `PYTHONIOENCODING=utf-8` fixes it, but relying on an env var means the trace
 breaks for whoever forgets. `src/brief_crew/__init__.py` reconfigures the streams
@@ -732,7 +728,7 @@ loudly, this one fails silently.
 
 | File | Contents |
 |---|---|
-| `workflow.md` | **Workflow mapping** — how the six patterns land in this build, the Human Swarm role map, per-agent I/O contracts, declared deviations |
+| `workflow.md` | **Workflow mapping** — how the six patterns land in this build, the role decomposition, per-agent I/O contracts, design decisions and declared gaps |
 | `patterns.md` | **Agent design patterns** — the six patterns as CrewAI mechanisms: `Process`, `ConditionalTask`, Flow `@router`, `async_execution`, `manager_agent`, `guardrail`. Source-verified against 1.15.18 |
 | `01-researcher.md` | Stage 1 — Firecrawl + Pinecone retrieval; judges relevance and freshness |
 | `02-analyst.md` | Stage 2 — judgement, no tools |

@@ -14,13 +14,14 @@
 > with ≥3 distinct URLs, as a callable, for zero LLM calls. It runs *before* the
 > string guardrail so the free check rejects first.
 
-Derived from slide 25's Human Swarm **Writer** — *CAN: compose the summary from
-given facts. CANNOT: search, calculate, or critique.* See `workflow.md` §4.
+The **Writer** in this repository's role decomposition: it may compose the
+summary from facts it is handed; it may not search, calculate, or critique. See
+`workflow.md` §4.
 
-> **Agent Spec Card** — the deck's slide-28 deliverable: **Role · Tools · Inputs ·
-> Outputs · Guardrail**. Filled in below; the rest of this file is the reasoning
-> behind it. Note the deck's "Guardrail" is a *prompt-level* "what it must NOT
-> do", which appears in the task YAML as `Constraints:` — it is **not** CrewAI's
+> **Agent contract** — **Role · Tools · Inputs · Outputs · Guardrail**
+> (`workflow.md` §4). Filled in below; the rest of this file is the reasoning
+> behind it. Note **Guardrail** here is a *prompt-level* "what it must NOT do",
+> which appears in the task YAML as `Constraints:` — it is **not** CrewAI's
 > `guardrail:` field, which is a post-hoc output validator (see `00` §8).
 
 | Field | Value |
@@ -88,8 +89,8 @@ Set on the **task**, not the agent:
 | `create_directory` | `True` *(default)* |
 
 `output_file` on the task gives you an artifact on disk rather than a string
-buried in the console. Slide 53 asks you to show "the brief it produced, or the
-trace of it being produced" - having both on hand is worth the one line.
+buried in the console. Having both the artifact and the trace that produced it on
+hand is worth the one line.
 
 ---
 

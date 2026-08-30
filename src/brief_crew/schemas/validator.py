@@ -23,6 +23,12 @@ ThreadClassification = Literal[
     "OFF_TOPIC",
 ]
 RepoRelevance = Literal["SOLVES_ENTIRELY", "PARTIAL", "IRRELEVANT"]
+# How much of the scoped core job a competitor gives away at no cost. It is
+# deliberately NOT `RepoRelevance`: that vocabulary collapses "covers most of
+# the job" and "covers a separable part" into one PARTIAL, and the X ladder
+# turns on exactly that distinction - the first blocks VALIDATE, the second
+# does not. Reusing it would have reopened the dead band it exists to close.
+FreeCoreCoverage = Literal["WHOLE_JOB", "MOST_OF_JOB", "SEPARABLE_PART", "NONE"]
 VerdictLabel = Literal["VALIDATE", "NEEDS_WORK", "REJECT"]
 ConfidenceBand = Literal["HIGH", "MODERATE", "LOW"]
 DimensionCode = Literal["D", "M", "C", "F", "X"]
@@ -145,6 +151,31 @@ class Competitor(ValidatorModel):
     pricing: str = Field(min_length=1)
     vendor_owned: bool
     url: str | None = None
+    # The X floor used to be blind to the commonest free substitute there is.
+    # `FLOOR_ALREADY_FREE` counts repositories marked SOLVES_ENTIRELY, so a
+    # free PRODUCT that already does the whole job - Google Calendar, Notion,
+    # somebody's free tier - could not reach X=0 whatever the market branch
+    # found, because nothing on this model could say so. `pricing` is free
+    # text ("not published", "$12/seat", "free"), and a floor cannot be read
+    # off prose. One enum answers the only question the ladder asks: how much
+    # of the scoped core job does this competitor give away?
+    #
+    # `None` is "the market branch did not establish this", exactly as with
+    # `Repo.archived` and `Thread.points`, and it is NOT "NONE". "NONE" is a
+    # claim - an attributed source shows nothing here is free - and X=4 and
+    # X=5 rest on "no free product is named", which no unanswered question
+    # should ever satisfy on its own. Defaulted rather than required so an
+    # unanswered question stays representable; `market_task` asks for it on
+    # every competitor.
+    free_core_coverage: FreeCoreCoverage | None = Field(
+        default=None,
+        description=(
+            "How much of the scoped core job this competitor covers at no cost: "
+            "WHOLE_JOB, MOST_OF_JOB, SEPARABLE_PART, or NONE when an attributed "
+            "source shows nothing is free. Leave it null when no source settles "
+            "the question; null is not NONE."
+        ),
+    )
 
     @field_validator("url")
     @classmethod
@@ -490,10 +521,25 @@ class Verdict(ValidatorModel):
         object.__setattr__(self, "verdict", label)
         object.__setattr__(self, "decision_reason", reason)
         object.__setattr__(self, "fatal_floors", floors)
+        # PRD §10.3 makes a REJECT between 0.35 and 0.60 provisional: "the
+        # difference between we looked and found nothing and there is
+        # nothing". Read literally that rule is non-monotonic in the one
+        # quantity it keys on - a REJECT at 0.36 is labelled provisional and
+        # the LOWEST-confidence verdicts the system can produce, the ones the
+        # override below 0.35 relabels NEEDS_WORK / INSUFFICIENT_EVIDENCE, are
+        # not. The first real paid run landed there: composite 4.2 at
+        # confidence 0.17, two of three branches empty, two dimensions scored
+        # 1 for "we did not reach the question", and `provisional` false. The
+        # flag exists to make the report say out loud that the verdict is not
+        # final, and that is needed strictly more at 0.17 than at 0.50, so the
+        # PRD's rule is kept and widened rather than replaced: provisional now
+        # means "this run's confidence cannot support a final answer", of
+        # which the PRD's clause is the REJECT case.
         object.__setattr__(
             self,
             "provisional",
-            label == "REJECT" and 0.35 <= confidence < 0.60,
+            (label == "REJECT" and 0.35 <= confidence < 0.60)
+            or reason == "INSUFFICIENT_EVIDENCE",
         )
         return self
 

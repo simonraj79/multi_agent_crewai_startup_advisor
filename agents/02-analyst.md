@@ -15,14 +15,14 @@
 > The two-agents-vs-three comparison this file argues for is runnable without
 > editing anything: `BriefCrew(from_notes=True)` is already a two-agent crew.
 
-Derived from slide 25's Human Swarm **Analyst** — *CAN: calculate, compare.
-CANNOT: search, write, or critique.* The empty tool surface below is that
-`CANNOT: search`, enforced in code. See `workflow.md` §4.
+The **Analyst** in this repository's role decomposition: it may calculate and
+compare; it may not search, write, or critique. The empty tool surface below is
+that "may not search", enforced in code as `tools=[]`. See `workflow.md` §4.
 
-> **Agent Spec Card** — the deck's slide-28 deliverable: **Role · Tools · Inputs ·
-> Outputs · Guardrail**. Filled in below; the rest of this file is the reasoning
-> behind it. Note the deck's "Guardrail" is a *prompt-level* "what it must NOT
-> do", which appears in the task YAML as `Constraints:` — it is **not** CrewAI's
+> **Agent contract** — **Role · Tools · Inputs · Outputs · Guardrail**
+> (`workflow.md` §4). Filled in below; the rest of this file is the reasoning
+> behind it. Note **Guardrail** here is a *prompt-level* "what it must NOT do",
+> which appears in the task YAML as `Constraints:` — it is **not** CrewAI's
 > `guardrail:` field, which is a post-hoc output validator (see `00` §8).
 
 | Field | Value |
@@ -101,8 +101,8 @@ Two reasons, and the second is the real one.
    Analyst's output *must* trace back to the Researcher's notes. Anything new
    that appears is unambiguously invented - and it sits right there in the
    trace, one hand-off after its source. This is the cleanest place in the crew
-   to observe an error cascade, which is exactly the phenomenon the debrief
-   slides are about.
+   to observe an error cascade — failure mode #1 in `workflow.md` §9, and the
+   one every other failure in that table eventually feeds.
 
 Giving this agent tools would be a reasonable engineering decision and a poor
 teaching one.
@@ -165,8 +165,8 @@ analysis_task:
 ## Design notes
 
 **The `context` line is redundant and should stay.** In `Process.sequential`
-every task already receives all prior outputs. The deck writes it out explicitly
-anyway (slide 46) and so should you - it documents the pipeline, and it becomes
+every task already receives all prior outputs. Write it out explicitly
+anyway - it documents the pipeline, and it becomes
 load-bearing the moment you switch to `Process.hierarchical`, where nothing is
 implicit.
 
@@ -189,9 +189,9 @@ interesting thing to show in a demo.
 
 ## ⚠️ The strongest argument against this agent
 
-Slide 53 asks every group: **which of the six patterns you used, and whether
-you'd keep it.**
-For this crew the honest answer is contested, and the argument lives here.
+**Which of the six patterns this build uses, and whether each is worth keeping**,
+is the question `workflow.md` §7 answers. For this agent the honest answer is
+contested, and the argument lives here.
 
 Analyst and Writer share a model, share an empty tool surface, and arguably
 share a persona - "someone who reads research and produces the document".
@@ -214,6 +214,6 @@ step explicit and auditable in the trace.
 **The case against:** that is a real but modest quality gain, and you are paying
 for an entire extra agent to get it on a one-page brief.
 
-Both readings are defensible. Have your group pick one and be able to say why -
-and if you have time, run it both ways and count the calls in each trace. That
-comparison is a better demo than either brief.
+Both readings are defensible. Pick one and be able to say why - and if you have
+time, run it both ways and count the calls in each trace. That comparison is
+worth more than either brief.

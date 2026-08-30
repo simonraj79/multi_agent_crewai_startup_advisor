@@ -215,8 +215,8 @@ CREATE TABLE run_sources (
 );
 ```
 
-`run_metrics` is what makes the cost comparison in the lecture's slide-62 stretch
-a query rather than an anecdote. `run_sources.from_cache` is what lets the Writer
+`run_metrics` is what makes the evaluator-gate cost comparison in
+`05-evaluator.md` a query rather than an anecdote. `run_sources.from_cache` is what lets the Writer
 be honest about provenance — see `03-writer.md`.
 
 Populate it from `Flow.usage_metrics` (which already aggregates every kickoff in

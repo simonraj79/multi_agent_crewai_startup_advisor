@@ -18,6 +18,34 @@ own guidance is blunt about this, and so is
 Nobody but the copyright holder can make this call, so this file prepares it
 rather than settling it.
 
+## Authorship — settled
+
+**Author and copyright holder: Simon Raj. Copyright © 2026 Simon Raj.**
+
+**Every word of prose and every line of code in this repository is his own
+work.** That statement now carries no qualification: the CrewAI implementation,
+the six-agent validator and its Flow, the scoring rubric and guardrails, the
+event spine, the FastAPI/WebSocket service, the Vue 3 console, the
+specifications in `agents/`, `PRD.md`, `AGENTS.md`, `docs/`, and every test.
+`pyproject.toml` names him as the package author.
+
+Where the repository builds on someone else's published thinking, it cites a
+public source and takes nothing but the name:
+
+1. **Five of the six orchestration pattern names** — prompt chaining, routing,
+   parallelisation, orchestrator-workers, evaluator-optimizer — are Anthropic's,
+   from
+   [*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents),
+   which `agents/workflow.md` §3 and `agents/patterns.md` cite directly. Names
+   and a taxonomy are not copyrightable expression, the source is public and
+   freely readable, and everything about how those patterns map onto CrewAI
+   1.15.18 — the mechanisms, the source line references, the costs, the naming
+   trap — is original to this repository. The **sixth** pattern (nested teams)
+   is this repository's own, declared as such in `agents/patterns.md` §6.
+2. **The vendored CrewAI skills** under `.agents/skills/` and `.claude/skills/`,
+   which are MIT-licensed and carry their own notice — see the last section.
+   These are the only third-party *files* in the repository.
+
 ---
 
 ## What you already inherit
@@ -33,8 +61,10 @@ Before choosing, check what the repository is obliged to be compatible with.
 obligation only — the copyright notice and permission text must travel with them.
 See *Attribution* at the end.
 
-Everything else in `src/`, `tests/`, `frontend/src/` and `agents/` is original
-work, with one exception noted under *Open questions*.
+Everything else in `src/`, `tests/`, `frontend/src/`, `agents/` and `docs/` is
+the author's own work. The one remaining third-party question — `PRD.md` §8 — is
+noted under *Third-party material* below and is about someone else's code, not
+about anything written here.
 
 ---
 
@@ -142,27 +172,65 @@ and points here. Replace it with one line naming the licence.
 
 ---
 
-## Open questions the licence choice does not resolve
+## Third-party material the licence choice does not cover
 
-Two things need a decision that no `LICENSE` file settles, because they concern
-material that may not be yours to license.
+Applying a licence to this repository does not grant rights over someone else's
+material, and a permissive licence over material you do not own is *asserting*
+rights you may not hold. **One item sits here, and it is still open.**
 
-**The lecture deck.** `agents/README.md` and `agents/workflow.md` both name their
-source as a specific person's slide deck, and `agents/workflow.md` §3–§4 and
-`agents/patterns.md` §12 reproduce that deck's taxonomy, tables and quoted lines
-at length. Applying a licence to this repository does not grant rights over
-someone else's material, and a permissive licence would be *asserting* rights you
-may not hold. Worth resolving — by permission, by attribution, or by reducing the
-reproduction to citation — before publishing, independently of the licence.
+### Third-party teaching material — removed, 2026-08-30
 
-**`PRD.md` §8.** That section reverse-engineers a third-party frontend with
+An earlier revision of `agents/` was written as a mapping onto a third party's
+lecture presentation. It named that presentation and its author, carried
+per-page citations and a source map, and reproduced material whose only
+provenance was that source: a six-pattern taxonomy with per-page definitions,
+its live-demo timings and cost comparisons, its entry test for going
+multi-agent, its agent spec-card format, its CAN/CANNOT role table, its list of
+ceilings, and roughly twenty quoted lines. A first pass in `add21d1` cut that
+back to summaries plus citations.
+
+**As of 2026-08-30 it is gone entirely — not reduced, removed.** Every citation
+to it, the author's name, the PDF filename, every remaining quoted phrase, and
+every claim resting on that source alone have been deleted from every Markdown
+file in the repository. Verified by a repo-wide case-insensitive grep for the
+author's surname and the presentation vocabulary across `--include=*.md`,
+excluding `node_modules`, `.venv` and the vendored skills: **no matches.**
+
+What was **re-grounded rather than deleted**, because it has a genuinely public
+source: five of the six orchestration patterns are Anthropic's vocabulary from
+[*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents)
+— prompt chaining, routing, parallelisation, orchestrator-workers,
+evaluator-optimizer. `agents/workflow.md` §3 and `agents/patterns.md` now cite
+Anthropic directly. The **sixth** pattern (⑤ nested teams) has no entry in that
+article; it is kept as this repository's own, declared as such, because CrewAI's
+`Process.hierarchical` spells the *fourth* pattern and the collision cannot be
+discussed without a separate name for the nested case.
+
+What was **kept as the author's own work**, because it always was: the CrewAI
+1.15.18 analysis in `patterns.md` with its file-and-line citations, the
+`Process.sequential` / `Process.hierarchical` naming trap, the role decomposition
+implemented in `config/agents.yaml` and enforced by the `Constraints:` blocks in
+`config/tasks.yaml`, the per-agent contracts, the measured runs, and every
+warning earned by running the code.
+
+**Git history still contains the removed text.** These files were public in
+commit `add21d1` and earlier, and no history rewrite has been performed. If that
+matters, it is a separate decision.
+
+The author's personal copy of the source PDF remains on disk, has never been
+committed, and is covered by `.gitignore`'s `*.pdf` rule.
+
+### `PRD.md` §8 — still open
+
+That section reverse-engineers a third-party frontend with
 file-and-line citations and a component-by-component *Lift / Adapt / Drop* plan.
 Whether any of that may be lifted depends entirely on that project's own licence,
-which is not recorded anywhere here. Check it before acting on the plan, and
-before publishing a document that describes acting on it.
+which is not recorded anywhere here. **This one is untouched and still open.**
+Check it before acting on the plan, and before publishing a document that
+describes acting on it.
 
-Neither is a reason to delay choosing a licence for your own code. Both are
-reasons not to let a licence imply coverage it does not have.
+That is not a reason to delay choosing a licence for your own code. It is a
+reason not to let a licence imply coverage it does not have.
 
 ---
 

@@ -229,11 +229,21 @@ VALIDATOR_GATE_TIMEOUT_SECONDS = 1800
 # `sentiment_problem_threads` is exactly this file's "problem thread",
 # `feasibility_relevant_repos` is F=0/F=2's SOLVES_ENTIRELY-or-PARTIAL set,
 # `feasibility_complete_repos` is X's "free substitute", and
-# `market_paying_segments` is the D=5 and M=5 clause. ⚠️ One boundary is NOT
-# covered: there is no counter for OFF_TOPIC threads, so nothing can recompute
-# "usable thread" and D=0 (a search that reached the question and found no
-# demand - a REJECT floor) is separated from D=1 (a search that missed) by the
-# Synthesist alone. A `sentiment_usable_threads` counter would close it.
+# `market_paying_segments` is the D=5 and M=5 clause. `sentiment_usable_threads`
+# now counts threads that are not OFF_TOPIC, so the D=0/D=1 boundary is
+# arithmetic rather than the Synthesist's alone.
+#
+# ⚠️ A floor needs TWO mechanical clauses, not one: what the branch found,
+# and that the branch looked hard enough for the finding to mean anything.
+# The 2026-08-30 review (`docs/rubric-review.md`, F2) measured a final,
+# non-provisional `REJECT - no demand` at confidence 0.60 built on ONE
+# off-hand Hacker News comment, because D=0 asked only for "1 usable thread
+# and no problem thread". Worse, `sentiment_coverage` counts PROBLEM threads,
+# so it is 0 exactly when D=0 fires and the low-confidence override is
+# structurally unable to intervene. D=0 therefore now requires
+# `RUBRIC_FLOOR_MIN_USABLE_THREADS` usable threads, and M=0 additionally
+# requires that the Market Analyst recorded no paying segment - the one
+# structured fact that contradicts "none of them names a buyer segment".
 #
 # The shorthand terms below are defined once in the Synthesist prompt and used
 # to keep anchors short - short anchors stay far apart under the overlap
@@ -248,8 +258,12 @@ VALIDATOR_GATE_TIMEOUT_SECONDS = 1800
 #                          months_since_push <= 12.
 #   free substitute      - a Repo marked SOLVES_ENTIRELY: it covers the whole
 #                          core job on its own.
-#   free product         - a product a market or sentiment source shows is
-#                          available at no cost. Need not be a repository.
+#   free product         - a named Competitor whose `free_core_coverage`
+#                          records how much of the core job a no-cost
+#                          offering covers: WHOLE_JOB, MOST_OF_JOB or
+#                          SEPARABLE_PART. `None` means the market branch
+#                          did not establish one, which is a different
+#                          claim from "nothing free covers this".
 #   vendor owned         - Competitor.vendor_owned: owned by or bundled into a
 #                          larger platform vendor rather than sold standalone.
 #
@@ -261,29 +275,45 @@ VALIDATOR_GATE_TIMEOUT_SECONDS = 1800
 # fatal floor (M=0, F=0, X=0) and "we did not look hard enough" was undefined,
 # and three of the four hard floors are decided on exactly that boundary.
 #
-# ⚠️ The level-1 clause is "the branch returned nothing usable", NOT the PRD's
-# "or fewer than 3 usable threads". The "<3" test is deliberately dropped: it
-# duplicates `DimensionScore.evidence_thin` (which IS len(evidence_urls) < 3)
-# and the coverage term of confidence, and pushing it into the score as well
-# is the one thing PRD §10.2 says must not happen - "this is what keeps
-# composite_score and confidence measuring different things". It also
-# collided head-on with D=2 ("1-2 threads state the problem"), so a run with
-# two HAS_PROBLEM threads matched anchor 1 and anchor 2 at once.
+# ⚠️ D=1 carries the PRD's "fewer than 3 usable threads" clause again, and
+# ONLY in conjunction with "and no problem thread". The unconditional "<3"
+# test stays dropped for the reasons the audit gave: it duplicates
+# `DimensionScore.evidence_thin` and the coverage term of confidence, and
+# pushing thinness into the score is the one thing PRD §10.2 says must not
+# happen - "this is what keeps composite_score and confidence measuring
+# different things"; and unconditionally it collided head-on with D=2 ("1-2
+# threads state the problem"), so a run with two HAS_PROBLEM threads matched
+# anchor 1 and anchor 2 at once. The conjunct removes that collision: D=2
+# needs at least one problem thread and D=1 now needs none, so the two stay
+# disjoint. The narrow reintroduction is forced by arithmetic rather than by
+# taste. Raising D=0 to 3 usable threads orphans the states "1 or 2 usable
+# threads, none of them a problem thread", and they belong nowhere else: D=2
+# requires a problem thread. Left unhoused they are a DEADLOCK, not a dead
+# band - `zero_ok` false, `one_ok` false and the ceiling at 1 means every
+# score 0-5 is rejected and the synthesis task can never pass its guardrail.
+# Two on-topic comments in which nobody states the problem is exactly "the
+# evidence does not reach this question", so level 1 is where they go, and a
+# branch that did reach the question still cannot claim 1.
 # --------------------------------------------------------------------------
 ANCHOR_MATCH_THRESHOLD = 0.85
 LEVEL_ONE_ANCHOR = "Evidence does not reach this question"
 
 # D - Demand. Is anyone actively trying to solve this today? Weight 0.30.
-# D=0 is a hard floor (REJECT). Counted over SentimentFindings.sources, with
+# D=0 is a hard floor (REJECT), and it fires only when the branch reached the
+# question: at least RUBRIC_FLOOR_MIN_USABLE_THREADS on-topic threads, none of
+# them a problem thread. Counted over SentimentFindings.sources, with
 # the paying-segment clause at anchor 5 reading MarketFindings.paying_segments,
 # so top demand needs the market branch to agree - a failed market branch caps
 # D at 4, deliberately.
 DEMAND_ANCHORS: dict[int, str] = {
     0: (
-        "At least 1 usable thread, and none is a problem thread: nobody in the evidence "
-        "describes having this problem."
+        "At least 3 usable threads, and none of them is a problem thread: nobody in the "
+        "evidence describes having this problem."
     ),
-    1: f"{LEVEL_ONE_ANCHOR} — the sentiment branch returned no usable thread.",
+    1: (
+        f"{LEVEL_ONE_ANCHOR} — the sentiment branch returned fewer than 3 usable threads "
+        "and no problem thread."
+    ),
     2: (
         "1 or 2 problem threads, or at least 3 problem threads none of which is dated "
         "within 24 months."
@@ -302,6 +332,17 @@ DEMAND_ANCHORS: dict[int, str] = {
 # nameable buyer"; the operative half is the buyer, because the dimension's
 # question is "can you name whose?" - money nobody can attribute to a segment
 # is not an answer to it.
+# ⚠️ "None of them names a buyer segment" cannot be settled without reading
+# the sources, so M=0 remains the one floor of the four that is not fully
+# countable (`docs/rubric-review.md` F3). One necessary condition IS
+# countable and is now enforced: a branch that recorded a paying segment has,
+# by `market_task`'s own definition of that field, an attributed source
+# naming a buyer segment, so `market_paying_segments >= 1` contradicts this
+# anchor. That bound needs no change to the anchor text, which is why it is
+# taken here and the review's second conjunct - "at least 3 sources" - is
+# not: raising the count would orphan the 1-2 source states the way D=0
+# orphaned the 1-2 thread states, and M=1 is reserved for a branch that
+# returned nothing at all.
 MARKET_ANCHORS: dict[int, str] = {
     0: (
         "The market branch returned sources, and none of them names a buyer segment for this "
@@ -382,17 +423,33 @@ FEASIBILITY_ANCHORS: dict[int, str] = {
 # X=0 is a hard floor (REJECT) and the PRD calls it the most valuable output
 # this system produces. X asks whether a COMPLETE FREE SUBSTITUTE exists, which
 # is a different question from F's "are there parts to build with", even though
-# both read the same GitHub results. The ladder is a total partition:
-#   a free substitute exists, live and permissive        -> 0
-#   a free substitute exists, dead or non-commercial     -> 2
-#   no substitute, but a named free product covers most  -> 3
-#   nothing free, except one PARTIAL repo covering most  -> 4
-#   nothing free, PARTIAL repos are separable parts only -> 5
-#   no relevant repository and no free product named     -> 1
+# both read the same GitHub results.
+#
+# ⚠️ The ladder used to run on GitHub repositories at 0 and 2 and on free
+# PRODUCTS at 3, and no schema field could express a product. The 2026-08-30
+# review (F1) measured the consequence: a live, free, named product covering
+# most of the core job scored X=3, cleared `min(scores) >= 3` and returned
+# `VALIDATE` at composite 9.4 and confidence 0.90, while an ARCHIVED
+# repository doing the same job scored 2 and blocked the idea. The dead
+# competitor killed the run and the living one did not. `Competitor` now
+# carries `free_core_coverage`, so both halves of the ladder read a structured
+# field and the severity ordering is one ordering:
+#   a free substitute repo, live and permissive, OR a free
+#     product covering the whole core job                 -> 0
+#   a free substitute repo, dead or non-commercial, OR a
+#     free product covering most of the core job          -> 2
+#   no substitute, and every named free product covers
+#     no more than a separable part                       -> 3
+#   nothing free, except one PARTIAL repo covering most    -> 4
+#   nothing free, PARTIAL repos are separable parts only   -> 5
+#   no relevant repository and no free product named       -> 1
+# The 0/2 split asks one question of both halves - is the free thing ALIVE -
+# and 3 closes the band the review found empty at F5, where a free product
+# covering part of the job satisfied no anchor at all.
 HEADROOM_ANCHORS: dict[int, str] = {
     0: (
         "At least 1 free substitute repository is not marked archived, permits commercial use "
-        "and was pushed within 12 months."
+        "and was pushed within 12 months, or at least 1 free product covers the whole core job."
     ),
     1: (
         f"{LEVEL_ONE_ANCHOR} — no repository is marked SOLVES_ENTIRELY or PARTIAL and no free "
@@ -400,11 +457,12 @@ HEADROOM_ANCHORS: dict[int, str] = {
     ),
     2: (
         "At least 1 free substitute repository exists, and every one of them is marked "
-        "archived, licensed against commercial use, or was last pushed more than 12 months ago."
+        "archived, licensed against commercial use, or was last pushed more than 12 months "
+        "ago; or at least 1 free product covers most of the core job."
     ),
     3: (
-        "No free substitute repository exists, and a market or sentiment source names a free "
-        "product that covers most of the core job."
+        "No free substitute repository exists, and at least 1 free product is named, none "
+        "covering more than a separable part of the core job."
     ),
     4: (
         "No free substitute and no free product, but a repository marked PARTIAL covers most "
@@ -454,6 +512,17 @@ RUBRIC_ANCHORS: dict[str, dict[int, str]] = {
 RUBRIC_RECENCY_MONTHS = 24
 RUBRIC_RECENCY_GRACE_MONTHS = 1.0
 RUBRIC_REUSABLE_MAX_PUSH_MONTHS = 12
+
+# How much on-topic evidence a branch must have returned before its REJECT
+# floor can fire. D=0 says "the branch looked and nobody has this problem",
+# and that sentence is only true of a branch that looked: one on-topic
+# comment in which nobody happens to state a problem is not a finding about
+# the world. 3 is a judgement, not a derivation - it is the unit the rest of
+# the Demand ladder already counts in ("at least 3 problem threads" at D=3)
+# and the number `docs/rubric-review.md` proposes for the same repair on M
+# and F. It bounds a floor only: it never raises a score, and D=1 absorbs
+# every state it excludes.
+RUBRIC_FLOOR_MIN_USABLE_THREADS = 3
 
 # --------------------------------------------------------------------------
 # Mechanical confidence inputs - PRD §10.3, F11
@@ -983,6 +1052,49 @@ VALIDATOR_FRAME_FLUSH_INTERVAL_SECONDS = 0.25
 # untouched, so a later GET still recovers them from storage.
 # --------------------------------------------------------------------------
 VALIDATOR_RUN_RETENTION_SECONDS = 6 * 60 * 60
+
+# --------------------------------------------------------------------------
+# Interrupted-run recovery - a run that was EXECUTING when the process died
+#
+# A run parked at a human gate has a durable anchor: the `run_gates` row plus
+# the `pending_feedback` row CrewAI writes when it raises
+# HumanFeedbackPending, so from_pending()/resume() picks it up again. A run
+# that was mid-method has neither. Flow.from_pending() raises ValueError
+# without a pending_feedback row, and kickoff(inputs={"id": ...}) restores the
+# STATE with an empty completed-method set, which re-runs the flow from
+# @start rather than resuming it - CrewAI's own comment in
+# flow/runtime/__init__.py says so. So a mid-execution run is not resumable;
+# it is failable, and the honest thing is to say so instead of leaving a row
+# that reports `running` forever.
+#
+# The grace period is how long a `queued`, `running` or `cancelling` row may
+# go without ANY durable write before this process treats it as interrupted.
+# It is not decoration - three live situations need to fit inside it:
+#
+#   * Render's zero-downtime deploy overlaps the draining instance and the
+#     booting one for up to maxShutdownDelaySeconds (300 s in render.yaml), so
+#     the new process can see a row the old one is still executing.
+#   * A gate reply spends up to RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS between
+#     emitting GATE_CLOSED - which puts the record back to RUNNING - and
+#     installing the resume future, so for that window a perfectly healthy run
+#     has no live future in this process.
+#   * `runs.updated_at` is bumped by every frame batch, so it is a heartbeat -
+#     but a run sitting inside one slow escalation-tier call emits nothing for
+#     as long as that call takes.
+#
+# 900 s clears all three with room to spare while still converging an orphan
+# in minutes rather than never.
+#
+# The recovery switch exists for a deployment that runs more than one API
+# process against one database. The "is anything still executing this?" test
+# is process-local (a live future in THIS registry), so a second instance
+# would be judging work it cannot see. render.yaml deploys a single instance
+# with RUN_CONCURRENCY=1; scale that out and turn this off.
+# --------------------------------------------------------------------------
+VALIDATOR_ORPHAN_RUN_GRACE_SECONDS = _env_positive_int(
+    "VALIDATOR_ORPHAN_RUN_GRACE_SECONDS", 900
+)
+VALIDATOR_ORPHAN_RUN_RECOVERY = _env_flag("VALIDATOR_ORPHAN_RUN_RECOVERY", True)
 
 # --------------------------------------------------------------------------
 # Fan-out execution mode - PRD F04 and risk R-3

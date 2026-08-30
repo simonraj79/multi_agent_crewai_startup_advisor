@@ -1,23 +1,27 @@
 # 04 · Manager — *superseded, kept as a comparison*
 
-**Pattern 4 — Supervisor–Worker.** Slide 51: *"Fast finisher? Add a manager."*
+**Pattern 4 — Supervisor / Orchestrator-Workers** (`patterns.md` §5). The obvious
+next step once a sequential crew runs: put a manager over the workers and let it
+decide who works next.
 
 > ⚠️ **Naming trap: `Process.hierarchical` is Pattern 4, NOT Pattern 5.**
-> CrewAI spells the supervisor pattern `Process.hierarchical` (slide 45:
-> *"sequential = pipeline · hierarchical = supervisor"*). The deck's **Pattern 5**
-> is also called *Hierarchical* but means something different — nested teams,
-> supervisors of supervisors, the CEO → CTO/CMO → workers tree on slide 18.
-> Building this file gives you **Pattern 4**. Answering slide 53 with "we used
-> Pattern 5, hierarchical" is wrong, and the word collision is why people say it.
+> CrewAI spells the supervisor pattern `Process.hierarchical` — sequential is the
+> pipeline, hierarchical is the supervisor. **Pattern 5** in this repository's
+> vocabulary is *also* called *Hierarchical* but means something different —
+> nested teams, supervisors of supervisors, a CEO → CTO/CMO → workers tree.
+> Building this file gives you **Pattern 4**. Saying "we used Pattern 5,
+> hierarchical" is wrong, and the word collision is why people say it.
+> `patterns.md` §6 is the full argument.
 
-Derived from slide 25's Human Swarm **Orchestrator** — *CAN: read the task,
-delegate, synthesise the final answer. CANNOT: search, calculate, write, or
-critique.* Slide 27's debrief already tells you how that role behaves in
-practice: *"Where was the bottleneck? Usually the Orchestrator — a single point
-of failure."* See `workflow.md` §4.
+The **Orchestrator** in this repository's role decomposition: it may read the
+task, delegate, and synthesise the final answer; it may not search, calculate,
+write, or critique. Structurally it is also the bottleneck — every hand-off
+passes through it, so it is both the coordination cost and the single point of
+failure. See `workflow.md` §4.
 
-> **Agent Spec Card** (slide 28). The deck's "Guardrail" is a prompt-level "must
-> NOT do", not CrewAI's `guardrail:` field.
+> **Agent contract** — **Role · Tools · Inputs · Outputs · Guardrail**
+> (`workflow.md` §4). **Guardrail** here is a prompt-level "must NOT do", not
+> CrewAI's `guardrail:` field.
 
 | Field | Value |
 |---|---|
@@ -37,9 +41,9 @@ of failure."* See `workflow.md` §4.
 >
 > That turns this file from a stretch goal into something more useful: a
 > concrete, measurable comparison between LLM-decided routing and code-decided
-> routing, on the same decision. Build it only to answer slide 53's *"whether
-> you'd keep it"* with two traces and a call count — which is a stronger result than a
-> working manager.
+> routing, on the same decision. Build it only to answer *keep it or drop it*
+> with two traces and a call count — which is a stronger result than a working
+> manager.
 
 Read on for what it would take, and what it would cost.
 
@@ -55,9 +59,9 @@ Read on for what it would take, and what it would cost.
 | Trace shape | A straight line | Delegation and review, branching |
 | Cost | Baseline | Noticeably higher — manager reasoning on top of every step |
 
-> Slide 51: *"A sequential crew runs the same steps in the same order every
-> time - no matter the topic."* That is the limitation this fixes, and the only
-> reason to pay for it.
+> A sequential crew runs the same steps in the same order every time, whatever
+> the topic. That is the limitation this fixes, and the only reason to pay for
+> it.
 
 ---
 
@@ -120,8 +124,7 @@ verbose       = True
 1. **`Process.hierarchical` requires either `manager_agent` or `manager_llm`.**
    Set neither and `Crew.check_manager_llm` raises
    `"Attribute 'manager_llm' or 'manager_agent' is required when using
-   hierarchical process."` Slide 51 puts it bluntly: *"Forget the manager and it
-   breaks."*
+   hierarchical process."` Forget the manager and it breaks at construction.
 2. **The manager goes in `manager_agent=`, not in `agents=[...]`.** This is
    enforced, not merely advised — putting it in both raises a
    `manager_agent_in_agents` validation error. It is not a crew member, it is
@@ -167,17 +170,16 @@ The three task specs in `01`–`03` carry over unchanged, with two adjustments:
 
 ## What to look for in the trace
 
-This is the deliverable. Slide 51: *"Re-run and read the new trace: now it shows
-delegation and review, not a fixed line."*
+This is the deliverable. Re-run, read the new trace, and it shows delegation and
+review rather than a fixed line.
 
 - **Delegation calls.** The manager choosing a worker, with its stated reason.
   Not present anywhere in the sequential trace.
-- **A rejection.** The best thing you can bring to a demo. Slide 53 names
-  "a manager rejection" as a qualifying surprise.
+- **A rejection.** The single most informative thing this pattern produces, and
+  the one capability `Process.sequential` cannot express at all.
 - **Re-runs.** A worker doing the same task twice with different instructions.
 - **The call count.** Compare against your sequential run. The gap is the
-  coordination tax, measured on your own topic rather than taken on faith from
-  slide 65.
+  coordination tax, measured on your own topic rather than taken on faith.
 
 ---
 
@@ -185,20 +187,21 @@ delegation and review, not a fixed line."*
 
 For a three-stage pipeline whose stages genuinely are fixed — you always
 research before analysing, always analyse before writing — the manager is
-**overhead without a job**. There is no routing decision to make. Slide 22
-describes supervisor as the pattern for when the supervisor "dynamically picks
-the next worker", and here there is nothing to pick.
+**overhead without a job**. There is no routing decision to make. The supervisor
+pattern earns its cost when the supervisor dynamically picks the next worker;
+here there is nothing to pick.
 
 Build it anyway, because:
 
 - **The rejection capability is real.** Sequential has no mechanism to send work
   back. That is a genuine capability gain, not a reshuffle.
 - **The cost delta is the lesson.** You will pay noticeably more for
-  approximately the same brief. The deck does not quantify the hierarchical
-  premium — slide 23 only says patterns 4 and 5 "ran slowest and priciest", and
-  the 3–10× figure on slides 55 and 65 is multi-agent versus *single*-agent, not
-  hierarchical versus sequential. The actual delta is what you measure.
+  approximately the same brief. Nothing in this repository quantifies the
+  hierarchical premium: `patterns.md` §11 reasons about it structurally — the
+  manager reasons before and after every step — but puts no number on it, and
+  the measured figures in `agents/README.md` are Track A versus Track B, not
+  sequential versus hierarchical. The actual delta is what you measure.
 
-Then answer slide 53's question — *whether you'd keep it* — with evidence. For this
-crew the defensible answer is almost certainly no, and being able to say so with
-two traces and a call count is a stronger result than a working manager.
+Then answer *would you keep it* with evidence. For this crew the defensible
+answer is almost certainly no, and being able to say so with two traces and a
+call count is a stronger result than a working manager.

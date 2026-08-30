@@ -28,6 +28,7 @@ from brief_crew.config import (
     LEVEL_ONE_ANCHOR,
     MARKET_ANCHORS,
     RUBRIC_ANCHORS,
+    RUBRIC_FLOOR_MIN_USABLE_THREADS,
     RUBRIC_RECENCY_GRACE_MONTHS,
     RUBRIC_RECENCY_MONTHS,
     RUBRIC_REUSABLE_MAX_PUSH_MONTHS,
@@ -432,12 +433,12 @@ def rubric_support(
 
     Only clauses that are fully countable contribute. Where an anchor adds a
     judgement clause on top - F=5's "together cover the separable parts of the
-    scoped v1", X=3 and X=4's "covers most of the core job", M=2's "names a
-    buyer segment", C=3's "states an axis on which a named competitor is
-    beatable" - the judgement half is dropped, which can only raise the
-    ceiling. That is the safe direction: a ceiling that is too generous lets an
-    honest score through, while one that is too tight fails an honest run,
-    after which somebody deletes the guardrail.
+    scoped v1", X=4's "covers most of the core job", M=2's "names a buyer
+    segment", C=3's "states an axis on which a named competitor is beatable" -
+    the judgement half is dropped, which can only raise the ceiling. That is
+    the safe direction: a ceiling that is too generous lets an honest score
+    through, while one that is too tight fails an honest run, after which
+    somebody deletes the guardrail.
     """
     reference = now or datetime.now(timezone.utc)
     counts = compute_evidence_counts(market, sentiment, feasibility)
@@ -455,6 +456,23 @@ def rubric_support(
     live = counts["feasibility_live_substitutes"]
     partial = relevant - complete
     vendor_owned = sum(competitor.vendor_owned for competitor in market.competitors)
+    # The X ladder's product half, counted here rather than in
+    # `compute_evidence_counts` for the same reason `vendor_owned` is: that
+    # dict is enforced against the Synthesist by exact equality, so every key
+    # added to it is another number an honest run can be failed for
+    # mistyping. A counter only the ceiling reads belongs to the ceiling.
+    # `None` is counted nowhere on purpose - an unanswered question is not a
+    # free product and is not evidence that none exists.
+    free_whole = sum(
+        competitor.free_core_coverage == "WHOLE_JOB" for competitor in market.competitors
+    )
+    free_most = sum(
+        competitor.free_core_coverage == "MOST_OF_JOB" for competitor in market.competitors
+    )
+    free_part = sum(
+        competitor.free_core_coverage == "SEPARABLE_PART" for competitor in market.competitors
+    )
+    free_named = free_whole + free_most + free_part
 
     recent_problems = _recent_threads(sentiment.sources, _PROBLEM_CLASSIFICATIONS, reference)
     recent_acted = _recent_threads(sentiment.sources, _ACTED_CLASSIFICATIONS, reference)
@@ -502,20 +520,41 @@ def rubric_support(
     else:
         build = 2
 
-    # X=3, X=4 and X=5 all open with "No free substitute", so a single
-    # SOLVES_ENTIRELY repository caps the dimension at 2 outright.
-    if complete >= 1:
+    # X reads two evidence lists that answer one question - is the core
+    # already free? - so a repository marked SOLVES_ENTIRELY and a competitor
+    # giving the whole job away are the same finding and enter the same
+    # ladder. X=3, X=4 and X=5 all open with "No free substitute", so a single
+    # SOLVES_ENTIRELY repository caps the dimension at 2 outright; a free
+    # product covering most of the core job caps it at 2 as well, and one
+    # covering the whole job goes further, through `zero_ok` and `forbidden`
+    # below.
+    if complete >= 1 or free_whole >= 1 or free_most >= 1:
         headroom = 2
+    elif free_part >= 1:
+        headroom = 3
     elif partial >= 1:
         headroom = 5
     else:
-        headroom = 3
+        # No relevant repository and no free product: nothing in the evidence
+        # reaches this question. The ceiling was 3 here, which let a
+        # Synthesist quote the X=3 anchor - which now requires a named free
+        # product - over evidence that names none.
+        headroom = NO_LEVEL_ABOVE_ONE
 
     return {
         "D": DimensionSupport(
             ceiling=demand,
-            zero_ok=usable >= 1 and problems == 0,
-            one_ok=usable == 0,
+            # The REJECT floor fires only on a branch that reached the
+            # question. One on-topic comment in which nobody states a problem
+            # is not "nobody has this problem", and `sentiment_coverage`
+            # counts problem threads, so confidence is 0 exactly here and the
+            # low-confidence override cannot intervene (review F2).
+            zero_ok=usable >= RUBRIC_FLOOR_MIN_USABLE_THREADS and problems == 0,
+            # Level 1 absorbs what the floor gives up. Without this the states
+            # 1-2 usable threads with no problem thread match no anchor and no
+            # bound: every score 0-5 would be rejected and the task could
+            # never pass. A branch with a problem thread still cannot claim 1.
+            one_ok=usable < RUBRIC_FLOOR_MIN_USABLE_THREADS and problems == 0,
             forbidden=frozenset(),
             summary=(
                 f"{usable} usable thread(s), {problems} problem thread(s), "
@@ -526,7 +565,12 @@ def rubric_support(
         ),
         "M": DimensionSupport(
             ceiling=money,
-            zero_ok=sources >= 1,
+            # "None of them names a buyer segment" needs the sources read, so
+            # this floor is not fully countable (review F3). One necessary
+            # condition is: a recorded paying segment IS a source naming a
+            # buyer segment, per `market_task`'s definition of the field, so
+            # it contradicts the anchor outright.
+            zero_ok=sources >= 1 and segments == 0,
             one_ok=sources == 0,
             forbidden=frozenset(),
             summary=(
@@ -556,18 +600,27 @@ def rubric_support(
         ),
         "X": DimensionSupport(
             ceiling=headroom,
-            zero_ok=live >= 1,
-            one_ok=relevant == 0,
+            # A free product that covers the whole core job is the same kill
+            # as a live free substitute repository, and until it could be
+            # counted the floor could not see the commonest form of the thing
+            # it exists to catch (review F1).
+            zero_ok=live >= 1 or free_whole >= 1,
+            one_ok=relevant == 0 and free_named == 0,
             # The only lower bound above level 1. X=2 asserts that every free
-            # substitute is archived, non-commercial or stale; one live
-            # substitute makes that false with no judgement clause left over,
-            # and X=0 - the REJECT the PRD calls this system's most valuable
-            # output - is then the only level left. Without this the X floor is
-            # evadable by scoring 2.
-            forbidden=frozenset({2}) if live >= 1 else frozenset(),
+            # substitute is archived, non-commercial or stale, and that no
+            # free product covers more than most of the core job; a live
+            # substitute or a whole-job free product makes that false with no
+            # judgement clause left over, and X=0 - the REJECT the PRD calls
+            # this system's most valuable output - is then the only level
+            # left. Without this the X floor is evadable by scoring 2.
+            forbidden=(
+                frozenset({2}) if live >= 1 or free_whole >= 1 else frozenset()
+            ),
             summary=(
                 f"{complete} free substitute(s) of which {live} live, "
-                f"{partial} repository(ies) marked PARTIAL"
+                f"{partial} repository(ies) marked PARTIAL, "
+                f"{free_whole} free product(s) covering the whole core job, "
+                f"{free_most} covering most of it, {free_part} a separable part"
             ),
         ),
     }
@@ -609,7 +662,17 @@ def score_support_problems(
     Between them, three of the four hard floors become arithmetic rather than
     wording: D=0, F=0 and X=0 are fully determined by the counters. M=0 stays a
     judgement call, because "none of them names a buyer segment" cannot be
-    settled without reading the sources.
+    settled without reading the sources; it is bounded only by the one
+    structured fact that contradicts it, a recorded paying segment.
+
+    Every floor also carries a PRECONDITION on the branch having reached the
+    question at all, because "we looked and found nothing" and "we did not
+    look" are different claims and only the first is a finding about the
+    world. D=0 needs `RUBRIC_FLOOR_MIN_USABLE_THREADS` on-topic threads, F=0
+    needs a repository to have come back, X=0 needs a live free substitute or
+    a whole-job free product. Whatever a precondition excludes has to land
+    somewhere: for D that is level 1, whose lower bound widens to match, and
+    the two edits are one edit - separated, they deadlock the ladder.
     """
     support = rubric_support(market, sentiment, feasibility, now=now)
     problems: list[str] = []

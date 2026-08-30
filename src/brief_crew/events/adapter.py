@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
 
+from crewai.events import MethodExecutionStartedEvent
+
 from brief_crew.events.buffer import FrameBuffer
 from brief_crew.events.models import (
     FrameData,
@@ -15,7 +17,7 @@ from brief_crew.events.models import (
     FrameLevel,
     UIEventType,
 )
-from brief_crew.events.registry import NodeRegistry
+from brief_crew.events.registry import NodeRegistry, enter_node_scope
 from brief_crew.events.serializer import FieldBoundedSerializer, FlowScope
 
 
@@ -49,6 +51,7 @@ class StreamSinkAdapter:
     def __call__(self, source: Any, event: Any) -> None:
         try:
             with self._capture_lock:
+                self._track_node_scope(event)
                 drafts = self.serializer.drafts(
                     source, event, self.registry, flow_scope=self.flow_scope
                 )
@@ -56,6 +59,34 @@ class StreamSinkAdapter:
                 self._notify(frames)
         except Exception:
             self.buffer.note_emit_error()
+
+    def _track_node_scope(self, event: Any) -> None:
+        """Name the declared node this execution context is now running inside.
+
+        Done here rather than in the serializer because it is a fact about the
+        context the sink was called in, and the sink is called synchronously
+        from `crewai_event_bus._prepare_event` - inside the very coroutine that
+        is about to `copy_context()` the flow method into a worker thread. Every
+        tool, model and agent event raised underneath that method inherits the
+        copy and can be joined back to this node. See `registry.current_node_scope`.
+
+        Only a *declared* method start writes, so CrewAI's nested AgentExecutor
+        flow cannot claim the scope on its way past. Nothing here can fail in a
+        way that matters: a write to a `ContextVar` does no I/O, and the caller
+        turns any exception into a counted emit error rather than a broken run.
+
+        The `UIEventListener` fallback path in `listener.py` calls the adapter
+        from an async event-bus handler, whose context is not the flow method's.
+        Attribution there degrades to the quarantine node exactly as it does
+        today; that listener is documented as an opt-in safety net, and CrewAI's
+        own `current_flow_method_name` is equally unreadable from it.
+        """
+
+        if not isinstance(event, MethodExecutionStartedEvent):
+            return
+        node_id = self.registry.declared_node(getattr(event, "method_name", None))
+        if node_id is not None:
+            enter_node_scope(node_id)
 
     def emit(
         self,

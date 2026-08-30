@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+import json
 from typing import Any
 
 from pydantic import BaseModel
@@ -66,6 +67,24 @@ _USAGE_ALIASES = {
     ),
     "total_tokens": ("total_tokens", "total_token_count"),
     "call_count": ("call_count", "request_count"),
+}
+
+
+#: The head of the JSON envelope every tool in `brief_crew.tools` returns,
+#: mapped to the frame detail key that carries it. `results` is deliberately
+#: absent: it is the whole payload - scraped page bodies, comment trees - and a
+#: 2,000-frame ring cannot hold 2,000 of them. Its length is kept instead.
+#:
+#: `status` is renamed. `details["status"]` already means "the run's own status"
+#: to `useValidatorRun.applyRunState`, and a tool reporting `"rate_limited"` is
+#: a different sentence in the same grammar; a reader that ever stops checking
+#: the frame kind first would conflate them.
+_TOOL_ENVELOPE_FIELDS = {
+    "status": "tool_status",
+    "query": "query",
+    "result_count": "result_count",
+    "notes": "notes",
+    "retrieved_at": "retrieved_at",
 }
 
 
@@ -197,6 +216,16 @@ class SerializerLimits:
     max_items: int = 64
     max_depth: int = 4
     max_repr: int = 512
+    #: The largest tool output this serializer will hand to `json.loads`.
+    #: A market envelope carrying ten scraped pages is comfortably inside it;
+    #: anything larger is not parsed at all, so a pathological output can never
+    #: turn a capture callback into real work on the run's own thread.
+    max_tool_output: int = 1_048_576
+    #: The bound on each individual field lifted out of a tool envelope. These
+    #: are queries, one-word statuses and a sentence of notes; the general
+    #: `max_string` of 4096 would let four of them outweigh the frame they are
+    #: meant to annotate.
+    max_tool_field: int = 512
 
 
 class FieldBoundedSerializer:
@@ -304,13 +333,19 @@ class FieldBoundedSerializer:
             return (self._draft(timestamp, FrameKind.GATE_CLOSED, UIEventType.HUMAN_INTERACTION, node_id, f"Feedback received for {event.method_name}", {"stage": "after", "gate_id": event.request_id, "feedback": self.clip(event.feedback), "outcome": self.clip(event.outcome)}),)
 
         if isinstance(event, ToolUsageStartedEvent):
-            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} started", {"stage": "before", "tool": event.tool_name, "args": self.clip(event.tool_args)}),)
+            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} started", {"stage": "before", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "args": self.clip(event.tool_args)}),)
         if isinstance(event, ToolUsageFinishedEvent):
             duration_ms = max(0, int((event.finished_at - event.started_at).total_seconds() * 1000))
             level = FrameLevel.WARNING if event.failure is not None else FrameLevel.INFO
-            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} completed", {"stage": "after", "tool": event.tool_name, "output": self.clip(event.output), "from_cache": event.from_cache, "failure": self.clip(event.failure)}, level, duration_ms),)
+            envelope = self.tool_envelope(event.output)
+            # The query the *tool* reports is the one it actually ran, so it
+            # wins over the arguments it was handed.
+            query = envelope.pop("query", None) or self.tool_query(event.tool_args)
+            details = {"stage": "after", "tool": event.tool_name, "query": query, "from_cache": event.from_cache, "failure": self.clip(event.failure)}
+            details.update(envelope)
+            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} completed", details, level, duration_ms),)
         if isinstance(event, ToolUsageErrorEvent):
-            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} failed", {"stage": "error", "tool": event.tool_name, "error": self.clip(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} failed", {"stage": "error", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "error": self.clip(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, LLMCallStartedEvent):
             return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call started", {"stage": "before", "call_id": event.call_id, "model": event.model}),)
@@ -367,6 +402,90 @@ class FieldBoundedSerializer:
         if isinstance(event, CrewKickoffFailedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} failed", {"stage": "error", "error": self.clip(event.error)}, FrameLevel.ERROR),)
         return ()
+
+    def tool_query(self, tool_args: Any) -> str | None:
+        """The search string a tool call was asked to run, if it names one.
+
+        Every tool in `brief_crew.tools` takes a `query`, and the first paid run
+        failed on exactly that value: the Scoper wrote prose where a keyword API
+        wanted keywords, and the trace could not show it because the query never
+        reached a frame. Read from the arguments rather than from any table of
+        tool names, so a tool that does not take a query simply reports none.
+        """
+
+        try:
+            query = self._loads(tool_args, "query")
+        except Exception:
+            return None
+        return query[: self.limits.max_tool_field] if isinstance(query, str) else None
+
+    def tool_envelope(self, output: Any) -> dict[str, Any]:
+        """The diagnostic head of a tool's JSON envelope - never its `results`.
+
+        `status`, `query`, `result_count` and `notes` are the four fields that
+        would have made the first paid run's D=1 and F=1 scores diagnosable from
+        the trace instead of by re-running the tools by hand. `results` is the
+        one field that must not be here: a single market envelope carries ten
+        scraped page bodies, and the run ring holds two thousand frames.
+
+        Anything that is not one of those envelopes - a plain string, a tool
+        that failed and returned prose, a JSON document with none of these keys
+        - falls back to the clipped raw output this frame carried before. This
+        runs inside a capture callback, so it does not raise: an output that
+        cannot be read is a worse frame, never a broken run.
+        """
+
+        try:
+            payload = self._loads(output)
+            if payload is None:
+                return {"output": self.clip(output)}
+            lifted: dict[str, Any] = {}
+            for key, name in _TOOL_ENVELOPE_FIELDS.items():
+                if key in payload:
+                    lifted[name] = self._envelope_field(payload[key])
+            if not lifted:
+                return {"output": self.clip(output)}
+            results = payload.get("results")
+            if "result_count" not in lifted and isinstance(results, Sequence) and not isinstance(results, str | bytes | bytearray):
+                lifted["result_count"] = len(results)
+            if isinstance(output, str):
+                # What was dropped, stated rather than implied.
+                lifted["output_chars"] = len(output)
+            return lifted
+        except Exception:
+            return {"output": self.clip(output)}
+
+    def _loads(self, value: Any, key: str | None = None) -> Any:
+        """Read a tool payload that may arrive as JSON text or as an object.
+
+        Bounded before parsing: a string longer than `max_tool_output` is not
+        handed to `json.loads` at all, so no tool return value can turn a
+        capture callback into real work on the run's own thread.
+        """
+
+        payload = value
+        if isinstance(payload, str):
+            text = payload.strip()
+            if not text.startswith("{") or len(payload) > self.limits.max_tool_output:
+                return None
+            try:
+                payload = json.loads(text)
+            except (ValueError, RecursionError):
+                return None
+        if isinstance(payload, BaseModel):
+            payload = payload.model_dump(mode="python")
+        if not isinstance(payload, Mapping):
+            return None
+        return payload if key is None else payload.get(key)
+
+    def _envelope_field(self, value: Any) -> Any:
+        """One scalar out of a tool envelope, bounded hard and never nested."""
+
+        if value is None or isinstance(value, bool | int | float):
+            return value
+        if isinstance(value, str):
+            return value[: self.limits.max_tool_field]
+        return self._safe_repr(value)[: self.limits.max_tool_field]
 
     def _nested_flow_draft(
         self,

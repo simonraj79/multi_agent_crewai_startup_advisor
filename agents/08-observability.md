@@ -60,9 +60,9 @@ Two runs are now on record, and the comparison is itself a finding:
 
 Same topic, comparable brief, **+4 calls** on the Flow — the retrieval round-trip
 plus the Flow's own crew construction. That is the Track B overhead, paid on
-every miss and only repaid on a later hit. It is exactly the kind of number
-slide 53 asks for, and it exists because the run record is written, not because
-anyone remembered it.
+every miss and only repaid on a later hit. It is exactly the number a
+keep-it-or-drop-it argument needs, and it exists because the run record is
+written, not because anyone remembered it.
 
 ### ⚠️ A cost figure that silently reads zero
 

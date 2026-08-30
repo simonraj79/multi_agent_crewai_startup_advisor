@@ -1,10 +1,16 @@
 # Agent Workflow Mapping
 
-**Extracted from** `shaun-chong-multi-agent-orchestration-20260829.pdf` (67 slides),
-then mapped onto this repository's five agent specifications.
+**What this file is:** the map from an abstract vocabulary of agent-coordination
+patterns onto the five agent specifications in this directory, and onto the code
+in `src/brief_crew/`.
 
-Every claim about the deck carries a slide number. Where this project deviates
-from the deck, the deviation is declared in §10 rather than quietly absorbed.
+Five of the six patterns named here are Anthropic's, from
+[*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents):
+prompt chaining, routing, parallelisation, orchestrator-workers and
+evaluator-optimizer. The sixth is this repository's own — §3 says which and why.
+Everything else below — the mapping onto this build, the role decomposition, the
+per-agent contracts, the design decisions and the declared gaps — is this
+repository's own work.
 
 > **Read order.** `00-shared-config.md` tells you *what things are*. This file
 > tells you *what happens, in what order, and who is allowed to do it*. The
@@ -18,220 +24,153 @@ from the deck, the deviation is declared in §10 rather than quietly absorbed.
 
 ## 1. Two layers of workflow
 
-The deck specifies workflow at two different altitudes, and conflating them is
-the main way people misread it.
+Workflow here means two different things at two different altitudes, and
+conflating them is the main way people misread these specs.
 
-| Layer | What it is | Slides | Where it lives in this repo |
-|---|---|---|---|
-| **A · Pattern vocabulary** | Six abstract topologies for coordinating agents. Framework-agnostic. | 12–23 | §3 of this file |
-| **B · The build** | One concrete crew the class actually constructs: a topic in, a one-page brief out. | 45–53, 62 | §4–§6, and `01`–`05` |
+| Layer | What it is | Where it lives in this repo |
+|---|---|---|
+| **A · Pattern vocabulary** | Six abstract topologies for coordinating agents. Framework-agnostic. | §3 of this file; `patterns.md` for the mechanisms |
+| **B · The build** | One concrete crew: a topic in, a one-page brief out. | §4–§6, and `01`–`05` |
 
-Layer A is the design vocabulary — slide 03: *"You'll leave with a design
-vocabulary, not a tool list."* Layer B is one instantiation of it.
-
-Slide 53 grades the seam between them: every group must say **"which of the six
-you used, and whether you'd keep it."** §7 and §10 exist to make that answerable.
+Layer A is a design vocabulary, not a tool list. Layer B is one instantiation of
+it. §7 and §10 exist to keep the seam between them answerable: which patterns
+this build actually uses, and which of them are worth keeping.
 
 ---
 
-## 2. The five ceilings — why any of this exists
+## 2. Why multi-agent at all
 
-Slide 09 gives the entry condition for multi-agent. A workflow that clears none
-of these is a single agent wearing a costume.
+The starting position is Anthropic's: *"find the simplest solution possible, and
+only increasing complexity when needed"*, and add complexity *"only when it
+demonstrably improves outcomes"*
+([*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents)).
+Agentic systems trade latency and cost for task performance. A crew is that
+trade. This section is the bill.
 
-| # | Ceiling | Deck wording | Does this build clear it? |
-|---|---|---|---|
-| 1 | Context overload | Deep expertise in many domains overwhelms one prompt. | **Partly.** Scraped markdown is bulky, but one topic is one domain. |
-| 2 | Tool overload | 20+ tools confuse routing decisions; error rates climb. | **No.** Three tools, all on one agent (`01`). |
-| 3 | Cognitive scatter | Research AND analyse AND write AND critique → mediocre at each. | **Yes.** This is the real justification. Four verbs, four owners. |
-| 4 | Speed | Sequential tool use is slow; parallel agents work at the same time. | **No.** The pipeline is strictly serial by construction (§8). |
-| 5 | Specialisation | Different subtasks want different prompts, temperatures, even models. | **Yes.** Two model tiers, deliberately split (`00` §3). |
+Five things could justify splitting this workflow across agents. Two of them do:
 
-**Two of five.** Slide 55 is blunt about what that means: *"Most things you'll
-want to build as a crew are cheaper, faster, and more reliable as one agent."*
-Slide 56's test — *"single-agent tried and measurably failed"* — has **not** been
-run for this crew. That is a known, declared gap, not an oversight; see §10.
+| # | Would justify a crew | Does it here? |
+|---|---|---|
+| 1 | **Context pressure** — deep expertise across many domains overwhelming one context window. | **Partly.** Scraped markdown is bulky, but one topic is one domain. |
+| 2 | **Tool pressure** — enough tools that one agent's routing decisions start degrading. | **No.** Three tools, all on one agent (`01`). |
+| 3 | **Cognitive scatter** — one prompt asked to research AND analyse AND write AND critique does all four indifferently. | **Yes.** This is the real justification. Four verbs, four owners. |
+| 4 | **Speed** — independent subtasks running at the same time. | **No.** This pipeline is strictly serial by construction (§8). |
+| 5 | **Specialisation** — different subtasks want different prompts, temperatures, even models. | **Yes.** Two model tiers, deliberately split (`00` §3). |
 
----
-
-## 3. The six patterns (slides 13–19)
-
-Slide 13's map. These are not competing options — slide 13's takeaway: *"think
-LEGO bricks, not a menu."*
-
-| # | Pattern | Deck definition (slide 13) | Used here? |
-|---|---|---|---|
-| 1 | **Sequential Pipeline** | Fixed-order stages; output feeds the next. | ✅ core |
-| 2 | **Routing / Handoff** | Classify once, hand control to a specialist. | ✅ as a *deterministic* router |
-| 3 | **Parallel Fan-out** | Run independent subtasks at the same time. | ❌ — see §8 |
-| 4 | **Supervisor / Workers** | A manager plans and delegates to workers. | ⚠️ specified as a comparison, **not built** (`04`) |
-| 5 | **Hierarchical** | Supervisors of supervisors; nested teams. | ❌ — see §8 |
-| 6 | **Evaluator–Optimizer** | A generator and a critic loop to quality. | ⚠️ specified as a task guardrail (`03`, `05`) — optional, attach it deliberately |
-
-### Pattern 1 · Sequential Pipeline — slide 14
-
-```
-Researcher ──▶ Writer ──▶ Editor ──▶ Output
-```
-
-- Output of one agent feeds the next, in a fixed order.
-- When to use: tasks with clear, non-overlapping stages.
-- Callback: this is **prompt chaining** in Anthropic's terminology.
-- Deck demo (slide 22): *Singapore's e-payment landscape.* Watch — *"Three stages
-  fire in fixed order; output improves at each."*
-
-> ⚠️ **The deck's Pattern-1 example is `Researcher → Writer → Editor`. The build
-> is `Researcher → Analyst → Writer`.** Different triples, same shape. The deck
-> never reconciles them and the difference has confused people: the build swaps
-> the *post-hoc polisher* (Editor) for a *pre-hoc judgement step* (Analyst). That
-> is a real design change, not a renaming — see §6.
-
-### Pattern 2 · Routing / Handoff — slide 15
-
-```
-Input ──▶ Router ──┬──▶ Tech support     (exactly one fires)
-                   ├──▶ Billing
-                   └──▶ Refund
-```
-
-- A classifier agent examines the input and hands **full control** to a specialist.
-- The receiving agent takes over the conversation entirely.
-- OpenAI Agents SDK made this a first-class primitive: `handoff()`.
-- Deck demo (slide 22): *Triage → HDB / CPF / IRAS.* Watch — *"Only ONE
-  specialist activates per query."*
-
-### Pattern 3 · Parallel Fan-out / Fan-in — slide 16
-
-```
-          ┌──▶ Agent A ──┐
-Input ────┼──▶ Agent B ──┼──▶ Merge ──▶ Output
-          └──▶ Agent C ──┘
-```
-
-- **Sectioning** — different subtasks in parallel. **Voting** — same task several
-  times, pick the best or the majority.
-- Deck demo (slide 22): *Announce → ZH / MS / TA → Aggregator.* Watch —
-  *"Three translators at once; wall-clock = one, not three."*
-- Takeaway: *"Trade tokens for speed. Parallelise what's independent."*
-
-### Pattern 4 · Supervisor / Orchestrator-Workers — slide 17
-
-```
-        Supervisor
-             │
-   ┌─────────┼─────────┐
-Worker 1  Worker 2  Worker 3
-```
-
-- A manager plans subtasks, delegates, then synthesises. It decides
-  **dynamically**: which worker, what task, when to stop.
-- *"This is what Claude Code does — a main agent spawns sub-agents."*
-- Deck demo (slide 22): *Supervisor ⇄ Attractions / Food / Logistics.* Watch —
-  *"Supervisor dynamically picks the next worker."*
-- Takeaway: *"The workhorse of production multi-agent. One brain, many hands —
-  and the most common pattern."*
-
-### Pattern 5 · Hierarchical (Nested Teams) — slide 18
-
-```
-              CEO agent
-          ┌───────┴───────┐
-      CTO agent       CMO agent
-      ┌───┴───┐       ┌───┴───┐
-    Eng     Eng     Mktg    Mktg
-```
-
-- Trade-off: **coordination overhead grows with depth.**
-- *"Most production systems use flat supervisor-worker."*
-- Deck demo (slide 22): *CEO → 2 Leads → 4 workers → Integrator.* Watch —
-  *"Three tiers; longest run (9 agents) — coordination tax."*
-
-### Pattern 6 · Evaluator–Optimizer — slide 19
-
-```
-Generator ──▶ Evaluator ──▶ pass ──▶ Output
-    ▲              │
-    └──── fail ────┘
-```
-
-- One generates, another critiques — iterating until a quality threshold is met.
-- Callback: this is agentic RAG's **self-check**, split across two agents.
-- Deck demo (slide 22): *Generator ⇄ Evaluator (**max 3**).* Watch — *"Must be
-  exactly 13 words; **fails round 1, passes by 2–3**."*
-- Takeaway: *"Separate the creator from the critic."*
-
-### Composition — slide 20
-
-Patterns compose. The deck's own example:
-
-```
-Query ──▶ Router ② ──▶ Supervisor ④ ──▶ Evaluator ⑥ ──▶ Answer
-```
-
-*"Four patterns, one system: routing ② + parallel ③ + supervisor ④ + evaluator ⑥."*
-Takeaway: *"Most real systems are LEGO compositions of the six — not a single
-clean pattern."* This project is a composition too — ① + ② + ⑥ (§5).
+**Two of five.** That is not a comfortable score, and the honest reading is that
+most of what you would build as a crew is cheaper, faster and more reliable as a
+single agent. The discipline that follows from Anthropic's rule — reach for a
+crew only once one agent has been tried and has *measurably* failed — has
+**not** been applied to this crew. That is a known, declared gap, not an
+oversight; see §10.
 
 ---
 
-## 4. The five agents are the deck's Human Swarm roles
+## 3. The six patterns — the vocabulary
+
+Five of the six are Anthropic's, named and defined in
+[*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents):
+**prompt chaining**, **routing**, **parallelisation** (in its two modes,
+*sectioning* and *voting*), **orchestrator-workers** and
+**evaluator-optimizer**. The one-line descriptions below are this repository's
+own; for the definitions, read the article.
+
+The sixth — ⑤ **nested teams** — has no entry in that article and is this
+repository's own addition. It earns a slot for exactly one reason: CrewAI spells
+pattern ④ `Process.hierarchical`, and without a separate name for the *nested*
+case that word collision cannot be discussed at all. `patterns.md` §6 is the
+argument; the collision is the single most common mistake made with these specs.
+
+The ①–⑥ numbering is this repository's own, and it is load-bearing:
+`patterns.md`, `PRD.md`, `agents/README.md` and the agent specs all refer to
+these by number.
+
+| # | Pattern | In one line | Anthropic's name | Used here? |
+|---|---|---|---|---|
+| 1 | **Sequential Pipeline** | Fixed stages in a fixed order, each consuming the previous one's output. | prompt chaining | ✅ core |
+| 2 | **Routing / Handoff** | Classify the input once, then hand control to one specialist. | routing | ✅ as a *deterministic* router |
+| 3 | **Parallel Fan-out / Fan-in** | Run independent subtasks at once and merge — either different subtasks (*sectioning*) or the same task N times (*voting*). | parallelisation | ❌ — see §8 |
+| 4 | **Supervisor / Orchestrator-Workers** | A manager decides dynamically which worker runs next and when to stop, then synthesises. | orchestrator-workers | ⚠️ specified as a comparison, **not built** (`04`) |
+| 5 | **Hierarchical (nested teams)** | Supervisors of supervisors. Coordination cost grows with depth. | *(none — this repo's own)* | ❌ — see §8 |
+| 6 | **Evaluator–Optimizer** | A generator and a critic loop until a stated quality bar is met. | evaluator-optimizer | ⚠️ specified as a task guardrail (`03`, `05`) — optional, attach it deliberately |
+
+The six compose rather than compete; a real system is usually two or three of
+them stacked. This project is a composition of ① + ② + ⑥ — see §5 and §7.
+
+> ⚠️ **Why `Researcher → Analyst → Writer` and not `Researcher → Writer →
+> Editor`.** The obvious three-stage chain puts the quality step *after* the
+> draft. This build puts it *before*. That is a real design change rather than a
+> renaming: a *post-hoc polisher* (Editor) is swapped for a *pre-hoc judgement
+> step* (Analyst), which is what lets the Writer receive an argument rather than
+> a pile of facts. See §6.
+
+---
+
+## 4. The five agents — the role decomposition
 
 **This is the load-bearing mapping in this repository, and it is not obvious.**
 
-Slide 25 runs a physical exercise — "Become a multi-agent system" — in groups of
-five. It defines five roles with an explicit **CAN / CANNOT** table. Those five
-roles are, one for one, the five agent specifications in this directory:
+The crew is decomposed by *verb*: five roles, each with an explicit list of what
+it may do and — more importantly — what it may not. The five roles are, one for
+one, the five agent specifications in this directory.
 
-| Slide 25 role | CAN | CANNOT | Spec file |
+| Role | May | Must not | Spec file |
 |---|---|---|---|
-| **Orchestrator** | Read task, delegate by note, synthesise the final answer | Search, calculate, write, or critique | `04-manager.md` |
-| **Researcher** | Search the data table for facts & numbers | Calculate, write, or critique | `01-researcher.md` |
-| **Analyst** | Calculate — profit margins, comparisons | Search, write, or critique | `02-analyst.md` |
-| **Writer** | Compose the **3-sentence** summary from given facts | Search, calculate, or critique | `03-writer.md` |
-| **Critic** | Approve / reject **the summary** with a written reason | Search, calculate, or write | `05-evaluator.md` |
+| **Orchestrator** | Delegate the work, then synthesise the final answer | Search, calculate, write, or critique | `04-manager.md` |
+| **Researcher** | Find facts and numbers in the source material | Calculate, write, or critique | `01-researcher.md` |
+| **Analyst** | Calculate and compare — margins, deltas, rankings | Search, write, or critique | `02-analyst.md` |
+| **Writer** | Compose the summary from facts it is handed | Search, calculate, or critique | `03-writer.md` |
+| **Critic** | Approve or reject the summary, with a written reason | Search, calculate, or write | `05-evaluator.md` |
 
 Two consequences that explain design decisions elsewhere in this repo:
 
-1. **The CANNOT column is a specification, not flavour.** Slide 28 formalises it
-   as the **Guardrail** field of the Agent Spec Card: *"what it must NOT do."* So
-   `02-analyst.md`'s refusal to hold a retrieval tool is not fastidiousness —
-   it is the deck's `CANNOT: search`, enforced in code. Same for the Writer and
-   the Evaluator.
-2. **The Orchestrator is a bottleneck by design, and the deck knows it.**
-   Slide 27's debrief: *"Where was the bottleneck? Usually the Orchestrator — a
-   single point of failure."* That is the empirical case `04-manager.md` argues
-   from, before retiring the Manager.
+1. **The "must not" column is a specification, not flavour, and it is enforced in
+   two places.** Each agent's prohibitions are written into the `Constraints:`
+   block of its task `description` in
+   `src/brief_crew/crews/brief_crew/config/tasks.yaml`; the Analyst's and
+   Writer's inability to search is `tools=[]` in `brief_crew.py`. So
+   `02-analyst.md`'s refusal to hold a retrieval tool is not fastidiousness; it
+   is that constraint, enforced in code. Same for the Writer and the Evaluator.
+2. **An Orchestrator is a bottleneck by design.** Every hand-off passes through
+   it, so it is simultaneously the coordination cost and the single point of
+   failure. That is the structural case `04-manager.md` argues from, before
+   retiring the Manager.
 
-Slide 25's communication rule — *"all communication via written notes to the
-Orchestrator — no agent-to-agent talk"* — is a **star** topology. `Process.sequential`
-is a **chain**. The build therefore does not reproduce the swarm's topology, only
-its role decomposition. That is the right call for a fixed three-stage pipeline,
-but it is a deviation worth naming (§10).
+Routing everything through an Orchestrator makes a **star** topology.
+`Process.sequential` is a **chain**. This build therefore takes the role
+decomposition and not the star. That is the right call for a fixed three-stage
+pipeline, but it is a decision worth naming (§10).
 
-### The Agent Spec Card — slide 28
+### The agent contract
 
-Every agent below is specified against the deck's five fields:
+Every agent in §6 is specified against five fields:
 
-> **Role** (one sentence) · **Tools** (what it can access) · **Inputs** (what it
-> receives) · **Outputs** (what it produces) · **Guardrail** (what it must NOT do)
+**Role** · **Tools** · **Inputs** · **Outputs** · **Guardrail** (what it must not
+do).
+
+They are not decoration — each maps onto something real. **Role** is
+`agents.yaml`'s `role`/`goal`/`backstory`; **Tools** is the `tools=[...]` list in
+`brief_crew.py`; **Inputs** is `context:` plus the `kickoff` inputs; **Outputs**
+is the task's `expected_output`; **Guardrail** is the `Constraints:` block in the
+task `description`. ⚠️ That last one is a *prompt-level* prohibition, not
+CrewAI's `guardrail:` field, which is a post-hoc output validator — `00` §8
+untangles the four senses of the word.
 
 ---
 
 ## 5. The workflow this project builds
 
-### 5a · Track A — the classroom crew (slides 45–48)
-
-What the deck asks every group to build. Slide 47's diagram, verbatim:
+### 5a · Track A — the sequential crew
 
 ```
 Researcher ──▶ Analyst ──▶ Writer ──▶ One-page brief
 ```
 
-**Pattern 1, unmodified.** Slide 45: *"Two of the six patterns are one word
-each: `Process.sequential` (Pattern 1) and `Process.hierarchical` (Pattern 4).
-That's why it's a great place to START."*
+**Pattern ①, unmodified.** Two of the six patterns are a single CrewAI keyword —
+`Process.sequential` for ①, `Process.hierarchical` for ④ — which is why the
+pipeline is the sensible place to start.
 
-Slide 46 wires it:
+The wiring, in its minimal form:
 
 ```python
 research = Task(description="List 3 facts on {topic}", expected_output="3 points", agent=researcher)
@@ -248,16 +187,14 @@ Note `brief` takes **both** prior tasks as context — the Writer needs the
 Analyst's argument *and* the Researcher's source URLs, which the Analyst
 compresses away. `03-writer.md` preserves this.
 
-Slide 48's four steps are the build procedure: scaffold something that already
+The build procedure that produced it, in order: scaffold something that already
 runs → define three agents → define three tasks with specific `expected_output` →
 `kickoff(topic)`, read the verbose log, tweak, re-run.
-
-Slide 50's method: **"Steer, don't type."**
 
 ### 5b · Track B — the hosted Flow
 
 This repo extends Track A with a warm vector cache. The extension adds exactly
-one branch, and that branch is **Pattern 2 with the classifier removed**.
+one branch, and that branch is **Pattern ② with the classifier removed**.
 
 ```
                      topic
@@ -295,11 +232,11 @@ one branch, and that branch is **Pattern 2 with the classifier removed**.
         output/brief.md + Postgres run record
 ```
 
-**The router is the whole point.** Slide 51 offers a Manager for dynamic
-sequencing; this system has exactly one dynamic decision (hit vs miss) and
-resolves it in code for **zero LLM calls**. `04-manager.md` keeps the Manager as
-a measurable comparison rather than a component — which is what turns slide 53's
-*"whether you'd keep it"* into two traces and a call count instead of an opinion.
+**The router is the whole point.** A Manager could sequence this dynamically;
+this system has exactly one dynamic decision (hit vs miss) and resolves it in
+code for **zero LLM calls**. `04-manager.md` keeps the Manager as a measurable
+comparison rather than a component — which turns *keep it or drop it* into two
+traces and a call count instead of an opinion.
 
 | Flow step | Decorator | Actor | LLM calls |
 |---|---|---|---|
@@ -314,7 +251,7 @@ a measurable comparison rather than a component — which is what turns slide 53
 
 ## 6. Per-agent workflow contracts
 
-The Agent Spec Card (slide 28) for each of the five, plus the hand-off contract.
+The agent contract (§4) for each of the five, plus the hand-off contract.
 **Inputs and Outputs are the workflow**; role and backstory are how you get them.
 
 ### ① Researcher — `01-researcher.md`
@@ -337,7 +274,7 @@ follow-up round.
 | Field | Value |
 |---|---|
 | **Role** | Strategy Analyst turning raw research on `{topic}` into a defensible point of view |
-| **Tools** | **none — deliberate** (slide 25: `CANNOT: search`) |
+| **Tools** | **none — deliberate** (§4: the Analyst may not search) |
 | **Inputs** | `context: [research_task]` |
 | **Outputs** | *Bottom line* (one sentence) · *What matters* (3–4 findings + "so what") · *Confidence: High/Medium/Low* + justification · *What would change this*. 300–500 words. |
 | **Guardrail** | Use ONLY the research notes. Introducing an outside fact is a failure, not initiative. Do NOT write the brief. Do not promote an unverified item by restating it confidently. |
@@ -345,7 +282,7 @@ follow-up round.
 **Why the empty tool surface is load-bearing.** With no tools, every claim *must*
 trace to the Researcher's notes — so anything new is unambiguously invented, and
 it sits one hand-off from its source in the trace. This is the cleanest place in
-the system to observe slide 66's **error cascade**.
+the system to observe an **error cascade** (§9 #1).
 
 ### ③ Writer — `03-writer.md`
 
@@ -370,9 +307,8 @@ writes a file.
 | **Outputs** | Task assignments, rejections with concrete reasons, final sign-off |
 | **Guardrail** | Never "improve this" — send work back with a specific reason. Must NOT appear in `agents=[...]`; it goes in `manager_agent=`. |
 
-Slide 51 is the source (*"Fast finisher? Add a manager."*). It is retired because
-the router already makes the only decision available, for free — but building it
-once produces the trace comparison slide 53 asks for.
+Retired because the router already makes the only decision available, for free —
+but building it once produces the trace comparison §10 asks for.
 
 ### ⑤ Evaluator — `05-evaluator.md` · *sourcing gate*
 
@@ -384,11 +320,11 @@ once produces the trace comparison slide 53 asks for.
 | **Outputs** | `VERDICT: PASS` / `FAIL` + a six-row checklist table + required fixes. Under 250 words. |
 | **Guardrail** | Judge only against the checklist — style, tone and persuasiveness are out of scope. Do NOT rewrite or suggest wording. A brief honest about thin evidence is a PASS. |
 
-Slide 62 asks for *"a fourth agent that rejects any brief without sources —
-Pattern 6, in a few lines."* `05` implements the gate primarily as a **task
-guardrail** on `writing_task`, because in `Process.sequential` a fourth agent
-produces a verdict that nothing acts upon. The guardrail is the version that
-actually closes the loop.
+The obvious shape for this is a fourth agent that rejects any brief without
+sources — Pattern ⑥, in a few lines. `05` implements the gate primarily as a
+**task guardrail** on `writing_task` instead, because in `Process.sequential` a
+fourth agent produces a verdict that nothing acts upon. The guardrail is the
+version that actually closes the loop.
 
 ### Hand-off contract
 
@@ -399,47 +335,48 @@ actually closes the loop.
 | Writer → Evaluator | The brief + its Sources section | Meta-commentary about the process |
 | Evaluator → Writer | A verdict and named failing checks | A rewrite |
 
-Every row is a place slide 66's **error cascade** can start. The right-hand
+Every row is a place an **error cascade** (§9 #1) can start. The right-hand
 column is what to grep the trace for.
 
 ---
 
 ## 7. Pattern coverage — what this build uses
 
-| Pattern | Status | Where | Evidence to bring to slide 53 |
+| Pattern | Status | Where | Evidence |
 |---|---|---|---|
 | ① Sequential Pipeline | **Core** | Researcher → Analyst → Writer | The verbose log's three stages |
 | ② Routing / Handoff | **Used, LLM-free** | Flow `@router` on the staleness gate | `runs.route` in Postgres; router costs 0 calls |
 | ③ Parallel Fan-out | **Not used** | — | See §8 |
 | ④ Supervisor / Workers | **Comparison only** | `04-manager.md` | Two traces + a call count |
-| ⑤ Hierarchical | **Not used** | — | See §8 |
+| ⑤ Nested teams | **Not used** | — | See §8 |
 | ⑥ Evaluator–Optimizer | **Specified, not in the baseline** | `writing_task.guardrail` (`03` word count, `05` sourcing) | The Writer running twice, second time carrying the failure — *once you attach it* |
 
-**Answer to slide 53's "which of the six you used, and whether you'd keep it":**
-the running system is ① + ②; ⑥ is one line away and specified in `03` and `05`.
-Keep ①. Attach ⑥ — a callable guardrail is free and it is the only thing that
-catches an unsourced brief. ② is worth keeping *only* if runs repeat (§10).
+**Which of the six this build uses, and which are worth keeping:** the running
+system is ① + ②; ⑥ is one line away and specified in `03` and `05`. Keep ①.
+Attach ⑥ — a callable guardrail is free and it is the only thing that catches an
+unsourced brief. ② is worth keeping *only* if runs repeat (§10).
 
 ---
 
 ## 8. Why patterns 3 and 5 are absent
 
-The deck teaches all six, so an unexplained absence is a gap. Both absences are
-deliberate.
+A vocabulary of six with two unused is a gap unless the absences are argued. Both
+are deliberate.
 
-**③ Parallel Fan-out — no independent subtasks in this decomposition.** Slide 16's
-condition is *"independent subtasks"*. The three stages have none: the Analyst
-cannot start before the Researcher finishes, and the Writer cannot start before
-the Analyst does. Every stage consumes its predecessor's entire output.
+**③ Parallel Fan-out — no independent subtasks in this decomposition.**
+Parallelisation requires the subtasks to be genuinely independent. The three
+stages are not: the Analyst cannot start before the Researcher finishes, and the
+Writer cannot start before the Analyst does. Every stage consumes its
+predecessor's entire output.
 
-Be precise about this in a demo, though — "impossible" would be overstating it.
-Three parallel variants *are* structurally available and were rejected on cost,
-not on shape:
+Be precise about this, though — "impossible" would be overstating it. Three
+parallel variants *are* structurally available and were rejected on cost, not on
+shape:
 
-| Variant | Slide 16 mode | Why not |
+| Variant | Mode | Why not |
 |---|---|---|
 | Scrape the 3–4 chosen URLs concurrently | sectioning | Real, but **tool-level**, not an agent topology. Worth doing; changes no boxes. |
-| Query the cache **and** the live web at once, then merge | sectioning — *"search DB A, B, C at once"* | The whole point of the router is to *avoid* paying for the web call on a hit. Parallelising here spends the money the cache exists to save. |
+| Query the cache **and** the live web at once, then merge | sectioning | The whole point of the router is to *avoid* paying for the web call on a hit. Parallelising here spends the money the cache exists to save. |
 | Run `writing_task` 3× and pick the best | voting | Triples the crew's most output-heavy agent to improve a one-page brief. |
 
 And there is a hard measured ceiling underneath all three: `00-shared-config.md`
@@ -472,25 +409,27 @@ And there is a hard measured ceiling underneath all three: `00-shared-config.md`
 For the three variants in the table above the rejection still stands, on cost and
 on shape rather than on memory.
 
-**⑤ Hierarchical — explicitly warned against.** Slide 18: *"Don't go hierarchical
-until you've proven you need it."* Slide 23: *"patterns 4 & 5 ran slowest and
-priciest."* Slide 54: *"almost every real system is 2–5 agents."* A three-stage
-pipeline with three workers has nothing to nest. Pattern 4 is already retired for
-having no decision to make (§6④); pattern 5 would add a tier above that.
+**⑤ Nested teams — nothing to nest.** Coordination overhead grows with depth:
+every tier adds a manager reasoning before and after every step below it, so ⑤ is
+④'s cost compounded. Pattern ④ is already retired here for having no decision to
+make (§6④); ⑤ would add a tier above that. A three-stage pipeline with three
+workers has nothing to nest, and reaching for depth before you have proven you
+need it is the most expensive mistake available in this vocabulary.
 
 ---
 
 ## 9. Where this workflow breaks
 
-Slide 66's six production problems, mapped onto this specific topology.
+Six failure modes, mapped onto this specific topology. They are referred to by
+number from `01`, `02`, `05` and `06`.
 
-| # | Slide 66 problem | Where it lands here | Mitigation in these specs |
+| # | Failure mode | Where it lands here | Mitigation in these specs |
 |---|---|---|---|
 | 1 | **Error cascade** | A fabricated citation in stage 1 becomes a confident claim in stage 3. The Analyst's empty tool surface makes it visible one hand-off from its source. | Analyst confidence rating (`02`) · sourcing guardrail (`05`) |
 | 2 | **Cost explosion** | Scraping all five search results; guardrail retries; `glm-5.3-flash` reasoning tokens billing at completion rate. | `limit: 5` + "read snippets first" (`01`) · `guardrail_max_retries: 2` (`05`) · `reasoning_effort: "minimal"` (`00` §3) |
 | 3 | **Debugging complexity** | Which stage lost the source URL? | `verbose=True` · CrewAI AMP tracing · `run_sources` table (`07`) |
-| 4 | **Security & trust** | **Weakest coverage.** Scraped web content enters an LLM context, then rides forward into the Analyst's and Writer's contexts. Slide 57 notes MCP tool poisoning and the first agentic-AI CVE. | Now **specified but not implemented**: `01-researcher.md` §"Untrusted input" (injection via scraped pages) and `06-retrieval-layer.md` §"The cache is shared mutable state" (poisoning, which is durable and cross-group). Both name concrete containment; neither is built. |
-| 5 | **State management** | Flow state; the Pinecone index is shared mutable state across runs *and across groups*. A bad scrape poisons future cache hits. | Write-back rules (`06`) · `indexed_at` staleness gate |
+| 4 | **Security & trust** | **Weakest coverage.** Scraped web content enters an LLM context, then rides forward into the Analyst's and Writer's contexts. Prompt injection through retrieved content, and MCP tool poisoning, are both documented attack classes. | Now **specified but not implemented**: `01-researcher.md` §"Untrusted input" (injection via scraped pages) and `06-retrieval-layer.md` §"The cache is shared mutable state" (poisoning, which is durable and outlives the run). Both name concrete containment; neither is built. |
+| 5 | **State management** | Flow state; the Pinecone index is shared mutable state across runs. A bad scrape poisons future cache hits. | Write-back rules (`06`) · `indexed_at` staleness gate |
 | 6 | **Evaluation** | Is the brief good? Nothing scores it end to end. | Checklist gate (`05`) · `run_metrics` (`07`) — but no quality score |
 
 The staleness gate deserves its own warning. It is the **single most dangerous
@@ -502,79 +441,40 @@ cluster within 0.06 and admit no defensible cutoff.
 
 ---
 
-## 10. Declared deviations from the deck
+## 10. Design decisions and declared gaps
 
-Listed so they can be defended in a demo rather than discovered in one.
+Listed so they can be defended rather than rediscovered. The left column is the
+obvious or default choice; the middle is what this build does instead.
 
-| # | Deck says | This build does | Why |
+| # | The obvious choice | This build | Why |
 |---|---|---|---|
-| 1 | Pattern 1 example is `Researcher → Writer → Editor` (s14, s22) | `Researcher → Analyst → Writer` | The deck's own build slides (47, 48) specify this triple. An Analyst judges *before* writing; an Editor polishes *after*. The build follows slides 47–48. |
-| 2 | Evaluator is *"a fourth agent"* (s62) | Primarily a **task guardrail**; the agent is optional | In `Process.sequential` a fourth agent emits a verdict that gates nothing. The guardrail closes the loop; the agent only reports. `05` documents both. |
-| 3 | Evaluator loop is `max 3` (s22) | `guardrail_max_retries: 2` | Each retry is a full task re-run *plus* a judgement call. If two focused attempts fail, the defect is upstream in stage 1 and no rewrite conjures sources. |
-| 4 | Manager for dynamic sequencing (s51) | Retired; a code `@router` decides | The only dynamic decision is binary and thresholded. A Manager would charge one LLM call per run to reach the same answer. Kept as a measured comparison. |
-| 5 | Human Swarm is a **star** through the Orchestrator (s25) | A **chain** via `context=[...]` | Star topology needs a hub; the hub is the Manager, which is retired. Sequential chaining passes prior outputs implicitly. |
-| 6 | *"Give your Researcher a real MCP tool"* (s62) | Native Firecrawl tools; MCP documented as the next step | Native tools deliver the substance now. `01` specifies the MCP swap as a clean A/B — capability held constant, only transport changes. |
-| 7 | Six patterns taught | Three used, two refused with reasons, one retired | §7 and §8. Slide 33: *"Find the simplest solution possible."* |
-| 8 | Slide 56: go multi-agent when *"single-agent tried and measurably failed"* | **Not done.** No single-agent baseline exists. | Honest gap. The cheapest experiment available and the strongest possible demo evidence — see below. |
+| 1 | `Researcher → Writer → Editor` | `Researcher → Analyst → Writer` | An Analyst judges *before* writing; an Editor polishes *after*. Judgement before drafting is what lets the Writer receive an argument instead of a pile of facts. |
+| 2 | An evaluator as a fourth agent | Primarily a **task guardrail**; the agent is optional | In `Process.sequential` a fourth agent emits a verdict that gates nothing. The guardrail closes the loop; the agent only reports. `05` documents both. |
+| 3 | CrewAI's default `guardrail_max_retries: 3` | `guardrail_max_retries: 2` | Each retry is a full task re-run *plus* a judgement call. If two focused attempts fail, the defect is upstream in stage 1 and no rewrite conjures sources. |
+| 4 | A Manager for dynamic sequencing | Retired; a code `@router` decides | The only dynamic decision is binary and thresholded. A Manager would charge one LLM call per run to reach the same answer. Kept as a measured comparison (`04`). |
+| 5 | A **star** through an Orchestrator | A **chain** via `context=[...]` | Star topology needs a hub; the hub is the Manager, which is retired. Sequential chaining passes prior outputs implicitly. |
+| 6 | An MCP tool on the Researcher | Native Firecrawl tools; MCP documented as the next step | Native tools deliver the substance now. `01` specifies the MCP swap as a clean A/B — capability held constant, only transport changes. |
+| 7 | Use the whole vocabulary | Three used, two refused with reasons, one retired | §7 and §8. Anthropic's rule: find the simplest solution possible. |
+| 8 | Go multi-agent only once a single agent has been tried and has measurably failed | **Not done.** No single-agent baseline exists. | Honest gap. The cheapest experiment available and the strongest evidence this project could produce — see below. |
 
 ### The two experiments worth running
 
-1. **The single-agent baseline (deviation 8).** One well-prompted agent with the
-   same three tools, same topic, same brief format. Count the calls in both
-   traces. Slide 55 predicts ~10 calls for the crew against ~1 for a single
-   agent; slide 65 predicts 3–10× cost. Measure it on your own topic instead of
-   taking it on faith.
-2. **Router versus Manager (deviation 4).** Same decision, two implementations,
-   two call counts. `04-manager.md` exists to make this runnable.
+1. **The single-agent baseline (row 8).** One well-prompted agent with the same
+   three tools, same topic, same brief format. Count the calls in both traces.
+   The measured Track A run made **9** LLM calls for one brief
+   (`agents/README.md`); what one good agent would have spent on the same topic
+   is unknown, and that unknown is the whole argument for the crew.
+2. **Router versus Manager (row 4).** Same decision, two implementations, two
+   call counts. `04-manager.md` exists to make this runnable.
 
 ### The unmitigated risk (§9 #4)
 
 Scraped web content flows into three agents' contexts with no sanitisation. A
 page containing instructions rather than facts is an untested attack path, and
 the Researcher's own failure table already notes that a failed tool call followed
-by confident output is the fabrication signature to watch for. Slide 67's harness
-— *"budgets, retries, guardrails, scoped permissions, validation gates between
-agents"* — is exactly what is missing. Slide 67's takeaway applies without
-qualification: *"Your crew ran with no seatbelts. Fine for learning; not fine for
-anything real."*
+by confident output is the fabrication signature to watch for.
 
----
-
-## 11. Demo mapping (slide 53)
-
-Three minutes, one rep per group, four things to bring.
-
-| Requirement | Where the evidence comes from |
-|---|---|
-| **Your topic** — one sentence, and why | Your group's choice. `kickoff(inputs={"topic": ...})` |
-| **One run** — the brief, or the trace | `output/brief.md` (`03`) and the verbose log / AMP trace (`08`) |
-| **One surprise** — a hallucination, a strange hand-off, a manager rejection | The failure tables in `01`, `03`, `05`. Slide 52: ***"If it produces junk, don't fix it quietly — junk makes the best demo."*** Screenshot it first. |
-| **One pattern** — which of the six you used, and whether you'd keep it | §7 for which; §10 and `02`'s closing argument for whether |
-
-The strongest available answer to "whether you'd keep it" is not an opinion but the
-call count from two traces — which is why §10's two experiments are the highest-value
-work left in this repository.
-
----
-
-## 12. Source map
-
-Slides actually cited in each section, extracted from the text rather than
-written by hand:
-
-| This file's section | Slides cited |
-|---|---|
-| §1 two layers | 3, 53 |
-| §2 five ceilings | 9, 55, 56 |
-| §3 six patterns | 13, 14, 15, 16, 17, 18, 19, 20, 22 |
-| §4 Human Swarm roles · Agent Spec Card | 25, 27, 28 |
-| §5 the build (A and B) | 45, 46, 47, 48, 50, 51, 53 |
-| §6 agent contracts | 25, 28, 51, 53, 62, 66 |
-| §7 pattern coverage | 53 |
-| §8 why 3 and 5 are absent | 16, 18, 23, 54 |
-| §9 what breaks | 57, 66 |
-| §10 deviations | 22, 25, 33, 47, 48, 51, 55, 56, 62, 65, 67 |
-| §11 demo | 52, 53 |
-
-Track B (§5b) is this project's own extension and cites no slide — see
-`07-deployment.md`.
+The harness that would contain it — token and call budgets, bounded retries,
+output guardrails, per-agent scoped credentials, and validation gates between
+agents — is exactly what this build does not have. That is fine for a project
+someone is reading. It is not fine for anything running unattended.

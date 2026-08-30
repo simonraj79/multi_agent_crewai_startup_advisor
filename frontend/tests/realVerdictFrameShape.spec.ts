@@ -1,0 +1,139 @@
+import { mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { App } from 'vue'
+import ReportPanel from '../src/components/ReportPanel.vue'
+import { useValidatorRun } from '../src/composables/useValidatorRun'
+import type { FrameData } from '../src/types/studio'
+import { FakeStudioApi, RUN_ID, flush, withSetup } from './helpers'
+import backendVerdictFrames from './fixtures/backendVerdictFrames.json'
+
+type ValidatorRun = ReturnType<typeof useValidatorRun>
+
+/**
+ * The verdict frames below are not written here. `tests/events/test_verdict_frame.py`
+ * builds them by pushing real `VerdictComputedEvent` objects - carrying real
+ * `Verdict` models, with their arithmetic recomputed by
+ * `compute_mechanical_result` - through the real `FieldBoundedSerializer`,
+ * writes the result to the fixture, and fails if the serializer's output ever
+ * stops matching the committed file.
+ *
+ * This is the same both-sides pin that `realFrameShape.spec.ts` applies to
+ * `RUN_STATE`, and it exists for the same reason: those two drifted apart in
+ * silence once. The server emitted `WORKFLOW_END` with no `status`, the client
+ * read only `details.status`, and a real run left the console reading "queued"
+ * for its entire life while 116 green frontend tests asserted against frames
+ * every spec had hand-written for itself.
+ *
+ * The verdict frame is a worse place for that to happen than `RUN_STATE` was.
+ * A stuck status is visible; a scorecard silently parsed into nulls looks like
+ * a run that simply had nothing to say.
+ */
+const FRAMES = backendVerdictFrames as unknown as FrameData[]
+const [FLOORED, RESCORED] = FRAMES
+
+describe('the verdict frame shape the backend really emits', () => {
+  let api: FakeStudioApi
+  let run: ValidatorRun
+  let app: App
+
+  beforeEach(async () => {
+    localStorage.clear()
+    api = new FakeStudioApi()
+    ;[run, app] = withSetup(() => useValidatorRun(api))
+    await run.initialize()
+    await run.launch()
+  })
+
+  afterEach(() => app.unmount())
+
+  it('is addressed to the run under test', () => {
+    // The composable drops any frame belonging to another run, so a fixture
+    // built under a different id would prove nothing while still passing.
+    expect(FRAMES.map((frame) => frame.run_id)).toEqual([RUN_ID, RUN_ID])
+    expect(FRAMES.map((frame) => frame.seq)).toEqual([1, 2])
+  })
+
+  it('arrives as its own kind, on the synthesis node', () => {
+    // The client dispatches on `kind` alone. `event_type` is asserted here so a
+    // rename on either side is visible, not because anything branches on it.
+    for (const frame of FRAMES) {
+      expect(frame.kind).toBe('verdict')
+      expect(frame.event_type).toBe('VERDICT_COMPUTED')
+      expect(frame.node_id).toBe('synthesize')
+    }
+  })
+
+  it('carries every field of the frozen contract', () => {
+    expect(Object.keys(FLOORED.details).sort()).toEqual([
+      'composite_score',
+      'confidence',
+      'confidence_band',
+      'decision_reason',
+      'dimensions',
+      'fatal_floors',
+      'provisional',
+      'verdict',
+    ])
+  })
+
+  it('populates the whole scorecard with no gate frame anywhere', async () => {
+    // The unattended case against real serializer output: `gates: "auto"` opens
+    // no verdict gate, so this frame is the only carrier there has ever been.
+    api.emit(FLOORED)
+    await flush()
+
+    expect(run.pendingGate.value).toBeNull()
+    expect(run.verdictSummary.value).toEqual({
+      verdict: 'REJECT',
+      confidence: 0.5,
+      compositeScore: 4.2,
+      confidenceBand: 'MODERATE',
+      provisional: true,
+      fatalFloors: ['FLOOR_NO_DEMAND'],
+      decisionReason: 'FLOOR_NO_DEMAND',
+      dimensions: { demand: 0, market: 3, competitive_room: 3, feasibility: 3, headroom_over_free: 3 },
+      source: 'frame',
+    })
+  })
+
+  it('lets the rescored verdict replace the floored one', async () => {
+    // Both fixture frames are real output for the same node, and the second is
+    // what a revise loop produces. The newer computation has to win, or the
+    // console argues with the report it is sitting above.
+    api.emit(FLOORED)
+    api.emit(RESCORED)
+    await flush()
+
+    expect(run.verdictSummary.value?.verdict).toBe('NEEDS_WORK')
+    expect(run.verdictSummary.value?.compositeScore).toBe(6)
+    expect(run.verdictSummary.value?.fatalFloors).toEqual([])
+    expect(run.verdictSummary.value?.provisional).toBe(false)
+  })
+
+  it('renders the real floor, not a placeholder', async () => {
+    // End to end on real bytes: fixture -> reducer -> panel. PRD 10.2 calls the
+    // free-alternative floor the most valuable output this system produces, and
+    // it had no route to the screen at all before this frame.
+    api.emit(FLOORED)
+    await flush()
+
+    const wrapper = mount(ReportPanel, {
+      props: {
+        report: { markdown_body: '# Verdict\n\nNo demand evidence.' },
+        verdict: run.verdictSummary.value,
+        open: true,
+      },
+    })
+    const text = wrapper.text()
+
+    expect(text).toContain('REJECT')
+    expect(text).toContain('Fatal floor')
+    expect(text).toContain('No demand')
+    expect(text).toContain('FLOOR_NO_DEMAND')
+    expect(text).toContain('4.2')
+    expect(text).toContain('MODERATE')
+    expect(wrapper.findAll('.score-row')).toHaveLength(5)
+    // A floored dimension is a real zero, not a missing value.
+    expect(wrapper.findAll('.score-value')[0].text()).toBe('0/5')
+  })
+})

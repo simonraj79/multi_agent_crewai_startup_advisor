@@ -12,6 +12,8 @@ import type {
   PendingGate,
   RunStatus,
   UsageMetrics,
+  VerdictDimensionScores,
+  VerdictSummary,
 } from '../types/studio'
 
 /**
@@ -166,12 +168,27 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
    */
   const report = ref<RunResult | null>(null)
   /**
-   * The verdict headline, captured from the verdict gate the moment before it
-   * closes. `gate_closed` nulls `pendingGate`, and that gate card was the only
-   * place the score was ever rendered - so answering it destroyed the run's
-   * conclusion. Held separately because it outlives the gate.
+   * The run's conclusion, from whichever carrier supplied it.
+   *
+   * TWO carriers, and the precedence between them is the point.
+   *
+   * 1. The `verdict` FRAME, published by the Flow the moment the `Verdict` is
+   *    computed. Authoritative: it is deterministic output, it carries the
+   *    whole scorecard rather than a headline, and it is emitted in BOTH gate
+   *    modes. `applyVerdict` writes it and the newest frame always wins - a
+   *    revise loop rescores, and the later frame is the later computation.
+   * 2. The verdict GATE, rescued by `closeGate` as `gate_closed` nulls
+   *    `pendingGate`. A fallback, kept for two cases that are not hypothetical:
+   *    a `gates=human` run replayed from frames PREDATING this feature has only
+   *    the gate, and so does any server not yet emitting the frame.
+   *
+   * So a gate-sourced value never overwrites a frame-sourced one, while a frame
+   * overwrites anything. `source` records which happened, so the rule is
+   * testable rather than merely commented. Under `gates=auto` there is no
+   * verdict gate at all, which is why carrier 2 alone left the mode whose whole
+   * purpose is producing this number showing a `COMPLETE` badge instead.
    */
-  const verdictSummary = ref<{ verdict: string; confidence: number | null } | null>(null)
+  const verdictSummary = ref<VerdictSummary | null>(null)
   const lastSequence = ref(0)
   const droppedFrames = ref(0)
   const activeEdgeIds = ref(new Set<string>())
@@ -388,6 +405,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
 
   function applyPostSnapshotFrame(frame: FrameData): void {
     if (frame.kind === 'run_state') applyRunState(frame)
+    if (frame.kind === 'verdict') applyVerdict(frame)
     if (frame.kind === 'gate_open') applyGate(frame)
     if (frame.kind === 'gate_expired' || frame.kind === 'gate_alert') applyGateWatch(frame)
     if (frame.kind === 'gate_closed') {
@@ -435,6 +453,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     if (frame.kind === 'run_state') applyRunState(frame)
     if (frame.kind === 'node_state' && frame.node_id) applyNodeState(frame)
     if (frame.kind === 'edge_taken') applyEdge(frame)
+    if (frame.kind === 'verdict') applyVerdict(frame)
     if (frame.kind === 'gate_open') applyGate(frame)
     if (frame.kind === 'gate_expired' || frame.kind === 'gate_alert') applyGateWatch(frame)
     if (frame.kind === 'gate_closed') {
@@ -480,14 +499,43 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
    * Keep the score before the gate card that carried it disappears. Only the
    * verdict gate supplies these, so a scope gate closing leaves the value
    * untouched rather than blanking it.
+   *
+   * The fallback half of the precedence rule: a gate carries the headline only,
+   * and never overwrites what the frame computed. It still matters, because a
+   * run replayed from frames older than the verdict frame has nothing else.
    */
   function closeGate(): void {
     const gate = pendingGate.value
-    if (gate?.verdict) {
-      verdictSummary.value = { verdict: gate.verdict, confidence: gate.confidence ?? null }
+    if (gate?.verdict && verdictSummary.value?.source !== 'frame') {
+      verdictSummary.value = {
+        verdict: gate.verdict,
+        confidence: gate.confidence ?? null,
+        compositeScore: null,
+        confidenceBand: null,
+        provisional: null,
+        fatalFloors: [],
+        decisionReason: null,
+        dimensions: null,
+        source: 'gate',
+      }
     }
     pendingGate.value = null
     gateSubmitting.value = false
+  }
+
+  /**
+   * The authoritative carrier. See `verdictSummary` for the precedence rule:
+   * the newest frame always wins, including over an earlier frame, because a
+   * revise loop sends the Synthesist back to rescore and the second frame is
+   * the second computation.
+   *
+   * A frame the parser cannot make sense of is dropped rather than allowed to
+   * blank a verdict already on screen - `details` is `Record<string, unknown>`
+   * and this is the one frame the whole product exists to deliver.
+   */
+  function applyVerdict(frame: FrameData): void {
+    const parsed = parseVerdictFrame(frame.details)
+    if (parsed) verdictSummary.value = parsed
   }
 
   /**
@@ -939,6 +987,76 @@ function numericValue(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** The five ladders, in the order PRD §10.2 weights them. */
+const VERDICT_DIMENSION_KEYS = [
+  'demand',
+  'market',
+  'competitive_room',
+  'feasibility',
+  'headroom_over_free',
+] as const
+
+/**
+ * Read a `verdict` frame's `details` field by field.
+ *
+ * Nothing here casts. `details` is `Record<string, unknown>` off a socket, so
+ * every field is checked and every unusable one degrades to `null` or `[]`
+ * rather than throwing: a server one version ahead - a sixth dimension, a floor
+ * token nobody has seen, a field turned nullable - must still render a verdict.
+ *
+ * The label is the one hard requirement. Without it there is no headline to
+ * show, and a scorecard under a blank badge is worse than the `COMPLETE`
+ * fallback `ReportPanel` already has, so such a frame is refused outright.
+ */
+export function parseVerdictFrame(details: Record<string, unknown>): VerdictSummary | null {
+  if (!isRecord(details)) return null
+  const verdict = typeof details.verdict === 'string' ? details.verdict.trim() : ''
+  if (!verdict) return null
+  return {
+    verdict,
+    confidence: finiteOrNull(details.confidence),
+    compositeScore: finiteOrNull(details.composite_score),
+    confidenceBand: nonEmptyStringOrNull(details.confidence_band),
+    provisional: typeof details.provisional === 'boolean' ? details.provisional : null,
+    fatalFloors: stringList(details.fatal_floors),
+    decisionReason: nonEmptyStringOrNull(details.decision_reason),
+    dimensions: dimensionScores(details.dimensions),
+    source: 'frame',
+  }
+}
+
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function nonEmptyStringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
+/**
+ * Keeps the five known ladders in rubric order, then any dimension a newer
+ * server has added, so an unrecognised score is displayed rather than dropped.
+ * Returns `null` when nothing numeric survived, which is what lets the panel
+ * skip the scorecard instead of drawing an empty grid.
+ */
+function dimensionScores(value: unknown): VerdictDimensionScores | null {
+  if (!isRecord(value)) return null
+  const scores: VerdictDimensionScores = {}
+  const extras = Object.keys(value)
+    .filter((key) => !VERDICT_DIMENSION_KEYS.includes(key as (typeof VERDICT_DIMENSION_KEYS)[number]))
+    .sort()
+  for (const key of [...VERDICT_DIMENSION_KEYS, ...extras]) {
+    const score = finiteOrNull(value[key])
+    if (score !== null) scores[key] = score
+  }
+  return Object.keys(scores).length ? scores : null
 }
 
 function addUsage(target: UsageMetrics, addition: UsageMetrics): void {

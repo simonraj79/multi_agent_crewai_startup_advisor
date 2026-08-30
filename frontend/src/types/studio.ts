@@ -34,6 +34,12 @@ export type FrameKind =
   | 'gate_expired'
   // PRD R-2: a gate_open with no gate_closed past timeout + grace.
   | 'gate_alert'
+  // The scored `Verdict`, published the moment the Flow computes it. Emitted in
+  // BOTH gate modes, which is the whole reason it exists: `gates=auto` never
+  // opens a verdict gate, so before this frame the deterministic label this
+  // product is built to produce reached an unattended run's UI through nothing
+  // at all.
+  | 'verdict'
   | 'metrics'
   | 'error'
 
@@ -243,4 +249,60 @@ export interface BackendFramePage {
   next_after: number
   count: number
   frames: Array<StudioFrame | FrameData>
+}
+
+/**
+ * The five rubric ladders, as `schemas/validator.py::Verdict` scores them.
+ *
+ * Every key is optional and the index signature is deliberate. This is parsed
+ * out of `FrameData.details`, which is `Record<string, unknown>`: a server that
+ * scores a sixth dimension, or one that drops a field, must not be able to make
+ * the client throw on the one frame carrying the run's conclusion.
+ */
+export interface VerdictDimensionScores {
+  demand?: number
+  market?: number
+  competitive_room?: number
+  feasibility?: number
+  headroom_over_free?: number
+  [dimension: string]: number | undefined
+}
+
+/**
+ * The wire shape of a `kind: "verdict"` frame's `details`, exactly as the Flow
+ * publishes it on the `synthesize` node. Documentation of a frozen contract -
+ * nothing casts to it, because a frame is untrusted input; `parseVerdictFrame`
+ * in `useValidatorRun.ts` reads it field by field instead.
+ */
+export interface VerdictFrameDetails {
+  verdict: string
+  composite_score: number
+  confidence: number
+  confidence_band: string
+  provisional: boolean
+  /** Empty when nothing tripped. A non-empty list overrides the arithmetic. */
+  fatal_floors: string[]
+  decision_reason: string | null
+  dimensions: VerdictDimensionScores
+}
+
+/**
+ * The run's conclusion as the console holds it, from whichever carrier supplied
+ * it. `source` is not decoration: it is what makes the precedence rule in
+ * `useValidatorRun.ts::applyVerdict` / `closeGate` checkable, because the two
+ * carriers are not equal. The frame is computed deterministically inside the
+ * Flow and published in both gate modes; the verdict gate is optional, carries
+ * only the headline, and does not exist at all under `gates=auto`.
+ */
+export interface VerdictSummary {
+  verdict: string
+  confidence: number | null
+  /** 0-10. `2 * (0.30D + 0.20M + 0.20C + 0.15F + 0.15X)`, recomputed server-side. */
+  compositeScore: number | null
+  confidenceBand: string | null
+  provisional: boolean | null
+  fatalFloors: string[]
+  decisionReason: string | null
+  dimensions: VerdictDimensionScores | null
+  source: 'frame' | 'gate'
 }

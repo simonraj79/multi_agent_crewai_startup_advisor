@@ -195,6 +195,22 @@ export function buildMockSegments(runId: string): MockScriptStep[][] {
       make('llm', 'LLM_CALL_STARTED', 'Synthesist is reconciling evidence and score anchors.', NODE.synthesis, { stage: 'before', call_id: 'synthesis-llm', model: 'escalation' }),
       make('token', 'TOKEN_USAGE', 'Synthesis usage recorded.', NODE.synthesis, { call_id: 'synthesis-llm', usage: { prompt_tokens: 3028, completion_tokens: 812, total_tokens: 3840, cost_usd: 0.0126 } }),
       make('llm', 'LLM_CALL_COMPLETED', 'Draft verdict: NEEDS_WORK · confidence 0.70.', NODE.synthesis, { stage: 'after', call_id: 'synthesis-llm', model: 'escalation' }, 'INFO', 4210),
+      // The same frame `events/verdict.py` publishes on `synthesize`, with the
+      // numbers the derived block below already claims. Carried by the mock so
+      // the offline demo shows the scorecard and the floors rather than only
+      // the headline the verdict gate happens to repeat - the gate is the
+      // fallback carrier, and a mock that exercises only the fallback is a mock
+      // that cannot show this feature at all.
+      make('verdict', 'VERDICT_COMPUTED', 'Verdict computed: NEEDS_WORK · 5.0/10 · confidence 0.70.', NODE.synthesis, {
+        verdict: 'NEEDS_WORK',
+        composite_score: 5.0,
+        confidence: 0.7,
+        confidence_band: 'HIGH',
+        provisional: false,
+        fatal_floors: [],
+        decision_reason: null,
+        dimensions: { demand: 2, market: 3, competitive_room: 2, feasibility: 4, headroom_over_free: 2 },
+      }, 'INFO', undefined, 0),
       make('node_state', 'NODE_END', 'Rubric scored and confidence separated.', NODE.synthesis, {}, 'INFO', 4680),
       make('edge_taken', 'EDGE_TRAVERSED', 'Draft verdict moved to operator review.', undefined, { from: NODE.synthesis, to: NODE.verdictGate }),
       make('node_state', 'NODE_WAITING', 'Waiting for verdict review.', NODE.verdictGate),

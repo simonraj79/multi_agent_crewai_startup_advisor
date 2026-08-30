@@ -573,11 +573,34 @@ def create_app(
                     f"this one is {len(input_value)}"
                 ),
             )
+        run_inputs = dict(request.inputs)
+        if request.gates == "auto":
+            # Refused unless this deployment has opted in. 403, not 422: the
+            # request is well formed and would be honoured elsewhere - what is
+            # missing is permission, and saying so lets a client tell "I sent
+            # this wrong" apart from "this server will not do that".
+            if not project_config.VALIDATOR_ALLOW_AUTO_GATES:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "unattended runs are disabled on this deployment; "
+                        "omit gates or set gates=human"
+                    ),
+                )
+            if request.workflow_id != VALIDATOR_GRAPH.id:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"workflow {request.workflow_id} has no gates to skip",
+                )
+            # The reserved-key check on CreateRunRequest guarantees the caller
+            # did not smuggle this in, so setting it here is the ONLY way it can
+            # become true - which is what makes the 403 above meaningful.
+            run_inputs["no_gates"] = True
         try:
             record = registry.create_run(
                 session_id=session_id,
                 workflow_id=request.workflow_id,
-                inputs=request.inputs,
+                inputs=run_inputs,
             )
         except RunAdmissionError as exc:
             # 429, not 503: nothing is broken and the service is not down for

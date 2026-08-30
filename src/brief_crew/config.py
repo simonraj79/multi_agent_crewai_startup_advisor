@@ -837,6 +837,78 @@ RUN_RATE_LIMIT_TRUST_FORWARDED_FOR = _env_flag(
 )
 
 # --------------------------------------------------------------------------
+# Unattended runs
+# --------------------------------------------------------------------------
+# Whether this deployment will accept `gates: "auto"` - a run that answers its
+# own scope and verdict gates and executes the whole pipeline unattended.
+#
+# Default OFF, and that is a cost decision rather than a security one. A gated
+# run stops after the Scoper: one escalation-tier call, and if nobody replies
+# the run simply expires. Human inaction is the de facto spend cap, which is
+# why an unauthenticated Launch button was ever survivable. An auto run has no
+# such brake - Scoper, three branches with live Firecrawl/HN/GitHub calls,
+# Synthesist at reasoning_effort=high, then Reporter, bounded only by the
+# agents' summed max_iter.
+#
+# RUN_RATE_LIMIT_MAX_RUNS was calibrated against runs that stop at the first
+# gate. Ten *complete* pipelines per minute per client is a different order of
+# spend, so leave this off anywhere the endpoint is public and turn it on for
+# local and CI use, where it is the only way to get an end-to-end run without
+# a human sitting at the console.
+VALIDATOR_ALLOW_AUTO_GATES = _env_flag("VALIDATOR_ALLOW_AUTO_GATES", False)
+
+# Keys a caller must never be able to set through the free-form `inputs` map.
+# `ValidatorState` is a pydantic model and CrewAI merges kickoff inputs into it
+# wholesale (`{**current_state, **inputs}` then `model_validate`), so every
+# field on that state was reachable from the public request body - including
+# `no_gates`, which turned a two-gate run into an unattended one with no flag,
+# no validation and no record. Control belongs in a declared request field;
+# these names are stripped from `inputs` before it reaches the flow.
+#
+# The public surface is deliberately tiny: the one prompt each workflow reads,
+# plus the cache namespace. `topic` is Brief Crew's; `idea` is the validator's.
+PUBLIC_RUN_INPUT_KEYS: frozenset[str] = frozenset({"idea", "topic", "namespace"})
+
+# Everything else `ValidatorState` declares. Listed by hand because `config.py`
+# cannot import `validator_flow` (that import runs the other way), and pinned by
+# `tests/service/test_gates_mode.py::ReservedKeyCoverageTests`, which fails if a
+# new state field is added without a decision about whether the public endpoint
+# may set it. That test is the point of this constant: the first version of it
+# named two keys while its own comment claimed to describe all of them, and the
+# fourteen it missed included `feasibility_cache_enabled` - a deployment env
+# knob (`VALIDATOR_FEASIBILITY_CACHE_ENABLED`) that an anonymous caller could
+# therefore flip per run - and `source_run_id`, which stamps the attribution on
+# indexed cache evidence.
+#
+# The model-shaped slots (`scope`, `verdict`, `report`, the findings) are
+# reserved for a different reason: a caller-supplied value of the wrong shape
+# raises inside CrewAI's `_initialize_state` and fails the run *after* it has
+# taken an admission slot.
+RESERVED_RUN_INPUT_KEYS: frozenset[str] = frozenset(
+    {
+        # Control knobs.
+        "no_gates",
+        "sequential_branches",
+        "feasibility_cache_enabled",
+        "source_run_id",
+        # Result slots the flow fills in itself.
+        "scope",
+        "market",
+        "sentiment",
+        "feasibility",
+        "verdict",
+        "report",
+        # Gate machinery.
+        "scope_gate_reply",
+        "scope_revision",
+        "scope_route",
+        "verdict_gate_reply",
+        "verdict_revision",
+        "verdict_route",
+    }
+)
+
+# --------------------------------------------------------------------------
 # Interactive API documentation
 #
 # /docs, /redoc and /openapi.json hand a reader the exact body shape of every

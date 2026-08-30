@@ -506,6 +506,7 @@ class SequentialFallbackTests(unittest.TestCase):
         # would show up here: two nodes fewer, two join edges fewer, a new
         # graph version, and a UI drawing a topology that is not the system.
         from brief_crew.service.graph import (
+            VALIDATOR_CREW_WIRING,
             VALIDATOR_GRAPH,
             VALIDATOR_OVERLAY,
             VALIDATOR_WORKFLOW_ID,
@@ -518,11 +519,16 @@ class SequentialFallbackTests(unittest.TestCase):
         after = build_flow_structure(ValidatorFlow)
         self.assertEqual(before, after)
 
+        # Every input the canonical VALIDATOR_GRAPH is built from, including
+        # the crew wiring: the version hashes the rendered nodes, so omitting
+        # an input here would compare a differently-built graph and fail for a
+        # reason that has nothing to do with sequential mode.
         descriptor = build_graph_descriptor(
             ValidatorFlow,
             workflow_id=VALIDATOR_WORKFLOW_ID,
             workflow_name=VALIDATOR_WORKFLOW_NAME,
             overlay=VALIDATOR_OVERLAY,
+            crew_wiring=VALIDATOR_CREW_WIRING,
         )
         self.assertEqual(descriptor.version, VALIDATOR_GRAPH.version)
         self.assertEqual(

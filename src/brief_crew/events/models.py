@@ -33,6 +33,16 @@ class FrameKind(str, Enum):
     # PRD R-2: a gate_open with no gate_closed after timeout + grace.
     GATE_ALERT = "gate_alert"
     METRICS = "metrics"
+    # A task guardrail's verdict on an agent's output. Its own kind because a
+    # rejection is the *cause* of the retry that follows it, and a run whose
+    # cost doubled needs that cause on screen next to the second set of token
+    # frames rather than inferable from their existence.
+    GUARDRAIL = "guardrail"
+    # The agent's own thought/action/observation line. Separated from AGENT so
+    # a client can show or suppress reasoning without losing lifecycle frames -
+    # it is the highest-volume kind and the one an operator most often wants
+    # collapsed.
+    REASONING = "reasoning"
     # The deterministic score, the moment `Verdict.compute_mechanical_result`
     # has produced it. Its own kind rather than a `node_state` detail because
     # it is the run's product, not a lifecycle transition: it must survive
@@ -65,6 +75,13 @@ class UIEventType(str, Enum):
     # scored. Those branches are gone, but the constraint on the vocabulary is
     # cheap and the failure it prevents is silent.
     VERDICT_COMPUTED = "VERDICT_COMPUTED"
+    # A guardrail check. Neither name contains "START" or "END", for the reason
+    # given above.
+    GUARDRAIL_CHECK = "GUARDRAIL_CHECK"
+    # CrewAI's native MethodExecutionPausedEvent - the flow method is parked at
+    # a human gate. Distinct from NODE_END: the node has not finished, and a
+    # client that treated it as one would mark a waiting gate complete.
+    NODE_PAUSED = "NODE_PAUSED"
 
 
 class FrameLevel(str, Enum):

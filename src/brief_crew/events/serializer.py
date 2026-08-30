@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
 import json
@@ -37,8 +37,20 @@ from crewai.events import (
     ToolUsageFinishedEvent,
     ToolUsageStartedEvent,
 )
+from crewai.events.types.flow_events import MethodExecutionPausedEvent
+from crewai.events.types.llm_guardrail_events import (
+    LLMGuardrailCompletedEvent,
+    LLMGuardrailStartedEvent,
+)
+from crewai.events.types.logging_events import AgentLogsExecutionEvent
+from crewai.events.types.tool_usage_events import (
+    ToolExecutionErrorEvent,
+    ToolSelectionErrorEvent,
+    ToolValidateInputErrorEvent,
+)
 
 from brief_crew.events.models import (
+    MAX_IDENTIFIER_LENGTH,
     FrameDraft,
     FrameKind,
     FrameLevel,
@@ -240,6 +252,9 @@ class FieldBoundedSerializer:
 
     def __init__(self, limits: SerializerLimits | None = None) -> None:
         self.limits = limits or SerializerLimits()
+        # event type string -> count. See `record_unhandled`. Written from the
+        # adapter's own lock, which serializes every conversion for a run.
+        self.unhandled: dict[str, int] = {}
 
     def clip(self, value: Any, *, depth: int = 0) -> Any:
         if value is None or isinstance(value, bool | int | float):
@@ -277,6 +292,72 @@ class FieldBoundedSerializer:
         return self._safe_repr(value)
 
     def drafts(
+        self,
+        source: Any,
+        event: Any,
+        registry: NodeRegistry,
+        *,
+        flow_scope: FlowScope | None = None,
+    ) -> tuple[FrameDraft, ...]:
+        """Convert one CrewAI event into bounded frames, stamped with its actor.
+
+        The ladder in `_event_drafts` decides *what* a frame says. This wrapper
+        decides *who said it*, and it is a wrapper rather than 30 edits at the
+        call sites so that a branch added later cannot forget to stamp itself.
+
+        CrewAI carries `agent_role`, `task_name`, `agent_id` and `task_id` as
+        first-class fields on `BaseEvent` and populates them for every agent,
+        task, tool and LLM event. Until this existed the serializer read two of
+        them (`registry.resolve_event`) only to look them up in two tables that
+        are empty in production, and then dropped all four - so the sole record
+        of which agent produced a frame was the English sentence in `message`,
+        and a client wanting to filter by agent had to parse prose.
+        """
+
+        frames = self._event_drafts(source, event, registry, flow_scope=flow_scope)
+        actor = self._actor(event)
+        if not actor:
+            return frames
+        # `run_state` and `metrics` frames speak for the run, not for an agent.
+        # Stamping them would attribute the workflow's own statements to
+        # whichever agent happened to raise the triggering event.
+        return tuple(
+            frame
+            if frame.node_id == registry.workflow_node_id
+            else replace(frame, details={**dict(frame.details), **actor})
+            for frame in frames
+        )
+
+    @staticmethod
+    def _actor(event: Any) -> dict[str, str]:
+        """The agent/task identity CrewAI already put on the event.
+
+        Only non-empty values are returned, so an event with no agent adds no
+        keys at all rather than a row of nulls - which is what keeps this safe
+        to apply to every frame uniformly.
+        """
+
+        actor: dict[str, str] = {}
+        for source_attr, detail_key in (
+            ("agent_role", "agent_role"),
+            ("task_name", "task_name"),
+            ("agent_id", "agent_id"),
+            ("task_id", "task_id"),
+        ):
+            value = getattr(event, source_attr, None)
+            if value is None:
+                continue
+            rendered = str(value).strip()
+            if rendered:
+                actor[detail_key] = rendered[:MAX_IDENTIFIER_LENGTH]
+        # `run_attempts` is the answer to "why did this tool fire three times",
+        # which the first paid run raised and no surface could answer.
+        attempts = getattr(event, "run_attempts", None)
+        if isinstance(attempts, int) and attempts > 0:
+            actor["run_attempts"] = attempts  # type: ignore[assignment]
+        return actor
+
+    def _event_drafts(
         self,
         source: Any,
         event: Any,
@@ -416,7 +497,86 @@ class FieldBoundedSerializer:
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} completed", {"stage": "after", "total_tokens": event.total_tokens}),)
         if isinstance(event, CrewKickoffFailedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} failed", {"stage": "error", "error": self.clip(event.error)}, FrameLevel.ERROR),)
+
+        # A guardrail retry is a *second* full task execution on the same tier,
+        # and until this branch existed it was the largest unexplained cost in a
+        # run: every one of the six tasks carries `guardrail_max_retries: 2`,
+        # `reporting_task` runs two guardrails, and CrewAI builds a string
+        # guardrail as an `LLMGuardrail` on the agent's own llm. So a rejected
+        # report regenerated on the escalation tier produced a second run of
+        # token frames with nothing anywhere saying why the model ran again.
+        if isinstance(event, LLMGuardrailStartedEvent):
+            return (self._draft(timestamp, FrameKind.GUARDRAIL, UIEventType.GUARDRAIL_CHECK, node_id, f"{self._guardrail_name(event)} checking", {"stage": "before", "guardrail": self._guardrail_name(event), "guardrail_type": self.clip(getattr(event, "guardrail_type", None)), "retry_count": getattr(event, "retry_count", None)}),)
+        if isinstance(event, LLMGuardrailCompletedEvent):
+            passed = bool(getattr(event, "success", False))
+            return (self._draft(timestamp, FrameKind.GUARDRAIL, UIEventType.GUARDRAIL_CHECK, node_id, f"{self._guardrail_name(event)} {'passed' if passed else 'rejected the output'}", {"stage": "after", "guardrail": self._guardrail_name(event), "guardrail_type": self.clip(getattr(event, "guardrail_type", None)), "success": passed, "retry_count": getattr(event, "retry_count", None), "error": self.clip(getattr(event, "error", None))}, FrameLevel.INFO if passed else FrameLevel.WARNING),)
+
+        # CrewAI's native "this method is parked" signal. Both validator gates
+        # raise `HumanFeedbackPending`, and the client used to reconstruct the
+        # waiting state entirely from the service's own gate frame - so a pause
+        # that failed to open a gate looked like a node that had simply stopped.
+        if isinstance(event, MethodExecutionPausedEvent):
+            return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_PAUSED, node_id, f"{event.method_name} paused", {"stage": "paused", "message": self.clip(getattr(event, "message", None))}),)
+
+        # The ReAct thought/action/observation line - the closest thing CrewAI
+        # exposes to "what is the agent thinking". `UIEventType.THINKING_PROCESS`
+        # was declared for exactly this and had no producer until now.
+        if isinstance(event, AgentLogsExecutionEvent):
+            thought = self._formatted_answer(event)
+            if not thought:
+                return ()
+            return (self._draft(timestamp, FrameKind.REASONING, UIEventType.THINKING_PROCESS, node_id, thought, {"stage": "thinking"}),)
+
+        # Three distinct tool failures CrewAI separates and this ladder used to
+        # collapse into silence: bad arguments, a tool the agent invented, and
+        # an execution error that is not `ToolUsageErrorEvent`.
+        if isinstance(event, (ToolValidateInputErrorEvent, ToolSelectionErrorEvent, ToolExecutionErrorEvent)):
+            tool_name = str(getattr(event, "tool_name", None) or "tool")
+            reason = {
+                ToolValidateInputErrorEvent: "rejected the agent's arguments",
+                ToolSelectionErrorEvent: "was requested but does not exist",
+                ToolExecutionErrorEvent: "failed during execution",
+            }[type(event)]
+            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{tool_name} {reason}", {"stage": "error", "tool": tool_name, "query": self.tool_query(getattr(event, "tool_args", None)), "error": self.clip(getattr(event, "error", None))}, FrameLevel.ERROR),)
+
+        # Nothing matched. The sink receives *every* CrewAI event, so this is a
+        # real and previously silent discard: ~150 event classes exist and this
+        # ladder handles about 30. Recording the type name is what turns "the UI
+        # never shows reasoning" from a mystery into a list.
+        self.record_unhandled(event)
         return ()
+
+    @staticmethod
+    def _guardrail_name(event: Any) -> str:
+        name = getattr(event, "guardrail_name", None) or getattr(event, "guardrail", None)
+        return str(name or "Guardrail").strip()[:MAX_IDENTIFIER_LENGTH]
+
+    def _formatted_answer(self, event: Any) -> str:
+        """The agent's own reasoning line, reduced to one printable string."""
+
+        answer = getattr(event, "formatted_answer", None)
+        if answer is None:
+            return ""
+        for attribute in ("thought", "text", "output"):
+            value = getattr(answer, attribute, None)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[: self.limits.max_string]
+        if isinstance(answer, str):
+            return answer.strip()[: self.limits.max_string]
+        return ""
+
+    def record_unhandled(self, event: Any) -> None:
+        """Count an event class this ladder does not convert.
+
+        Kept as a plain counter on the serializer rather than a frame: an
+        unhandled event is a gap in *this* code, not an occurrence in the run,
+        and emitting a frame per unknown event would flood the ring with
+        instrumentation about instrumentation.
+        """
+
+        name = getattr(event, "type", None) or type(event).__name__
+        key = str(name)[:MAX_IDENTIFIER_LENGTH]
+        self.unhandled[key] = self.unhandled.get(key, 0) + 1
 
     def tool_query(self, tool_args: Any) -> str | None:
         """The search string a tool call was asked to run, if it names one.

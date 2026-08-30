@@ -53,6 +53,50 @@ class GraphNode(BaseModel):
     position: dict[Literal["x", "y"], float]
     model: str | None = None
     tool: str | None = None
+
+    # --- CrewAI facts, derived from the Flow itself ------------------------
+    # Everything below is read out of `build_flow_structure` or
+    # `Flow.flow_definition()` rather than typed by hand, and is promoted to a
+    # first-class field precisely because `metadata` was already carrying most
+    # of it and the client had no field to receive it: `GraphNodeDefinition` in
+    # `types/studio.ts` had no `metadata` key at all, so every one of these
+    # travelled the wire and was dropped on arrival.
+    #
+    # `flow_method_type` is CrewAI's own vocabulary, not this file's. CrewAI's
+    # Flow topology has exactly three node types - start, listen, router
+    # (`flow/visualization/builder.py:180,183,188`) - where `kind` above has
+    # seven, of which "gate" is not a CrewAI word anywhere in the package and
+    # "step" collides with both the PRE_STEP hook point and Plan-and-Execute
+    # step numbers. `kind` stays because the UI keys its iconography off it;
+    # this field is what the UI should *say*.
+    flow_method_type: Literal["start", "listen", "router"] | None = None
+    # True when the method carries @human_feedback. Derived from
+    # `FlowDefinition`, which `build_flow_structure` discards - so this is the
+    # one fact the UI asserted ("kind": "gate") about something CrewAI knows
+    # for certain and the projection threw away.
+    human_feedback: bool = False
+    # "AND" or "OR" - which is what makes the three-branch fan-in into
+    # `synthesize` structurally visible. Note a bare @listen("x") also reports
+    # "OR", so this is the trigger's semantics, not evidence the author wrote
+    # or_().
+    condition_type: str | None = None
+    # The upstream method names this node waits on.
+    trigger_methods: list[str] = Field(default_factory=list)
+    # For routers: every branch label the method can emit.
+    router_events: list[str] = Field(default_factory=list)
+
+    # --- Crew wiring, hand-declared but test-bound -------------------------
+    # These name the Crew, Agent role and Task that actually run at this node.
+    # They are declared rather than derived because deriving them means
+    # constructing the crews, and constructing a crew builds an LLM client, an
+    # httpx pool and an SSL trust store per agent - the exact cost that
+    # `llm=None` on the gates exists to avoid. `tests/service/test_graph_crew_binding.py`
+    # constructs them once and asserts these strings match, so a drift is a
+    # test failure rather than a lie on screen.
+    crew: str | None = None
+    agent_role: str | None = None
+    task_name: str | None = None
+
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

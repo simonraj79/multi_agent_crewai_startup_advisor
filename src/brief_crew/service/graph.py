@@ -57,6 +57,62 @@ VALIDATOR_OVERLAY: dict[str, dict[str, Any]] = {
 }
 
 
+# Which Crew, Agent and Task actually run at each Flow method.
+#
+# Declared, not derived: deriving it means constructing the crews, and every
+# constructed agent builds an LLM client, an httpx pool and an SSL trust store
+# - the same cost that `llm=None` on the two gates exists to avoid, paid at
+# import of this module. `tests/service/test_graph_crew_binding.py` builds them
+# once and asserts every string here, so drift fails a test instead of
+# appearing on a node card.
+#
+# Note two pairs share a crew: `scope_idea`/`revise_scope` are the same Scoper,
+# and `synthesize`/`revise_verdict` are the same Synthesist. The graph draws
+# four cards; there are two agents.
+VALIDATOR_CREW_WIRING: dict[str, dict[str, str]] = {
+    "scope_idea": {"crew": "ScopeCrew", "agent_role": "Startup validation scoper", "task_name": "scoping_task"},
+    "revise_scope": {"crew": "ScopeCrew", "agent_role": "Startup validation scoper", "task_name": "scoping_task"},
+    "research_market": {"crew": "MarketCrew", "agent_role": "Market evidence analyst", "task_name": "market_task"},
+    "research_sentiment": {"crew": "SentimentCrew", "agent_role": "Community demand analyst", "task_name": "sentiment_task"},
+    "research_feasibility": {"crew": "FeasibilityCrew", "agent_role": "Technical feasibility analyst", "task_name": "feasibility_task"},
+    "synthesize": {"crew": "SynthesisCrew", "agent_role": "Startup validation synthesist", "task_name": "synthesis_task"},
+    "revise_verdict": {"crew": "SynthesisCrew", "agent_role": "Startup validation synthesist", "task_name": "synthesis_task"},
+    "write_report": {"crew": "ReportCrew", "agent_role": "Validation report writer", "task_name": "reporting_task"},
+}
+
+BRIEF_CREW_WIRING: dict[str, dict[str, str]] = {
+    # One node, a three-agent crew. Named for the crew rather than for any one
+    # agent, because no single role is the truth here - which is exactly what
+    # the "Cheap tier" badge got wrong.
+    "scrape_web": {"crew": "BriefCrew (track B)"},
+}
+
+
+def _human_feedback_methods(flow_class: type[Any]) -> frozenset[str]:
+    """Flow methods that declare @human_feedback, straight from CrewAI.
+
+    `build_flow_structure` reads a method's `human_feedback` only for its
+    `emit` value (`flow/visualization/builder.py:77-82`), and both validator
+    gates declare `emit=None` - so the projection this graph is built from
+    cannot tell a human gate from any other listener, and `"kind": "gate"` in
+    the overlay was a hand-typed claim about a fact CrewAI holds with
+    certainty. `FlowDefinition` still has it.
+    """
+
+    definition = getattr(flow_class, "flow_definition", None)
+    if definition is None:
+        return frozenset()
+    try:
+        methods = definition().methods
+    except Exception:  # pragma: no cover - a flow with no definition
+        return frozenset()
+    return frozenset(
+        name
+        for name, method in methods.items()
+        if getattr(method, "human_feedback", None) is not None
+    )
+
+
 def _label(identifier: str) -> str:
     return identifier.replace("_", " ").strip().title()
 
@@ -73,6 +129,7 @@ def build_graph_descriptor(
     workflow_id: str = BRIEF_WORKFLOW_ID,
     workflow_name: str = BRIEF_WORKFLOW_NAME,
     overlay: dict[str, dict[str, Any]] | None = None,
+    crew_wiring: dict[str, dict[str, str]] | None = None,
 ) -> GraphDescriptor:
     """Derive and validate a stable graph from CrewAI's public builder."""
 
@@ -95,9 +152,23 @@ def build_graph_descriptor(
                 f"unknown={unknown}"
             )
 
+    human_feedback_methods = _human_feedback_methods(flow_class)
+    wiring = crew_wiring or {}
+
     nodes: list[GraphNode] = []
     for index, (node_id, metadata) in enumerate(structure["nodes"].items()):
         display = overlay[node_id] if overlay is not None else {}
+        crew_binding = wiring.get(node_id, {})
+        # A gate is a gate because CrewAI says so, not because someone typed it.
+        # Guarding both directions: an overlay that forgets to mark a new
+        # @human_feedback method, and one that marks a method that is not one.
+        declares_feedback = node_id in human_feedback_methods
+        if overlay is not None and declares_feedback != (display.get("kind") == "gate"):
+            raise RuntimeError(
+                f"node {node_id!r}: CrewAI reports human_feedback="
+                f"{declares_feedback} but the overlay kind is "
+                f"{display.get('kind')!r}; the two must agree"
+            )
         nodes.append(
             GraphNode(
                 id=node_id,
@@ -117,6 +188,14 @@ def build_graph_descriptor(
                 position=display.get("position", {"x": 430, "y": index * 170}),
                 model=display.get("model"),
                 tool=display.get("tool"),
+                flow_method_type=metadata.get("type"),
+                human_feedback=declares_feedback,
+                condition_type=metadata.get("condition_type"),
+                trigger_methods=list(metadata.get("trigger_methods", [])),
+                router_events=list(metadata.get("router_events", [])),
+                crew=crew_binding.get("crew"),
+                agent_role=crew_binding.get("agent_role"),
+                task_name=crew_binding.get("task_name"),
                 metadata={
                     key: value
                     for key, value in metadata.items()
@@ -168,12 +247,13 @@ def build_graph_descriptor(
 BRIEF_STRUCTURE = build_flow_structure(BriefFlow)
 VALIDATOR_STRUCTURE = build_flow_structure(ValidatorFlow)
 
-BRIEF_GRAPH = build_graph_descriptor(overlay=BRIEF_OVERLAY)
+BRIEF_GRAPH = build_graph_descriptor(overlay=BRIEF_OVERLAY, crew_wiring=BRIEF_CREW_WIRING)
 VALIDATOR_GRAPH = build_graph_descriptor(
     ValidatorFlow,
     workflow_id=VALIDATOR_WORKFLOW_ID,
     workflow_name=VALIDATOR_WORKFLOW_NAME,
     overlay=VALIDATOR_OVERLAY,
+    crew_wiring=VALIDATOR_CREW_WIRING,
 )
 BRIEF_NODE_REGISTRY = NodeRegistry.from_flow_structure(BRIEF_STRUCTURE)
 VALIDATOR_NODE_REGISTRY = NodeRegistry.from_flow_structure(VALIDATOR_STRUCTURE)

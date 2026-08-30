@@ -20,8 +20,11 @@ from urllib.parse import urlsplit
 CHEAP_MODEL = "openrouter/z-ai/glm-5.3-flash"
 ESCALATION_MODEL = "openrouter/google/gemini-3.7-flash"
 
-# USD per million tokens, (prompt, completion). Used to COMPUTE cost, because
+# USD per million tokens, (prompt, completion). Used to ESTIMATE cost, because
 # CrewAI discards OpenRouter's per-generation cost before it reaches any event.
+# Keys are written the way this project configures a model - with the
+# `openrouter/` provider prefix - and `resolve_price_model` below accepts the
+# de-prefixed spelling CrewAI actually reports.
 PRICES: dict[str, tuple[float, float]] = {
     CHEAP_MODEL: (0.075, 0.250),
     ESCALATION_MODEL: (0.75, 3.75),
@@ -71,15 +74,67 @@ CHUNK_MAX_TOKENS = 800
 CHUNK_OVERLAP_TOKENS = 50
 
 
-def compute_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """Cost in USD from token counts and the §3 price table.
+# CrewAI hands a NATIVE provider the model with its provider prefix already
+# stripped: `LLM.__new__` sets `model_string = model_part` on the openrouter
+# branch (crewai/llm.py), so `LLMCallCompletedEvent.model` reads
+# "z-ai/glm-5.3-flash" while every key in PRICES reads
+# "openrouter/z-ai/glm-5.3-flash". `PRICES.get(model, (0.0, 0.0))` therefore
+# missed on every real call, and a (0.0, 0.0) default turned "I have no price
+# for this model" into "this call was free" - which is how the first paid run
+# reported cost_usd 0.0 over 128,069 genuinely billed tokens.
+#
+# The index accepts both spellings in both directions, because the LiteLLM
+# fallback path still reports the prefixed name, and casefolds because an
+# OpenRouter slug is lowercase by convention rather than by enforcement.
+_OPENROUTER_PREFIX = "openrouter/"
 
-    CrewAI never sets ``extra_body={"usage": {"include": True}}``, and
-    ``_extract_openai_token_usage`` whitelists only token counts - so
-    OpenRouter's own cost figure never reaches us. Every dollar figure this
-    project reports is computed here.
+
+def _build_price_index() -> dict[str, str]:
+    index: dict[str, str] = {}
+    for key in PRICES:
+        folded = key.casefold()
+        index[folded] = key
+        if folded.startswith(_OPENROUTER_PREFIX):
+            index[folded[len(_OPENROUTER_PREFIX) :]] = key
+    return index
+
+
+PRICE_MODEL_INDEX: dict[str, str] = _build_price_index()
+
+
+def resolve_price_model(model: str | None) -> str | None:
+    """The PRICES key a reported model name refers to, or None if it has none."""
+    name = str(model or "").strip().casefold()
+    if not name:
+        return None
+    resolved = PRICE_MODEL_INDEX.get(name)
+    if resolved is None and name.startswith(_OPENROUTER_PREFIX):
+        resolved = PRICE_MODEL_INDEX.get(name[len(_OPENROUTER_PREFIX) :])
+    return resolved
+
+
+def compute_cost_usd(
+    model: str, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """ESTIMATED cost in USD from token counts and the §3 price table.
+
+    An estimate, not an invoice. CrewAI never sets
+    ``extra_body={"usage": {"include": True}}`` and
+    ``_extract_openai_token_usage`` whitelists only token counts, so
+    OpenRouter's own per-generation cost figure never reaches any event. Every
+    dollar figure this project reports is computed here from the published
+    per-million rates above, and the billed total can differ: cached-prompt
+    discounts, BYOK fees, per-request rounding, and any price change made after
+    this table was written all move the real number.
+
+    Returns ``None`` - never 0.0 - for a model the table does not price,
+    because "no price on file" and "this call was free" are different facts and
+    reporting the second for the first is the whole of the bug above.
     """
-    prompt_price, completion_price = PRICES.get(model, (0.0, 0.0))
+    key = resolve_price_model(model)
+    if key is None:
+        return None
+    prompt_price, completion_price = PRICES[key]
     return (prompt_tokens * prompt_price + completion_tokens * completion_price) / 1_000_000
 
 
@@ -614,6 +669,44 @@ MAX_QUEUED_RUNS = _env_positive_int("MAX_QUEUED_RUNS", 8)
 # fixed hint rather than a computed queue-drain estimate: the live queue depth
 # of a public endpoint is not a number to hand back to whoever is flooding it.
 RUN_ADMISSION_RETRY_AFTER_SECONDS = 30
+
+# --------------------------------------------------------------------------
+# The terminal result - what a COMPLETED run hands back over HTTP
+# --------------------------------------------------------------------------
+# `SerializerLimits.max_string` (4,096) exists to bound a STREAMING FRAME: one
+# of up to 2,000 in a ring, fanned out to every live subscriber, where nothing
+# downstream needs a whole document. Until this constant existed it was also
+# what bounded the run's final deliverable, because `RunRecord.mark_completed`
+# clipped the result with the frame serializer. So the first paid run's
+# validation report came back cut off mid-URL - "...(https://www.mentimeter.com
+# /blog/educatio" - and citation closure, the one thing the paid acceptance run
+# exists to establish, could not be assessed at all. `output/validation.md` is
+# ephemeral container disk on Render, so the API response is the only copy of
+# that report anyone can reach.
+#
+# 64 KiB of characters, and the number is not free-hand:
+#   * it is exactly `service/persistence.py::MAX_STRING_LENGTH`, the durable
+#     layer's own per-string ceiling. A larger bound would be accepted in
+#     memory and then REJECTED at write time by `_sanitize_json`, which raises
+#     rather than truncates - losing the whole run row instead of the tail of
+#     one string;
+#   * a real report is far smaller. The first paid run spent 46,787 completion
+#     tokens across eleven calls for the WHOLE pipeline; the Reporter's
+#     markdown body is one of those calls, order 10-15 KB. This is roughly a
+#     4-6x margin over a real report, not a guess at one;
+#   * it is deliberately NOT unbounded. The database is `basic_256mb` with no
+#     retention policy, and 64 KiB is the worst case rather than the typical
+#     row: ~4,000 completed runs to fill the disk at the ceiling, ~20,000 at a
+#     realistic 12 KB.
+MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
+
+# The result keys that ARE the deliverable, and so earn the bound above.
+# Everything else in a flow result stays on the frame limit, because the
+# generic clip's job is to bound an object nobody has read: one 64 KiB string
+# is a report, and sixty-four of them is a way to fill a 256 MB database. This
+# is why the bypass is per-key rather than a bigger `SerializerLimits`.
+# `ValidationReport.markdown_body` is the only member today.
+RUN_RESULT_BODY_KEYS: tuple[str, ...] = ("markdown_body",)
 
 # --------------------------------------------------------------------------
 # Per-client rate limit, on run creation only

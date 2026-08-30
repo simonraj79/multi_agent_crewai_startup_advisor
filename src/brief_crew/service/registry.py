@@ -22,8 +22,10 @@ from crewai.hooks.dispatch import register_scoped, scoped_hooks
 
 from brief_crew.config import (
     MAX_QUEUED_RUNS,
+    MAX_RUN_RESULT_BODY_CHARS,
     RUN_ADMISSION_RETRY_AFTER_SECONDS,
     RUN_CONCURRENCY,
+    RUN_RESULT_BODY_KEYS,
     RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS,
     VALIDATOR_FRAME_BATCH_SIZE,
     VALIDATOR_FRAME_FLUSH_INTERVAL_SECONDS,
@@ -112,6 +114,54 @@ def _empty_usage() -> dict[str, int | float]:
         "elapsed_ms": 0,
         "cost_usd": 0.0,
     }
+
+
+def _result_body_fields(result: Any) -> dict[str, str]:
+    """The deliverable's own text, read off the UN-clipped flow result.
+
+    Read from the original object rather than from the clipped copy, because
+    the clipped copy is exactly what has already lost the tail.
+    """
+    mapping = result if isinstance(result, Mapping) else None
+    bodies: dict[str, str] = {}
+    for key in RUN_RESULT_BODY_KEYS:
+        try:
+            # `result` is whatever a flow returned. A property that raises must
+            # not turn a finished run into a failed one, and the frame-clipped
+            # copy is still a correct - if shorter - answer.
+            value = getattr(result, key, None)
+            if value is None and mapping is not None:
+                value = mapping.get(key)
+        except Exception:
+            continue
+        if isinstance(value, str) and value:
+            bodies[key] = value[:MAX_RUN_RESULT_BODY_CHARS]
+    return bodies
+
+
+def _clip_run_result(serializer: Any, result: Any) -> Any:
+    """Bound a terminal result without truncating the thing it was run for.
+
+    The frame serializer stays in charge of the shape - depth, item counts, the
+    refusal to walk a live CrewAI object - so a flow returning something
+    unexpected is bounded exactly as before. The one departure is
+    `RUN_RESULT_BODY_KEYS`: those are re-read from the source at
+    `MAX_RUN_RESULT_BODY_CHARS`, because `SerializerLimits.max_string` is a
+    bound on a streaming frame and has no business being the bound on the
+    document the run exists to produce. A result that IS a bare string is the
+    same case with no key to name.
+
+    Deliberately per-key rather than a wholesale bigger `SerializerLimits`: a
+    generous ceiling applied to every string in an arbitrary result multiplies
+    by `max_items`, and `persistence._sanitize_json` would then reject the
+    whole row instead of trimming one field.
+    """
+    if isinstance(result, str):
+        return result[:MAX_RUN_RESULT_BODY_CHARS]
+    clipped = serializer.clip(result)
+    if isinstance(clipped, dict):
+        clipped.update(_result_body_fields(result))
+    return clipped
 
 
 def _usage_from_result(result: Any) -> dict[str, int] | None:
@@ -608,6 +658,12 @@ class RunRecord:
     # second lock and cannot invert the emit ordering below.
     _usage_revision: int = field(default=0, init=False)
     _metrics_revision: int = field(default=0, init=False)
+    # Models this run has already warned about having no price for. Guarded by
+    # _lock, which _record_usage already holds. Not part of `usage`: both
+    # `UsageMetrics` and `RunStatusResponse` are `extra="forbid"`, so the run
+    # payload has no room for a counter - the unpriced call announces itself on
+    # its own `token` frame instead, as `cost_usd: null`.
+    _unpriced_models: set[str] = field(default_factory=set, init=False)
     _lock: RLock = field(default_factory=RLock, init=False)
     # Deliberately NOT _lock. Emitting takes the capture lock and the capture
     # callback then takes _lock, so a sweeper holding _lock across an emit would
@@ -647,7 +703,7 @@ class RunRecord:
     def mark_completed(self, result: Any) -> None:
         with self._lock:
             self.status = RunStatus.COMPLETED
-            self.result = self.capture.serializer.clip(result)
+            self.result = _clip_run_result(self.capture.serializer, result)
             self.pending_gate = None
             self.pending_context = None
             self.completed_at = _utcnow()
@@ -869,22 +925,37 @@ class RunRecord:
         model = str(frame.details.get("model") or "unknown")[:255]
         call_id = str(frame.details.get("call_id") or "")
         elapsed_ms = self._llm_elapsed_ms.pop((frame.node_id, call_id), 0)
+        # None means "this model has no price on file", which is not the same
+        # statement as "this call was free" and must never be added to a total
+        # as if it were. The run total is then the sum over PRICED calls only,
+        # and the fact that it is a partial sum is on the frame (`cost_usd:
+        # null`) and in this log line - the two places that have room for it.
         cost_usd = compute_cost_usd(
             model,
             usage["prompt_tokens"],
             usage["completion_tokens"],
         )
+        if cost_usd is None and model not in self._unpriced_models:
+            self._unpriced_models.add(model)
+            logger.warning(
+                "No price on file for model %r; run %s reports an estimated "
+                "cost that excludes every call to it. Add it to "
+                "brief_crew.config.PRICES.",
+                model,
+                self.run_id,
+            )
+        priced = 0.0 if cost_usd is None else cost_usd
         measured: dict[str, int | float | str] = {
             **usage,
             "elapsed_ms": elapsed_ms,
-            "cost_usd": cost_usd,
+            "cost_usd": priced,
         }
         for field_name in _USAGE_INTEGER_FIELDS:
             self.usage[field_name] = int(self.usage.get(field_name, 0)) + int(
                 measured[field_name]
             )
         self.usage["cost_usd"] = round(
-            float(self.usage.get("cost_usd", 0.0)) + cost_usd,
+            float(self.usage.get("cost_usd", 0.0)) + priced,
             12,
         )
 
@@ -899,7 +970,7 @@ class RunRecord:
         )
         for field_name in _USAGE_INTEGER_FIELDS:
             node[field_name] = int(node[field_name]) + int(measured[field_name])
-        node["cost_usd"] = round(float(node["cost_usd"]) + cost_usd, 12)
+        node["cost_usd"] = round(float(node["cost_usd"]) + priced, 12)
         self._usage_revision += 1
 
     def _note_subscriber_drop(self) -> None:

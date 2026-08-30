@@ -3,9 +3,14 @@ scoping_task:
     Scope this startup idea: {idea}
 
     Return one ScopedIdea JSON object. Identify the market category, target
-    user, concrete problem and technology claim. Write one market query from
-    the category, one or more community queries in the language users would
-    use to describe the problem, and one or more technical repository queries.
+    user, concrete problem and technology claim. Write one market query from the category, one or more community queries and one or
+    more technical repository queries. The community and repository queries are sent
+    verbatim to keyword search APIs (Hacker News Algolia and GitHub), which match on
+    terms rather than meaning: write each as 2 to 4 plain keywords, never a sentence or
+    a phrase lifted from the idea. Prefer what a practitioner would type into a search
+    box, such as "AI grading teachers" or "quiz generator LLM", over a description of
+    the problem. Order each list from most specific to broadest and make the last entry
+    deliberately broad, so a narrow first attempt is never the only attempt.
     List 3 to 5 assumptions and at least one unresolved scoping gap. Use today's
     ISO 8601 date for as_of.
 
@@ -73,7 +78,11 @@ sentiment_task:
     date of its own, and such a thread is never dated within 24 months. Never
     clear the flag to make a thread look recent. Upvotes and positive opinions do not establish demand. Every URL must be
     copied exactly from a tool result from this run. If no call succeeds, return
-    no sources and explain the evidence gap.
+    no sources and explain the evidence gap. A tool result with status "empty" or result_count 0 is not an evidence gap yet; it
+    usually means the query was too narrow. Before reporting a gap, call the tool again
+    with a shorter query built from the two or three most important keywords, and try at
+    most three such broadenings. Report the gap only if the broadest attempt is still
+    empty, and name the queries you tried.
   expected_output: >
     One JSON object matching SentimentFindings exactly, with source_urls
     mirroring sources[].url in order and no prose or code fence.
@@ -101,7 +110,11 @@ feasibility_task:
     when it does not; an archived repository is not maintained, so it cannot
     be the free project that already solves the whole job. Every URL must be
     copied exactly from a tool result from this run. If no call succeeds, return
-    no sources and explain the evidence gap. The cache block is a rate-limit
+    no sources and explain the evidence gap. A tool result with status "empty" or result_count 0 is not an evidence gap yet; it
+    usually means the query was too narrow. Before reporting a gap, call the tool again
+    with a shorter query built from the two or three most important keywords, and try at
+    most three such broadenings. Report the gap only if the broadest attempt is still
+    empty, and name the queries you tried. The cache block is a rate-limit
     shock absorber and evidence context, not a conclusion; it never replaces
     the required live GitHub calls. Copy final source URLs only from live tool
     results; the Flow retains cached passages separately.

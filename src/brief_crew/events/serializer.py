@@ -316,12 +316,27 @@ class FieldBoundedSerializer:
             return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call started", {"stage": "before", "call_id": event.call_id, "model": event.model}),)
         if isinstance(event, LLMCallCompletedEvent):
             model = str(event.model or "unknown")
-            usage = normalize_usage(event.usage or {}, completed_call=True)
+            usage: dict[str, int | float | None] = dict(
+                normalize_usage(event.usage or {}, completed_call=True)
+            )
             cost_usd = compute_cost_usd(
                 model,
-                usage["prompt_tokens"],
-                usage["completion_tokens"],
+                int(usage["prompt_tokens"] or 0),
+                int(usage["completion_tokens"] or 0),
             )
+            # Carried in BOTH places on purpose. `details["cost_usd"]` is where
+            # `RunRegistry._record_usage` and the log export read it; the copy
+            # inside `usage` is where the Studio client reads it, because
+            # `usageFromDetails` narrows to `details.usage` the moment that key
+            # is an object and then never looks at the level above. Cost sat
+            # beside `usage` rather than inside it, so a client that had every
+            # token frame still totalled $0.0000. `normalize_usage` whitelists
+            # five token aliases and ignores this key, so no path double-counts
+            # it.
+            #
+            # `None` means the model is not in the price table. It is NOT 0.0:
+            # see `config.compute_cost_usd`.
+            usage["cost_usd"] = cost_usd
             return (
                 self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call completed", {"stage": "after", "call_id": event.call_id, "model": event.model, "finish_reason": event.finish_reason, "response_id": event.response_id}),
                 self._draft(timestamp, FrameKind.TOKEN, UIEventType.MODEL_CALL, node_id, "Token usage recorded", {"call_id": event.call_id, "model": model, "usage": usage, "cost_usd": cost_usd}),

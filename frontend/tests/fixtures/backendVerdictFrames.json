@@ -1,0 +1,58 @@
+[
+  {
+    "v": 1,
+    "seq": 1,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "verdict",
+    "event_type": "VERDICT_COMPUTED",
+    "level": "INFO",
+    "node_id": "synthesize",
+    "message": "Verdict REJECT at 4.2 (confidence 0.5)",
+    "details": {
+      "verdict": "REJECT",
+      "composite_score": 4.2,
+      "confidence": 0.5,
+      "confidence_band": "MODERATE",
+      "provisional": true,
+      "fatal_floors": [
+        "FLOOR_NO_DEMAND"
+      ],
+      "decision_reason": "FLOOR_NO_DEMAND",
+      "dimensions": {
+        "demand": 0,
+        "market": 3,
+        "competitive_room": 3,
+        "feasibility": 3,
+        "headroom_over_free": 3
+      }
+    }
+  },
+  {
+    "v": 1,
+    "seq": 2,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "verdict",
+    "event_type": "VERDICT_COMPUTED",
+    "level": "INFO",
+    "node_id": "synthesize",
+    "message": "Verdict NEEDS_WORK at 6.0 (confidence 0.9)",
+    "details": {
+      "verdict": "NEEDS_WORK",
+      "composite_score": 6.0,
+      "confidence": 0.9,
+      "confidence_band": "HIGH",
+      "provisional": false,
+      "fatal_floors": [],
+      "decision_reason": null,
+      "dimensions": {
+        "demand": 3,
+        "market": 3,
+        "competitive_room": 3,
+        "feasibility": 3,
+        "headroom_over_free": 3
+      }
+    }
+  }
+]

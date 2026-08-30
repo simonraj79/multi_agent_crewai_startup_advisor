@@ -307,6 +307,16 @@ class RunStatusResponse(BaseModel):
     usage: UsageMetrics
     node_usage: list[NodeUsage] = Field(default_factory=list)
     result: Any = None
+    # The deterministic score, mirrored off this run's `verdict` frame so a REST
+    # consumer gets it without scanning frames - and so it exists at all under
+    # `gates: "auto"`, where no verdict gate opens to carry it. Deliberately not
+    # folded into `result`: `result` is the flow's own return value, a
+    # `ValidationReport`, and putting the score there would mean the Reporter
+    # had to emit arithmetic the schema recomputes. Untyped for the same reason
+    # `result` is: the shape is the frame contract in `events/serializer.py`,
+    # pinned by a fixture on both sides, and a second declaration here could
+    # only drift from it.
+    verdict: dict[str, Any] | None = None
     error: str | None = None
 
 

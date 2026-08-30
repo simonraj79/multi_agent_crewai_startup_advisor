@@ -38,6 +38,7 @@ from brief_crew.crews.validator_crew import (
     SentimentCrew,
     SynthesisCrew,
 )
+from brief_crew.events.verdict import publish_verdict
 from brief_crew.schemas import (
     FeasibilityFindings,
     MarketFindings,
@@ -654,6 +655,24 @@ class ValidatorFlow(Flow[ValidatorState]):
             }
         )
         self.state.verdict = _extract_model(result, Verdict)
+        # Published here rather than in `synthesize`, and that is the whole
+        # reason this helper is the emit site. `synthesize` and `revise_verdict`
+        # are two entry points to one computation, and a verdict is only real
+        # once `_extract_model` has run: that call is what turns the
+        # Synthesist's text into a `Verdict`, which is what runs
+        # `compute_mechanical_result` and overwrites the model's arithmetic.
+        # Emitting from `synthesize` would publish the first score and stay
+        # silent through every correction the operator asked for, leaving a
+        # stale composite on screen and in `GET /api/runs/{id}` after a revise
+        # deliberately changed it. Emitting from both would duplicate the first.
+        #
+        # The one recomputation this does not cover is `route_verdict`
+        # revalidating an operator-supplied `verdict` object on an *approve*.
+        # That path is unreachable through the service - `_gate_derived_keys`
+        # prunes every field of the verdict gate, so no edit can be sent - and a
+        # revise, which is the lever the gate does offer, comes back through
+        # here.
+        publish_verdict(self, self.state.verdict)
         return self.state.verdict
 
     def _cached_evidence(

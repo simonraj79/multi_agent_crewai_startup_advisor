@@ -33,6 +33,12 @@ class FrameKind(str, Enum):
     # PRD R-2: a gate_open with no gate_closed after timeout + grace.
     GATE_ALERT = "gate_alert"
     METRICS = "metrics"
+    # The deterministic score, the moment `Verdict.compute_mechanical_result`
+    # has produced it. Its own kind rather than a `node_state` detail because
+    # it is the run's product, not a lifecycle transition: it must survive
+    # `gates: "auto"` (where no verdict gate opens to carry it) and it is what
+    # `RunRecord` mirrors into `GET /api/runs/{run_id}`.
+    VERDICT = "verdict"
     ERROR = "error"
 
 
@@ -52,6 +58,13 @@ class UIEventType(str, Enum):
     # Studio client already keys metrics handling off the frame kind, so this
     # only has to name the frame honestly in logs and exports.
     METRICS_UPDATED = "METRICS_UPDATED"
+    # The event type carried by a FrameKind.VERDICT frame. The name contains
+    # neither "START" nor "END": the client used to route lifecycle frames by
+    # substring (`event_type.includes('END')`), and a member that tripped one of
+    # those tests would have read as the run finishing the instant it was
+    # scored. Those branches are gone, but the constraint on the vocabulary is
+    # cheap and the failure it prevents is silent.
+    VERDICT_COMPUTED = "VERDICT_COMPUTED"
 
 
 class FrameLevel(str, Enum):

@@ -32,7 +32,7 @@ describe('a gate node reports Waiting while the operator is being asked', () => 
 
   /** Node state as the canvas actually renders it, via the public surface. */
   const stateOf = (id: string) =>
-    run.graphNodes.value.find((node) => node.id === id)?.data.state
+    run.graphNodes.value.find((node) => node.id === id)?.data?.state
 
   const openGate = (build: ReturnType<typeof frameFactory>, nodeId: string, gateId: string) =>
     build('gate_open', {
@@ -99,7 +99,7 @@ describe('a gate node reports Waiting while the operator is being asked', () => 
     await flush()
 
     const waiting = run.graphNodes.value
-      .filter((node) => node.data.state === 'waiting')
+      .filter((node) => node.data?.state === 'waiting')
       .map((node) => node.id)
     expect(waiting).toEqual(['confirm_scope'])
   })

@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Compiled output of the Node auth/static server (server/*.ts -> server-dist/*.js).
+# `dist` above does NOT cover this: gitignore matches path segments whole, so
+# `dist` never matches the segment `server-dist`. Verified with
+# `git check-ignore -v frontend/server-dist`, which returned nothing until
+# this line existed.
+server-dist
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

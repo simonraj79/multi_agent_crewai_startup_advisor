@@ -91,6 +91,28 @@ function recorder(after = () => 0): Recorder {
   }
 }
 
+/**
+ * Wait for `subscribe()` to actually open its socket.
+ *
+ * `subscribe` is still synchronous and still returns its unsubscribe function
+ * immediately, but the socket behind it is now opened on a microtask: the
+ * bearer token has to be fetched before the /ws URL can be built, and the
+ * browser WebSocket API has no way to send it as a header. So the FakeWebSocket
+ * does not exist on the line after `subscribe`.
+ *
+ * Polling microtasks rather than awaiting a fixed number of them, because the
+ * count is an implementation detail of how many `await`s `connect` happens to
+ * contain, and a test that encodes it breaks on any refactor that adds one.
+ */
+async function socketOpened(index = 0): Promise<FakeWebSocket> {
+  for (let tick = 0; tick < 25 && !FakeWebSocket.instances[index]; tick += 1) {
+    await Promise.resolve()
+  }
+  const socket = FakeWebSocket.instances[index]
+  if (!socket) throw new Error(`no websocket opened at index ${index}`)
+  return socket
+}
+
 describe('StudioApi websocket stream', () => {
   let api: StudioApi
   let originalWebSocket: typeof globalThis.WebSocket
@@ -109,11 +131,11 @@ describe('StudioApi websocket stream', () => {
     vi.useRealTimers()
   })
 
-  it('opens the stream at the cursor the client has already consumed', () => {
+  it('opens the stream at the cursor the client has already consumed', async () => {
     const stream = recorder(() => 42)
     api.subscribe('run-1', 'session-9', stream.handlers)
 
-    const socket = FakeWebSocket.instances[0]
+    const socket = await socketOpened()
     const url = new URL(socket.url)
     expect(url.pathname).toBe('/ws')
     expect(url.searchParams.get('run_id')).toBe('run-1')
@@ -122,10 +144,10 @@ describe('StudioApi websocket stream', () => {
     expect(stream.statuses).toEqual(['connecting'])
   })
 
-  it('reports connection state and forwards frames', () => {
+  it('reports connection state and forwards frames', async () => {
     const stream = recorder()
     api.subscribe('run-1', 'session-9', stream.handlers)
-    const socket = FakeWebSocket.instances[0]
+    const socket = await socketOpened()
 
     socket.accept()
     socket.deliver({ type: 'frame', data: frame(1) })
@@ -135,10 +157,10 @@ describe('StudioApi websocket stream', () => {
     expect(stream.frames.map((value) => value.seq)).toEqual([1, 2])
   })
 
-  it('survives a malformed or unknown message', () => {
+  it('survives a malformed or unknown message', async () => {
     const stream = recorder()
     api.subscribe('run-1', 'session-9', stream.handlers)
-    const socket = FakeWebSocket.instances[0]
+    const socket = await socketOpened()
     socket.accept()
 
     expect(() => socket.deliverRaw('{not json')).not.toThrow()
@@ -146,9 +168,9 @@ describe('StudioApi websocket stream', () => {
     expect(stream.frames).toEqual([])
   })
 
-  it('pings an idle connection', () => {
+  it('pings an idle connection', async () => {
     api.subscribe('run-1', 'session-9', recorder().handlers)
-    const socket = FakeWebSocket.instances[0]
+    const socket = await socketOpened()
     socket.accept()
 
     vi.advanceTimersByTime(20_000)
@@ -156,11 +178,11 @@ describe('StudioApi websocket stream', () => {
     expect(socket.lastSent).toEqual({ type: 'ping' })
   })
 
-  it('reconnects after a drop and resumes from the newest cursor', () => {
+  it('reconnects after a drop and resumes from the newest cursor', async () => {
     let cursor = 0
     const stream = recorder(() => cursor)
     api.subscribe('run-1', 'session-9', stream.handlers)
-    const first = FakeWebSocket.instances[0]
+    const first = await socketOpened()
     first.accept()
     first.deliver({ type: 'frame', data: frame(7) })
     cursor = 7
@@ -169,15 +191,16 @@ describe('StudioApi websocket stream', () => {
     expect(stream.statuses).toEqual(['connecting', 'connected', 'reconnecting'])
 
     vi.advanceTimersByTime(1600)
+    const second = await socketOpened(1)
 
     expect(FakeWebSocket.instances).toHaveLength(2)
-    expect(new URL(FakeWebSocket.instances[1].url).searchParams.get('after')).toBe('7')
+    expect(new URL(second.url).searchParams.get('after')).toBe('7')
   })
 
-  it('stops reconnecting once the caller unsubscribes', () => {
+  it('stops reconnecting once the caller unsubscribes', async () => {
     const stream = recorder()
     const unsubscribe = api.subscribe('run-1', 'session-9', stream.handlers)
-    const socket = FakeWebSocket.instances[0]
+    const socket = await socketOpened()
     socket.accept()
 
     unsubscribe()
@@ -190,7 +213,7 @@ describe('StudioApi websocket stream', () => {
 
   it('answers a gate on the live socket and resolves on the ack', async () => {
     api.subscribe('run-1', 'session-9', recorder().handlers)
-    const socket = FakeWebSocket.instances[0]
+    const socket = await socketOpened()
     socket.accept()
 
     const reply = api.replyGate('run-1', 'scope-confirmation', { outcome: 'scope_ok', fields: { market: 'x' } })
@@ -204,7 +227,7 @@ describe('StudioApi websocket stream', () => {
 
   it('rejects a gate reply the server refuses', async () => {
     api.subscribe('run-1', 'session-9', recorder().handlers)
-    const socket = FakeWebSocket.instances[0]
+    const socket = await socketOpened()
     socket.accept()
 
     const reply = api.replyGate('run-1', 'scope-confirmation', { outcome: 'scope_ok' })
@@ -216,7 +239,7 @@ describe('StudioApi websocket stream', () => {
 
   it('rejects an unacknowledged gate reply when the connection drops', async () => {
     api.subscribe('run-1', 'session-9', recorder().handlers)
-    const socket = FakeWebSocket.instances[0]
+    const socket = await socketOpened()
     socket.accept()
 
     const reply = api.replyGate('run-1', 'scope-confirmation', { outcome: 'scope_ok' })

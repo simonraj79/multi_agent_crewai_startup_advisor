@@ -1,17 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { VueFlow } from '@vue-flow/core'
-import { Activity, ChevronLeft, ChevronRight, CircleDot, FileText, GitBranch, Radio } from 'lucide-vue-next'
+import { Activity, ChevronLeft, ChevronRight, CircleDot, FileText, GitBranch, LogOut, Radio } from 'lucide-vue-next'
 import ChatRail from './components/ChatRail.vue'
 import CrewProgress from './components/CrewProgress.vue'
 import GateCard from './components/GateCard.vue'
 import ReportPanel from './components/ReportPanel.vue'
+import RunHistory from './components/RunHistory.vue'
+import SignInPanel from './components/SignInPanel.vue'
 import StatusPanel from './components/StatusPanel.vue'
 import WorkflowEdge from './components/WorkflowEdge.vue'
 import WorkflowNode from './components/WorkflowNode.vue'
 import { useValidatorRun } from './composables/useValidatorRun'
+import { useAuthGate } from './composables/useAuthGate'
 
 const {
   descriptor,
@@ -96,10 +99,68 @@ watch(activeView, (view) => {
   if (view === 'activity') chatCollapsed.value = false
 })
 
-onMounted(initialize)
+const {
+  phase: authPhase,
+  user: signedInUser,
+  mayUseStudio,
+  signingIn,
+  signInError,
+  startGoogleSignIn,
+  endSession,
+} = useAuthGate()
+
+/*
+ * The studio probes the API only once it is allowed to.
+ *
+ * `initialize()` used to run unconditionally on mount. With authentication in
+ * front of it that would fire a guaranteed 401 before the visitor has had a
+ * chance to sign in - wasted, and it would leave `transportMode` decided by a
+ * request made on behalf of nobody. `{ immediate: true }` keeps the
+ * already-signed-in and the auth-disabled cases behaving exactly as before,
+ * because `mayUseStudio` is already true on the first tick for both.
+ */
+/*
+ * What tells the history list to refetch.
+ *
+ * A string rather than a watcher on the run itself, so RunHistory needs to know
+ * nothing about how a run progresses - only that something worth re-reading has
+ * happened. It changes when a run starts (new id) and on every status
+ * transition, which is exactly when the row for that run would be stale.
+ */
+const historyReloadKey = computed(() => `${runId.value ?? ''}:${status.value}`)
+
+let studioStarted = false
+watch(
+  mayUseStudio,
+  (allowed) => {
+    if (!allowed || studioStarted) return
+    studioStarted = true
+    void initialize()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
+  <!--
+    Three states, and the middle one is why `checking` exists at all. Rendering
+    the sign-in screen while the session request is still in flight makes an
+    already-signed-in visitor see a login wall flash on every page load, which
+    reads as "it logged me out again".
+  -->
+  <div v-if="authPhase === 'checking'" class="auth-splash" role="status" aria-live="polite">
+    <span class="auth-splash-mark" aria-hidden="true"><CircleDot :size="22" :stroke-width="1.8" /></span>
+    <p>Checking your session…</p>
+  </div>
+
+  <SignInPanel
+    v-else-if="authPhase === 'anonymous'"
+    :signing-in="signingIn"
+    :error="signInError"
+    @sign-in="startGoogleSignIn"
+  />
+
+  <template v-else>
   <a class="skip-link" href="#workflow-canvas">Skip to workflow canvas</a>
   <div
     class="studio-shell"
@@ -124,6 +185,29 @@ onMounted(initialize)
           <Radio :size="13" aria-hidden="true" />
           {{ connectionLabel }}
         </span>
+
+        <div v-if="signedInUser" class="account-chip">
+          <!--
+            `referrerpolicy` is not decoration. Google's avatar host receives a
+            Referer naming this app on every load otherwise, and `no-referrer`
+            costs nothing here because the image is public.
+            @error hides a broken avatar rather than showing the browser's
+            placeholder - Google's URLs do expire.
+          -->
+          <img
+            v-if="signedInUser.image"
+            class="account-avatar"
+            :src="signedInUser.image"
+            alt=""
+            referrerpolicy="no-referrer"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
+          <span class="account-name">{{ signedInUser.name || signedInUser.email }}</span>
+          <button class="account-signout" type="button" title="Sign out" @click="endSession">
+            <LogOut :size="14" aria-hidden="true" />
+            <span class="sr-only">Sign out</span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -235,8 +319,13 @@ onMounted(initialize)
             @dismiss-error="dismissError"
             @select-view="activeView = $event"
           />
+          <RunHistory
+            :reload-key="historyReloadKey"
+            :enabled="authPhase === 'authenticated'"
+          />
         </div>
       </aside>
     </main>
   </div>
+  </template>
 </template>

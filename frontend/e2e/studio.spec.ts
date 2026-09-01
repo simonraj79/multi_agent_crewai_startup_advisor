@@ -103,6 +103,27 @@ async function openStudio(page: Page): Promise<void> {
 }
 
 async function launchRun(page: Page, idea: string): Promise<void> {
+  /*
+   * The gates mode is DECLARED here rather than inherited from the console's
+   * default, and that is not defensive tidying - inheriting it broke every
+   * @launch test in this file, in two different ways at once.
+   *
+   * `useValidatorRun` defaults `gatesMode` to `'auto'`. Against a backend with
+   * VALIDATOR_ALLOW_AUTO_GATES set, the run then completes unattended and no
+   * gate card ever appears; against one without it, `create_run` answers 403
+   * and no run starts at all. Neither is a bug in the console - unattended is a
+   * deliberate default - but both make a test whose entire subject is the
+   * operator's journey THROUGH the gates depend on an environment variable it
+   * never mentions.
+   *
+   * Clicking Review states the requirement. `aria-pressed` is checked first so
+   * a future change of default does not turn this into a click that switches
+   * the mode off again.
+   */
+  const review = page.getByRole('button', { name: 'Review', exact: true })
+  if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
+  await expect(review).toHaveAttribute('aria-pressed', 'true')
+
   await page.locator('#idea').fill(idea)
   await expect(launchButton(page)).toBeEnabled()
   await launchButton(page).click()

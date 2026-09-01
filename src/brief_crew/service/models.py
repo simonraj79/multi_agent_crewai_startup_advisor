@@ -384,6 +384,42 @@ class RunStatusResponse(BaseModel):
     stop_reason: str | None = None
 
 
+class RunHistoryEntry(BaseModel):
+    """One row of "your runs".
+
+    A summary, not a `RunStatusResponse`. It deliberately carries no frames, no
+    node usage, no pending gate and no result body - a 25-row list would
+    otherwise ship several megabytes of report Markdown to render a list of
+    dates, and the client already has `GET /api/runs/{id}` for the one row the
+    operator actually opens.
+
+    `session_id` is absent for a different reason: it is a capability. Anyone
+    holding a run id AND its session id can open the run's WebSocket, so
+    listing it beside every historical run would hand out a bundle of live
+    stream credentials to render a sidebar.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    workflow_id: str
+    status: RunStatus
+    created_at: datetime
+    completed_at: datetime | None = None
+    # The `idea` (or `topic`) the run was launched with, clipped for a list.
+    # This is what makes the row recognisable - a column of uuids is not a
+    # history anyone can use.
+    label: str = ""
+    total_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+class RunHistoryPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runs: list[RunHistoryEntry] = Field(default_factory=list)
+
+
 class DependencyStatus(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

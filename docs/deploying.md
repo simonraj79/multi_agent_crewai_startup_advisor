@@ -8,6 +8,17 @@ Source of truth for the resource decisions is
 [`agents/07-deployment.md`](../agents/07-deployment.md). This file is the ordered
 procedure; that one is the reasoning.
 
+> **Read [`gotchas-and-insights.md`](gotchas-and-insights.md) entries 1-8 before
+> you start.** They are the deployment traps that each cost a real debugging
+> cycle and none of which is discoverable from the code or from this procedure:
+> the empty `ipAllowList` and what it forces about regions, `VITE_API_URL`
+> failing *silently* into a fabricated UI, Render snapshotting a deploy's
+> environment at creation rather than at start, and the Public Suffix List
+> making cross-subdomain cookies impossible on `onrender.com`.
+>
+> Two of them are restated below as steps, because you need them at the moment
+> they apply. The rest are not.
+
 ---
 
 ## Before you start

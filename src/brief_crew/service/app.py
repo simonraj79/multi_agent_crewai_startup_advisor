@@ -30,6 +30,13 @@ from brief_crew.config import (
 )
 
 from brief_crew.events import FrameKind, MAX_REPLAY_LIMIT
+from brief_crew.service.auth import (
+    AuthenticatedUser,
+    AuthError,
+    auth_is_required,
+    bearer_token_from_header,
+    verify_token,
+)
 from brief_crew.service.graph import (
     BRIEF_GRAPH,
     BRIEF_NODE_REGISTRY,
@@ -54,6 +61,8 @@ from brief_crew.service.models import (
     HealthResponse,
     RunStatusResponse,
     WorkflowSummary,
+    RunHistoryEntry,
+    RunHistoryPage,
 )
 from brief_crew.service.registry import (
     GateFieldError,
@@ -355,6 +364,36 @@ def _assert_openrouter_startup_safety(
                     )
 
 
+def _assert_auth_startup_safety() -> None:
+    """Refuse to start in a security posture nobody chose.
+
+    Two states are refused, and both are silent misconfigurations rather than
+    typos - each one starts cleanly, serves traffic, and is wrong.
+
+    1. Auth REQUIRED with no auth server to verify against. Every request would
+       fail closed with a 401 nobody could fix from the client side. Failing at
+       startup names the missing variable instead.
+    2. Auth required while CORS is the "*" escape hatch. `config.py` states the
+       rule this enforces: the wildcard is survivable only because
+       CORS_ALLOW_CREDENTIALS is False and there is nothing to steal. Once an
+       Authorization header is meaningful here, "*" invites every origin on the
+       internet to spend this deployment's money with a borrowed token.
+    """
+    if not project_config.VALIDATOR_REQUIRE_AUTH:
+        return
+    if not project_config.AUTH_BASE_URL:
+        raise RuntimeError(
+            "VALIDATOR_REQUIRE_AUTH is on but AUTH_BASE_URL is empty; set it to "
+            "the origin of the Better Auth service, e.g. "
+            "https://agentic-crew-ai-studio.onrender.com"
+        )
+    if "*" in project_config.CORS_ALLOW_ORIGINS:
+        raise RuntimeError(
+            "CORS_ALLOW_ORIGINS is '*' while authentication is required; name "
+            "the origins that may carry an Authorization header instead"
+        )
+
+
 def create_app(
     *,
     registry: RunRegistry | None = None,
@@ -369,9 +408,10 @@ def create_app(
     """Create the API; inject a runner to keep tests and local demos unmetered."""
 
     _assert_openrouter_startup_safety()
+    _assert_auth_startup_safety()
 
     try:
-        from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+        from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
         from fastapi import WebSocket, WebSocketDisconnect
         from fastapi.middleware.cors import CORSMiddleware
     except ModuleNotFoundError as exc:
@@ -501,6 +541,68 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 
+    def current_user(
+        authorization: str | None = Header(default=None),
+    ) -> AuthenticatedUser | None:
+        """Resolve the caller from an ``Authorization: Bearer`` header.
+
+        Declared with ``def`` rather than ``async def`` deliberately. FastAPI
+        runs a sync dependency in its threadpool, and the JWKS cache can make a
+        blocking HTTP call on a miss; the same code as ``async def`` would stall
+        the event loop for every other connection, including live run streams.
+
+        A token that is offered IS verified - silently ignoring a credential the
+        client believed in is not an answer. But only when there is something to
+        verify it against: with no ``AUTH_BASE_URL`` this service has no keys,
+        no issuer and no audience, so it cannot judge a token at all. Answering
+        401 there would tell a client its credential was bad when the truth is
+        that nobody asked for one, and it is also what ``stream_frames`` already
+        does for the WebSocket - the two paths must not disagree about who is
+        signed in.
+        """
+        token = bearer_token_from_header(authorization)
+        if token is None or not project_config.AUTH_BASE_URL:
+            if auth_is_required():
+                raise HTTPException(
+                    status_code=401,
+                    detail="sign in to use this endpoint",
+                    # RFC 9110: a 401 MUST carry this, and it is what tells a
+                    # client the credential is a bearer token rather than
+                    # cookies or basic auth.
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            return None
+        try:
+            return verify_token(token)
+        except AuthError as exc:
+            raise HTTPException(
+                status_code=401,
+                detail="your session has expired; sign in again",
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+            ) from exc
+
+    def require_own_run(run_id: str, user: AuthenticatedUser | None) -> RunRecord:
+        """Fetch a run, refusing one that belongs to somebody else.
+
+        The refusal is **404, not 403**, and the difference is deliberate. A 403
+        confirms the run exists, turning this endpoint into an oracle that
+        answers "is this a real run id" for an unauthenticated-ish caller. 404
+        tells someone who is not the owner exactly what a stranger should hear:
+        nothing. The owner never sees it, because the UI only ever asks for ids
+        it was given.
+
+        A run with no ``user_id`` is readable by anyone who can reach the
+        service. That covers rows written before authentication existed and runs
+        created while auth is off, and it is why the check keys on the RUN's
+        owner rather than on whether the caller is signed in.
+        """
+        record = require_run(run_id)
+        if record.user_id is None:
+            return record
+        if user is None or user.id != record.user_id:
+            raise HTTPException(status_code=404, detail="run not found")
+        return record
+
     def health_payload(*, readiness: bool) -> tuple[dict[str, Any], int]:
         dependencies = registry.dependency_status()
         ready = all(
@@ -586,6 +688,7 @@ def create_app(
         session_id: str,
         request: CreateRunRequest,
         http_request: Request,
+        user: AuthenticatedUser | None = Depends(current_user),
     ) -> CreateRunResponse:
         """The only endpoint that spends money, and it is unauthenticated.
 
@@ -598,7 +701,18 @@ def create_app(
         endpoint that is limited: /healthz, /readyz and every read-only GET are
         left alone so monitoring and a reconnecting UI are never affected.
         """
-        retry_after = run_rate_limiter.acquire(client_rate_limit_key(http_request))
+        # Keyed on the AUTHENTICATED user when there is one, and on the client
+        # address only when there is not. An address is a poor proxy for a
+        # person in both directions: behind Render's proxy a shared
+        # X-Forwarded-For puts strangers in one bucket, while a single user on a
+        # phone changes address mid-session and gets a fresh allowance. A
+        # verified user id is neither shared nor changeable, so the limit finally
+        # bounds what it was always meant to bound - spend per person.
+        limit_key = (
+            f"user:{user.id}" if user is not None
+            else client_rate_limit_key(http_request)
+        )
+        retry_after = run_rate_limiter.acquire(limit_key)
         if retry_after > 0:
             raise HTTPException(
                 status_code=429,
@@ -659,6 +773,7 @@ def create_app(
                 session_id=session_id,
                 workflow_id=request.workflow_id,
                 inputs=run_inputs,
+                user_id=user.id if user is not None else None,
             )
         except RunAdmissionError as exc:
             # 429, not 503: nothing is broken and the service is not down for
@@ -676,12 +791,63 @@ def create_app(
         )
 
     @app.get(
+        "/api/runs",
+        response_model=RunHistoryPage,
+        responses={401: {"model": ErrorResponse}},
+    )
+    async def list_my_runs(
+        limit: int = Query(default=25, ge=1, le=100),
+        user: AuthenticatedUser | None = Depends(current_user),
+    ) -> RunHistoryPage:
+        """The caller's own runs, newest first.
+
+        Note the route is registered BEFORE `/api/runs/{run_id}`. Starlette
+        matches in declaration order, and while `/api/runs` and
+        `/api/runs/{run_id}` do not actually collide, keeping the literal path
+        first is the habit that stops the day one of them gains a default.
+
+        Returns an EMPTY list rather than 401 when nobody is signed in, and that
+        is the deliberate choice: on a deployment running without auth there is
+        no "your runs" to speak of, and every run in the table belongs to
+        nobody. Answering "you have none" is true in both cases. Answering with
+        the whole table would be a data leak dressed as a convenience.
+        """
+        if user is None or registry.persistence is None:
+            return RunHistoryPage(runs=[])
+
+        rows = registry.persistence.list_runs_for_user(user.id, limit=limit)
+        entries: list[RunHistoryEntry] = []
+        for row in rows:
+            inputs = row.get("inputs") or {}
+            raw_label = inputs.get("idea") or inputs.get("topic") or ""
+            usage = row.get("usage") or {}
+            entries.append(
+                RunHistoryEntry(
+                    run_id=row["id"],
+                    workflow_id=row["workflow_id"],
+                    status=row["status"],
+                    created_at=row["created_at"],
+                    completed_at=row.get("completed_at"),
+                    # Clipped here rather than in CSS. The idea is bounded at
+                    # MAX_RUN_INPUT_CHARS (2000), and 25 of those is 50 KB of
+                    # payload to draw a sidebar that shows one line each.
+                    label=str(raw_label)[:160],
+                    total_tokens=int(usage.get("total_tokens") or 0),
+                    cost_usd=float(usage.get("cost_usd") or 0.0),
+                )
+            )
+        return RunHistoryPage(runs=entries)
+
+    @app.get(
         "/api/runs/{run_id}",
         response_model=RunStatusResponse,
         responses={404: {"model": ErrorResponse}},
     )
-    async def get_run(run_id: str) -> RunStatusResponse:
-        require_run(run_id)
+    async def get_run(
+        run_id: str,
+        user: AuthenticatedUser | None = Depends(current_user),
+    ) -> RunStatusResponse:
+        require_own_run(run_id, user)
         return RunStatusResponse.model_validate(registry.status_payload(run_id))
 
     @app.get(
@@ -694,8 +860,9 @@ def create_app(
         after: int = Query(default=0, ge=0),
         limit: int = Query(default=100, ge=1, le=MAX_REPLAY_LIMIT),
         kinds: str | None = None,
+        user: AuthenticatedUser | None = Depends(current_user),
     ) -> FramePage:
-        record = require_run(run_id)
+        record = require_own_run(run_id, user)
         kind_filter: set[FrameKind] | None = None
         if kinds:
             try:
@@ -808,8 +975,9 @@ def create_app(
         run_id: str,
         gate_id: str,
         request: GateReplyRequest,
+        user: AuthenticatedUser | None = Depends(current_user),
     ) -> GateReplyResponse:
-        require_run(run_id)
+        require_own_run(run_id, user)
         try:
             return submit_gate_reply(
                 run_id,
@@ -829,16 +997,23 @@ def create_app(
         status_code=202,
         responses={404: {"model": ErrorResponse}},
     )
-    async def cancel_run(run_id: str) -> CancelRunResponse:
-        require_run(run_id)
+    async def cancel_run(
+        run_id: str,
+        user: AuthenticatedUser | None = Depends(current_user),
+    ) -> CancelRunResponse:
+        require_own_run(run_id, user)
         return CancelRunResponse.model_validate(registry.cancel(run_id))
 
     @app.get(
         "/api/runs/{run_id}/logs",
         responses={404: {"model": ErrorResponse}},
     )
-    async def download_logs(run_id: str, format: str = "ndjson") -> Response:
-        require_run(run_id)
+    async def download_logs(
+        run_id: str,
+        format: str = "ndjson",
+        user: AuthenticatedUser | None = Depends(current_user),
+    ) -> Response:
+        require_own_run(run_id, user)
         if format not in {"ndjson", "zip"}:
             raise HTTPException(status_code=400, detail="format must be ndjson or zip")
         frames_content = "".join(
@@ -888,10 +1063,58 @@ def create_app(
         session_id: str,
         run_id: str,
         after: int = 0,
+        access_token: str | None = None,
     ) -> None:
+        """Stream a run's frames.
+
+        The credential arrives as a QUERY PARAMETER rather than a header, and
+        that is forced rather than chosen: the browser WebSocket API offers no
+        way to set request headers on the handshake, so `Authorization` is not
+        available here the way it is on every other endpoint.
+
+        The cost is real and worth naming - a URL is logged by proxies in a way
+        a header is not, and Render logs request lines. What bounds it is that
+        this token is not the session: it is the 15-minute JWT from
+        `frontend/server/auth.ts`, so a leaked access log yields a credential
+        that is already expired by the time anyone reads it. The durable
+        session cookie never leaves the auth origin.
+
+        Item 13 in CLAUDE.md's remaining work notes that /ws has no Origin
+        check, because CORS does not apply to a handshake. This does not close
+        that item, but it narrows it considerably: a hostile page could always
+        open the socket, and now it also needs a valid token for the right user.
+        """
+        ws_user: AuthenticatedUser | None = None
+        try:
+            if access_token and project_config.AUTH_BASE_URL:
+                # Verified whenever one is offered, exactly as on the HTTP path.
+                # Ignoring a credential the client believed in is never right,
+                # even on a deployment that would have let it through anonymous.
+                ws_user = verify_token(access_token)
+            elif auth_is_required():
+                raise AuthError("no token on the socket handshake")
+        except AuthError:
+            # accept() first, then close with a reason. A handshake REJECTED
+            # outright surfaces in the browser as an opaque failure with no
+            # readable code, which is indistinguishable from the edge blocking
+            # the connection - see CLAUDE.md on probing /ws by hand, where
+            # exactly that misled a diagnosis.
+            await websocket.accept()
+            await websocket.close(code=4401, reason="unauthorized")
+            return
+
         try:
             record = registry.require(run_id)
         except KeyError:
+            await websocket.accept()
+            await websocket.close(code=4404, reason="run not found")
+            return
+
+        # Same 404-shaped answer as the HTTP path: someone else's run is not
+        # distinguishable from a run that does not exist.
+        if record.user_id is not None and (
+            ws_user is None or ws_user.id != record.user_id
+        ):
             await websocket.accept()
             await websocket.close(code=4404, reason="run not found")
             return

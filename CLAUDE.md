@@ -9,14 +9,30 @@ This repository now contains two applications that share one Python package:
 
 Read [`AGENTS.md`](AGENTS.md) before changing CrewAI code. The specifications in [`agents/`](agents/) remain authoritative for behavior they already cover. [`PRD.md`](PRD.md) extends those specifications for Validator Studio.
 
-> **[`docs/tech-stack.md`](docs/tech-stack.md) is the single source of truth for
-> every version, pin and toolchain quirk** — interpreter, packages, models,
-> external API versions, the twenty environment knobs, and the commands that
-> regenerate each figure. It also carries the open stack-hygiene defects
-> (undeclared `pydantic`/`PyYAML`, Render's unpinned Node, `e2e/` type-checked
-> by nothing, `CREWAI_TRACING_ENABLED` inverted between deploy paths). **Do not
-> restate a version number here** — link to that file, or the two will drift
-> apart the way the counts below already have, four separate times.
+**Two files hold the durable knowledge. Neither is optional reading, and
+neither should ever be restated here.**
+
+> **[`docs/tech-stack.md`](docs/tech-stack.md) — every version, pin and
+> toolchain quirk.** Interpreter, packages, models, external API versions, the
+> **thirty-six** environment knobs, and the commands that regenerate each
+> figure. **Do not restate a version number here** — link, or the two drift
+> apart the way the counts below already have, five separate times.
+>
+> *(This very paragraph was an example of that: it said "twenty" knobs until
+> 2026-09-01, and listed four stack-hygiene defects that had all been fixed or
+> withdrawn. It now names no figure it does not own.)*
+
+> **[`docs/gotchas-and-insights.md`](docs/gotchas-and-insights.md) — the
+> mistakes, and how not to repeat them.** 28 numbered entries, each one
+> symptom → cause → what to do, and each one something *not discoverable from
+> the code*: the Public Suffix List blocking `.onrender.com` cookies,
+> `create_all()` never altering a table that already shipped, `pkill` reporting
+> success on Windows while the old process keeps serving, and a whole section
+> on **tests that pass for the wrong reason**. The deployment traps 1–8 live
+> there now; the numbering is unchanged so existing references still resolve.
+>
+> **Read it before a deployment, before adding a column, and before believing a
+> green suite.**
 
 [`new features/feature-list.md`](new%20features/feature-list.md) was last
 reconciled against source and tests on 2026-08-29. **That is four commits and
@@ -25,6 +41,11 @@ its Complete rows predate the report-truncation defect, the `cost_usd` defect,
 the query-shape defect, the two rubric Criticals, the orphaned-run defect and
 everything in the current tree. This file is newer. Neither is a substitute for
 re-running the suite - the counts move.
+
+**Reconciled 2026-09-01 against HEAD `e910d7d` plus an UNCOMMITTED working
+tree** - the Better Auth work (section 13) is not in any commit. The previous
+reconciliation said 2026-08-31 at `c63aca0`; that was already a commit behind
+when this pass started, which is the usual story here.
 
 **This file was reconciled on 2026-08-31 against a CLEAN working tree at HEAD
 `c63aca0`.** The previous reconciliation (2026-08-30) was written against
@@ -39,11 +60,22 @@ Both suites were run; the two build steps were not.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:   698 run, 0 failures, 0 errors, 1 skipped - 34.6s
-Frontend unit:  311 run, 0 failures, 25 files (Vitest + jsdom) - 3.8s
-Frontend build: GREEN - `vue-tsc -b --force` clean, `npm run build` in 569ms
-Playwright E2E:   7 tests, ALL GREEN with ZERO console errors tolerated
+Python tests:   772 run, 0 failures, 0 errors, 1 skipped - 32.6s
+Frontend unit:  324 run, 0 failures, 26 files (Vitest + jsdom) - 6.3s
+Frontend build: GREEN - `vue-tsc -b --force` clean over FIVE projects now
+                (app, node, vitest, e2e, server), `npm run build` in 464ms
+Playwright E2E:   7 tests, ALL GREEN with ZERO console errors tolerated - 14.6s
 ```
+
+> **Re-measured 2026-09-01 after Better Auth landed.** The 698/311 above it were
+> themselves stale: HEAD (`e910d7d`) measured **713 / 324** before a line of
+> auth code was written. The 59 added are `test_auth_jwt.py` (28),
+> `test_auth_endpoints.py` (25) and `test_additive_migration.py` (6). The
+> frontend count did not move - the auth work changed existing specs rather
+> than adding files.
+>
+> **`npm run build` is three steps now**, not two: `vue-tsc -b`, `vite build`,
+> then `tsc -p tsconfig.server.json` emitting the Node server to `server-dist/`.
 
 ⚠️ These counts move, and they move fast. The Python suite has gone
 65 → 295 → 341 → 378 → 415 → 459 → 522 → 537 → 660 → 679 → 698 and the frontend
@@ -93,7 +125,9 @@ the command is the contract, not the figure.
 > holds seven live keys. Restore it from a shell trap that fires on any exit,
 > name the backup so the ignore rules cover it (`.env.*` does — confirm with
 > `git check-ignore -v` on the actual filename, never by reading `.gitignore`;
-> see trap 5), and check the file is back before you finish. That hazard is why
+> see [gotchas](docs/gotchas-and-insights.md) 5 and 27), and check the file is back before you finish. Entry 27
+> also carries the trick that shrinks the exposure window from minutes to
+> seconds. That hazard is why
 > this pass did not repeat it.
 
 Commands used:
@@ -157,15 +191,11 @@ Playwright starts its own second Vite server (`e2e/vite.e2e.config.ts`, port
 against a deployed origin (`E2E_BASE_URL=...`) exclude them, or the smoke test
 spends money.
 
-> The Python count was **65 for a long time, and that number was wrong.**
-> `tests/events/` and `tests/service/` had no `__init__.py`, so
-> `unittest discover` walked past them in silence - a green `OK` that never ran
-> the event spine or any of the service layer. Both are packages now. If you
-> ever add a test directory, add its `__init__.py` in the same commit, or
-> discovery will hide it and tell you everything passed.
->
-> `pyproject.toml` configures pytest, which collects by rootdir and would have
-> caught this - but pytest is not installed in `.venv`.
+> **Add an `__init__.py` in the same commit as any new test directory**, or
+> `unittest discover` walks past it in silence and reports a green `OK` over
+> tests it never ran. The Python count sat at 65 for a long time because of
+> exactly this. Full entry:
+> [gotchas](docs/gotchas-and-insights.md) 20.
 
 The test suite is deliberately no-cost: CrewAI crews, external APIs, OpenRouter, Pinecone, Cohere, and Firecrawl are mocked or replaced with deterministic runners where needed.
 
@@ -233,70 +263,43 @@ Neither POST launches a run, so both probes are free.
 
 ### Traps that were hit for real
 
-Traps 1-5 each cost a debugging cycle; trap 6 cost a wrong claim in a handoff,
-twice — and this pass makes it three times, because the "exactly fifteen" figure
-below was itself produced by an under-counting scan. They are recorded because
-none is discoverable from the code.
+**Moved to [`docs/gotchas-and-insights.md`](docs/gotchas-and-insights.md), which
+is now the only copy of the *reasoning*.** The numbering is unchanged, so every
+existing "see trap 5" still resolves.
 
-1. **The database's `ipAllowList` is empty.** So `DATABASE_URL` must be the
-   **internal** connection string, and the API service must stay in
-   `singapore` to reach it. `render.yaml` and `docs/deploying.md` used to
-   assert that the live database "already has an allow list" and that declaring
-   one would overwrite it — reassurance about a control that does not exist.
-   **Both were corrected in `e539811`**: `render.yaml:29-41` and
-   `docs/deploying.md:90` now state the list is `[]` and spell out the two
-   consequences. The trap stays recorded because the *reasoning* has to
-   survive, not because the files still lie.
-2. **`VITE_API_URL` is a Vite *build-time* variable.** Changing it does nothing
-   until the static site is redeployed. It must be a **full origin including
-   `https://`**: `fromService … property: host` yields a bare hostname, which
-   resolves as a relative path, breaks `/ws`, and drops the client into its
-   **silent scripted mock** — a UI that renders a complete, entirely fabricated
-   run with no error anywhere on screen. That failure mode is the reason
-   `frontend/e2e/studio.spec.ts` has a test asserting the transport is live.
-3. **Render snapshots a deploy's environment when the deploy is *created*, not
-   when the container starts.** Adding `CORS_ALLOW_ORIGINS` to an existing
-   service therefore needed a *second* deploy to take effect. Worse: after that
-   deploy reports `live`, the edge can keep routing to the draining instance
-   for roughly a minute, so preflights keep returning 400 — a phantom CORS bug
-   that fixes itself if you wait.
-4. **`vue-tsc -b` typechecks `tests/` as well as `src/`, and `-b` is
-   incremental.** A strict-null error in a newly added *test* file failed the
-   **static site** build, and a warm `.tsbuildinfo` can skip the new file so it
-   passes locally and fails on Render. Verify with `vue-tsc -b --force` before
-   trusting a green local build. This is what commit `5daf401` is. (The 2026-08-30
-   baseline above used `--force` for exactly this reason.)
-5. **`.gitignore` matched `.env` and nothing near it.** The rules were `.env`,
-   `.env.local`, `.env.*.local` — so a *backup* was not covered. A tooling step
-   moved `.env` aside and left `.env.ci-bak`, seven live keys, untracked in the
-   root of a **public** repo, one `git add -A` from publication. Now `.env.*`
-   with `!.env.example`. The lesson is the method, not the rule: this was found
-   by running `git check-ignore -v` against the actual filenames, and reading
-   `.gitignore` would have shown three reassuring `.env` lines. Check the path,
-   never the pattern.
+[`docs/deploying.md`](docs/deploying.md) legitimately restates two of these as
+runbook steps - somebody following a deploy needs to be told about
+`ipAllowList` and `VITE_API_URL` at the moment it matters, not sent elsewhere.
+That is the one duplication worth keeping, and it is also the one that has
+already drifted once: both it and `render.yaml` asserted the live database
+"already has an allow list", a control that does not exist, until `e539811`.
 
-   That hazard was real and has since been decided rather than left pending:
-   `docs/` was published in `add21d1`, and the two things that made it risky
-   were corrected in the commit after. Note what history means here — the
-   original text is still in `add21d1` and in any clone taken from it, so the
-   durable mitigation for the account state was never redaction but the spend
-   cap `preflight.md` now tells you to set.
+The index below is titles only, deliberately. The *reasoning* is the valuable
+part of each one and it lives in a single place; restating it here would
+recreate the problem this move solves.
 
-6. **A line-anchored `grep` under-reports `config.py`, and has now produced the
-   same wrong answer three times.** The obvious command for "which environment
-   variables does this service read" —
-   `grep -oE 'os\.getenv\("[A-Z_]+"' src/brief_crew/config.py` — misses every
-   call the formatter wrapped so the name lands on the *next* line. The four it
-   originally hid were `RUN_RATE_LIMIT_WINDOW_SECONDS`,
-   `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR`, `VALIDATOR_FEASIBILITY_CACHE_ENABLED`
-   and `VALIDATOR_SEQUENTIAL_BRANCHES` — all live knobs, one of them the single
-   setting a non-Render deployment *must* change. This has now twice been
-   written into a handoff as an authoritative list, and a third time as the
-   "exactly fifteen" claim this file carried until 2026-08-30, which had gone
-   stale in the other direction as well. Use a multiline match (`grep -Pzo`,
-   `rg -U`, or Python `re.findall` with `re.S`); the exact scan is in section 9.
-   Same lesson as trap 5 one layer up: check the thing, not a pattern that
-   resembles it.
+| # | Trap |
+| ---: | --- |
+| 1 | The database's `ipAllowList` is empty |
+| 2 | `VITE_API_URL` is a build-time variable, and getting it wrong is silent |
+| 3 | Render snapshots a deploy's environment when the deploy is *created* |
+| 4 | `vue-tsc -b` is incremental, and it type-checks more than `src/` |
+| 5 | `.gitignore` matched `.env` and nothing near it |
+| 6 | A line-anchored `grep` under-reports `config.py` |
+| 7 | `onrender.com` is on the Public Suffix List |
+| 8 | A free Render web service sleeps, and that decides your architecture |
+
+That file carries **28 numbered entries** plus a set of reusable design
+insights. It covers the toolchain (`tsc -b` skipping an unreferenced config,
+Node's literal import resolution, Vite proxy ordering), the runtime
+(`create_all` never altering a shipped table, `value or DEFAULT` eating a
+legitimate zero, `Authorization` not being CORS-safelisted), an entire section
+on **tests that pass for the wrong reason**, and the process traps - `pkill`
+silently failing on Windows, and why the counts in this very file have been
+wrong five times.
+
+**Read it before a deployment, before adding a column, and before believing a
+green suite.**
 
 ## Non-Negotiable Platform Rules
 
@@ -717,19 +720,26 @@ reply.
 - Synthetic service mode for no-cost integration and UI testing, selected by
   `SYNTHETIC=1` through `app_from_env()`.
 
-**Environment knobs: there are twenty, and the canonical list lives in
-[`docs/tech-stack.md` §6](docs/tech-stack.md).** Sixteen are read in
+**Environment knobs: there are THIRTY-SIX, and the canonical list lives in
+[`docs/tech-stack.md` §6](docs/tech-stack.md).** Thirty-two are read in
 `config.py`, four in `service/app.py` (`DATABASE_URL`, `HOST`, `PORT`,
-`SYNTHETIC`). Regenerated 2026-08-31 with the multiline scan below.
+`SYNTHETIC`). Regenerated 2026-09-01 with the multiline scan below.
 
-> **This count has now been wrong four times, and never twice for the same
-> reason.** *Eleven*, when the line-anchored grep of trap 6 hid four wrapped
-> calls. Then *fifteen*. Then *eighteen* — the figure this file carried until
-> 2026-08-31, which missed `MAX_RUN_COST_USD` (default `10.0`,
-> `config.py:828`) and `VALIDATOR_MAX_GATE_TURNS` (default `5`,
-> `config.py:984`). Both landed in `1b79197`, a commit that never touched this
-> file. The regex was fixed; the *process* was not. Do not read the list —
-> regenerate it.
+> **This count has now been wrong FIVE times, and never twice for the same
+> reason.** *Eleven*, when the line-anchored grep of
+> [gotchas](docs/gotchas-and-insights.md) 6 hid four wrapped
+> calls. Then *fifteen*. Then *eighteen*. Then *twenty* — the figure this file
+> carried until 2026-09-01, which was short by **sixteen**. Only four of those
+> are the new `AUTH_*` / `VALIDATOR_REQUIRE_AUTH` knobs; the other twelve
+> (`VALIDATOR_BRANCH_MAX_ITER`, the four `VALIDATOR_FIRECRAWL_*`,
+> `MAX_QUEUED_RUNS`, `RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS`, `EXPOSE_API_DOCS`
+> among them) were already there and already undocumented, in a paragraph whose
+> own previous correction says *"the regex was fixed; the process was not."*
+>
+> The process still is not. The scan below was run and its output pasted; that
+> is the only method that has ever produced a right answer here. **Do not read
+> the list — regenerate it**, and if the number surprises you, the number is
+> right and the prose is old.
 
 Everything else in the admission path is a genuine constant with no override —
 `MAX_REQUEST_BODY_BYTES` (64 KiB), `MAX_RUN_INPUT_CHARS` (2000),
@@ -1036,6 +1046,120 @@ npm run build
 Pop-Location
 ```
 
+### 13. Authentication - Google OAuth via Better Auth
+
+Added 2026-09-01. Sign-in is Google and nothing else; every endpoint that spends
+money or reveals a run now demands a verified identity, and runs are owned.
+
+**`frontend/` stopped being a static site.** Better Auth is a TypeScript library
+that needs a Node runtime, and this repo had nowhere to put one - the SPA
+shipped from a CDN and the API is Python. `frontend/server/` is now a small Hono
+service that serves the built SPA *and* mounts Better Auth at `/api/auth/*`,
+declared in `render.yaml` as `runtime: node`, `region: singapore`.
+
+Two constraints forced almost every decision here, and neither is visible in the
+code that obeys them:
+
+1. **`onrender.com` is on the Public Suffix List.** A browser refuses to set a
+   cookie scoped to `.onrender.com`, so Better Auth's usual
+   `crossSubDomainCookies` answer is unavailable and a separate
+   `agentic-crew-ai-auth.onrender.com` could never share a session with the SPA.
+   Serving both from ONE origin is what makes an ordinary httpOnly cookie work.
+2. **`region: singapore` is now mandatory on the web service**, where before
+   there was deliberately no region at all. It writes sessions to the database,
+   and that database's `ipAllowList` is `[]` - only same-region traffic reaches
+   it. Move the service and logins break with no configuration change to blame.
+
+**The API is still a separate origin and still cannot read that cookie.** The
+SPA fetches a **15-minute JWT** from its own origin (`/api/auth/token`,
+authenticated by the cookie) and sends it to FastAPI as a bearer token.
+`src/brief_crew/service/auth.py` verifies it offline against
+`${AUTH_BASE_URL}/api/auth/jwks`: no shared secret, no database round trip on
+the hot path, and an auth service asleep on its Render plan cannot take the API
+down with it. The token lives in a module variable in `authClient.ts` and is
+**never** written to `localStorage` - the durable credential stays in the
+cookie, and the thing exposed to script expires in fifteen minutes.
+
+| Piece | Where |
+| --- | --- |
+| Better Auth server, Google provider, JWT plugin | `frontend/server/auth.ts` |
+| Hono: SPA + `/api/auth/*`, no `/api` proxy | `frontend/server/index.ts` |
+| In-process schema migration at startup | `frontend/server/migrate.ts` |
+| Token cache, session-gated, in memory only | `frontend/src/services/authClient.ts` |
+| The three-phase gate + `unconfigured` | `frontend/src/composables/useAuthGate.ts` |
+| Sign-in wall | `frontend/src/components/SignInPanel.vue` |
+| JWKS cache and JWT verification | `src/brief_crew/service/auth.py` |
+| Setup recipe and every exact string | [`docs/google-oauth.md`](docs/google-oauth.md) |
+
+Things that will bite whoever touches this next:
+
+- **`VALIDATOR_REQUIRE_AUTH` defaults to `bool(AUTH_BASE_URL)`, not to `False`.**
+  A flat default fails OPEN: a deployment that sets `AUTH_BASE_URL`, wires the
+  login screen and forgets one boolean would serve every paid endpoint
+  anonymously with nothing on screen to say so. Configuring an auth server *is*
+  turning auth on, so the half-configured state does not exist. Startup also
+  refuses `VALIDATOR_REQUIRE_AUTH` with no `AUTH_BASE_URL`, and refuses `"*"`
+  CORS while auth is required - the rule `config.py` already wrote for itself.
+- **`Authorization` had to be added to `CORS_ALLOW_HEADERS`.** It is not
+  CORS-safelisted, so without it the browser preflights, drops the real request,
+  and the failure reads like the API being down. It does **not** flip
+  `CORS_ALLOW_CREDENTIALS`: that governs cookies, which never cross this origin.
+- **Another user's run answers 404, not 403.** A 403 confirms the run exists. A
+  run with **no** `user_id` stays readable by anyone, because rows written
+  before auth existed cannot be given an owner and refusing them would make
+  deploying this destroy the history it organises.
+- **The `/ws` credential is a query parameter**, because the browser WebSocket
+  API cannot set headers on a handshake. A URL is logged where a header is not;
+  what bounds it is that this is the 15-minute JWT, never the session.
+- **`user_id` was added to a table that already shipped.** `create_all()` is
+  create-if-absent *per table* and does nothing to an existing one, so the
+  column would have been silently missing on every deployed database and failed
+  at the first INSERT. `persistence._add_missing_columns()` is the idempotent
+  additive-only migration; anything needing a backfill or a NOT NULL is the
+  point at which a real migration tool has become cheaper.
+- **The Vite proxy order is load-bearing.** `/api/auth` must be declared before
+  `/api`, or every Better Auth request is proxied to FastAPI and 404s.
+- **`getAccessToken` refuses to fetch until a session is known to exist.** It
+  defaults to "no session", and `useAuthGate` flips it. Without that it fired
+  `/api/auth/token` on every page load - including in the unit suite, where a
+  mocked `fetch` handed the token request the response the test had queued for
+  the API call and 25 assertions went off by one.
+
+**Proved against the real thing, not against a stub.** Better Auth's live JWKS
+was parsed by the Python verifier into a genuine `Ed25519PublicKey`, and a token
+Better Auth actually minted was verified by `verify_token`, with a tampered
+signature and a wrong audience both refused. `test_auth_jwt.py` signs real
+Ed25519 tokens and pins the forgeries - `alg: none`, and the HMAC
+algorithm-confusion attack using the public key as the shared secret, assembled
+by hand because PyJWT refuses to *sign* that shape.
+
+> **NOT verified: an actual Google sign-in.** No OAuth client exists yet - the
+> Chrome extension was not connected during this session, so the credentials in
+> `docs/google-oauth.md` have never been created. Everything up to and including
+> "Better Auth mints a token and Python accepts it" is measured; the Google
+> redirect itself is not.
+
+#### The E2E suite was broken at HEAD, and not by this work
+
+All five `@launch` tests failed before a line of auth code was written, and the
+cause is worth recording because it will recur. `useValidatorRun` defaults
+`gatesMode` to **`'auto'`**. Against a backend with `VALIDATOR_ALLOW_AUTO_GATES`
+set - which the local `.env` does - the run completes unattended and no gate card
+ever appears; against one without it, `create_run` answers **403** and no run
+starts. Neither is a bug in the console, but both make a test whose whole subject
+is the journey *through* the gates depend on an environment variable it never
+mentions. `launchRun` in `e2e/studio.spec.ts` now clicks **Review** and asserts
+`aria-pressed`. Verified by running the suite at HEAD with the work stashed:
+same failure, no auth involved.
+
+`e2e/vite.e2e.config.ts` also gained a **stub of the auth origin** returning a
+signed-in session. A build flag disabling auth was the obvious alternative and is
+worse: it would exercise the `unconfigured` phase, which production never
+reaches, and leave the header chip, the history panel and the bearer path
+untested. The middleware must be registered with `server.middlewares.use`
+directly - returning a function from `configureServer` installs it *after* the
+`/api` proxy, and every auth path would go to FastAPI and 404.
+
 ## No-Cost Integration Coverage
 
 Tests cover:
@@ -1070,6 +1194,9 @@ exact.
 
 | Module | Tests | What it pins |
 | --- | ---: | --- |
+| `tests/service/test_additive_migration.py` | **6** | `init_db` against a table that already SHIPPED: the column and its index are added, the pre-auth row survives with a NULL owner, and a second call is a no-op |
+| `tests/service/test_auth_jwt.py` | **28** | the verifier against REAL Ed25519 signatures: `alg: none`, the HMAC algorithm-confusion forgery, wrong issuer/audience, JWKS rotation, and a failed refresh that keeps serving the old keys |
+| `tests/service/test_auth_endpoints.py` | **25** | who is refused, 404-not-403 for another user's run, the per-user rate-limit key (with a control proving the limit bites), and the unowned-run carve-out |
 | `tests/service/test_run_admission.py` | 37 | all five refusals and both carve-outs, plus the chunked request that evades the 413 and the `/docs` gating |
 | `tests/service/test_gates_mode.py` | **19** | the `gates` contract, both reserved-key smuggling attempts, the 403 and 422, and an unattended run completing with no gate reply |
 | `tests/service/test_run_result_and_cost.py` | **23** | the un-truncated report body and the two independent `cost_usd` bugs |
@@ -1136,13 +1263,12 @@ and 33). The revise test consequently asserts the loop — the run returns to
 `Confirm scope`, `Revise scope` completes, and the console shows the lap —
 where it previously could only assert that the reply was accepted.
 
-> **Killing this backend needs PowerShell, not `pkill`.** `pkill -f serve.exe`
-> from Git Bash reports success and leaves the process running. The replacement
-> then fails to bind with `WinError 10048` **in its own log** while `/healthz`
-> keeps answering 200 from the stale one, so every probe looks healthy and every
-> result is from the old code. Half an hour of this pass was spent testing a
-> patch that was never loaded. Use `Stop-Process -Name serve -Force`, and read
-> the serve log rather than trusting a 200.
+> **Killing this backend needs `Stop-Process -Name serve -Force`, not `pkill`**,
+> and you must read the serve log rather than trusting a 200 - a stale process
+> keeps answering `/healthz` from old code. This has cost time twice now,
+> most recently during the authentication work, where it presented as a
+> mysterious 401. Full entry, and why `-Name node` is worse:
+> [gotchas](docs/gotchas-and-insights.md) 25 and 26.
 
 ## Remaining Work and Unverified Risks
 
@@ -1462,7 +1588,7 @@ cross-references keep resolving.
 
     The second half of this item is **closed**: `render.yaml:29-41` and
     `docs/deploying.md:90` no longer claim the live database "already has an
-    allow list". See Deployment trap 1.
+    allow list". See [gotchas](docs/gotchas-and-insights.md) 1.
 17. **`docs/` is published; the licence is not settled.** All four files
     (`licensing.md`, `deploying.md`, `preflight.md`, `rubric-review.md`) went
     public in `add21d1` and are tracked at head. What was corrected around them:
@@ -1521,7 +1647,7 @@ running tests.
     `render.yaml`, matching what CI pins, with a comment saying to keep the two
     in step. `vite@8` requires `^20.19.0 || >=22.12.0`, so the floor is real and
     a platform default drifting below it fails the deploy rather than the tests.
-    This is deployment trap 4 one layer up: the build environment that ships is
+    This is [gotchas](docs/gotchas-and-insights.md) 4 one layer up: the build environment that ships is
     the one verified least.
 
 38. ~~**[Medium] `frontend/e2e/` is type-checked by nothing.**~~
@@ -1715,7 +1841,7 @@ Kept because the *reasoning* is what stops the defect coming back.
     10. `connection` binds the WebSocket, and no socket exists until a run
     starts, so "the backend is down" and "you have not launched anything yet"
     were the same word on the first thing a visitor reads — which is also what
-    made the silent mock fallback (Deployment trap 2) so hard to spot.
+    made the silent mock fallback ([gotchas](docs/gotchas-and-insights.md) 2) so hard to spot.
     `connectionLabel` now reports the probed transport.
 
     Two things it deliberately does not do. **Nothing polls the API**, so a
@@ -1818,6 +1944,91 @@ favicon link. Item 39 turned out not to be a bug at all — see its entry.
 
 What that leaves before step 4 is only what it always was: **read the rubric**.
 Nothing in the cleanup sweep touched a scoring decision, and nothing in it can.
+
+## OpenRouter MCP - the live catalogue, and what it settles
+
+Added 2026-09-01. The `openrouter` MCP server is registered on this project and
+its 22 tools are the authority on every model fact this file would otherwise
+restate and let drift. **Consult them before touching `CHEAP_MODEL`,
+`ESCALATION_MODEL`, `PRICES`, a `reasoning_effort` argument, or any prompt-level
+cost decision.** The lesson this document keeps re-learning - a number written
+into prose is wrong within two commits - has an actual fix here: do not quote a
+price, look it up.
+
+### Access, and the weekly cliff
+
+The credential is OAuth, lasts **exactly 7 days, and carries no refresh token**,
+so it dies every week and cannot renew itself. While it is stale the harness
+hides the real tools and offers `mcp__openrouter__authenticate` /
+`complete_authentication` in their place. Call `authenticate`, open the URL it
+returns, and the real tools swap in **mid-session - `claude mcp login` and a
+restart are NOT needed.** Prove it with `mcp__openrouter__ping` -> `pong`.
+
+**If a future session sees no `mcp__openrouter__*` tools, the token has
+expired.** That is a stale credential, not a missing capability - the same
+distinction [gotchas](docs/gotchas-and-insights.md) keeps drawing about
+`pkill` and about a green suite.
+
+### Which tool answers which question
+
+**Free. Read-only, no tokens billed:**
+
+| Tool | Use it for |
+| --- | --- |
+| `get-model` | one model's live price, context, `supported_parameters`, and `reasoning` defaults |
+| `list-models` | catalogue search. `min_tool_success_rate`, `min_agentic_index` and `max_price` are the filters that matter for the three tool-using research analysts on the cheap tier |
+| `list-model-endpoints` | the **per-provider** price / latency / throughput spread behind one slug - the only way to bound what `:nitro` actually bills |
+| `get-endpoint-uptime-history` | which provider degraded during a window (72h of history) |
+| `list-providers` | provider slugs, for routing allow/deny |
+| `list-benchmarks` | Artificial Analysis intelligence / coding / agentic indices, Design Arena ELO |
+| `list-daily-model-rankings`, `list-task-classifications`, `list-app-rankings` | what real traffic actually uses for a given kind of work |
+| `get-generation` | the **actual** cost, token counts and serving provider for one generation id |
+| `get-credits` | remaining balance. Run before a paid acceptance run; never write the figure into a doc - `docs/preflight.md` already adopted that rule |
+| `search-docs` | current OpenRouter API usage |
+| `list-presets` / `get-preset` | saved dashboard configs |
+
+**These SPEND MONEY. Never in a test, never casually:** `send-message` (a real
+completion), `generate-image`, `generate-speech`, `transcribe-audio`, and
+`spawn-ori-eval` (runs a real agent over real prompts). `send-message` is the
+right instrument for the Reporter/Scoper A/B still open as remaining-work item 4
+(Q4) - set `max_tokens`, which its own schema calls the single most effective
+brake on a reasoning model - but it bills the account `get-credits` reads.
+
+### What one pass of these tools found, 2026-09-01
+
+Measured against the live catalogue, not argued:
+
+- **`PRICES` is correct to the cent.** `google/gemini-3.5-flash-lite` is
+  $0.30 / $2.50 and `google/gemini-3.7-flash` is $0.75 / $3.75 live, matching
+  `config.py:56-59` exactly. The platform rule that a model swap edits `PRICES`
+  in the same commit has held.
+- **But `:nitro` is not bounded by that number.** `config.py:44-47` says the
+  recorded price "is the published floor and the effective rate may be higher".
+  `list-model-endpoints` says it is not the floor either: **eight** endpoints
+  serve `gemini-3.5-flash-lite`, from **$0.15 / $1.25** (`flex`) to
+  **$0.54 / $4.50** (`priority`) - a 3.6x spread with $0.30 / $2.50 sitting in
+  the middle. `:nitro` routes on speed, not price, so a real run can bill up to
+  **80% above** what `compute_cost_usd` estimates. Bounding that is one tool
+  call rather than a guess, and it should be done before item 1's acceptance run
+  is priced.
+- **`get-generation` cannot reconcile anything yet.** It returns OpenRouter's
+  own per-generation cost - precisely the figure section 8 says "never reaches
+  the process" - but **nothing captures a generation id**: grepped across
+  `events/` and `service/` on 2026-09-01, zero hits. Capturing it is the
+  prerequisite for turning that documented estimate into a measurement, and it
+  is the cheapest route to closing the cost half of item 1.
+- **The Synthesist is probably NOT running at `reasoning_effort=high`.**
+  `config.py:874`, `:1018` and `:1037` all describe it that way inside cost
+  arguments, while `config.py:628` and
+  `crews/validator_crew/validator_crew.py:344` both record that
+  `LLM(reasoning_effort=...)` is silently dropped for every OpenRouter model.
+  Live, `gemini-3.7-flash` reports `reasoning.mandatory: true` with
+  `default_effort: "medium"`. So the effort is the provider default and the
+  prose overstates the spend. Related: reasoning tokens bill at the completion
+  rate on **both** tiers, which is the only reason the two-tuple `PRICES` shape
+  stays honest - that is a coincidence of Google's pricing, not a property of
+  the design, and a future model whose `internal_reasoning` rate differs would
+  break the estimate silently.
 
 ## CrewAI Traces
 

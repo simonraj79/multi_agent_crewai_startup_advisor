@@ -1,6 +1,7 @@
 import { buildMockSegments, type MockScriptStep } from '../data/mockFrames'
 import { MOCK_GRAPH } from '../data/mockGraph'
 import { readErrorDetail, retryAfterSentence } from '../data/serverLimits'
+import { getAccessToken } from './authClient'
 import type {
   BackendFramePage,
   BackendGatePrompt,
@@ -8,6 +9,7 @@ import type {
   FrameData,
   GateReply,
   GraphDescriptor,
+  RunHistoryEntry,
   RunSnapshot,
   StartRunResponse,
   StudioFrame,
@@ -82,12 +84,30 @@ export class StudioApi {
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 900)
     try {
-      const response = await fetch(`${this.baseUrl}/api/workflows`, {
+      const response = await this.authedFetch('/api/workflows', {
         headers: { Accept: 'application/json' },
         signal: controller.signal,
       })
       const contentType = response.headers.get('content-type') ?? ''
-      this.mode = response.ok && contentType.includes('application/json') ? 'live' : 'mock'
+      /*
+       * A 401 means LIVE, not mock, and getting this wrong is the worst bug
+       * this file can have.
+       *
+       * The old test was `response.ok`, so once the API started requiring
+       * authentication, a signed-out visitor - or one whose token had not been
+       * minted yet on first paint - probed, got 401, and was dropped into the
+       * silent scripted mock: a complete, entirely fabricated run with nothing
+       * on screen to say so. That is Deployment trap 2 reached by a new route.
+       *
+       * The distinction is sound because a 401 can only come from a real
+       * server. There is nothing to fall back TO when the backend is
+       * demonstrably answering; the right response is to sign in.
+       */
+      if (response.status === 401) {
+        this.mode = 'live'
+      } else {
+        this.mode = response.ok && contentType.includes('application/json') ? 'live' : 'mock'
+      }
     } catch {
       this.mode = 'mock'
     } finally {
@@ -194,16 +214,39 @@ export class StudioApi {
     let attempts = 0
     let closed = false
 
-    const connect = () => {
+    /*
+     * Async, because the token has to be fetched before the URL can be built.
+     *
+     * Two consequences are handled below and neither is optional. The `closed`
+     * flag is re-checked AFTER the await: an unsubscribe that lands while the
+     * token is in flight would otherwise open a socket nobody is listening to,
+     * which then reconnects forever. And every caller is fire-and-forget, so
+     * this must never reject - `getAccessToken` already swallows its own
+     * failures and returns null, and a null token simply produces the
+     * unauthenticated URL the server will refuse with 4401.
+     */
+    const connect = async () => {
       handlers.onStatus(attempts === 0 ? 'connecting' : 'reconnecting')
+      const token = await getAccessToken()
+      if (closed) return
       const base = new URL(this.baseUrl || window.location.origin, window.location.origin)
       base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:'
       base.pathname = '/ws'
-      base.search = new URLSearchParams({
+      /*
+       * The credential rides in the query string because the browser
+       * WebSocket API cannot set request headers on a handshake - there is no
+       * `Authorization` option to pass. The server documents the same
+       * trade-off from its side (`service/app.py::stream_frames`): a URL is
+       * logged where a header is not, which is survivable only because this is
+       * the 15-minute JWT and never the session cookie.
+       */
+      const query: Record<string, string> = {
         session_id: sessionId,
         run_id: runIdValue,
         after: String(handlers.getAfter()),
-      }).toString()
+      }
+      if (token) query.access_token = token
+      base.search = new URLSearchParams(query).toString()
       socket = new WebSocket(base)
 
       socket.addEventListener('open', () => {
@@ -239,7 +282,9 @@ export class StudioApi {
       socket.addEventListener('error', () => socket?.close())
     }
 
-    connect()
+    // Floating on purpose: `connect` is async now but never rejects, and the
+    // caller wants the unsubscribe function back immediately, not a socket.
+    void connect()
     return () => {
       closed = true
       window.clearTimeout(reconnectTimer)
@@ -348,10 +393,30 @@ export class StudioApi {
     window.setTimeout(() => run.handlers?.onFrame(frame), 380)
   }
 
+  /**
+   * The signed-in caller's own runs, newest first.
+   *
+   * Returns an empty list rather than throwing when the transport is mocked or
+   * the server refuses: a history sidebar failing to load must never be the
+   * thing that stops someone launching a run. The API applies the ownership
+   * filter in SQL, so there is nothing to filter here.
+   */
+  async listRuns(limit = 25): Promise<RunHistoryEntry[]> {
+    if (this.mode !== 'live') return []
+    try {
+      const page = await this.fetchJson<{ runs: RunHistoryEntry[] }>(
+        `/api/runs?limit=${encodeURIComponent(String(limit))}`,
+      )
+      return page.runs ?? []
+    } catch {
+      return []
+    }
+  }
+
   async downloadLogs(runIdValue: string, format: LogFormat = 'ndjson'): Promise<void> {
     if (this.mode === 'live') {
-      const response = await fetch(
-        `${this.baseUrl}/api/runs/${encodeURIComponent(runIdValue)}/logs?format=${encodeURIComponent(format)}`,
+      const response = await this.authedFetch(
+        `/api/runs/${encodeURIComponent(runIdValue)}/logs?format=${encodeURIComponent(format)}`,
       )
       if (!response.ok) throw new Error(`Log download failed (${response.status})`)
       // The blob is only created once the response is known good, so a failed
@@ -403,8 +468,35 @@ export class StudioApi {
     }
   }
 
+  /**
+   * `fetch` with the bearer token attached, and one retry on 401.
+   *
+   * The retry matters because the client's idea of freshness is only a guess.
+   * `getAccessToken` decides from the token's own `exp`, but the API is the
+   * authority: a session revoked server-side, or a key rotated on the auth
+   * service, leaves a token here that still looks perfectly valid. Rather than
+   * showing the operator "your session has expired" for a session that has not,
+   * a 401 forces one fresh mint and one retry. Exactly one - a second 401 is
+   * the real answer, and looping would turn an expired login into a hot loop
+   * against the auth service.
+   */
+  private async authedFetch(
+    path: string,
+    init?: RequestInit,
+    allowRetry = true,
+  ): Promise<Response> {
+    const token = await getAccessToken(!allowRetry)
+    const headers = new Headers(init?.headers)
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers })
+    if (response.status === 401 && allowRetry && token) {
+      return this.authedFetch(path, init, false)
+    }
+    return response
+  }
+
   private async fetchJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, init)
+    const response = await this.authedFetch(path, init)
     if (!response.ok) {
       /*
        * What the operator is shown when the server refuses.
@@ -535,6 +627,7 @@ export type StudioApiLike = Pick<
   | 'replyGate'
   | 'cancelRun'
   | 'downloadLogs'
+  | 'listRuns'
 >
 
 export const studioApi = new StudioApi()

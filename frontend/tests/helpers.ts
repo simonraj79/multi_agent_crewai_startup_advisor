@@ -9,6 +9,7 @@ import type {
   RunSnapshot,
   StartRunResponse,
   UsageMetrics,
+  RunHistoryEntry,
 } from '../src/types/studio'
 
 export const RUN_ID = 'run-under-test'
@@ -98,6 +99,23 @@ export class FakeStudioApi implements StudioApiLike {
 
   async getFrames(_id: string, after: number): Promise<FrameData[]> {
     return this.storedFrames.filter((frame) => frame.seq > after)
+  }
+
+  /**
+   * The history the double will report, and a record of who asked.
+   *
+   * Present because `StudioApiLike` requires it, and `StudioApiLike` requires
+   * it on purpose: the real client gained `listRuns` and the compiler refused
+   * this class until it did too. That is the mechanism CLAUDE.md's closed items
+   * 15 and 33 both describe - a double that quietly diverges from its subject
+   * certifies nothing, and here the divergence could not stay quiet.
+   */
+  historyRuns: RunHistoryEntry[] = []
+  listRunsCalls: number[] = []
+
+  async listRuns(limit = 25): Promise<RunHistoryEntry[]> {
+    this.listRunsCalls.push(limit)
+    return this.historyRuns.slice(0, limit)
   }
 
   subscribe(runIdValue: string, _sessionId: string, handlers: StreamHandlers): () => void {

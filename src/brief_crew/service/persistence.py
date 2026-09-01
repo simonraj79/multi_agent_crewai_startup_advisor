@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 import json
+import logging
 import math
 import re
 from typing import TYPE_CHECKING, Any
@@ -47,6 +48,8 @@ from brief_crew.events import FrameData
 if TYPE_CHECKING:
     from crewai.flow.async_feedback.types import PendingFeedbackContext
 
+
+logger = logging.getLogger(__name__)
 
 MAX_JSON_BYTES = 1_048_576
 MAX_JSON_DEPTH = 16
@@ -121,6 +124,22 @@ runs = Table(
     metadata,
     Column("id", String(128), primary_key=True),
     Column("session_id", String(128), nullable=False),
+    # The authenticated owner: Better Auth's `user.id`, or NULL.
+    #
+    # NULLABLE is a decision, not an oversight, and it has to stay that way for
+    # two distinct reasons. Rows written before authentication existed have no
+    # owner and cannot be given one retroactively - a NOT NULL column could not
+    # be added to the live table at all without inventing an owner for them. And
+    # the service still runs unauthenticated by design in tests, in SYNTHETIC
+    # mode and in a bare local checkout, where there is no identity to record.
+    #
+    # There is deliberately NO ForeignKey to a `user` table. That table is owned
+    # by Better Auth in a different language and its migrations are run by a
+    # different tool; a constraint here would make the Python service's schema
+    # depend on the Node service having migrated first, and would fail an insert
+    # at runtime rather than at deploy. Ownership is enforced in the service
+    # layer, where the 404-versus-403 decision is made anyway.
+    Column("user_id", String(128)),
     Column("workflow_id", String(128), nullable=False),
     Column("flow_id", String(128)),
     Column("graph_version", String(128), nullable=False),
@@ -140,6 +159,9 @@ runs = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 Index("ix_runs_session_created", runs.c.session_id, runs.c.created_at)
+# "my runs, newest first" is the only query the history list makes, and without
+# this it is a full scan of every run by every user.
+Index("ix_runs_user_created", runs.c.user_id, runs.c.created_at)
 Index("ix_runs_flow_id", runs.c.flow_id)
 Index("ix_runs_status_created", runs.c.status, runs.c.created_at)
 
@@ -412,6 +434,68 @@ class PostgresFlowPersistence(FlowPersistence):
     def init_db(self) -> None:
         """Create the flow and service persistence schema if it is absent."""
         metadata.create_all(self._engine)
+        self._add_missing_columns()
+
+    # Columns added to a table that already SHIPPED, as (table, column, DDL type).
+    #
+    # `metadata.create_all()` is create-if-absent, per TABLE. It does nothing at
+    # all to a table that already exists, so a column added to a Table()
+    # definition above appears on a fresh database and is silently missing on
+    # every deployed one - and the failure is not at startup but at the first
+    # INSERT, which names the new column and gets "no such column" from a
+    # production database mid-request.
+    #
+    # This repo has no Alembic, and adding it for one nullable column would be a
+    # large dependency for a small need. What it does have is an invariant worth
+    # keeping: additive, nullable columns only. Anything that needs a backfill, a
+    # NOT NULL, a rename or a drop does NOT belong here - that is the point at
+    # which a real migration tool has become cheaper than this list.
+    _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
+        ("runs", "user_id", "VARCHAR(128)"),
+    )
+
+    def _add_missing_columns(self) -> None:
+        """Bring an already-deployed schema up to the table definitions above.
+
+        Idempotent: it inspects first and issues DDL only for what is genuinely
+        absent, so it is safe on every startup, on a fresh database, and on one
+        that is already current.
+        """
+        from sqlalchemy import inspect as sqlalchemy_inspect
+        from sqlalchemy import text
+
+        inspector = sqlalchemy_inspect(self._engine)
+        existing_tables = set(inspector.get_table_names())
+
+        for table_name, column_name, column_type in self._ADDITIVE_COLUMNS:
+            if table_name not in existing_tables:
+                continue  # create_all just made it, with the column already on it
+            present = {
+                column["name"] for column in inspector.get_columns(table_name)
+            }
+            if column_name in present:
+                continue
+            # The identifiers are literals in _ADDITIVE_COLUMNS, never user
+            # input, so there is nothing here to parameterise - DDL cannot take
+            # bound parameters for identifiers in any case.
+            with self._begin() as connection:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE {table_name} "
+                        f"ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+            logger.info("added missing column %s.%s", table_name, column_name)
+
+        # Indexes are created by create_all only alongside their own table, so an
+        # index on a newly added column has to be asked for separately.
+        for index in runs.indexes:
+            try:
+                index.create(bind=self._engine, checkfirst=True)
+            except Exception as exc:  # noqa: BLE001
+                # A missing index costs a slow query, never a wrong answer. It
+                # must not be the reason a service fails to start.
+                logger.warning("could not ensure index %s: %s", index.name, exc)
 
     def close(self) -> None:
         """Dispose an engine created by this repository."""
@@ -527,11 +611,18 @@ class PostgresFlowPersistence(FlowPersistence):
         inputs: Mapping[str, Any] | None = None,
         run_id: str | None = None,
         flow_id: str | None = None,
+        user_id: str | None = None,
         status: Any = "queued",
         created_at: datetime | None = None,
     ) -> dict[str, Any]:
         run_id = _identifier(run_id or uuid.uuid4(), label="run_id")
         session_id = _identifier(session_id, label="session_id")
+        # Bounded like every other identifier that reaches a column. The value
+        # originates in a VERIFIED token claim, not in the request body, so this
+        # is a width check rather than a trust boundary - but the column is
+        # VARCHAR(128) and an over-long id must fail here, with a name, rather
+        # than as a driver-level truncation error deep in an insert.
+        owner = _identifier(user_id, label="user_id") if user_id else None
         workflow_id = _identifier(workflow_id, label="workflow_id")
         graph_version = _identifier(graph_version, label="graph_version")
         flow_id = _identifier(flow_id, label="flow_id") if flow_id is not None else None
@@ -544,6 +635,7 @@ class PostgresFlowPersistence(FlowPersistence):
                 insert(runs).values(
                     id=run_id,
                     session_id=session_id,
+                    user_id=owner,
                     workflow_id=workflow_id,
                     flow_id=flow_id,
                     graph_version=graph_version,
@@ -999,6 +1091,52 @@ class PostgresFlowPersistence(FlowPersistence):
         with self._connect() as connection:
             rows = connection.execute(statement).mappings().all()
         return [self._gate_dict(row) for row in rows]
+
+    def list_runs_for_user(
+        self,
+        user_id: str,
+        *,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        """One person's runs, newest first - the history list's only query.
+
+        Deliberately NOT ``get_run`` in a loop. ``get_run`` pays two subqueries
+        per row (frame statistics and the open gate) to answer questions a list
+        does not ask, so a 25-row history would cost 50 extra queries to render
+        a verdict and a timestamp.
+
+        The ``user_id`` filter is applied in SQL rather than by fetching and
+        filtering in Python. That is not only faster - it means a bug in the
+        service layer cannot leak another person's row into a response, because
+        the row was never selected. ``ix_runs_user_created`` covers exactly this
+        predicate and ordering.
+
+        An empty or missing ``user_id`` returns nothing rather than everything.
+        The dangerous reading of "no user" is "no filter", and a caller that
+        arrives here with None is a caller whose authentication did not happen.
+        """
+        if not user_id:
+            return []
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        owner = _identifier(user_id, label="user_id")
+        statement = (
+            select(
+                runs.c.id,
+                runs.c.workflow_id,
+                runs.c.status,
+                runs.c.inputs,
+                runs.c.created_at,
+                runs.c.completed_at,
+                runs.c.usage,
+            )
+            .where(runs.c.user_id == owner)
+            .order_by(runs.c.created_at.desc())
+            .limit(limit)
+        )
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [dict(row) for row in rows]
 
     def list_stale_runs(
         self,

@@ -44,6 +44,12 @@ service = [
     "uvicorn>=0.32.0",
     "sqlalchemy>=2.0.0",
     "psycopg[binary]>=3.2.0",
+    # Verifies the short-lived JWT the Better Auth service issues
+    # (frontend/server/auth.ts). The [crypto] extra is NOT optional: Better
+    # Auth signs with EdDSA/Ed25519, and PyJWT can only handle an OKP key
+    # when `cryptography` is installed. Without it verification fails at
+    # runtime with NotImplementedError, not at import.
+    "pyjwt[crypto]>=2.10.0",
 ]
 
 [project.scripts]

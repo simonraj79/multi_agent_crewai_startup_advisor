@@ -864,6 +864,43 @@ def anchor_problems(
     return []
 
 
+def anchor_margins(
+    verdict: Verdict,
+    *,
+    anchors: Mapping[str, Mapping[int, str]] = RUBRIC_ANCHORS,
+) -> dict[str, float]:
+    """How close each dimension's anchor text came to its rubric anchor, 0-1.
+
+    The MARGIN, recorded on success as well as on failure - which is the whole
+    point, and was the gap.
+
+    `anchor_problems` computes this same overlap and mentions it only when it is
+    already too low ("matches 62% of its rubric anchor"). On a passing run the
+    number was discarded, so the only signal available was pass/fail against a
+    fixed 0.85 threshold: a cliff with no approach visible.
+
+    That matters because the threshold is the thing a cheaper model falls off.
+    `VALIDATOR_SYNTHESIST_REASONING_EFFORT` moved from "high" to "low" on
+    2026-09-01 for latency, and the first thing predicted to degrade was the
+    Synthesist's ability to reproduce anchor prose. Watching the mean margin
+    drift 0.95 -> 0.88 -> 0.86 across runs is a LEADING indicator; waiting for
+    the first rejection is a lagging one, and a rejection costs a full retry of
+    an escalation-tier call.
+
+    Level 1 is excluded: it is matched verbatim rather than by overlap, so it has
+    no margin to report - it is 1.0 or it is a rejection.
+    """
+
+    margins: dict[str, float] = {}
+    for code, field_name in _DIMENSIONS:
+        dimension: DimensionScore = getattr(verdict, field_name)
+        expected = anchors.get(code, {}).get(dimension.score)
+        if expected is None or dimension.score == 1:
+            continue
+        margins[code] = round(token_overlap(dimension.anchor_matched, expected), 4)
+    return margins
+
+
 def rubric_problems(
     verdict: Verdict,
     *,
@@ -1146,6 +1183,7 @@ __all__ = [
     # Re-exported from config so the guardrail stays the single import point
     # for callers that need the rubric text; config.py owns the values.
     "ANCHOR_MATCH_THRESHOLD",
+    "anchor_margins",
     "CITATION_GUARDRAIL",
     "COMPETITIVE_ROOM_ANCHORS",
     "DEMAND_ANCHORS",

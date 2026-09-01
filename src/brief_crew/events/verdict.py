@@ -40,6 +40,8 @@ from crewai.events.base_events import BaseEvent
 from crewai.events.event_bus import crewai_event_bus
 
 from brief_crew.schemas.validator import Verdict
+# No cycle: `validator_guardrails` imports only config and schemas.
+from brief_crew.validator_guardrails import anchor_margins
 
 
 logger = logging.getLogger(__name__)
@@ -97,6 +99,17 @@ def verdict_frame_details(verdict: Verdict) -> dict[str, Any]:
             "feasibility": verdict.feasibility.score,
             "headroom_over_free": verdict.headroom_over_free.score,
         },
+        # The MARGIN, not just the verdict. Five floats, bounded 0-1, keyed by
+        # DimensionCode - it cannot be clipped and cannot grow.
+        #
+        # `anchor_problems` rejects below ANCHOR_MATCH_THRESHOLD (0.85) and
+        # mentions the overlap only in that rejection, so a passing run recorded
+        # nothing and the only observable was a cliff with no approach. These
+        # are what make a reasoning-effort change measurable from ordinary
+        # traffic rather than from a paid experiment: mean margin drifting
+        # toward the threshold is a leading indicator, a first rejection is a
+        # lagging one - and a rejection costs a full escalation-tier retry.
+        "anchor_margins": anchor_margins(verdict),
     }
 
 

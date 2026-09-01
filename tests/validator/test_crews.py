@@ -15,8 +15,9 @@ from brief_crew.config import (
     ESCALATION_MODEL,
     LEVEL_ONE_ANCHOR,
     RUBRIC_ANCHORS,
+    VALIDATOR_ESCALATION_PROVIDER_SORT,
     VALIDATOR_SYNTHESIST_REASONING_EFFORT,
-    openrouter_reasoning_params,
+    openrouter_escalation_params,
 )
 from brief_crew.crews.validator_crew import (
     FeasibilityCrew,
@@ -184,9 +185,14 @@ class ValidatorCrewWiringTests(unittest.TestCase):
 
         self.assertEqual(
             llm.additional_params,
-            openrouter_reasoning_params(VALIDATOR_SYNTHESIST_REASONING_EFFORT),
+            openrouter_escalation_params(VALIDATOR_SYNTHESIST_REASONING_EFFORT),
         )
-        self.assertNotIn(VALIDATOR_SYNTHESIST_REASONING_EFFORT, {"minimal", "none"})
+        # "minimal"/"none" are not merely undesirable here - the live catalogue
+        # reports supported_efforts ["high","medium","low"] with reasoning
+        # MANDATORY on this model, so either value would be dropped by the
+        # provider and the arm would silently run at the default while looking
+        # configured.
+        self.assertIn(VALIDATOR_SYNTHESIST_REASONING_EFFORT, {"high", "medium", "low"})
 
     def test_reasoning_effort_reaches_the_openrouter_request_body(self) -> None:
         """⚠️ `LLM(reasoning_effort=...)` is silently dropped for OpenRouter.
@@ -204,9 +210,16 @@ class ValidatorCrewWiringTests(unittest.TestCase):
             model=ESCALATION_MODEL, reasoning_effort="high"
         )._prepare_completion_params(message)
 
+        # BOTH knobs must reach the body. The provider block is what routes the
+        # call to a faster endpoint - measured at 216 tok/s against the 60 tok/s
+        # this pipeline was landing on - and it travels the same way reasoning
+        # does, so a regression that drops one would probably drop both.
         self.assertEqual(
             wired.get("extra_body"),
-            {"reasoning": {"effort": VALIDATOR_SYNTHESIST_REASONING_EFFORT}},
+            {
+                "reasoning": {"effort": VALIDATOR_SYNTHESIST_REASONING_EFFORT},
+                "provider": {"sort": VALIDATOR_ESCALATION_PROVIDER_SORT},
+            },
         )
         self.assertNotIn("reasoning_effort", wired)
         self.assertNotIn("reasoning_effort", ignored)

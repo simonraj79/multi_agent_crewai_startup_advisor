@@ -25,6 +25,13 @@
         "competitive_room": 3,
         "feasibility": 3,
         "headroom_over_free": 3
+      },
+      "anchor_margins": {
+        "D": 0.1,
+        "M": 0.125,
+        "C": 0.0714,
+        "F": 0.0833,
+        "X": 0.0476
       }
     }
   },
@@ -52,6 +59,13 @@
         "competitive_room": 3,
         "feasibility": 3,
         "headroom_over_free": 3
+      },
+      "anchor_margins": {
+        "D": 0.0769,
+        "M": 0.125,
+        "C": 0.0714,
+        "F": 0.0833,
+        "X": 0.0476
       }
     }
   }

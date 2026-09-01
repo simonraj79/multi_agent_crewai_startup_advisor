@@ -155,8 +155,32 @@ class VerdictFrameContractTests(unittest.TestCase):
                     "feasibility": 3,
                     "headroom_over_free": 3,
                 },
+                # Added 2026-09-01 with the reasoning-effort drop. How closely
+                # each dimension's prose matched its rubric anchor, 0-1, keyed
+                # by DimensionCode.
+                #
+                # `anchor_problems` rejects below 0.85 and reported the overlap
+                # only inside that rejection, so a passing run recorded nothing
+                # and the threshold was a cliff with no visible approach. That
+                # matters now that the Synthesist runs at "low" effort: anchor
+                # reproduction is the first thing expected to degrade, and a
+                # rejection costs a full escalation-tier retry.
+                #
+                # D is absent: score 0 has no level-1 exemption but IS matched
+                # by overlap, so it appears whenever the ladder has that level.
+                # Level 1 is excluded because it is matched VERBATIM - there is
+                # no margin to report, only a pass or a rejection.
+                "anchor_margins": self.rejected.to_dict()["details"]["anchor_margins"],
             },
         )
+        margins = self.rejected.to_dict()["details"]["anchor_margins"]
+        self.assertTrue(margins, "the margins must not be empty for this verdict")
+        for code, value in margins.items():
+            with self.subTest(dimension=code):
+                self.assertIn(code, {"D", "M", "C", "F", "X"})
+                self.assertIsInstance(value, float)
+                self.assertGreaterEqual(value, 0.0)
+                self.assertLessEqual(value, 1.0)
 
     def test_an_empty_floor_list_and_a_null_reason_are_present_not_omitted(self) -> None:
         """A verdict decided by the composite alone still says so.

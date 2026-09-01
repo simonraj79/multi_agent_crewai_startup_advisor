@@ -20,8 +20,9 @@ from brief_crew.config import (
     VALIDATOR_BRANCH_TEMPERATURE,
     VALIDATOR_MARKET_SEARCH_LIMIT,
     VALIDATOR_SENTIMENT_STORY_LIMIT,
+    VALIDATOR_REPORTER_REASONING_EFFORT,
     VALIDATOR_SYNTHESIST_REASONING_EFFORT,
-    openrouter_reasoning_params,
+    openrouter_escalation_params,
 )
 from brief_crew.schemas import (
     FeasibilityFindings,
@@ -350,7 +351,7 @@ class SynthesisCrew:
             tools=[],
             llm=LLM(
                 model=ESCALATION_MODEL,
-                additional_params=openrouter_reasoning_params(
+                additional_params=openrouter_escalation_params(
                     VALIDATOR_SYNTHESIST_REASONING_EFFORT
                 ),
             ),
@@ -390,10 +391,25 @@ class ReportCrew:
 
     @agent
     def reporter(self) -> Agent:
+        # The effort is EXPLICIT here too, since 2026-09-01. A bare
+        # `LLM(model=ESCALATION_MODEL)` inherits the provider default -
+        # "medium" for this model - which is a setting nobody chose, on a step
+        # that took 60 seconds of a 150-second pipeline.
+        #
+        # The Reporter makes no scoring judgement: every number it prints was
+        # decided and overwritten by `Verdict` before it ran, and its output is
+        # checked for source closure mechanically and for attribution by a
+        # judge. Writing prose over settled facts is the cheapest thing this
+        # model does.
         return Agent(
             config=self.agents_config["reporter"],  # type: ignore[index]
             tools=[],
-            llm=LLM(model=ESCALATION_MODEL),
+            llm=LLM(
+                model=ESCALATION_MODEL,
+                additional_params=openrouter_escalation_params(
+                    VALIDATOR_REPORTER_REASONING_EFFORT
+                ),
+            ),
             allow_delegation=False,
         )
 

@@ -272,8 +272,8 @@ synthesis_task:
     same time; that is the intended reading, not a contradiction.
 
     D - Demand. Is anyone actively trying to solve this today?
-      0: At least 3 usable threads, and none of them is a problem thread: nobody in the evidence describes having this problem.
-      1: Evidence does not reach this question — the sentiment branch returned fewer than 3 usable threads and no problem thread.
+      0: At least 5 usable threads, and none of them is a problem thread: nobody in the evidence describes having this problem.
+      1: Evidence does not reach this question — the sentiment branch returned fewer than 5 usable threads and no problem thread.
       2: 1 or 2 problem threads, or at least 3 problem threads none of which is dated within 24 months.
       3: At least 3 problem threads, and at least 1 of them dated within 24 months.
       4: Anchor 3, and at least 1 problem thread is classified BUILT_WORKAROUND or PAYS.

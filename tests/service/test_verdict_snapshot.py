@@ -31,6 +31,18 @@ from brief_crew.service.registry import RunRegistry, WorkflowRuntime
 from brief_crew.service.runner import SyntheticValidatorRunner
 
 
+#: The verdict payload's frozen contract, asserted as an EXACT set on both the
+#: live and the synthetic path. An extra key is as much a change as a missing
+#: one - the point of this shape is that it stays a hand-picked subset of
+#: `Verdict` rather than drifting toward a full model dump.
+#:
+#: `anchor_margins` joined on 2026-09-01, with the drop of
+#: VALIDATOR_SYNTHESIST_REASONING_EFFORT from "high" to "low". It carries how
+#: closely each dimension reproduced its rubric anchor, and it is here rather
+#: than in a log because it is the LEADING indicator for that change: anchor
+#: reproduction is what a cheaper reasoning setting degrades first, the
+#: guardrail only reports it once it is already below 0.85, and a rejection
+#: costs a full escalation-tier retry.
 VERDICT_KEYS = {
     "verdict",
     "composite_score",
@@ -40,6 +52,7 @@ VERDICT_KEYS = {
     "fatal_floors",
     "decision_reason",
     "dimensions",
+    "anchor_margins",
 }
 
 

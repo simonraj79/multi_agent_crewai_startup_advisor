@@ -797,3 +797,64 @@ class VendorOwnedIsTriStateTests(unittest.TestCase):
 
         self.assertTrue(support.one_ok)
         self.assertEqual(support.ceiling, 1)
+
+
+class DemandAnchorsTrackTheFloorTests(unittest.TestCase):
+    """The only legal D anchor must be TRUE of the evidence, at every count.
+
+    A dead zone existed for about an hour on 2026-09-01. RATIFICATION C7 raised
+    RUBRIC_FLOOR_MIN_USABLE_THREADS from 3 to 5 and left the anchor prose saying
+    "3". At 3 or 4 usable threads with no problem thread, `zero_ok` was false
+    and `one_ok` true - so score 1 was the only legal answer, and its anchor
+    asserted "fewer than 3 usable threads", which is false of that evidence,
+    while D=0's anchor was true of it and rejected with SCORE_FLOOR_D.
+
+    A careful model picks the true one, is rejected, and re-runs an entire
+    escalation-tier task. Level 1 is matched by EXACT string equality, so the
+    only way forward was to reproduce a false sentence character-perfect.
+
+    The anchors now interpolate the constant, so the two cannot drift. This
+    tests the PROPERTY rather than the number: raise the floor to 7 and it still
+    has to hold.
+    """
+
+    def branch(self, usable: int) -> SentimentFindings:
+        rows = [
+            Thread(
+                classification="OPINION",
+                quote=f"An on-topic remark {index}.",
+                url=f"https://news.ycombinator.com/item?id={index}",
+                date=RECENT,
+            )
+            for index in range(usable)
+        ]
+        return SentimentFindings(
+            sources=rows,
+            source_urls=[row.url for row in rows],
+            gaps=[] if rows else ["Nothing usable."],
+            tool_status="ok" if rows else "empty",
+        )
+
+    def test_no_thread_count_forces_a_false_anchor(self) -> None:
+        floor = RUBRIC_FLOOR_MIN_USABLE_THREADS
+        for usable in range(0, floor + 3):
+            with self.subTest(usable_threads=usable):
+                support = rubric_support(
+                    market_findings(), self.branch(usable), partial_repos(3), now=NOW
+                )["D"]
+                # Exactly one of the two reserved levels is legal, and it is the
+                # one whose sentence is true.
+                self.assertNotEqual(
+                    support.zero_ok,
+                    support.one_ok,
+                    "0 and 1 must partition this evidence, never overlap or leave a gap",
+                )
+                self.assertEqual(support.one_ok, usable < floor)
+                self.assertEqual(support.zero_ok, usable >= floor)
+
+    def test_the_anchor_text_states_the_floor_it_is_enforced_against(self) -> None:
+        """Interpolated, so a future change to the constant cannot leave prose
+        behind - which is exactly how the dead zone appeared."""
+        floor = str(RUBRIC_FLOOR_MIN_USABLE_THREADS)
+        self.assertIn(floor, RUBRIC_ANCHORS["D"][0])
+        self.assertIn(floor, RUBRIC_ANCHORS["D"][1])

@@ -397,15 +397,52 @@ LEVEL_ONE_ANCHOR = "Evidence does not reach this question"
 # them a problem thread. Counted over SentimentFindings.sources, with
 # the paying-segment clause at anchor 5 reading MarketFindings.paying_segments,
 # so top demand needs the market branch to agree - a failed market branch caps
+# RATIFICATION C7 (2026-09-01): 5, not 3. Set WITH MARGIN against
+# VALIDATOR_SENTIMENT_STORY_LIMIT rather than at the ladder's own smallest
+# count.
+#
+# At 3 of a possible 5 the floor fired one OFF_TOPIC/OPINION flip away from not
+# firing, and that pair of labels is the softest judgement in the pipeline - it
+# was undefined anywhere the Sentiment Analyst could read it until C7(a). One
+# fixed retrieval of five threads measured 3 OPINION + 2 OFF_TOPIC as
+# REJECT / FLOOR_NO_DEMAND, and flipping ONE label to OFF_TOPIC as NEEDS_WORK.
+# Same evidence, opposite verdict, zero margin.
+#
+# At 5 the floor requires the branch to have retrieved a full page of on-topic
+# discussion and found no problem in any of it. It bounds a FLOOR only: it never
+# raises a score, and D=1 absorbs every state it excludes.
+RUBRIC_FLOOR_MIN_USABLE_THREADS = 5
+
 # D at 4, deliberately.
 DEMAND_ANCHORS: dict[int, str] = {
+    # ⚠️ INTERPOLATED from RUBRIC_FLOOR_MIN_USABLE_THREADS, not written out.
+    #
+    # These said "3" while the constant said 5 for about an hour on 2026-09-01 -
+    # RATIFICATION C7 raised the floor and left the prose behind. The result was
+    # a DEAD ZONE, not a cosmetic mismatch: at 3 or 4 usable threads with no
+    # problem thread, `zero_ok` is false and `one_ok` is true, so score 1 is the
+    # only legal answer - and its anchor asserted "fewer than 3", which is false
+    # of that evidence, while D=0's anchor was true of it and rejected.
+    #
+    # A careful model picks 0, is rejected with SCORE_FLOOR_D, and re-runs the
+    # entire escalation-tier task. Worse, level 1 is matched by EXACT string
+    # equality, so the model had to reproduce a false sentence character-perfect
+    # to proceed.
+    #
+    # Not a corner case: VALIDATOR_SENTIMENT_STORY_LIMIT is 5, and C7's own
+    # justification names the retrieval that lands here - "3 OPINION + 2
+    # OFF_TOPIC" is usable=3, problems=0, dead centre of the zone it created.
+    #
+    # Interpolating makes the drift impossible to reintroduce silently: change
+    # the constant and these move with it, and the verbatim-quote test then
+    # fails until `tasks.yaml` is resynced. Loud, not silent.
     0: (
-        "At least 3 usable threads, and none of them is a problem thread: nobody in the "
-        "evidence describes having this problem."
+        f"At least {RUBRIC_FLOOR_MIN_USABLE_THREADS} usable threads, and none of them is "
+        "a problem thread: nobody in the evidence describes having this problem."
     ),
     1: (
-        f"{LEVEL_ONE_ANCHOR} — the sentiment branch returned fewer than 3 usable threads "
-        "and no problem thread."
+        f"{LEVEL_ONE_ANCHOR} — the sentiment branch returned fewer than "
+        f"{RUBRIC_FLOOR_MIN_USABLE_THREADS} usable threads and no problem thread."
     ),
     2: (
         "1 or 2 problem threads, or at least 3 problem threads none of which is dated "
@@ -629,21 +666,7 @@ RUBRIC_REUSABLE_MAX_PUSH_MONTHS = 12
 # and the number `docs/rubric-review.md` proposes for the same repair on M
 # and F. It bounds a floor only: it never raises a score, and D=1 absorbs
 # every state it excludes.
-# RATIFICATION C7 (2026-09-01): 5, not 3. Set WITH MARGIN against
-# VALIDATOR_SENTIMENT_STORY_LIMIT rather than at the ladder's own smallest
-# count.
-#
-# At 3 of a possible 5 the floor fired one OFF_TOPIC/OPINION flip away from not
-# firing, and that pair of labels is the softest judgement in the pipeline - it
-# was undefined anywhere the Sentiment Analyst could read it until C7(a). One
-# fixed retrieval of five threads measured 3 OPINION + 2 OFF_TOPIC as
-# REJECT / FLOOR_NO_DEMAND, and flipping ONE label to OFF_TOPIC as NEEDS_WORK.
-# Same evidence, opposite verdict, zero margin.
-#
-# At 5 the floor requires the branch to have retrieved a full page of on-topic
-# discussion and found no problem in any of it. It bounds a FLOOR only: it never
-# raises a score, and D=1 absorbs every state it excludes.
-RUBRIC_FLOOR_MIN_USABLE_THREADS = 5
+
 
 # RATIFICATION C2 (2026-09-01). The same precondition, for the same reason, on
 # the market floor.
@@ -695,12 +718,103 @@ VALIDATOR_DAYS_PER_MONTH = 30.0
 # `openrouter_reasoning_params()` is the only place it is spelled out.
 #
 # F09: the Synthesist is the judgement step. It gets an EXPLICIT effort rather
-# than the provider default, and explicitly NOT the Evaluator's "minimal"
-# (agents/05-evaluator.md) - that setting is a cost control for a fixed
-# checklist, and copying it onto a five-dimension rubric call is the mistake
-# F09 names.
+# than the provider default, so the setting is a decision rather than an
+# accident.
+#
+# "low", not "high", since 2026-09-01, and the reason is measured. On the first
+# successful paid run the Synthesist took **61 SECONDS** for a single call with
+# no retries - 40% of a 150s pipeline - and `internal_reasoning` bills at
+# $3.75/M, the SAME rate as completion, so the thinking was paid for twice over
+# in latency and in money.
+#
+# The live catalogue is the authority on what is available here:
+#
+#     "reasoning": {"mandatory": true, "default_enabled": true,
+#                   "supported_efforts": ["high", "medium", "low"],
+#                   "default_effort": "medium"}
+#
+# Three things follow, and each has been got wrong in this file before:
+#   * Reasoning CANNOT be disabled on this model. `mandatory: true` means there
+#     is no zero-thinking option to fall back to.
+#   * There is no "minimal" tier. The Evaluator's "minimal" belongs to a
+#     DIFFERENT model; naming it here would silently fall through.
+#   * "low" is the floor, not a middle setting - so this is as far down as the
+#     dial goes without changing models.
+#
+# What justifies going to the floor rather than to "medium": the Synthesist is
+# not reasoning FREELY. It picks five integers from a 30-anchor ladder whose
+# text it must reproduce at 0.85 token overlap, over evidence it is handed, and
+# every arithmetic conclusion it might reach is recomputed and overwritten by
+# `Verdict`. The judgement is bounded and checked. If low degrades the choice,
+# `anchor_problems` and `score_support_problems` catch it - at the cost of a
+# retry, which is the risk this trade accepts.
 # --------------------------------------------------------------------------
-VALIDATOR_SYNTHESIST_REASONING_EFFORT = "high"
+VALIDATOR_SYNTHESIST_REASONING_EFFORT = "low"
+
+# The Reporter's effort, and it was the PROVIDER DEFAULT until 2026-09-01 -
+# `LLM(model=ESCALATION_MODEL)` with no reasoning params, so "medium" by
+# omission rather than by decision. It took 60 seconds on the first paid run,
+# the same order as the Synthesist.
+#
+# "low" is defensible here on stronger grounds than for the Synthesist: the
+# Reporter makes NO scoring judgement. Every number it prints was decided and
+# overwritten by `Verdict` before this step began, every URL it may cite was
+# returned by a tool, and its output is checked by a mechanical guardrail for
+# source closure and by a citation judge for attribution. It is writing prose
+# over settled facts, which is the cheapest thing a reasoning model does.
+VALIDATOR_REPORTER_REASONING_EFFORT = "low"
+
+
+
+# Route the escalation tier by THROUGHPUT rather than by OpenRouter's default
+# load balance. MEASURED 2026-09-01 via `list-model-endpoints` for
+# google/gemini-3.7-flash - tokens/second p50 over the trailing 30 minutes:
+#
+#   google-ai-studio/flex          $0.375/$1.875   216 tok/s    6,258 reqs
+#   google-ai-studio               $0.75 /$3.75     95 tok/s   27,783 reqs
+#   google-ai-studio/priority      $1.35 /$6.75     94 tok/s      750 reqs
+#   google-vertex/global/priority  $1.35 /$6.75     89 tok/s      421 reqs
+#   google-vertex/global           $0.75 /$3.75     60 tok/s  241,318 reqs
+#   google-vertex/global/flex      $0.375/$1.875    21 tok/s      862 reqs (degraded)
+#
+# Both escalation calls of a real paid run landed on `google-vertex/global` and
+# ran at 90.7 and 82.9 tok/s. Both steps are THROUGHPUT-bound: time-to-first-
+# token is 2.7-3.0s on every healthy endpoint, so `priority` buys nothing, and
+# the fastest endpoint here is also the cheapest.
+#
+# This is a ROUTING instruction, not a model change - same weights, same prompt,
+# same temperature, same reasoning effort. It cannot alter a single output
+# token, which makes it the one latency change with no exposure to the retry
+# trap: it cannot make a guardrail attempt fail more often.
+#
+# Deliberately NOT `:nitro` in the model string. That spelling moves the
+# `PRICES` key and its failure mode is a 404 that aborts a paid run; an ignored
+# `provider` block merely runs at today's speed. There is no outcome here worse
+# than the status quo.
+#
+# ⚠️ `PRICES` is NOT adjusted for the cheaper endpoint. It stays keyed on
+# ESCALATION_MODEL, which has not changed, and an over-estimate is the safe
+# direction for MAX_RUN_COST_USD - the recorded rate is now a CEILING rather
+# than a floor. Reconcile against `get-generation` using the `response_id` the
+# serializer records on every model-call frame.
+VALIDATOR_ESCALATION_PROVIDER_SORT = "throughput"
+
+
+def openrouter_escalation_params(effort: str | None) -> dict[str, object]:
+    """Reasoning effort AND throughput routing, in one ``extra_body``.
+
+    Both travel the same way and for the same reason - see
+    ``openrouter_reasoning_params`` for why CrewAI's own fields do not reach
+    OpenRouter - so they are assembled once rather than merged at three call
+    sites that could each forget one.
+    """
+
+    body: dict[str, object] = {}
+    if effort is not None:
+        body["reasoning"] = {"effort": effort}
+    if VALIDATOR_ESCALATION_PROVIDER_SORT:
+        body["provider"] = {"sort": VALIDATOR_ESCALATION_PROVIDER_SORT}
+    return {"extra_body": body} if body else {}
 
 
 def openrouter_reasoning_params(effort: str | None) -> dict[str, object]:
@@ -1227,6 +1341,29 @@ VALIDATOR_BRANCH_TEMPERATURE = _env_non_negative_float("VALIDATOR_BRANCH_TEMPERA
 # and no exception. If the branch model is ever changed back to a
 # reasoning-by-default model, this bound becomes a silent output-eraser.
 VALIDATOR_BRANCH_MAX_TOKENS = _env_positive_int("VALIDATOR_BRANCH_MAX_TOKENS", 2048)
+
+# NO max_tokens ON THE ESCALATION TIER. Deliberate, and reversed on 2026-09-01
+# the same day it was added.
+#
+# An 8192 ceiling was introduced here to bound generation, and it was the one
+# change in this optimisation that could CAUSE the failure the whole exercise is
+# trying to avoid. Truncation is not a quality regression that degrades
+# gracefully - it is a HARD failure: a clipped `Verdict` or `ValidationReport` is
+# invalid JSON, the guardrail rejects it, and CrewAI re-runs the ENTIRE task.
+# So a cap that fires costs a full extra escalation call, guaranteed, which is
+# larger than every saving on the list.
+#
+# The asymmetry decides it. Too high a ceiling costs nothing when unused; too low
+# costs a whole call every time it bites, and the bite is invisible until it
+# happens on the one run that mattered. The branches are bounded
+# (VALIDATOR_BRANCH_MAX_TOKENS) because they emit small fixed-shape findings and
+# a runaway there is a real cost; the escalation tier emits the deliverable, and
+# clipping the deliverable is the defect this repository has already fixed twice
+# (the 4096-character report, and the frame serializer's max_string).
+#
+# Latency here is bought with `reasoning.effort`, which shortens the THINKING -
+# billed at $3.75/M, the same as completion - rather than by cutting the answer
+# off mid-sentence.
 
 # --------------------------------------------------------------------------
 # Why the market branch timed out, and the three numbers that fix it

@@ -23,7 +23,7 @@ neither should ever be restated here.**
 > withdrawn. It now names no figure it does not own.)*
 
 > **[`docs/gotchas-and-insights.md`](docs/gotchas-and-insights.md) — the
-> mistakes, and how not to repeat them.** 28 numbered entries, each one
+> mistakes, and how not to repeat them.** 30 numbered entries, each one
 > symptom → cause → what to do, and each one something *not discoverable from
 > the code*: the Public Suffix List blocking `.onrender.com` cookies,
 > `create_all()` never altering a table that already shipped, `pkill` reporting
@@ -289,7 +289,7 @@ recreate the problem this move solves.
 | 7 | `onrender.com` is on the Public Suffix List |
 | 8 | A free Render web service sleeps, and that decides your architecture |
 
-That file carries **28 numbered entries** plus a set of reusable design
+That file carries **30 numbered entries** plus a set of reusable design
 insights. It covers the toolchain (`tsc -b` skipping an unreferenced config,
 Node's literal import resolution, Vite proxy ordering), the runtime
 (`create_all` never altering a shipped table, `value or DEFAULT` eating a

@@ -437,6 +437,57 @@ quoting anything: the env scan in [`tech-stack.md` §1](tech-stack.md), and
 you, the number is right and the prose is old. Keep figures in as few files as
 possible and link to them from everywhere else.
 
+### 29. `NODE_ENV=production` makes `npm ci` skip every devDependency
+
+**Symptom.** The first deploy of `agentic-crew-ai-studio` failed with:
+
+```text
+added 196 packages, and audited 197 packages in 4s
+> vue-tsc -b && vite build && tsc -p tsconfig.server.json
+sh: 1: vue-tsc: not found
+```
+
+**Cause.** npm reads `NODE_ENV`. At `production` it omits `devDependencies` —
+and `vue-tsc`, `vite` and `typescript` all live there. The 196 is the tell: a
+correct install is roughly twice that. Nothing warned; the install *succeeded*.
+
+**Why the obvious fix is wrong.** Dropping `NODE_ENV=production` makes the build
+pass and is a security regression: `frontend/server/auth.ts` reads it to decide
+`useSecureCookies`, so a production deploy would then issue a session cookie
+with no `Secure` flag. One variable serves a build-time and a run-time purpose
+that disagree, and npm resolves the disagreement in favour of the wrong one.
+
+**Do this.** Make the install explicit — `npm ci --include=dev && npm run build`
+— and keep `NODE_ENV=production` for the runtime. Any service that sets
+`NODE_ENV=production` *and* builds from devDependencies has this bug latent in
+it, including one whose `render.yaml` has never been applied.
+
+### 30. Renaming a Render service does not move its `.onrender.com` subdomain
+
+**Symptom.** `agentic-crew-ai-web` (a static site) was renamed to
+`agentic-crew-ai-web-legacy` specifically to free the hostname for a new Node
+service. The rename returned 200 and the name changed — and
+`agentic-crew-ai-web.onrender.com` kept serving the *renamed* service, while
+`agentic-crew-ai-web-legacy.onrender.com` did not resolve at all.
+
+**Cause.** The subdomain is assigned at **creation** and is sticky. The service
+name and the hostname are independent after that point.
+
+**Consequence.** A service type cannot be changed in place either — a
+`static_site` cannot become a `web_service` — so the replacement is always a
+*new* service, and it collides with the old one's hostname. Render then appends
+a random suffix, which is why this account already contains
+`agentic-rag-app-cvhu`, `council-frontend-cvic`, `kota-7bev` and `pace-api-sw3s`.
+
+**Do this.** Choose a **new, unused** name up front and verify it is free
+(`curl https://<name>.onrender.com/` → 404 means available, 200 means taken),
+*then* register that origin everywhere it is load-bearing. Here that is three
+places at once — the Google OAuth redirect URI, the cookie origin, and the JWT
+`iss`/`aud` — so a guessed hostname fails in three different-looking ways. This
+is [trap 2](#2-vite_api_url-is-a-build-time-variable-and-getting-it-wrong-is-silent)'s
+lesson one layer up: the production origin cannot be known until the service
+exists, so create it first and hardcode second.
+
 ---
 
 ## Insights worth reusing

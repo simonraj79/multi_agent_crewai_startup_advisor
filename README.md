@@ -32,8 +32,8 @@ a scheduling one — see the **Rubric** row below.
 
 | | State |
 |---|---|
-| Python test suite | ✅ 415 tests, 0 failures, 1 skipped |
-| Frontend unit tests | ✅ 126 tests across 13 files (Vitest + jsdom) |
+| Python test suite | ✅ 660 tests, 0 failures, 1 skipped |
+| Frontend unit tests | ✅ 203 tests across 19 files (Vitest + jsdom) |
 | Frontend end-to-end | ✅ 7 Playwright specs — real browser, real WebSocket, both durable gates, against a no-cost backend |
 | Frontend type-check + build | ✅ `vue-tsc` and `vite build` clean |
 | CI | ✅ green on `ubuntu-latest` — **for the first time**, at `e539811`. The three commits before it all failed. See [CI](#ci-and-the-clean-checkout). |
@@ -281,6 +281,14 @@ uv pip install --python .venv -e '.[service]'
 > `pyproject.toml`'s default dependencies — including the whole `service` extra.
 > If the API stops importing after you run it, that is why. Reinstall the extra.
 
+> ⚠️ **`.venv` has no `pip` and no `pytest`.** `uv venv` does not seed pip, so
+> `python -m pip ...` fails with `No module named pip` — read versions from
+> `importlib.metadata` instead. `[tool.pytest.ini_options]` in `pyproject.toml`
+> is inert; the suite is `unittest`, and so is CI.
+
+Exact versions of everything installed, and the commands that regenerate them,
+are in [`docs/tech-stack.md`](docs/tech-stack.md).
+
 ---
 
 ## Running Brief Crew
@@ -488,11 +496,11 @@ the API.
 ## Tests
 
 ```bash
-.venv/Scripts/python -m unittest discover -s tests -t .    # 415 tests
+.venv/Scripts/python -m unittest discover -s tests -t .    # 660 tests
 
 cd frontend
 npm run build                                              # vue-tsc -b && vite build
-npm test                                                   # 126 tests, vitest run
+npm test                                                   # 203 tests, vitest run
 ```
 
 All three are free to run and touch no network.
@@ -653,10 +661,10 @@ src/brief_crew/
 └── service/                   FastAPI, WebSocket, SQL persistence, run registry
 
 frontend/                      Vue 3 + TypeScript + Vite + Vue Flow console
-├── tests/                     126 Vitest specs
+├── tests/                     203 Vitest specs over 19 files
 └── e2e/                       7 Playwright specs
 agents/                        the authoritative specifications
-tests/                         415 tests, all free to run
+tests/                         660 tests, all free to run
 docs/                          deployment and licensing notes
 ```
 
@@ -700,6 +708,7 @@ cause. Call `brief_crew.embeddings` directly, and keep `DOC_PREFIX` and
 | [`AGENTS.md`](AGENTS.md) | CrewAI reference for anyone — human or coding agent — changing crew code. |
 | [`PRD.md`](PRD.md) | The requirements document that extends `agents/` into Validator Studio. |
 | [`new features/feature-list.md`](new%20features/feature-list.md) | Feature ledger. Every row names the test or source path it rests on. |
+| [`docs/tech-stack.md`](docs/tech-stack.md) | **Every version, pin and toolchain quirk**, with the command that regenerates each figure. Interpreter, packages, models, external API versions, the twenty environment knobs, and the open stack-hygiene defects. Check a version here, not in prose. |
 | [`docs/deploying.md`](docs/deploying.md) | Post-push Render checklist. |
 | [`docs/preflight.md`](docs/preflight.md) | What to check before the first **paid** validator run — credentials, the live path, cost estimate, failure modes. |
 | [`docs/rubric-review.md`](docs/rubric-review.md) | An independent adversarial pass over the five rubric ladders, `rubric_support` and the verdict arithmetic. Written by an agent that had no part in the derivation — which is not the same as a human having read them. |

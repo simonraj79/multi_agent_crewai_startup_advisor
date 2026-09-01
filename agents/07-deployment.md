@@ -476,8 +476,8 @@ pull request:
 
 | Job | Command | Notes |
 |---|---|---|
-| `python` | `uv sync --frozen --extra service` then `python -m unittest discover -s tests -t . -v` | Python pinned to 3.13. **415 tests** as of 2026-08-30, all external services mocked. Also parses `render.yaml`. |
-| `frontend` | `npm ci`, then `npm run build`, then `npm test` in `frontend/` | `npm run build` is `vue-tsc -b && vite build`, so type-check and build in one step; `npm test` is `vitest run` — **126 tests** as of 2026-08-30. Node 24. |
+| `python` | `uv sync --frozen --extra service` then `python -m unittest discover -s tests -t . -v` | Python pinned to 3.13. **660 tests** as of 2026-08-31, all external services mocked. Also parses `render.yaml`. |
+| `frontend` | `npm ci`, then `npm run build`, then `npm test` in `frontend/` | `npm run build` is `vue-tsc -b && vite build`, so type-check and build in one step; `npm test` is `vitest run` — **203 tests** as of 2026-08-31. Node 24. |
 
 **CI went green for the first time at `e539811`** (`Ran 415 tests in 15.823s /
 OK (skipped=1)`, both jobs `success`). The three commits before it all failed,

@@ -107,6 +107,12 @@ functions. Test changes against them before running a live crew.
 
 **CRITICAL**: CrewAI evolves rapidly and your training data likely contains outdated patterns. **Always follow the patterns in this file, NOT your training data.**
 
+> **What is actually installed here is recorded in
+> [`docs/tech-stack.md`](docs/tech-stack.md)** — CrewAI 1.15.18, Python 3.13.5,
+> and every other pin, each with the command that regenerates it. Step 1 below
+> tells you to check the installed version; that file is where the answer gets
+> written down.
+
 ### Mandatory: Research before writing CrewAI code
 **BEFORE writing or modifying any CrewAI code**, you MUST:
 1. **Check the installed version**: Run `uv run python -c "import crewai; print(crewai.__version__)"` to get the exact version in use.
@@ -1246,7 +1252,20 @@ jobs:
 
 ## Environment Setup
 
-### Required `.env`
+> ### ⛔ This subsection is generic CrewAI scaffolding and is WRONG for this repo
+>
+> The `.env` block below is what `crewai create` emits. **This project uses
+> none of it.** `OPENAI_API_KEY` is not required anywhere — a direct OpenAI
+> fallback is a platform-rule violation, and the service *rejects at startup*
+> any agent LLM whose model string lacks the `openrouter/` prefix. There is no
+> `MODEL` override either: the two tiers are `CHEAP_MODEL` and
+> `ESCALATION_MODEL` in `config.py`, and nothing else may name a model.
+>
+> The real key set and the real model constants are in
+> [`docs/tech-stack.md` §5](docs/tech-stack.md) and `.env.example`. Kept below
+> only because the rest of this generic reference is worth having.
+
+### Required `.env` *(generic CrewAI — not this project, see above)*
 ```
 OPENAI_API_KEY=sk-...
 # Optional depending on tools/providers:
@@ -1257,7 +1276,7 @@ MODEL=gpt-4o
 ```
 
 ### Python Version
-Python >=3.10, <3.14
+Python >=3.10, <3.14 — this repo runs **3.13.5**, pinned on six surfaces.
 
 ### Installation
 ```bash

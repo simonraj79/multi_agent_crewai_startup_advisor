@@ -22,17 +22,23 @@ Status meanings: **Not started** has no implementation; **In progress** has an a
 
 ### Measured baseline for this pass
 
-⚠️ **These counts move.** They went 341 → 378 → **415** Python and 116 → 126
-frontend over the last two passes, and a browser suite appeared that did not
-exist at all. Re-run before quoting a number; the command is the contract, not
-the figure.
+> ⚠️ **This whole document is a historical snapshot from 2026-08-29.** The
+> command outputs in the block below are what they were *then* and have been
+> left unedited, because rewriting them would destroy the record of what this
+> pass actually measured. The current figures are **660 Python / 203 frontend
+> over 19 files** (measured 2026-08-31); versions and pins live in
+> [`../docs/tech-stack.md`](../docs/tech-stack.md).
+
+⚠️ **These counts move.** They went 341 → 378 → 415 → **660** Python and 116 → 126 → **203**
+frontend, and a browser suite appeared that did not exist at all. Re-run before
+quoting a number; the command is the contract, not the figure.
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
-# Ran 415 tests ... OK (skipped=1)
+# Ran 415 tests ... OK (skipped=1)      <- as of 2026-08-29; now 660
 
 Push-Location frontend; npm test; Pop-Location
-# Test Files 13 passed (13) | Tests 126 passed (126)
+# Test Files 13 passed (13) | Tests 126 passed (126)   <- now 19 / 203
 
 Push-Location frontend; npm run build; Pop-Location
 # vue-tsc -b && vite build - clean
@@ -47,7 +53,7 @@ Push-Location frontend; npm run build; Pop-Location
 | `tests/tools/` | 43 (`test_indexing` 23, `test_github_feasibility` 8, `test_hn_sentiment` 6, `test_market_research` 4, `test_pinecone_retrieval` 2) |
 | `tests/validator/` | 128 (`test_cache` 8, `test_crews` 19, `test_flow` 21, `test_guardrails` 51, `test_schemas` 29) |
 | `tests/test_brief_crew_regression.py` | 23 |
-| `frontend/tests/` | 126 across 13 spec files |
+| `frontend/tests/` | 203 across 19 spec files |
 | `frontend/e2e/` | **7 Playwright specs** — not run by `npm test` and not run by CI |
 
 The browser suite is a separate command and a separate contract:
@@ -65,12 +71,12 @@ Push-Location frontend; npm run test:e2e; Pop-Location
 
 **1. Both discovery gaps from the previous pass are closed.** `tests/events/`
 and `tests/service/` now have `__init__.py`, so `unittest discover` reaches
-them; the 415 above is the whole suite, not a subset. The **†** marks used in
+them; the 415 above is the whole suite, not a subset (it is now 660). The **†** marks used in
 the previous revision of this file are gone because nothing is undiscovered any
 more. Standing rule: add a test directory's `__init__.py` in the same commit as
 the directory, or discovery hides it and reports `OK`.
 
-**2. The frontend has two test runners.** Vitest + jsdom (126 tests over 13 spec
+**2. The frontend has two test runners.** Vitest + jsdom (203 tests over 19 spec
 files) and, new this pass, Playwright (7 specs in `frontend/e2e/`) driving a real
 browser against a real FastAPI service over a real WebSocket. F32-F39 are judged
 on evidence rather than capped at Partial by default — several still fall short
@@ -141,7 +147,7 @@ have them.
 | M-1 Prerequisites | F25 plus event and persistence prerequisites | **Partial** | `BriefFlow.check_cache` returns `Literal["cache_hit", "cache_miss"]`; both router edges appear in the derived graph — `tests/test_brief_crew_regression.py::GraphIntrospectionTests` (2 tests), `tests/service/test_graph_registry.py::test_brief_flow_graph_has_both_router_branches`, `tests/integration/test_validator_service.py::test_both_graphs_are_exposed_with_derived_routes`. `PostgresFlowPersistence` round-trips — in tests, on **SQLite only**; it has since created its schema against real PG 18 on the deployed service, but no automated test runs there. |
 | M0 Event spine | F19-F24 | **Partial** | All six `tests/events/test_spine.py` tests are now discovered, and `tests/service/test_observability.py` (19 tests) adds METRICS emission and coalescing, the unattributed count in run status and across recovery, writer cadence, handler latency and run eviction. The one criterion still unmet is **F22's "one loading bubble per active node"** — chips are per call in a flat chronological list. |
 | M1 Service | F25-F31 | **Partial** | All 11 endpoints exist and are covered across `tests/integration/` (19) and `tests/service/` (96): both graphs and ETag, two gate round trips over HTTP *and* WebSocket, 409 on duplicates, gapless frames, replay + ping/pong, NDJSON and ZIP, cancellation, gate expiry, run eviction, frame-writer cadence, durable recovery in a fresh app, cross-origin policy (`test_cors.py`, 16) and the gate-reply settling race (`test_gate_resume_race.py`, 11). The graph and health endpoints are additionally served in production against real PostgreSQL. Missing: any **PostgreSQL exercise under concurrency** (F31) — the deployed service proves the dialect works, not that two writers contend correctly — and F26's queueing under `RUN_CONCURRENCY > 1` is still asserted on the executor's configuration rather than on an observed queued-then-started run. |
-| M2 Studio | F32-F39 | **Partial** | A real Vue 3 + Vue Flow application with 126 Vitest tests over 13 files, including a spec that asserts `MOCK_GRAPH` matches the live descriptor node-for-node and edge-for-edge, and now **7 Playwright specs** driving a real browser through both durable gates. Two defects the unit tests could not see were found by running it and are now pinned: the UI never left its pre-run state on a real run (`tests/events/test_run_state_status.py`, 5, plus `frontend/tests/realFrameShape.spec.ts`, 6, both against one committed serializer fixture) and a paused gate node rendered as `idle` (`frontend/tests/gateNodeWaiting.spec.ts`, 4). Unmet criteria remain in **F34** (no sprites at all), **F35** (no sprite along the path, no path-length duration, no shared `<defs>`, no self-loop), **F36** (4 entry variants of the 7 named, no `ResizeObserver`), **F37** (evidence gaps still absent from the verdict card, and the node has no `expired` state), **F38** (no workflow selection) and **F39** (guardrail exhaustion is unrepresented). |
+| M2 Studio | F32-F39 | **Partial** | A real Vue 3 + Vue Flow application with 203 Vitest tests over 19 files, including a spec that asserts `MOCK_GRAPH` matches the live descriptor node-for-node and edge-for-edge, and now **7 Playwright specs** driving a real browser through both durable gates. Two defects the unit tests could not see were found by running it and are now pinned: the UI never left its pre-run state on a real run (`tests/events/test_run_state_status.py`, 5, plus `frontend/tests/realFrameShape.spec.ts`, 6, both against one committed serializer fixture) and a paused gate node rendered as `idle` (`frontend/tests/gateNodeWaiting.spec.ts`, 4). Unmet criteria remain in **F34** (no sprites at all), **F35** (no sprite along the path, no path-length duration, no shared `<defs>`, no self-loop), **F36** (4 entry variants of the 7 named, no `ResizeObserver`), **F37** (evidence gaps still absent from the verdict card, and the node has no `expired` state), **F38** (no workflow selection) and **F39** (guardrail exhaustion is unrepresented). |
 | M3 Validator | F01-F18, F40, F42 | **Partial** | 171 discovered tests across `tests/validator/` (128) and `tests/tools/` (43) cover the schemas, the deterministic verdict, all five rubric ladders and their evidence support, the guardrails, all three tools, the branch cache and the three-way fan-out. **F42 has still never been measured** — the harness exists and is tested, the run has not happened. |
 | M4 Gates | F03, F12, F27, F37 | **Partial** | Both native `@human_feedback` gates pause, persist and resume across a fresh app instance; server-side expiry runs an `expired` → `alerted` watch ladder that never auto-answers (`tests/service/test_gate_expiry.py`, 12 tests); gate replies now land over **both** HTTP and the WebSocket through one compare-and-set (`tests/integration/test_ws_gate_replies.py`, 10 tests). The WS slice that made this "In progress" is finished, and the verdict gate now sends the whole `Verdict` as read-only `derived` fields, so the rubric *is* on the card (`tests/service/test_gate_fields.py`, 17 tests; `frontend/tests/gateDerived.spec.ts`, 13 tests). What remains is UI content, not transport: the branch **evidence gaps** are still not carried to the gate, because `Verdict` has no gaps field. |
 | M5 Hardening | F23-F24, F29-F31, F41-F44 | **Partial** | Usage accounting, backpressure, log export, run eviction and durable persistence are implemented and tested. **The service is deployed** — API, static site and PostgreSQL 18 live on Render, `/readyz` reporting `"backend": "postgresql"`, CORS enforced (`tests/service/test_cors.py`, 16) and verified against the deployed origin. Held at Partial because the criteria that make M5 *hardening* are still open: F42 unmeasured, F43's citation-closure acceptance set does not exist, no run has ever *finished* against the deployed service (two were launched on 2026-08-30 and both stopped at the scope gate), and no graceful shutdown or persistence flush has been observed on the host. `render.yaml` remains **unapplied** — the two services were created through the Render API instead — and `Dockerfile` has never been built. |
@@ -209,7 +215,7 @@ Every test path below was run in this pass. Counts are from
 
 #### Studio UI
 
-The frontend has executable tests — 126 Vitest specs across 13 files, plus 7
+The frontend has executable tests — 203 Vitest specs across 19 files, plus 7
 Playwright specs in a real browser — so these rows are judged on their own
 criteria rather than capped by a missing runner.
 

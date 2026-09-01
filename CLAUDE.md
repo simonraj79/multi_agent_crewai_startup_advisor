@@ -9,6 +9,15 @@ This repository now contains two applications that share one Python package:
 
 Read [`AGENTS.md`](AGENTS.md) before changing CrewAI code. The specifications in [`agents/`](agents/) remain authoritative for behavior they already cover. [`PRD.md`](PRD.md) extends those specifications for Validator Studio.
 
+> **[`docs/tech-stack.md`](docs/tech-stack.md) is the single source of truth for
+> every version, pin and toolchain quirk** — interpreter, packages, models,
+> external API versions, the twenty environment knobs, and the commands that
+> regenerate each figure. It also carries the open stack-hygiene defects
+> (undeclared `pydantic`/`PyYAML`, Render's unpinned Node, `e2e/` type-checked
+> by nothing, `CREWAI_TRACING_ENABLED` inverted between deploy paths). **Do not
+> restate a version number here** — link to that file, or the two will drift
+> apart the way the counts below already have, four separate times.
+
 [`new features/feature-list.md`](new%20features/feature-list.md) was last
 reconciled against source and tests on 2026-08-29. **That is four commits and
 one uncommitted working session ago**, so treat it as a historical document:
@@ -17,30 +26,40 @@ the query-shape defect, the two rubric Criticals, the orphaned-run defect and
 everything in the current tree. This file is newer. Neither is a substitute for
 re-running the suite - the counts move.
 
-**This file was reconciled on 2026-08-30 against a working tree with
-substantial uncommitted changes** (fourteen modified files, seven new). Where a
-claim rests on committed history it says so; where it rests on the working tree
-it says that instead, because a `git stash` would falsify it.
+**This file was reconciled on 2026-08-31 against a CLEAN working tree at HEAD
+`c63aca0`.** The previous reconciliation (2026-08-30) was written against
+`d3523c5` plus fourteen modified and seven new files; those changes are now
+committed, and **eleven commits** have landed since `d3523c5`. Where a claim
+rests on committed history it says so.
 
 ## Verified Baseline
 
-Re-measured on 2026-08-30 against **HEAD `d3523c5` plus the uncommitted working
-tree**, on Windows:
+Re-measured on 2026-08-31 against **HEAD `c63aca0`, clean tree**, on Windows.
+Both suites were run; the two build steps were not.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:   537 run, 0 failures, 0 errors, 1 skipped - 25.7s
-Frontend unit:  165 run, 0 failures, 16 files (Vitest + jsdom)
-Frontend build: vue-tsc -b --force and Vite production build passed
-Playwright E2E:   7 tests in the file - NOT re-run this pass; it needs a backend
+Python tests:   698 run, 0 failures, 0 errors, 1 skipped - 34.6s
+Frontend unit:  311 run, 0 failures, 25 files (Vitest + jsdom) - 3.8s
+Frontend build: GREEN - `vue-tsc -b --force` clean, `npm run build` in 569ms
+Playwright E2E:   7 tests, ALL GREEN with ZERO console errors tolerated
 ```
 
 ⚠️ These counts move, and they move fast. The Python suite has gone
-65 → 295 → 341 → 378 → 415 → 459 → 522 → 537 and the frontend
-103 → 116 → 126 → 133 → 165. Re-run before quoting a number; the command is the
-contract, not the figure.
+65 → 295 → 341 → 378 → 415 → 459 → 522 → 537 → 660 → 679 → 698 and the frontend
+103 → 116 → 126 → 133 → 165 → 203 → 284 → 311. Re-run before quoting a number;
+the command is the contract, not the figure.
 
-> **The keyless run was NOT re-measured this pass.** The 537 above was measured
+> **Both figures above were published wrong until 2026-08-31.** This file
+> claimed 537 and 165/16-files; the real numbers were 660 and 203/19-files, a
+> 23% undercount on the Python side. README.md, `new features/feature-list.md`
+> and `agents/07-deployment.md` were a further generation behind at 415/126.
+> Nothing was careless — the tree simply moved eleven commits and the prose did
+> not follow. This is the argument for
+> [`docs/tech-stack.md`](docs/tech-stack.md) carrying the numbers and everything
+> else linking to it.
+
+> **The keyless run was NOT re-measured this pass.** The 660 above was measured
 > with `.env` in place. `d3523c5`'s own commit message reports 522 green *with
 > and without* `.env`, and nothing in the working tree touches
 > `tests/__init__.py` or the import-time key demands - but that is an inference,
@@ -99,8 +118,11 @@ mv .env .env.ci-bak
 ./.venv/Scripts/python.exe -m unittest discover -s tests -t .
 ```
 
-**CI is green on `d3523c5`** - run `33302040348`, `ubuntu-latest`, both jobs
-`success`, 45s. Every push since `2240054` has been green
+**CI was green on `d3523c5`, and its status on the eleven commits since has NOT
+been checked** - this pass made no network call to GitHub. Treat everything in
+this paragraph as of `d3523c5`, not as of HEAD. Run `33302040348`,
+`ubuntu-latest`, both jobs `success`, 45s. Every push since `2240054` had been
+green
 (`33295730271`, `33297570325`, `33298411682`, `33299927607`, `33302040348`);
 the three before that - `5daf401`, `a3e5268`, `53afa66` - were all `failure`
 with byte-identical counts. That green also closes the standing "never verified
@@ -109,9 +131,10 @@ no credential of any kind. `.github/workflows/ci.yml` carries no `env:`
 credentials by design, which is what makes the README's "costs nothing and
 touches no network" claim checkable rather than aspirational.
 
-**CI has not seen the current working tree.** The 537 figure above includes 15
-uncommitted tests in `tests/service/test_gates_mode.py` and 32 uncommitted
-frontend tests; run `33302040348` measured the committed 522/133.
+**The tree is now clean, so CI has seen everything measured above — but no CI
+run at `c63aca0` was inspected this pass.** The 660/203 figures were measured
+locally on Windows. Run `33302040348` measured the committed 522/133 at
+`d3523c5`, eleven commits back.
 
 The E2E suite is separate, and it will not start a backend for you.
 `playwright.config.ts` deliberately has **no `webServer` entry for the Python
@@ -628,7 +651,7 @@ tells an honest client its request was misread, where dropping the key would let
 a stale one think it had switched modes. The check lives on the model, so it
 fires before the handler — which is what makes the 403 above meaningful, since
 setting `run_inputs["no_gates"] = True` in `create_run` is then the *only* way
-that field can become true. `tests/service/test_gates_mode.py`, **15 tests**,
+that field can become true. `tests/service/test_gates_mode.py`, **19 tests**,
 including both smuggling attempts and an unattended run completing with no gate
 reply.
 
@@ -694,20 +717,20 @@ reply.
 - Synthetic service mode for no-cost integration and UI testing, selected by
   `SYNTHETIC=1` through `app_from_env()`.
 
-**Environment knobs, and there are exactly eighteen.** Fourteen are read in
-`config.py`:
+**Environment knobs: there are twenty, and the canonical list lives in
+[`docs/tech-stack.md` §6](docs/tech-stack.md).** Sixteen are read in
+`config.py`, four in `service/app.py` (`DATABASE_URL`, `HOST`, `PORT`,
+`SYNTHETIC`). Regenerated 2026-08-31 with the multiline scan below.
 
-```text
-CORS_ALLOW_ORIGINS                    EXPOSE_API_DOCS
-MAX_QUEUED_RUNS                       PINECONE_INDEX_NAME
-RUN_CONCURRENCY                       RUN_RATE_LIMIT_MAX_RUNS
-RUN_RATE_LIMIT_TRUST_FORWARDED_FOR    RUN_RATE_LIMIT_WINDOW_SECONDS
-RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS     VALIDATOR_ALLOW_AUTO_GATES
-VALIDATOR_FEASIBILITY_CACHE_ENABLED   VALIDATOR_ORPHAN_RUN_GRACE_SECONDS
-VALIDATOR_ORPHAN_RUN_RECOVERY         VALIDATOR_SEQUENTIAL_BRANCHES
-```
+> **This count has now been wrong four times, and never twice for the same
+> reason.** *Eleven*, when the line-anchored grep of trap 6 hid four wrapped
+> calls. Then *fifteen*. Then *eighteen* — the figure this file carried until
+> 2026-08-31, which missed `MAX_RUN_COST_USD` (default `10.0`,
+> `config.py:828`) and `VALIDATOR_MAX_GATE_TURNS` (default `5`,
+> `config.py:984`). Both landed in `1b79197`, a commit that never touched this
+> file. The regex was fixed; the *process* was not. Do not read the list —
+> regenerate it.
 
-and four in `service/app.py`: `DATABASE_URL`, `HOST`, `PORT`, `SYNTHETIC`.
 Everything else in the admission path is a genuine constant with no override —
 `MAX_REQUEST_BODY_BYTES` (64 KiB), `MAX_RUN_INPUT_CHARS` (2000),
 `MAX_RUN_INPUT_BYTES` (8 KiB), `MAX_RUN_INPUT_KEYS` (16),
@@ -715,11 +738,7 @@ Everything else in the admission path is a genuine constant with no override —
 `RUN_ADMISSION_RETRY_AFTER_SECONDS` (30), `RUN_RATE_LIMIT_MAX_CLIENTS` (4096),
 `RUN_RATE_LIMIT_KEY_MAX_CHARS` (64), and the `RESERVED_RUN_INPUT_KEYS` set.
 
-**This count has been wrong in both directions.** It was published as "eleven"
-when the line-anchored `grep` hid four (Deployment trap 6), then as "fifteen"
-after `VALIDATOR_ORPHAN_RUN_GRACE_SECONDS`, `VALIDATOR_ORPHAN_RUN_RECOVERY` and
-`VALIDATOR_ALLOW_AUTO_GATES` landed without it being regenerated. Do not trust
-the figure above either — regenerate it with a **multiline** scan:
+The scan that regenerates it — **multiline**, never line-anchored:
 
 ```bash
 ./.venv/Scripts/python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);print(sorted({n for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py') for n in pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))}))"
@@ -823,7 +842,10 @@ Implemented UI behavior:
   the score, not the report — while the body was on the wire the whole time. See
   closed item 33 for how that survived a green suite.
 - **A crew progress strip** (`components/CrewProgress.vue` +
-  `data/crewStages.ts`) — see below.
+  `data/crewStages.ts`) — see below. The three rowers are named at the
+  fan-out, and the strip now says which **pass** the crew is on.
+- **A two-rower crew badge on the running node itself** (`WorkflowNode.vue`),
+  and a `×N` lap chip on any node that has run more than once.
 - A Review / Unattended gates toggle in `StatusPanel.vue`, disabled while a run
   is active, wired to the `gates` request field.
 - Launch, relaunch, cancel, and log-download controls.
@@ -849,7 +871,7 @@ Implemented UI behavior:
 
 #### The Markdown renderer is escape-first, and that is the whole design
 
-`src/utils/markdown.ts` (240 lines, 19 tests) is a deliberately small Markdown
+`src/utils/markdown.ts` (240 lines, 22 tests) is a deliberately small Markdown
 subset renderer rather than `marked` + `dompurify`. The body it renders is
 written by the Reporter agent — model output, untrusted by construction — and a
 sanitiser is a denylist applied *after* markup exists. This is the opposite
@@ -901,6 +923,79 @@ the boat silently skipping it.
 severity order — error beats waiting beats running beats completed — so an
 errored node is never hidden by a sibling that is merely running, and a gate
 WAITING for a human wins outright.
+
+#### The crew shows WHICH node and WHICH pass, and both were missing
+
+The strip shipped able to answer "how far along is this" and nothing more. Two
+gaps, closed 2026-08-31:
+
+**It narrated stages, not nodes.** `CREW_STAGES` collapses 14 graph nodes into 7
+ordered stages, which is the right call — the three research branches are one
+stage because their concurrency is the interesting fact — but the price was
+that the fan-out could say "1 of 3 branches home" and never which one. The
+`coreIds` now carry `branchLabels` (`Market` / `Signal` / `Build`), the headline
+names the branches still pulling, and the per-branch pips bind to each branch's
+own state. They previously lit **left to right by count**, so a fast Feasibility
+and a fast Market drew the same picture and the picture was wrong.
+
+**The loop was structurally invisible, and it cannot be recovered from
+`nodeStates`.** A node that ran four times and one that ran once are both
+`completed` afterwards; the map holds no history. So `useValidatorRun` counts
+transitions into an *active* state in `nodeVisits`, and that count is what every
+lap indicator reads:
+
+- the strip's stage badge (`×3` under `SCOPE`),
+- the headline chip (`sent back for a revision`, then `pass 3`),
+- the `×N` chip on the node card, which persists after the run finishes and is
+  the only place the topology admits it has cycles,
+- the node's aria label (`Confirm scope, Waiting, pass 2`).
+
+Two details that are not obvious and are both pinned by tests:
+
+- **`waiting` counts as a visit, not just `running`.** A gate node never becomes
+  `running` — `applyGate` is the only thing that touches it and it sets
+  `waiting` — so counting `running` alone reported *no* passes for the one node
+  an operator revisits most.
+- **A repeated `NODE_START` while already running does not count.** CrewAI
+  re-emits it on retries and the stream replays on reconnect, so the naive
+  version inflated the lap number on a page refresh: the exact moment an
+  operator is most likely to be reading it.
+
+#### Three defects the crew work surfaced that no test could have
+
+All three were found by starting a `SYNTHETIC=1` backend and *looking*, which is
+the same method that found the two layout defects below.
+
+1. **The boat bounced backwards on every gate answer, and always had.**
+   Answering a gate starts that stage's ROUTER, and a router shares a stage with
+   the gate it reads. `stageProgress` ranked any `running` above "all cores
+   complete", so the stage flipped `completed -> running -> completed` and the
+   boat slid back a column and forward again. Invisible until a row-back
+   announcement was added, at which point the very first live run announced a
+   revision on a run that never revised. Once the cores are done, only a
+   declared `reviseIds` node reopens a stage — the same judgement
+   `WorkflowNode.vue` already makes when it draws routers as plumbing rather
+   than as a stage.
+2. **The row-back announcement keyed on the boat's position, which is a proxy.**
+   It now keys on a stage's `lap` climbing past 1, which is the event itself and
+   cannot mean anything else. It also retires when the crew moves forward: the
+   strip was reading "Review — waiting for you / SENT BACK FOR A REVISION" two
+   stages past the revision it described.
+3. **The rowers were buried under their own boat.** The hull was painted last,
+   so every torso and most of each oar were occluded and the first capture
+   showed three disembodied heads over a yellow lens. Paint order is now hull,
+   oars, rowers; each oar is drawn twice (a casing in the background colour,
+   then the oar) because hull and oars are both `currentColor` and dissolved
+   into each other; and each oar pivots about its own oarlock
+   (`transform-box: fill-box`) rather than about the whole SVG's centre, which
+   is what `transform-origin: center top` had been doing.
+
+The strip is also **in the layout now, not over it**. As
+`position: absolute; top: 64px` it sat directly on top of the Scoper card and
+the scope gate — the two nodes it exists to narrate. `.graph-workspace` is a
+three-row grid (`studio.css`), so the Vue Flow container genuinely shrinks
+rather than being overlaid, and the stage lane has a fixed `min-height` so a
+`×2` badge appearing mid-run cannot resize the graph underneath it.
 
 #### Two layout defects that made the console unusable, and why they were invisible
 
@@ -967,12 +1062,16 @@ Tests cover:
 - Brief Crew regression: the cache router's contract, both statically visible
   branches, `persist`, the tool surfaces, `run_crew()` and `kickoff()`.
 
-Re-counted by running each module alone on 2026-08-30:
+Re-counted by running each module alone on **2026-08-31**. Two rows had gone
+stale since the 2026-08-30 pass that introduced this table — `test_gates_mode.py`
+(15 → 19) and `markdown.spec.ts` (19 → 22) — which is worth knowing about a
+table whose whole premise is that it was freshly re-run. The other ten were
+exact.
 
 | Module | Tests | What it pins |
 | --- | ---: | --- |
 | `tests/service/test_run_admission.py` | 37 | all five refusals and both carve-outs, plus the chunked request that evades the 413 and the `/docs` gating |
-| `tests/service/test_gates_mode.py` | **15** | the `gates` contract, both reserved-key smuggling attempts, the 403 and 422, and an unattended run completing with no gate reply |
+| `tests/service/test_gates_mode.py` | **19** | the `gates` contract, both reserved-key smuggling attempts, the 403 and 422, and an unattended run completing with no gate reply |
 | `tests/service/test_run_result_and_cost.py` | **23** | the un-truncated report body and the two independent `cost_usd` bugs |
 | `tests/service/test_restart_recovery.py` | **22** | the orphaned-run sweep, the resumable shape adopted back to WAITING, and `cancelling` reaching CANCELLED |
 | `tests/service/test_cors.py` | 16 | origin parsing, the fail-closed empty default, the startup refusal, and that `/ws` is **not** covered |
@@ -985,18 +1084,31 @@ Re-counted by running each module alone on 2026-08-30:
 | `tests/events/test_run_state_status.py` | 5 | the `RUN_STATE` frame shape, against a committed fixture |
 | `tests/integration/test_ws_gate_replies.py` | 10 | gate replies over the socket |
 | `tests/test_brief_crew_regression.py` | 23 | the Track A/B behaviour the platform rules forbid regressing |
+| `tests/service/test_graph_etag.py` | **19** | the conditional GET: 304 on the server's own tag, RFC 9110 weak comparison, and that one workflow's tag never satisfies the other's |
+| `tests/service/test_synthetic_revise.py` | **19** | the double branching on `decision`: both revise loops, the per-gate turn cap, and that an unknown decision goes forward rather than wedging a run |
 | `tests/perf/` | 58 | the fan-out benchmark harness itself — **not** the measurement (item 2) |
 
-Frontend, same method:
+Frontend — **all 25 spec files**, from `vitest run --reporter=json` on
+2026-08-31 (third pass, after the crew work and the cheap-cleanup sweep). An
+earlier version of this table listed six of them, which made a partial view look
+like an inventory:
 
-| Spec | Tests |
-| --- | ---: |
-| `frontend/tests/markdown.spec.ts` | **19** |
-| `frontend/tests/mockGraph.spec.ts` | 18 |
-| `frontend/tests/crewStages.spec.ts` | **13** |
-| `frontend/tests/downloadLogs.spec.ts` | 10 |
-| `frontend/tests/realFrameShape.spec.ts` | 6 |
-| `frontend/tests/gateNodeWaiting.spec.ts` | 4 |
+| Spec | Tests | | Spec | Tests |
+| --- | ---: | --- | --- | ---: |
+| `crewLoop.spec.ts` | **26** | | `downloadLogs.spec.ts` | 10 |
+| `crewProgress.spec.ts` | **26** | | `runRecovery.spec.ts` | 10 |
+| `markdown.spec.ts` | 22 | | `edgeAnimation.spec.ts` | 8 |
+| `mockGraph.spec.ts` | 18 | | `gateCard.spec.ts` | 8 |
+| `verdictFrame.spec.ts` | 18 | | `quarantineNode.spec.ts` | 8 |
+| `nodeCrew.spec.ts` | **17** | | `routerNode.spec.ts` | 8 |
+| `studioApi.spec.ts` | 17 | | `nestedFlowRunState.spec.ts` | 7 |
+| `crewStages.spec.ts` | 13 | | `realFrameShape.spec.ts` | 6 |
+| `frameHandling.spec.ts` | 13 | | `realVerdictFrameShape.spec.ts` | 6 |
+| `gateDerived.spec.ts` | 13 | | `gateNodeWaiting.spec.ts` | 4 |
+| `nodeVisits.spec.ts` | 12 | | `mockRun.spec.ts` | 3 |
+| `reportVisibility.spec.ts` | 11 | | | |
+| `serverLimits.spec.ts` | **19** | | `ideaRecovery.spec.ts` | **8** |
+| | | | **Total** | **311** |
 
 The `RUN_STATE` frame shape is pinned on **both** sides against one committed
 fixture generated by the real serializer, so backend and client cannot drift
@@ -1013,18 +1125,28 @@ through both durable gates to completion, the waiting gate node, the verdict
 gate's read-only fields, a `revise` reply at the scope gate, and run recovery
 across a page reload.
 
-**Not re-run this pass** — it needs a backend, and this reconciliation started
-none. It is still no-cost — but it is a *synthetic* backend, so it proves the
-plumbing, not the agents. Note in particular that `SyntheticValidatorRunner`
-still does not model `revise` at all (item 15), so the revise loop is exercised
-only as far as "the reply is accepted and the run keeps going". The double now
-*does* model `no_gates` and *does* return a real `ValidationReport`-shaped
-result — both added because a double that diverges from its subject certifies
-nothing (see closed item 33).
+**All 7 were run and are green on 2026-08-31**, against a local
+`SYNTHETIC=1 PORT=8099` backend. It is no-cost — but it is a *synthetic*
+backend, so it proves the plumbing, not the agents.
+
+The double now models `revise` (closed item 15), `no_gates`, and returns a real
+`ValidationReport`-shaped result. All three were added for the same reason: a
+double that diverges from its subject certifies nothing (see closed items 15
+and 33). The revise test consequently asserts the loop — the run returns to
+`Confirm scope`, `Revise scope` completes, and the console shows the lap —
+where it previously could only assert that the reply was accepted.
+
+> **Killing this backend needs PowerShell, not `pkill`.** `pkill -f serve.exe`
+> from Git Bash reports success and leaves the process running. The replacement
+> then fails to bind with `WinError 10048` **in its own log** while `/healthz`
+> keeps answering 200 from the stale one, so every probe looks healthy and every
+> result is from the old code. Half an hour of this pass was spent testing a
+> patch that was never loaded. Use `Stop-Process -Name serve -Force`, and read
+> the serve log rather than trusting a 200.
 
 ## Remaining Work and Unverified Risks
 
-Updated 2026-08-30 against `d3523c5` plus the uncommitted working tree.
+Updated 2026-08-31 against `c63aca0`, clean tree.
 Numbering is continuous with previous handoffs and has not been compacted, so
 cross-references keep resolving.
 
@@ -1191,6 +1313,15 @@ cross-references keep resolving.
      requests `/favicon.ico` and 404s. One line of `index.html` fixes that
      independently of whether the rest is deleted.
 
+   **The favicon half is FIXED (2026-08-31).** `index.html` now carries
+   `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`, so the
+   `/favicon.ico` request on every page load is gone. That 404 was the only
+   thing `e2e/studio.spec.ts`'s `ALLOWED_CONSOLE_ERROR` exemption existed to
+   forgive, and the exemption is retired: all seven E2E tests now pass with
+   **zero** console errors tolerated, which is how the fix was verified rather
+   than assumed. The other seven files are still dead and still need a
+   keep-or-delete decision.
+
    Plus an eighth artefact: `.gitignore` carries an explicit exception
    (`!frontend/src/assets/**/*.png`, with a comment naming `HelloWorld.vue`)
    added purely to keep `hero.png` alive against the global `*.png` rule.
@@ -1215,58 +1346,103 @@ cross-references keep resolving.
     `e539811`; the full entry is item 31 in the closed ledger.** The number is
     kept as a stub rather than renumbered, because six other entries and the
     Next Sequence reference items 11-17 by number.
-11. **The idea textarea resets after a reload, and nothing bounds it.** Both
-    halves re-verified open on 2026-08-30 against the working tree.
+11. ~~**The idea textarea resets after a reload, and nothing bounds it.**~~
+    **BOTH HALVES FIXED 2026-08-31.**
 
-    `useValidatorRun.ts` recovers run context from `localStorage` and
-    `GET /api/runs/{id}`, but `idea` is a plain `ref` seeded with a hardcoded
-    default at `useValidatorRun.ts:143` and **assigned nowhere** — the only
-    other references are the launch guard (`:239`) and the launch call (`:287`).
-    Refresh mid-run and the graph and the gates come back correctly above a text
-    box that has silently reverted to *"An AI tool that turns Figma files into
-    production React"*.
+    *The bound.* `maxlength` is on the textarea, sourced from
+    `data/serverLimits.ts`, where `MAX_IDEA_CHARS` restates
+    `MAX_RUN_INPUT_CHARS` with a comment naming its source and a test asserting
+    the two agree — duplicated constants drift, so the drift is now a
+    failing test rather than a surprising 422. The counter states the ceiling
+    (`40 / 2000 characters`), warns in amber inside the last 100 (because
+    `maxlength` then starts discarding keystrokes with no feedback at all), and
+    explains the disabled Launch below the 12-character minimum, which was
+    previously a dead button with no stated reason.
 
-    And **nothing bounds it on the client**: `grep -rn maxlength frontend/src`
-    returns nothing, so a visitor can type past `MAX_RUN_INPUT_CHARS` and only
-    learn about it from a 422 — which `studioApi.ts:405-411` throws as
-    `new Error(await response.text())`, so what they are shown is the raw
-    envelope, `{"detail":"inputs.idea is limited to 2000 characters; this one is
-    2001"}`. Nothing reads `Retry-After` on a 429 either. The server bounds are
-    right; the client does not know they exist. `StatusPanel.vue:80` already
-    renders a live character count, so the `maxlength` attribute is a one-line
-    change next to code that is already counting.
-12. **`applyNodeState` has three dead branches against the real backend, not
-    one.** `useValidatorRun.ts:489-495` dispatches on
-    `frame.event_type.includes(...)`. `UIEventType` has exactly 12 members
-    (`events/models.py`), and:
+    *The message.* `studioApi.fetchJson` threw
+    `new Error(await response.text())`, so a 2001-character idea reached the
+    operator as the literal string `{"detail":"inputs.idea is limited to 2000
+    characters; this one is 2001"}` — braces, quotes, key and all. The
+    server's sentence was already good; the client was showing the envelope
+    around it. `readErrorDetail` unwraps both FastAPI shapes (a `detail` string
+    and pydantic's list-of-`msg`) and falls back to the raw body rather than
+    swallowing anything. A 429 now also reads `Retry-After`, which
+    `CORS_EXPOSE_HEADERS` had been exposing cross-origin for a reader that did
+    not exist.
 
-    ```text
-    START     -> 2  NODE_START, WORKFLOW_START      live
-    END       -> 2  NODE_END,   WORKFLOW_END        live
-    WAITING   -> 0                                  DEAD  (line 490)
-    COMPLETED -> 0                                  DEAD  (line 494, second disjunct)
-    ERROR     -> 0                                  DEAD  (line 495, first disjunct)
-    ```
+    *The reset.* `idea` was a plain ref seeded with a hardcoded default and
+    assigned nowhere, so a refresh mid-run restored the graph, the gates and the
+    report correctly above a box that had silently reverted to *"An AI tool that
+    turns Figma files into production React"* — and the operator's next
+    Relaunch would have spent money on something they never typed. `recoverIdea`
+    reads it off the run's own opening `RUN_STATE` frame, which `restoreRun`
+    already replays: no new persistence, no new API field, and the box shows
+    what the run is actually about.
 
-    The `ERROR` branch survives only through its `|| frame.level === 'ERROR'`
-    disjunct; the `event_type` half of it can never fire. The previously
-    published line number (`:425`) was wrong — regenerate it, do not trust it.
-    All three still fire for the *mock* transport, which emits event types the
-    server never sends, which is exactly how they survived. `applyGate` sets the
-    waiting node (item 21), so nothing is broken today; the branches are
-    misleading rather than harmful.
+    `tests/serverLimits.spec.ts` (19 tests) and `tests/ideaRecovery.spec.ts`
+    (8 tests).
+
+12. ~~**`applyNodeState` has three dead branches against the real backend.**~~
+    **ALREADY FIXED before this pass; the entry was stale.** Verified at head:
+    `useValidatorRun.ts` dispatches on `START`, `END` and
+    `frame.level === 'ERROR'` only, and the comment above it explains exactly
+    why the `WAITING` / `COMPLETED` / `ERROR` `event_type` branches were
+    removed. No code change was needed on 2026-08-31 — only this
+    correction. Its own small lesson: a remaining-work list decays like any
+    other prose, and "re-verified open" is only as good as the date beside it.
+
 13. **`/ws` has no `Origin` check.** `CORS_ALLOW_ORIGINS` does not reach it:
     browsers do not apply CORS to a WebSocket handshake and Starlette passes
     non-HTTP scopes through. The socket does require a `run_id` that exists and
     a matching `session_id`, so an attacker needs a run identifier to get
     anything, but nothing stops a page on any origin from opening the socket.
-14. **The graph `ETag` is set and never honoured.** Re-verified 2026-08-30:
-    `service/app.py:513` writes `ETag: "{graph.version}"`, and
-    `grep -rn 'If-None-Match\|if_none_match' src/brief_crew/` returns **nothing**
-    anywhere in the package. A conditional `GET` carrying the exact ETag the
-    server had just returned came back **200**, not 304. The header is
-    decoration.
-15. **`SyntheticValidatorRunner` does not model `revise`.** Re-verified open.
+14. ~~**The graph `ETag` is set and never honoured.**~~ **FIXED 2026-08-31.**
+    `get_graph` now takes an `If-None-Match` header and answers **304** with an
+    empty body and the tag repeated (RFC 9110 requires the repeat, so a cache
+    can refresh its own freshness record from the response).
+
+    Measured against the live synthetic service, not assumed: the exact tag
+    gives 304 and 0 bytes, `W/"..."` gives 304, and a stale tag gives 200 with
+    **10,357 bytes**. That last number is what this endpoint had been sending on
+    every page load, for a topology that is constant for the life of a deploy
+    and whose `version` the client already stores.
+
+    `_etag_matches` implements RFC 9110 §13.1.2 **weak** comparison. Three
+    things it must get right are each a silent-failure mode: the header is a
+    comma-separated *list*; comparison is weak even for strong tags, so a proxy
+    that weakened the tag in transit must still match; and `*` matches any
+    representation. A malformed header degrades to a normal 200, never an error
+    — a bad cache header must not fail a request.
+    `tests/service/test_graph_etag.py`, **19 tests**, including that one
+    workflow's tag never satisfies the other's.
+
+15. ~~**`SyntheticValidatorRunner` does not model `revise`.**~~ **FIXED
+    2026-08-31.** `resume()` now reads `decision` and branches:
+    `route_scope` —> `revise_scope` —> `confirm_scope` reopens the same gate,
+    and `route_verdict` —> `revise_verdict` —> `review_verdict` rescores and
+    reopens its own. Bounded at `SYNTHETIC_MAX_REVISE_TURNS = 3` per gate,
+    mirroring `claim_revise_turn`: at the cap a further revise goes forward
+    rather than parking the run at a gate with nothing left to do.
+    `tests/service/test_synthetic_revise.py`, **19 tests**.
+
+    The reopened scope gate carries the **revised** scope — the operator's
+    edits laid over the defaults, plus a `revision_note`. Echoing the raw reply
+    was tried first and is wrong: the scope gate is fully editable, so every key
+    of the gate's output reaches the console as an *input*, and the operator
+    would get a text box full of reply JSON.
+
+    **Why this had to be fixed before any of the crew-animation work could be
+    trusted:** a console that draws a revision cannot be verified against a
+    double with no revisions in it. Both revise edges were dead on the free
+    path, so no unit test, no E2E test and no local synthetic run had ever
+    traversed one. Fixing it also broke a test that had been asserting the
+    *bug* — `test_gate_fields.py::test_the_note_and_a_scope_edit_are_accepted`
+    read the echoed reply off the verdict gate that a revise wrongly reached
+    — and that test now asserts the corrected contract.
+
+    Original entry, for the record: `resume()` branched on
+    `context.metadata["synthetic_stage"]` alone and never read `decision`, so a
+    `revise` at the scope gate advanced exactly as `approve` would.
     `resume()` (`service/runner.py:228-260`) branches on
     `context.metadata["synthetic_stage"]` only and never reads `decision` from
     the parsed payload, so a `revise` at the scope gate advances to the verdict
@@ -1316,6 +1492,82 @@ cross-references keep resolving.
     has recorded.
 
 #### New in this pass
+
+Items 36-39 come from the **2026-08-31 five-agent stack audit**; the full
+inventory and the regeneration commands are in
+[`docs/tech-stack.md`](docs/tech-stack.md). What unites them: **every one is
+invisible to a green test run.** The suite passes at 660, CI passed at
+`d3523c5`, the deploy serves. Each is a case where something holds *by accident*
+— a transitive pin, a platform default, an unreferenced tsconfig, a comment
+nobody diffed against its own value — rather than by declaration. That is the
+signature of stack-hygiene debt, and it is why a version audit cannot be done by
+running tests.
+
+36. ~~**[High] `pydantic` and `PyYAML` are direct imports that
+    `pyproject.toml` does not declare.**~~ **FIXED 2026-08-31.**
+    `pydantic>=2.12,<3` and `pyyaml>=6` are now in `dependencies`, each with a
+    comment naming where it is imported and why it was missed. Installed
+    versions satisfy both (pydantic 2.12.5, PyYAML 6.0.3).
+
+    The reason it was invisible is worth keeping: `pyproject.toml` already
+    carried *"Must be named explicitly - crewai[tools] does not pull it in"* for
+    `firecrawl-py`. Somebody reasoned about exactly this hazard and fixed the
+    case they noticed. Pydantic was missed **because** CrewAI does pull it in
+    — the dependency is only hidden while it works, and the failure mode
+    when the luck runs out is a v1/v2 API mismatch far from its cause.
+
+37. ~~**[High] Render's static-site build pins no Node version.**~~
+    **FIXED 2026-08-31.** `NODE_VERSION: "24"` is on the static site in
+    `render.yaml`, matching what CI pins, with a comment saying to keep the two
+    in step. `vite@8` requires `^20.19.0 || >=22.12.0`, so the floor is real and
+    a platform default drifting below it fails the deploy rather than the tests.
+    This is deployment trap 4 one layer up: the build environment that ships is
+    the one verified least.
+
+38. ~~**[Medium] `frontend/e2e/` is type-checked by nothing.**~~
+    **FIXED 2026-08-31.** `{"path": "./e2e"}` is in the root `tsconfig.json`
+    `references` array, so `tsc -b` now has the directory as a node in its build
+    graph.
+
+    **Proved by breaking it, not by assuming.** With the reference added, a
+    deliberate `const x: number = "not a number"` in `studio.spec.ts` produced
+    `e2e/studio.spec.ts(449,7): error TS2322` and was then reverted. Without the
+    proof this is indistinguishable from the previous state, which is the whole
+    trap: `tsc -b` builds a graph and an unreferenced config is simply not in
+    it — no warning, no orphan diagnostic. It looked fine in an editor
+    because a language server resolves the nearest config walking up from the
+    open file, which is a different algorithm from the build's.
+
+39. ~~**[Medium] `CREWAI_TRACING_ENABLED` is inverted between the two
+    deploy paths.**~~ **NOT A BUG — the audit misread it.** Corrected
+    2026-08-31; no value was changed, and changing one would have been the
+    error.
+
+    The two paths choose different **modes**, and
+    `agents/08-observability.md:196` prescribes exactly this split:
+
+    | path | value | mode |
+    | --- | --- | --- |
+    | `render.yaml` | `"true"` | **ephemeral** tracing — unauthenticated, short-lived links, not attributed to the AMP org. The documented Render answer. |
+    | `Dockerfile` | `false` | off entirely, because the **authenticated** credential (`tokens.enc`) is a secret that expires and must never be baked into an image. |
+
+    Flipping `render.yaml` to `false` on the strength of the audit would also
+    have broken the Next Sequence's step 4, which calls for a paid acceptance
+    run *"with traces enabled"*. Both comments now name which mode they are
+    choosing and cross-reference the other, so the misreading is not available a
+    second time.
+
+    **One real finding fell out of checking it.** `CREWAI_TRACING_ENABLED=false`
+    is **not a disable switch**: CrewAI's resolver has no branch returning
+    `False` for it (`agents/08-observability.md:128-138`) — the value fails
+    the `("true","1")` test and falls through to *stored consent*. The
+    Dockerfile's `false` reads as off only because a fresh container has no
+    stored `trace_consent`. Anything that ships a consent file would silently
+    re-enable tracing with that line untouched. The Dockerfile now says so.
+
+Item 34 below is **resolved** (see item 35 in the closed ledger) and is kept
+only because its diagnosis is the valuable part. It appears after 36-39 because
+those are the open ones; the numbering is chronological, not a priority order.
 
 34. **A latent CrewAI defect in `or_()`, under investigation by another agent —
     do not assume a resolution here.** Both gates are declared
@@ -1377,7 +1629,7 @@ Kept because the *reasoning* is what stops the defect coming back.
     plus lockstep edits to `VALIDATOR_OVERLAY`, `mockGraph.ts`,
     `mockGraph.spec.ts`, `mockFrames.ts`, `edgeAnimation.spec.ts`,
     `crewStages.ts` and the E2E node/edge counts. Measured: applying it *without*
-    the overlay edit takes the suite from 537 OK to **378 run / 67 errors, 13
+    the overlay edit took the suite from 537 OK to **378 run / 67 errors, 13
     modules unloadable**, because `graph.py:77-86` asserts an exact set match at
     import. `BranchSequencer`'s own docstring already refuses the mirror-image
     trade, so adding nodes to work around a CrewAI internal was the wrong side
@@ -1532,8 +1784,9 @@ decision, one CrewAI decision, and then money.
 2. **Settle item 34 (the `or_()` suppression) before any run that might
    revise.** Another agent is investigating; do not duplicate the work, and do
    not assume the durable path's immunity generalises. Whatever is decided,
-   fixing item 15 (`SyntheticValidatorRunner` ignoring `decision`) is the cheap
-   half — it is what would have caught this, and it is a no-cost change.
+   item 15 (`SyntheticValidatorRunner` ignoring `decision`) is **done** — the
+   double now branches on the reply, so the revise loop is exercised end to
+   end on the free path for the first time.
 3. **Add a `LICENSE`** (item 17). The repo is public with no licence file, which
    means all rights reserved — almost certainly not the intent — and
    `pyproject.toml` already carries the note saying so.
@@ -1557,6 +1810,14 @@ item 14 (the unhonoured `ETag` — no `If-None-Match` reader exists anywhere in
 `src/brief_crew/`) is a small handler change; item 7's missing
 `<link rel="icon">` is one line of `index.html` and stops a 404 on every page
 load.
+
+**Items 36-38 are DONE (2026-08-31)**, along with the cheap cleanups: the
+declared `pydantic`/`pyyaml`, `NODE_VERSION: "24"`, the `./e2e` tsconfig
+reference, the honoured `ETag`, the bounded and recoverable idea box, and the
+favicon link. Item 39 turned out not to be a bug at all — see its entry.
+
+What that leaves before step 4 is only what it always was: **read the rubric**.
+Nothing in the cleanup sweep touched a scoring decision, and nothing in it can.
 
 ## CrewAI Traces
 

@@ -49,6 +49,18 @@ RUN apt-get update \
 
 # CREWAI_TRACING_ENABLED stays false: authenticated tracing needs tokens.enc,
 # which is a secret, expires, and is excluded by .dockerignore.
+#
+# render.yaml sets "true" for the SAME variable and that is not a contradiction
+# - it opts into ephemeral (unauthenticated) tracing, which
+# agents/08-observability.md:196 recommends for Render. This path opts out
+# entirely. Two modes, two deploy paths, one documented split.
+#
+# Note what is actually doing the work here: `false` is NOT a disable switch.
+# CrewAI's resolver has no branch returning False for it (see
+# agents/08-observability.md:128-138) - the value simply fails the ("true","1")
+# test and falls through to stored consent. It reads as off in this image only
+# because a fresh container has no stored trace_consent. Anything that ships a
+# consent file would silently re-enable tracing with this line untouched.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \

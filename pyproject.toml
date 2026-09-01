@@ -23,6 +23,18 @@ dependencies = [
     "cohere>=7.1.0",
     "requests>=2.32.0",
     "python-dotenv>=1.0.0",
+    # Both are DIRECT imports and were undeclared until 2026-08-31. They
+    # resolved anyway because crewai happens to require them, which is exactly
+    # what made the omission invisible: the dependency is only hidden while it
+    # works. `firecrawl-py` above carries the same warning for the case somebody
+    # noticed; this is the case they did not, and the failure mode when the luck
+    # runs out is a pydantic v1/v2 API mismatch far from its cause.
+    #
+    # pydantic: 15 files - the schema layer, both Flow states, all of service/.
+    # PyYAML:   service/app.py, which reads the crew YAML to assert the
+    #           OpenRouter prefix at startup.
+    "pydantic>=2.12,<3",
+    "pyyaml>=6",
 ]
 
 [project.optional-dependencies]

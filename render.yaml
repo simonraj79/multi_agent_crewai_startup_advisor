@@ -102,10 +102,23 @@ services:
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"
 
-      # Traces from Render are EPHEMERAL - not attributed to the AMP org. The
-      # credential is an encrypted tokens.enc written by an interactive
-      # `crewai login`, it expires, there is no env-var equivalent, and it must
-      # never be baked into an image. See agents/08-observability.md section 3.
+      # ON, and deliberately different from the Dockerfile's `false`. This is
+      # NOT an inversion, though it has been read as one: the two paths choose
+      # different MODES, and agents/08-observability.md:196 prescribes exactly
+      # this split.
+      #
+      #   here (Render)  true  -> EPHEMERAL tracing. Unauthenticated, short-lived
+      #                           trace links, not attributed to the AMP org.
+      #                           That is the documented Render answer, and
+      #                           CLAUDE.md's next-step plan calls for a paid
+      #                           acceptance run "with traces enabled".
+      #   Dockerfile     false -> off entirely, because the AUTHENTICATED
+      #                           credential (tokens.enc) is a secret that
+      #                           expires and must never be baked into an image.
+      #
+      # The credential is written by an interactive `crewai login` and has no
+      # env-var equivalent, which is why neither path can be authenticated.
+      # Postgres `run_metrics` remains the durable record either way.
       - key: CREWAI_TRACING_ENABLED
         value: "true"
 
@@ -147,6 +160,18 @@ services:
     # Relative to rootDir - frontend/dist.
     staticPublishPath: dist
     envVars:
+      # Pin the toolchain for the build that SHIPS. CI pins Node 24
+      # (.github/workflows/ci.yml), but this build pinned nothing - no
+      # NODE_VERSION, no engines.node, no .nvmrc - so it ran on whatever
+      # Render's platform default happened to be on the day. vite@8 requires
+      # ^20.19.0 || >=22.12.0, so the floor is real and a platform default
+      # drifting below it fails the deploy, not the tests.
+      #
+      # This is deployment trap 4 one layer up: the build environment that
+      # ships is the one verified least. Keep this in step with ci.yml.
+      - key: NODE_VERSION
+        value: "24"
+
       # Read by frontend/src/services/studioApi.ts. It is used both as a fetch
       # prefix AND as the base of `new URL(...)` for the WebSocket, so it MUST
       # be a full origin with a scheme, e.g.

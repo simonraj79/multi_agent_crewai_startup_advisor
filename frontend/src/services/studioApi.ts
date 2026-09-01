@@ -551,16 +551,29 @@ export class StudioApi {
    * thing that stops someone launching a run. The API applies the ownership
    * filter in SQL, so there is nothing to filter here.
    */
+  /**
+   * The caller's runs, newest first.
+   *
+   * THROWS on failure rather than returning `[]`, and that is the whole point.
+   * A `catch { return [] }` here converted every 401, 5xx, CORS refusal and
+   * network drop into the positive claim "you have no runs" - which the panel
+   * renders as "Nothing yet. Launch a validation and it will appear here."
+   *
+   * Observed in production on 2026-09-01: a run that had genuinely completed,
+   * and that `GET /api/runs` returned when asked directly, showed as an empty
+   * history. The likely trigger is the first paint racing the token mint, so
+   * the request 401s once and the emptiness is then indistinguishable from the
+   * truth. It is the same defect class as the transport probe: a failure
+   * rendered as a confident negative.
+   *
+   * An empty ARRAY still means empty. Only an error means "could not load".
+   */
   async listRuns(limit = 25): Promise<RunHistoryEntry[]> {
     if (this.mode !== 'live') return []
-    try {
-      const page = await this.fetchJson<{ runs: RunHistoryEntry[] }>(
-        `/api/runs?limit=${encodeURIComponent(String(limit))}`,
-      )
-      return page.runs ?? []
-    } catch {
-      return []
-    }
+    const page = await this.fetchJson<{ runs: RunHistoryEntry[] }>(
+      `/api/runs?limit=${encodeURIComponent(String(limit))}`,
+    )
+    return page.runs ?? []
   }
 
   async downloadLogs(runIdValue: string, format: LogFormat = 'ndjson'): Promise<void> {

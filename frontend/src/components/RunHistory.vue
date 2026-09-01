@@ -56,11 +56,24 @@ const runs = ref<RunHistoryEntry[]>([])
 const loading = ref(false)
 const loaded = ref(false)
 
+/**
+ * Why the list could not be loaded, or '' when it was. Separate from `runs`
+ * because an empty array is a legitimate answer and a failure is not - saying
+ * "Nothing yet" over a request that 401'd is how a completed run disappeared
+ * from this panel in production.
+ */
+const loadError = ref('')
+
 async function refresh(): Promise<void> {
   if (!props.enabled) return
   loading.value = true
+  loadError.value = ''
   try {
     runs.value = await studioApi.listRuns()
+  } catch (error) {
+    // Keep whatever was already on screen: a refresh that fails should not
+    // erase a list the operator could read a moment ago.
+    loadError.value = error instanceof Error ? error.message : 'Your runs could not be loaded.'
   } finally {
     loading.value = false
     loaded.value = true
@@ -117,7 +130,12 @@ const isEmpty = computed(() => loaded.value && !loading.value && runs.value.leng
       </button>
     </header>
 
-    <p v-if="isEmpty" class="run-history-empty">
+    <p v-if="loadError" class="run-history-empty run-history-error" role="alert">
+      Your runs could not be loaded - this is not the same as having none.
+      <button class="run-history-retry" type="button" @click="refresh">Try again</button>
+    </p>
+
+    <p v-else-if="isEmpty" class="run-history-empty">
       Nothing yet. Launch a validation and it will appear here.
     </p>
 
@@ -187,6 +205,9 @@ const isEmpty = computed(() => loaded.value && !loading.value && runs.value.leng
 .run-history-refresh:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
 
 .run-history-empty { margin: 0; color: var(--text-40); font: 400 var(--fs-12)/1.5 var(--font-body); }
+/* Warn, not muted: a failed load must not read like an ordinary empty list. */
+.run-history-error { color: var(--warn-text); }
+.run-history-retry { margin-left: 6px; padding: 0; color: inherit; font: inherit; text-decoration: underline; background: none; border: 0; cursor: pointer; }
 
 .run-history-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
 

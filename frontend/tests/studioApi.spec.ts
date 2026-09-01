@@ -522,3 +522,77 @@ describe('StudioApi http surface', () => {
     })
   })
 })
+
+/**
+ * A failed request must never be reported as an empty result.
+ *
+ * `listRuns` swallowed every failure into `[]`, and `RunHistory.vue` renders an
+ * empty list as "Nothing yet. Launch a validation and it will appear here."
+ * Observed in production on 2026-09-01: a run that had genuinely completed, and
+ * that `GET /api/runs` returned when asked directly, showed as no runs at all.
+ * The likely trigger is the first paint racing the token mint - one 401, and
+ * the emptiness becomes indistinguishable from the truth.
+ *
+ * Same defect class as the transport probe this session repaired: a failure
+ * rendered as a confident negative claim.
+ */
+describe('StudioApi.listRuns', () => {
+  let api: StudioApi
+  let fetchMock: ReturnType<typeof vi.fn>
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch
+    fetchMock = vi.fn()
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
+    api = new StudioApi()
+    api.mode = 'live'
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('returns the runs the server sent', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ runs: [{ run_id: 'r-1', workflow_id: 'idea-validator', status: 'completed' }] }),
+      text: async () => '',
+    })
+
+    await expect(api.listRuns()).resolves.toHaveLength(1)
+  })
+
+  it('reports an empty list as empty', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ runs: [] }),
+      text: async () => '',
+    })
+
+    await expect(api.listRuns()).resolves.toEqual([])
+  })
+
+  it('THROWS on a 401 rather than claiming the operator has no runs', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => '{"detail":"sign in to use this endpoint"}',
+      json: async () => ({ detail: 'sign in to use this endpoint' }),
+    })
+
+    await expect(api.listRuns()).rejects.toThrow()
+  })
+
+  it('THROWS on a network failure', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('connection refused'))
+
+    await expect(api.listRuns()).rejects.toThrow('connection refused')
+  })
+})

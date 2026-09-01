@@ -708,6 +708,12 @@ class RunRecord:
     graph_version: str
     inputs: Mapping[str, Any]
     node_registry: NodeRegistry
+    # Better Auth's `user.id` for whoever launched this, or None when the
+    # service is running unauthenticated (tests, SYNTHETIC mode, a bare local
+    # checkout). Every ownership decision in service/app.py reads this, and it
+    # is set once at creation and never reassigned - a run does not change
+    # hands.
+    user_id: str | None = None
     flow_id: str | None = None
     on_frames: Callable[[str, tuple[FrameData, ...]], None] | None = None
     ring_capacity: int = DEFAULT_RING_CAPACITY
@@ -1331,6 +1337,7 @@ class RunRegistry:
         session_id: str,
         workflow_id: str,
         inputs: Mapping[str, Any],
+        user_id: str | None = None,
     ) -> RunRecord:
         """Admit and register one NEW run.
 
@@ -1367,6 +1374,7 @@ class RunRegistry:
                 session_id=session_id,
                 workflow_id=workflow_id,
                 inputs=inputs,
+                user_id=user_id,
             )
         except BaseException:
             # The slot is only held for a run that exists. A durable write that
@@ -1383,6 +1391,7 @@ class RunRegistry:
         session_id: str,
         workflow_id: str,
         inputs: Mapping[str, Any],
+        user_id: str | None = None,
     ) -> RunRecord:
         flow_id = run_id if hasattr(runtime.runner, "resume") else None
         record = RunRecord(
@@ -1391,6 +1400,7 @@ class RunRegistry:
             workflow_id=workflow_id,
             graph_version=runtime.graph_version,
             inputs=inputs,
+            user_id=user_id,
             node_registry=runtime.node_registry,
             flow_id=flow_id,
             on_frames=self._enqueue_frames,
@@ -1405,6 +1415,7 @@ class RunRegistry:
                 flow_id=flow_id,
                 graph_version=runtime.graph_version,
                 inputs=inputs,
+                user_id=user_id,
             )
         with self._lock:
             self._records[run_id] = record

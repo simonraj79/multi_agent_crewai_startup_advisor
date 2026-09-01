@@ -86,6 +86,8 @@ three agree on every row** — there is no lock drift.
 | `fastapi` (extra: `service`) | `>=0.115.0` | 0.141.1 |
 | `uvicorn` (extra: `service`) | `>=0.32.0` | 0.52.4 |
 | `sqlalchemy` (extra: `service`) | `>=2.0.0` | 2.0.52 |
+| `pyjwt[crypto]` (extra: `service`) | `>=2.10.0` | **2.13.0** |
+| `cryptography` (via the `crypto` extra) | transitive | 50.0.1 |
 | `psycopg[binary]` (extra: `service`) | `>=3.2.0` | 3.3.4 |
 | `starlette` | (transitive, via fastapi) | 1.6.0 |
 | `pydantic` | ⚠️ **not declared** — see §8 finding 1 | 2.12.5 |
@@ -116,6 +118,12 @@ no unmet peers, no invalid entries and no duplicate `vue` or `vite` copies.
 | Package | Specifier | Installed |
 | --- | --- | --- |
 | `vue` | `^3.5.41` | **3.5.42** |
+| `better-auth` | `^1.7.2` | 1.7.2 |
+| `hono` | `^4.13.5` | 4.13.5 |
+| `@hono/node-server` | `^2.1.1` | 2.1.1 |
+| `pg` | `^8.23.0` | 8.23.0 |
+| `better-sqlite3` | `^12.11.1` | 12.11.1 |
+| `dotenv` | `^17.4.2` | 17.4.2 |
 | `@vue-flow/core` | `^1.48.2` | 1.48.2 |
 | `@vue-flow/background` | `^1.3.2` | 1.3.2 |
 | `@vue-flow/controls` | `^1.1.3` | 1.1.3 |
@@ -205,24 +213,47 @@ or `.parse_raw()` survives anywhere in `src/`. One helper is *named*
 
 ---
 
-## 6. Environment knobs — there are twenty
+## 6. Environment knobs — there are thirty-six
 
-Regenerated with the multiline scan in §1 on 2026-08-31. **Sixteen** are read in
-`config.py` and **four** in `service/app.py` (`DATABASE_URL`, `HOST`, `PORT`,
-`SYNTHETIC`).
+Regenerated with the multiline scan in §1 on **2026-09-01**. **Thirty-two** are
+read in `config.py` and **four** in `service/app.py` (`DATABASE_URL`, `HOST`,
+`PORT`, `SYNTHETIC`).
+
+> The previous figure here was **twenty**, and it was short by sixteen. Four of
+> those are the authentication knobs added on 2026-09-01; the other **twelve
+> were already present and already missing from this list** — every
+> `VALIDATOR_FIRECRAWL_*`, every `VALIDATOR_BRANCH_*`, the two
+> `VALIDATOR_MAX_*_CHARS`, `VALIDATOR_MARKET_SEARCH_LIMIT`,
+> `VALIDATOR_SENTIMENT_STORY_LIMIT` and `VALIDATOR_MAX_BRANCH_QUERIES`. This
+> block is pasted scan output, not prose. Regenerate before trusting it.
 
 ```text
-CORS_ALLOW_ORIGINS                    MAX_QUEUED_RUNS
-DATABASE_URL                          MAX_RUN_COST_USD
-EXPOSE_API_DOCS                       PINECONE_INDEX_NAME
-HOST                                  PORT
-RUN_CONCURRENCY                       RUN_RATE_LIMIT_MAX_RUNS
-RUN_RATE_LIMIT_TRUST_FORWARDED_FOR    RUN_RATE_LIMIT_WINDOW_SECONDS
-RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS     SYNTHETIC
-VALIDATOR_ALLOW_AUTO_GATES            VALIDATOR_FEASIBILITY_CACHE_ENABLED
+AUTH_BASE_URL                         AUTH_JWKS_CACHE_SECONDS
+AUTH_JWT_LEEWAY_SECONDS               CORS_ALLOW_ORIGINS
+DATABASE_URL                          EXPOSE_API_DOCS
+HOST                                  MAX_QUEUED_RUNS
+MAX_RUN_COST_USD                      PINECONE_INDEX_NAME
+PORT                                  RUN_CONCURRENCY
+RUN_RATE_LIMIT_MAX_RUNS               RUN_RATE_LIMIT_TRUST_FORWARDED_FOR
+RUN_RATE_LIMIT_WINDOW_SECONDS         RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS
+SYNTHETIC                             VALIDATOR_ALLOW_AUTO_GATES
+VALIDATOR_BRANCH_MAX_ITER             VALIDATOR_BRANCH_MAX_TOKENS
+VALIDATOR_BRANCH_TEMPERATURE          VALIDATOR_FEASIBILITY_CACHE_ENABLED
+VALIDATOR_FIRECRAWL_MAX_AGE_MS        VALIDATOR_FIRECRAWL_MAX_RETRIES
+VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS
+VALIDATOR_MARKET_SEARCH_LIMIT         VALIDATOR_MAX_BRANCH_QUERIES
+VALIDATOR_MAX_CLAIM_CHARS             VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS
 VALIDATOR_MAX_GATE_TURNS              VALIDATOR_ORPHAN_RUN_GRACE_SECONDS
-VALIDATOR_ORPHAN_RUN_RECOVERY         VALIDATOR_SEQUENTIAL_BRANCHES
+VALIDATOR_ORPHAN_RUN_RECOVERY         VALIDATOR_REQUIRE_AUTH
+VALIDATOR_SENTIMENT_STORY_LIMIT       VALIDATOR_SEQUENTIAL_BRANCHES
 ```
+
+The Node auth service reads five of its own, none of which appear above because
+they are read in TypeScript rather than in `config.py`: `BETTER_AUTH_URL`,
+`BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+`AUTH_SKIP_MIGRATIONS`, plus `DATABASE_URL` / `AUTH_SQLITE_PATH` / `PORT` /
+`HOST` / `NODE_ENV` shared with the platform. See
+[`google-oauth.md`](google-oauth.md).
 
 > **⚠️ This count has now been wrong four times, and never for the same
 > reason.** It was published as *eleven* when a line-anchored

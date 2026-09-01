@@ -306,3 +306,22 @@ export interface VerdictSummary {
   dimensions: VerdictDimensionScores | null
   source: 'frame' | 'gate'
 }
+
+/**
+ * One row of "your runs", as `GET /api/runs` returns it.
+ *
+ * Mirrors `RunHistoryEntry` in `src/brief_crew/service/models.py`, which is
+ * deliberately NOT a `RunSnapshot`: no frames, no node usage, no result body.
+ * Note the absent `session_id` - it is a capability, not a label, and a list of
+ * historical runs must not hand out live-stream credentials for all of them.
+ */
+export interface RunHistoryEntry {
+  run_id: string
+  workflow_id: string
+  status: string
+  created_at: string
+  completed_at: string | null
+  label: string
+  total_tokens: number
+  cost_usd: number
+}

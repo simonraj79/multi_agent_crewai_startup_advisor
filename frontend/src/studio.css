@@ -346,3 +346,99 @@ h3 {
   cursor: pointer;
 }
 .report-reopen:hover { filter: brightness(1.08); }
+
+/* --------------------------------------------------------------------------
+ * Authentication surfaces
+ *
+ * These live in the GLOBAL stylesheet rather than in App.vue's own <style>
+ * because App.vue has no scoped block at all - the whole shell is styled from
+ * here. SignInPanel.vue does use `scoped`, which is correct there: it renders
+ * no v-html, so Vue's data attribute reaches every element it selects.
+ * -------------------------------------------------------------------------- */
+
+.auth-splash {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  min-height: 100vh;
+  color: var(--text-muted);
+  font: 500 var(--fs-13)/1 var(--font-body);
+  background: var(--bg-app);
+}
+
+.auth-splash-mark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  color: var(--accent-cyan);
+  background: rgba(153, 234, 249, 0.08);
+  border: 1px solid rgba(153, 234, 249, 0.28);
+  border-radius: var(--r-lg);
+}
+
+.auth-splash p { margin: 0; }
+
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 4px 4px 4px 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-pill);
+}
+
+.account-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border-avatar);
+  object-fit: cover;
+}
+
+.account-name {
+  overflow: hidden;
+  color: var(--text-body);
+  font: 500 var(--fs-12)/1 var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-signout {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: var(--text-40);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: color var(--motion-fast), background var(--motion-fast);
+}
+
+.account-signout:hover { color: var(--err-text); background: var(--err-bg); }
+.account-signout:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
+
+/* The icon carries the meaning for sighted users; this is the same label for
+   everyone else. `clip-path` rather than `display: none`, which would take the
+   text out of the accessibility tree entirely. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  /* The name is the first thing to go when the header runs out of room; the
+     avatar and the sign-out control still identify and still work. */
+  .account-name { display: none; }
+}

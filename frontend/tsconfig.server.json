@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.tsbuildinfo",
+    "outDir": "./server-dist",
+    "rootDir": "./server",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+
+    /* These two go together and are what let ONE source file both run
+       under `node server/index.ts` and compile to `server-dist`.
+       Node's built-in type stripping resolves import paths literally: it
+       will NOT map `./auth.js` to `./auth.ts`, so the conventional ESM
+       spelling fails at runtime with ERR_MODULE_NOT_FOUND. Writing the
+       real `./auth.ts` fixes dev but would emit a broken `.ts` import into
+       the build - `rewriteRelativeImportExtensions` (TS 5.7+) rewrites it
+       to `./auth.js` on the way out, so both paths are correct. */
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "noEmit": false,
+
+    /* `erasableSyntaxOnly` matches tsconfig.node.json and is not decorative:
+       it is what keeps `node --watch server/index.ts` able to run this source
+       directly via Node 24's built-in type stripping, so dev needs no
+       transpiler and prod runs the plain tsc output. Enums, namespaces and
+       parameter properties would break that and are therefore refused here. */
+    "erasableSyntaxOnly": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["server/**/*.ts"]
+}

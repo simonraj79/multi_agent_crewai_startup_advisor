@@ -1485,7 +1485,18 @@ CORS_ALLOW_CREDENTIALS = False
 # POST for run creation, gate replies and cancel; Accept and Content-Type on
 # those. OPTIONS is the preflight itself. Nothing else is granted.
 CORS_ALLOW_METHODS = ("GET", "POST", "OPTIONS")
-CORS_ALLOW_HEADERS = ("Accept", "Content-Type")
+# Authorization joined the list when Better Auth landed, and it is load-bearing
+# rather than tidy: `Authorization` is NOT on the CORS safelist, so a browser
+# preflights every authenticated call and drops the real request unless this
+# names it. Omitting it does not produce a 401 - it produces a CORS failure in
+# the console and a request the API never sees, which reads like the API is
+# down.
+#
+# Note this does NOT flip CORS_ALLOW_CREDENTIALS. That switch governs cookies
+# and TLS client certs, which the browser attaches on its own; an Authorization
+# header set explicitly by our own JavaScript is an ordinary header. The
+# warning above still binds if COOKIE auth is ever added here.
+CORS_ALLOW_HEADERS = ("Accept", "Authorization", "Content-Type")
 
 # ETag is NOT on the CORS-safelist for response headers, so a cross-origin
 # reader of /api/workflows/{id}/graph cannot see the graph version unless it is
@@ -1494,6 +1505,56 @@ CORS_ALLOW_HEADERS = ("Accept", "Content-Type")
 # Retry-After joins it for the same reason: run creation answers 429 with
 # one, and a cross-origin client cannot read it unless it is named here.
 CORS_EXPOSE_HEADERS = ("ETag", "Retry-After")
+
+# --------------------------------------------------------------------------
+# Authentication - Better Auth (frontend/server/auth.ts)
+#
+# The SPA and this API are separate ORIGINS, and `onrender.com` sits on the
+# Public Suffix List, so the browser will not let them share a session cookie.
+# The SPA therefore fetches a SHORT-LIVED JWT from its own origin (where the
+# httpOnly session cookie does work) and sends it here as a Bearer token. This
+# service verifies that token offline against the auth server's JWKS: no shared
+# secret, no database round trip on the hot path, and no call back into the
+# auth service while serving a request.
+# --------------------------------------------------------------------------
+
+# The ORIGIN of the Better Auth service - scheme and host, no trailing slash.
+# It is three things at once, which is why one value drives all of them: the
+# JWKS location, the expected `iss`, and the expected `aud`. Empty means no
+# auth server is configured.
+AUTH_BASE_URL = os.getenv("AUTH_BASE_URL", "").strip().rstrip("/")
+
+# Auth is required whenever an auth server is configured, and the default is
+# deliberately derived rather than a flat False.
+#
+# A flat False fails OPEN: a deployment that sets AUTH_BASE_URL, wires the
+# login screen and forgets one boolean would serve every paid endpoint
+# unauthenticated, and nothing on screen would say so. Deriving it means the
+# half-configured state does not exist - configuring an auth server IS turning
+# auth on. This is the same reasoning as CORS_ALLOW_ORIGINS' empty default
+# above: when a mistake is possible, make the mistake the loud one.
+#
+# The unset case stays off so the test suite, the SYNTHETIC runners and a bare
+# local checkout keep working with no auth server running at all.
+VALIDATOR_REQUIRE_AUTH = _env_flag("VALIDATOR_REQUIRE_AUTH", bool(AUTH_BASE_URL))
+
+# How long a fetched JWKS is trusted before it is re-fetched. An unknown `kid`
+# forces an immediate refresh regardless, so this bounds staleness after a key
+# ROTATION, not after a key addition.
+AUTH_JWKS_CACHE_SECONDS = _env_positive_int("AUTH_JWKS_CACHE_SECONDS", 3600)
+
+# Clock skew allowance when checking `exp`/`iat`. Two independent Render
+# instances are not perfectly synchronised, and a token minted one second in
+# the future must not be rejected as invalid.
+AUTH_JWT_LEEWAY_SECONDS = _env_positive_int("AUTH_JWT_LEEWAY_SECONDS", 60)
+
+# Ed25519. Declared here AND in frontend/server/auth.ts's `keyPairConfig`,
+# because a verifier that accepts whatever the token's own header claims is a
+# verifier that can be talked into accepting `alg: none` or an HMAC forged with
+# the public key. The list is the allowlist passed to PyJWT, and the two files
+# name the same value on purpose - if one changes, the other must change in the
+# same commit or every login breaks at the API boundary.
+AUTH_JWT_ALGORITHMS = ("EdDSA",)
 
 # --------------------------------------------------------------------------
 # WebSocket inbound control channel - PRD F27/F37

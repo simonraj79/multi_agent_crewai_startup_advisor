@@ -7,6 +7,24 @@
       "skillPath": "skills/ask-docs/SKILL.md",
       "computedHash": "afd384df912cb3b56d2c2a1a11e6f9c82f078cf9b3eedcac2e4bf990e42912ba"
     },
+    "better-auth-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/best-practices/SKILL.md",
+      "computedHash": "f35281e7a0c07b3fd3c4e96c7833dafb294a3a8662cb68a8544f4225008d6568"
+    },
+    "better-auth-security-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "security/SKILL.md",
+      "computedHash": "087c1094fa5f1834af4785c058dcc8c9abe4c1321b853883c76ea46c93a21cfe"
+    },
+    "create-auth": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/create-auth/SKILL.md",
+      "computedHash": "d101953fda9452eb4e59d4eb50aa829c1961cdd7d0587d26a2b1871abe885e07"
+    },
     "design-agent": {
       "source": "crewaiinc/skills",
       "sourceType": "github",
@@ -19,11 +37,29 @@
       "skillPath": "skills/design-task/SKILL.md",
       "computedHash": "6a0dc377055158d58ac62073e01ef6ce70bb42256f7c6ff1e17cba0e5588499e"
     },
+    "email-and-password-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/emailAndPassword/SKILL.md",
+      "computedHash": "ac9f9b0a549390f157ec62f5421a0bc90ac622c7e425af13155953847e0b68ea"
+    },
     "getting-started": {
       "source": "crewaiinc/skills",
       "sourceType": "github",
       "skillPath": "skills/getting-started/SKILL.md",
       "computedHash": "e8820adaa64f5e2bd054b86b4500db47bdb55619b41e3efeefc01357d53b9a73"
+    },
+    "organization-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/organization/SKILL.md",
+      "computedHash": "f03e41bc2995c4fceec98f3db85f9638d71cc391fb10f9d85460304d6642efc2"
+    },
+    "two-factor-authentication-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/twoFactor/SKILL.md",
+      "computedHash": "ca66fbdc0281f43065a6c890a9982afba774565085e773863ce31280324d9425"
     }
   }
 }

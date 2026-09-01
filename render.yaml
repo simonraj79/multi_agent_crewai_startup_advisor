@@ -97,7 +97,20 @@ services:
       # host, no trailing slash - startup refuses a malformed entry and names
       # the corrected string. Must match the origin serving the static site.
       - key: CORS_ALLOW_ORIGINS
-        value: "https://agentic-crew-ai-web.onrender.com"
+        value: "https://agentic-crew-ai-studio.onrender.com"
+
+      # The origin of the Better Auth service - the SAME value the web service
+      # sets as BETTER_AUTH_URL, and the same one CORS_ALLOW_ORIGINS names
+      # above, because the SPA and auth share an origin by design.
+      #
+      # Setting this is what TURNS AUTHENTICATION ON. `VALIDATOR_REQUIRE_AUTH`
+      # defaults to "true when an auth server is configured" rather than to a
+      # flat false, so there is no state where this is set and the API still
+      # serves anonymous callers - see config.py. It is three things at once
+      # here as well: the JWKS location, the expected `iss`, and the expected
+      # `aud`.
+      - key: AUTH_BASE_URL
+        value: "https://agentic-crew-ai-studio.onrender.com"
 
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"
@@ -147,19 +160,88 @@ services:
         sync: false
 
   # --------------------------------------------------------------------------
-  # Frontend - Vue 3 + Vue Flow static site (frontend/)
+  # Frontend + auth - Vue 3 SPA served by a Node server (frontend/)
+  #
+  # THIS WAS A `runtime: static` SITE AND IS NOW A NODE WEB SERVICE. The change
+  # is forced by Better Auth, which is a TypeScript library needing a Node
+  # runtime; a CDN cannot run one. Two consequences follow and both are
+  # load-bearing:
+  #
+  #   1. `region: singapore` is now MANDATORY, where before there was
+  #      deliberately no region at all. This service writes sessions to the
+  #      database, and that database declares `ipAllowList: []` - only traffic
+  #      from inside the same region reaches it. Move this service and logins
+  #      break with no configuration change to blame, exactly as the API would.
+  #   2. The SPA and auth share ONE ORIGIN, and that is the whole design.
+  #      `onrender.com` is on the Public Suffix List, so a browser refuses to
+  #      set a cookie scoped to `.onrender.com` - a separate auth subdomain
+  #      could never share a session cookie with the SPA. Same origin makes an
+  #      ordinary httpOnly cookie work and keeps the session out of JavaScript.
+  #
+  # The FastAPI service is still a different origin and still cannot read that
+  # cookie. The SPA fetches a 15-minute JWT from this service and sends it there
+  # as a bearer token; see src/brief_crew/service/auth.py.
   # --------------------------------------------------------------------------
-  - name: agentic-crew-ai-web
+  - name: agentic-crew-ai-studio
     type: web
-    runtime: static
-    # No region: static sites are served from Render's global CDN, so the
-    # singapore pinning that matters for the API and the database does not
-    # apply here.
+    runtime: node
+    # See note 1 above - this is not a preference.
+    region: singapore
+    # `free` spins down after inactivity, so the first visitor of the day waits
+    # for a cold start ON THE SIGN-IN PAGE, which is the worst possible place to
+    # put a 30-second pause. It also delays the API's first JWKS fetch. Move to
+    # `starter` if this is shown to anyone; the code is identical either way.
+    plan: free
     rootDir: frontend
+    # `npm run build` is three steps: vue-tsc -b (which type-checks src, tests,
+    # e2e AND server via project references), vite build (the SPA into dist/),
+    # then tsc -p tsconfig.server.json (the Node server into server-dist/).
     buildCommand: "npm ci && npm run build"
-    # Relative to rootDir - frontend/dist.
-    staticPublishPath: dist
+    # The Better Auth schema is migrated IN-PROCESS at startup
+    # (frontend/server/migrate.ts), not here. A build container is not
+    # guaranteed to reach a database whose ipAllowList is empty, and a
+    # migration that quietly did not run surfaces as "no such table:
+    # session" on the first sign-in rather than as a failed deploy.
+    startCommand: "npm start"
+    healthCheckPath: /healthz
     envVars:
+      # Better Auth's tables (user, session, account, verification, jwks) live
+      # in the SAME database as the runs, which is what lets the API resolve a
+      # run's owner without a second datastore. Internal connection string, for
+      # the ipAllowList reason above.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agentic-crew-ai-db
+          property: connectionString
+
+      # Signs session cookies AND encrypts the private half of the JWKS key at
+      # rest. Rotating it invalidates every session and every issued JWT, so
+      # generate once and leave it: `openssl rand -base64 32`.
+      - key: BETTER_AUTH_SECRET
+        sync: false
+
+      # The origin the BROWSER sees, scheme included and no trailing slash. It
+      # is three things at once - the OAuth redirect base, the cookie origin,
+      # and the `iss`/`aud` of every JWT - so a wrong value here fails in three
+      # different-looking ways. It must equal this service's own URL, and it
+      # must equal AUTH_BASE_URL on the API. `sync: false` for the same reason
+      # CORS_ALLOW_ORIGINS is a literal: the URL does not exist until the
+      # service does.
+      - key: BETTER_AUTH_URL
+        sync: false
+
+      # From the Google Cloud console - see docs/google-oauth.md. The authorised
+      # redirect URI registered there must be exactly
+      #   ${BETTER_AUTH_URL}/api/auth/callback/google
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+      # Turns on Secure cookies and switches off the dev-only trusted origins.
+      - key: NODE_ENV
+        value: production
+
       # Pin the toolchain for the build that SHIPS. CI pins Node 24
       # (.github/workflows/ci.yml), but this build pinned nothing - no
       # NODE_VERSION, no engines.node, no .nvmrc - so it ran on whatever
@@ -181,8 +263,6 @@ services:
       # filled in once the API's real URL is known.
       - key: VITE_API_URL
         sync: false
-    routes:
-      # SPA fallback: every unmatched path serves the app shell.
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    # No `routes:` block any more. SPA fallback was a static-site rewrite rule;
+    # it is now `app.get("*", ...)` in frontend/server/index.ts, which has to
+    # own it anyway so that /api/auth/* is matched BEFORE the fallback.

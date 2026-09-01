@@ -60,6 +60,8 @@ export function emptySnapshot(runId = RUN_ID, status: RunSnapshot['status'] = 'r
  */
 export class FakeStudioApi implements StudioApiLike {
   mode: TransportMode = 'live'
+  /** Null means "the probe reached a real backend", which is this double's default. */
+  probeFailure: string | null = null
   graph: GraphDescriptor = structuredClone(MOCK_GRAPH)
   snapshot: RunSnapshot = emptySnapshot()
   storedFrames: FrameData[] = []

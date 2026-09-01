@@ -159,7 +159,24 @@ class Evidence(ValidatorModel):
 class Competitor(ValidatorModel):
     name: str = Field(min_length=1)
     pricing: str = Field(min_length=1)
-    vendor_owned: bool
+    # RATIFICATION C5 (2026-09-01): TRI-STATE, like `Repo.archived`,
+    # `Thread.points` and `Evidence.dated_is_retrieval_time`. It was the sole
+    # two-state flag on this model carrying a three-state question.
+    #
+    # Measured: three competitors whose ownership no source establishes became
+    # three `False`s, `vendor_owned == 0`, and the C ceiling was 5 - so the top
+    # of the competitive ladder was awarded for an ABSENCE of evidence. A
+    # two-state flag forces a guess, and the guess defaulted to the flattering
+    # answer.
+    vendor_owned: bool | None = Field(
+        default=None,
+        description=(
+            "True when a source shows this competitor is delivered as part of a "
+            "larger platform vendor's product or subscription; false when a "
+            "source shows it is sold and bought on its own. Leave it null "
+            "when no source settles the question; null is not False."
+        ),
+    )
     url: str | None = None
     # The X floor used to be blind to the commonest free substitute there is.
     # `FLOOR_ALREADY_FREE` counts repositories marked SOLVES_ENTIRELY, so a
@@ -525,8 +542,13 @@ class Verdict(ValidatorModel):
             floors.append("FLOOR_ALREADY_FREE")
         if market == 0 and demand <= 2:
             floors.append("FLOOR_NO_MARKET")
-        if feasibility == 0:
-            floors.append("FLOOR_NOT_BUILDABLE")
+        # RATIFICATION C4 (2026-09-01): FLOOR_NOT_BUILDABLE is RETIRED and F
+        # has no level 0. It was compulsory at `relevant == 0`, that state is
+        # the modal outcome for an ordinary v1, and the branch was
+        # NON-MONOTONE - F=0 produced NEEDS_WORK/3.4 where the strictly better
+        # F=1 produced REJECT/3.7, because this `elif` sat above the
+        # `composite < 4.0` test. The code stays in `FloorCode` so rows already
+        # written still parse.
 
         label: VerdictLabel
         reason: DecisionReason | None
@@ -538,8 +560,6 @@ class Verdict(ValidatorModel):
             label, reason = "REJECT", "FLOOR_ALREADY_FREE"
         elif market == 0 and demand <= 2:
             label, reason = "REJECT", "FLOOR_NO_MARKET"
-        elif feasibility == 0:
-            label, reason = "NEEDS_WORK", "FLOOR_NOT_BUILDABLE"
         elif composite >= 7.0 and min(scores) >= 3 and confidence >= 0.60:
             label, reason = "VALIDATE", None
         elif composite < 4.0:

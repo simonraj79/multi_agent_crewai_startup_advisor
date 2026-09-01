@@ -190,7 +190,16 @@ describe('StudioApi.downloadLogs', () => {
       const lines = (await blob.text()).split('\n')
       expect(lines.length).toBeGreaterThan(1)
       expect(JSON.parse(lines[0])).toMatchObject({ type: 'frame', data: { seq: 1 } })
-      expect(clicks[0].download).toBe(`validator-${started.run_id.slice(0, 8)}.ndjson`)
+      // The filename must SAY it is a demonstration. It was
+      // `validator-${id8}.ndjson` for both transports until 2026-09-01, so the
+      // export a scripted run hands you was indistinguishable by name from a
+      // real archive - and its contents are plausible NDJSON. An operator
+      // downloaded one, could not tell what it was, and concluded the backend
+      // had failed to write a report.
+      expect(clicks[0].download).toBe(
+        `validator-DEMO-not-a-real-run-${started.run_id.slice(0, 8)}.ndjson`,
+      )
+      expect(clicks[0].download).toContain('DEMO')
     })
 
     it('will not label its in-memory NDJSON as a ZIP it never built', async () => {

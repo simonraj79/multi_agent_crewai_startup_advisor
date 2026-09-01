@@ -75,9 +75,25 @@ def market_findings(
 ) -> MarketFindings:
     rows = [market_source(index) for index in range(sources)]
     if competitors is None:
+        # `free_core_coverage="NONE"` on the DEFAULTS, since RATIFICATION C3.
+        # These two are paid incumbents whose pricing the branch read, so
+        # "nothing here is free" is a finding it actually made. Leaving them
+        # null would make every scenario in this module an unsettled one, which
+        # now caps X at 3 - and the scenarios exist to exercise the top of the
+        # ladder, not the unsettled case (which has its own tests).
         competitors = [
-            Competitor(name="Incumbent A", pricing="$12/seat", vendor_owned=False),
-            Competitor(name="Incumbent B", pricing="$30/seat", vendor_owned=False),
+            Competitor(
+                name="Incumbent A",
+                pricing="$12/seat",
+                vendor_owned=False,
+                free_core_coverage="NONE",
+            ),
+            Competitor(
+                name="Incumbent B",
+                pricing="$30/seat",
+                vendor_owned=False,
+                free_core_coverage="NONE",
+            ),
         ]
     return MarketFindings(
         sources=rows,
@@ -230,7 +246,17 @@ class HeadroomSeesFreeProductsTests(unittest.TestCase):
         """
         market = market_findings(
             competitors=[
-                Competitor(name="Incumbent A", pricing="$12/seat", vendor_owned=False),
+                # SETTLED at "NONE", so the only unsettled thing in this
+                # scenario can be the free product itself - which is what the
+                # docstring above promises. Left null, this incumbent capped X
+                # at 3 under RATIFICATION C3 no matter what `coverage` was, and
+                # the two cases became indistinguishable again.
+                Competitor(
+                    name="Incumbent A",
+                    pricing="$12/seat",
+                    vendor_owned=False,
+                    free_core_coverage="NONE",
+                ),
                 free_product(coverage),
             ]
         )
@@ -325,21 +351,56 @@ class HeadroomSeesFreeProductsTests(unittest.TestCase):
         free" - the same tri-state rule `Repo.archived` follows. X=4 and X=5
         rest on "no free product is named", and an unasked question must not
         satisfy that on its own any more than it did before the field existed.
-        """
-        for coverage in (None, "NONE"):
-            with self.subTest(free_core_coverage=coverage):
-                market, sentiment, feasibility = self.scenario(coverage)
-                support = rubric_support(market, sentiment, feasibility, now=NOW)["X"]
 
-                self.assertEqual(support.ceiling, 5)
-                self.assertFalse(support.zero_ok)
-                self.assertEqual(support.forbidden, frozenset())
-                self.assertEqual(
-                    legal_scores(
-                        "X", market, sentiment, feasibility, {"D": 5, "M": 5, "C": 5, "F": 5}
-                    ),
-                    {0, 2, 3, 4, 5} - {0},
-                )
+        ⚠️ SPLIT BY RATIFICATION C3 (2026-09-01). This looped over `None` AND
+        `"NONE"` asserting an IDENTICAL ceiling of 5 - which asserts that the
+        two are the same, the exact opposite of the sentence above. A test
+        written to defend the tri-state was pinning its erasure, and that is
+        why 796 green tests could not see that an unasked question was earning
+        the top of this ladder.
+        """
+        # SETTLED as "nothing is free": the branch looked and answered. The top
+        # of the ladder is legitimately reachable.
+        market, sentiment, feasibility = self.scenario("NONE")
+        settled = rubric_support(market, sentiment, feasibility, now=NOW)["X"]
+
+        self.assertEqual(settled.ceiling, 5)
+        self.assertFalse(settled.zero_ok)
+        self.assertEqual(settled.forbidden, frozenset())
+        self.assertEqual(
+            legal_scores(
+                "X", market, sentiment, feasibility, {"D": 5, "M": 5, "C": 5, "F": 5}
+            ),
+            {2, 3, 4, 5},
+        )
+
+        # UNSETTLED: nobody asked. X=4 and X=5 both assert "no free product",
+        # a claim about evidence that was never gathered, so the ceiling stops
+        # at 3. It must NOT collapse to the floor either - an unanswered
+        # question is not grounds to reject.
+        market, sentiment, feasibility = self.scenario(None)
+        unsettled = rubric_support(market, sentiment, feasibility, now=NOW)["X"]
+
+        self.assertEqual(unsettled.ceiling, 3)
+        self.assertFalse(unsettled.zero_ok)
+        self.assertEqual(unsettled.forbidden, frozenset())
+        self.assertEqual(
+            legal_scores(
+                "X", market, sentiment, feasibility, {"D": 5, "M": 5, "C": 5, "F": 5}
+            ),
+            {2, 3},
+        )
+
+    def test_unsettled_and_settled_coverage_are_not_the_same_state(self) -> None:
+        """The one assertion the split exists to make, stated on its own.
+
+        Before C3 these produced a BYTE-IDENTICAL `DimensionSupport`.
+        """
+        settled = rubric_support(*self.scenario("NONE"), now=NOW)["X"]
+        unsettled = rubric_support(*self.scenario(None), now=NOW)["X"]
+
+        self.assertNotEqual(settled.ceiling, unsettled.ceiling)
+        self.assertGreater(settled.ceiling, unsettled.ceiling)
 
     def test_the_repository_half_of_the_floor_is_unchanged(self) -> None:
         """"What did not break", re-asserted: the `forbidden={2}` rule is the
@@ -370,7 +431,9 @@ class HeadroomSeesFreeProductsTests(unittest.TestCase):
         self.assertTrue(support.one_ok)
         self.assertEqual(support.ceiling, 1)
         self.assertEqual(
-            legal_scores("X", market, sentiment, feasibility, {"D": 5, "M": 5, "C": 1, "F": 0}),
+            # F=2, not F=0: RATIFICATION C4 retired F's level 0, and this
+            # score is only filler for the OTHER dimensions while X is varied.
+            legal_scores("X", market, sentiment, feasibility, {"D": 5, "M": 5, "C": 1, "F": 2}),
             {1},
         )
 
@@ -389,8 +452,14 @@ class DemandFloorNeedsABranchThatLookedTests(unittest.TestCase):
             market, sentiment, feasibility, {"D": 0, "M": 5, "C": 3, "F": 4, "X": 5}
         )
 
-        # The review's measured outcome, arithmetic unchanged.
-        self.assertEqual(as_measured.confidence, 0.60)
+        # The review measured 0.60 here. RATIFICATION C6 moved it to 0.67, and
+        # the movement is the fix rather than a side effect: `sentiment_coverage`
+        # counted PROBLEM threads, so it was 0.0 by construction whenever the
+        # demand floor fired - the confidence attached to "nobody wants this"
+        # was computed entirely from the two branches with nothing to say about
+        # demand. It now counts USABLE (non-OFF_TOPIC) threads, so a branch that
+        # retrieved one on-topic thread is credited for having looked, once.
+        self.assertEqual(as_measured.confidence, 0.67)
         self.assertEqual(as_measured.verdict, "REJECT")
         self.assertEqual(as_measured.decision_reason, "FLOOR_NO_DEMAND")
         self.assertFalse(as_measured.provisional)
@@ -663,3 +732,68 @@ class ArithmeticIsUnchangedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VendorOwnedIsTriStateTests(unittest.TestCase):
+    """RATIFICATION C5: C=5 must not be awarded for an absence of evidence.
+
+    `vendor_owned` was the only two-state flag on `Competitor` carrying a
+    three-state question, while `free_core_coverage`, `Repo.archived`,
+    `Thread.points` and `Evidence.dated_is_retrieval_time` are all tri-state.
+    Measured: three competitors whose ownership no source established became
+    three `False`s, `vendor_owned == 0`, and the ceiling was 5 - the top of the
+    ladder, for a question nobody answered.
+    """
+
+    def branch(self, *ownership: bool | None) -> Branches:
+        competitors = [
+            Competitor(
+                name=f"Incumbent {index}",
+                pricing="$12/seat",
+                vendor_owned=value,
+                free_core_coverage="NONE",
+            )
+            for index, value in enumerate(ownership)
+        ]
+        return market_findings(competitors=competitors), strong_demand(), partial_repos(3)
+
+    def ceiling(self, *ownership: bool | None) -> int:
+        return rubric_support(*self.branch(*ownership), now=NOW)["C"].ceiling
+
+    def test_unestablished_ownership_caps_below_the_top(self) -> None:
+        """The defect, stated directly. This was 5."""
+        self.assertEqual(self.ceiling(None, None, None), 4)
+
+    def test_established_independence_still_reaches_the_top(self) -> None:
+        """The control: a branch that ANSWERED keeps its 5."""
+        self.assertEqual(self.ceiling(False, False), 5)
+
+    def test_one_unknown_among_known_still_caps(self) -> None:
+        """`vendor_unknown == 0` is required, not a majority."""
+        self.assertEqual(self.ceiling(False, None), 4)
+
+    def test_all_vendor_owned_still_opens_the_floor(self) -> None:
+        """`zero_ok` counts `is True`, so the floor is unchanged where it was right."""
+        support = rubric_support(*self.branch(True, True), now=NOW)["C"]
+        self.assertTrue(support.zero_ok)
+
+    def test_a_healthy_branch_that_names_no_competitor_is_not_level_one(self) -> None:
+        """C=1 now means "the branch returned nothing", mirroring M=1.
+
+        It used to mean "named no competitor", which is a FALSE sentence about a
+        branch that returned five sources and found an uncontested market - and
+        it forced a compulsory 1 on exactly the idea worth looking at.
+        """
+        market = market_findings(competitors=[])
+        support = rubric_support(market, strong_demand(), partial_repos(3), now=NOW)["C"]
+
+        self.assertEqual(support.ceiling, 2)
+        self.assertFalse(support.one_ok)
+
+    def test_a_branch_that_returned_nothing_is_level_one(self) -> None:
+        """The state C=1 is now reserved for."""
+        empty = market_findings(sources=0, segments=[], competitors=[], tool_status="empty")
+        support = rubric_support(empty, strong_demand(), partial_repos(3), now=NOW)["C"]
+
+        self.assertTrue(support.one_ok)
+        self.assertEqual(support.ceiling, 1)

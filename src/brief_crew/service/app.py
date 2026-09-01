@@ -747,16 +747,33 @@ def create_app(
             )
         run_inputs = dict(request.inputs)
         if request.gates == "auto":
-            # Refused unless this deployment has opted in. 403, not 422: the
-            # request is well formed and would be honoured elsewhere - what is
-            # missing is permission, and saying so lets a client tell "I sent
-            # this wrong" apart from "this server will not do that".
-            if not project_config.VALIDATOR_ALLOW_AUTO_GATES:
+            # An AUTHENTICATED caller may run unattended. An anonymous one may
+            # not, unless the deployment has opted in.
+            #
+            # The gates were never a safety feature - they were a SPEND cap, and
+            # a cap of a very specific shape: while this endpoint was
+            # unauthenticated, human inaction was the only thing standing
+            # between a stranger's click and a full six-agent pipeline. Nobody
+            # could be billed, throttled per-person, or asked afterwards what
+            # they were doing.
+            #
+            # Authentication removed all three conditions. A signed-in caller is
+            # a known person, their runs are OWNED (`user_id` on the row), the
+            # rate limiter keys on their id rather than a shared proxy address,
+            # and `MAX_RUN_COST_USD` (default $10) is a real ceiling enforced by
+            # `HookAborted` at the step boundary. Forcing that person through
+            # two gates is not protecting anyone - it is making the owner of the
+            # deployment click twice to use their own tool.
+            #
+            # The flag survives for the anonymous case, which is the one it was
+            # actually written for: a public demo where the Launch button is
+            # reachable by anyone. There, human inaction is still the cap.
+            if not (user or project_config.VALIDATOR_ALLOW_AUTO_GATES):
                 raise HTTPException(
                     status_code=403,
                     detail=(
-                        "unattended runs are disabled on this deployment; "
-                        "omit gates or set gates=human"
+                        "unattended runs require a signed-in account on this "
+                        "deployment; sign in, omit gates, or set gates=human"
                     ),
                 )
             if request.workflow_id != VALIDATOR_GRAPH.id:

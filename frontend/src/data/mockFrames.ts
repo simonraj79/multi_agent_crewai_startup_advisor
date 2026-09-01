@@ -6,6 +6,51 @@ export interface MockScriptStep {
 }
 
 /**
+ * The demonstration transport's report body, and it says what it is in its own
+ * first line.
+ *
+ * Two things forced this into existence on 2026-09-01, and they compound:
+ *
+ * 1. The mock emitted NO result at all, so `ReportPanel` was structurally
+ *    unable to render anything. A demonstration run therefore ended showing
+ *    strictly less than a mid-flight one - the same defect as closed-ledger
+ *    item 33, recurring in the browser double rather than the synthetic runner.
+ * 2. Everything else on screen was indistinguishable from a paid run. A real
+ *    operator read a scripted `NEEDS_WORK` verdict, a dollar cost and a token
+ *    count as the output of six agents, downloaded the NDJSON, and went looking
+ *    for `output/validation.md`.
+ *
+ * So the body is deliberately NOT a plausible report. The banner is the first
+ * thing rendered, the URLs are obviously non-existent, and every number is
+ * named as scripted. `ReportPanel` has no transport prop and offers a Copy
+ * button - an unlabelled fabricated report that can be copied out of here and
+ * pasted anywhere is far worse than the nothing it replaces.
+ */
+const DEMONSTRATION_RESULT = {
+  markdown_body: [
+    '# DEMONSTRATION ONLY - this is not a validation',
+    '',
+    '> **No agent ran. No model was called. Nothing was billed.**',
+    '> The console could not reach the validator API, so it played a scripted',
+    '> walkthrough of the pipeline instead. Every score, quote, URL and figure',
+    '> below is fixed text compiled into the page - including the verdict and',
+    '> the cost. None of it describes your idea.',
+    '',
+    '## What to do',
+    '',
+    '1. Check the banner in the status panel for why the API was unreachable.',
+    '2. If it timed out, the service was probably cold - reload in a moment.',
+    '3. If it reports a misconfiguration, `VITE_API_URL` was wrong at build time.',
+    '',
+    'A real run replaces this page entirely, writes `output/validation.md` on the',
+    'server, and returns a report whose sources are links you can open.',
+  ].join('\n'),
+  provisional: true,
+  thin_dimensions: ['D', 'M', 'C', 'F', 'X'],
+  sources: [],
+}
+
+/**
  * Node ids are `ValidatorFlow` method names, exactly as `MOCK_GRAPH` and the
  * live frame stream use them. Naming them once here keeps the script and the
  * graph from drifting apart again, and `mockGraph.spec.ts` fails if any of them
@@ -143,7 +188,7 @@ export function buildMockSegments(runId: string): MockScriptStep[][] {
       make('run_state', 'RUN_STARTED', 'Validator run started.', undefined, { status: 'running' }, 'INFO', undefined, 380),
       make('node_state', 'NODE_START', 'Parsing the idea into testable claims.', NODE.scope),
       make('llm', 'LLM_CALL_STARTED', 'Scoper is structuring the validation scope.', NODE.scope, { stage: 'before', call_id: 'scope-llm', model: 'escalation' }),
-      make('token', 'TOKEN_USAGE', 'Scope model usage recorded.', NODE.scope, { call_id: 'scope-llm', usage: { prompt_tokens: 682, completion_tokens: 241, total_tokens: 923, cost_usd: 0.0048 } }),
+      make('token', 'TOKEN_USAGE', 'Scripted usage - nothing billed.', NODE.scope, { call_id: 'scope-llm', usage: { prompt_tokens: 682, completion_tokens: 241, total_tokens: 923, cost_usd: 0 } }),
       make('llm', 'LLM_CALL_COMPLETED', 'Three independent research questions are ready.', NODE.scope, { stage: 'after', call_id: 'scope-llm', model: 'escalation' }, 'INFO', 2840),
       make('node_state', 'NODE_END', 'Scope prepared for operator review.', NODE.scope, {}, 'INFO', 3310),
       make('edge_taken', 'EDGE_TRAVERSED', 'Scope moved to operator review.', undefined, { from: NODE.scope, to: NODE.scopeGate }),
@@ -184,7 +229,7 @@ export function buildMockSegments(runId: string): MockScriptStep[][] {
       make('tool', 'TOOL_CALL_COMPLETED', '12 market sources retained after dedupe.', NODE.market, { stage: 'after', tool: 'firecrawl.search', from_cache: false }, 'INFO', 4160, 780),
       make('tool', 'TOOL_CALL_COMPLETED', '7 relevant threads classified; 2 are weak.', NODE.sentiment, { stage: 'after', tool: 'hn.search', from_cache: false }, 'WARNING', 3290, 420),
       make('tool', 'TOOL_CALL_COMPLETED', '18 repositories checked for maintenance and licensing.', NODE.feasibility, { stage: 'after', tool: 'github.search_repositories', from_cache: false }, 'INFO', 3670, 420),
-      make('token', 'TOKEN_USAGE', 'Parallel analyst usage recorded.', undefined, { usage: { promptTokens: 4210, completionTokens: 1684, totalTokens: 5894, costUsd: 0.0061 } }),
+      make('token', 'TOKEN_USAGE', 'Scripted usage - nothing billed.', undefined, { usage: { promptTokens: 4210, completionTokens: 1684, totalTokens: 5894, costUsd: 0 } }),
       make('node_state', 'NODE_END', 'Market landscape complete.', NODE.market, {}, 'INFO', 6120),
       make('node_state', 'NODE_END', 'Demand evidence complete with two thin signals.', NODE.sentiment, {}, 'WARNING', 5840, 120),
       make('node_state', 'NODE_END', 'Technical feasibility assessment complete.', NODE.feasibility, {}, 'INFO', 5930, 120),
@@ -193,15 +238,15 @@ export function buildMockSegments(runId: string): MockScriptStep[][] {
       make('edge_taken', 'EDGE_TRAVERSED', 'Feasibility evidence joined synthesis.', undefined, { from: NODE.feasibility, to: NODE.synthesis }, 'INFO', undefined, 130),
       make('node_state', 'NODE_START', 'Applying the deterministic five-dimension rubric.', NODE.synthesis),
       make('llm', 'LLM_CALL_STARTED', 'Synthesist is reconciling evidence and score anchors.', NODE.synthesis, { stage: 'before', call_id: 'synthesis-llm', model: 'escalation' }),
-      make('token', 'TOKEN_USAGE', 'Synthesis usage recorded.', NODE.synthesis, { call_id: 'synthesis-llm', usage: { prompt_tokens: 3028, completion_tokens: 812, total_tokens: 3840, cost_usd: 0.0126 } }),
-      make('llm', 'LLM_CALL_COMPLETED', 'Draft verdict: NEEDS_WORK · confidence 0.70.', NODE.synthesis, { stage: 'after', call_id: 'synthesis-llm', model: 'escalation' }, 'INFO', 4210),
+      make('token', 'TOKEN_USAGE', 'Scripted usage - nothing billed.', NODE.synthesis, { call_id: 'synthesis-llm', usage: { prompt_tokens: 3028, completion_tokens: 812, total_tokens: 3840, cost_usd: 0 } }),
+      make('llm', 'LLM_CALL_COMPLETED', 'Scripted draft verdict: NEEDS_WORK · confidence 0.70. Not your idea.', NODE.synthesis, { stage: 'after', call_id: 'synthesis-llm', model: 'escalation' }, 'INFO', 4210),
       // The same frame `events/verdict.py` publishes on `synthesize`, with the
       // numbers the derived block below already claims. Carried by the mock so
       // the offline demo shows the scorecard and the floors rather than only
       // the headline the verdict gate happens to repeat - the gate is the
       // fallback carrier, and a mock that exercises only the fallback is a mock
       // that cannot show this feature at all.
-      make('verdict', 'VERDICT_COMPUTED', 'Verdict computed: NEEDS_WORK · 5.0/10 · confidence 0.70.', NODE.synthesis, {
+      make('verdict', 'VERDICT_COMPUTED', 'DEMONSTRATION verdict - fixed text, not a scoring of your idea: NEEDS_WORK · 5.0/10.', NODE.synthesis, {
         verdict: 'NEEDS_WORK',
         composite_score: 5.0,
         confidence: 0.7,
@@ -241,13 +286,17 @@ export function buildMockSegments(runId: string): MockScriptStep[][] {
       make('edge_taken', 'EDGE_TRAVERSED', 'Reporter released.', undefined, { from: NODE.verdictRouter, to: NODE.report }),
       make('node_state', 'NODE_START', 'Writing the sourced one-page validation brief.', NODE.report),
       make('llm', 'LLM_CALL_STARTED', 'Reporter is composing the brief and attribution table.', NODE.report, { stage: 'before', call_id: 'report-llm', model: 'escalation' }),
-      make('token', 'TOKEN_USAGE', 'Reporter usage recorded.', NODE.report, { call_id: 'report-llm', usage: { prompt_tokens: 2489, completion_tokens: 1054, total_tokens: 3543, cost_usd: 0.0157 } }),
+      make('token', 'TOKEN_USAGE', 'Scripted usage - nothing billed.', NODE.report, { call_id: 'report-llm', usage: { prompt_tokens: 2489, completion_tokens: 1054, total_tokens: 3543, cost_usd: 0 } }),
       make('llm', 'LLM_CALL_COMPLETED', 'Brief passed mechanics and source attribution checks.', NODE.report, { stage: 'after', call_id: 'report-llm', model: 'escalation' }, 'INFO', 3890),
       make('node_state', 'NODE_END', 'Validation brief written.', NODE.report, {}, 'INFO', 4290),
-      make('edge_taken', 'EDGE_TRAVERSED', 'Validated report published.', undefined, { from: NODE.report, to: NODE.output }),
-      make('node_state', 'NODE_END', 'output/validation.md is ready.', NODE.output),
-      make('metrics', 'METRICS_UPDATED', 'Final usage and cost calculated.', undefined, { elapsed_ms: 27430, call_count: 7 }),
-      make('run_state', 'RUN_COMPLETED', 'Run completed with a NEEDS_WORK verdict.', undefined, { status: 'completed' }, 'INFO', 27430),
+      make('edge_taken', 'EDGE_TRAVERSED', 'Demonstration report assembled.', undefined, { from: NODE.report, to: NODE.output }),
+      // NOT "output/validation.md is ready." The mock writes no file, because
+      // there is no server in this transport to write one. That sentence sent a
+      // real operator hunting their filesystem for an artefact that had never
+      // existed, and made a CONNECTION failure read as a REPORT failure.
+      make('node_state', 'NODE_END', 'Demonstration complete - no file was written.', NODE.output),
+      make('metrics', 'METRICS_UPDATED', 'Demonstration finished. No model was called, so nothing was billed.', undefined, { elapsed_ms: 27430, call_count: 0 }),
+      make('run_state', 'RUN_COMPLETED', 'Demonstration finished with a scripted NEEDS_WORK verdict.', undefined, { status: 'completed', result: DEMONSTRATION_RESULT }, 'INFO', 27430),
     ],
   ]
 }

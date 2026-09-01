@@ -6,10 +6,12 @@ import type {
   BackendFramePage,
   BackendGatePrompt,
   BackendRunSnapshot,
+  BackendRunStatus,
   FrameData,
   GateReply,
   GraphDescriptor,
   RunHistoryEntry,
+  RunResult,
   RunSnapshot,
   StartRunResponse,
   StudioFrame,
@@ -70,8 +72,70 @@ function runId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `mock-${Date.now().toString(36)}`
 }
 
+/*
+ * How long the transport probe waits for the API before giving up.
+ *
+ * This was 900ms from the first commit, and it silently fabricated a whole run
+ * for a real operator on 2026-09-01. The API is a Render *starter* service in
+ * *singapore*; the probe has to cover a TLS handshake, and the service may be
+ * cold. 900ms is not a timeout on that path, it is a coin flip - and losing the
+ * flip did not surface an error, it produced a complete scripted validation
+ * with a fabricated NEEDS_WORK verdict and a fabricated dollar cost.
+ *
+ * Eight seconds is chosen to be longer than a warm round trip to Singapore by a
+ * wide margin while still bounded, because a page that hangs forever is its own
+ * failure. A cold start can exceed even this - which is why timing out now
+ * reports itself rather than fabricating.
+ */
+const PROBE_TIMEOUT_MS = 8000
+
+/**
+ * How long the probe waits for a bearer token before probing without one.
+ *
+ * `requestToken` has no timeout of its own, and the auth origin it calls is the
+ * studio's own Node service on Render's FREE plan - which sleeps. Measured
+ * 2026-09-01: `/api/auth/token` took **40s** on a cold hit and **2.12s** warm.
+ * The page load normally wakes that service before any script runs, so warm is
+ * the realistic case, but "normally" is not a guarantee worth hanging on.
+ *
+ * Probing WITHOUT a token is safe and is the right fallback: the API answers
+ * 401, and `initialize` reads a 401 as `live`. The operator is told to sign in
+ * rather than shown a fabricated run - which is the whole point.
+ */
+const TOKEN_MINT_TIMEOUT_MS = 4000
+
+/**
+ * `getAccessToken`, but it cannot hang the first paint. Never rejects.
+ *
+ * Returns the token so the caller can HAND it to `authedFetch` rather than
+ * letting it mint again. That is not a convenience: `getAccessToken` shares a
+ * single in-flight promise (`authClient.ts:141`, `if (inflight) return
+ * inflight`), so after this races the mint and loses, a second call returns
+ * that SAME still-pending promise and awaits it. The probe's `AbortController`
+ * aborts a `fetch`; it does nothing to an await on an unrelated promise - so
+ * the timeout here would have bounded only this function's own wall clock
+ * while the probe went on to block for the full cold-start anyway.
+ */
+async function tokenOrNothing(): Promise<string | null> {
+  let timer = 0
+  return Promise.race([
+    getAccessToken().catch(() => null),
+    new Promise<null>((resolve) => {
+      timer = window.setTimeout(() => resolve(null), TOKEN_MINT_TIMEOUT_MS)
+    }),
+  ]).finally(() => window.clearTimeout(timer))
+}
+
 export class StudioApi {
   mode: TransportMode = 'probing'
+  /**
+   * Why the last probe did not reach a live backend, or null when it did.
+   *
+   * Deliberately NOT routed through `lastError`: `launch()` clears that on
+   * every attempt, so a transport problem would erase itself the moment the
+   * operator tried the button that cannot work.
+   */
+  probeFailure: string | null = null
   private readonly baseUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
   private readonly mockRuns = new Map<string, MockRun>()
   private readonly liveSockets = new Map<string, WebSocket>()
@@ -81,13 +145,41 @@ export class StudioApi {
   async initialize(force = false): Promise<TransportMode> {
     if (!force && this.mode !== 'probing') return this.mode
 
+    this.probeFailure = null
+    /*
+     * The token is minted BEFORE the clock starts. `authedFetch` opens with
+     * `await getAccessToken(...)`, which is itself a network request to the
+     * Node auth origin - so arming the timer first made the budget cover two
+     * sequential round trips to two different Render services plus a CORS
+     * preflight (`Authorization` is not a safelisted header, so the API GET is
+     * really two requests). The probe was timing the wrong thing.
+     */
+    const token = await tokenOrNothing()
     const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 900)
+    const timeout = window.setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
     try {
-      const response = await this.authedFetch('/api/workflows', {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      })
+      /*
+       * `allowRetry = false`, and that is load-bearing rather than tidy.
+       * `authedFetch`'s 401 retry recurses with the SAME `init`, hence the same
+       * `signal` - so a 401 arriving near the deadline was retried on an
+       * already-aborted controller, throwing, and landing in the `catch` below
+       * as "offline". That defeated the "a 401 means LIVE" invariant this
+       * function documents at length. The probe reads the status itself; it
+       * does not need a retry to do that.
+       */
+      const response = await this.authedFetch(
+        '/api/workflows',
+        { headers: { Accept: 'application/json' }, signal: controller.signal },
+        false,
+        // Do NOT force a fresh mint. `tokenOrNothing()` just cached one; a
+        // forced re-mint here is a second round trip to a sleeping auth
+        // service INSIDE the timed window - the exact defect being repaired.
+        false,
+        // And do not mint AT ALL: use what the bounded race returned, even if
+        // that is null. Asking again would await the shared in-flight promise
+        // that the race just timed out on, defeating the bound entirely.
+        token,
+      )
       const contentType = response.headers.get('content-type') ?? ''
       /*
        * A 401 means LIVE, not mock, and getting this wrong is the worst bug
@@ -105,11 +197,46 @@ export class StudioApi {
        */
       if (response.status === 401) {
         this.mode = 'live'
+      } else if (response.ok && contentType.includes('application/json')) {
+        this.mode = 'live'
+      } else if (response.ok) {
+        /*
+         * 200, but not JSON. This is a MISCONFIGURATION, never an outage, and
+         * it has one overwhelmingly likely cause: `VITE_API_URL` is empty or
+         * wrong, so `/api/workflows` resolved against the studio's own origin
+         * and hit the SPA history fallback, which answers 200 text/html for
+         * any unmatched path. `render.yaml` declares that variable `sync:
+         * false`, so an apply into a fresh service leaves it unset - and it is
+         * baked in at BUILD time, so nothing at runtime can correct it.
+         *
+         * Falling back to mock here was the worst possible response: the one
+         * case where the operator is looking at the wrong server entirely is
+         * the case where a convincing fabricated run is most misleading.
+         */
+        this.mode = 'mock'
+        this.probeFailure =
+          `The validator API is misconfigured: ${this.baseUrl || window.location.origin}` +
+          `/api/workflows answered ${response.status} ${contentType || 'with no content type'}` +
+          ' instead of JSON. This usually means VITE_API_URL was not set when the site was built.'
       } else {
-        this.mode = response.ok && contentType.includes('application/json') ? 'live' : 'mock'
+        this.mode = 'mock'
+        this.probeFailure =
+          `The validator API answered ${response.status} ${response.statusText}.`
       }
-    } catch {
+    } catch (error) {
+      /*
+       * An abort and a genuine network failure are DIFFERENT diagnoses and used
+       * to collapse into a bare `catch {}` that recorded nothing at all. A
+       * timeout against a cold Render service means "wait and reload"; a
+       * network error means "the service is unreachable". Neither means "here
+       * is a validation report".
+       */
       this.mode = 'mock'
+      this.probeFailure =
+        (error as Error)?.name === 'AbortError'
+          ? `The validator API did not respond within ${PROBE_TIMEOUT_MS / 1000}s.` +
+            ' It may be starting up - reload in a moment.'
+          : `The validator API could not be reached: ${(error as Error)?.message ?? 'network error'}.`
     } finally {
       window.clearTimeout(timeout)
     }
@@ -172,9 +299,31 @@ export class StudioApi {
     }
     const run = this.mockRuns.get(id)
     if (!run) throw new Error('This mock run is no longer available after refresh.')
+    /*
+     * Read the status and the result off the frames actually emitted, rather
+     * than hardcoding `status: 'running'` as this branch did until 2026-09-01.
+     * A finished demonstration reported itself as still running, and carried no
+     * `result` key at all while the live branch two lines up carefully
+     * preserves one - so the mock diverged from its subject in exactly the way
+     * that makes a double certify nothing.
+     */
+    // A reverse scan rather than `Array.findLast`, which needs lib es2023 -
+    // raising the lib target for one call would change what compiles across
+    // five tsconfig projects.
+    let terminal: FrameData | undefined
+    for (let index = run.emitted.length - 1; index >= 0; index -= 1) {
+      if (run.emitted[index].kind === 'run_state') {
+        terminal = run.emitted[index]
+        break
+      }
+    }
+    const details = (terminal?.details ?? {}) as {
+      status?: BackendRunStatus
+      result?: RunResult
+    }
     return {
       run_id: id,
-      status: 'running',
+      status: normalizeRunStatus(details.status ?? 'running'),
       pending_gate: null,
       frames: {
         count: run.emitted.length,
@@ -183,6 +332,7 @@ export class StudioApi {
         last_seq: run.emitted.at(-1)?.seq ?? null,
       },
       usage: emptyUsage(),
+      result: details.result ?? null,
     }
   }
 
@@ -435,8 +585,18 @@ export class StudioApi {
     saveBlob(blob, this.logFilename(runIdValue, LOG_FORMATS.ndjson.extension))
   }
 
+  /**
+   * A demonstration export is named as one.
+   *
+   * This was `validator-${id8}.${extension}` for both transports, so the file
+   * a scripted run hands you is byte-indistinguishable *by name* from a real
+   * archive - and its contents are plausible NDJSON frames. An operator
+   * downloaded one on 2026-09-01, could not tell what it was, and reasonably
+   * concluded the backend had failed to produce a report.
+   */
   private logFilename(runIdValue: string, extension: string): string {
-    return `validator-${runIdValue.slice(0, 8)}.${extension}`
+    const prefix = this.mode === 'live' ? 'validator' : 'validator-DEMO-not-a-real-run'
+    return `${prefix}-${runIdValue.slice(0, 8)}.${extension}`
   }
 
   private subscribeMock(runIdValue: string, handlers: StreamHandlers): () => void {
@@ -484,8 +644,33 @@ export class StudioApi {
     path: string,
     init?: RequestInit,
     allowRetry = true,
+    /*
+     * Whether to bypass the token cache. SEPARATE from `allowRetry`, because
+     * conflating them is a trap: the retry leg passed `allowRetry = false` and
+     * the force flag was derived from it as `!allowRetry`, so ANY caller asking
+     * merely "do not retry" also silently demanded a fresh network mint.
+     *
+     * `initialize` is exactly such a caller - and a forced mint there is a
+     * second round trip to a sleeping free-plan auth service, inside the very
+     * window the probe is timing. That is the defect the probe repair exists to
+     * remove, so deriving it would have reintroduced it one line later.
+     *
+     * The retry leg still forces, which is the whole point of retrying: a
+     * server-side revocation leaves a cached token that still looks valid.
+     */
+    forceToken = !allowRetry,
+    /*
+     * A token the caller already holds. `undefined` means "mint one";
+     * anything else (a string OR null) is used as-is with no mint at all.
+     *
+     * `initialize` needs this because `getAccessToken` shares one in-flight
+     * promise, so asking again after a timed-out race just awaits the same
+     * pending mint - outside the AbortController's reach.
+     */
+    presetToken?: string | null,
   ): Promise<Response> {
-    const token = await getAccessToken(!allowRetry)
+    const token =
+      presetToken === undefined ? await getAccessToken(forceToken) : presetToken
     const headers = new Headers(init?.headers)
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers })
@@ -618,6 +803,7 @@ function normalizeUsage(value: Record<string, number>): UsageMetrics {
 export type StudioApiLike = Pick<
   StudioApi,
   | 'mode'
+  | 'probeFailure'
   | 'initialize'
   | 'getGraph'
   | 'startRun'

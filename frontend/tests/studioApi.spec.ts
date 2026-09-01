@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StudioApi, type ConnectionStatus, type StreamHandlers } from '../src/services/studioApi'
+import { clearAccessToken, setSessionActive } from '../src/services/authClient'
 import type { BackendFramePage, BackendRunSnapshot, FrameData } from '../src/types/studio'
 
 type Listener = (event: unknown) => void
@@ -397,5 +398,127 @@ describe('StudioApi http surface', () => {
     const probe = new StudioApi()
     fetchMock.mockResolvedValueOnce(jsonResponse([{ id: 'idea-validator' }]))
     await expect(probe.initialize()).resolves.toBe('live')
+  })
+
+  /*
+   * The probe fabricated a complete run for a real operator on 2026-09-01. It
+   * allowed 900ms - a budget that had to cover a token mint to the auth origin,
+   * a CORS preflight and the API GET, against a Render starter service in
+   * Singapore - then swallowed the abort in a bare `catch {}` and served a
+   * scripted validation with a NEEDS_WORK verdict and a dollar cost.
+   */
+  describe('the transport probe', () => {
+    it('records why it failed instead of silently fabricating', async () => {
+      const probe = new StudioApi()
+      const abort = new Error('The operation was aborted.')
+      abort.name = 'AbortError'
+      fetchMock.mockRejectedValueOnce(abort)
+
+      await expect(probe.initialize()).resolves.toBe('mock')
+
+      expect(probe.probeFailure).toBeTruthy()
+      expect(probe.probeFailure).toContain('did not respond')
+      // The operator is told what to do, not merely that something broke.
+      expect(probe.probeFailure).toContain('starting up')
+    })
+
+    it('names a network failure differently from a timeout', async () => {
+      const probe = new StudioApi()
+      fetchMock.mockRejectedValueOnce(new Error('connection refused'))
+
+      await expect(probe.initialize()).resolves.toBe('mock')
+
+      expect(probe.probeFailure).toContain('could not be reached')
+      expect(probe.probeFailure).toContain('connection refused')
+    })
+
+    it('waits longer than a warm cross-region round trip', async () => {
+      const probe = new StudioApi()
+      // 1.2s would have been a timeout under the old 900ms budget. It is a
+      // perfectly ordinary response time to Singapore.
+      fetchMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve(jsonResponse([{ id: 'idea-validator' }])), 1_200),
+          ),
+      )
+
+      await expect(probe.initialize()).resolves.toBe('live')
+      expect(probe.probeFailure).toBeNull()
+    })
+
+    it('treats a 200 text/html as a misconfiguration, not as offline', async () => {
+      const probe = new StudioApi()
+      // What the studio's own SPA history fallback answers for any unmatched
+      // path - which is where `/api/workflows` lands when VITE_API_URL is unset.
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers({ 'content-type': 'text/html' }),
+        text: async () => '<!doctype html>',
+        json: async () => ({}),
+      })
+
+      await expect(probe.initialize()).resolves.toBe('mock')
+
+      expect(probe.probeFailure).toContain('misconfigured')
+      expect(probe.probeFailure).toContain('VITE_API_URL')
+    })
+
+    it('does not mint the token a second time inside its own timed window', async () => {
+      /*
+       * The probe passes `allowRetry = false`, and `authedFetch` used to derive
+       * its force-a-fresh-token flag as `!allowRetry` - so "do not retry" also
+       * meant "bypass the cache and mint again". That put a second round trip
+       * to a sleeping free-plan auth service back inside the window the probe
+       * is timing, which is the defect this whole repair exists to remove.
+       *
+       * Measured 2026-09-01: that mint is 2.12s warm and 40s cold.
+       */
+      const probe = new StudioApi()
+      const tokenCalls: string[] = []
+      fetchMock.mockImplementation((input: unknown) => {
+        const url = String(input)
+        if (url.includes('/api/auth/token')) {
+          tokenCalls.push(url)
+          return Promise.resolve(jsonResponse({ token: 'not-a-real-token' }))
+        }
+        return Promise.resolve(jsonResponse([{ id: 'idea-validator' }]))
+      })
+
+      // The session MUST be activated, or this test is vacuous: `getAccessToken`
+      // returns null without one (`authClient.ts:139`), zero token requests are
+      // made, and `expect(0).toBe(1)`-style assertions pass with the defect
+      // fully present. That is the state this test shipped in for one commit.
+      setSessionActive(true)
+      clearAccessToken()
+      try {
+        await expect(probe.initialize()).resolves.toBe('live')
+      } finally {
+        setSessionActive(false)
+      }
+
+      // Exactly one. Two means the probe re-minted inside its own timed window.
+      expect(tokenCalls).toHaveLength(1)
+    })
+
+    it('still reads a 401 as live, and does not retry onto its own aborted signal', async () => {
+      const probe = new StudioApi()
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => '{"detail":"sign in to use this endpoint"}',
+        json: async () => ({ detail: 'sign in to use this endpoint' }),
+      })
+
+      await expect(probe.initialize()).resolves.toBe('live')
+      expect(probe.probeFailure).toBeNull()
+      // Exactly one request: the retry would recurse with the same (aborted)
+      // signal, which is how a late 401 used to be reclassified as offline.
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
   })
 })

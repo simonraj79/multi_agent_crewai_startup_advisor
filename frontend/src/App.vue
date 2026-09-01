@@ -29,6 +29,7 @@ const {
   downloadStatus,
   downloadMessage,
   lastError,
+  transportProblem,
   report,
   verdictSummary,
   lastSequence,
@@ -311,6 +312,7 @@ watch(
             :active-view="activeView"
             v-model:gates-mode="gatesMode"
             :error="lastError"
+            :transport-problem="transportProblem"
             :download-status="downloadStatus"
             :download-message="downloadMessage"
             @launch="launch"

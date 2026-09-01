@@ -28,6 +28,7 @@ from brief_crew.config import (
     LEVEL_ONE_ANCHOR,
     MARKET_ANCHORS,
     RUBRIC_ANCHORS,
+    RUBRIC_FLOOR_MIN_MARKET_SOURCES,
     RUBRIC_FLOOR_MIN_USABLE_THREADS,
     RUBRIC_RECENCY_GRACE_MONTHS,
     RUBRIC_RECENCY_MONTHS,
@@ -334,7 +335,22 @@ def compute_confidence_inputs(
 
     return {
         "market_coverage": min(1.0, counts["market_sources"] / target),
-        "sentiment_coverage": min(1.0, counts["sentiment_problem_threads"] / target),
+        # RATIFICATION C6 (2026-09-01). Coverage measures how much the branch
+        # RETRIEVED, never which way the finding came out.
+        #
+        # Counting PROBLEM threads made confidence a function of the answer's
+        # direction: D=0 requires no problem thread, so this term was 0.0 BY
+        # CONSTRUCTION exactly when the demand floor fired, and the confidence
+        # attached to "nobody wants this" was computed entirely from the market
+        # and feasibility branches - the two with nothing to say about demand.
+        # Measured: 3 OPINION threads and 40 OPINION threads returned the
+        # identical REJECT at confidence 0.65, because the branch that did the
+        # looking contributed nothing either time.
+        #
+        # PRD §10.3 requires composite_score and confidence to measure
+        # different things. This is the error F4 removed from the tools, one
+        # layer up.
+        "sentiment_coverage": min(1.0, counts["sentiment_usable_threads"] / target),
         "feasibility_coverage": min(1.0, counts["feasibility_relevant_repos"] / target),
         "branches_ok": counts["branches_ok"],
         "median_market_source_age_months": median_market_source_age_months(
@@ -455,7 +471,15 @@ def rubric_support(
     reusable = counts["feasibility_reusable_repos"]
     live = counts["feasibility_live_substitutes"]
     partial = relevant - complete
-    vendor_owned = sum(competitor.vendor_owned for competitor in market.competitors)
+    # RATIFICATION C5: `is True` / `is None`, never truthiness. An
+    # unestablished ownership is not a negative finding, and counting it as one
+    # awarded C=5 for evidence nobody gathered.
+    vendor_true = sum(
+        competitor.vendor_owned is True for competitor in market.competitors
+    )
+    vendor_unknown = sum(
+        competitor.vendor_owned is None for competitor in market.competitors
+    )
     # The X ladder's product half, counted here rather than in
     # `compute_evidence_counts` for the same reason `vendor_owned` is: that
     # dict is enforced against the Synthesist by exact equality, so every key
@@ -473,6 +497,43 @@ def rubric_support(
         competitor.free_core_coverage == "SEPARABLE_PART" for competitor in market.competitors
     )
     free_named = free_whole + free_most + free_part
+    # RATIFICATION C3 (2026-09-01). "Nothing is free" and "nobody asked" were
+    # the same state to the ceiling, and the difference decides the TOP of this
+    # ladder.
+    #
+    # `free_named` counts neither `None` nor `"NONE"`, so the ceiling read the
+    # ABSENCE of a coverage answer as the premise of X=4 and X=5 ("no free
+    # product"). Measured: two competitors with `free_core_coverage` unset,
+    # five sources and three PARTIAL repos produced X ceiling 5 and a VALIDATE
+    # at composite 10.0, confidence 0.90, with zero guardrail complaints - and
+    # the all-"NONE" state produced a byte-identical DimensionSupport. The
+    # distinction F1 introduced, which `Competitor`'s docstring and
+    # `market_task` each defend at length, was erased at the one place it
+    # decides a score, in the direction that manufactures a VALIDATE.
+    free_unsettled = sum(
+        competitor.free_core_coverage is None for competitor in market.competitors
+    )
+    # RATIFICATION C1 (2026-09-01). The floor's PRODUCT route must be as
+    # closeable as its repository route, and it was not.
+    #
+    # `FLOOR_ALREADY_FREE` is a REJECT - the most consequential output this
+    # system produces. Its repository route demands four machine-checked
+    # conditions on a URL a tool actually returned (`is_live_free_substitute`).
+    # Its product route demanded one enum on a `Competitor`, and
+    # `Competitor.url` is OPTIONAL while `findings_urls` skips a null one - so
+    # an unsourced name carrying `free_core_coverage="WHOLE_JOB"`, written by a
+    # cheap-tier agent, entered NO closure check and still returned
+    # REJECT at confidence 0.90 HIGH with `provisional=False` and zero
+    # guardrail complaints. That is finding F1's own failure shape one level up.
+    #
+    # The CEILING deliberately keeps reading the unattributed `free_whole`:
+    # capping X at 2 on an unsourced claim is the safe direction, and refusing
+    # to reject on one is the other. A claim nobody can check may lower a score;
+    # it may not kill an idea.
+    free_whole_attributed = sum(
+        competitor.free_core_coverage == "WHOLE_JOB" and competitor.url is not None
+        for competitor in market.competitors
+    )
 
     recent_problems = _recent_threads(sentiment.sources, _PROBLEM_CLASSIFICATIONS, reference)
     recent_acted = _recent_threads(sentiment.sources, _ACTED_CLASSIFICATIONS, reference)
@@ -502,14 +563,28 @@ def rubric_support(
     else:
         money = 3
 
-    if competitors == 0:
+    # RATIFICATION C5. C=1 now mirrors M=1 - "the branch returned nothing" -
+    # instead of "the branch named no competitor", which was a false sentence
+    # about a branch that worked and forced a compulsory 1 on an uncontested
+    # market. C=2 absorbs "looked, named nobody" and every unknown-ownership
+    # state, or the ladder deadlocks the way D's did.
+    if sources == 0:
         room = NO_LEVEL_ABOVE_ONE
+    elif competitors == 0:
+        room = 2
     elif competitors >= 2 and recent_sources >= 1:
-        room = 5 if recent_sources >= 2 and vendor_owned == 0 else 4
+        room = (
+            5
+            if recent_sources >= 2 and vendor_true == 0 and vendor_unknown == 0
+            else 4
+        )
     else:
         room = 3
 
-    if relevant == 0:
+    # RATIFICATION C4: the F ceiling turns on whether the branch RETURNED
+    # anything, not on whether it marked anything relevant. All-irrelevant is a
+    # real level-2 finding, not an absence of evidence.
+    if repos == 0:
         build = NO_LEVEL_ABOVE_ONE
     elif reusable >= 3:
         build = 5
@@ -533,7 +608,9 @@ def rubric_support(
     elif free_part >= 1:
         headroom = 3
     elif partial >= 1:
-        headroom = 5
+        # An unsettled competitor caps this at 3: the top two rungs both assert
+        # "no free product", which is a claim about evidence nobody gathered.
+        headroom = 3 if free_unsettled >= 1 else 5
     else:
         # No relevant repository and no free product: nothing in the evidence
         # reaches this question. The ceiling was 3 here, which let a
@@ -570,8 +647,17 @@ def rubric_support(
             # condition is: a recorded paying segment IS a source naming a
             # buyer segment, per `market_task`'s definition of the field, so
             # it contradicts the anchor outright.
-            zero_ok=sources >= 1 and segments == 0,
-            one_ok=sources == 0,
+            # RATIFICATION C2: a floor needs the branch to have LOOKED.
+            # `sources >= 1` fired a final REJECT on one web page.
+            zero_ok=sources >= RUBRIC_FLOOR_MIN_MARKET_SOURCES and segments == 0,
+            # The disjunct is not redundant. A branch reporting no source but a
+            # recorded segment satisfies neither `sources == 0` alone nor the
+            # widened clause, and its ceiling is 1 - so it would deadlock with
+            # no legal score at all. This is the same trap D's repair hit.
+            one_ok=(
+                sources == 0
+                or (sources < RUBRIC_FLOOR_MIN_MARKET_SOURCES and segments == 0)
+            ),
             forbidden=frozenset(),
             summary=(
                 f"{sources} market source(s), {recent_sources} dated within "
@@ -580,17 +666,38 @@ def rubric_support(
         ),
         "C": DimensionSupport(
             ceiling=room,
-            zero_ok=competitors >= 1 and vendor_owned == competitors,
-            one_ok=competitors == 0,
+            zero_ok=competitors >= 1 and vendor_true == competitors,
+            one_ok=sources == 0,
             forbidden=frozenset(),
             summary=(
-                f"{competitors} competitor(s) of which {vendor_owned} vendor owned, "
+                f"{competitors} competitor(s) of which {vendor_true} vendor owned, {vendor_unknown} unestablished, "
                 f"{recent_sources} market source(s) dated within {RUBRIC_RECENCY_MONTHS} months"
             ),
         ),
         "F": DimensionSupport(
             ceiling=build,
-            zero_ok=repos >= 1 and relevant == 0,
+            # RATIFICATION C4 (2026-09-01). F HAS NO LEVEL 0, and
+            # FLOOR_NOT_BUILDABLE is retired.
+            #
+            # Three measured facts killed it. The floor was COMPULSORY: at
+            # `relevant == 0` the ceiling was 1, `zero_ok` true and `one_ok`
+            # false, so every score 1-5 was rejected and an honest Synthesist
+            # could not decline it. The state that triggered it is the MODAL
+            # outcome for an ordinary v1 - `limit` is `le=5`, the search is
+            # stars-ranked, and five generic top-starred matches are correctly
+            # marked IRRELEVANT. And the branch was NON-MONOTONE: at D2 M2 C2
+            # X2, F=1 gives REJECT at composite 3.7 while F=0 gives NEEDS_WORK
+            # at 3.4, because `elif feasibility == 0` sits above
+            # `elif composite < 4.0`. Strictly worse evidence, strictly better
+            # label.
+            #
+            # "No open-source prior art" is evidence about GitHub's top five by
+            # stars. It is not evidence that two or three engineers cannot ship,
+            # and it must not reject an idea. That state is now F=2.
+            #
+            # `anchor_problems` returns [] for an absent level, so `zero_ok` is
+            # the enforcement point: a claimed F=0 fails SCORE_FLOOR_F.
+            zero_ok=False,
             one_ok=repos == 0,
             forbidden=frozenset(),
             summary=(
@@ -604,7 +711,9 @@ def rubric_support(
             # as a live free substitute repository, and until it could be
             # counted the floor could not see the commonest form of the thing
             # it exists to catch (review F1).
-            zero_ok=live >= 1 or free_whole >= 1,
+            # RATIFICATION C1: `free_whole_attributed`, not `free_whole`. The
+            # REJECT route must rest on a URL a tool returned.
+            zero_ok=live >= 1 or free_whole_attributed >= 1,
             one_ok=relevant == 0 and free_named == 0,
             # The only lower bound above level 1. X=2 asserts that every free
             # substitute is archived, non-commercial or stale, and that no
@@ -614,12 +723,15 @@ def rubric_support(
             # this system's most valuable output - is then the only level
             # left. Without this the X floor is evadable by scoring 2.
             forbidden=(
-                frozenset({2}) if live >= 1 or free_whole >= 1 else frozenset()
+                frozenset({2})
+                if live >= 1 or free_whole_attributed >= 1
+                else frozenset()
             ),
             summary=(
                 f"{complete} free substitute(s) of which {live} live, "
                 f"{partial} repository(ies) marked PARTIAL, "
-                f"{free_whole} free product(s) covering the whole core job, "
+                f"{free_whole} free product(s) covering the whole core job "
+                f"({free_whole_attributed} with an attributed URL), "
                 f"{free_most} covering most of it, {free_part} a separable part"
             ),
         ),
@@ -776,11 +888,36 @@ def rubric_problems(
     problems.extend(confidence_problems(verdict, market, sentiment, feasibility, now=now))
     problems.extend(score_support_problems(verdict, market, sentiment, feasibility, now=now))
     expected_counts = compute_evidence_counts(market, sentiment, feasibility)
-    if verdict.evidence_counts != expected_counts:
-        problems.append(
-            "EVIDENCE_COUNTS: replace model-asserted counts with the recomputed values "
-            f"{expected_counts!r}"
-        )
+    # `evidence_counts` is deliberately NOT rejected on mismatch. It is repaired
+    # in `make_rubric_guardrail` instead, because rejecting it here was an
+    # unwinnable demand:
+    #
+    #   CrewAI renders `dict[str, int]` into the prompt's injected JSON schema as
+    #     {"additionalProperties": false, "properties": {}, "required": []}
+    #
+    # - a schema for an object that may contain NOTHING. The model is instructed
+    # to emit `{}`, then judged by exact equality against fifteen recomputed
+    # keys that `tasks.yaml` never names.
+    #
+    # MEASURED (2026-09-01, `generate_model_description(Verdict)`): the injected
+    # schema really does render as `{"properties": {}, "required": []}`, and
+    # `test_the_injected_schema_really_does_ask_for_an_empty_object` pins it.
+    # INFERRED, not measured: that a model following that instruction fails this
+    # check every time. No live run was observed - but a check the prompt tells
+    # the model how to fail is not worth keeping either way.
+    #
+    # The cost of losing the first evaluation is one fewer chance at the anchor,
+    # score-support and confidence checks that are the POINT of this guardrail.
+    # `guardrail_max_retries: 2` allows THREE evaluations, not two - CrewAI
+    # raises at `attempt >= guardrail_max_retries` (`crewai/task.py:1382`), so
+    # attempts 0 and 1 retry and attempt 2 raises. On exhaustion
+    # `_run_synthesis` has no try/except, so the run dies with no report at all.
+    #
+    # Repair is also strictly safer than rejection. These counts are read by
+    # nothing else in the codebase - `confidence_problems` and
+    # `score_support_problems` recompute from the findings themselves - so
+    # overwriting cannot influence a score. It makes the field always correct
+    # rather than usually correct.
     if verdict.branches_ok != expected_counts["branches_ok"]:
         problems.append(
             "BRANCH_COUNT: branches_ok must equal the number of branches with tool_status='ok'; "
@@ -929,16 +1066,36 @@ def make_rubric_guardrail(
 ) -> Callable[[TaskOutputLike], GuardrailResult]:
     findings = (market, sentiment, feasibility)
 
+    expected_counts = compute_evidence_counts(*findings)
+
     def guardrail(output: TaskOutputLike) -> GuardrailResult:
         raw = output.raw or ""
         verdict, error = _parse_for_guardrail(raw, Verdict)
         if error:
             return False, error
         assert verdict is not None
-        return _guardrail_result(
-            raw,
-            rubric_problems(verdict, anchors=anchors, findings=findings, now=now),
+        problems = rubric_problems(
+            verdict, anchors=anchors, findings=findings, now=now
         )
+        if problems:
+            return False, " | ".join(problems)
+        if verdict.evidence_counts == expected_counts:
+            return True, raw
+        # Repair rather than reject - see the long note in `rubric_problems`.
+        # CrewAI accepts a `(True, str)` return as the task's NEW output, so
+        # handing back corrected JSON is a supported way to fix a field the
+        # model was never told how to fill.
+        #
+        # `model_validate` on a full dump, NOT `model_copy(update=...)`:
+        # `model_copy` bypasses validators, and `Verdict`'s are what recompute
+        # the composite score, the floors, the confidence band and
+        # `provisional`. Copying would produce a Verdict whose arithmetic had
+        # never been re-derived - the exact class of defect the schema's
+        # overwrite-the-model design exists to prevent.
+        repaired = Verdict.model_validate(
+            {**verdict.model_dump(mode="json"), "evidence_counts": expected_counts}
+        )
+        return True, repaired.model_dump_json(indent=2)
 
     return guardrail
 

@@ -5,9 +5,11 @@ import unittest
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from crewai.utilities.converter import generate_model_description
 from pydantic import ValidationError
 
 from brief_crew import config as project_config
+from brief_crew.config import RUBRIC_FLOOR_MIN_USABLE_THREADS
 from brief_crew.schemas import (
     Competitor,
     DimensionScore,
@@ -307,7 +309,13 @@ class RubricTests(unittest.TestCase):
         self.assertEqual(set(RUBRIC_ANCHORS), {"D", "M", "C", "F", "X"})
         for code, ladder in RUBRIC_ANCHORS.items():
             with self.subTest(dimension=code):
-                self.assertEqual(sorted(ladder), [0, 1, 2, 3, 4, 5])
+                # F has NO level 0 since RATIFICATION C4 retired
+                # FLOOR_NOT_BUILDABLE: an all-irrelevant repository search is
+                # evidence about GitHub's top five by stars, not about whether
+                # the thing can be built, and it must not reject an idea. Every
+                # other ladder keeps its floor.
+                expected = [1, 2, 3, 4, 5] if code == "F" else [0, 1, 2, 3, 4, 5]
+                self.assertEqual(sorted(ladder), expected)
                 self.assertTrue(all(text.strip() for text in ladder.values()))
                 self.assertTrue(ladder[1].startswith(LEVEL_ONE_ANCHOR))
 
@@ -356,13 +364,18 @@ class RubricTests(unittest.TestCase):
         }
 
         for value in (0, 2, 3, 4, 5):
+            # F=0 no longer exists (RATIFICATION C4); every other ladder has one.
             with self.subTest(score=value):
                 result = synthesis(
                     market,
                     sentiment,
                     feasibility,
                     **{
-                        field_name: dimension(value, ladder[value], [MARKET_URL])
+                        field_name: dimension(
+                            value if value in ladder else 2,
+                            ladder[value if value in ladder else 2],
+                            [MARKET_URL],
+                        )
                         for field_name, ladder in ladders.items()
                     },
                 )
@@ -380,7 +393,19 @@ class RubricTests(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("KILL_CRITERIA", message)
 
-    def test_contextual_rubric_guardrail_recomputes_counts(self) -> None:
+    def test_contextual_rubric_guardrail_repairs_counts_instead_of_rejecting(
+        self,
+    ) -> None:
+        """Wrong counts are CORRECTED, not bounced back at the model.
+
+        This asserted the rejection until 2026-09-01. The demand was
+        unwinnable: CrewAI renders `dict[str, int]` into the injected prompt
+        schema as `{"additionalProperties": false, "properties": {}}`, so the
+        Synthesist is told to emit `{}` and was then judged against fifteen
+        recomputed keys `tasks.yaml` never names - losing one of the three
+        evaluations `guardrail_max_retries: 2` allows, on a defect the model
+        was instructed to commit.
+        """
         market = market_findings()
         sentiment = sentiment_findings()
         feasibility = feasibility_findings()
@@ -389,10 +414,57 @@ class RubricTests(unittest.TestCase):
         )
         guardrail = make_rubric_guardrail(market, sentiment, feasibility, now=NOW)
 
+        passed, payload = guardrail(Output(result.model_dump_json()))
+
+        self.assertTrue(passed, payload)
+        repaired = json.loads(payload)["evidence_counts"]
+        self.assertEqual(
+            repaired, compute_evidence_counts(market, sentiment, feasibility)
+        )
+
+    def test_the_counts_the_injected_schema_asks_for_are_accepted(self) -> None:
+        """`{}` is exactly what the prompt's own schema instructs. It must pass."""
+        market = market_findings()
+        sentiment = sentiment_findings()
+        feasibility = feasibility_findings()
+        result = synthesis(market, sentiment, feasibility).model_copy(
+            update={"evidence_counts": {}}
+        )
+        guardrail = make_rubric_guardrail(market, sentiment, feasibility, now=NOW)
+
+        passed, payload = guardrail(Output(result.model_dump_json()))
+
+        self.assertTrue(passed, payload)
+        self.assertEqual(
+            json.loads(payload)["evidence_counts"],
+            compute_evidence_counts(market, sentiment, feasibility),
+        )
+
+    def test_the_injected_schema_really_does_ask_for_an_empty_object(self) -> None:
+        """Pin the CrewAI rendering the repair exists to absorb.
+
+        If a future CrewAI teaches `generate_model_description` to render
+        `dict[str, int]` properly, this fails and the repair can be revisited.
+        """
+        description = generate_model_description(Verdict)
+        rendered = json.dumps(description)
+        self.assertIn('"evidence_counts": {"additionalProperties": false', rendered)
+        self.assertIn('"properties": {}, "required": []}', rendered)
+
+    def test_a_real_rubric_problem_still_fails_after_the_repair(self) -> None:
+        """Control: repairing counts must not soften any other check."""
+        market = market_findings()
+        sentiment = sentiment_findings()
+        feasibility = feasibility_findings()
+        result = synthesis(market, sentiment, feasibility).model_copy(
+            update={"evidence_counts": {}, "kill_criteria": []}
+        )
+        guardrail = make_rubric_guardrail(market, sentiment, feasibility, now=NOW)
+
         passed, message = guardrail(Output(result.model_dump_json()))
 
         self.assertFalse(passed)
-        self.assertIn("EVIDENCE_COUNTS", message)
+        self.assertIn("KILL_CRITERIA", message)
 
     def test_level_one_anchor_must_be_verbatim(self) -> None:
         market = market_findings()
@@ -913,12 +985,44 @@ class ScoreSupportTests(unittest.TestCase):
             with self.subTest(score=value):
                 self.assertEqual(self.problems("D", value, market=market, sentiment=sentiment), [])
 
+    def well_sourced_market_branch(self) -> MarketFindings:
+        """A market branch that unambiguously LOOKED: 3 attributed sources.
+
+        RATIFICATION C2 put a `RUBRIC_FLOOR_MIN_MARKET_SOURCES` precondition
+        under both M=0 and M=1, so "did the branch answer this question?" is now
+        a question about the source COUNT rather than about a single page.
+        """
+        base = market_findings()
+        extra = [
+            Evidence(
+                claim=f"A clinic segment pays for scheduling software ({index}).",
+                url=f"https://example.com/market-{index}",
+                publisher="Example",
+                dated="2026-08-01",
+                retrieved_via="firecrawl",
+            )
+            for index in (2, 3)
+        ]
+        sources = [*base.sources, *extra]
+        return MarketFindings(
+            sources=sources,
+            source_urls=[source.url for source in sources],
+            gaps=[],
+            tool_status="ok",
+            competitors=base.competitors,
+        )
+
     def test_claiming_level_one_over_a_branch_that_answered_is_rejected(self) -> None:
         """Level 1 says "the evidence does not reach this question". Reaching
         for it is how a run dodges a floor it does not like."""
+        # M gets a >=3-source branch for the same reason D gets a strong one:
+        # since RATIFICATION C2 the M ladder reserves level 1 for a branch that
+        # returned FEWER than RUBRIC_FLOOR_MIN_MARKET_SOURCES, so the module's
+        # one-source default is now an honest level 1 rather than a dodge, and
+        # asserting a rejection over it would assert the opposite of the rule.
         cases = {
             "D": {"sentiment": self.strong_demand_branch()},
-            "M": {},
+            "M": {"market": self.well_sourced_market_branch()},
             "C": {},
             "F": {},
             "X": {},
@@ -968,20 +1072,70 @@ class ScoreSupportTests(unittest.TestCase):
         # now takes RUBRIC_FLOOR_MIN_USABLE_THREADS of them, not one. This case
         # was the defect: a single OPINION thread was enough to assert that
         # nobody has the problem.
-        found_no_problem = self.threads(*[("OPINION", "2026-01-01")] * 3)
+        # RATIFICATION C7 raised the bar from 3 to 5: a full page of on-topic
+        # discussion with no problem in any of it. At 3-of-a-possible-5 the
+        # floor fired one OFF_TOPIC/OPINION flip away from not firing, and that
+        # pair of labels was undefined anywhere the Sentiment Analyst could
+        # read it.
+        found_no_problem = self.threads(
+            *[("OPINION", "2026-01-01")] * RUBRIC_FLOOR_MIN_USABLE_THREADS
+        )
         self.assertEqual(self.problems("D", 0, sentiment=found_no_problem), [])
 
-        # And one thread is now refused, which is the whole point of the change.
-        too_thin = self.threads(("OPINION", "2026-01-01"))
-        thin_problems = self.problems("D", 0, sentiment=too_thin)
-        self.assertEqual(len(thin_problems), 1)
-        self.assertIn("SCORE_FLOOR_D", thin_problems[0])
+        # Everything below the bar is refused, which is the point of the change.
+        for count in (1, RUBRIC_FLOOR_MIN_USABLE_THREADS - 1):
+            with self.subTest(usable_threads=count):
+                too_thin = self.threads(*[("OPINION", "2026-01-01")] * count)
+                thin_problems = self.problems("D", 0, sentiment=too_thin)
+                self.assertEqual(len(thin_problems), 1)
+                self.assertIn("SCORE_FLOOR_D", thin_problems[0])
 
-    def test_the_feasibility_floor_cannot_be_claimed_over_relevant_repositories(self) -> None:
-        problems = self.problems("F", 0)
+    def test_the_feasibility_floor_is_unreachable_in_every_evidence_state(self) -> None:
+        """RATIFICATION C4: F has no level 0 at all, so `zero_ok` is False
+        unconditionally - including over the ALL-IRRELEVANT branch that used to
+        BE the floor's trigger.
 
-        self.assertEqual(len(problems), 1)
-        self.assertIn("SCORE_FLOOR_F", problems[0])
+        That state is the modal outcome of a stars-ranked five-result search for
+        an ordinary v1, it made the floor compulsory (ceiling 1, `one_ok` false,
+        so no score 1-5 was legal either), and it made the ladder non-monotone:
+        F=0 returned NEEDS_WORK at composite 3.4 where the strictly better F=1
+        returned REJECT at 3.7. It is now an honest F=2.
+
+        This asserted a `SCORE_FLOOR_F` message over the RELEVANT-repository
+        case only, which passes both before and after the retirement - the
+        all-irrelevant case is the one that distinguishes them.
+        """
+        irrelevant = FeasibilityFindings(
+            sources=[
+                Repo(
+                    name="example/unrelated",
+                    license_permits_commercial=True,
+                    months_since_push=1,
+                    relevance="IRRELEVANT",
+                    url=REPO_URL,
+                )
+            ],
+            source_urls=[REPO_URL],
+            gaps=[],
+            tool_status="ok",
+        )
+        empty = FeasibilityFindings(
+            sources=[], source_urls=[], gaps=["Nothing."], tool_status="empty"
+        )
+
+        for label, branch in (
+            ("relevant repositories", feasibility_findings()),
+            ("all irrelevant - the old trigger", irrelevant),
+            ("branch returned nothing", empty),
+        ):
+            with self.subTest(evidence=label):
+                support = rubric_support(
+                    market_findings(), sentiment_findings(), branch, now=NOW
+                )["F"]
+                self.assertFalse(support.zero_ok, "F=0 must be unreachable")
+
+        # And the old trigger is now a legal level 2, not a dead state.
+        self.assertEqual(self.problems("F", 2, feasibility=irrelevant), [])
 
     def test_the_headroom_kill_is_determined_in_both_directions(self) -> None:
         """X=0 is the PRD's most valuable output. With a live free substitute

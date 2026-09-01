@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import itertools
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import yaml
 from crewai import LLM
+from crewai.tasks.llm_guardrail import LLMGuardrail
 
 from brief_crew.config import (
     ANCHOR_MATCH_THRESHOLD,
@@ -34,6 +36,7 @@ from brief_crew.schemas import (
 )
 from brief_crew.validator_guardrails import (
     CITATION_GUARDRAIL,
+    report_mechanics_problems,
     compute_evidence_counts,
     token_overlap,
 )
@@ -218,7 +221,11 @@ class ValidatorCrewWiringTests(unittest.TestCase):
             "sentiment_task": [type(lambda: None)],
             "feasibility_task": [type(lambda: None)],
             "synthesis_task": [type(lambda: None)],
-            "reporting_task": [type(lambda: None), str],
+            # ONE composed callable, not [mechanical, str]. CrewAI gives each
+            # list entry its own retry loop, so a draft regenerated inside the
+            # citation judge's loop shipped without the mechanical checker ever
+            # seeing it. See `ReportCrew.reporting_task`.
+            "reporting_task": [type(lambda: None)],
         }
         tasks = {
             task.name: task
@@ -260,6 +267,10 @@ class ValidatorCrewWiringTests(unittest.TestCase):
             ReportCrew(verdict(), set()).crew(),
         ]
 
+        # No guardrail is a bare string any more: the report's judge is composed
+        # INSIDE one callable with the mechanical checker, so CrewAI cannot give
+        # the two independent retry loops. Nothing else may introduce a paid
+        # judge, and this is still the check that catches it.
         string_guardrails = [
             (task.name, position, guardrail)
             for crew in crews
@@ -267,12 +278,86 @@ class ValidatorCrewWiringTests(unittest.TestCase):
             for position, guardrail in enumerate(task.guardrails or [])
             if isinstance(guardrail, str)
         ]
+        self.assertEqual(string_guardrails, [])
 
-        self.assertEqual(len(string_guardrails), 1)
-        name, position, text = string_guardrails[0]
+        # Exactly one LLMGuardrail exists in the whole pipeline, it belongs to
+        # the report, and it carries the CITATION_GUARDRAIL text verbatim.
+        judges = [
+            (task.name, cell.cell_contents)
+            for crew in crews
+            for task in crew.tasks
+            for guardrail in (task.guardrails or [])
+            for cell in getattr(guardrail, "__closure__", None) or ()
+            if isinstance(cell.cell_contents, LLMGuardrail)
+        ]
+        self.assertEqual(len(judges), 1)
+        name, judge = judges[0]
         self.assertEqual(name, "reporting_task")
-        self.assertEqual(position, 1)
-        self.assertEqual(text.strip(), CITATION_GUARDRAIL.strip())
+        self.assertEqual(judge.description.strip(), CITATION_GUARDRAIL.strip())
+
+    def test_a_judge_rejection_propagates_out_of_the_composed_guardrail(self) -> None:
+        """The PAID half must still be able to block a report.
+
+        Composition put the mechanical check first so an obviously broken draft
+        never reaches a billed judge call. The risk that introduces is the
+        opposite one: a composition that returned early on the mechanical pass
+        and never consulted the judge would silently delete citation checking
+        while every existing test stayed green.
+
+        `LLMGuardrail.__call__` is patched at the CLASS, so no model is called
+        and nothing is billed.
+        """
+        task = ReportCrew(verdict(), set()).crew().tasks[0]
+        guardrail = (task.guardrails or [])[0]
+
+        report = ValidationReport(
+            markdown_body="# Provisional brief\n\nA provisional summary line.",
+            provisional=True,
+            thin_dimensions=["D", "M", "C", "F", "X"],
+            sources=[],
+        )
+
+        class Output:
+            raw = report.model_dump_json()
+
+        # Sanity: this draft PASSES the mechanical half, so whatever the
+        # composed guardrail decides next can only have come from the judge.
+        self.assertEqual(report_mechanics_problems(report, verdict=verdict()), [])
+
+        seen: list[object] = []
+
+        def refuse(self_, output):  # noqa: ANN001 - patched onto the class
+            seen.append(output)
+            return False, "CITATIONS: a claim is not attributable to any source"
+
+        with patch.object(LLMGuardrail, "__call__", refuse):
+            passed, detail = guardrail(Output())
+
+        self.assertEqual(len(seen), 1, "the judge was never consulted")
+        self.assertFalse(passed)
+        self.assertIn("CITATIONS", str(detail))
+
+    def test_the_mechanical_check_gates_every_report_draft(self) -> None:
+        """A regenerated draft must not reach the judge unchecked.
+
+        The two checks were separate `guardrails=` entries, and CrewAI runs each
+        entry in its OWN retry loop, returning as soon as that entry passes. So
+        the mechanical pass certified draft 1 while the judge's loop shipped
+        draft 2. Composition means a failing mechanical check short-circuits
+        BEFORE any paid judge call, on every attempt.
+        """
+        task = ReportCrew(verdict(), set()).crew().tasks[0]
+        guardrail = (task.guardrails or [])[0]
+
+        class Output:
+            raw = '{"not": "a valid ValidationReport"}'
+
+        passed, detail = guardrail(Output())
+
+        self.assertFalse(passed)
+        # The mechanical parser refused it. Had the judge run first, this would
+        # be an LLM round trip against obviously broken JSON.
+        self.assertIn("SCHEMA", str(detail))
 
     def test_rubric_anchors_are_quoted_verbatim_in_the_synthesis_prompt(self) -> None:
         """F15: the guardrail text and the prompt text cannot drift apart."""

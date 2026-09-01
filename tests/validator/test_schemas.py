@@ -134,11 +134,43 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(result.verdict, "REJECT")
         self.assertEqual(result.decision_reason, "FLOOR_NO_DEMAND")
 
-    def test_not_buildable_caps_at_needs_work(self) -> None:
-        result = verdict(feasibility=score(0))
+    def test_not_buildable_no_longer_decides_anything(self) -> None:
+        """RATIFICATION C4 retired FLOOR_NOT_BUILDABLE.
 
-        self.assertEqual(result.verdict, "NEEDS_WORK")
-        self.assertEqual(result.decision_reason, "FLOOR_NOT_BUILDABLE")
+        The test this replaces built a composite of 6.1 and asserted
+        NEEDS_WORK - which that composite produces on its own - so it passed
+        whether or not the floor existed. That gap is why the floor's real
+        behaviour went unnoticed: it was NON-MONOTONE, returning NEEDS_WORK at
+        composite 3.4 where the strictly better F=1 returned REJECT at 3.7,
+        because its `elif` sat above the `composite < 4.0` test.
+
+        F=0 is now unconstructible - the anchor is gone - so the assertion is
+        that no verdict anywhere can carry this reason.
+        """
+        for feasibility_score in (1, 2, 3, 4, 5):
+            with self.subTest(feasibility=feasibility_score):
+                result = verdict(feasibility=score(feasibility_score))
+                self.assertNotEqual(result.decision_reason, "FLOOR_NOT_BUILDABLE")
+                self.assertNotIn("FLOOR_NOT_BUILDABLE", result.fatal_floors)
+
+    def test_the_feasibility_branch_is_monotone(self) -> None:
+        """Better feasibility evidence must never produce a worse verdict.
+
+        This is the property the retired floor violated, and nothing asserted
+        it. Weak-but-equal on the other four dimensions is the region where the
+        inversion lived.
+        """
+        composites = [
+            verdict(
+                demand=score(2),
+                market=score(2),
+                competitive_room=score(2),
+                feasibility=score(value),
+                headroom_over_free=score(2),
+            ).composite_score
+            for value in (1, 2, 3, 4, 5)
+        ]
+        self.assertEqual(composites, sorted(composites))
 
     def test_already_free_floor_rejects(self) -> None:
         result = verdict(headroom_over_free=score(0))

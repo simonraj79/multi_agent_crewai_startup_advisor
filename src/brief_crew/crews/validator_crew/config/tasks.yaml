@@ -65,10 +65,14 @@ market_task:
     it fetched the page because the page published no date, and such a source
     is never dated within 24 months. Never clear the flag to make a source look
     current. Set vendor_owned true
-    only when an attributed source shows the competitor is owned by, or bundled
-    into, a larger platform vendor rather than sold as an independent product;
-    the competitive-room ladder scores on that flag, so a guess there moves the
-    verdict. Set free_core_coverage for every competitor: WHOLE_JOB when
+    only when an attributed source shows the competitor is delivered as part of
+    a larger platform vendor's product or subscription - something the buyer
+    already has rather than buys. Corporate ownership alone is not enough: a
+    product a larger vendor acquired but still sells as its own standalone
+    subscription is NOT vendor owned. Set it false when a source shows it is
+    sold and bought on its own, and leave it null when no source settles the
+    question; null is not false, and the competitive-room ladder scores on this
+    flag, so a guess there moves the verdict. Set free_core_coverage for every competitor: WHOLE_JOB when
     an attributed source shows this competitor already does the whole scoped
     core job for the scoped user at no cost, MOST_OF_JOB when the free
     offering covers most of that job but not all of it, SEPARABLE_PART when
@@ -77,7 +81,15 @@ market_task:
     NONE, and a guess is worse than a null. WHOLE_JOB is the single most
     consequential value in this branch - it is by itself enough to reject
     the idea - so set it only on an attributed source, never on a vendor
-    page implying a free plan exists. A free product that competes with this
+    page implying a free plan exists. Give every competitor its url: a
+    WHOLE_JOB competitor with no url can no longer fire that rejection, so
+    an unattributed name is worth the same as no finding at all. Record
+    free_core_coverage for EVERY competitor, read off the pricing page you
+    already retrieved for it: NONE when that page shows no free tier covering
+    any of the scoped core job. Leave it null ONLY when you retrieved no
+    pricing information for that competitor at all - a single null caps the
+    headroom score at 3, because the top of that ladder asserts no free
+    product exists and nobody checked. A free product that competes with this
     idea is a competitor even when nobody sells it: record it here with its
     pricing as "free" rather than leaving it out. List in
     paying_segments each buyer segment an attributed source shows is already
@@ -106,7 +118,16 @@ sentiment_task:
 
     Return one SentimentFindings JSON object. Keep at most one representative
     Thread per URL so source_urls remains unique. Preserve a short exact quote
-    and classify it as HAS_PROBLEM, PAYS, BUILT_WORKAROUND, OPINION or OFF_TOPIC.
+    and classify it. OFF_TOPIC means the thread is not about the scoped problem
+    or its users at all - a different domain, or a passing mention. OPINION
+    means the thread IS about this problem or its users but nobody in it
+    describes having the problem, paying for it, or working around it. That
+    distinction decides the verdict, so make it deliberately: five or more
+    threads you call OPINION with none called HAS_PROBLEM, PAYS or
+    BUILT_WORKAROUND is read as "the branch looked and nobody has this problem"
+    and REJECTS the idea outright. Use OFF_TOPIC when the thread does not bear
+    on the question; use OPINION only when it does bear on it and still shows
+    no problem.
     The tool reports signal_terms_matched and query_terms_present: those are
     word matches, not a classification, and they are not the answer. A comment
     matching "pay" may be quoting a product name; a comment matching nothing may
@@ -239,6 +260,7 @@ synthesis_task:
       reusable repository - a repository marked SOLVES_ENTIRELY or PARTIAL whose licence permits commercial use and whose months_since_push is 12 or fewer.
       free substitute - a repository marked SOLVES_ENTIRELY, which covers the whole core job on its own.
       free product - a named competitor whose free_core_coverage is WHOLE_JOB, MOST_OF_JOB or SEPARABLE_PART: a no-cost offering covering that much of the core job. A null free_core_coverage is not a free product and is not evidence that none exists, and neither is NONE a free product.
+      free coverage settled - every named competitor's free_core_coverage is recorded (WHOLE_JOB, MOST_OF_JOB, SEPARABLE_PART or NONE); a null leaves it unsettled, and no competitor named at all is vacuously settled.
       covers the whole core job - free_core_coverage WHOLE_JOB. covers most of the core job - free_core_coverage MOST_OF_JOB, which means most of it but not all. covers a separable part - free_core_coverage SEPARABLE_PART.
       vendor owned - a competitor whose vendor_owned flag is true: owned by or bundled into a larger platform vendor rather than sold on its own.
       dated within 24 months - the source's own date is no more than 24 months before the scope's as_of date. A market source flagged dated_is_retrieval_time, or a thread flagged date_is_retrieval_time, carries no date of its own and is therefore never dated within 24 months however recent its timestamp looks.
@@ -258,8 +280,8 @@ synthesis_task:
       5: Anchor 4, and at least 5 problem threads are dated within 24 months, at least 2 of them classified BUILT_WORKAROUND or PAYS, and the market branch names at least 1 paying segment.
 
     M - Market. Is there money, and can you name whose?
-      0: The market branch returned sources, and none of them names a buyer segment for this problem.
-      1: Evidence does not reach this question — the market branch returned no source.
+      0: At least 3 market sources, and none of them names a buyer segment for this problem, and none states a price or a budget anyone spends on it.
+      1: Evidence does not reach this question — the market branch returned fewer than 3 sources, and none of them names a buyer segment for this problem.
       2: At least 1 market source names a buyer segment for this problem.
       3: Anchor 2, and at least 1 source or competitor states a price or a budget that segment spends.
       4: Anchor 3, and at least 2 market sources dated within 24 months name that same segment.
@@ -267,32 +289,31 @@ synthesis_task:
 
     C - Competitive room. Is the incumbent set beatable on a stated axis?
       0: At least 1 competitor is named, every named competitor is vendor owned, and no source states an axis on which any of them is beatable.
-      1: Evidence does not reach this question — the market branch named no competitor.
-      2: The named competitors include at least 1 that is not vendor owned, but no source states an axis of beatability.
+      1: Evidence does not reach this question — the market branch returned no source, so no competitor could be named.
+      2: No source states an axis of beatability, and either no competitor is named or at least 1 named competitor is not shown to be vendor owned.
       3: At least 1 source states an axis on which a named competitor is beatable.
       4: Anchor 3, and at least 2 competitors are named, and at least 1 source dated within 24 months describes a need the named incumbents do not serve.
-      5: Anchor 4, and at least 2 sources dated within 24 months describe the same unserved need, and no named competitor is vendor owned.
+      5: Anchor 4, and at least 2 sources dated within 24 months describe the same unserved need, and every named competitor is shown not to be vendor owned.
 
     F - Feasibility. Can two or three engineers ship a v1?
-      0: The feasibility branch returned repositories, and none of them is marked SOLVES_ENTIRELY or PARTIAL.
       1: Evidence does not reach this question — the feasibility branch returned no repository.
-      2: At least 1 repository is marked SOLVES_ENTIRELY or PARTIAL, and none of them is reusable.
+      2: At least 1 repository was returned, and none of them is reusable: none is marked SOLVES_ENTIRELY or PARTIAL, or those that are lack a commercial licence or a push within 12 months.
       3: At least 1 repository in the feasibility evidence is reusable: marked SOLVES_ENTIRELY or PARTIAL, licensed for commercial use, and pushed within 12 months.
       4: Anchor 3, and at least 2 reusable repositories are in the evidence.
       5: Anchor 4, and at least 3 reusable repositories together cover the separable parts of the scoped v1.
 
     X - Headroom over free. Is the core already free and good?
-      0: At least 1 free substitute repository is not marked archived, permits commercial use and was pushed within 12 months, or at least 1 free product covers the whole core job.
+      0: At least 1 free substitute repository is not marked archived, permits commercial use and was pushed within 12 months, or at least 1 free product with an attributed URL covers the whole core job.
       1: Evidence does not reach this question — no repository is marked SOLVES_ENTIRELY or PARTIAL and no free product is named.
       2: At least 1 free substitute repository exists, and every one of them is marked archived, licensed against commercial use, or was last pushed more than 12 months ago; or at least 1 free product covers most of the core job.
-      3: No free substitute repository exists, and at least 1 free product is named, none covering more than a separable part of the core job.
-      4: No free substitute and no free product, but a repository marked PARTIAL covers most of the core job.
-      5: No free substitute and no free product, and every repository marked PARTIAL covers only a separable part of the core job, with at least 1 such repository in the evidence.
+      3: No free substitute repository exists, and free coverage is unsettled or settled at no more than a separable part of the core job.
+      4: No free substitute, no free product, and free coverage settled, but a repository marked PARTIAL covers most of the core job.
+      5: No free substitute, no free product, and free coverage settled, and every repository marked PARTIAL covers only a separable part of the core job, with at least 1 such repository in the evidence.
 
     The confidence inputs are counted, not judged, and a guardrail recomputes
     every one of them from the findings above and rejects a mismatch. Set
     market_coverage to min(1, market sources / 5), sentiment_coverage to min(1,
-    threads classified HAS_PROBLEM, PAYS or BUILT_WORKAROUND / 5), and
+    threads not classified OFF_TOPIC / 5), and
     feasibility_coverage to min(1, repositories whose relevance is
     SOLVES_ENTIRELY or PARTIAL / 5). Set branches_ok to the number of findings
     with tool_status equal to ok. Set median_market_source_age_months to the

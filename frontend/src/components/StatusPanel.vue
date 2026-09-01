@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Square,
   LoaderCircle,
+  TriangleAlert,
   X,
 } from 'lucide-vue-next'
 import type { ConnectionStatus, GatesMode, LogFormat, TransportMode } from '../services/studioApi'
@@ -31,6 +32,13 @@ const props = defineProps<{
   activeView: 'graph' | 'activity'
   gatesMode: GatesMode
   error: string
+  /**
+   * Why the console is not talking to a real backend. Rendered ABOVE `error`
+   * and not dismissible: while this is set, nothing on screen is a real run,
+   * and a banner the operator can wave away is how they end up reading a
+   * scripted verdict as their own.
+   */
+  transportProblem: string
   downloadStatus: 'idle' | 'pending' | 'success' | 'error'
   downloadMessage: string
 }>()
@@ -84,6 +92,21 @@ const logFormat = ref<LogFormat>('ndjson')
 
 <template>
   <section class="status-panel" aria-label="Run controls">
+    <!--
+      Not dismissible, and deliberately first. While this is set the console is
+      playing a scripted demonstration, so every number on screen is fiction -
+      including the verdict and the cost. The previous behaviour was a small
+      "Mock mode" chip rendered in the SUCCESS colour, which a real operator
+      read straight past on 2026-09-01.
+    -->
+    <div v-if="transportProblem" class="transport-banner" role="alert">
+      <TriangleAlert :size="15" aria-hidden="true" />
+      <span>
+        <strong>Demonstration mode - no agent is running.</strong>
+        {{ transportProblem }}
+      </span>
+    </div>
+
     <div v-if="error" class="error-banner" role="alert">
       <span>{{ error }}</span>
       <button class="icon-button" type="button" aria-label="Dismiss error" title="Dismiss" @click="emit('dismissError')">
@@ -281,6 +304,10 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
 .control-actions { display: grid; gap: 8px; padding: 16px; }
 .error-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; color: var(--err-text); font-size: var(--fs-12); background: var(--err-bg); border-bottom: 1px solid var(--err-border); }
 .error-banner .icon-button { flex: 0 0 auto; }
+/* Warn colours, not error: nothing has failed - the console simply is not
+   connected to anything. And no dismiss control, by design. */
+.transport-banner { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; color: var(--warn-text); font-size: var(--fs-12); line-height: 1.45; background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); }
+.transport-banner svg { flex: 0 0 auto; margin-top: 1px; }
 .download-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .format-picker { grid-template-columns: 1fr 1fr; }
 .format-picker button { min-height: 34px; padding: 0 10px; font: 600 10px/1 var(--font-mono); }

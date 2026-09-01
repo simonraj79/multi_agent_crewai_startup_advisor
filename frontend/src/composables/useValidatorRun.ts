@@ -188,21 +188,22 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
    * Who answers the two gates. `human` pauses at both; `auto` runs the whole
    * pipeline unattended.
    *
-   * Defaulted to `auto` by request: the gate cards were judged unclear, and
-   * with the research phase down from ~17 minutes to well under one, the pause
-   * costs more than it buys for a single operator testing their own ideas.
+   * `auto` by owner decision, and the API now agrees with it.
    *
-   * TWO CONSEQUENCES WORTH KNOWING, because this is not a cosmetic default:
+   * This flipped to `human` earlier on 2026-09-01 because the deployed API
+   * answered **403** for `auto` - `VALIDATOR_ALLOW_AUTO_GATES` is unset in
+   * `render.yaml`. That was the right read of the server at the time and the
+   * wrong read of the design: the flag exists to stop ANONYMOUS unattended
+   * runs, and `create_run` now permits `auto` for any authenticated caller
+   * (`service/app.py`). Sign-in is what the console requires anyway, so the
+   * 403 is no longer reachable from here.
    *
-   * 1. A server without VALIDATOR_ALLOW_AUTO_GATES answers **403**, so a
-   *    console pointed at a public deployment now fails on its FIRST Launch
-   *    rather than on an opt-in click. The 403 is deliberate and distinct from
-   *    a 422 - it means "this server will not do that", not "you sent this
-   *    wrong" - and the error surfaces the server's own sentence.
-   * 2. Human inaction WAS the de facto spend cap. A gated run stops after one
-   *    Scoper call and expires if nobody replies; an unattended run has no such
-   *    brake and is bounded only by MAX_RUN_COST_USD and the agents' summed
-   *    max_iter. Switch back to Review with the toggle to restore it.
+   * The spend argument that justified `human` does not survive authentication
+   * either. Human inaction was the cap only while nobody could be identified;
+   * a signed-in run is owned, rate-limited per user, and bounded by
+   * `MAX_RUN_COST_USD` ($10 by default) enforced at the step boundary. Review
+   * remains one click away for anyone who wants to inspect the scope before
+   * three branches go and spend money on it.
    */
   const gatesMode = ref<GatesMode>('auto')
   const status = ref<RunStatus>('idle')
@@ -215,6 +216,17 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
   const downloadStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
   const downloadMessage = ref('')
   const lastError = ref('')
+  /**
+   * Why the console is not talking to a real backend, or '' when it is.
+   *
+   * Kept SEPARATE from `lastError` on purpose. `launch()` clears `lastError` on
+   * every attempt, so a transport diagnosis routed through it would erase
+   * itself the instant the operator pressed the button that cannot work - and
+   * pressing that button is exactly what someone does when the page looks
+   * fine. This one is written only by `initialize()` and survives until the
+   * next probe.
+   */
+  const transportProblem = ref('')
   /**
    * The finished validation report. The backend has always delivered this -
    * `GET /api/runs/{id}` returns it as `result` and the terminal frame carries
@@ -361,6 +373,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
 
   async function initialize(): Promise<void> {
     transportMode.value = await api.initialize()
+    transportProblem.value = api.probeFailure ?? ''
     const storedRun = readStoredRun()
     workflowId.value = storedRun?.workflowId ?? workflowId.value
     try {
@@ -385,6 +398,19 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     try {
       const response = await api.startRun(sessionId, idea.value.trim(), workflowId.value, gatesMode.value)
       transportMode.value = api.mode
+      /*
+       * The banner must be refreshed with the mode, never left behind.
+       *
+       * `startRun` re-probes whenever the transport is mocked, so this is the
+       * RECOVERY path: a cold Render service failed the page-load probe, the
+       * operator clicked Launch rather than reloading, and the second probe
+       * succeeded. Updating `transportMode` alone left the non-dismissible
+       * "Demonstration mode - no agent is running" alert sitting over a real
+       * run that was spending real money - the exact inverse of the defect
+       * this banner exists to prevent, and it contradicted the header chip two
+       * panels away.
+       */
+      transportProblem.value = api.probeFailure ?? ''
       resetRun()
       runId.value = response.run_id
       setStatus(response.status)
@@ -1049,6 +1075,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     downloadStatus,
     downloadMessage,
     lastError,
+    transportProblem,
     report,
     verdictSummary,
     lastSequence,

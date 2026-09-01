@@ -141,7 +141,7 @@ class JwksCache:
             return self._fetcher(self.url)
         import requests
 
-        response = requests.get(self.url, timeout=10)
+        response = requests.get(self.url, timeout=config.AUTH_JWKS_TIMEOUT_SECONDS)
         response.raise_for_status()
         return response.json()
 

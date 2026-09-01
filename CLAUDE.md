@@ -1289,6 +1289,14 @@ cross-references keep resolving.
    none of them has been re-exercised against the live tools. Zero-fabricated-
    citation closure over an acceptance set is still unverified.
 
+   > **⚠️ SUPERSEDED 2026-09-01 by [`docs/rubric-ratification.md`](docs/rubric-ratification.md).**
+   > The rubric has now been RATIFIED, which is what this item asked for. Seven
+   > changes were applied (four Critical), F level 0 and `FLOOR_NOT_BUILDABLE`
+   > are retired, and the review's "do not spend money" verdict is lifted. Two
+   > claims below are STALE and corrected there: F4 is **fixed**, not open
+   > (`_relevance` and `_classify` are deleted), and item 5's list of open
+   > questions has been settled. Read the ratification record first.
+
    **The standing recommendation against a *scoring* acceptance run is now
    partly lifted.** `docs/rubric-review.md` said *"do not spend money on a live
    acceptance run against this rubric as it stands"* over 13 findings, 2

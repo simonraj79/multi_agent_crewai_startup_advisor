@@ -199,12 +199,11 @@ describe('gates mode', () => {
   afterEach(() => app.unmount())
 
   it('defaults to UNATTENDED gates', () => {
-    // Flipped from 'human' deliberately, and this assertion is the record of
-    // that decision rather than an incidental detail. Two things follow from
-    // it: a server without VALIDATOR_ALLOW_AUTO_GATES now answers 403 on the
-    // very first Launch, and human inaction - which was the de facto spend
-    // cap, since a gated run expires if nobody replies - is gone. Anyone
-    // flipping this back should be doing it on purpose.
+    // Owner decision, and the server now agrees: `create_run` permits `auto`
+    // for any AUTHENTICATED caller, because the flag exists to stop anonymous
+    // unattended runs rather than owned ones. A signed-in run is owned,
+    // rate-limited per user, and bounded by MAX_RUN_COST_USD. Review stays one
+    // click away. Anyone flipping this back should be doing it on purpose.
     expect(run.gatesMode.value).toBe('auto')
   })
 
@@ -246,5 +245,70 @@ describe('gates mode', () => {
       workflowId: 'idea-validator',
       gates: 'auto',
     })
+  })
+})
+
+/**
+ * The transport banner must track the transport, in BOTH directions.
+ *
+ * The banner exists because a scripted mock run was indistinguishable from a
+ * paid one, and it is deliberately non-dismissible. That makes a stale banner
+ * expensive in the opposite direction: left over a real run, it tells an
+ * operator that the money they are spending is a demonstration.
+ *
+ * This is the recovery path, not an edge case. A cold Render service fails the
+ * page-load probe; the operator clicks Launch rather than reloading; `startRun`
+ * re-probes and succeeds. `launch()` refreshed `transportMode` from the api but
+ * not `probeFailure`, so the alert survived onto a live run.
+ */
+describe('the transport banner', () => {
+  let api: FakeStudioApi
+  let run: ValidatorRun
+  let app: App
+
+  beforeEach(() => {
+    localStorage.clear()
+    api = new FakeStudioApi()
+    ;[run, app] = withSetup(() => useValidatorRun(api))
+  })
+
+  afterEach(() => app.unmount())
+
+  it('shows the probe failure recorded at page load', async () => {
+    api.mode = 'mock'
+    api.probeFailure = 'The validator API did not respond within 8s.'
+    await run.initialize()
+    await flush()
+
+    expect(run.transportProblem.value).toContain('did not respond')
+  })
+
+  it('clears the banner when a later probe recovers', async () => {
+    api.mode = 'mock'
+    api.probeFailure = 'The validator API did not respond within 8s.'
+    await run.initialize()
+    await flush()
+    expect(run.transportProblem.value).not.toBe('')
+
+    // The re-probe inside startRun succeeds this time.
+    api.mode = 'live'
+    api.probeFailure = null
+    await run.launch()
+    await flush()
+
+    expect(run.transportMode.value).toBe('live')
+    // A live run must never carry "no agent is running" over it.
+    expect(run.transportProblem.value).toBe('')
+  })
+
+  it('stays silent when the probe succeeded all along', async () => {
+    api.mode = 'live'
+    api.probeFailure = null
+    await run.initialize()
+    await flush()
+    await run.launch()
+    await flush()
+
+    expect(run.transportProblem.value).toBe('')
   })
 })

@@ -112,6 +112,23 @@ services:
       - key: AUTH_BASE_URL
         value: "https://agentic-crew-ai-studio.onrender.com"
 
+      # DELIBERATELY UNSET: VALIDATOR_ALLOW_AUTO_GATES.
+      #
+      # Not an oversight, and not the same thing as "unattended runs are off".
+      # `create_run` permits `gates: "auto"` for any AUTHENTICATED caller; this
+      # flag only governs ANONYMOUS ones. Since AUTH_BASE_URL above turns
+      # authentication on for every paid endpoint, there are no anonymous
+      # callers here and the flag has nothing left to decide.
+      #
+      # Setting it to "true" would therefore change nothing today - and would
+      # become a real hole the moment authentication were disabled, which is
+      # exactly when nobody would think to look at it. Leaving it unset means
+      # the anonymous case fails closed on its own.
+      #
+      # What actually bounds an unattended run is MAX_RUN_COST_USD (default
+      # $10), enforced at the CrewAI step boundary by HookAborted, plus the
+      # per-user rate limit and MAX_QUEUED_RUNS.
+
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"
 

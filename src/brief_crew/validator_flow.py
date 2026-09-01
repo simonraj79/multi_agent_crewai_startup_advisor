@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import threading
 import uuid
@@ -29,6 +30,7 @@ from brief_crew.config import (
     GATE_REVISE_TURNS_METADATA_KEY,
     VALIDATOR_BRANCH_TURN_TIMEOUT_SECONDS,
     VALIDATOR_FEASIBILITY_CACHE_ENABLED,
+    VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS,
     VALIDATOR_MAX_GATE_TURNS,
     VALIDATOR_MAX_METHOD_CALLS,
     VALIDATOR_SEQUENTIAL_BRANCHES,
@@ -43,6 +45,7 @@ from brief_crew.crews.validator_crew import (
 )
 from brief_crew.events.verdict import publish_verdict
 from brief_crew.schemas import (
+    Evidence,
     FeasibilityFindings,
     MarketFindings,
     ScopedIdea,
@@ -50,6 +53,10 @@ from brief_crew.schemas import (
     ValidationReport,
     Verdict,
 )
+
+# Not re-exported by `brief_crew.schemas`; `_degraded_report` needs the literal
+# to type the `thin_dimensions` it assembles.
+from brief_crew.schemas.validator import DimensionCode
 from brief_crew.validator_guardrails import findings_urls, parse_raw_model
 from brief_crew.validator_cache import (
     BranchName,
@@ -60,6 +67,8 @@ from brief_crew.validator_cache import (
     lookup_branch_cache,
     resolve_namespace,
 )
+
+logger = logging.getLogger(__name__)
 
 OUTPUT_PATH = Path("output") / "validation.md"
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -245,6 +254,186 @@ def _degraded_findings(
     if "competitors" in model.model_fields:
         payload["competitors"] = []
     return model.model_validate(payload)
+
+
+_DIMENSION_LABELS: tuple[tuple[str, DimensionCode, str], ...] = (
+    ("demand", "D", "Demand"),
+    ("market", "M", "Market"),
+    ("competitive_room", "C", "Competitive room"),
+    ("feasibility", "F", "Feasibility"),
+    ("headroom_over_free", "X", "Headroom over free"),
+)
+
+
+def _one_line(text: str) -> str:
+    """Flatten a value that is about to be pasted into single-line Markdown.
+
+    Every field interpolated by `_degraded_report` is model output or tool
+    output, and three of the constructs it builds are line-oriented: an ATX
+    heading, a table row, and a list item. A newline in an anchor string ends
+    the heading early; a `|` in a claim or an anchor adds a phantom column and
+    silently shifts every cell after it. `anchor_matched` is free text the
+    Synthesist writes, and `Evidence.claim` is free text with only a length
+    bound, so neither is safe to trust with the document's structure.
+
+    Escaping the pipe rather than deleting it keeps the character visible to a
+    reader; collapsing whitespace keeps the row on one line.
+    """
+    return " ".join(text.replace("|", "\\|").split())
+
+
+def _degraded_report(
+    scope: ScopedIdea,
+    verdict: Verdict,
+    findings: tuple[MarketFindings, SentimentFindings, FeasibilityFindings],
+    exc: BaseException,
+) -> ValidationReport:
+    """Render a real verdict as Markdown in code, when the Reporter could not.
+
+    Every value here is copied from an already-validated `Verdict` or from the
+    three findings; nothing is inferred and nothing is invented. That is what
+    separates this from a fabricated report - the arithmetic was done by the
+    schema and the evidence was returned by tools, so the only thing the
+    Reporter was contributing at this point was prose.
+
+    The three branches do NOT share a source type - `MarketFindings.sources` is
+    `list[Evidence]`, but sentiment's is `list[Thread]` and feasibility's is
+    `list[Repo]`, while `ValidationReport.sources` demands `Evidence`. So the
+    latter two are projected, and every field of the projection is real tool
+    output: a thread's `quote` is its claim and Hacker News is its publisher; a
+    repository's name and license status are its claim and GitHub is its
+    publisher. Nothing is synthesised except the sentence joining them.
+
+    `sources` is deduped by URL because `ValidationReport.validate_unique_sources`
+    rejects repeats, and the same URL legitimately appears in more than one
+    branch. First occurrence wins, in branch order, so the output is stable.
+    """
+
+    market, sentiment, feasibility = findings
+    projected: list[Evidence] = list(market.sources)
+    projected += [
+        Evidence.model_validate(
+            {
+                "claim": thread.quote[:VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS],
+                "url": thread.url,
+                "publisher": "Hacker News",
+                "dated": thread.date,
+                "dated_is_retrieval_time": thread.date_is_retrieval_time,
+                "retrieved_via": "hn_algolia",
+            }
+        )
+        for thread in sentiment.sources
+    ]
+    projected += [
+        Evidence.model_validate(
+            {
+                "claim": (
+                    f"{repo.name} - {repo.relevance}, "
+                    + (
+                        "license permits commercial use"
+                        if repo.license_permits_commercial
+                        else "license does not permit commercial use"
+                    )
+                )[:VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS],
+                "url": repo.url,
+                "publisher": "GitHub",
+                # A repository has no publication date, and claiming one would
+                # bias `median_market_source_age_months` young - the exact
+                # defect closed-ledger item 25 repaired. The flag says so.
+                "dated": scope.as_of,
+                "dated_is_retrieval_time": True,
+                "retrieved_via": "github",
+            }
+        )
+        for repo in feasibility.sources
+    ]
+
+    seen: set[str] = set()
+    sources: list[Evidence] = []
+    for source in projected:
+        if source.url in seen:
+            continue
+        seen.add(source.url)
+        sources.append(source)
+
+    thin = [
+        code
+        for field, code, _ in _DIMENSION_LABELS
+        if getattr(verdict, field).evidence_thin
+    ]
+
+    # The degraded report obeys the SAME contract every other report obeys.
+    # `report_mechanics_problems` requires the word "provisional" in both the
+    # title and the first summary line whenever the verdict is provisional, and
+    # a report that would fail the project's own guardrail is a second-class
+    # artefact - exactly the kind of quiet divergence that makes a fallback
+    # untrustworthy. Verified by `test_report_degradation.py`.
+    provisional_title = " (Provisional)" if verdict.provisional else ""
+    lines = [
+        f"# {_one_line(scope.startup_idea)} - {verdict.verdict} "
+        f"({verdict.composite_score:.1f}/10){provisional_title}",
+        "",
+        "> **This brief was assembled mechanically, not written by the Reporter "
+        f"agent.** That step failed with `{type(exc).__name__}`, so the "
+        + ("provisional " if verdict.provisional else "")
+        + "verdict and evidence below are rendered directly from validated "
+        "pipeline state. The scoring, the floors and the citations are real; "
+        "the absence of analytical prose is the failure.",
+        "",
+        f"**Verdict** {verdict.verdict} at {verdict.confidence:.2f} confidence "
+        f"({verdict.confidence_band} band)"
+        + (" - PROVISIONAL" if verdict.provisional else ""),
+        "",
+    ]
+    if verdict.decision_reason:
+        lines += [f"**Decision reason** `{verdict.decision_reason}`", ""]
+    if verdict.fatal_floors:
+        lines += [
+            "**Fatal floors** "
+            + ", ".join(f"`{floor}`" for floor in verdict.fatal_floors),
+            "",
+        ]
+
+    lines += ["## Scores", "", "| Dimension | Score | Anchor |", "| --- | --- | --- |"]
+    for field, code, label in _DIMENSION_LABELS:
+        dimension = getattr(verdict, field)
+        thin_mark = " *(thin)*" if dimension.evidence_thin else ""
+        lines.append(
+            f"| {label} ({code}) | {dimension.score}/5{thin_mark} | "
+            f"{_one_line(dimension.anchor_matched)} |"
+        )
+
+    lines += [
+        "",
+        "## Evidence coverage",
+        "",
+        f"- Branches that completed: {verdict.branches_ok}/3",
+        f"- Market coverage {verdict.market_coverage:.2f}, "
+        f"sentiment {verdict.sentiment_coverage:.2f}, "
+        f"feasibility {verdict.feasibility_coverage:.2f}",
+    ]
+    gaps = [gap for branch in findings for gap in branch.gaps]
+    if gaps:
+        lines += ["", "## Gaps", ""] + [f"- {_one_line(gap)}" for gap in gaps]
+    if verdict.kill_criteria:
+        lines += ["", "## What would falsify this", ""] + [
+            f"- {_one_line(item)}" for item in verdict.kill_criteria
+        ]
+    lines += ["", "## Cheapest next test", "", _one_line(verdict.cheapest_next_test)]
+    if sources:
+        lines += ["", "## Sources", ""] + [
+            f"- [{_one_line(source.publisher)}]({source.url}) - {_one_line(source.claim)}"
+            for source in sources
+        ]
+
+    return ValidationReport.model_validate(
+        {
+            "markdown_body": "\n".join(lines),
+            "provisional": verdict.provisional,
+            "thin_dimensions": thin,
+            "sources": sources,
+        }
+    )
 
 
 def _edit_error_summary(error: ValidationError) -> str:
@@ -867,7 +1056,31 @@ class ValidatorFlow(Flow[ValidatorState]):
 
     @listen("verdict_approved")
     def write_report(self) -> ValidationReport:
-        """Turn the deterministic verdict and its evidence into the final brief."""
+        """Turn the deterministic verdict and its evidence into the final brief.
+
+        A Reporter failure DEGRADES rather than destroying the run, for exactly
+        the reason `_degraded_findings` exists one layer up - and the stakes are
+        strictly higher here. By the time this method runs the operator has paid
+        for an escalation-tier scope, three live research branches, a wait at
+        the scope gate, an escalation-tier synthesis and a wait at the verdict
+        gate. Every one of those was discarded by a single un-caught exception
+        from the last step, and there are three ordinary ways to get one:
+        `Crew.kickoff` re-raises, guardrail exhaustion raises a plain
+        `Exception`, and `Agent.execute_task` deliberately re-raises
+        `TimeoutError` rather than routing it through `_handle_execution_error`.
+
+        The fallback is assembled mechanically from state that is already
+        validated, and it says so in its own first paragraph. It is not a
+        substitute for the Reporter's prose - it is the difference between an
+        operator receiving the verdict they paid for and receiving a stack
+        trace.
+
+        Deliberately NOT mirrored onto `_run_synthesis`. A mechanically
+        fabricated `Verdict` would carry a REJECT or a `FLOOR_*` that no
+        evidence supports, and the schema would then recompute a composite
+        score over invented dimensions. A missing verdict must fail loudly; a
+        missing *rendering* of a real verdict must not.
+        """
         scope = _require(self.state.scope, "scope")
         market = _require(self.state.market, "market findings")
         sentiment = _require(self.state.sentiment, "sentiment findings")
@@ -878,24 +1091,70 @@ class ValidatorFlow(Flow[ValidatorState]):
             findings_urls(sentiment),
             findings_urls(feasibility),
         )
-        result = self.crew_factories.report(verdict, tool_urls).kickoff(
-            inputs={
-                "scoped_idea_json": scope.model_dump_json(indent=2),
-                "market_findings_json": market.model_dump_json(indent=2),
-                "sentiment_findings_json": sentiment.model_dump_json(indent=2),
-                "feasibility_findings_json": feasibility.model_dump_json(indent=2),
-                "verdict_json": verdict.model_dump_json(indent=2),
-            }
-        )
-        self.state.report = _extract_model(result, ValidationReport)
+        try:
+            result = self.crew_factories.report(verdict, tool_urls).kickoff(
+                inputs={
+                    "scoped_idea_json": scope.model_dump_json(indent=2),
+                    "market_findings_json": market.model_dump_json(indent=2),
+                    "sentiment_findings_json": sentiment.model_dump_json(indent=2),
+                    "feasibility_findings_json": feasibility.model_dump_json(
+                        indent=2
+                    ),
+                    "verdict_json": verdict.model_dump_json(indent=2),
+                }
+            )
+            report = _extract_model(result, ValidationReport)
+        except _BRANCH_CONTROL_FLOW:
+            # HookAborted and HumanFeedbackPending are the flow's own control
+            # flow, not failures. Swallowing either would turn a cancellation
+            # into a fabricated report, or lose a durable gate entirely.
+            raise
+        except Exception as exc:
+            logger.warning(
+                "The Reporter step failed (%s). Assembling the report "
+                "mechanically from the verdict and findings already in state.",
+                exc,
+            )
+            report = _degraded_report(
+                scope, verdict, (market, sentiment, feasibility), exc
+            )
+        self.state.report = report
         return self.state.report
 
     @listen(write_report)
     def persist(self) -> ValidationReport:
-        """Write only the human-readable report body to output/validation.md."""
+        """Write only the human-readable report body to output/validation.md.
+
+        The write is best-effort and CANNOT veto the deliverable. This is the
+        flow's terminal listener, so whatever it returns *is* what `kickoff()`
+        hands back, what `RunRecord.mark_completed` stores, and what
+        `GET /api/runs/{id}` serves as `result` - and `mark_failed` never
+        assigns `self.result` at all. So an `OSError` here used to discard a
+        finished report that was already sitting in `self.state.report`: a
+        read-only volume, an exhausted disk or a stale `output` path turned a
+        complete, paid-for run into a run with no output whatsoever.
+
+        The file is a local convenience, not the contract. On a deployed
+        container it lands on ephemeral disk nobody will ever read, while the
+        API response is the only copy that reaches an operator. Losing the
+        cheap copy must never cost the expensive one.
+
+        `_require` stays OUTSIDE the try: a missing report is a genuine
+        programming error upstream and must still raise. Only the two I/O
+        lines are guarded, and only `OSError` - a `TypeError` here would be a
+        bug worth surfacing.
+        """
         report = _require(self.state.report, "validation report")
-        OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        OUTPUT_PATH.write_text(report.markdown_body, encoding="utf-8")
+        try:
+            OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            OUTPUT_PATH.write_text(report.markdown_body, encoding="utf-8")
+        except OSError as exc:
+            logger.warning(
+                "Could not write the report to %s (%s). The run is unaffected: "
+                "the report is returned to the caller and served by the API.",
+                OUTPUT_PATH,
+                exc,
+            )
         return report
 
     def _run_synthesis(self, human_override: str) -> Verdict:

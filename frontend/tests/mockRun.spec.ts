@@ -112,6 +112,22 @@ describe('the offline mock run, end to end', () => {
     expect(run.quarantinedFrames.value).toBe(0)
     expect(run.usage.totalTokens).toBeGreaterThan(0)
     expect(run.lastError.value).toBe('')
+
+    /*
+     * The demonstration must END with a body, and that body must say what it
+     * is. Until 2026-09-01 `mockFrames.ts` emitted no `result` at all, so a
+     * finished mock run showed strictly LESS than a mid-flight one - the
+     * report panel had nothing to render - while every other widget on screen
+     * was indistinguishable from a paid run. That combination sent a real
+     * operator looking for an `output/validation.md` that had never existed.
+     */
+    expect(run.report.value?.markdown_body ?? '').not.toBe('')
+    const firstLine = (run.report.value?.markdown_body ?? '').split('\n')[0]
+    expect(firstLine).toContain('DEMONSTRATION ONLY')
+    expect(run.report.value?.markdown_body).toContain('No model was called')
+
+    // And it must not claim to have spent money.
+    expect(run.usage.costUsd).toBe(0)
   })
 
   it('never routes a frame to a node the graph does not declare', async () => {

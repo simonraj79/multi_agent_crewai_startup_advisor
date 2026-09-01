@@ -76,12 +76,44 @@ class FakeRunner:
         return self.result
 
 
+#: How long a branch waits at the barrier for its siblings before giving up.
+#:
+#: Generous on purpose. It is not a latency budget - it is the point at which
+#: "the branches are not concurrent" becomes the only remaining explanation.
+BRANCH_RENDEZVOUS_TIMEOUT_SECONDS = 10.0
+
+
 class ConcurrencyTracker:
-    def __init__(self) -> None:
+    """Observes whether the three research branches genuinely overlap.
+
+    `expect` arms a RENDEZVOUS, and that is the difference between a test that
+    proves concurrency and one that merely tends to observe it.
+
+    Without it, `enter` held its slot for a fixed 80ms and the parallel tests
+    asserted `maximum == 3` - so all three threads had to be inside the same
+    80ms window. That is a race against the machine, not against the code, and
+    it lost: this suite failed once in nine runs on 2026-09-01 while sixteen
+    subagents and a Playwright run saturated the CPU. A thread scheduled 80ms
+    late made `maximum` 2, and `assertEqual(3)` reported a concurrency defect
+    that did not exist.
+
+    With `expect=3` every branch blocks until all three have arrived, so
+    `maximum` is 3 whenever the fan-out is real and the timing of the machine
+    cannot change the answer. It is also a STRICTER claim: the old version
+    accepted three overlapping arrivals, this one requires all three to be in
+    flight simultaneously, and a genuinely serialized fan-out now fails by
+    timeout rather than by luck.
+
+    Left unarmed (`expect=None`) for the sequential tests, where a barrier of
+    three would be waiting for siblings that by definition never arrive.
+    """
+
+    def __init__(self, expect: int | None = None) -> None:
         self.active = 0
         self.maximum = 0
         self.order: list[str] = []
         self.lock = threading.Lock()
+        self.barrier = threading.Barrier(expect) if expect else None
 
     def enter(self, label: str = "") -> None:
         with self.lock:
@@ -89,7 +121,18 @@ class ConcurrencyTracker:
             self.maximum = max(self.maximum, self.active)
             if label:
                 self.order.append(label)
-        time.sleep(0.08)
+        if self.barrier is None:
+            time.sleep(0.08)
+        else:
+            try:
+                self.barrier.wait(timeout=BRANCH_RENDEZVOUS_TIMEOUT_SECONDS)
+            except threading.BrokenBarrierError:
+                # Swallowed deliberately. The caller's `assertEqual(maximum, 3)`
+                # is the assertion that should report this, with a number the
+                # reader can interpret - an exception raised from inside a
+                # CrewAI worker thread would surface as an unrelated branch
+                # failure and say nothing about concurrency.
+                pass
         with self.lock:
             self.active -= 1
 
@@ -208,7 +251,7 @@ class ValidatorFlowTests(unittest.TestCase):
 
     def test_no_gate_flow_fans_out_transitions_and_persists(self) -> None:
         scope, market, sentiment, feasibility, verdict, report = fixtures()
-        tracker = ConcurrencyTracker()
+        tracker = ConcurrencyTracker(expect=3)
         factories = ValidatorCrewFactories(
             scope=lambda: FakeRunner(scope),
             market=lambda: FakeRunner(market, tracker),
@@ -432,13 +475,13 @@ class SequentialFallbackTests(unittest.TestCase):
         # Nothing about an existing call site may change: no argument, no
         # kickoff input, no environment - and the fan-out still fans out.
         self.assertFalse(ValidatorState().sequential_branches)
-        tracker = ConcurrencyTracker()
+        tracker = ConcurrencyTracker(expect=3)
         self._run(sequential=None, tracker=tracker)
         self.assertEqual(tracker.maximum, 3)
 
     def test_validate_entry_point_keeps_parallel_unless_asked(self) -> None:
         scope, market, sentiment, feasibility, verdict, report = fixtures()
-        tracker = ConcurrencyTracker()
+        tracker = ConcurrencyTracker(expect=3)
         factories = ValidatorCrewFactories(
             scope=lambda: FakeRunner(scope),
             market=lambda: FakeRunner(market, tracker, "market"),
@@ -610,7 +653,7 @@ class BranchOutputPrefixTests(unittest.TestCase):
 
     def test_concurrent_branch_output_carries_its_node_name(self) -> None:
         scope, market, sentiment, feasibility, verdict, report = fixtures()
-        tracker = ConcurrencyTracker()
+        tracker = ConcurrencyTracker(expect=3)
         chatter = {
             "market": "MARKET-LINE",
             "sentiment": "SENTIMENT-LINE",

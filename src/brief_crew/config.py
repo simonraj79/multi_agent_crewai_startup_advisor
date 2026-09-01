@@ -344,8 +344,21 @@ VALIDATOR_GATE_TIMEOUT_SECONDS = 1800
 #                          SEPARABLE_PART. `None` means the market branch
 #                          did not establish one, which is a different
 #                          claim from "nothing free covers this".
-#   vendor owned         - Competitor.vendor_owned: owned by or bundled into a
-#                          larger platform vendor rather than sold standalone.
+#   vendor owned         - Competitor.vendor_owned: delivered as part of a
+#                          larger platform vendor's product or subscription -
+#                          something the buyer already has rather than buys.
+#                          Corporate ownership alone is NOT enough: a product a
+#                          larger vendor acquired but still sells as its own
+#                          standalone subscription is not vendor owned. Null
+#                          means no source settled it; null is not false.
+#                          (RATIFICATION C5. The old wording split on ownership
+#                          OR bundling and gave opposite answers for an
+#                          acquired-but-standalone product - Slack under
+#                          Salesforce - leaving 0.4 of the composite to which
+#                          half of a sentence a cheap-tier model weighted.
+#                          Bundling is readable off a pricing page, which is
+#                          what Firecrawl retrieves; ownership lives in footers
+#                          and press releases, which it does not.)
 #
 # ⚠️ Level 1 is reserved for "the evidence does not reach this question" and is
 # matched VERBATIM, never by inference. Weak demand *with* evidence is a 2.
@@ -408,10 +421,21 @@ DEMAND_ANCHORS: dict[int, str] = {
 }
 
 # M - Market. Is there money, and can you name whose? Weight 0.20.
-# M=0 with D<=2 is a hard floor (REJECT). The PRD floor is "no money, no
-# nameable buyer"; the operative half is the buyer, because the dimension's
-# question is "can you name whose?" - money nobody can attribute to a segment
-# is not an answer to it.
+# M=0 with D<=2 is a hard floor (REJECT).
+#
+# ⚠️ CORRECTED 2026-09-01. This comment claimed 'The PRD floor is "no money, no
+# nameable buyer"'. There is no such floor: PRD.md states no Market ladder, and
+# the word "buyer" does not occur in it at all (verified, 0 occurrences). An
+# invented provenance for a REJECT is worse than none, because the next reader
+# treats it as settled.
+#
+# What the PRD actually supplies is the dimension QUESTION - "Is there money,
+# and can you name whose?" - which is a conjunction, so level 0 is the negation
+# of BOTH halves. Firing on the buyer half alone rejects the commonest
+# market-research result there is: a page giving category revenue and naming no
+# segment. Measured, that scored REJECT at confidence 1.0. "That is not an
+# answer to the question" is an argument for a LOW score - which rungs 2-5 and
+# the ceiling already deliver - not for a REJECT.
 # ⚠️ "None of them names a buyer segment" cannot be settled without reading
 # the sources, so M=0 remains the one floor of the four that is not fully
 # countable (`docs/rubric-review.md` F3). One necessary condition IS
@@ -419,16 +443,22 @@ DEMAND_ANCHORS: dict[int, str] = {
 # by `market_task`'s own definition of that field, an attributed source
 # naming a buyer segment, so `market_paying_segments >= 1` contradicts this
 # anchor. That bound needs no change to the anchor text, which is why it is
-# taken here and the review's second conjunct - "at least 3 sources" - is
-# not: raising the count would orphan the 1-2 source states the way D=0
-# orphaned the 1-2 thread states, and M=1 is reserved for a branch that
-# returned nothing at all.
+# taken here. The review's second conjunct - "at least 3 sources" - is now
+# taken as well (RATIFICATION C2).
+#
+# ⚠️ CORRECTED 2026-09-01. This said raising the count "would orphan the 1-2
+# source states the way D=0 orphaned the 1-2 thread states". That is checkably
+# false and was the sole stated reason for refusing the conjunct: the M
+# ceiling's `else` branch is `money = 3` (validator_guardrails.py), so 1-2
+# sources keep legal scores [2,3] and never lost a ceiling. D's problem was a
+# genuine deadlock; this was a dead band, and the paired widening of M=1 closes
+# it the same way D's did.
 MARKET_ANCHORS: dict[int, str] = {
     0: (
-        "The market branch returned sources, and none of them names a buyer segment for this "
-        "problem."
+        "At least 3 market sources, and none of them names a buyer segment for this "
+        "problem, and none states a price or a budget anyone spends on it."
     ),
-    1: f"{LEVEL_ONE_ANCHOR} — the market branch returned no source.",
+    1: f"{LEVEL_ONE_ANCHOR} — the market branch returned fewer than 3 sources, and none of them names a buyer segment for this problem.",
     2: "At least 1 market source names a buyer segment for this problem.",
     3: (
         "Anchor 2, and at least 1 source or competitor states a price or a budget that segment "
@@ -451,10 +481,10 @@ COMPETITIVE_ROOM_ANCHORS: dict[int, str] = {
         "At least 1 competitor is named, every named competitor is vendor owned, and no source "
         "states an axis on which any of them is beatable."
     ),
-    1: f"{LEVEL_ONE_ANCHOR} — the market branch named no competitor.",
+    1: f"{LEVEL_ONE_ANCHOR} — the market branch returned no source, so no competitor could be named.",
     2: (
-        "The named competitors include at least 1 that is not vendor owned, but no source "
-        "states an axis of beatability."
+        "No source states an axis of beatability, and either no competitor is named or "
+        "at least 1 named competitor is not shown to be vendor owned."
     ),
     3: "At least 1 source states an axis on which a named competitor is beatable.",
     4: (
@@ -463,7 +493,7 @@ COMPETITIVE_ROOM_ANCHORS: dict[int, str] = {
     ),
     5: (
         "Anchor 4, and at least 2 sources dated within 24 months describe the same unserved "
-        "need, and no named competitor is vendor owned."
+        "need, and every named competitor is shown not to be vendor owned."
     ),
 }
 
@@ -479,14 +509,11 @@ COMPETITIVE_ROOM_ANCHORS: dict[int, str] = {
 # on this evidence" - rested on no field at all, and an unreachable floor is
 # worse than a cautious one. Review this one before the paid run.
 FEASIBILITY_ANCHORS: dict[int, str] = {
-    0: (
-        "The feasibility branch returned repositories, and none of them is marked "
-        "SOLVES_ENTIRELY or PARTIAL."
-    ),
     1: f"{LEVEL_ONE_ANCHOR} — the feasibility branch returned no repository.",
     2: (
-        "At least 1 repository is marked SOLVES_ENTIRELY or PARTIAL, and none of them is "
-        "reusable."
+        "At least 1 repository was returned, and none of them is reusable: none is marked "
+        "SOLVES_ENTIRELY or PARTIAL, or those that are lack a commercial licence or a push "
+        "within 12 months."
     ),
     3: (
         "At least 1 repository in the feasibility evidence is reusable: marked SOLVES_ENTIRELY "
@@ -529,7 +556,7 @@ FEASIBILITY_ANCHORS: dict[int, str] = {
 HEADROOM_ANCHORS: dict[int, str] = {
     0: (
         "At least 1 free substitute repository is not marked archived, permits commercial use "
-        "and was pushed within 12 months, or at least 1 free product covers the whole core job."
+        "and was pushed within 12 months, or at least 1 free product with an attributed URL covers the whole core job."
     ),
     1: (
         f"{LEVEL_ONE_ANCHOR} — no repository is marked SOLVES_ENTIRELY or PARTIAL and no free "
@@ -541,17 +568,17 @@ HEADROOM_ANCHORS: dict[int, str] = {
         "ago; or at least 1 free product covers most of the core job."
     ),
     3: (
-        "No free substitute repository exists, and at least 1 free product is named, none "
-        "covering more than a separable part of the core job."
+        "No free substitute repository exists, and free coverage is unsettled or "
+        "settled at no more than a separable part of the core job."
     ),
     4: (
-        "No free substitute and no free product, but a repository marked PARTIAL covers most "
-        "of the core job."
+        "No free substitute, no free product, and free coverage settled, but a "
+        "repository marked PARTIAL covers most of the core job."
     ),
     5: (
-        "No free substitute and no free product, and every repository marked PARTIAL covers "
-        "only a separable part of the core job, with at least 1 such repository in the "
-        "evidence."
+        "No free substitute, no free product, and free coverage settled, and every "
+        "repository marked PARTIAL covers only a separable part of the core job, with "
+        "at least 1 such repository in the evidence."
     ),
 }
 
@@ -602,7 +629,35 @@ RUBRIC_REUSABLE_MAX_PUSH_MONTHS = 12
 # and the number `docs/rubric-review.md` proposes for the same repair on M
 # and F. It bounds a floor only: it never raises a score, and D=1 absorbs
 # every state it excludes.
-RUBRIC_FLOOR_MIN_USABLE_THREADS = 3
+# RATIFICATION C7 (2026-09-01): 5, not 3. Set WITH MARGIN against
+# VALIDATOR_SENTIMENT_STORY_LIMIT rather than at the ladder's own smallest
+# count.
+#
+# At 3 of a possible 5 the floor fired one OFF_TOPIC/OPINION flip away from not
+# firing, and that pair of labels is the softest judgement in the pipeline - it
+# was undefined anywhere the Sentiment Analyst could read it until C7(a). One
+# fixed retrieval of five threads measured 3 OPINION + 2 OFF_TOPIC as
+# REJECT / FLOOR_NO_DEMAND, and flipping ONE label to OFF_TOPIC as NEEDS_WORK.
+# Same evidence, opposite verdict, zero margin.
+#
+# At 5 the floor requires the branch to have retrieved a full page of on-topic
+# discussion and found no problem in any of it. It bounds a FLOOR only: it never
+# raises a score, and D=1 absorbs every state it excludes.
+RUBRIC_FLOOR_MIN_USABLE_THREADS = 5
+
+# RATIFICATION C2 (2026-09-01). The same precondition, for the same reason, on
+# the market floor.
+#
+# `zero_ok = sources >= 1 and segments == 0` fired a FINAL, non-provisional
+# REJECT on ONE web page - measured at composite 4.6, confidence 0.68, zero
+# guardrail complaints. "The branch returned sources and none names a buyer" is
+# only a finding about the world if the branch actually looked.
+#
+# 3 is the unit the M ladder already counts in (M=5 asks for "at least 3 sources
+# dated within 24 months"). It bounds a FLOOR only: it never raises a score.
+# M=1's lower bound widens in the same edit - separated, they leave a state with
+# a true anchor and no legal score, which is the deadlock D's repair hit.
+RUBRIC_FLOOR_MIN_MARKET_SOURCES = 3
 
 # --------------------------------------------------------------------------
 # Mechanical confidence inputs - PRD §10.3, F11
@@ -1542,6 +1597,23 @@ VALIDATOR_REQUIRE_AUTH = _env_flag("VALIDATOR_REQUIRE_AUTH", bool(AUTH_BASE_URL)
 # forces an immediate refresh regardless, so this bounds staleness after a key
 # ROTATION, not after a key addition.
 AUTH_JWKS_CACHE_SECONDS = _env_positive_int("AUTH_JWKS_CACHE_SECONDS", 3600)
+
+# How long to wait for the JWKS document itself.
+#
+# 45s, not the 10s this was hardcoded at, and the reason is measured rather than
+# cautious: `AUTH_BASE_URL` is the studio's own Node service, which `render.yaml`
+# puts on Render's FREE plan - so it SLEEPS. Timed on 2026-09-01, that origin
+# answered in 2.12s warm and **40s cold**.
+#
+# A JWKS fetch that times out does not degrade gracefully. `_refresh` keeps the
+# keys it already has, but a process that has never fetched any has none, so
+# every bearer token is rejected - and the operator, who is correctly signed in,
+# is told to sign in. The failure looks like a credential problem and is
+# actually a cold start.
+#
+# It is bounded rather than removed because this runs on the request path, and
+# an unbounded fetch there would hold a worker open indefinitely.
+AUTH_JWKS_TIMEOUT_SECONDS = _env_positive_int("AUTH_JWKS_TIMEOUT_SECONDS", 45)
 
 # Clock skew allowance when checking `exp`/`iat`. Two independent Render
 # instances are not perfectly synchronised, and a token minted one second in

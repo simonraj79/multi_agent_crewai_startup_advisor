@@ -26,6 +26,7 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
     props: {
       status: 'idle',
       transportMode: 'live',
+      transportProblem: '',
       connection: 'offline',
       runId: '',
       idea: 'A scheduling assistant for small veterinary clinics',

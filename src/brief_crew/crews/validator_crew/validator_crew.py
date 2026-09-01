@@ -9,6 +9,7 @@ from typing import Any, Literal, TypeVar
 from crewai import LLM, Agent, Crew, Process, Task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.project import CrewBase, agent, crew, task
+from crewai.tasks.llm_guardrail import LLMGuardrail
 from pydantic import BaseModel, PrivateAttr
 
 from brief_crew.config import (
@@ -404,14 +405,43 @@ class ReportCrew:
             raise ValueError(
                 "reporting_task.citation_guardrail must match CITATION_GUARDRAIL"
             )
+        reporter = self.reporter()
+        mechanical = make_report_guardrail(self.verdict, self.tool_urls)
+        judge = LLMGuardrail(description=citation_guardrail, llm=reporter.llm)
+
+        def check_report(output: Any) -> tuple[bool, Any]:
+            """Both checks, in ONE guardrail, mechanical first.
+
+            They were two entries in `guardrails=[...]`, and CrewAI gives every
+            entry its OWN retry loop keyed by index
+            (`task.py:892-899` iterates, `_invoke_guardrail_function` at
+            `:1339-1400` owns the loop and `return`s the moment *its* guardrail
+            passes). So a draft regenerated inside the citation judge's loop was
+            shipped without the mechanical checker ever seeing it: the report
+            that reaches an operator could carry URLs absent from `sources`, a
+            wrong `provisional` flag or wrong `thin_dimensions`, and the earlier
+            mechanical pass certified a DIFFERENT draft.
+
+            Reordering the list does not fix it - that just moves the hole to
+            the other check. Composition does, because now every regeneration
+            re-enters both.
+
+            Mechanical runs first because it is free, deterministic and local,
+            so an obviously broken draft never reaches a paid escalation-tier
+            judge call. That also restores the retry bound CLAUDE.md §11(b)
+            claims: two entries at `guardrail_max_retries: 2` permitted up to
+            4 regenerations plus 4 judge calls, and one entry permits 2 and 3.
+            """
+            passed, detail = mechanical(output)
+            if not passed:
+                return False, detail
+            return judge(output)
+
         return Task(
             config=task_config,
-            agent=self.reporter(),
+            agent=reporter,
             output_pydantic=ValidationReport,
-            guardrails=[
-                make_report_guardrail(self.verdict, self.tool_urls),
-                citation_guardrail,
-            ],
+            guardrails=[check_report],
         )
 
     @crew

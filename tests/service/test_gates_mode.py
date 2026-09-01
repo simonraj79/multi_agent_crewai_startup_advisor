@@ -18,7 +18,9 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from brief_crew import config
 from brief_crew.service.app import create_app
+from brief_crew.service.auth import AuthenticatedUser, AuthError
 from brief_crew.service.models import CreateRunRequest
 
 
@@ -96,11 +98,19 @@ class GatesModePolicyTests(unittest.TestCase):
         response = self._post()
         self.assertEqual(response.status_code, 202, response.text)
 
-    def test_auto_gates_are_refused_when_the_deployment_has_not_opted_in(self) -> None:
+    def test_auto_gates_are_refused_for_an_ANONYMOUS_caller(self) -> None:
+        """The flag guards the case it was written for: nobody identifiable.
+
+        This asserted "disabled on this deployment" until the rule was narrowed
+        to anonymity. The refusal itself is unchanged for this caller - the
+        client here sends no credential - but the reason is now stated in terms
+        of the thing that actually matters, so the operator is told what to do
+        about it.
+        """
         with patch("brief_crew.config.VALIDATOR_ALLOW_AUTO_GATES", False):
             response = self._post(gates="auto")
         self.assertEqual(response.status_code, 403, response.text)
-        self.assertIn("unattended runs are disabled", response.json()["detail"])
+        self.assertIn("require a signed-in account", response.json()["detail"])
 
     def test_auto_gates_are_accepted_when_the_deployment_opts_in(self) -> None:
         with patch("brief_crew.config.VALIDATOR_ALLOW_AUTO_GATES", True):
@@ -255,3 +265,88 @@ class ReservedKeyCoverageTests(unittest.TestCase):
         for name in ("idea", "topic", "namespace"):
             with self.subTest(name=name):
                 CreateRunRequest(workflow_id="idea-validator", inputs={name: "x"})
+
+
+class AuthenticatedAutoGatesTests(unittest.TestCase):
+    """A signed-in caller may run unattended without the deployment flag.
+
+    The flag was written when this endpoint was anonymous, and it capped spend
+    the only way an anonymous endpoint can: by requiring a human to come back
+    and click. Authentication replaced every part of that reasoning - the caller
+    is identified, the run is OWNED (`user_id` on the row), the rate limiter
+    keys on their id rather than a shared proxy address, and MAX_RUN_COST_USD is
+    enforced at the step boundary by `HookAborted`.
+
+    So the rule is now about ANONYMITY, not about the deployment. These tests
+    pin both halves, because a change that only loosened would be a security
+    regression and a change that only tightened would be the 403 the console
+    used to hit on its first Launch.
+    """
+
+    def setUp(self) -> None:
+        self.user = AuthenticatedUser(
+            id="user_owner", email="owner@example.test", name="Owner"
+        )
+
+        def fake_verify(token: str, **_: object) -> AuthenticatedUser:
+            if token != "owner-token":
+                raise AuthError("token is not valid")
+            return self.user
+
+        patches = [
+            patch.object(config, "AUTH_BASE_URL", "https://auth.example.test"),
+            patch.object(config, "VALIDATOR_REQUIRE_AUTH", True),
+            patch("brief_crew.service.app.verify_token", fake_verify),
+            # OFF, deliberately. The point is that a signed-in caller does not
+            # need it - if these pass with it on, they prove nothing.
+            patch.object(config, "VALIDATOR_ALLOW_AUTO_GATES", False),
+        ]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+
+        self.app = create_app(synthetic=True)
+        self.client = TestClient(self.app)
+        self.addCleanup(self.client.close)
+
+    def _post(self, headers: dict[str, str] | None = None, **body: object):
+        return self.client.post(
+            "/api/sessions/s-auth-gates/runs",
+            json={
+                "workflow_id": "idea-validator",
+                "inputs": {"idea": "a clinic scheduler"},
+                **body,
+            },
+            headers=headers or {},
+        )
+
+    def test_a_signed_in_caller_may_run_unattended(self) -> None:
+        response = self._post(
+            headers={"Authorization": "Bearer owner-token"}, gates="auto"
+        )
+        self.assertEqual(response.status_code, 202, response.text)
+
+    def test_an_anonymous_caller_still_may_not(self) -> None:
+        # 401 rather than 403: with VALIDATOR_REQUIRE_AUTH on, the identity
+        # check runs first and is the more specific answer. The point is that
+        # the run does NOT start.
+        response = self._post(gates="auto")
+        self.assertIn(response.status_code, (401, 403), response.text)
+        self.assertNotEqual(response.status_code, 202)
+
+    def test_the_reserved_key_is_still_refused_for_a_signed_in_caller(self) -> None:
+        # Loosening the gates policy must not reopen the undeclared door.
+        # `no_gates` reached ValidatorState verbatim before it was reserved, and
+        # an authenticated caller is exactly who would think to try it.
+        response = self._post(
+            headers={"Authorization": "Bearer owner-token"},
+            inputs={"idea": "a clinic scheduler", "no_gates": True},
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
+    def test_human_gates_still_work_for_a_signed_in_caller(self) -> None:
+        # Review must remain available. The default changed; the choice did not.
+        response = self._post(
+            headers={"Authorization": "Bearer owner-token"}, gates="human"
+        )
+        self.assertEqual(response.status_code, 202, response.text)

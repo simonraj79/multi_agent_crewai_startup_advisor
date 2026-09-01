@@ -196,7 +196,22 @@ services:
     # `npm run build` is three steps: vue-tsc -b (which type-checks src, tests,
     # e2e AND server via project references), vite build (the SPA into dist/),
     # then tsc -p tsconfig.server.json (the Node server into server-dist/).
-    buildCommand: "npm ci && npm run build"
+    #
+    # `--include=dev` IS LOAD-BEARING, and a bare `npm ci` here fails the build.
+    # NODE_ENV is set to `production` below - which this service genuinely needs
+    # at RUNTIME, because frontend/server/auth.ts reads it to decide
+    # `useSecureCookies`. But npm also reads NODE_ENV, and at `production` it
+    # OMITS devDependencies. All three build tools - vue-tsc, vite and
+    # typescript - are devDependencies, so the install quietly succeeds with
+    # 196 packages instead of ~400 and the build dies on:
+    #
+    #     sh: 1: vue-tsc: not found
+    #
+    # Measured, not theorised: this is exactly how the first deploy of this
+    # service failed. Dropping NODE_ENV would "fix" the build and ship a
+    # Secure-less session cookie to production, so the install is made explicit
+    # instead.
+    buildCommand: "npm ci --include=dev && npm run build"
     # The Better Auth schema is migrated IN-PROCESS at startup
     # (frontend/server/migrate.ts), not here. A build container is not
     # guaranteed to reach a database whose ipAllowList is empty, and a

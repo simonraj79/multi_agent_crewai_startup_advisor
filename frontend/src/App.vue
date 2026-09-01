@@ -33,6 +33,7 @@ const {
   chatEntries,
   usage,
   nodeStates,
+  nodeVisits,
   graphNodes,
   graphEdges,
   isActive,
@@ -141,7 +142,12 @@ onMounted(initialize)
           </div>
         </div>
 
-        <CrewProgress :node-states="nodeStates" :descriptor="descriptor" :active="isActive" />
+        <CrewProgress
+          :node-states="nodeStates"
+          :node-visits="nodeVisits"
+          :descriptor="descriptor"
+          :active="isActive"
+        />
 
         <VueFlow
           class="validator-flow"

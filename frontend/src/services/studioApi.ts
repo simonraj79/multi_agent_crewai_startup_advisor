@@ -1,5 +1,6 @@
 import { buildMockSegments, type MockScriptStep } from '../data/mockFrames'
 import { MOCK_GRAPH } from '../data/mockGraph'
+import { readErrorDetail, retryAfterSentence } from '../data/serverLimits'
 import type {
   BackendFramePage,
   BackendGatePrompt,
@@ -405,8 +406,26 @@ export class StudioApi {
   private async fetchJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, init)
     if (!response.ok) {
-      const detail = await response.text().catch(() => '')
-      throw new Error(detail || `Request failed (${response.status})`)
+      /*
+       * What the operator is shown when the server refuses.
+       *
+       * This used to be `new Error(await response.text())`, so a 2001-character
+       * idea surfaced in the UI as the literal string
+       *   {"detail":"inputs.idea is limited to 2000 characters; this one is 2001"}
+       * - braces, quotes, key and all. The server's message was already good;
+       * the client was showing the envelope around it.
+       *
+       * The 429 is the sharper case. The server computes `Retry-After`, and
+       * `CORS_EXPOSE_HEADERS` names it precisely so a cross-origin client can
+       * read it - a deliberate decision made for a reader that did not exist.
+       * Now it does.
+       */
+      const body = await response.text().catch(() => '')
+      let message = readErrorDetail(body, response.status)
+      if (response.status === 429) {
+        message += retryAfterSentence(response.headers.get('Retry-After'))
+      }
+      throw new Error(message)
     }
     return response.json() as Promise<T>
   }

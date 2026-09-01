@@ -149,13 +149,33 @@ h3 {
   min-height: 0;
 }
 
+/*
+ * Three rows, and the middle one is why.
+ *
+ * The crew strip used to be `position: absolute; top: 64px` over the canvas,
+ * which put it straight on top of the Scoper card and the scope gate - the two
+ * nodes it exists to narrate. A live capture showed it burying both.
+ *
+ * Row 1 is the 64px the absolutely-positioned `.canvas-heading` floats over,
+ * reserved so the heading's gradient never lands on a node either. Row 2 is the
+ * crew's own lane and collapses to nothing while there is no crew, so an idle
+ * console gives the graph the whole workspace. Row 3 is the flow, and because
+ * it is a real grid track Vue Flow's container genuinely shrinks rather than
+ * being overlaid - which is the difference between a graph that is partly
+ * hidden and one that is smaller.
+ */
 .graph-workspace {
   position: relative;
   z-index: var(--z-base);
+  display: grid;
+  grid-template-rows: 64px auto minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
   background: var(--canvas-bg);
 }
+
+.graph-workspace > .crew-progress { grid-row: 2; }
+.graph-workspace > .validator-flow { grid-row: 3; }
 
 .canvas-heading {
   position: absolute;

@@ -35,6 +35,26 @@ export interface CrewStage {
   kind: StageKind
   /** True for the fan-out, which is drawn as one stage with three oars. */
   parallel?: boolean
+  /**
+   * Nodes whose running means the crew has been sent BACK to this stage.
+   *
+   * These are already in `nodeIds` - the extra declaration is what lets the
+   * strip distinguish "still on stage 1" from "back on stage 1 for a second
+   * pass", which are the same picture without it. A revise node is deliberately
+   * never a `coreId`: the stage is done when its core work is done, and a
+   * revision is another lap of that same work, not a further requirement.
+   */
+  reviseIds?: string[]
+  /**
+   * Short names for the `coreIds`, in that order. Only meaningful on a parallel
+   * stage, where they name the oars.
+   *
+   * Declared rather than read from the descriptor's node labels because the oar
+   * caption has about eight characters of room at this size - "Market" fits,
+   * "Market research" does not - and because a label the graph is free to
+   * reword should not silently change what the boat says.
+   */
+  branchLabels?: string[]
 }
 
 export const CREW_STAGES: readonly CrewStage[] = [
@@ -43,6 +63,7 @@ export const CREW_STAGES: readonly CrewStage[] = [
     label: 'Scope',
     nodeIds: ['scope_idea', 'revise_scope'],
     coreIds: ['scope_idea'],
+    reviseIds: ['revise_scope'],
     kind: 'work',
   },
   {
@@ -57,6 +78,7 @@ export const CREW_STAGES: readonly CrewStage[] = [
     label: 'Research',
     nodeIds: ['research_market', 'research_sentiment', 'research_feasibility'],
     coreIds: ['research_market', 'research_sentiment', 'research_feasibility'],
+    branchLabels: ['Market', 'Signal', 'Build'],
     kind: 'work',
     parallel: true,
   },
@@ -65,6 +87,7 @@ export const CREW_STAGES: readonly CrewStage[] = [
     label: 'Score',
     nodeIds: ['synthesize', 'revise_verdict'],
     coreIds: ['synthesize'],
+    reviseIds: ['revise_verdict'],
     kind: 'work',
   },
   {
@@ -98,10 +121,13 @@ const NOT_A_STAGE = new Set(['unattributed'])
  * Returns the problems rather than throwing, so a test can name them and the
  * runtime can degrade instead of blanking the canvas.
  */
-export function assertStageCoverage(descriptor: GraphDescriptor): string[] {
+export function assertStageCoverage(
+  descriptor: GraphDescriptor,
+  stages: readonly CrewStage[] = CREW_STAGES,
+): string[] {
   const problems: string[] = []
   const seen = new Map<string, string>()
-  for (const stage of CREW_STAGES) {
+  for (const stage of stages) {
     for (const nodeId of stage.nodeIds) {
       const already = seen.get(nodeId)
       if (already) problems.push(`${nodeId} is claimed by both ${already} and ${stage.id}`)
@@ -111,6 +137,22 @@ export function assertStageCoverage(descriptor: GraphDescriptor): string[] {
       if (!stage.nodeIds.includes(coreId)) {
         problems.push(`${stage.id} lists core node ${coreId} outside its nodeIds`)
       }
+    }
+    for (const reviseId of stage.reviseIds ?? []) {
+      if (!stage.nodeIds.includes(reviseId)) {
+        problems.push(`${stage.id} lists revise node ${reviseId} outside its nodeIds`)
+      }
+      // A revise node that is also core would make the stage un-completable:
+      // `done` counts completed cores, and the revise node is idle on a run
+      // that never loops, so the stage would never reach `completed`.
+      if (stage.coreIds.includes(reviseId)) {
+        problems.push(`${stage.id} lists ${reviseId} as both core and revise`)
+      }
+    }
+    if (stage.branchLabels && stage.branchLabels.length !== stage.coreIds.length) {
+      problems.push(
+        `${stage.id} has ${stage.branchLabels.length} branch labels for ${stage.coreIds.length} core nodes`,
+      )
     }
   }
   for (const node of descriptor.nodes) {
@@ -127,32 +169,98 @@ export function assertStageCoverage(descriptor: GraphDescriptor): string[] {
 
 export type StageState = 'idle' | 'running' | 'waiting' | 'completed' | 'error'
 
+/** One oar. Named, so the strip can say WHICH branch is still pulling. */
+export interface BranchProgress {
+  id: string
+  label: string
+  state: NodeRunState
+}
+
 export interface StageProgress {
   stage: CrewStage
   state: StageState
   /** How many of the stage's core nodes have finished - drives the oar count. */
   done: number
   total: number
+  /**
+   * Which pass over this stage the crew is on. 0 before the stage is entered,
+   * 1 on a straight run, 2+ once a revise has sent it back.
+   */
+  lap: number
+  /** One entry per core node, in `coreIds` order. Named for the oars. */
+  branches: BranchProgress[]
+}
+
+/** Highest visit count over a set of nodes. Absent counts read as never-run. */
+function maxVisits(ids: readonly string[], visits: Record<string, number>): number {
+  return ids.reduce((most, id) => Math.max(most, visits[id] ?? 0), 0)
 }
 
 /**
  * Collapse per-node state into per-stage state. Severity order matters: an
  * errored node must not be hidden by a sibling that is merely running, and a
  * gate WAITING for a human is the single most important thing on screen.
+ *
+ * `visits` is optional so every existing caller keeps working; without it every
+ * entered stage simply reports lap 1, which is the truth for a run that never
+ * revises and an honest under-report for one that does.
  */
 export function stageProgress(
   nodeStates: Record<string, NodeRunState>,
   stages: readonly CrewStage[] = CREW_STAGES,
+  visits: Record<string, number> = {},
 ): StageProgress[] {
   return stages.map((stage) => {
     const states = stage.nodeIds.map((id) => nodeStates[id] ?? 'idle')
     const done = stage.coreIds.filter((id) => nodeStates[id] === 'completed').length
+    const coresDone = done === stage.coreIds.length && done > 0
+
+    /*
+     * Which running node can drag a finished stage back to `running`.
+     *
+     * Answering a gate makes the backend start that stage's ROUTER, and a
+     * router shares the stage with the gate it reads. Ranking any `running`
+     * above `coresDone` therefore flipped the stage completed -> running ->
+     * completed on every gate answer, and the boat visibly bounced back a
+     * column and forward again. It had done so since the strip shipped; only
+     * adding a row-back announcement made anyone look.
+     *
+     * A deterministic router firing on the way OUT of a stage is forward
+     * progress, not a return to it - the same judgement `WorkflowNode.vue`
+     * already makes when it draws routers as plumbing rather than as a stage.
+     * So once the cores are done, only a declared revise node re-opens the
+     * stage, which is exactly the case that IS a return.
+     */
+    const reopeners = coresDone ? (stage.reviseIds ?? []) : stage.nodeIds
+    const running = reopeners.some((id) => (nodeStates[id] ?? 'idle') === 'running')
+
     let state: StageState = 'idle'
-    if (done === stage.coreIds.length && done > 0) state = 'completed'
-    if (states.includes('running')) state = 'running'
+    if (coresDone) state = 'completed'
+    if (running) state = 'running'
     if (states.includes('waiting')) state = 'waiting'
     if (states.includes('error')) state = 'error'
-    return { stage, state, done, total: stage.coreIds.length }
+
+    // Two shapes of loop reach this stage and both must count.
+    //
+    // A revise node re-runs the stage's work from a sibling node, so its own
+    // visit count IS the number of extra passes (`scope_idea` runs once; every
+    // later pass is `revise_scope`). But an upstream revise re-enters this
+    // stage through its core nodes instead - approve after a scope revision and
+    // all three research branches run a second time - so the cores carry the
+    // lap themselves. Taking both and combining is what makes one formula
+    // cover the fan-out and the two revise nodes alike.
+    const coreLaps = maxVisits(stage.coreIds, visits)
+    const reviseLaps = maxVisits(stage.reviseIds ?? [], visits)
+    const entered = coreLaps > 0 || reviseLaps > 0 || state !== 'idle'
+    const lap = entered ? Math.max(coreLaps, 1) + reviseLaps : 0
+
+    const branches: BranchProgress[] = stage.coreIds.map((id, index) => ({
+      id,
+      label: stage.branchLabels?.[index] ?? id,
+      state: nodeStates[id] ?? 'idle',
+    }))
+
+    return { stage, state, done, total: stage.coreIds.length, lap, branches }
   })
 }
 

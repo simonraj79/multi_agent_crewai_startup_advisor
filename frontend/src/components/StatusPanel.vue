@@ -14,6 +14,7 @@ import {
 } from 'lucide-vue-next'
 import type { ConnectionStatus, GatesMode, LogFormat, TransportMode } from '../services/studioApi'
 import type { RunStatus, UsageMetrics } from '../types/studio'
+import { IDEA_CHARS_WARN_AT, MAX_IDEA_CHARS, MIN_IDEA_CHARS } from '../data/serverLimits'
 
 const props = defineProps<{
   status: RunStatus
@@ -44,6 +45,30 @@ const emit = defineEmits<{
   'update:gatesMode': [value: GatesMode]
 }>()
 
+/**
+ * What the character counter says.
+ *
+ * Three states, in the order the operator meets them: too short to launch,
+ * comfortably inside the bound, and close enough to the ceiling that the
+ * `maxlength` attribute is about to start silently discarding keystrokes -
+ * which is the one thing a hard cap does that needs warning about.
+ */
+const ideaLength = computed(() => props.idea.length)
+const ideaRemaining = computed(() => MAX_IDEA_CHARS - ideaLength.value)
+const ideaNearLimit = computed(() => ideaRemaining.value <= IDEA_CHARS_WARN_AT)
+const ideaHint = computed(() => {
+  const trimmed = props.idea.trim().length
+  if (trimmed > 0 && trimmed < MIN_IDEA_CHARS) {
+    return `${MIN_IDEA_CHARS - trimmed} more characters to launch`
+  }
+  if (ideaNearLimit.value) {
+    return ideaRemaining.value === 0
+      ? `${MAX_IDEA_CHARS} character limit reached`
+      : `${ideaRemaining.value} characters left of ${MAX_IDEA_CHARS}`
+  }
+  return `${ideaLength.value} / ${MAX_IDEA_CHARS} characters`
+})
+
 const statusLabel = computed(() => props.status === 'stopping' ? 'Stopping…' : props.status.replace('_', ' '))
 const connectionLabel = computed(() => props.transportMode === 'mock' ? 'Mock stream' : props.connection)
 const elapsed = computed(() => {
@@ -72,12 +97,23 @@ const logFormat = ref<LogFormat>('ndjson')
         id="idea"
         :value="idea"
         rows="4"
+        :maxlength="MAX_IDEA_CHARS"
         :disabled="isActive"
         aria-describedby="idea-hint"
         @input="emit('update:idea', ($event.target as HTMLTextAreaElement).value)"
         @keydown.ctrl.enter.prevent="emit('launch')"
       />
-      <span id="idea-hint" class="field-meta">{{ idea.length }} characters</span>
+      <!--
+        The counter now states the bound rather than only the position. It used
+        to read "2401 characters" in a calm grey right up to a Launch that
+        answered 422, because nothing on the client knew a limit existed.
+
+        It also explains the disabled button below the minimum. An operator who
+        has typed six characters and sees a dead Launch has no way to learn why.
+      -->
+      <span id="idea-hint" class="field-meta" :class="{ 'is-warn': ideaNearLimit }">
+        {{ ideaHint }}
+      </span>
     </div>
 
     <div class="control-section compact-section">
@@ -214,6 +250,11 @@ textarea { display: block; width: 100%; min-height: 104px; resize: vertical; pad
 textarea:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
 textarea:disabled { cursor: not-allowed; opacity: 0.64; }
 .field-meta { display: block; margin-top: 6px; color: var(--text-40); font: 500 10px/1 var(--font-mono); text-align: right; }
+/* The counter only raises its voice near the ceiling, because `maxlength` is a
+   hard stop: past it the browser discards keystrokes with no feedback at all,
+   and a counter that looked identical at 1,900 and at 2,000 would be the only
+   warning the operator ever got. */
+.field-meta.is-warn { color: var(--warn-text); }
 .read-only-well { display: flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 10px; color: var(--text-body); font-size: var(--fs-13); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); }
 .read-only-well .version { margin-left: auto; color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-lg); }

@@ -17,6 +17,8 @@ function nodeData(overrides: Partial<StudioNodeData> = {}): StudioNodeData {
     state: 'idle',
     usage: zeroUsage(),
     frameCount: 0,
+    visits: 0,
+    activeCall: null,
     ...overrides,
   }
 }

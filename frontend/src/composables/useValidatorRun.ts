@@ -34,6 +34,47 @@ export interface StudioNodeData extends Record<string, unknown> {
   usage: UsageMetrics
   /** Frames the stream attributed to this node. Drives the quarantine badge. */
   frameCount: number
+  /**
+   * How many times this node has STARTED in this run. 0 before it first runs,
+   * 1 on a straight pass, 2+ once a revise loop has sent the crew back.
+   *
+   * This cannot be recovered from `state`: a node that ran four times and a
+   * node that ran once are both `completed` afterwards, and the map holds no
+   * history. Counting the transition into `running` is the only honest source,
+   * which is why it is done where frames arrive rather than derived in a view.
+   */
+  visits: number
+  /**
+   * The tool or model call in flight on this node right now, or null.
+   *
+   * This exists because a 60-second branch and a 6-second branch looked
+   * IDENTICAL. Every animation on a running node is an infinite loop with no
+   * state, so it says "an animation is playing", never "work is progressing" -
+   * and an operator watching one for six minutes reasonably concluded the app
+   * had hung. It had not: Firecrawl was scraping, and the backend was putting
+   * the literal query string on the wire the whole time.
+   *
+   * `query` is the point. `events/serializer.py` lifts it onto BOTH the
+   * `before` and `after` tool frames precisely so a client can show what a
+   * branch is asking for while it asks - and until now nothing in
+   * `frontend/src` read the field at all.
+   *
+   * `startedAt` drives the only honest progress signal an agent can offer:
+   * elapsed wall clock. There is no denominator to put in a progress bar - the
+   * agent does not know how far through it is either - but a number that
+   * changes every second refutes "it is stuck" in a way no spinner can.
+   */
+  activeCall: ActiveCall | null
+}
+
+export interface ActiveCall {
+  /** `research_market_landscape`, or a model id for an llm call. */
+  label: string
+  kind: 'tool' | 'llm'
+  /** The literal query the tool was handed, when it reported one. */
+  query?: string
+  /** Epoch ms, for the elapsed timer. */
+  startedAt: number
 }
 
 export interface StudioEdgeData extends Record<string, unknown> {
@@ -144,12 +185,26 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
   const workflowId = ref(storedAtLoad?.workflowId ?? DEFAULT_WORKFLOW_ID)
   const idea = ref('An AI tool that turns Figma files into production React')
   /**
-   * Who answers the two gates. `human` pauses at both, which is the default and
-   * the only mode a public deployment accepts unless it sets
-   * VALIDATOR_ALLOW_AUTO_GATES; `auto` runs the whole pipeline unattended and
-   * comes back 403 otherwise.
+   * Who answers the two gates. `human` pauses at both; `auto` runs the whole
+   * pipeline unattended.
+   *
+   * Defaulted to `auto` by request: the gate cards were judged unclear, and
+   * with the research phase down from ~17 minutes to well under one, the pause
+   * costs more than it buys for a single operator testing their own ideas.
+   *
+   * TWO CONSEQUENCES WORTH KNOWING, because this is not a cosmetic default:
+   *
+   * 1. A server without VALIDATOR_ALLOW_AUTO_GATES answers **403**, so a
+   *    console pointed at a public deployment now fails on its FIRST Launch
+   *    rather than on an opt-in click. The 403 is deliberate and distinct from
+   *    a 422 - it means "this server will not do that", not "you sent this
+   *    wrong" - and the error surfaces the server's own sentence.
+   * 2. Human inaction WAS the de facto spend cap. A gated run stops after one
+   *    Scoper call and expires if nobody replies; an unattended run has no such
+   *    brake and is bounded only by MAX_RUN_COST_USD and the agents' summed
+   *    max_iter. Switch back to Review with the toggle to restore it.
    */
-  const gatesMode = ref<GatesMode>('human')
+  const gatesMode = ref<GatesMode>('auto')
   const status = ref<RunStatus>('idle')
   const transportMode = ref<TransportMode>('probing')
   const connection = ref<ConnectionStatus>('offline')
@@ -197,6 +252,23 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
   const nodeStates = reactive<Record<string, NodeRunState>>({})
   const nodeUsage = reactive<Record<string, UsageMetrics>>({})
   const nodeFrames = reactive<Record<string, number>>({})
+  /** Node id -> how many times it has entered `running`. See `visits`. */
+  const nodeVisits = reactive<Record<string, number>>({})
+  /** Node id -> the call currently in flight on it. See `ActiveCall`. */
+  const nodeActiveCall = reactive<Record<string, ActiveCall | null>>({})
+  /**
+   * The elapsed CLOCK deliberately lives in `WorkflowNode.vue`, not here.
+   *
+   * A ticker in this composable would have to be read by `graphNodes` to reach
+   * a node card, and `graphNodes` is a computed over all 14 nodes - so every
+   * second would rebuild all 14 node objects and hand Vue Flow a fresh array to
+   * diff, to animate at most three of them. The component owns an interval that
+   * exists only while `activeCall` is non-null instead.
+   */
+  function setActiveCall(nodeId: string | null | undefined, call: ActiveCall | null): void {
+    if (!nodeId) return
+    nodeActiveCall[nodeId] = call
+  }
   const seenFrames = new Set<string>()
   const pendingCallEntries = new Map<string, string[]>()
   /** Active edge id -> the node it feeds, so a finished branch can end it. */
@@ -210,10 +282,14 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     for (const key of Object.keys(nodeStates)) delete nodeStates[key]
     for (const key of Object.keys(nodeUsage)) delete nodeUsage[key]
     for (const key of Object.keys(nodeFrames)) delete nodeFrames[key]
+    for (const key of Object.keys(nodeVisits)) delete nodeVisits[key]
+    for (const key of Object.keys(nodeActiveCall)) delete nodeActiveCall[key]
     for (const node of descriptor.value.nodes) {
       nodeStates[node.id] = 'idle'
       nodeUsage[node.id] = initialUsage()
       nodeFrames[node.id] = 0
+      nodeVisits[node.id] = 0
+      nodeActiveCall[node.id] = null
     }
     nodeFrames[QUARANTINE_NODE_ID] ??= 0
   }
@@ -237,6 +313,8 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
         tool: node.tool,
         usage: nodeUsage[node.id] ?? initialUsage(),
         frameCount: nodeFrames[node.id] ?? 0,
+        visits: nodeVisits[node.id] ?? 0,
+        activeCall: nodeActiveCall[node.id] ?? null,
       },
     })),
   )
@@ -589,6 +667,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
   function applyRunState(frame: FrameData): void {
     if (frame.details.nested === true) return
     captureResult(frame.details.result)
+    recoverIdea(frame)
     const next = frame.details.status
     if (next === 'failed') {
       setStatus('error')
@@ -603,6 +682,33 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     }
   }
 
+  /**
+   * Put the run's own idea back in the box after a reload.
+   *
+   * `idea` was a plain ref seeded with a hardcoded default and assigned
+   * nowhere, so refreshing mid-run restored the graph, the gates and the report
+   * correctly above a textarea that had silently reverted to "An AI tool that
+   * turns Figma files into production React". The operator's next Relaunch
+   * would then have run something they never typed.
+   *
+   * The fix needs no new persistence and no new API field: the run already
+   * records what it was launched with, on its own opening `RUN_STATE` frame,
+   * and `restoreRun` replays every frame. Reading it back from there means the
+   * box shows what the run is actually about rather than what a stale default
+   * happened to say.
+   *
+   * Only the opening frame carries `inputs` - the terminal one carries
+   * `result` - and only a non-empty string is taken, so a malformed frame
+   * leaves whatever the operator has typed alone.
+   */
+  function recoverIdea(frame: FrameData): void {
+    const inputs = frame.details.inputs
+    if (typeof inputs !== 'object' || inputs === null) return
+    const recovered = (inputs as Record<string, unknown>).idea
+    if (typeof recovered !== 'string' || !recovered.trim()) return
+    idea.value = recovered
+  }
+
   function applyNodeState(frame: FrameData): void {
     const nodeId = frame.node_id as string
     // Only START and END are real. `UIEventType` has twelve members and not one
@@ -614,6 +720,13 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     if (frame.event_type.includes('START')) setNodeState(nodeId, 'running')
     if (frame.event_type.includes('END')) setNodeState(nodeId, 'completed')
     if (frame.level === 'ERROR') setNodeState(nodeId, 'error')
+    // A node that has settled cannot still have a call in flight. Belt and
+    // braces behind `completeCallEntry`: a dropped or out-of-order `after`
+    // frame would otherwise leave a timer counting up forever on a finished
+    // node, which is a worse lie than showing nothing.
+    if (frame.event_type.includes('END') || frame.level === 'ERROR') {
+      setActiveCall(nodeId, null)
+    }
   }
 
   /**
@@ -622,6 +735,21 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
    * it points at has already finished.
    */
   function setNodeState(nodeId: string, state: NodeRunState): void {
+    // A visit is an EDGE into an active state, not the state itself. CrewAI
+    // re-emits NODE_START on retries and the stream replays on reconnect, so
+    // counting every assignment would inflate the number on a page refresh -
+    // the one moment an operator is most likely to be reading it.
+    //
+    // `waiting` counts as well as `running`, because a gate node never becomes
+    // `running`: `applyGate` is the only thing that touches it and it sets
+    // `waiting`. Without this a gate that asked the operator three times
+    // reported no passes at all, which is precisely backwards - the gate is
+    // the node an operator revisits most, and the count is the only record
+    // that they did.
+    const active = state === 'running' || state === 'waiting'
+    if (active && nodeStates[nodeId] !== state) {
+      nodeVisits[nodeId] = (nodeVisits[nodeId] ?? 0) + 1
+    }
     nodeStates[nodeId] = state
     if (state === 'completed' || state === 'error') deactivateEdgesInto(nodeId)
   }
@@ -742,6 +870,16 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     if ((frame.kind === 'llm' || frame.kind === 'tool') && stage !== 'before' && completeCallEntry(frame)) return
 
     const call = toCallChip(frame)
+    if (call?.active && (frame.kind === 'tool' || frame.kind === 'llm')) {
+      // `query` has been on this frame all along and nothing read it.
+      const query = frame.details.query
+      setActiveCall(frame.node_id, {
+        label: call.label,
+        kind: frame.kind,
+        query: typeof query === 'string' && query.trim() ? query : undefined,
+        startedAt: call.startedAt,
+      })
+    }
     const entry: ChatEntry = {
       id: `${frame.run_id}-${frame.seq}`,
       seq: frame.seq,
@@ -805,6 +943,9 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     if (frame.node_id && nodeUsage[frame.node_id]) {
       nodeUsage[frame.node_id].elapsedMs += calls[0]?.durationMs ?? 0
     }
+    // The call is done: stop the node reporting it as in flight, and let the
+    // shared ticker retire once nothing anywhere is running.
+    setActiveCall(frame.node_id, null)
     return true
   }
 
@@ -915,6 +1056,8 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     chatEntries,
     usage,
     nodeStates,
+    nodeVisits,
+    nodeActiveCall,
     nodeUsage,
     graphNodes,
     graphEdges,

@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- public/favicon.svg has existed since the first commit and was
+         referenced by nothing, so every page load asked for /favicon.ico and
+         got a 404. That 404 is why e2e/studio.spec.ts carries an
+         ALLOWED_CONSOLE_ERROR exemption at all. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#1a1a1a" />
     <meta name="description" content="M2 Validator Studio live workflow console" />
     <title>M2 Validator Studio</title>

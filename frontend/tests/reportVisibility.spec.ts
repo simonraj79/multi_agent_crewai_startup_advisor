@@ -198,11 +198,27 @@ describe('gates mode', () => {
 
   afterEach(() => app.unmount())
 
-  it('defaults to human gates', () => {
-    expect(run.gatesMode.value).toBe('human')
+  it('defaults to UNATTENDED gates', () => {
+    // Flipped from 'human' deliberately, and this assertion is the record of
+    // that decision rather than an incidental detail. Two things follow from
+    // it: a server without VALIDATOR_ALLOW_AUTO_GATES now answers 403 on the
+    // very first Launch, and human inaction - which was the de facto spend
+    // cap, since a gated run expires if nobody replies - is gone. Anyone
+    // flipping this back should be doing it on purpose.
+    expect(run.gatesMode.value).toBe('auto')
   })
 
-  it('sends human gates on a default launch', async () => {
+  it('sends auto gates on a default launch', async () => {
+    await run.launch()
+    expect(api.startRunCalls).toEqual([
+      expect.objectContaining({ gates: 'auto' }),
+    ])
+  })
+
+  it('sends human gates when Review is selected', async () => {
+    // The toggle back must keep working: Review is how an operator restores
+    // the pause, and with it the only brake on an unattended run's spend.
+    run.gatesMode.value = 'human'
     await run.launch()
     expect(api.startRunCalls).toEqual([
       expect.objectContaining({ gates: 'human' }),
@@ -228,7 +244,7 @@ describe('gates mode', () => {
     expect(api.startRunCalls.at(-1)).toMatchObject({
       idea: 'a clinic scheduler',
       workflowId: 'idea-validator',
-      gates: 'human',
+      gates: 'auto',
     })
   })
 })

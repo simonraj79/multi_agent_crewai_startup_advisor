@@ -27,22 +27,35 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
  * `SyntheticValidatorRunner` emits `run_state` and `node_state` frames and two
  * `HumanFeedbackPending` rounds. It emits no `edge_taken` frames - those come
  * from CrewAI's router events through `events/serializer.py` - so edges never
- * animate here and nothing below asserts that they do. It also does not model
- * revise branching: it reads the reply and moves forward either way. The revise
- * test therefore asserts only what is true of both that double and the real
- * Flow - the reply is accepted and the run streams more frames.
+ * animate here and nothing below asserts that they do.
+ *
+ * It DOES model revise branching. It did not until the double learned to read
+ * `decision`, and while it did not, a `revise` reply advanced exactly as an
+ * `approve` did - so `route_scope -> revise_scope -> confirm_scope` was a dead
+ * edge on the free path and the revise test could only assert that the reply
+ * was accepted. It now loops back to the same gate, bounded per gate the way
+ * `claim_revise_turn` bounds the real Flow.
  */
 
 const EXPECTED_NODES = 14
 const EXPECTED_EDGES = 16
 
 /**
- * The only console error tolerated. `index.html` declares no `<link rel=icon>`,
- * so a browser asks for `/favicon.ico` and the server answers 404. Nothing else
- * is forgiven: the assertion is that this is the *only* error, not that errors
- * are ignored.
+ * Nothing is tolerated any more.
+ *
+ * This used to forgive `/favicon.ico`: `index.html` declared no
+ * `<link rel="icon">`, so every page load asked for one and the server answered
+ * 404 - while `public/favicon.svg` had existed, referenced by nothing, since
+ * the first commit. The link is declared now (remaining-work item 7), the
+ * request is gone, and all seven tests pass with this set to `null`, which is
+ * what retired the exemption rather than an assumption that it would.
+ *
+ * Kept as a nullable pattern rather than deleted outright, so the next
+ * genuinely unavoidable error has an obvious place to be declared WITH its
+ * reason. An exemption that outlives its cause is worse than none: it widens
+ * silently, and this one had already outlived a fix that was one line away.
  */
-const ALLOWED_CONSOLE_ERROR = /favicon\.ico/i
+const ALLOWED_CONSOLE_ERROR: RegExp | null = null
 
 interface ConsoleWatch {
   /** Console errors and uncaught exceptions that are not the favicon 404. */
@@ -52,7 +65,7 @@ interface ConsoleWatch {
 function watchConsole(page: Page): ConsoleWatch {
   const watch: ConsoleWatch = { unexpected: [] }
   const record = (text: string) => {
-    if (!ALLOWED_CONSOLE_ERROR.test(text)) watch.unexpected.push(text)
+    if (!ALLOWED_CONSOLE_ERROR?.test(text)) watch.unexpected.push(text)
   }
   page.on('console', (message) => {
     if (message.type() === 'error') record(message.text())
@@ -363,17 +376,31 @@ test.describe('Validator Studio', () => {
       const sequenceBefore = await readSequence(page)
       await gateCard(page).getByRole('button', { name: /^Revise/ }).click()
 
-      // The synthetic double treats revise like approve, so the only claim
-      // shared with the real Flow is this one: the server took the reply and
-      // the run streamed more frames. Nothing here asserts that `revise_scope`
-      // lights up - in this backend it will not, and asserting it would be a
-      // test of the double rather than of the product.
       await expect
         .poll(() => readSequence(page), {
           timeout: 60_000,
           message: 'the run should stream more frames after a Revise reply',
         })
         .toBeGreaterThan(sequenceBefore)
+
+      // The loop itself, which this test could not assert while the double
+      // treated revise as approve. The run comes back to the SAME gate...
+      await waitForGate(page, 'Confirm scope')
+      await expect(
+        page.locator('.workflow-node[aria-label^="Revise scope, Completed"]'),
+      ).toHaveCount(1)
+
+      // ...and the console says so, rather than leaving the operator to notice
+      // that a gate they already answered is open again. This is the whole
+      // point of the lap counters: a second pass that looks identical to the
+      // first is indistinguishable from a stuck run.
+      await expect(page.locator('[data-testid="crew-lap"]')).toContainText(
+        /sent back for a revision|pass 2/i,
+      )
+      await expect(page.locator('[data-testid="crew-stage-lap"]').first()).toHaveText('\u00d72')
+      await expect(
+        page.locator('.workflow-node[aria-label="Confirm scope, Waiting, pass 2"]'),
+      ).toHaveCount(1)
 
       await expect(page.locator('.error-banner')).toHaveCount(0)
       await expect(statusBadge(page)).not.toHaveText(/error/i)

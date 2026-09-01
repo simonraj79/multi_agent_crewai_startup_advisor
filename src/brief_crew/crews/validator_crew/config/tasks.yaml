@@ -3,14 +3,28 @@ scoping_task:
     Scope this startup idea: {idea}
 
     Return one ScopedIdea JSON object. Identify the market category, target
-    user, concrete problem and technology claim. Write one market query from the category, one or more community queries and one or
-    more technical repository queries. The community and repository queries are sent
-    verbatim to keyword search APIs (Hacker News Algolia and GitHub), which match on
-    terms rather than meaning: write each as 2 to 4 plain keywords, never a sentence or
-    a phrase lifted from the idea. Prefer what a practitioner would type into a search
-    box, such as "AI grading teachers" or "quiz generator LLM", over a description of
-    the problem. Order each list from most specific to broadest and make the last entry
-    deliberately broad, so a narrow first attempt is never the only attempt.
+    user, concrete problem and technology claim. Write exactly one market query,
+    exactly one community query and exactly one technical repository query. Each
+    list holds exactly one entry, because each branch now calls its tool ONCE and
+    there is no second attempt to correct a bad query.
+
+    The community and repository queries are sent verbatim to keyword search APIs
+    (Hacker News Algolia and GitHub), which match on terms rather than meaning:
+    write each as 2 to 4 plain keywords, never a sentence or a phrase lifted from
+    the idea. Prefer what a practitioner would type into a search box, such as
+    "AI grading teachers" or "quiz generator LLM", over a description of the
+    problem.
+
+    Because it is the only attempt, each keyword query must be deliberately broad
+    rather than specific. Choose the broadest phrasing that is still about this
+    problem: name the capability and the user, and drop every qualifier the idea
+    happens to mention. A narrow query does not fail loudly - it returns zero
+    results, and zero results are scored as "nobody has this problem", which is a
+    REJECT about your wording rather than about the idea. Measured on this
+    system: "AI tool creates educational materials assessment" returned nothing
+    while "AI grading teachers" returned five usable threads for the same idea.
+    The market query is the exception and may be a phrase, because Firecrawl
+    matches on meaning rather than on terms.
     List 3 to 5 assumptions and at least one unresolved scoping gap. Use today's
     ISO 8601 date for as_of.
 
@@ -34,6 +48,14 @@ market_task:
 
     Call research_market_landscape with this exact query:
     {market_query}
+
+    Copy each source's claim VERBATIM from the tool row that carries it. It is
+    already bounded to a citable length; do not expand it, do not summarise it
+    and do not re-word it. Copying is the cheapest and the most faithful thing
+    you can do here: a re-worded claim costs generation time on every source and
+    is a fabrication path the citation guardrail cannot catch, because that
+    guardrail compares the final report against these claims rather than these
+    claims against the page.
 
     Return one MarketFindings JSON object. Every source and competitor URL must
     be copied exactly from a tool result from this run. A competitor may use an
@@ -79,7 +101,7 @@ sentiment_task:
     Research direct user evidence for this approved scope:
     {scoped_idea_json}
 
-    Call analyze_community_sentiment for each query below:
+    Call analyze_community_sentiment EXACTLY ONCE, with the query below:
     {community_queries_block}
 
     Return one SentimentFindings JSON object. Keep at most one representative
@@ -98,11 +120,11 @@ sentiment_task:
     date of its own, and such a thread is never dated within 24 months. Never
     clear the flag to make a thread look recent. Upvotes and positive opinions do not establish demand. Every URL must be
     copied exactly from a tool result from this run. If no call succeeds, return
-    no sources and explain the evidence gap. A tool result with status "empty" or result_count 0 is not an evidence gap yet; it
-    usually means the query was too narrow. Before reporting a gap, call the tool again
-    with a shorter query built from the two or three most important keywords, and try at
-    most three such broadenings. Report the gap only if the broadest attempt is still
-    empty, and name the queries you tried.
+    no sources and explain the evidence gap. Do not call the tool a second time.
+    A result with status "empty" or result_count 0 is a real evidence gap now:
+    report it, name the query that was tried, and say that a single attempt was
+    made. Breadth is the Scoper's responsibility at the scope gate, not something
+    you retry your way out of here.
   expected_output: >
     One JSON object matching SentimentFindings exactly, with source_urls
     mirroring sources[].url in order and no prose or code fence.
@@ -117,7 +139,7 @@ feasibility_task:
     Supplemental dated cache evidence:
     {cached_evidence_block}
 
-    Call assess_technical_feasibility for each query below:
+    Call assess_technical_feasibility EXACTLY ONCE, with the query below:
     {tech_queries_block}
 
     Return one FeasibilityFindings JSON object. Keep at most one Repo per URL.
@@ -138,11 +160,11 @@ feasibility_task:
     when it does not; an archived repository is not maintained, so it cannot
     be the free project that already solves the whole job. Every URL must be
     copied exactly from a tool result from this run. If no call succeeds, return
-    no sources and explain the evidence gap. A tool result with status "empty" or result_count 0 is not an evidence gap yet; it
-    usually means the query was too narrow. Before reporting a gap, call the tool again
-    with a shorter query built from the two or three most important keywords, and try at
-    most three such broadenings. Report the gap only if the broadest attempt is still
-    empty, and name the queries you tried. The cache block is a rate-limit
+    no sources and explain the evidence gap. Do not call the tool a second time.
+    A result with status "empty" or result_count 0 is a real evidence gap now:
+    report it, name the query that was tried, and say that a single attempt was
+    made. Breadth is the Scoper's responsibility at the scope gate, not something
+    you retry your way out of here. The cache block is a rate-limit
     shock absorber and evidence context, not a conclusion; it never replaces
     the required live GitHub calls. Copy final source URLs only from live tool
     results; the Flow retains cached passages separately.

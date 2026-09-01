@@ -31,6 +31,33 @@ place. They assert meaning, not phrasing, so the wording can still be improved.
 
 The market branch is deliberately excluded: Firecrawl does semantic search, a
 descriptive query is correct there, and it returned 21 sources in the same run.
+
+UPDATED after the SECOND paid run, which cost 17 minutes on one branch.
+
+The broadening loop these tests originally pinned has been REMOVED, and the
+reason is worth recording because the loop was not wrong - it was expensive.
+The second run measured the market branch at over 13 minutes while the other
+two finished in seconds. The cause was not the retries: `MarketResearchTool`
+passes `scrape_options` to Firecrawl's `search`, so ONE call scrapes every
+result to markdown at 10-30s each. But the retries multiplied it, and the
+operator watching a 6-minute silence reasonably concluded the app had hung.
+
+Each branch now calls its tool EXACTLY ONCE. That moves the entire burden of
+query breadth onto the Scoper, where the first run's failure actually lived:
+the loop was a *correction* for a bad query, and a correction the operator
+could neither see nor audit. So the contract these tests defend has inverted
+rather than weakened:
+
+  before   write a specific query, and broaden up to three times if it is empty
+  after    write ONE deliberately broad query; an empty result is a real gap
+
+The measured query table above is still the evidence, and it argues for the new
+contract at least as strongly as for the old one: "AI grading teachers" was
+never the third attempt anyone needed to reach, it was the query that should
+have been written first. What is genuinely lost is the automatic recovery from
+a narrow query, and the replacement for it is the scope gate - a human reading
+the query before it is spent. That is why the gate card now states which fields
+spend money and what shape they must be.
 """
 
 from __future__ import annotations
@@ -73,36 +100,79 @@ class ScoperQueryShapeTests(unittest.TestCase):
     def test_it_forbids_a_sentence_lifted_from_the_idea(self) -> None:
         self.assertIn("never a sentence", self.scoping)
 
-    def test_it_requires_a_deliberately_broad_last_entry(self) -> None:
-        """The fallback only exists if the Scoper wrote one to fall back to."""
+    def test_it_requires_the_single_query_to_be_deliberately_broad(self) -> None:
+        """There is no second attempt, so breadth has to be in the first one.
+
+        This test used to be named ..._last_entry, back when the Scoper wrote a
+        list ordered specific-to-broad and the branch worked down it. With one
+        call the list is one entry long, and "the broadest phrasing" stops being
+        a fallback and becomes the whole strategy.
+        """
         self.assertIn("broadest", self.scoping)
         self.assertIn("deliberately broad", self.scoping)
 
+    def test_it_asks_for_exactly_one_query_per_branch(self) -> None:
+        """A second query would be written, shown at the gate, and never run."""
+        self.assertIn("exactly one", self.scoping)
 
-class BranchBroadeningTests(unittest.TestCase):
-    """An empty first attempt is a narrow query, not an absent market."""
+    def test_it_says_why_a_narrow_query_is_dangerous(self) -> None:
+        """The failure is silent: zero results score as "nobody has this problem".
+
+        An agent told only "be broad" has no way to weigh the instruction
+        against the competing pull toward a precise-sounding query.
+        """
+        self.assertIn("zero results", self.scoping)
+        self.assertIn("reject", self.scoping)
+
+
+class BranchSingleCallTests(unittest.TestCase):
+    """One call per branch, and an empty result is now a real gap.
+
+    Replaces `BranchBroadeningTests`, which pinned the opposite contract. Kept
+    as a class rather than deleted because the *question* it asks is unchanged -
+    "what does a branch do when its query comes back empty?" - and only the
+    answer has moved. Deleting it would have left that question unasserted,
+    which is how the original defect shipped.
+    """
 
     def setUp(self) -> None:
         self.descriptions = _descriptions()
 
-    def test_both_keyword_branches_retry_before_reporting_a_gap(self) -> None:
+    def test_both_keyword_branches_call_their_tool_exactly_once(self) -> None:
+        for task in ("sentiment_task", "feasibility_task"):
+            with self.subTest(task=task):
+                self.assertIn("exactly once", self.descriptions[task].lower())
+
+    def test_both_keyword_branches_forbid_a_second_call(self) -> None:
+        """The positive instruction alone loses to a tempting empty result.
+
+        "Call it once" and "do not call it again after an empty result" are
+        different instructions to a model that has just received nothing back.
+        """
         for task in ("sentiment_task", "feasibility_task"):
             with self.subTest(task=task):
                 text = self.descriptions[task].lower()
-                self.assertIn("not an evidence gap yet", text)
-                self.assertIn("broadening", text)
+                self.assertIn("do not call the tool a second time", text)
+                self.assertIn("real evidence gap", text)
 
-    def test_the_retry_is_bounded(self) -> None:
-        """Unbounded retry is how a cheap branch becomes an expensive one."""
+    def test_the_gap_report_still_names_the_query_tried(self) -> None:
+        """A gap nobody can audit is indistinguishable from a lazy branch.
+
+        This survives the rewrite unchanged in intent: with one attempt the
+        query that was tried is *more* important to report, not less, because
+        it is the only thing that distinguishes "no demand" from "bad query".
+        """
         for task in ("sentiment_task", "feasibility_task"):
             with self.subTest(task=task):
-                self.assertIn("at most three", self.descriptions[task].lower())
+                text = self.descriptions[task].lower()
+                self.assertIn("name the query that was tried", text)
+                self.assertIn("single attempt", text)
 
-    def test_the_gap_report_names_the_queries_tried(self) -> None:
-        """A gap nobody can audit is indistinguishable from a lazy branch."""
-        for task in ("sentiment_task", "feasibility_task"):
+    def test_no_branch_still_advertises_broadening(self) -> None:
+        """The removed loop must not survive in half of one prompt."""
+        for task in ("sentiment_task", "feasibility_task", "market_task"):
             with self.subTest(task=task):
-                self.assertIn("name the queries", self.descriptions[task].lower())
+                self.assertNotIn("broadening", self.descriptions[task].lower())
 
     def test_the_market_branch_is_left_alone(self) -> None:
         """Firecrawl is semantic; a descriptive query is right there.

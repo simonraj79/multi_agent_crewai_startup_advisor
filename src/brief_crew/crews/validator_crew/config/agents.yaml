@@ -26,9 +26,41 @@ market_analyst:
     You are a sceptical market researcher. You treat vendor claims as claims,
     distinguish a large adjacent market from a reachable one, record prices as
     not published when they are absent, and never invent a URL or a number.
-  max_iter: 12
+  # max_iter is set in Python from VALIDATOR_BRANCH_MAX_ITER (config.py), the
+  # way allow_delegation already is. It was 12 here, which let one branch make
+  # twelve tool-calling passes - and a market pass is a Firecrawl search plus a
+  # page scrape per result. Leaving the old number in this file would have made
+  # it a lie the next reader believes.
   max_rpm: 6
-  max_execution_time: 600
+  # Re-derived from measurement, after 600 and then 180 both failed.
+  #
+  # The earlier comment here reasoned from scrape latency and was simply wrong
+  # about where the time went: Firecrawl search+scrape measures 1.83s and the
+  # whole tool 1.84s. The cost was the model RE-EMITTING claim text as output -
+  # 196.93s for one call at 4,000-char claims against 18.40s at 150. With
+  # VALIDATOR_MAX_CLAIM_CHARS now 500, a branch call is ~20s and max_iter is 2.
+  #
+  # 240, and the first draft of this fix said 120 on bad arithmetic. A linear
+  # fit through the two measured points (18.40s @ 150 chars, 196.93s @ 4,000)
+  # puts a 500-char call at ~34.6s, not ~20s. One execution is THREE LLM calls
+  # - max_iter=2 plus the extra call `handle_max_iterations_exceeded` makes -
+  # plus up to two 30s Firecrawl deadlines. That is ~195s, so 120 was a P50
+  # with no margin, firing on the first call that ran long.
+  #
+  # Setting it low buys NOTHING, which is the decisive fact. CrewAI cannot
+  # cancel a running future, and its executor's shutdown(wait=True) blocks
+  # until the worker finishes regardless - so a tight number converts a slow
+  # success into a failure arriving at the SAME wall clock. The real deadlines
+  # are the Firecrawl client timeout and the provider's own.
+  #
+  # And firing is not free even now that a timeout degrades instead of killing
+  # the run: an empty market branch forces M->1 and C->1 through
+  # `rubric_support`, discarding 0.40 of the rubric weight outright plus most
+  # of X's 0.15 - for a branch that might have succeeded 30 seconds later.
+  #
+  # Note also that each guardrail retry gets a FRESH clock, so the worst-case
+  # task wall clock is 3x this number, not this number.
+  max_execution_time: 240
   inject_date: true
   allow_delegation: false
   verbose: true
@@ -44,7 +76,7 @@ sentiment_analyst:
     You read the discussion itself, preserve short exact quotes, distinguish a
     real problem from an adjacent topic, and say when fewer than three usable
     threads leave the question unanswered.
-  max_iter: 8
+  # max_iter: see the note on market_analyst - set from config.py.
   max_rpm: 10
   max_execution_time: 240
   inject_date: true
@@ -62,8 +94,11 @@ feasibility_analyst:
     Stars do not establish maturity or saturation. Licence, recent activity and
     whether the repository solves the entire job are the signals that matter,
     and uncertainty is reported rather than guessed away.
-  max_iter: 8
-  max_rpm: 4
+  # max_iter: see the note on market_analyst - set from config.py.
+  # max_rpm 4 is a THROTTLE, not a cap: it makes the agent sleep between calls.
+  # It was protecting an unauthenticated GitHub budget of 8 req/min. With the
+  # call count now bounded, 8 lets one bounded branch finish without sleeping.
+  max_rpm: 8
   max_execution_time: 240
   inject_date: true
   allow_delegation: false

@@ -438,16 +438,24 @@ class GateReplyRefusalTests(unittest.TestCase):
         )
         registry.wait(record.run_id, timeout=5)
 
-        # The synthetic runner echoes the parsed reply into the next gate, so
-        # this is the operator's edit observed on the far side of the resume.
-        echoed = {
-            str(item["key"]): str(item["value"])
-            for item in record.pending_gate["derived"]
-        }
-        reply = json.loads(echoed["scope_reply"])
-        self.assertEqual(reply["decision"], "revise")
-        self.assertEqual(reply["feedback"], "Narrow it.")
-        self.assertEqual(reply["scope"]["category"], "Edited market")
+        # A revise now loops back to the SAME gate, which is what the shipped
+        # topology's `route_scope -> revise_scope -> confirm_scope` edges have
+        # always said happens. Until `SyntheticValidatorRunner` learned to read
+        # `decision`, a revise fell through to the verdict gate exactly as an
+        # approve did, and this assertion read the echoed reply off that wrong
+        # gate's `derived` block.
+        self.assertEqual(record.pending_gate["node_id"], "confirm_scope")
+
+        # Same observation as before - the operator's edit and note on the far
+        # side of the resume - taken where they now legitimately land. The
+        # reopened gate carries the REVISED scope, so the edit appears in the
+        # field it edited rather than inside an echoed blob, and this is `fields`
+        # rather than `derived` because the scope gate is fully editable.
+        fields = record.pending_gate["fields"]
+        self.assertEqual(fields["category"], "Edited market")
+        self.assertEqual(fields["revision_note"], "Narrow it.")
+        # Untouched keys survive the round trip unchanged.
+        self.assertEqual(fields["target_user"], "Synthetic operator")
 
 
 @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")

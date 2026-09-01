@@ -14,6 +14,11 @@ from pydantic import BaseModel, PrivateAttr
 from brief_crew.config import (
     CHEAP_MODEL,
     ESCALATION_MODEL,
+    VALIDATOR_BRANCH_MAX_ITER,
+    VALIDATOR_BRANCH_MAX_TOKENS,
+    VALIDATOR_BRANCH_TEMPERATURE,
+    VALIDATOR_MARKET_SEARCH_LIMIT,
+    VALIDATOR_SENTIMENT_STORY_LIMIT,
     VALIDATOR_SYNTHESIST_REASONING_EFFORT,
     openrouter_reasoning_params,
 )
@@ -62,7 +67,11 @@ class _RecordingMarketTool(MarketResearchTool):
     def captured_urls(self) -> frozenset[str]:
         return frozenset(self._captured_urls)
 
-    def _run(self, query: str, limit: int = 5) -> str:
+    # These defaults MUST track the tool's own. A subclass that re-declares the
+    # signature re-declares the default with it, so leaving `5` here would have
+    # silently restored the five-scrape call the constant exists to bound - and
+    # nothing would have failed, the branch would just still be slow.
+    def _run(self, query: str, limit: int = VALIDATOR_MARKET_SEARCH_LIMIT) -> str:
         raw = super()._run(query=query, limit=limit)
         _capture_urls(raw, self._captured_urls)
         return raw
@@ -78,7 +87,7 @@ class _RecordingSentimentTool(HackerNewsSentimentTool):
     def _run(
         self,
         query: str,
-        story_limit: int = 3,
+        story_limit: int = VALIDATOR_SENTIMENT_STORY_LIMIT,
         comments_per_story: int = 5,
     ) -> str:
         raw = super()._run(
@@ -121,12 +130,49 @@ def _dynamic_findings_guardrail(
     return guardrail
 
 
+def _branch_llm() -> LLM:
+    """The model the three research branches share, with sampling pinned.
+
+    A bare `LLM(model=...)` sends NO temperature, so the PROVIDER's default
+    applies - measured at 1.0 for the model this replaced. The branch tasks are
+    verbatim extraction (copy this claim, copy this URL, copy this date), and
+    the cost of a sampling wobble is not a differently-worded sentence: each
+    branch has a guardrail binding its output to URLs the tool actually
+    returned, and `guardrail_max_retries: 2` re-runs the ENTIRE task on a
+    rejection. That is what happened to the sentiment branch on the last live
+    run - twice - before it gave up and contributed nothing.
+
+    Temperature measured flat for latency (1.25s vs 1.31s at T=0), so this is a
+    correctness setting that happens to save the time a retry would have cost.
+
+    `max_tokens` is a real latency bound, because generation is the slow half of
+    a call. `top_p` is deliberately left unset: it is redundant at T=0, and one
+    knob doing the job is easier to reason about than two.
+    """
+
+    return LLM(
+        model=CHEAP_MODEL,
+        temperature=VALIDATOR_BRANCH_TEMPERATURE,
+        max_tokens=VALIDATOR_BRANCH_MAX_TOKENS,
+    )
+
+
 def _single_agent_crew(agent_instance: BaseAgent, task_instance: Task) -> Crew:
     return Crew(
         agents=[agent_instance],
         tasks=[task_instance],
         process=Process.sequential,
         memory=False,
+        # `Crew.cache` defaults to False in CrewAI 1.15.18, and `Agent.cache`
+        # defaults True but is INERT without it: `Crew` only hands the agent a
+        # cache handler under `if self.cache` (crew.py:760-761). So a
+        # byte-identical repeat query - which a guardrail retry produces almost
+        # by definition, since the retry re-runs the whole task - was paying
+        # full price for a Firecrawl scrape it had already done.
+        #
+        # This caches TOOL results within one crew run only. It is not the
+        # Pinecone warm cache and does not cross runs.
+        cache=True,
         verbose=True,
     )
 
@@ -176,8 +222,9 @@ class MarketCrew:
         return Agent(
             config=self.agents_config["market_analyst"],  # type: ignore[index]
             tools=[self.tool],
-            llm=LLM(model=CHEAP_MODEL),
+            llm=_branch_llm(),
             allow_delegation=False,
+            max_iter=VALIDATOR_BRANCH_MAX_ITER,
         )
 
     @task
@@ -211,8 +258,9 @@ class SentimentCrew:
         return Agent(
             config=self.agents_config["sentiment_analyst"],  # type: ignore[index]
             tools=[self.tool],
-            llm=LLM(model=CHEAP_MODEL),
+            llm=_branch_llm(),
             allow_delegation=False,
+            max_iter=VALIDATOR_BRANCH_MAX_ITER,
         )
 
     @task
@@ -248,8 +296,9 @@ class FeasibilityCrew:
         return Agent(
             config=self.agents_config["feasibility_analyst"],  # type: ignore[index]
             tools=[self.tool],
-            llm=LLM(model=CHEAP_MODEL),
+            llm=_branch_llm(),
             allow_delegation=False,
+            max_iter=VALIDATOR_BRANCH_MAX_ITER,
         )
 
     @task

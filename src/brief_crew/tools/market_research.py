@@ -8,20 +8,45 @@ from datetime import datetime, timezone
 from typing import Any, Type
 from urllib.parse import urlparse
 
+import requests
 from crewai.tools import BaseTool, EnvVar
 from firecrawl import Firecrawl
 from firecrawl.v2.types import ScrapeOptions
 from pydantic import BaseModel, Field
 
+from brief_crew.config import (
+    VALIDATOR_FIRECRAWL_MAX_AGE_MS,
+    VALIDATOR_FIRECRAWL_MAX_RETRIES,
+    VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS,
+    VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS,
+    VALIDATOR_MARKET_SEARCH_LIMIT,
+    VALIDATOR_MAX_CLAIM_CHARS,
+)
+
 TOOL_NAME = "research_market_landscape"
-MAX_CLAIM_CHARS = 4_000
+#: Kept as a module name because tests and readers reach for it here, but the
+#: value now lives in config.py with the measurement that chose it.
+MAX_CLAIM_CHARS = VALIDATOR_MAX_CLAIM_CHARS
 
 
 class MarketResearchInput(BaseModel):
     """Input schema for market research."""
 
     query: str = Field(..., min_length=1, description="The exact market query to run.")
-    limit: int = Field(default=5, ge=1, le=10, description="Maximum search results.")
+    # `le` is the SAME constant as the default, and that is the load-bearing
+    # part. Firecrawl's `search` scrapes every result it returns to markdown,
+    # so `limit` is not "how many rows" - it is how many full page fetches this
+    # one call makes, at 10-30s each. A default the agent can raise to 10 is a
+    # suggestion; matching the ceiling to it is the cap.
+    limit: int = Field(
+        default=VALIDATOR_MARKET_SEARCH_LIMIT,
+        ge=1,
+        le=VALIDATOR_MARKET_SEARCH_LIMIT,
+        description=(
+            "Maximum search results; each one is also scraped, so this is the "
+            "page-fetch budget for the call."
+        ),
+    )
 
 
 def _retrieved_at() -> str:
@@ -69,12 +94,36 @@ def _first_text(item: Any, *keys: str) -> str:
 
 
 def _claim(item: Any) -> str:
-    text = _first_text(item, "summary", "markdown", "description", "title")
-    if text:
-        return text[:MAX_CLAIM_CHARS]
+    """The one or two sentences that make this source citable.
 
-    metadata = _metadata(item)
-    text = _first_text(metadata, "description", "og_description", "title")
+    The preference order is load-bearing and it CHANGED when MAX_CLAIM_CHARS
+    dropped from 4,000 to 500.
+
+    `markdown` used to be tried before any description, and the clip is a plain
+    head-clip of whitespace-flattened text. At 4,000 characters that was at
+    least substantive prose. At 500 the first 500 characters of a scraped page
+    are the nav bar, the cookie banner and the logo alt text - so the shorter
+    bound would have quietly made every market claim worse rather than merely
+    shorter.
+
+    A page's own `description` / `og_description` is already a one-sentence
+    summary written to be quoted, which is exactly what a claim is for. So the
+    order is now: an explicit summary, then the page's description, and only
+    then body text as a last resort.
+    """
+
+    text = _first_text(item, "summary")
+    if not text:
+        # Firecrawl puts `description` on `metadata` for a scraped Document and
+        # at the top level for an unscraped search result. Try both before
+        # falling back to body text.
+        text = _first_text(_metadata(item), "description", "og_description")
+    if not text:
+        text = _first_text(item, "description")
+    if not text:
+        text = _first_text(item, "markdown", "title")
+    if not text:
+        text = _first_text(_metadata(item), "title")
     return text[:MAX_CLAIM_CHARS]
 
 
@@ -137,7 +186,37 @@ def _error_status(exc: Exception) -> tuple[str, str]:
         return "rate_limited", "Firecrawl rate limit reached; no market evidence returned."
     if status_code == 402 or any(term in lowered for term in ("credit", "payment required", "plan limit")):
         return "failed", "Firecrawl plan or credit limit prevented the search."
+    if _looks_like_timeout(exc, lowered):
+        # Named explicitly because the SDK reports a timeout as gibberish.
+        # `handle_response_error(response, action)` reads `response.status_code`,
+        # and a timed-out request has NO response - so the failure surfaced to a
+        # real operator as `AttributeError: 'NoneType' object has no attribute
+        # 'status_code'`, which reads like a bug in this repo rather than a slow
+        # page. It reached the verdict, the report and the evidence gaps that way.
+        return "failed", (
+            "Firecrawl did not respond within the time limit; no market evidence "
+            "returned. Raise VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS if this recurs."
+        )
     return "failed", f"Firecrawl search failed: {type(exc).__name__}: {message}"
+
+
+def _looks_like_timeout(exc: Exception, lowered: str) -> bool:
+    """Whether `exc` is a request that ran out of time rather than a real answer.
+
+    Three signatures, because the SDK loses the original exception type on the
+    way out: a genuine `Timeout`, the words themselves, and the `NoneType ...
+    status_code` AttributeError that is what a timeout ACTUALLY looks like once
+    the SDK's error handler has tried to read a status off a response that never
+    arrived. That last one is a guess about someone else's internals, so it is
+    matched narrowly - an AttributeError mentioning `status_code` - rather than
+    by swallowing every AttributeError as a timeout.
+    """
+
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return True
+    if any(term in lowered for term in ("timed out", "timeout", "read timed out")):
+        return True
+    return isinstance(exc, AttributeError) and "status_code" in lowered
 
 
 class MarketResearchTool(BaseTool):
@@ -156,7 +235,7 @@ class MarketResearchTool(BaseTool):
         )
     ]
 
-    def _run(self, query: str, limit: int = 5) -> str:
+    def _run(self, query: str, limit: int = VALIDATOR_MARKET_SEARCH_LIMIT) -> str:
         actual_query = query.strip()
         retrieved_at = _retrieved_at()
         api_key = os.getenv("FIRECRAWL_API_KEY")
@@ -170,10 +249,35 @@ class MarketResearchTool(BaseTool):
             )
 
         try:
-            response = Firecrawl(api_key=api_key).search(
+            # Every bound below was absent, and each absence had a cost.
+            #
+            # `timeout` on the CLIENT: the SDK defaults it to None, which
+            # becomes `requests.post(..., timeout=None)` - a socket wait with
+            # no deadline. `max_retries` defaults to 3 against a 300s server
+            # ceiling, and 3 x 300s is where a 600s branch timeout comes from.
+            # Neither is reachable from the `except` below, because an
+            # exception that never raises cannot be caught.
+            client = Firecrawl(
+                api_key=api_key,
+                timeout=float(VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS),
+                max_retries=VALIDATOR_FIRECRAWL_MAX_RETRIES,
+            )
+            response = client.search(
                 actual_query,
                 limit=limit,
-                scrape_options=ScrapeOptions(formats=["markdown"]),
+                scrape_options=ScrapeOptions(
+                    formats=["markdown"],
+                    # Per PAGE, in ms. One pathological page must not eat the
+                    # whole call's budget.
+                    timeout=VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS,
+                    # Reuse a recently cached page: measured 10.36s cold
+                    # against 2.26s warm for the same query.
+                    max_age=VALIDATOR_FIRECRAWL_MAX_AGE_MS,
+                    # Disable PDF parsing. Market-research hosts serve report
+                    # PDFs that are billed per page and are slow to parse, and
+                    # a PDF is never the citable source this branch wants.
+                    parsers=[],
+                ),
             )
         except Exception as exc:
             status, notes = _error_status(exc)

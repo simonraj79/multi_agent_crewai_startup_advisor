@@ -17,7 +17,35 @@ from urllib.parse import urlsplit
 # --------------------------------------------------------------------------
 # OpenRouter is a NATIVE CrewAI provider. Do not install crewai[litellm]; the
 # model string alone resolves base_url and the key from OPENROUTER_API_KEY.
-CHEAP_MODEL = "openrouter/z-ai/glm-5.3-flash"
+# The `:nitro` suffix is OpenRouter's shorthand for "route this to the fastest
+# provider" - equivalent to a `provider: {"sort": "throughput"}` body, but
+# expressible in the model string, which matters because CrewAI's `LLM` gives
+# no clean channel for provider routing (see the `reasoning_effort` note below
+# for how that has bitten this project before).
+#
+# MEASURED, n=4 each, same 4,000-char prompt asking for the same JSON:
+#
+#   z-ai/glm-5.3-flash                    median 37.91s   max 47.23s
+#   google/gemini-3.5-flash-lite          median  1.70s   max  1.78s
+#   google/gemini-3.5-flash-lite:nitro    median  1.38s   max  1.42s
+#   google/gemini-3.7-flash (escalation)  median  9.60s   max 12.30s
+#
+# ~27x faster than glm at the median, and the tail is the real story: nitro's
+# WORST case (1.42s) beats plain flash-lite's BEST (1.53s), while glm ranged
+# 18.5-47.2s. A research branch is ~3 sequential model calls, so glm's spread
+# alone was most of a two-minute branch, and its tail is what pushed
+# `market_task` past its ceiling and failed whole runs.
+#
+# It is NOT cheaper: $0.30/$2.50 per Mtok against glm's $0.075/$0.250 - 4x the
+# prompt price and 10x the completion price. At ~71K tokens across the three
+# branches that is roughly +$0.023 a run. Still less than moving one branch to
+# the escalation tier (+$0.033) and seven times faster than that tier.
+#
+# ⚠️ `:nitro` does not appear in `GET /api/v1/models` - only `:batch` is listed
+# as a variant - but it resolves and bills correctly; the benchmark above is a
+# real call. Because nitro picks the fastest provider rather than the cheapest,
+# the price below is the published floor and the effective rate may be higher.
+CHEAP_MODEL = "openrouter/google/gemini-3.5-flash-lite:nitro"
 ESCALATION_MODEL = "openrouter/google/gemini-3.7-flash"
 
 # USD per million tokens, (prompt, completion). Used to ESTIMATE cost, because
@@ -26,7 +54,7 @@ ESCALATION_MODEL = "openrouter/google/gemini-3.7-flash"
 # `openrouter/` provider prefix - and `resolve_price_model` below accepts the
 # de-prefixed spelling CrewAI actually reports.
 PRICES: dict[str, tuple[float, float]] = {
-    CHEAP_MODEL: (0.075, 0.250),
+    CHEAP_MODEL: (0.30, 2.50),
     ESCALATION_MODEL: (0.75, 3.75),
 }
 
@@ -90,12 +118,32 @@ _OPENROUTER_PREFIX = "openrouter/"
 
 
 def _build_price_index() -> dict[str, str]:
+    """Every spelling a reported model name might arrive in, mapped to its key.
+
+    Four per key: with and without the `openrouter/` prefix, each with and
+    without a trailing routing variant such as `:nitro`. Registering the
+    variant-stripped forms HERE rather than only stripping the incoming name is
+    what makes `google/gemini-3.5-flash-lite` resolve when the configured model
+    is `openrouter/google/gemini-3.5-flash-lite:nitro` - the provider that
+    serves a nitro-routed request can report the base model back, and without
+    this the run's whole cost display would quietly return to zero.
+
+    `setdefault` so a key that is spelled explicitly always wins over a base
+    form derived from some other key.
+    """
+
     index: dict[str, str] = {}
     for key in PRICES:
         folded = key.casefold()
-        index[folded] = key
+        spellings = [folded]
         if folded.startswith(_OPENROUTER_PREFIX):
-            index[folded[len(_OPENROUTER_PREFIX) :]] = key
+            spellings.append(folded[len(_OPENROUTER_PREFIX) :])
+        for spelling in list(spellings):
+            base, separator, _ = spelling.rpartition(":")
+            if separator and base:
+                spellings.append(base)
+        for spelling in spellings:
+            index.setdefault(spelling, key)
     return index
 
 
@@ -103,14 +151,46 @@ PRICE_MODEL_INDEX: dict[str, str] = _build_price_index()
 
 
 def resolve_price_model(model: str | None) -> str | None:
-    """The PRICES key a reported model name refers to, or None if it has none."""
+    """The PRICES key a reported model name refers to, or None if it has none.
+
+    Three spellings have to land on one key, and each was a real failure mode:
+
+    1. `openrouter/google/gemini-3.5-flash-lite:nitro` - what config.py declares.
+    2. `google/gemini-3.5-flash-lite:nitro` - what CrewAI reports, because
+       `LLM.__new__` strips the provider prefix for native providers. This one
+       already cost this project a run priced at $0.00 over 128,069 real tokens.
+    3. `google/gemini-3.5-flash-lite` - the VARIANT-STRIPPED name, because
+       `:nitro` is a routing instruction rather than a distinct model, and the
+       provider that serves the request may report the base model back.
+
+    Only (3) is new. It matters because an unresolved name contributes NOTHING
+    to the run's cost - deliberately `None` rather than 0.0, so "no price on
+    file" can never masquerade as "this call was free" - which would silently
+    return the whole cost display to the zero it used to show.
+    """
+
     name = str(model or "").strip().casefold()
     if not name:
         return None
-    resolved = PRICE_MODEL_INDEX.get(name)
-    if resolved is None and name.startswith(_OPENROUTER_PREFIX):
-        resolved = PRICE_MODEL_INDEX.get(name[len(_OPENROUTER_PREFIX) :])
-    return resolved
+    for candidate in _price_lookup_spellings(name):
+        resolved = PRICE_MODEL_INDEX.get(candidate)
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def _price_lookup_spellings(name: str) -> tuple[str, ...]:
+    """`name`, then without the provider prefix, then without a `:variant`."""
+    spellings = [name]
+    if name.startswith(_OPENROUTER_PREFIX):
+        spellings.append(name[len(_OPENROUTER_PREFIX) :])
+    # Strip a trailing routing variant (`:nitro`, `:floor`, `:free`, `:batch`).
+    # Split on the LAST colon only: an id may legitimately contain others.
+    for spelling in list(spellings):
+        base, separator, _ = spelling.rpartition(":")
+        if separator and base:
+            spellings.append(base)
+    return tuple(spellings)
 
 
 def compute_cost_usd(
@@ -1004,6 +1084,178 @@ VALIDATOR_MAX_GATE_TURNS = _env_positive_int("VALIDATOR_MAX_GATE_TURNS", 5, mini
 # a fresh object. This value only ever binds an in-process caller: `no_gates`,
 # a scripted `HumanFeedbackProvider`, a test, or a future auto mode.
 VALIDATOR_MAX_METHOD_CALLS = VALIDATOR_MAX_GATE_TURNS + 2
+
+# --------------------------------------------------------------------------
+# Research breadth - one tool call per branch, and how wide that one call goes
+#
+# Measured on the second paid run: the market branch ran for OVER 13 MINUTES
+# while sentiment and feasibility finished in seconds. The cause is not the
+# agent looping. `MarketResearchTool._run` passes `scrape_options` to
+# Firecrawl's `search`, which makes it scrape EVERY result to markdown - so one
+# obedient tool call is one search plus `limit` full page scrapes, at the PRD's
+# own 10-30s per scrape. The agent could also ask for `limit=10`.
+#
+# So "call the tool once" does not bound this on its own, and the two numbers
+# below are the ones that actually do. Each is a floor imposed by the rubric,
+# not a preference - cutting further silently caps a dimension:
+#
+#   MARKET 3, not 1. Coverage is `min(1, sources / VALIDATOR_COVERAGE_TARGET_
+#   SOURCES)`, M=4 needs 2 recent sources and M=5 needs 3 (`tasks.yaml`). At
+#   `limit=1` the market dimension can never exceed 3 and no guardrail would
+#   ever say so - the run would just quietly stop being able to score well.
+#
+#   SENTIMENT 5, not 3. Every row from one story shares one URL and the task
+#   keeps at most one Thread per URL, so DISTINCT THREADS == story_limit. The
+#   REJECT floor needs `>= RUBRIC_FLOOR_MIN_USABLE_THREADS` (3) usable threads,
+#   so the old default of 3 sat exactly ON the floor with zero margin: one
+#   thread classified OFF_TOPIC dropped it to 2 and fired `FLOOR_NO_DEMAND` -
+#   a final REJECT for "no demand" caused by arithmetic, not by the world.
+#   That margin used to come from the broadening retries. With one call it has
+#   to come from the call. HN is fast and unthrottled, so this is nearly free.
+#
+# The `le=` bound on each tool's pydantic Field is set to the SAME value, which
+# is what stops an agent asking for more than the budget: a default the model
+# can override is a suggestion, not a cap.
+VALIDATOR_MARKET_SEARCH_LIMIT = _env_positive_int("VALIDATOR_MARKET_SEARCH_LIMIT", 3)
+VALIDATOR_SENTIMENT_STORY_LIMIT = _env_positive_int("VALIDATOR_SENTIMENT_STORY_LIMIT", 5)
+
+# How many queries a branch may be handed. Belt-and-braces behind the YAML:
+# `community_queries` and `tech_queries` are `min_length=1` with NO upper bound
+# (`schemas/validator.py`), and the task prompts used to say "call the tool for
+# each query below". Prompts are advisory and drift; a schema bound does not.
+# Applied as `max_length`, so even on prompt drift the block holds one query.
+#
+# An over-long operator edit at the scope gate degrades safely rather than
+# failing the run: `route_scope` already swallows `ValidationError` into
+# `scope_edit_error`. See the UI work that finally surfaces that field - until
+# it did, this was a silent discard of every edit the operator made.
+VALIDATOR_MAX_BRANCH_QUERIES = _env_positive_int("VALIDATOR_MAX_BRANCH_QUERIES", 1)
+
+# `max_iter` is the number of tool-calling passes an agent may take before
+# CrewAI forces a final answer. It was 12 / 8 / 8.
+#
+# 2 rather than 1, and the difference is not caution. At 1, CrewAI's
+# `handle_max_iterations_exceeded` still makes one more LLM call demanding an
+# answer - so if the agent spends its single pass on anything except the tool
+# call, it is forced to answer with ZERO captured URLs, the dynamic guardrail
+# rejects it against `tool.captured_urls`, and the WHOLE TASK re-runs. One
+# spare pass is cheaper than one guardrail retry.
+VALIDATOR_BRANCH_MAX_ITER = _env_positive_int("VALIDATOR_BRANCH_MAX_ITER", 2)
+
+# --------------------------------------------------------------------------
+# Branch sampling - correctness first, and it was never being set at all
+#
+# A bare `LLM(model=...)` sends NO temperature, so the PROVIDER's default
+# applies. Measured: glm-5.3-flash defaults to temperature 1.0, top_p 0.95.
+# The three branch tasks are verbatim extraction - copy this claim, copy this
+# URL, copy this date - and sampling at 1.0 is simply the wrong tool for that.
+#
+# The cost of a wobble is not a slightly different sentence. Every branch has a
+# dynamic guardrail binding its output to URLs the tool actually returned, and
+# `guardrail_max_retries: 2` re-runs the WHOLE task on a rejection. A sampled
+# hallucinated URL therefore costs a full extra execution - which is exactly
+# what happened to the sentiment branch on the last live run, twice, before it
+# gave up. This is a correctness setting that happens to save time, not a
+# latency knob: temperature measured flat (1.25s vs 1.31s at T=0).
+VALIDATOR_BRANCH_TEMPERATURE = _env_non_negative_float("VALIDATOR_BRANCH_TEMPERATURE", 0.0)
+
+# A hard ceiling on generated tokens - the slow half of every call.
+#
+# 2048 is sized against the schema, not guessed: a full-evidence MarketFindings
+# (5 sources at the 500-char claim ceiling plus 3 competitors) is ~1,040 tokens
+# and the worst realistic case ~1,745. Below ~1,800 a rich branch would be
+# truncated mid-JSON, which fails validation and costs a whole task re-run.
+#
+# ⚠️ This is only safe because the branch model does not do mandatory reasoning.
+# Measured on glm-5.3-flash, which does: `max_tokens=200` was consumed ENTIRELY
+# by thinking and the call returned an empty string with `finish_reason=length`
+# and no exception. If the branch model is ever changed back to a
+# reasoning-by-default model, this bound becomes a silent output-eraser.
+VALIDATOR_BRANCH_MAX_TOKENS = _env_positive_int("VALIDATOR_BRANCH_MAX_TOKENS", 2048)
+
+# --------------------------------------------------------------------------
+# Why the market branch timed out, and the three numbers that fix it
+#
+# MEASURED, not reasoned. The suspects were all wrong:
+#
+#   Firecrawl search+scrape, limit=3        1.83s   not the bottleneck
+#   the whole tool, end to end              1.84s   not the bottleneck
+#   its envelope handed to the model     ~1,310 tokens   not the bottleneck
+#
+# The bottleneck is the model's OUTPUT. The same cheap model, same input,
+# asked for two different answer lengths:
+#
+#   claims capped at 150 chars     18.40s     817 output chars
+#   claims copied verbatim (4k)   196.93s  15,908 output chars
+#
+# 196.93s for ONE call, against a 180s task ceiling. Output generation is the
+# slow half of an LLM call, and MAX_CLAIM_CHARS was setting how much prose the
+# Market Analyst had to re-emit into its JSON: up to 4,000 characters per
+# source, three sources, plus the competitor objects.
+#
+# 500 is a citable claim - two or three sentences, which is what the Reporter's
+# faithfulness check actually reads. Nothing else reads `claim` at all: no
+# guardrail touches it, and `market_task` never even says what to put in it, so
+# 4,000 was an unexamined default rather than a requirement. The clip is also a
+# plain head-clip of whitespace-flattened text, so the extra 3,500 characters
+# were the top of a page, not the pricing table further down.
+VALIDATOR_MAX_CLAIM_CHARS = _env_positive_int("VALIDATOR_MAX_CLAIM_CHARS", 500)
+
+# The bound above applies to the TOOL. This one applies to the MODEL, and the
+# distinction is the whole point: nothing stopped the Market Analyst expanding
+# a 500-char row into 4,000 characters of its own prose, or the Reporter
+# emitting one at escalation-tier COMPLETION price. This repo already made
+# exactly this argument for `community_queries` - prompts are advisory and
+# drift, a schema bound does not.
+#
+# The floor is NOT free, and 1,200 is chosen against it rather than picked.
+# `reporting_task` turns Hacker News quotes into `Evidence.claim`, and those
+# are bounded at `hn_sentiment.MAX_QUOTE_CHARS` (1,000). Any bound below 1,000
+# would reject legitimate Reporter output. 1,200 leaves headroom for the
+# surrounding attribution and can only fire on genuinely runaway generation.
+VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS = _env_positive_int(
+    "VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS", 1_200
+)
+
+# Firecrawl's client defaults to `timeout=None` - an UNBOUNDED socket wait -
+# and retries 3 times against a 300s server ceiling. 3 x 300s is where a
+# 600s branch timeout comes from. Neither bound is the tool's own `try`, which
+# only wraps the call and never sees a deadline that never arrives.
+# 90, and the first draft said 30 - which FIRED on a real run at 31.1s and cost
+# that run its whole market branch.
+#
+# Two things were wrong with 30. It was fitted to a 10.36s cold measurement with
+# no allowance for a slow page or a cold Firecrawl cache, and the SDK degrades
+# horribly when it trips: `handle_response_error(response, ...)` reads
+# `response.status_code`, and a timeout has NO response, so the operator got
+# `AttributeError: 'NoneType' object has no attribute 'status_code'` rather than
+# "it timed out". `_error_status` now recognises that shape, but the real repair
+# is a bound that only fires on a genuine hang.
+#
+# Still far below the branch's own 240s ceiling, so a wedged Firecrawl call
+# fails the TOOL - honestly, through its envelope - rather than the task.
+VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS = _env_positive_int(
+    "VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS", 90
+)
+VALIDATOR_FIRECRAWL_MAX_RETRIES = _env_positive_int(
+    "VALIDATOR_FIRECRAWL_MAX_RETRIES", 1, minimum=1
+)
+
+# Per-PAGE scrape ceiling in milliseconds, which the SDK leaves unset so the
+# server's own 5-minute default applies. Distinct from the whole-call bound
+# above: one pathological page must not consume the entire call's budget.
+VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS = _env_positive_int(
+    "VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS", 8_000
+)
+
+# Firecrawl reuses a cached page rather than refetching it, and the measured
+# difference is 10.36s cold against 2.26s warm for the same query. The SDK
+# already sends 4 hours; a week is right for market evidence, which does not
+# move that fast, and the `dated` field records what the page said rather than
+# when we fetched it.
+VALIDATOR_FIRECRAWL_MAX_AGE_MS = _env_positive_int(
+    "VALIDATOR_FIRECRAWL_MAX_AGE_MS", 604_800_000
+)
 
 # The `PendingFeedbackContext.metadata` key carrying how many revise turns this
 # gate has already spent. It lives here because it is the one string two

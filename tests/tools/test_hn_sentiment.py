@@ -92,7 +92,15 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
         self.assertEqual(envelope["status"], "ok")
         self.assertEqual(envelope["tool"], "analyze_community_sentiment")
         self.assertEqual(envelope["query"], "clinic intake automation")
-        self.assertEqual(envelope["result_count"], 3)
+        # ONE row, from a fixture with three text-bearing comments. The tool
+        # now collapses each story to a single representative comment, because
+        # every row from one story shares that story's URL and
+        # `SentimentFindings` requires `source_urls` to be duplicate-free AND to
+        # mirror `sources[].url`. Emitting three here is what cost a live run
+        # its whole sentiment branch.
+        self.assertEqual(envelope["result_count"], 1)
+        # The sample is auditable: three candidates were read, one reported.
+        self.assertEqual(envelope["results"][0]["comments_scanned"], 3)
         # Matched signal WORDS, not classifications. `PAYS` is the analyst's
         # conclusion to draw; the tool only says which terms it saw.
         matched = {
@@ -110,16 +118,17 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
                 for result in envelope["results"]
             )
         )
-        self.assertNotIn("<", envelope["results"][1]["quote"])
-        # Story-level signals, carried on every row cited to that story.
+        # HTML is stripped from whichever comment is chosen.
+        self.assertNotIn("<", envelope["results"][0]["quote"])
+        # Story-level signals, carried on the row cited to that story.
         self.assertEqual(
             [(result["points"], result["num_comments"]) for result in envelope["results"]],
-            [(214, 87)] * 3,
+            [(214, 87)],
         )
         # Every item in this fixture dates itself, one way or the other.
         self.assertEqual(
             [result["date_is_retrieval_time"] for result in envelope["results"]],
-            [False, False, False],
+            [False],
         )
 
         search_call = get.call_args_list[0]
@@ -135,24 +144,43 @@ class HackerNewsSentimentToolTests(unittest.TestCase):
         """The Demand ladder scores on "dated within 24 months", and a fallback
         date is always within 24 months. The flag is what stops an item of
         unknown age carrying D's upper anchors."""
+        # TWO stories, not two comments from one story. The tool now returns at
+        # most one representative row per story URL, so a dated and an undated
+        # row can no longer come from the same thread - and must not, since
+        # `source_urls` has to stay duplicate-free. The flag under test is
+        # unchanged; only the fixture's shape had to follow the tool.
         get.side_effect = [
-            _Response(200, {"hits": [{"objectID": "77", "points": 5, "num_comments": 2}]}),
+            _Response(
+                200,
+                {
+                    "hits": [
+                        {"objectID": "77", "points": 5, "num_comments": 2},
+                        {"objectID": "79", "points": 3, "num_comments": 1},
+                    ]
+                },
+            ),
             _Response(
                 200,
                 {
                     "id": 77,
                     "text": "We pay a contractor to do this by hand every month.",
                     "created_at": "2026-08-01T00:00:00Z",
-                    "children": [
-                        # No created_at and no created_at_i: Algolia dates this
-                        # comment neither way.
-                        {"id": 78, "text": "Our workaround is a spreadsheet.", "children": []}
-                    ],
+                    "children": [],
+                },
+            ),
+            _Response(
+                200,
+                {
+                    # No created_at and no created_at_i: Algolia dates this
+                    # story neither way.
+                    "id": 79,
+                    "text": "Our workaround is a spreadsheet.",
+                    "children": [],
                 },
             ),
         ]
 
-        envelope = json.loads(self.tool._run("clinic intake", story_limit=1))
+        envelope = json.loads(self.tool._run("clinic intake", story_limit=2))
 
         self.assertEqual(envelope["status"], "ok")
         dated, undated = envelope["results"]

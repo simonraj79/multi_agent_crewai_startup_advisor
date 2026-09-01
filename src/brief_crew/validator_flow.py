@@ -186,6 +186,67 @@ class ValidatorCrewFactories:
     report: Callable[[Verdict, set[str]], KickoffRunner] = _report_runner
 
 
+try:  # pragma: no cover - import shape depends on the installed CrewAI
+    from crewai.hooks import HookAborted as _HookAborted
+
+    #: Exceptions that are CONTROL FLOW, not branch failure, and must never be
+    #: swallowed by the degrade path below.
+    #:
+    #: `HookAborted` subclasses plain `Exception` and is the single signal for
+    #: BOTH operator cancel and the run cost ceiling. A bare `except Exception`
+    #: around a branch would therefore silently break the Cancel button and the
+    #: budget cap - turning a safety fix into a safety hole.
+    _BRANCH_CONTROL_FLOW: tuple[type[BaseException], ...] = (
+        HumanFeedbackPending,
+        _HookAborted,
+    )
+except Exception:  # pragma: no cover
+    _BRANCH_CONTROL_FLOW = (HumanFeedbackPending,)
+
+
+def _degraded_findings(
+    model: type[ModelT], branch: str, exc: BaseException
+) -> ModelT:
+    """An honest empty-evidence result for a branch that did not complete.
+
+    Before this existed, one slow branch destroyed the entire run. The three
+    branches run under `asyncio.gather` with no `return_exceptions=True`, so the
+    first exception propagated immediately, `and_(...)` never fired, synthesis
+    never ran - and the OTHER TWO BRANCHES' completed, already-paid-for evidence
+    was discarded along with the escalation-tier scope and the operator's time
+    at the gate. That is what "ValidatorFlow failed / Run failed" was.
+
+    The timeout that caused it could not be caught where you would expect.
+    CrewAI raises it from `Agent._execute_with_timeout`, on a different thread
+    from the tool's own `try`, and `Agent.execute_task` re-raises `TimeoutError`
+    deliberately rather than routing it through `_handle_execution_error` like
+    every other exception. So the tool's careful `failed` / `rate_limited`
+    envelopes were unreachable for the one failure that actually happened.
+
+    Everything downstream already handles this shape, which is why the fix is
+    small: `tool_status="failed"` is a declared `ToolStatus`, `branches_ok`
+    drops to 2 and applies its penalty, the branch's coverage goes to 0.0, and
+    `rubric_support`'s `one_ok` predicates all admit an empty branch. The run
+    reaches a real verdict - low confidence, `provisional`, with a `gaps` entry
+    naming what broke - instead of a stack trace. Not a usable answer, but an
+    honest one, and the operator keeps the report and the two good branches.
+    """
+
+    payload: dict[str, Any] = {
+        "sources": [],
+        "source_urls": [],
+        "tool_status": "failed",
+        "gaps": [
+            f"The {branch} branch did not complete and contributed no evidence: "
+            f"{type(exc).__name__}: {exc}"[:500]
+        ],
+    }
+    # MarketFindings alone carries these; `paying_segments` has a default.
+    if "competitors" in model.model_fields:
+        payload["competitors"] = []
+    return model.model_validate(payload)
+
+
 def _edit_error_summary(error: ValidationError) -> str:
     """One readable sentence naming the fields that failed, for an operator.
 
@@ -661,15 +722,21 @@ class ValidatorFlow(Flow[ValidatorState]):
             scope = _require(self.state.scope, "scope")
             namespace = resolve_namespace(self.state.namespace)
             cached = self._cached_evidence("market", scope, namespace)
-            with capture_tool_results("market") as tool_results:
-                result = self.crew_factories.market().kickoff(
-                    inputs={
-                        "scoped_idea_json": scope.model_dump_json(indent=2),
-                        "market_query": scope.market_query,
-                        "cached_evidence_block": format_cached_evidence(cached),
-                    }
-                )
-            findings = _extract_model(result, MarketFindings)
+            tool_results: list[CapturedToolResult] = []
+            try:
+                with capture_tool_results("market") as tool_results:
+                    result = self.crew_factories.market().kickoff(
+                        inputs={
+                            "scoped_idea_json": scope.model_dump_json(indent=2),
+                            "market_query": scope.market_query,
+                            "cached_evidence_block": format_cached_evidence(cached),
+                        }
+                    )
+                findings = _extract_model(result, MarketFindings)
+            except _BRANCH_CONTROL_FLOW:
+                raise
+            except Exception as exc:
+                findings = _degraded_findings(MarketFindings, "market", exc)
             self.state.market = findings
             self._index_evidence("market", scope, namespace, tool_results)
         return findings
@@ -680,14 +747,22 @@ class ValidatorFlow(Flow[ValidatorState]):
         with self._branch_turn("sentiment"):
             scope = _require(self.state.scope, "scope")
             namespace = resolve_namespace(self.state.namespace)
-            with capture_tool_results("sentiment") as tool_results:
-                result = self.crew_factories.sentiment().kickoff(
-                    inputs={
-                        "scoped_idea_json": scope.model_dump_json(indent=2),
-                        "community_queries_block": "\n".join(scope.community_queries),
-                    }
-                )
-            findings = _extract_model(result, SentimentFindings)
+            tool_results: list[CapturedToolResult] = []
+            try:
+                with capture_tool_results("sentiment") as tool_results:
+                    result = self.crew_factories.sentiment().kickoff(
+                        inputs={
+                            "scoped_idea_json": scope.model_dump_json(indent=2),
+                            "community_queries_block": "\n".join(
+                                scope.community_queries
+                            ),
+                        }
+                    )
+                findings = _extract_model(result, SentimentFindings)
+            except _BRANCH_CONTROL_FLOW:
+                raise
+            except Exception as exc:
+                findings = _degraded_findings(SentimentFindings, "sentiment", exc)
             self.state.sentiment = findings
             self._index_evidence("sentiment", scope, namespace, tool_results)
         return findings
@@ -699,15 +774,23 @@ class ValidatorFlow(Flow[ValidatorState]):
             scope = _require(self.state.scope, "scope")
             namespace = resolve_namespace(self.state.namespace)
             cached = self._cached_evidence("feasibility", scope, namespace)
-            with capture_tool_results("feasibility") as tool_results:
-                result = self.crew_factories.feasibility().kickoff(
-                    inputs={
-                        "scoped_idea_json": scope.model_dump_json(indent=2),
-                        "tech_queries_block": "\n".join(scope.tech_queries),
-                        "cached_evidence_block": format_cached_evidence(cached),
-                    }
+            tool_results: list[CapturedToolResult] = []
+            try:
+                with capture_tool_results("feasibility") as tool_results:
+                    result = self.crew_factories.feasibility().kickoff(
+                        inputs={
+                            "scoped_idea_json": scope.model_dump_json(indent=2),
+                            "tech_queries_block": "\n".join(scope.tech_queries),
+                            "cached_evidence_block": format_cached_evidence(cached),
+                        }
+                    )
+                findings = _extract_model(result, FeasibilityFindings)
+            except _BRANCH_CONTROL_FLOW:
+                raise
+            except Exception as exc:
+                findings = _degraded_findings(
+                    FeasibilityFindings, "feasibility", exc
                 )
-            findings = _extract_model(result, FeasibilityFindings)
             self.state.feasibility = findings
             self._index_evidence("feasibility", scope, namespace, tool_results)
         return findings

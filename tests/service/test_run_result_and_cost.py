@@ -349,6 +349,47 @@ class PriceResolutionTests(unittest.TestCase):
             ESCALATION_MODEL,
         )
 
+    def test_a_routing_variant_resolves_to_its_base_price(self) -> None:
+        """`:nitro` is a routing instruction, not a different model.
+
+        CHEAP_MODEL carries `:nitro` - OpenRouter's "route to the fastest
+        provider" shorthand, worth ~27x at the median against the model it
+        replaced. But the provider that actually serves the request can report
+        the BASE model back, with no suffix. If that spelling failed to resolve,
+        `compute_cost_usd` would contribute nothing for every branch call and
+        the run's cost display would quietly return to the $0.00 it used to
+        show over 128,069 real tokens - the exact defect this file exists for.
+        """
+        base, separator, variant = CHEAP_MODEL.rpartition(":")
+        if not separator:
+            self.skipTest("CHEAP_MODEL carries no routing variant")
+        self.assertTrue(variant, "a trailing colon is not a variant")
+        # Both the prefixed and the CrewAI-reported bare spelling, minus suffix.
+        self.assertEqual(resolve_price_model(base), CHEAP_MODEL)
+        self.assertEqual(
+            resolve_price_model(base.split("/", 1)[1]),
+            CHEAP_MODEL,
+        )
+
+    def test_a_variant_stripped_model_costs_the_same_as_the_variant(self) -> None:
+        base = CHEAP_MODEL.rpartition(":")[0] or CHEAP_MODEL
+        with_variant = compute_cost_usd(CHEAP_MODEL, PROMPT_TOKENS, COMPLETION_TOKENS)
+        without = compute_cost_usd(base, PROMPT_TOKENS, COMPLETION_TOKENS)
+        self.assertIsNotNone(without)
+        self.assertEqual(with_variant, without)
+
+    def test_an_unknown_model_is_still_none_rather_than_free(self) -> None:
+        """The variant fallback must not turn every unknown id into a match.
+
+        `rpartition(":")` on a name with no colon yields an empty base, and
+        looking THAT up must not resolve - otherwise "no price on file" would
+        start masquerading as a priced call again, in the opposite direction.
+        """
+        self.assertIsNone(resolve_price_model("some/unheard-of-model"))
+        self.assertIsNone(resolve_price_model("some/unheard-of-model:nitro"))
+        self.assertIsNone(resolve_price_model(":nitro"))
+        self.assertIsNone(compute_cost_usd("some/unheard-of-model", 100, 100))
+
     def test_a_known_model_costs_the_same_either_way_and_is_not_zero(self) -> None:
         prefixed = compute_cost_usd(CHEAP_MODEL, PROMPT_TOKENS, COMPLETION_TOKENS)
         bare = compute_cost_usd(BARE_CHEAP_MODEL, PROMPT_TOKENS, COMPLETION_TOKENS)

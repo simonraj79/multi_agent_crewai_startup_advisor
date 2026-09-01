@@ -8,6 +8,11 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from brief_crew.config import (
+    VALIDATOR_MAX_BRANCH_QUERIES,
+    VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS,
+)
+
 ToolStatus = Literal["ok", "empty", "rate_limited", "failed"]
 FloorCode = Literal[
     "FLOOR_NO_DEMAND",
@@ -108,7 +113,12 @@ def staleness_multiplier(median_source_age_months: float | None) -> float:
 
 
 class Evidence(ValidatorModel):
-    claim: str = Field(min_length=1)
+    # Bounded above because claim text is the single most expensive thing this
+    # pipeline generates: it is billed six times per run - twice as COMPLETION
+    # tokens, once of those at escalation tier - and read by no guardrail at
+    # all. `MAX_CLAIM_CHARS` bounds what the TOOL emits; this bounds what the
+    # MODEL emits, which is the half that actually costs time.
+    claim: str = Field(min_length=1, max_length=VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS)
     url: str
     publisher: str = Field(min_length=1)
     dated: str = Field(
@@ -279,8 +289,16 @@ class ScopedIdea(ValidatorModel):
     problem: str = Field(min_length=1)
     technology_claim: str = Field(min_length=1)
     market_query: str = Field(min_length=1)
-    community_queries: list[str] = Field(min_length=1)
-    tech_queries: list[str] = Field(min_length=1)
+    # Bounded above as well as below: each keyword branch now calls its tool
+    # once, so a second query would be written, shown at the gate, and then
+    # silently never run. The prompt says "exactly one" - but prompts are
+    # advisory and drift, and a schema bound does not.
+    community_queries: list[str] = Field(
+        min_length=1, max_length=VALIDATOR_MAX_BRANCH_QUERIES
+    )
+    tech_queries: list[str] = Field(
+        min_length=1, max_length=VALIDATOR_MAX_BRANCH_QUERIES
+    )
     assumptions: list[str] = Field(min_length=3, max_length=5)
     scoping_gaps: list[str] = Field(min_length=1)
     as_of: str
@@ -352,6 +370,27 @@ class SentimentFindings(ValidatorModel):
     @model_validator(mode="after")
     def validate_source_url_mirror(self) -> SentimentFindings:
         expected = [source.url for source in self.sources]
+        # Checked BEFORE the mirror comparison, because the mirror's own error
+        # used to hand back a repair instruction that could not be satisfied.
+        #
+        # Measured on a live run: the model returned 5 Threads from 3 stories
+        # with `source_urls` deduplicated to 3. The mirror failed and its
+        # message said `expected [<5 urls, two pairs identical>]`. The model did
+        # exactly as told - and `_validate_urls` then rejected the duplicates.
+        # Two attempts, both "wrong", the second one obedient. The branch was
+        # abandoned and a weight-0.30 dimension collapsed to "evidence does not
+        # reach this question".
+        #
+        # So the duplicate is named FIRST, with the rule rather than a list to
+        # copy. `sources` is the side that must change, and this says so.
+        duplicates = [url for url in set(expected) if expected.count(url) > 1]
+        if duplicates:
+            raise ValueError(
+                "SentimentFindings.sources must hold at most one Thread per URL - "
+                "several comments from one discussion are one thread of evidence, "
+                f"not several; {duplicates[0]} appears {expected.count(duplicates[0])} "
+                "times. Keep the single most representative comment per URL."
+            )
         if self.source_urls != expected:
             raise ValueError(
                 "SentimentFindings.source_urls must exactly match sources[].url in the same order; "

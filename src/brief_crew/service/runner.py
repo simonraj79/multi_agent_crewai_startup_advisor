@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
+import time
 from threading import Event
 from typing import Any, Mapping, Protocol
 
@@ -37,6 +39,34 @@ class RunExecution:
             from crewai.hooks import HookAborted
 
             raise HookAborted(f"cancelled before {step_name}")
+
+
+#: Which research node calls which tool, and the query template it reports.
+#: Keyed on the live Flow method names so the synthetic frames land on the same
+#: graph nodes the real ones do - a double that attributes frames elsewhere
+#: would let a node-attribution regression pass unnoticed.
+_BRANCH_TOOLS: dict[str, tuple[str, str]] = {
+    "research_market": ("research_market_landscape", "{idea} market landscape"),
+    "research_sentiment": ("analyze_community_sentiment", "{idea}"),
+    "research_feasibility": ("assess_technical_feasibility", "{idea}"),
+}
+
+
+def _synthetic_branch_delay_seconds() -> float:
+    """Seconds each synthetic branch spends 'working'. Default 0.
+
+    Read per call rather than at import so a test can set it with
+    `patch.dict(os.environ, ...)` without reloading the module. Bounded at 120
+    because this exists to reproduce a slow branch, not to hang a suite: an
+    unbounded value here would be a foot-gun in the one place whose whole
+    purpose is making a hang observable.
+    """
+
+    raw = os.getenv("SYNTHETIC_BRANCH_DELAY_SECONDS", "0").strip()
+    try:
+        return max(0.0, min(120.0, float(raw)))
+    except ValueError:
+        return 0.0
 
 
 class Runner(Protocol):
@@ -227,6 +257,13 @@ def _synthetic_verdict() -> Verdict:
     )
 
 
+# How many revisions this double honours per gate before treating a further one
+# as an approval. `ValidatorFlow` makes the same trade through
+# `claim_revise_turn` and `VALIDATOR_MAX_GATE_TURNS`, and for the same reason:
+# refusing the reply would park the run at a gate with nothing left to do.
+SYNTHETIC_MAX_REVISE_TURNS = 3
+
+
 class SyntheticValidatorRunner:
     """Synthetic validator that exercises two durable pause/resume rounds."""
 
@@ -275,7 +312,7 @@ class SyntheticValidatorRunner:
             ("research_feasibility", "Feasibility Analyst"),
             ("synthesize", "Synthesist"),
         ):
-            self._node(execution, node_id, label)
+            self._node(execution, node_id, label, idea)
         # Unattended is the mode where this frame is the ONLY way the score
         # reaches anyone: no verdict gate opens, so there is no `derived` block
         # to read it out of.
@@ -297,10 +334,60 @@ class SyntheticValidatorRunner:
         context: Any,
         feedback: str,
     ) -> Any:
+        """Answer a gate, and - unlike before - actually branch on the answer.
+
+        This used to read ``synthetic_stage`` alone and never look at
+        ``decision``, so a ``revise`` reply advanced exactly as an ``approve``
+        did. The revise loop was therefore never exercised end to end by
+        anything: not by a unit test, not by the E2E suite, and not by a local
+        synthetic run. The one E2E test that mentions it is honestly titled - it
+        proves the reply is *accepted*, not that anything loops back.
+
+        That mattered more than it looked. A console that draws a revision - a
+        boat rowing back, a lap counter, a per-node pass count - cannot be
+        verified against a double with no revisions in it, and the graph's own
+        revise edges (``route_scope -> revise_scope`` and
+        ``route_verdict -> revise_verdict``) were dead on the free path.
+
+        The loop is bounded the way the real flow bounds it. ``ValidatorFlow``
+        spends a turn per revise through ``claim_revise_turn`` and, at the cap,
+        treats a further revise as an approval rather than failing the run or
+        parking it at a gate with nothing left to do.
+        """
+
         payload = json.loads(feedback or "{}")
+        revising = str(payload.get("decision", "approve")).strip().lower() == "revise"
         stage = int(context.metadata.get("synthetic_stage", 1))
+        turns = int(context.metadata.get("synthetic_revise_turns", 0) or 0)
+        idea = str(execution.inputs.get("idea", "synthetic idea"))
+
         if stage == 1:
+            # The router runs on every reply - reading the decision is its whole
+            # job - and only then does the path fork.
             self._node(execution, "route_scope", "Scope router")
+            if revising and turns < SYNTHETIC_MAX_REVISE_TURNS:
+                self._node(execution, "revise_scope", "Revise scope")
+                return self._pending(
+                    execution,
+                    method_name="confirm_scope",
+                    message="Confirm the revised scope.",
+                    # The reopened gate shows the REVISED scope, not the
+                    # original one again. On the paid path `revise_scope` re-runs
+                    # the Scoper with the operator's note as `human_override` and
+                    # the gate reopens over its new output; carrying the
+                    # operator's own edits forward is the cheapest faithful
+                    # stand-in for that, and it is what an operator expects to
+                    # see - a gate that reopened showing the text they had just
+                    # corrected would read as the edit having been dropped.
+                    #
+                    # Echoing the raw reply here instead was tried and is wrong:
+                    # the scope gate is fully editable, so every key of this dict
+                    # reaches the console as an INPUT, and the operator would get
+                    # a text box full of reply JSON.
+                    output=self._revised_scope(idea, payload),
+                    stage=1,
+                    revise_turns=turns + 1,
+                )
             execution.checkpoint("research_market")
             for node_id, label in (
                 ("research_market", "Market Analyst"),
@@ -308,7 +395,7 @@ class SyntheticValidatorRunner:
                 ("research_feasibility", "Feasibility Analyst"),
                 ("synthesize", "Synthesist"),
             ):
-                self._node(execution, node_id, label)
+                self._node(execution, node_id, label, idea)
             self._verdict(execution)
             return self._pending(
                 execution,
@@ -321,13 +408,33 @@ class SyntheticValidatorRunner:
                     "scope_reply": payload,
                 },
                 stage=2,
+                # Turns are counted per gate, so the verdict gate starts fresh -
+                # the same way `claim_revise_turn` keys on "scope" or "verdict".
+                revise_turns=0,
             )
 
         self._node(execution, "route_verdict", "Verdict router")
+        if revising and turns < SYNTHETIC_MAX_REVISE_TURNS:
+            # `revise_verdict` re-runs synthesis and re-opens the same gate,
+            # which is the shape of the real flow's
+            # `revise_verdict -> review_verdict` edge.
+            self._node(execution, "revise_verdict", "Revise verdict")
+            self._verdict(execution)
+            return self._pending(
+                execution,
+                method_name="review_verdict",
+                message="Review the rescored verdict.",
+                output={
+                    "verdict": "NEEDS_WORK",
+                    "confidence": 0.62,
+                    "cheapest_next_test": "Interview five target users.",
+                },
+                stage=2,
+                revise_turns=turns + 1,
+            )
         execution.checkpoint("write_report")
         self._node(execution, "write_report", "Reporter")
         self._node(execution, "persist", "Validation brief")
-        idea = str(execution.inputs.get("idea", "synthetic idea"))
         return self._finish(execution, idea, payload)
 
     @staticmethod
@@ -387,19 +494,121 @@ class SyntheticValidatorRunner:
         )
 
     @staticmethod
-    def _node(execution: RunExecution, node_id: str, label: str) -> None:
+    def _node(
+        execution: RunExecution, node_id: str, label: str, idea: str = ""
+    ) -> None:
         execution.capture.emit(
             kind=FrameKind.NODE_STATE,
             event_type=UIEventType.NODE_START,
             node_id=node_id,
             message=f"{label} started",
         )
+        SyntheticValidatorRunner._tool_call(execution, node_id, idea)
         execution.capture.emit(
             kind=FrameKind.NODE_STATE,
             event_type=UIEventType.NODE_END,
             node_id=node_id,
             message=f"{label} completed",
         )
+
+    @staticmethod
+    def _tool_call(execution: RunExecution, node_id: str, idea: str) -> None:
+        """Emit the TOOL frame pair a research branch produces, or nothing.
+
+        This runner emitted NO tool, llm, token or metrics frames at all, and
+        the omission was not cosmetic. Every Playwright test, every `SYNTHETIC=1`
+        session and every hand-inspection of the console ran against a backend
+        that never produced a tool frame - so the parts of the UI that render
+        one were structurally unobservable on the free path, and a six-minute
+        branch that showed the operator nothing shipped behind a green suite.
+
+        That is the third time this exact shape of defect has landed here (see
+        CLAUDE.md closed items 20 and 33): a double that diverges from its
+        subject certifies nothing.
+
+        The details below mirror `events/serializer.py` field for field - the
+        `before` draft at :432 and the `after` draft at :438-441 with
+        `_TOOL_ENVELOPE_FIELDS` merged in. `query` is on BOTH stages on purpose:
+        it is the string the UI shows while a call is in flight, which is the
+        whole point of having it.
+        """
+
+        spec = _BRANCH_TOOLS.get(node_id)
+        if spec is None:
+            return
+        tool_name, query = spec[0], spec[1].format(idea=idea or "synthetic idea")
+        execution.capture.emit(
+            kind=FrameKind.TOOL,
+            event_type=UIEventType.TOOL_CALL,
+            node_id=node_id,
+            message=f"{tool_name} started",
+            details={
+                "stage": "before",
+                "tool": tool_name,
+                "query": query,
+                "args": {"query": query},
+            },
+        )
+        # A knob rather than a constant: this is the ONLY way to reproduce the
+        # slow-branch case at zero cost, and reproducing it is what stops the
+        # next liveness regression shipping the way this one did. Off by
+        # default so the E2E suite stays fast.
+        delay = _synthetic_branch_delay_seconds()
+        if delay > 0:
+            # Waiting on the cancel Event rather than sleeping means Cancel
+            # still works during a simulated slow branch - which is exactly the
+            # window an operator watching a stalled console reaches for it.
+            if execution.cancel_requested is not None:
+                execution.cancel_requested.wait(delay)
+            else:
+                time.sleep(delay)
+        execution.capture.emit(
+            kind=FrameKind.TOOL,
+            event_type=UIEventType.TOOL_CALL,
+            node_id=node_id,
+            message=f"{tool_name} completed",
+            details={
+                "stage": "after",
+                "tool": tool_name,
+                "query": query,
+                "from_cache": False,
+                "failure": None,
+                "tool_status": "ok",
+                "result_count": 3,
+                "notes": f"Synthetic evidence for {query!r}; no network call was made.",
+                "retrieved_at": datetime.now(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z"),
+            },
+        )
+
+    @staticmethod
+    def _revised_scope(idea: str, payload: Any) -> dict[str, Any]:
+        """The scope as it stands after a revision.
+
+        Starts from the same defaults the first gate offered and lays the
+        operator's edits over them, so a field they changed comes back changed
+        and one they left alone comes back untouched. `_feedback` has already
+        pruned the edit to the keys the gate declared editable, so nothing
+        unexpected can arrive here.
+        """
+        scope: dict[str, Any] = {
+            "startup_idea": idea,
+            "category": "Synthetic market",
+            "target_user": "Synthetic operator",
+            "market_query": f"{idea} market",
+        }
+        edited = payload.get("scope") if isinstance(payload, dict) else None
+        if isinstance(edited, dict):
+            for key, value in edited.items():
+                if key in scope and isinstance(value, str):
+                    scope[key] = value
+        note = payload.get("feedback") if isinstance(payload, dict) else None
+        if isinstance(note, str) and note.strip():
+            # Round-tripped so the operator can see what the revision was asked
+            # to address, in the one field that is a free-text note anyway.
+            scope["revision_note"] = note.strip()
+        return scope
 
     @staticmethod
     def _pending(
@@ -409,6 +618,7 @@ class SyntheticValidatorRunner:
         message: str,
         output: dict[str, Any],
         stage: int,
+        revise_turns: int = 0,
     ) -> Any:
         from crewai.flow.async_feedback import HumanFeedbackPending, PendingFeedbackContext
 
@@ -420,7 +630,10 @@ class SyntheticValidatorRunner:
                 method_output=output,
                 message=message,
                 emit=None,
-                metadata={"synthetic_stage": stage},
+                metadata={
+                    "synthetic_stage": stage,
+                    "synthetic_revise_turns": revise_turns,
+                },
                 requested_at=datetime.now(timezone.utc),
             ),
             callback_info={"synthetic": True},

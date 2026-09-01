@@ -242,6 +242,36 @@ def client_rate_limit_key(request: Any) -> str:
     return (host or "unknown")[:RUN_RATE_LIMIT_KEY_MAX_CHARS]
 
 
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    """RFC 9110 §13.1.2 weak comparison of an ``If-None-Match`` list.
+
+    Three things here are not obvious and each one silently turns every 304 back
+    into a 200 if it is skipped:
+
+    * The header is a **list**. A client that has seen two versions of a
+      resource may send both, comma-separated.
+    * Comparison is **weak** even when the tags are strong, so ``W/"abc"`` from
+      a proxy that weakened the tag in transit must still match ``"abc"``. This
+      is the opposite of ``If-Match``, which is strong.
+    * ``*`` matches any existing representation.
+
+    Anything unparseable simply fails to match, which degrades to the previous
+    behaviour - a normal 200 with the full body - rather than to an error. A
+    malformed cache header must never fail a request.
+    """
+
+    candidate = if_none_match.strip()
+    if candidate == "*":
+        return True
+    for raw in candidate.split(","):
+        tag = raw.strip()
+        if tag.startswith(("W/", "w/")):
+            tag = tag[2:].strip()
+        if tag and tag == etag:
+            return True
+    return False
+
+
 def _retry_after_header(seconds: float) -> dict[str, str]:
     """Retry-After is whole seconds, and never 0 - that reads as "now"."""
     return {"Retry-After": str(max(1, int(seconds) + (1 if seconds % 1 else 0)))}
@@ -341,7 +371,7 @@ def create_app(
     _assert_openrouter_startup_safety()
 
     try:
-        from fastapi import FastAPI, HTTPException, Query, Request, Response
+        from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
         from fastapi import WebSocket, WebSocketDisconnect
         from fastapi.middleware.cors import CORSMiddleware
     except ModuleNotFoundError as exc:
@@ -504,13 +534,41 @@ def create_app(
     @app.get(
         "/api/workflows/{workflow_id}/graph",
         response_model=GraphDescriptor,
-        responses={404: {"model": ErrorResponse}},
+        responses={304: {}, 404: {"model": ErrorResponse}},
     )
-    async def get_graph(workflow_id: str, response: Response) -> GraphDescriptor:
+    async def get_graph(
+        workflow_id: str,
+        response: Response,
+        if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+    ) -> GraphDescriptor | Response:
+        """The topology, with a conditional GET that is actually conditional.
+
+        The `ETag` was written and never read: a request carrying back the exact
+        tag the server had just issued got a fresh 200 and the whole descriptor
+        again. That is decoration, not caching, and it is the sort of thing that
+        looks implemented in a code review.
+
+        The graph is a genuinely good candidate for it. It is fixed for the life
+        of a deploy, every page load fetches it, and the client already stores
+        `version`, so a reconnecting UI on a slow connection re-downloads 14
+        nodes and 16 edges it demonstrably already has.
+
+        `version` is a content hash, so the tag is strong. RFC 9110 says
+        `If-None-Match` uses **weak** comparison, which means a `W/` prefix on
+        an otherwise identical tag must still match - a proxy is entitled to
+        weaken a tag in transit, and refusing the match then would silently turn
+        every 304 back into a 200 with nothing in the logs to say why.
+        """
+
         graph = GRAPHS.get(workflow_id)
         if graph is None:
             raise HTTPException(status_code=404, detail="workflow not found")
-        response.headers["ETag"] = f'"{graph.version}"'
+        etag = f'"{graph.version}"'
+        if if_none_match and _etag_matches(if_none_match, etag):
+            # 304 carries no body, and per RFC 9110 it must repeat the ETag so a
+            # cache can refresh its own freshness record from the response.
+            return Response(status_code=304, headers={"ETag": etag})
+        response.headers["ETag"] = etag
         return graph
 
     @app.post(

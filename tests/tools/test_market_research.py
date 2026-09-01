@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from firecrawl.v2.types import Document, DocumentMetadata, SearchData, SearchResultWeb
 
+from brief_crew.config import VALIDATOR_MARKET_SEARCH_LIMIT
 from brief_crew.schemas import Evidence, staleness_multiplier
 from brief_crew.tools.market_research import MarketResearchTool
 from brief_crew.validator_guardrails import median_market_source_age_months
@@ -58,7 +59,12 @@ class MarketResearchToolTests(unittest.TestCase):
         self.assertIn("must not be reported as freshly published", envelope["notes"])
 
         _, kwargs = firecrawl.return_value.search.call_args
-        self.assertEqual(kwargs["limit"], 5)
+        # Asserted against the constant, not a literal. `limit` is not "how many
+        # rows" - `scrape_options` makes `search` scrape every result it
+        # returns, so this is the page-fetch budget for the call, at 10-30s
+        # each. A literal here would drift from config.py the moment the budget
+        # is tuned, and the test would then pin the old cost.
+        self.assertEqual(kwargs["limit"], VALIDATOR_MARKET_SEARCH_LIMIT)
         self.assertEqual(kwargs["scrape_options"].formats, ["markdown"])
 
     @patch.dict(os.environ, {"FIRECRAWL_API_KEY": "test-key"})

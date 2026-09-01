@@ -12,6 +12,8 @@ import requests
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 
+from brief_crew.config import VALIDATOR_SENTIMENT_STORY_LIMIT
+
 TOOL_NAME = "analyze_community_sentiment"
 HN_SEARCH_URL = "https://hn.algolia.com/api/v1/search"
 HN_ITEM_URL = "https://hn.algolia.com/api/v1/items/{item_id}"
@@ -58,11 +60,56 @@ _QUERY_STOPWORDS = {
 }
 
 
+def _representative_comment(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """The one comment that stands for its story. Deterministic, no judgement.
+
+    Ranked on observations the tool ALREADY reports as evidence, never on a
+    label it invents - which is what keeps this clear of rubric finding F4. The
+    analyst still reads the quote and still decides the classification.
+
+    1. On-topic beats off-topic (`query_terms_present`). An off-topic
+       representative would misrepresent a story that does discuss the topic,
+       and that error pushes toward a FALSE REJECT - the expensive direction.
+    2. More signal terms beats fewer: more for the analyst to weigh.
+    3. Longer quote breaks a tie: more context, still bounded by
+       MAX_QUOTE_CHARS.
+    4. Document order settles the rest, so two identical calls agree. In
+       practice that is the story's own text when it has one.
+
+    Known cost, stated rather than hidden: a story with one HAS_PROBLEM comment
+    and one PAYS comment now yields whichever rung 2 prefers, so D=5's
+    `recent_acted >= 2` needs two SEPARATE stories. That is a real tightening,
+    and it is the correct direction - two people paying in one thread is one
+    conversation's worth of evidence.
+    """
+
+    return max(
+        enumerate(candidates),
+        key=lambda pair: (
+            bool(pair[1].get("query_terms_present")),
+            len(pair[1].get("signal_terms_matched") or ()),
+            len(str(pair[1].get("quote") or "")),
+            -pair[0],
+        ),
+    )[1]
+
+
 class HackerNewsSentimentInput(BaseModel):
     """Input schema for Hacker News sentiment research."""
 
     query: str = Field(..., min_length=1, description="The exact HN search query.")
-    story_limit: int = Field(default=3, ge=1, le=5, description="Stories to inspect.")
+    # DISTINCT THREADS == story_limit: every row from one story shares one URL
+    # and the task keeps at most one Thread per URL. The REJECT floor needs
+    # `>= RUBRIC_FLOOR_MIN_USABLE_THREADS` (3), so the old default of 3 sat
+    # exactly ON the floor - one OFF_TOPIC classification fired a final
+    # "no demand" REJECT that was arithmetic, not evidence. The margin used to
+    # come from the broadening retries; with one call it comes from here.
+    story_limit: int = Field(
+        default=VALIDATOR_SENTIMENT_STORY_LIMIT,
+        ge=1,
+        le=VALIDATOR_SENTIMENT_STORY_LIMIT,
+        description="Stories to inspect; each becomes at most one usable thread.",
+    )
     comments_per_story: int = Field(
         default=5,
         ge=1,
@@ -293,7 +340,7 @@ class HackerNewsSentimentTool(BaseTool):
     def _run(
         self,
         query: str,
-        story_limit: int = 3,
+        story_limit: int = VALIDATOR_SENTIMENT_STORY_LIMIT,
         comments_per_story: int = 5,
     ) -> str:
         actual_query = query.strip()
@@ -330,13 +377,33 @@ class HackerNewsSentimentTool(BaseTool):
                 points = _story_metric(hit, thread, key="points")
                 num_comments = _story_metric(hit, thread, key="num_comments")
                 unreported_metric_stories += int(points is None or num_comments is None)
+                # ONE row per story, chosen here rather than asked for in prose.
+                #
+                # Every row cited to a story carries the SAME HN item URL, and
+                # `SentimentFindings` requires `source_urls` to mirror
+                # `sources[].url` positionally AND to be duplicate-free - which
+                # together mean at most one Thread per URL. That collapse used
+                # to be one sentence in a 21-line prompt paragraph, and on a
+                # live run it cost the whole branch: the model emitted 5 rows
+                # from 3 stories, and the two ways of writing that down each
+                # failed a different validator.
+                #
+                # It is also the right SEMANTICS, not merely the enforceable
+                # one. Five comments in one thread are one conversation, one
+                # headline, one day, one self-selected audience - not five
+                # independent observations. The Demand ladder counts Thread
+                # objects, so letting them through would let a single popular
+                # story reach D=5, the heaviest dimension in the rubric.
+                # `VALIDATOR_SENTIMENT_STORY_LIMIT` was calibrated against the
+                # identity "distinct threads == story_limit"; this makes that
+                # identity true by construction instead of by request.
+                candidates: list[dict[str, Any]] = []
                 for comment in _walk_comments(thread)[:comments_per_story]:
                     quote = _html_to_text(comment.get("text"))
                     if not quote:
                         continue
                     date, used_retrieval_date = _comment_date(comment, retrieved_at)
-                    retrieval_dated_count += int(used_retrieval_date)
-                    results.append(
+                    candidates.append(
                         {
                             "signal_terms_matched": _signal_terms_matched(quote),
                             "query_terms_present": _query_terms_present(
@@ -350,6 +417,19 @@ class HackerNewsSentimentTool(BaseTool):
                             "num_comments": num_comments,
                         }
                     )
+                if not candidates:
+                    continue
+                chosen = _representative_comment(candidates)
+                # Counted on the SURVIVING row only: the flag describes the
+                # evidence that is actually reported, and counting discarded
+                # candidates would overstate how much of the branch is
+                # retrieval-dated.
+                retrieval_dated_count += int(chosen["date_is_retrieval_time"])
+                # How many were looked at, so the sampling is auditable. Nothing
+                # scores on it; it exists so a reader can see "1 of 5" rather
+                # than assume the thread held exactly one comment.
+                chosen["comments_scanned"] = len(candidates)
+                results.append(chosen)
         except _RateLimitedError:
             return _envelope(
                 status="rate_limited",

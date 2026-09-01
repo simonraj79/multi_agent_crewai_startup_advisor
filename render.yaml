@@ -293,8 +293,28 @@ services:
       # `fromService ... property: host` yields a bare hostname, which resolves
       # as a relative path and breaks the /ws connection - hence sync: false,
       # filled in once the API's real URL is known.
+      #
+      # ⚠️ SET EXPLICITLY 2026-09-01, after this being unset broke production.
+      #
+      # `sync: false` meant "fill this in by hand once the API's URL is known",
+      # and on the live studio service it was never filled in. Vite INLINES
+      # this at build time, so an empty value ships a bundle whose `baseUrl` is
+      # '' - every API call then resolves against the studio's own origin, hits
+      # the SPA history fallback, and comes back 200 text/html. Measured on the
+      # deployed site: `GET https://agentic-crew-ai-studio.onrender.com/api/
+      # workflows` -> 200 HTML, and the console fell back to its scripted demo.
+      #
+      # The API's URL is knowable when this file is written - AUTH_BASE_URL
+      # above is hardcoded for exactly the same reason - so hardcoding removes
+      # a manual step that had already been missed once. If the API is ever
+      # renamed, this and AUTH_BASE_URL move together.
+      #
+      # It must be a full origin WITH a scheme: it is used both as a fetch
+      # prefix and as the base of `new URL(...)` for the WebSocket, so
+      # `fromService ... property: host` (a bare hostname) would resolve as a
+      # relative path and break /ws.
       - key: VITE_API_URL
-        sync: false
+        value: "https://agentic-crew-ai-api.onrender.com"
     # No `routes:` block any more. SPA fallback was a static-site rewrite rule;
     # it is now `app.get("*", ...)` in frontend/server/index.ts, which has to
     # own it anyway so that /api/auth/* is matched BEFORE the fallback.

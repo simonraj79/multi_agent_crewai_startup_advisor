@@ -1,5 +1,18 @@
 # Flow Builder — Definitive Implementation Spec
 
+> **Superseded in part by the gauntlet plan set, 2026-09-02.** This document
+> is still the contract for everything it rules on, but four of its rulings
+> have expired and are overturned **by number** in
+> [`.agent/plans/00-architecture.md`](../.agent/plans/00-architecture.md) D2:
+> R4 with cut-list items 1–2 (a run mode inside the builder now exists),
+> cut-list item 14 (light mode is required), cut-list item 9 (narrowed: the
+> generated-code preview is read-only), and the rule that `BuilderView`
+> receives no `user` prop. Everything else — R1–R3, R5–R13, R15, cut-list
+> items 3–8, 10–13, 15–17 — stands unchanged. Where this file and a plan file
+> disagree, the plan file's D2 list is the authority on which is current;
+> report the disagreement against a ruling number rather than improvising
+> around either. Status per feature is tracked in [`PLANS.md`](../PLANS.md).
+
 **Target:** `D:/MultiAgentSystem/frontend`
 **Status:** contract. Every decision below is closed. Do not re-litigate; if reality contradicts this document, report it, do not improvise.
 

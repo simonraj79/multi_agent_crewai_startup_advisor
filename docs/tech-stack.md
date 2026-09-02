@@ -5,8 +5,15 @@ says so." Every figure below was produced by running a command on this machine,
 and every command is printed next to its answer — because the command is the
 contract, not the figure.
 
-**Verified 2026-08-31 by a five-agent read-only audit at HEAD `c63aca0`**
-(branch `feat/crew-fidelity-ux`, clean tree), on Windows 11 / Python 3.13.5.
+**Re-measured 2026-09-02 at `main` = `b4ef654`** (the merge of PR #6,
+`6d2743c`, which brought in the flow builder), clean tree, on Windows 11 /
+Python 3.13.5. Every version row in §2, §3 and §4 was re-measured this pass and
+every one still holds — no lock drift, no package moved. §6's count did not
+hold, and §8 has closed three findings, withdrawn a fourth and gained a new one.
+
+The previous stamp was **2026-08-31, a five-agent read-only audit at HEAD
+`c63aca0`** (branch `feat/crew-fidelity-ux`). `git rev-list c63aca0..b4ef654
+--count` answers **12** — the flow-builder branch and its merge included.
 
 > **Read this before quoting anything here.** A version number in a document is
 > a claim about a moment. Three of the numbers in this repository's docs were
@@ -35,7 +42,19 @@ Push-Location frontend; npm ls --depth=0; Pop-Location
 
 # Environment knobs - MUST be a multiline scan, see §6
 .\.venv\Scripts\python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);print(sorted({n for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py') for n in pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))}))"
+
+# Playwright. NEEDS ITS OWN BACKEND, and needs the delay knob - see §7, quirk 6
+$env:SYNTHETIC = "1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS = "5"; $env:PORT = "8099"
+.\.venv\Scripts\serve.exe
+Push-Location frontend; npx playwright test; Pop-Location   # second shell
 ```
+
+**This file carries no test count on purpose.** The suites move faster than any
+prose about them, and CLAUDE.md's *Verified Baseline* owns those figures - copy
+one here and the two drift, which is the mistake §6 has made with a different
+number over six published figures, five of them wrong (the tally is §6's, and
+is stated once, there). Both suites and both build steps were run on 2026-09-02 at
+`b4ef654` and all four were green; the counts they printed belong in CLAUDE.md.
 
 ---
 
@@ -56,16 +75,20 @@ failure waiting for the next service to be created.
 | CI | `3.13` via `actions/setup-python@v5` | `.github/workflows/ci.yml:52-54` |
 | Render API | `PYTHON_VERSION: "3.13"` | `render.yaml:80-81` |
 
-**Node is pinned on one surface and unpinned on the one that ships.** See §8,
-finding 2.
+**Node is now pinned on two surfaces.** §8 finding 2 - the build that ships
+pinning nothing - was fixed on 2026-08-31 and is verified fixed at `b4ef654`.
 
 | Surface | Value | File |
 | --- | --- | --- |
-| Local | **v24.19.0** / npm 11.17.0 | `node --version` |
+| Local | **v24.19.0** / npm 11.17.0 | `node --version`, `npm --version` |
 | CI | `24` via `actions/setup-node@v4` | `.github/workflows/ci.yml:96-98` |
-| Render static site | **none declared** | `render.yaml` (no `NODE_VERSION`) |
-| `engines` field | **absent** | `frontend/package.json` |
-| `.nvmrc` / `.node-version` | **do not exist** | — |
+| Render static site | **`NODE_VERSION: "24"`** | `render.yaml:286-287` |
+| `engines` field | **still absent** | `frontend/package.json` |
+| `.nvmrc` / `.node-version` | **still do not exist** | — |
+
+The last two rows are the residual: the pin lives in a Render env var and in a
+CI workflow, so a contributor's local Node is governed by nothing, and the two
+pins must be kept in step by hand. `render.yaml:277-285` says so at the site.
 
 ---
 
@@ -90,8 +113,8 @@ three agree on every row** — there is no lock drift.
 | `cryptography` (via the `crypto` extra) | transitive | 50.0.1 |
 | `psycopg[binary]` (extra: `service`) | `>=3.2.0` | 3.3.4 |
 | `starlette` | (transitive, via fastapi) | 1.6.0 |
-| `pydantic` | ⚠️ **not declared** — see §8 finding 1 | 2.12.5 |
-| `PyYAML` | ⚠️ **not declared** — see §8 finding 1 | 6.0.3 |
+| `pydantic` | `>=2.12,<3` (declared 2026-08-31) | 2.12.5 |
+| `pyyaml` | `>=6` (declared 2026-08-31) | 6.0.3 |
 | `openai` | (transitive; CrewAI's OpenAI-compatible HTTP client) | 2.54.0 |
 | `litellm` | **must never be installed** — see §5 | *absent* |
 | `pytest` | configured but **not installed**, not even locked | *absent* |
@@ -102,10 +125,32 @@ through the SQLAlchemy dialect string `postgresql+psycopg://`
 (`service/app.py`), which resolves the driver lazily. That is correct usage, not
 a dead dependency; a naive import-grep will misclassify it.
 
-**Console scripts** (`pyproject.toml:37-44`), all five present in
+**Console scripts** (`pyproject.toml:55-62`), all five present in
 `.venv/Scripts/`: `run_crew`, `kickoff`, `plot`, `validate`, `serve`.
 `crewai.exe` is also present — it belongs to the `crewai-cli` distribution, not
 to this project.
+
+### The flow builder added no backend package
+
+`src/brief_crew/builder/` is nine modules and 4,964 lines (`bounds`, `budget`,
+`compiler`, `descriptor`, `document`, `gates`, `runtime`, `store`, plus
+`__init__`), and `service/builder_api.py`, `service/builder_runner.py` and
+`service/builder_rehydrate.py` are 1,208 more. Between them they import
+**crewai, pydantic, sqlalchemy and yaml, and nothing else third-party** - four
+rows this table already carried. `pyproject.toml` and `uv.lock` are byte-identical
+across the merge.
+
+```bash
+git diff --stat 4d70cbf..b4ef654 -- pyproject.toml uv.lock   # empty
+grep -rhE '^(from|import) ' src/brief_crew/builder/*.py src/brief_crew/service/builder_*.py \
+  | grep -vE 'from \.|from brief_crew|from __future__' | sort -u
+```
+
+That is worth stating rather than assuming: a graph compiler that emits
+`crewai.flow/v1` declarations is exactly the shape of feature that arrives with
+a YAML library, a JSON-schema validator and a template engine attached. It did
+not. `wc -l` and the import scan above are how to check it again, and both are
+cheap.
 
 ---
 
@@ -139,12 +184,57 @@ no unmet peers, no invalid entries and no duplicate `vue` or `vite` copies.
 | `@vue/tsconfig` | `^0.9.1` | 0.9.1 |
 | `@types/node` | `^24.13.3` | 24.13.3 |
 
-**Exactly five runtime dependencies, and that is a decision.** A proposal to add
-`marked` + `dompurify` was declined in favour of the ~240-line renderer in
-`src/utils/markdown.ts`, because the input is Reporter-agent output — untrusted
-by construction — and escape-before-parse is easier to prove correct than
-sanitise-after-parse. Adding a sixth runtime dependency should clear the same
-bar.
+**Eleven runtime dependencies, and six of them are the auth server's.**
+`node -e "console.log(Object.keys(require('./package.json').dependencies))"`,
+run 2026-09-02, answers eleven: `vue`, the three `@vue-flow/*` packages and
+`lucide-vue-next` are the SPA's five; `better-auth`, `hono`, `@hono/node-server`,
+`pg`, `better-sqlite3` and `dotenv` are the six the Node auth service brought
+with it (§13 of CLAUDE.md). This paragraph said **five** until 2026-09-02, and
+it was already wrong when it was written on 2026-08-31 - the auth packages are
+in the table directly above it. The prose was counting the decision the next
+paragraph describes; the field it named had moved.
+
+**The decision itself stands.** A proposal to add `marked` + `dompurify` was
+declined in favour of the ~240-line renderer in `src/utils/markdown.ts`, because
+the input is Reporter-agent output — untrusted by construction — and
+escape-before-parse is easier to prove correct than sanitise-after-parse. Adding
+a *twelfth* runtime dependency should clear the same bar.
+
+### The flow builder added no npm package, and no design token
+
+Two measurements, both cheap to repeat, both taken 2026-09-02:
+
+```bash
+git diff --stat 4d70cbf..b4ef654 -- frontend/package.json frontend/package-lock.json
+git diff --stat 4d70cbf..b4ef654 -- frontend/src/assets/styles/tokens.css
+```
+
+Both are **empty**. The builder ships 33 `.vue` components under
+`src/components/builder/`, seven `useBuilder*.ts` composables, `types/builder.ts`
+(638 lines), `services/builderApi.ts` (350), six new `src/data/` modules
+(`builderDefaults`, `builderRunHandoff`, `builderTemplates`,
+`builderVocabulary`, `nodeKinds`, and `templates/ideaValidator`) and two new
+global stylesheets - and it added nothing to `package.json` and nothing to the
+64-token palette in `assets/styles/tokens.css`. The component figure is
+`git diff --name-only 4d70cbf..b4ef654 -- frontend/src/components/builder`,
+which reports 34 files: 33 `.vue` and one `.ts`.
+
+Two things carried that. The canvas is `@vue-flow/core`, which the run console
+already used, so the builder is a second tenancy of a dependency rather than a
+second graph library. And the `#/build` route is a hand-rolled hash router
+(`composables/useWorkspaceRoute.ts`, 108 lines) rather than `vue-router` -
+`grep -c vue-router frontend/package.json` answers **0**.
+
+**One honest correction to "no new custom properties".** `assets/styles/`
+gained two new global stylesheets, `builder.css` (880 lines) and `node-card.css`
+(281), and between them they declare one custom property that did not exist
+anywhere before: `--node-shadow-color`. It is not a design token - it is a
+second per-card channel of exactly the kind `--node-gradient` already was, set
+by the kind-tenancy block and read by the hover rule beside it, and
+`builder.css:20-27` says so itself under the heading *ZERO NEW CUSTOM
+PROPERTIES*. Every colour in both files is a `tokens.css` value or a
+`color-mix(in srgb, var(--token) N%, transparent)` wash. So: no new tokens, one
+new local channel, and the file that introduced it flagged it first.
 
 **Always `npx vue-tsc -b --force` before trusting a green build.** `-b` is
 incremental and type-checks `tests/` as well as `src/`; a warm `.tsbuildinfo`
@@ -213,40 +303,60 @@ or `.parse_raw()` survives anywhere in `src/`. One helper is *named*
 
 ---
 
-## 6. Environment knobs — there are thirty-six
+## 6. Environment knobs — there are thirty-nine
 
-Regenerated with the multiline scan in §1 on **2026-09-01**. **Thirty-two** are
-read in `config.py` and **four** in `service/app.py` (`DATABASE_URL`, `HOST`,
-`PORT`, `SYNTHETIC`).
+Regenerated with the multiline scan in §1 on **2026-09-02**, at `main` =
+`b4ef654`. **Thirty-five** are read in `config.py` and **four** in
+`service/app.py` (`DATABASE_URL`, `HOST`, `PORT`, `SYNTHETIC`). That split is
+itself scan output, not arithmetic on the list below:
 
-> The previous figure here was **twenty**, and it was short by sixteen. Four of
-> those are the authentication knobs added on 2026-09-01; the other **twelve
-> were already present and already missing from this list** — every
-> `VALIDATOR_FIRECRAWL_*`, every `VALIDATOR_BRANCH_*`, the two
-> `VALIDATOR_MAX_*_CHARS`, `VALIDATOR_MARKET_SEARCH_LIMIT`,
-> `VALIDATOR_SENTIMENT_STORY_LIMIT` and `VALIDATOR_MAX_BRANCH_QUERIES`. This
-> block is pasted scan output, not prose. Regenerate before trusting it.
+```powershell
+.\.venv\Scripts\python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);[print(f,len(set(pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))))) for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py')]"
+```
+
+The block below is pasted scan output, not prose. Regenerate before trusting it.
 
 ```text
 AUTH_BASE_URL                         AUTH_JWKS_CACHE_SECONDS
-AUTH_JWT_LEEWAY_SECONDS               CORS_ALLOW_ORIGINS
-DATABASE_URL                          EXPOSE_API_DOCS
-HOST                                  MAX_QUEUED_RUNS
-MAX_RUN_COST_USD                      PINECONE_INDEX_NAME
-PORT                                  RUN_CONCURRENCY
-RUN_RATE_LIMIT_MAX_RUNS               RUN_RATE_LIMIT_TRUST_FORWARDED_FOR
-RUN_RATE_LIMIT_WINDOW_SECONDS         RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS
-SYNTHETIC                             VALIDATOR_ALLOW_AUTO_GATES
-VALIDATOR_BRANCH_MAX_ITER             VALIDATOR_BRANCH_MAX_TOKENS
-VALIDATOR_BRANCH_TEMPERATURE          VALIDATOR_FEASIBILITY_CACHE_ENABLED
-VALIDATOR_FIRECRAWL_MAX_AGE_MS        VALIDATOR_FIRECRAWL_MAX_RETRIES
-VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS
-VALIDATOR_MARKET_SEARCH_LIMIT         VALIDATOR_MAX_BRANCH_QUERIES
-VALIDATOR_MAX_CLAIM_CHARS             VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS
-VALIDATOR_MAX_GATE_TURNS              VALIDATOR_ORPHAN_RUN_GRACE_SECONDS
-VALIDATOR_ORPHAN_RUN_RECOVERY         VALIDATOR_REQUIRE_AUTH
-VALIDATOR_SENTIMENT_STORY_LIMIT       VALIDATOR_SEQUENTIAL_BRANCHES
+AUTH_JWKS_TIMEOUT_SECONDS             AUTH_JWT_LEEWAY_SECONDS
+BUILDER_ALLOW_GATELESS_GRAPHS         BUILDER_REHYDRATE_PUBLISHED
+CORS_ALLOW_ORIGINS                    DATABASE_URL
+EXPOSE_API_DOCS                       HOST
+MAX_QUEUED_RUNS                       MAX_RUN_COST_USD
+PINECONE_INDEX_NAME                   PORT
+RUN_CONCURRENCY                       RUN_RATE_LIMIT_MAX_RUNS
+RUN_RATE_LIMIT_TRUST_FORWARDED_FOR    RUN_RATE_LIMIT_WINDOW_SECONDS
+RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS     SYNTHETIC
+VALIDATOR_ALLOW_AUTO_GATES            VALIDATOR_BRANCH_MAX_ITER
+VALIDATOR_BRANCH_MAX_TOKENS           VALIDATOR_BRANCH_TEMPERATURE
+VALIDATOR_FEASIBILITY_CACHE_ENABLED   VALIDATOR_FIRECRAWL_MAX_AGE_MS
+VALIDATOR_FIRECRAWL_MAX_RETRIES       VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS
+VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS   VALIDATOR_MARKET_SEARCH_LIMIT
+VALIDATOR_MAX_BRANCH_QUERIES          VALIDATOR_MAX_CLAIM_CHARS
+VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS    VALIDATOR_MAX_GATE_TURNS
+VALIDATOR_ORPHAN_RUN_GRACE_SECONDS    VALIDATOR_ORPHAN_RUN_RECOVERY
+VALIDATOR_REQUIRE_AUTH                VALIDATOR_SENTIMENT_STORY_LIMIT
+VALIDATOR_SEQUENTIAL_BRANCHES
 ```
+
+### The three that are new since the thirty-six
+
+| Knob | Default | Landed | What it decides |
+| --- | --- | --- | --- |
+| `AUTH_JWKS_TIMEOUT_SECONDS` | `45` | `5087f3c` | How long the API waits for Better Auth's JWKS document. It was hardcoded at 10s, and `AUTH_BASE_URL` is the studio's own Node service on Render's **free** plan, so it sleeps - timed at 2.12s warm and **40s cold**. (That timing is the change author's, recorded at `config.py:2280`; this pass did not repeat it.) A JWKS fetch that times out on a process that has never fetched any leaves it with no keys, so every bearer token is rejected and a correctly signed-in operator is told to sign in. The failure reads as a credential problem and is a cold start. |
+| `BUILDER_ALLOW_GATELESS_GRAPHS` | `False` | `6d2743c` | Whether a builder graph with **no human gate** may be launched anonymously, read exactly the way `service/app.py` already reads `VALIDATOR_ALLOW_AUTO_GATES`. Off by default for the same cost reason: with it off, an anonymous author must keep a gate reachable before the first billable node, so an unanswered run stops after at most one model call. Unlike `VALIDATOR_REQUIRE_AUTH` it is a flat `False` rather than a value derived from `AUTH_BASE_URL`, because it binds only the anonymous case - wherever auth is on, `user` is always truthy and this flag is irrelevant. |
+| `BUILDER_REHYDRATE_PUBLISHED` | `True` | `6d2743c` | Whether a booting process re-registers every **published** builder graph from the document store. A publish writes to six process-local registration sites (the five `register_builder_workflow` touches, plus the app's own runtime map in `builder_api._register_runtime` — the counts differ by scope, and each site names which it means); the documents are not process-local, and both Render services carry `autoDeploy: yes` - so before this existed, every push to `main` silently unpublished every user graph while the row and the canvas both still said `published`. Same shape as the orphaned runs of CLAUDE.md item 32: durable state and process state disagreeing across a restart, with only the process state consulted. The switch exists for the one case where re-registering is the wrong move - a graph that compiles and then wedges or bankrupts the deployment - as a deploy-time flip rather than a code edit or a `DELETE` against somebody's document. |
+
+`MAX_RUN_COST_USD` is **not** among them, and saying so is not pedantry - it is
+the newest way to get this number wrong. The handoff into this pass named it as
+one of the three new knobs. It is not: it landed in `1b79197`, this list already
+carried it on 2026-09-01, and `git log -S MAX_RUN_COST_USD` returns `6d2743c`
+only because the builder commit *changed an existing reference* to it.
+**Reasoning about what a commit added is not regenerating the list.** The real
+third entry, `AUTH_JWKS_TIMEOUT_SECONDS`, is not builder work at all - it landed
+in `5087f3c`, which means this count was already wrong at **thirty-seven**
+before the builder was merged: `git rev-list 5087f3c..b4ef654 --count` answers
+**5**, and nobody looked at any of them.
 
 The Node auth service reads five of its own, none of which appear above because
 they are read in TypeScript rather than in `config.py`: `BETTER_AUTH_URL`,
@@ -255,28 +365,74 @@ they are read in TypeScript rather than in `config.py`: `BETTER_AUTH_URL`,
 `HOST` / `NODE_ENV` shared with the platform. See
 [`google-oauth.md`](google-oauth.md).
 
-> **⚠️ This count has now been wrong four times, and never for the same
-> reason.** It was published as *eleven* when a line-anchored
-> `grep -oE 'os\.getenv\("[A-Z_]+"'` missed four calls the formatter had
-> wrapped onto the next line. Then as *fifteen*, then as *eighteen*, each time
-> because knobs landed in a commit that did not touch the docs —
-> `MAX_RUN_COST_USD` (default `10.0`) and `VALIDATOR_MAX_GATE_TURNS`
-> (default `5`) both arrived in `1b79197` and went undocumented until this
-> audit. **Always regenerate with the multiline scan; never with a
-> line-anchored grep, and never by reading this list.**
+### The scan reads exactly two files, and that is now the hole
+
+`config.py` and `service/app.py`. **Five more environment variables are read
+elsewhere in `src/`, and not one of them is in the thirty-nine.** Measured
+2026-09-02 by widening the same pattern over `src/**/*.py`:
+
+```text
+src/brief_crew/embeddings.py                OPENROUTER_API_KEY
+src/brief_crew/service/runner.py            SYNTHETIC_BRANCH_DELAY_SECONDS
+src/brief_crew/tools/github_feasibility.py  GITHUB_TOKEN
+src/brief_crew/tools/market_research.py     FIRECRAWL_API_KEY
+src/brief_crew/validator_cache.py           VALIDATOR_CACHE_NAMESPACE
+```
+
+Three are credentials and belong in `.env`, not in a knob list. Two are not.
+`VALIDATOR_CACHE_NAMESPACE` and `SYNTHETIC_BRANCH_DELAY_SECONDS` are behavioural
+switches this section has never listed, and the second is the sharper case:
+**the Playwright suite does not pass without it** (§7, quirk 6). The canonical
+scan is blind to a knob the test instructions require.
+
+Widening the scan's file list is the obvious fix and it is **deliberately not
+applied here.** The two-file scope is quoted verbatim in §1, in CLAUDE.md and in
+the handoff to this pass; silently changing what a command means is how a count
+drifts without anyone ever publishing a wrong digit. It is recorded as a defect
+instead - §8, finding 7 - so that the widening happens once, everywhere, in a
+commit that says it did.
+
+> **WARNING: thirty-nine is the SIXTH figure published in this section, and the
+> five before it were all wrong.** In order: *eleven*, *fifteen*, *eighteen*,
+> *twenty*, *thirty-six*. Only the first has a technical excuse - a
+> line-anchored `grep -oE 'os.getenv("[A-Z_]+"'` missed four calls the formatter
+> had wrapped onto the next line, which is why §1's scan is `re.S`-multiline
+> and why [gotchas](gotchas-and-insights.md) 6 exists.
+>
+> **Every failure since has had the same cause, and it is not the regex.** Knobs
+> land in a commit that does not touch the docs. `MAX_RUN_COST_USD` and
+> `VALIDATOR_MAX_GATE_TURNS` arrived in `1b79197` and went undocumented until
+> the 2026-08-31 audit; `AUTH_JWKS_TIMEOUT_SECONDS` arrived in `5087f3c` and
+> went undocumented until this one. The previous version of this box said the
+> count had been wrong *four* times while CLAUDE.md said *five* - two documents
+> narrating the same history, disagreeing about it, and neither of them
+> regenerated. That is the failure in miniature.
+>
+> **There is no fix in this file for that**, and pretending otherwise is how the
+> next figure gets published wrong. The fix is a check that runs: the scan wired
+> into CI against a committed expected list, so a knob added without a doc edit
+> fails a job instead of aging quietly into the next audit. It does not exist.
+> Until it does - **always regenerate with the multiline scan; never with a
+> line-anchored grep, never by reading this list, and never by reasoning about
+> what a commit added.**
 
 Everything else in the admission path is a genuine constant with no override:
 `MAX_REQUEST_BODY_BYTES` (64 KiB), `MAX_RUN_INPUT_CHARS` (2000),
 `MAX_RUN_INPUT_BYTES` (8 KiB), `MAX_RUN_INPUT_KEYS` (16),
 `MAX_RUN_RESULT_BODY_CHARS` (64 KiB), `RUN_ADMISSION_RETRY_AFTER_SECONDS` (30),
 `RUN_RATE_LIMIT_MAX_CLIENTS` (4096), `RUN_RATE_LIMIT_KEY_MAX_CHARS` (64), and
-the `RESERVED_RUN_INPUT_KEYS` set.
+the `RESERVED_RUN_INPUT_KEYS` set. The builder's structural ceilings
+(`MAX_BILLABLE_NODES` 13, `MAX_ESCALATION_NODES` 8, `MAX_CYCLES` 3,
+`MAX_FANOUT_WIDTH` 4 - `config.py:1800`, `:1809`, `:1845`, `:1828`) are constants of the same kind - they take no environment override at
+all, which is why none of them appears above and why raising three of them was
+a code change rather than a deploy-time flip.
 
-`render.yaml` sets **none** of the admission knobs, so production runs on the
-defaults. One knob needs a decision anywhere other than Render:
-`RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` defaults **on**, which is right behind a
-proxy and wrong for a directly-reachable host, where `X-Forwarded-For` is
-attacker-supplied and the limiter stops limiting.
+`render.yaml` sets **none** of the admission knobs and **neither `BUILDER_*`
+knob**, so production runs on the defaults: no anonymous gateless graphs, and
+published graphs rehydrated at boot. One knob still needs a decision anywhere
+other than Render: `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` defaults **on**, which
+is right behind a proxy and wrong for a directly-reachable host, where
+`X-Forwarded-For` is attacker-supplied and the limiter stops limiting.
 
 ---
 
@@ -292,7 +448,7 @@ attacker-supplied and the limiter stops limiting.
 3. **`unittest discover` walks silently past a directory with no
    `__init__.py`.** This once hid `tests/events/` and `tests/service/` entirely
    behind a green `OK`. Add the `__init__.py` in the same commit as any new
-   test directory.
+   test directory. `tests/builder/` has one; that is not luck, it is this entry.
 4. **`uv` is not one version.** The system CLI is 0.7.19, `Dockerfile:20` pins
    `ghcr.io/astral-sh/uv:0.7.19`, CI's `astral-sh/setup-uv@v5` pins nothing, and
    `uv.lock` separately locks a `uv==0.11.33` *Python package* pulled in by
@@ -300,64 +456,162 @@ attacker-supplied and the limiter stops limiting.
 5. **The default Vite dev server proxies to the paid backend.** `vite.config.ts`
    points `/api` and `/ws` at `127.0.0.1:8000`. The free one is
    `e2e/vite.e2e.config.ts` → `127.0.0.1:8099` with `SYNTHETIC=1`.
+6. **Playwright needs `SYNTHETIC_BRANCH_DELAY_SECONDS=5` on the backend, and
+   its absence reads as a CSS regression.** Three of the specs in
+   `e2e/visual/run-canvas.spec.ts` screenshot a node *while a research branch is
+   in flight*. The synthetic runner finishes a branch instantly, so with the
+   knob unset there is no running moment to capture and the specs fail with
+   `No branch stayed in flight` (`run-canvas.spec.ts:211`) — which looks exactly
+   like the running-state styling having broken, and is not.
+
+   ```powershell
+   $env:SYNTHETIC = "1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS = "5"; $env:PORT = "8099"
+   .\.venv\Scripts\serve.exe
+   ```
+
+   Two things make this trap sharp. The knob is read in
+   `service/runner.py:65` — **not** in `config.py` or `service/app.py`, so §6's
+   canonical scan cannot see it and no knob list in this repository has ever
+   named it. And the suite's dependency on it is documented only in the spec's
+   own docblock (`run-canvas.spec.ts:37-40`) and in the assertion message, both
+   of which you reach *after* the failure rather than before it. Kill the
+   backend with `Stop-Process -Name serve -Force`, never `pkill` — see
+   [gotchas](gotchas-and-insights.md) 25.
 
 ---
 
-## 8. Open stack-hygiene defects
+## 8. Stack-hygiene defects
 
-Found by the 2026-08-31 audit. **Every one is invisible to a green test run** —
-the suite passes, CI passes, the deploy serves. Each is a case where something
-holds *by accident* rather than by declaration.
+Findings 1-3 were raised by the 2026-08-31 audit and are **verified fixed at
+`b4ef654`**; finding 4 was **withdrawn** — the audit misread it. Findings 5 and
+6 are still open and were re-checked this pass. Finding 7 is new.
 
-1. **[High] `pydantic` and `PyYAML` are direct imports that nothing declares.**
-   `pydantic` is imported in 15 files — the schema layer, both Flow states, and
-   all of `service/`. `PyYAML` is imported at `service/app.py`. Neither appears
-   anywhere in `pyproject.toml`; both resolve only because transitive
-   dependencies happen to require them (13 locked packages require pydantic).
-   `pyproject.toml:19` already carries *"Must be named explicitly — crewai[tools]
-   does not pull it in"* for `firecrawl-py`, so the rule exists and was applied
-   selectively. **Fix:** add `pydantic>=2.12,<3` and `pyyaml>=6` to
-   `dependencies`.
-2. **[High] Render's static-site build pins no Node version.** CI pins 24; the
-   build that actually ships pins nothing, so it runs on Render's platform
-   default at build time. `vite@8` requires `^20.19.0 || >=22.12.0` and
-   `jsdom@30` requires `^22.22.2 || ^24.15.0 || >=26.0.0`. Same defect class as
-   the `.tsbuildinfo` trap, one layer up: the build environment that ships is
-   the one verified least. **Fix:** add `NODE_VERSION: "24"` to the static
-   site's `envVars`, or an `engines.node` field.
-3. **[Medium] `frontend/e2e/` is type-checked by nothing.**
-   `e2e/tsconfig.json` exists and includes `**/*.ts` plus
-   `playwright.config.ts`, but the root `tsconfig.json` `references` array lists
-   only `tsconfig.app.json`, `tsconfig.node.json` and `tsconfig.vitest.json`.
-   `tsc -b` builds a *graph*, and an unreferenced config is not a node in it —
-   no warning, no diagnostic. Playwright transpiles without type-checking, so
-   nothing catches an error in `studio.spec.ts` at all. It looks fine locally
-   because a language server resolves the nearest config walking up from the
-   open file, which is a different algorithm than the build uses. **Fix:** add
-   `{"path": "./e2e"}` to `references`.
-4. **[Medium] `CREWAI_TRACING_ENABLED` is inverted between the two deploy
-   paths.** `Dockerfile:56` sets `false`, with the reason at `:50-51`:
-   authenticated tracing needs `tokens.enc`, which is a secret, expires, and is
-   `.dockerignore`d. `render.yaml:110` sets `"true"` — with the *same argument*
-   printed directly above it. A value contradicting its own stated rationale is
-   worse than a plain wrong value, because the reader checks the reasoning,
-   finds it sound, and never compares it to the line below.
-5. **[Low] GitHub Actions are pinned to mutable tags**, not SHAs:
-   `actions/checkout@v4`, `actions/setup-python@v5`, `astral-sh/setup-uv@v5`,
-   `actions/setup-node@v4`. Blast radius is capped today by
-   `permissions: contents: read` and no secrets in the workflow. This becomes
-   Medium the moment the workflow gains a deploy step or a secret.
-6. **[Low] No `LICENSE` file at the repo root** — for a public repository that
-   means all rights reserved. `pyproject.toml:6-10` documents the gap in a
-   comment, which is not a licence.
+**Every one of these is invisible to a green test run** — the suite passes, CI
+passes, the deploy serves. Each is a case where something holds *by accident*
+rather than by declaration, which is why a version audit cannot be done by
+running tests.
+
+1. ~~**[High] `pydantic` and `PyYAML` are direct imports that nothing
+   declares.**~~ **FIXED.** `pyproject.toml` now declares `pydantic>=2.12,<3`
+   and `pyyaml>=6`, each with a comment naming where it is imported and why it
+   was missed. Verified 2026-09-02 by reading the `dependencies` array.
+
+   The reason it was invisible is the part worth keeping. `pyproject.toml`
+   already carried *"Must be named explicitly - crewai[tools] does not pull it
+   in"* for `firecrawl-py`: somebody had reasoned about this exact hazard and
+   fixed the case they noticed. Pydantic was missed *because* CrewAI does pull
+   it in — the dependency is only hidden while it works, and the failure when
+   the luck runs out is a v1/v2 API mismatch far from its cause.
+2. ~~**[High] Render's static-site build pins no Node version.**~~ **FIXED.**
+   `render.yaml:286-287` sets `NODE_VERSION: "24"`, matching CI, with a comment
+   at `:277-285` saying to keep the two in step. `vite@8` requires
+   `^20.19.0 || >=22.12.0`, so the floor is real and a platform default drifting
+   below it fails the deploy rather than the tests. Residual, recorded in §2:
+   there is still no `engines.node` and no `.nvmrc`, so a contributor's local
+   Node is governed by nothing.
+3. ~~**[Medium] `frontend/e2e/` is type-checked by nothing.**~~ **FIXED.**
+   `frontend/tsconfig.json` `references` now lists five projects, `./e2e` among
+   them (and `./tsconfig.server.json`, which the auth work added). Verified
+   2026-09-02 by reading the file; `npx vue-tsc -b --force` exits 0 across all
+   five.
+
+   The original fix was proved by *breaking* it — a deliberate
+   `const x: number = "not a number"` in `studio.spec.ts` produced
+   `TS2322` and was reverted — and that method is the entry. Without it, "fixed"
+   is indistinguishable from the previous state, because `tsc -b` builds a graph
+   and an unreferenced config is simply not in it: no warning, no orphan
+   diagnostic. It looks fine in an editor because a language server resolves the
+   nearest config walking up from the open file, which is a different algorithm
+   from the build's.
+4. ~~**[Medium] `CREWAI_TRACING_ENABLED` is inverted between the two deploy
+   paths.**~~ **WITHDRAWN — the audit misread it, and no value was changed.**
+   The two paths choose different *modes*: `render.yaml:152-153` sets `"true"`
+   for **ephemeral** tracing (unauthenticated, short-lived links, the documented
+   Render answer); `Dockerfile:50-56` sets `false` because the **authenticated**
+   credential `tokens.enc` is a secret that expires and must never be baked into
+   an image. Both comments now name which mode they are choosing and cross-
+   reference the other, so the misreading is not available a second time.
+
+   **One real finding fell out of checking it, and it is still live.**
+   `CREWAI_TRACING_ENABLED=false` is *not* a disable switch — CrewAI's resolver
+   has no branch returning `False` for it; the value fails the `("true","1")`
+   test and falls through to *stored consent*. The Dockerfile's `false` reads as
+   off only because a fresh container has no stored `trace_consent`. Anything
+   that ships a consent file re-enables tracing with that line untouched. The
+   Dockerfile says so at the site.
+5. **[Low, OPEN] GitHub Actions are pinned to mutable tags**, not SHAs. Verified
+   still true 2026-09-02 (`grep -nE 'uses:' .github/workflows/ci.yml`):
+   `actions/checkout@v4` (twice), `actions/setup-python@v5`,
+   `astral-sh/setup-uv@v5`, `actions/setup-node@v4`. Blast radius is capped
+   today by `permissions: contents: read` and no secrets in the workflow. This
+   becomes Medium the moment the workflow gains a deploy step or a secret.
+6. **[Low, OPEN] No `LICENSE` file at the repo root** — for a public repository
+   that means all rights reserved. Verified still true 2026-09-02 (`ls LICENSE*`
+   finds nothing). `pyproject.toml:6-10` documents the gap in a comment, which
+   is not a licence.
+7. **[Medium, NEW] The canonical environment-knob scan reads two files, and
+   five knobs live outside them.** §6's scan is hardcoded to `config.py` and
+   `service/app.py`. Widening the same pattern over `src/**/*.py` on 2026-09-02
+   found `OPENROUTER_API_KEY`, `GITHUB_TOKEN` and `FIRECRAWL_API_KEY` — fine,
+   those are credentials — and two that are not: `VALIDATOR_CACHE_NAMESPACE`
+   (`validator_cache.py`) and `SYNTHETIC_BRANCH_DELAY_SECONDS`
+   (`service/runner.py`).
+
+   This is the same defect class as the line-anchored grep of
+   [gotchas](gotchas-and-insights.md) 6, one level up: that time the *pattern*
+   under-reported, this time the *file list* does. It matters more than it
+   looks, because §7 quirk 6 makes `SYNTHETIC_BRANCH_DELAY_SECONDS` a
+   prerequisite for a green Playwright run — the scan is blind to a knob the
+   test instructions require.
+
+   **Fix:** widen the scan to `src/**/*.py`, in one commit, updating §1,
+   §6, CLAUDE.md and any handoff that quotes the two-file form, and decide
+   there whether credentials are listed or explicitly excluded. It was not done
+   in this pass on purpose: the two-file scope is quoted verbatim in three
+   places, and silently changing what a command means is how a count drifts
+   without anyone publishing a wrong digit.
 
 ---
 
-## 9. What this audit did not verify
+## 9. What this pass did not verify
+
+Re-stated for the 2026-09-02 pass at `b4ef654`. The 2026-08-31 caveats that
+still stand are repeated rather than referenced, because a caveat that has to be
+chased is a caveat nobody reads.
 
 - **Nothing was probed live.** No request was made to the deployed API, the
   static site, OpenRouter, Pinecone, Cohere, Firecrawl, GitHub or Render. Every
   deployment figure here is what the manifests *declare*, not what is running.
+  That includes `NODE_VERSION: "24"` in §2: it is read out of `render.yaml`, not
+  observed in a build log.
+- **CI status was not checked in the 2026-09-02 doc pass, and the open question
+  it left is now CLOSED.** `ci.yml` declares **two** jobs, `python` (:38) and
+  `frontend` (:84) (`grep -nE '^  [a-z-]+:'`), while the handoff reported
+  "4/4 jobs green" on the PR. Both are right about different things, and the
+  word "jobs" is what made them look irreconcilable: `ci.yml` triggers on
+  **both** `push` and `pull_request`, so the PR head `6d2743c` carried four
+  *check-runs* — the same two jobs, once per trigger. Measured 2026-09-02:
+
+  ```bash
+  gh api repos/<owner>/<repo>/commits/6d2743c/check-runs --jq .total_count
+  # 4
+  # Python tests (no-cost)  |  Frontend type-check and build   <- run 33597650681 (pull_request)
+  # Frontend type-check and build  |  Python tests (no-cost)   <- run 33597618486 (push)
+
+  gh run view 33597756398 --json jobs --jq '.jobs[].name'
+  # Frontend type-check and build
+  # Python tests (no-cost)          <- 2, on main at b4ef654, push only
+  ```
+
+  A check-run count is a *job x trigger* product, so it is never the number to
+  publish when the claim is about what CI does. Say "two jobs"; say "4/4 checks"
+  only when quoting the tab. **This is the one bullet in §9 that has been
+  discharged** — everything else below still stands as written.
+- **Playwright was listed, not run.** `npx playwright test --list` reports
+  **28 tests in 4 files** on 2026-09-02, which is where §7 quirk 6's spec
+  references come from. No browser was launched and no backend was started, so
+  the `SYNTHETIC_BRANCH_DELAY_SECONDS` failure mode in quirk 6 is transcribed
+  from the spec's assertion message and docblock — **not reproduced here**.
 - **The Docker image has never been built on this machine** (`Dockerfile:11-12`
   says so itself), so the two-stage `uv sync` sequence is unproven.
 - **The keyless run was not repeated.** Moving `.env` aside is the one hazardous
@@ -365,8 +619,14 @@ holds *by accident* rather than by declaration.
   from a shell trap that fires on any exit, and confirm the backup filename is
   actually ignored with `git check-ignore -v` on the real path, never by reading
   `.gitignore`.
-- **Playwright E2E was not run** — it needs a backend, and this pass started
-  none. It is no-cost, but against a *synthetic* backend, so it proves the
-  plumbing, not the agents.
 - **Model IDs are reported as literals.** No call was made to OpenRouter or
-  Cohere to confirm any of the four models is still in the catalogue.
+  Cohere to confirm any of the four models is still in the catalogue, and no
+  price was re-read from the live catalogue this pass. CLAUDE.md's OpenRouter
+  MCP section is the instrument for that, and it also records the thing §5's
+  price table cannot: `:nitro` routes on speed, so a real run can bill well
+  above the published floor recorded here.
+- **The builder's own figures are counts of files, not of behaviour.** §3 and
+  §4 report line counts, component counts and two empty `git diff --stat`s.
+  They say the builder added no dependency and no token. They say nothing about
+  whether it compiles a correct flow; `docs/flow-builder-spec.md` is the
+  contract, and the suites are the evidence.

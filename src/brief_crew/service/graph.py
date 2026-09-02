@@ -322,8 +322,15 @@ BUILDER_WORKFLOWS: dict[str, "BuilderWorkflow"] = {}
 def register_builder_workflow(workflow: "BuilderWorkflow") -> "BuilderWorkflow":
     """Put a compiled builder graph into every map that has to know about it.
 
-    Four places, and omitting any one of them is a distinct wrong answer rather
-    than a missing feature:
+    Five places, and omitting any one of them is a distinct wrong answer rather
+    than a missing feature.
+
+    Five HERE; a publish writes SIX. The sixth is the app's own runtime map, in
+    `builder_api._register_runtime`, which cannot be reached from this module.
+    This docstring said "four" while listing five until 2026-09-02, and the two
+    it kept miscounting are the two that are not dicts on this module - which is
+    also why the reserved-key map was the one left out of
+    `unregister_builder_workflow`. Say what you are counting.
 
     * `GRAPHS` - or `GET /api/workflows/{id}/graph` answers 404 for a graph the
       service is willing to run, and `workflow_has_gates` fails closed on it.

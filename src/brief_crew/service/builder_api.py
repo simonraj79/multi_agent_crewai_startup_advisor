@@ -711,7 +711,16 @@ def _guarded(action: Callable[[], Any]) -> Any:
 def _register_runtime(
     registry: RunRegistry, workflow: BuilderWorkflow, runner: Runner
 ) -> None:
-    """The fourth registration site: this application's own runtime map.
+    """The SIXTH registration site: this application's own runtime map.
+
+    Sixth, not fourth - it said fourth until 2026-09-02, and the count has three
+    different right answers depending on what you are counting, which is how it
+    drifted. `graph.register_builder_workflow` writes FIVE (`GRAPHS`,
+    `NODE_REGISTRIES`, `WORKFLOWS`, `BUILDER_WORKFLOWS`, and the reserved-key
+    map in `config`); a PUBLISH writes those five plus this one, which is the
+    six `config.py` enumerates beside `BUILDER_REHYDRATE_PUBLISHED`. This is the
+    only one that lives on the app rather than on a module, which is exactly why
+    it is the one a count keeps leaving out.
 
     `registry.workflows` is a plain mutable dict, which is what makes a runtime
     registration possible at all after `create_app` has returned. A registry

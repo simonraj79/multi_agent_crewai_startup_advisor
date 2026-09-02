@@ -19,6 +19,24 @@ procedure; that one is the reasoning.
 > Two of them are restated below as steps, because you need them at the moment
 > they apply. The rest are not.
 
+> **The flow builder changed nothing about the build, and that is measured
+> rather than assumed.** At the merge commit `b4ef654`:
+>
+> ```bash
+> git diff --stat 4d70cbf..b4ef654 -- render.yaml pyproject.toml uv.lock \
+>   frontend/package.json frontend/package-lock.json \
+>   .github/workflows/ci.yml Dockerfile
+> ```
+>
+> is **empty**. No new Python dependency, no new npm dependency, no new build
+> step, and not one environment variable added to either service. Steps 1-4, 6
+> and 7 below are unchanged by it — where they read differently from the last
+> revision, that is the auth work catching up, not the builder.
+>
+> What the builder does change is **two database tables** and what happens at
+> **boot**: a published user graph lives in the database and its registration
+> does not, so every restart has to put it back. Both are in step 5.
+
 ---
 
 ## Before you start
@@ -52,7 +70,15 @@ Once that is settled, confirm the prerequisites:
 | `agentic-crew-ai-db` | already exists, created by hand outside any Blueprint. **This matters — see step 3.** |
 
 Expect about **$13.30/month** fixed: $6.30 for the database, $7.00 for the API on
-`starter`, $0 for the static site. Model tokens and tool calls are on top.
+`starter`, and $0 for `agentic-crew-ai-studio`, which `render.yaml` puts on
+`free`. Model tokens and tool calls are on top, and the only thing bounding a
+single run of them is `MAX_RUN_COST_USD` — see
+[Known operational edges](#known-operational-edges).
+
+The studio is a **Node web service**, not a static site. It was one until Better
+Auth arrived, which needs a runtime a CDN cannot give it; `render.yaml` carries
+the two consequences (one origin, and `region: singapore` is now mandatory) at
+the point they bind.
 
 ---
 
@@ -120,7 +146,14 @@ Only when the database row reads *link*, apply.
 
 Render prompts once, at Blueprint creation, for every variable marked
 `sync: false`. Those values are stored as dashboard secrets and are never
-committed. There are five, all on the **API** service (`agentic-crew-ai-api`):
+committed. There are **nine**, split across the two services. Counted from the
+manifest rather than from memory:
+
+```bash
+grep -n -B1 'sync: false' render.yaml | grep 'key:'
+```
+
+Five on the **API** (`agentic-crew-ai-api`):
 
 | Variable | Required? |
 |---|---|
@@ -130,12 +163,49 @@ committed. There are five, all on the **API** service (`agentic-crew-ai-api`):
 | `COHERE_API_KEY` | **yes** — stage-2 rerank |
 | `GITHUB_TOKEN` | **optional** — leave blank to run unauthenticated. Present, it raises GitHub search from 8 to 24 req/min. No scopes are needed. |
 
-The sixth `sync: false` variable, `VITE_API_URL`, is on the **frontend** service
-and you cannot fill it in correctly yet. Leave it blank for now — step 6.
+Four on the **studio** (`agentic-crew-ai-studio`), all for sign-in — the exact
+values and where each comes from are in [`google-oauth.md`](google-oauth.md):
+
+| Variable | Required? |
+|---|---|
+| `BETTER_AUTH_SECRET` | **yes** — `openssl rand -base64 32`, once. Rotating it invalidates every session and every issued JWT |
+| `BETTER_AUTH_URL` | **yes** — this service's own origin, scheme included. It must equal `AUTH_BASE_URL` on the API |
+| `GOOGLE_CLIENT_ID` | **yes** |
+| `GOOGLE_CLIENT_SECRET` | **yes** |
+
+**`VITE_API_URL` is no longer among them.** It was `sync: false` and the manual
+step was missed on the live studio, which shipped a bundle whose API base was
+the empty string — every call resolved against the studio's own origin, hit the
+SPA fallback, and came back `200 text/html`. `render.yaml` now hardcodes it, for
+the same reason `AUTH_BASE_URL` is hardcoded: the API's URL is knowable when the
+manifest is written. Step 6 is now a *verification*, not a data-entry step.
 
 Everything else in `render.yaml` is a non-secret literal: `PYTHON_VERSION`,
-`RUN_CONCURRENCY`, `PINECONE_INDEX_NAME`, the three `CREWAI_*` settings, and
-`DATABASE_URL` which Render wires from the linked database automatically.
+`RUN_CONCURRENCY`, `PINECONE_INDEX_NAME`, the three `CREWAI_*` settings,
+`CORS_ALLOW_ORIGINS`, `AUTH_BASE_URL`, `NODE_ENV`, `NODE_VERSION`,
+`VITE_API_URL`, and `DATABASE_URL` on both services, which Render wires from the
+linked database automatically.
+
+### What `render.yaml` deliberately does NOT set
+
+Three knobs that govern what a run may cost and what the builder may do are
+**absent from the manifest**, so production runs on their code defaults. Checked
+directly:
+
+```bash
+grep -n 'MAX_RUN_COST_USD\|BUILDER_' render.yaml   # only a comment, no key:
+```
+
+| Knob | Default in `config.py` | What production therefore does |
+|---|---|---|
+| `MAX_RUN_COST_USD` | `10.0` | Every run carries a ~$10 ceiling, enforced at the next CrewAI step boundary. `0` disables it; **unset does not** |
+| `BUILDER_ALLOW_GATELESS_GRAPHS` | `False` | An *anonymous* caller cannot launch a user graph that reaches a billable node before any human gate — 403. Irrelevant while auth is on, because `user` is then always truthy |
+| `BUILDER_REHYDRATE_PUBLISHED` | `True` | Published builder graphs are re-registered at every boot. See step 5 |
+
+`VALIDATOR_ALLOW_AUTO_GATES` is absent for the same class of reason and
+`render.yaml` explains it at the point it is missing. The full inventory of
+environment knobs, with the command that regenerates it, is
+[`tech-stack.md`](tech-stack.md) — do not maintain a second copy here.
 
 `OPENAI_API_KEY` is **not** used and must not be set. Startup asserts that every
 model constant carries an `openrouter/` prefix and refuses to boot otherwise.
@@ -160,45 +230,173 @@ Watch for, in order:
    answers with no credentials set.
 4. **`GET /readyz` returns 200.** This is the one that exercises the database.
 
-### The schema, on real PostgreSQL for the first time
+### The schema, and the two tables the builder added
 
 There is no migration step. `PostgresFlowPersistence.init_db()` calls
-`metadata.create_all()` at construction, so first boot creates `flow_states`,
-`pending_feedback`, `runs`, `run_node_metrics`, `run_frames` and `run_gates`.
+`metadata.create_all()` at construction, then `_add_missing_columns()`. There are
+**eight** tables now, not six. Regenerate the list rather than trusting this one:
 
-**This will be the first time that DDL has ever run against PostgreSQL.** Every
-automated test uses SQLite. The persistence layer is dialect-agnostic and there
-is no reason to expect trouble, but "no reason to expect trouble" is not the same
-as "tested", so check rather than assume:
+```powershell
+.\.venv\Scripts\python.exe -c "from brief_crew.service.persistence import metadata; print(sorted(metadata.tables))"
+```
+
+Measured 2026-09-02 at `b4ef654`: `builder_document_versions`,
+`builder_documents`, `flow_states`, `pending_feedback`, `run_frames`,
+`run_gates`, `run_node_metrics`, `runs`.
+
+**The six original tables have run against PostgreSQL 18 in production**: the
+deployed API answered `/readyz` with `"backend":"postgresql"` — probed
+2026-08-30, recorded in [`../CLAUDE.md`](../CLAUDE.md), **not re-probed for this
+revision**. The **two builder tables have not**, and every automated test in this
+repo is still SQLite — `grep -rl postgres tests/` finds nothing, verified
+2026-09-02 at `b4ef654`. So the paragraph below is no longer a
+warning about the whole schema; it is a warning about the two new tables.
+
+**A new table is the easy case, and it is worth being precise about why.**
+`create_all()` is create-if-absent *per table*: it does nothing at all to a table
+that already exists, but it creates one that does not. `builder_documents` and
+`builder_document_versions` are therefore created on an already-deployed
+database on the first boot after this deploy, with their columns and
+`ix_builder_documents_user_updated` intact, and no migration is needed. That is
+the opposite of the `user_id` case, which was a **column** on a table that had
+already shipped and which `create_all()` will never add — see
+[`gotchas-and-insights.md`](gotchas-and-insights.md).
+
+> **The forward hazard, for whoever adds the next column.**
+> `_ADDITIVE_COLUMNS` in `persistence.py` currently carries exactly one entry,
+> `("runs", "user_id", "VARCHAR(128)")`, and the index-ensuring loop beneath it
+> iterates `runs.indexes` and nothing else. Add a column to `builder_documents`
+> and it will be present on a fresh database and **silently absent on this
+> deployed one**, failing at the first INSERT rather than at startup. Adding an
+> index to an existing builder table has the same shape. Both need an explicit
+> entry; anything needing a backfill, a NOT NULL, a rename or a drop is the
+> point at which a real migration tool has become cheaper than that list.
+
+Check rather than assume:
 
 - **The service actually reached `readyz`.** A DDL failure surfaces here, not at
   `healthz` — `healthz` answers before the database is touched.
-- **All six tables exist** with the expected columns. Connect with `psql` via the
-  Render dashboard's connection string and run `\dt`, then `\d run_frames`.
+- **All eight tables exist** with the expected columns. Connect with `psql` via
+  the Render dashboard's connection string and run `\dt`, then
+  `\d builder_document_versions`.
 - **Watch for type mismatches SQLite silently tolerates.** SQLite is dynamically
   typed and PostgreSQL is not; a column SQLite accepted may be rejected here.
-  This is the single most likely failure mode.
+  This remains the single most likely failure mode, and the builder gives it a
+  new target: `_json_type()` resolves to plain `JSON` on SQLite and **`JSONB` on
+  PostgreSQL**, so `builder_document_versions.document` — the whole saved graph —
+  is stored under a type no test has ever exercised.
 - **Restart the service once** and confirm it comes up clean. `create_all()` is
-  idempotent, but that claim has not been exercised on this dialect either.
+  idempotent, and on this deployment it has now demonstrated that for the six
+  original tables; the two builder tables get their first idempotent second pass
+  on that restart.
 
 The DDL sketched in `agents/07-deployment.md` (`runs` / `run_metrics` /
 `run_sources`) is **design intent, not what ships.** Do not apply it. The
 SQLAlchemy models own the schema.
 
+### ⚠️ Every deploy unpublishes every user graph, unless the boot sweep runs
+
+This is the one piece of builder behaviour a deployer has to know about, and it
+exists because of a fact this file already states elsewhere: both services carry
+`autoDeploy: yes`, so **every push to `main` restarts them.**
+
+Publishing a builder graph writes to six places and all six are *process-local*
+module state. (Six is the count for the *request*. `register_builder_workflow`
+itself writes five — the sixth, this application's own runtime dict, is written
+by `service/builder_api.py::_register_runtime` in the same request, because
+`service/graph.py` holds no registry instance. `config.py:1920` enumerates all
+six by name. Other files say five when they are counting the function, and that
+is the same event under a narrower scope.) The document that caused those writes is in the database. Before
+the sweep existed, the two disagreed after every restart in the worst possible
+direction: `builder_documents.status` still said `published`, the author's canvas
+still said `published`, and `POST /api/sessions/{id}/runs` answered **404** for a
+workflow they had published an hour earlier.
+
+`rehydrate_published_workflows` runs inside `create_app`, after the registry
+exists and **before any request is served**, so no client can observe a window in
+which a published graph is unregistered. `BUILDER_REHYDRATE_PUBLISHED` defaults
+to `True` and `render.yaml` does not set it, so this is on in production.
+
+**What happens when a stored graph no longer compiles: it is skipped, and the
+boot continues.** That is deliberate. `MAX_BILLABLE_NODES`, `MAX_ESCALATION_NODES`
+and `MAX_CYCLES` all carry measured justifications and are all expected to move,
+and a graph published under a laxer set must not be able to stop the process
+booting. The author gets one graph that is no longer launchable, which is honest;
+everybody else gets a service. The sweep raises nothing at all — a store that
+refuses is a log line too.
+
+**So read the log after a deploy.** It is the only place this surfaces:
+`/readyz` says nothing about the builder, and `GET /api/workflows` deliberately
+still returns only the two built-in literals, so a rehydrated graph will never
+appear there. Grep the deploy log for:
+
+| Log line | Level | Means |
+|---|---|---|
+| `rehydrated N published builder graph(s): …` | INFO | the ids that are launchable again |
+| `builder graph <id> no longer compiles and was not re-registered: …` | WARNING | one graph is down, with the compiler's own sentence |
+| `N published builder graph(s) could not be restored and are not launchable until they are edited and republished: …` | WARNING | the roll-up of the above |
+| `builder rehydration stopped: the document store refused mid-sweep` | ERROR | graphs behind that point are **not** restored — this is the store failing, not a bad document |
+
+Then confirm from the outside: sign in, open `#/build`, and check the gallery
+still shows each graph as published. `GET /api/builder/workflows` is the API
+equivalent and is owner-scoped, so it answers for the signed-in caller only.
+
+Three edges worth knowing before you go looking for a bug that is not there:
+
+- **Editing a published graph makes it a draft again.** The live process keeps
+  running the version that was published — that is the version whose budget was
+  priced and whose ETag is in flight — but the sweep only reads rows whose status
+  is `published`. So a graph left mid-edit is registered *now* and gone after the
+  next deploy. Republish before you push.
+- **The sweep reads at most 200 published documents** (`MAX_LIST_LIMIT` in
+  `builder/store.py`, a literal with no environment override). The 201st never
+  comes back, and nothing says so.
+- **A graph published before the `crew_id` fix will not return.** A crew whose
+  factory is not zero-arg constructible used to pass every structural check,
+  publish cleanly, and then raise `TypeError` on the first *paid* run — after the
+  scoper and all three research branches had already billed. `library_problems`
+  now refuses it, and rehydration is one of the doors that refusal is closed at,
+  so such a row is skipped here rather than restored into a landmine.
+
+`BUILDER_REHYDRATE_PUBLISHED=false` exists for exactly one situation: a graph
+that compiles and then wedges or bankrupts this deployment. It is a deploy-time
+flip that boots with **no user graph registered at all**, which is a blunter
+instrument than it sounds — it is not a per-graph switch, and it is not a test
+lever.
+
 ### What is still untested after a green boot
 
-Concurrency. Both `pending_feedback` and the gate reply use
-`UPDATE ... WHERE ...` plus a `rowcount` compare-and-set. SQLite's single-writer
-model cannot stress that, so it has never been exercised under contention. A
-normal run will not exercise it either. To actually test it, have two processes
-reply to the same gate and confirm exactly one wins and the other gets HTTP 409.
+Concurrency, and there is more of it than there was. `pending_feedback`, the gate
+reply, the `reopen_gate` rollback, the orphan-run sweep, and now the builder's
+document store all use `UPDATE ... WHERE ...` plus a `rowcount` compare-and-set.
+SQLite's single-writer model cannot stress any of them, so none has ever been
+exercised under contention. A normal run will not exercise them either.
+
+Two things to actually test, both needing two processes:
+
+- Have two clients reply to the same gate; confirm exactly one wins and the other
+  gets HTTP **409**.
+- Have two browsers save the same builder document from the same version;
+  confirm two version rows are written, one head pointer moves, and the loser
+  gets HTTP **409** rather than a silently lost edit.
 
 ---
 
 ## 6. ⚠️ `VITE_API_URL` — a full origin, including the scheme
 
-Once the API service exists and has a URL, set `VITE_API_URL` on the **frontend**
-service (`agentic-crew-ai-web`) and redeploy it.
+`render.yaml` now **hardcodes** this on `agentic-crew-ai-studio`:
+
+```yaml
+- key: VITE_API_URL
+  value: "https://agentic-crew-ai-api.onrender.com"
+```
+
+So there is nothing to type here any more — but there is something to *check*,
+because the manual step this replaced was missed once on the live site and the
+failure is silent. If your API service has a different name, this value and
+`AUTH_BASE_URL` move together.
+
+The form is the whole point:
 
 ```
 ✅  https://agentic-crew-ai-api.onrender.com
@@ -220,28 +418,46 @@ silent, and a bare hostname is the easy way to cause it.
 
 This is also why `render.yaml` cannot use `fromService … property: host` to wire
 it automatically: that yields a bare hostname, which is exactly the broken case.
-Hence `sync: false` and this manual step.
+Hence a hardcoded literal.
+
+**An empty value fails the same way, and that is what actually happened.** It was
+`sync: false` — "fill this in once the API's URL is known" — and on the live
+studio it was never filled in. Vite *inlines* the value at build time, so an
+empty one ships a bundle whose base URL is `''`: every API call resolves against
+the studio's own origin, hits the SPA history fallback, and comes back
+`200 text/html`. Measured on the deployed site on 2026-09-01 and recorded in
+`render.yaml`'s own comment — `GET
+https://agentic-crew-ai-studio.onrender.com/api/workflows` → 200 HTML, and the
+console fell back to its scripted demo. Not re-probed for this revision.
 
 `VITE_API_URL` is a **Vite build-time** variable. It is baked into the bundle, so
-changing it requires a **rebuild**, not a restart. Trigger a manual deploy of the
-static site after you set it.
+changing it requires a **rebuild**, not a restart. If you ever edit it, trigger a
+manual deploy of the studio service — a restart will keep serving the old bundle.
 
 ### Verify you are on the real backend, not the mock
 
-After the redeploy, open the site and confirm:
+After the deploy, open the site and confirm:
 
 - The browser devtools **Network** tab shows requests to your API origin, and a
   **WebSocket connection to `/ws` that stays open** (status 101).
 - `GET https://<your-api>/api/workflows` returns JSON in the browser directly.
 - Launch a run and confirm a row appears in the `runs` table in PostgreSQL. This
   is the unambiguous test: the mock cannot write to your database.
+- `GET https://<your-api>/api/builder/vocabulary` returns JSON. It is the
+  cheapest probe of the builder half: no document, no run, and deliberately **no
+  auth** — it describes this build rather than anybody's data — so it works from
+  a plain browser tab or `curl`. Then open `#/build` and confirm the palette is
+  populated; an empty palette against a working studio is the wrong origin, not
+  a broken canvas.
 
 ---
 
 ## 7. First real run
 
-The first live end-to-end validator run has never happened. Treat it as an
-experiment, not a smoke test.
+**One paid end-to-end validator run has happened** and it found three defects no
+test had, all since fixed and none re-exercised live — the ledger is in
+[`../CLAUDE.md`](../CLAUDE.md), not here. Treat the next one as an experiment,
+not a smoke test.
 
 - Enable traces first: `crewai traces enable`. Traces can include prompts, task
   inputs and outputs, tool arguments and results, and model responses — check
@@ -254,6 +470,14 @@ experiment, not a smoke test.
 - Watch memory. `RUN_CONCURRENCY` is `1` because one run is roughly the ceiling
   on a 512 MB `starter` instance (~210 MB baseline). Raising it is how you get
   an OOM.
+- **A user-drawn graph is the same experiment again, with a different bound.**
+  A published builder graph runs through the same CrewAI engine, the same
+  durable gates and the same cancellation as the validator, so nothing here
+  changes — but what stops it is arithmetic rather than a human: the static
+  estimate refused it at publish time, and `MAX_RUN_COST_USD` stops it at a step
+  boundary. Read that ceiling's three structural limits in `config.py` before
+  relying on it — it enforces an estimate rather than an invoice, it cannot stop
+  a call already in flight, and it is blind to embeddings, rerank and Firecrawl.
 
 ---
 
@@ -278,9 +502,29 @@ experiment, not a smoke test.
 - **`--no-sync` is mandatory** in the start command. Without it `uv run` re-syncs
   at boot, computes the default dependency set, and **removes the `service` extra
   the build just installed.**
-- **Region is immutable after creation.** `singapore` matches both the Postgres
-  instance and the Pinecone index; the static site is deliberately unpinned
-  because it is served from a global CDN.
+- **Region is immutable after creation, and the studio is no longer exempt.**
+  `singapore` matches the Postgres instance and the Pinecone index. The studio
+  service used to have deliberately no region at all, because a static site is
+  served from a global CDN; it is a Node service now, it writes Better Auth
+  sessions to that database, and the database's `ipAllowList` is empty — so
+  `region: singapore` on it is load-bearing. Move it and logins break with
+  nothing in the configuration to blame.
+- **The studio is on `free`, so the first visitor of the day waits on the
+  sign-in page.** A free service spins down after inactivity, and a cold start
+  lands in the worst possible place: before anyone can sign in, and before the
+  API's first JWKS fetch. `starter` is the fix and the code is identical either
+  way.
+- **`MAX_RUN_COST_USD` is the runaway brake, and it is unset in `render.yaml`,
+  which means it is on.** Unset gives the $10 default; only a deliberate
+  `MAX_RUN_COST_USD=0` disables it. It is not a budget — against the measured
+  clean run it is roughly 55x — and it does not bound the cent: it stops at the
+  next CrewAI `PRE_STEP` boundary, so expect to overshoot by about one
+  escalation call. `config.py` carries the derivation and the three things it
+  structurally cannot do.
+- **`maxShutdownDelaySeconds` has a second consumer now.** A builder graph runs
+  on the same executor as the validator and is waited on the same way, so a
+  deploy during someone's user-drawn run has the same five-minute ceiling and the
+  same answer: deploy when nothing is running.
 - **The Docker image has never been built.** `Dockerfile` and `.dockerignore`
   exist and target the API only, but no Docker daemon was available where they
   were written. The Blueprint path above does not use them.
@@ -296,3 +540,10 @@ rebuild.
 The database is not rolled back with it. If a schema change is ever involved,
 take a backup first; `basic_256mb` includes them, but confirm one exists before
 you need it.
+
+**A rollback of the API is also a rollback of the compiler, and the builder
+documents do not move with it.** A graph an author saved under the newer build
+may not parse or may not compile under the older one; the boot sweep skips such a
+row and logs it, so the outcome is one graph that is not launchable until the
+roll-forward, not a service that will not start. That is the same skip described
+in step 5, arriving from the other direction.

@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { ChevronLeft, ChevronRight, CircleDot, PenTool, Play, RotateCcw } from 'lucide-vue-next'
+import SignInPanel from '../SignInPanel.vue'
+import AccountChip from './AccountChip.vue'
 import BudgetMeter from './BudgetMeter.vue'
 import BuilderCanvas from './BuilderCanvas.vue'
 import BuilderEdge from './BuilderEdge.vue'
@@ -28,6 +30,7 @@ import { builderApi } from '../../services/builderApi'
 import { loadVocabulary, vocabulary, vocabularyProblem } from '../../data/builderVocabulary'
 import { writeRunHandoff } from '../../data/builderRunHandoff'
 import type { BuilderTemplate } from '../../data/builderTemplates'
+import type { SignedInUser } from '../../composables/useAuthGate'
 import type { InspectorCommit } from './commit'
 import type { PortMenuCreation } from './PortMenu.vue'
 import type {
@@ -63,14 +66,45 @@ import type {
  * 848px container to 1894px and pushed Launch below the fold.
  */
 
-const props = defineProps<{
-  /** From `#/build/:documentId`, or null for `#/build`. */
-  documentId: DocumentId | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** From `#/build/:documentId`, or null for `#/build`. */
+    documentId: DocumentId | null
+    /**
+     * The signed-in account, or null when there is none - exactly what
+     * `StudioView` receives (plan 01 D9). Optional with a null default rather
+     * than required, because every spec that mounted this view before identity
+     * reached it passes `documentId` alone, and a bare local checkout has no
+     * account to pass.
+     */
+    user?: SignedInUser | null
+    /** True once the session request resolved to a signed-in account. */
+    authenticated?: boolean
+    /**
+     * Whether an auth server exists at all. `false` is the bare local checkout
+     * and the SYNTHETIC harness (`useAuthGate`'s `unconfigured`), where the
+     * builder works exactly as it did before identity reached it. `true` with
+     * `authenticated: false` is "configured but signed out", and that is the
+     * one combination this view refuses to draw a gallery for.
+     */
+    authConfigured?: boolean
+    /** The sign-in wall's two props, passed through from `useAuthGate`. */
+    signingIn?: boolean
+    signInError?: string | null
+  }>(),
+  { user: null, authenticated: false, authConfigured: false, signingIn: false, signInError: null },
+)
 
 const emit = defineEmits<{
   /** Leave for the run console. */
   runWorkspace: []
+  /**
+   * Start and end a session. Handled by `App.vue` and nowhere else: `endSession`
+   * drops the cached bearer token BEFORE revoking the cookie, and a second
+   * sign-out path that forgot the order would leave a token alive in memory.
+   */
+  signIn: []
+  signOut: []
   /** Change the hash to this document, so a refresh comes back to it. */
   openDocument: [documentId: DocumentId]
   /**
@@ -236,6 +270,36 @@ function say(message: string): void {
 
 /* ── loading ───────────────────────────────────────────────────────────── */
 
+/**
+ * "Configured but signed out" - the one state this view will not draw a
+ * gallery for (plan 01 criterion 9).
+ *
+ * `App.vue` gates outside the router, so under it this view is never mounted
+ * while the phase is `anonymous`; the wall here is the second lock, the way
+ * `useBuilderValidation.idle` is the second lock under `showGraph`'s kick. It
+ * makes the answer a property of THIS component rather than of whoever mounts
+ * it, and it is what a spec can assert without mounting the whole app.
+ */
+const signedOut = computed(() => props.authConfigured && !props.authenticated)
+
+/**
+ * The two reads that need an identity, started once and only once allowed.
+ *
+ * `StudioView` does the same with `initialize()`: a list request fired on
+ * behalf of nobody is a guaranteed 401, wasted, and it would leave the library
+ * decided by a request made before the visitor signed in. The vocabulary is
+ * NOT behind this - `get_vocabulary` carries no `Depends(current_user)` and
+ * has to resolve before the gate does, or the palette is disabled for the whole
+ * of a sign-in.
+ */
+let builderStarted = false
+async function startBuilder(): Promise<void> {
+  if (builderStarted || signedOut.value) return
+  builderStarted = true
+  void refreshLibrary()
+  if (props.documentId) await openDocument(props.documentId)
+}
+
 onMounted(async () => {
   // Before anything else, because three of the seven kinds have REQUIRED fields
   // whose legal values only the server knows. Every creation path is disabled
@@ -243,8 +307,11 @@ onMounted(async () => {
   // late load means a briefly-disabled palette rather than a graph the compiler
   // will reject.
   void loadVocabulary()
-  void refreshLibrary()
-  if (props.documentId) await openDocument(props.documentId)
+  await startBuilder()
+})
+
+watch(signedOut, (out) => {
+  if (!out) void startBuilder()
 })
 
 watch(
@@ -802,10 +869,32 @@ watch(
           discover by finding something missing.
         -->
         <span v-if="notice" class="builder-notice" role="status">{{ notice }}</span>
+
+        <!--
+          The console's chip, in the console's place. Plan 01 D9 says "the
+          document bar", but the bar exists only once a graph is open and the
+          gallery has no bar at all - so an author on the empty state would
+          have had no way to sign out while the run console, one click away,
+          showed one in its header. Same element, same header row, in both
+          workspaces.
+        -->
+        <AccountChip v-if="user" :user="user" @sign-out="emit('signOut')" />
       </div>
     </header>
 
-    <main class="studio-main">
+    <!--
+      Configured but signed out: the wall, where the gallery would be. Never
+      reached under `App.vue`, which gates before routing; see `signedOut`.
+    -->
+    <SignInPanel
+      v-if="signedOut"
+      class="builder-signin"
+      :signing-in="signingIn"
+      :error="signInError"
+      @sign-in="emit('signIn')"
+    />
+
+    <main v-else class="studio-main">
       <NodePalette
         v-if="started"
         class="builder-palette"
@@ -1056,6 +1145,12 @@ watch(
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The wall takes the shell's main row rather than its own viewport: the panel
+   declares `min-height: 100vh` for the page it usually IS, and under a 52px
+   header that would scroll the whole shell by a header's height. Two classes
+   deep so this outranks the panel's own scoped rule at equal specificity. */
+.studio-shell > .builder-signin { min-height: 0; }
 
 /* Mirrors `.control-toggle` in `studio.css`, on the other side. Both sit in the
    64px heading strip and both outrank it on z-index, which is why that strip

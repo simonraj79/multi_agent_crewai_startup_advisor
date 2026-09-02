@@ -6,9 +6,12 @@ import type {
   BuilderProblem,
   BuilderPublish,
   BuilderValidation,
+  CredentialDraft,
+  CredentialProbe,
+  CredentialSummary,
 } from '../types/builder'
 import { forValidate, toWire } from '../utils/builderSerialize'
-import { authedFetch } from './httpCore'
+import { authedFetch, fetchJson } from './httpCore'
 
 /**
  * Every call `/api/builder/*` accepts, and the three refusals peculiar to it.
@@ -348,3 +351,91 @@ export type BuilderApiLike = Pick<
 >
 
 export const builderApi = new BuilderApi()
+
+/* ======================================================================== *
+ *  Credentials - plan 01, contract C4                                      *
+ * ======================================================================== */
+
+/**
+ * `BUILDER_API_PREFIX` + the credential router's own path. Every one of the
+ * four calls below is `require_user` on the server: 401 with
+ * `WWW-Authenticate: Bearer` for nobody, 503 `credential vault is not
+ * configured` when the deployment has no `CREDENTIALS_MASTER_KEY`.
+ */
+export const CREDENTIALS_PATH = `${BUILDER_API_PREFIX}/credentials`
+
+/**
+ * Free functions rather than methods on `BuilderApi`, and the reason is the
+ * `Pick` above. `BuilderApiLike` is what every document double in the test
+ * suite is compiler-forced to match, and a credential is not a document: a
+ * `FakeBuilderApi` that had to grow four vault methods to keep compiling would
+ * be modelling a surface none of its callers reach. The picker takes its own
+ * narrower `CredentialApiLike`, so its double is checked against exactly what
+ * it stands in for and nothing else.
+ *
+ * They ride `httpCore` - bearer token, one 401 retry, the server's sentence
+ * rather than the envelope - for the reason that file gives: a second copy of
+ * a 401 retry is how one of them quietly stops retrying.
+ */
+
+/** The caller's own credentials, never a field value among them. */
+export async function listCredentials(): Promise<CredentialSummary[]> {
+  return fetchJson<CredentialSummary[]>(CREDENTIALS_PATH)
+}
+
+/**
+ * Store one. The fields leave in THIS body and nowhere else: the 201 answers
+ * with the same row shape the list uses, and a 422 names the kind or the
+ * missing field, a 413 the `MAX_CREDENTIAL_BYTES` (4 KiB) ceiling.
+ */
+export async function createCredential(draft: CredentialDraft): Promise<CredentialSummary> {
+  return fetchJson<CredentialSummary>(CREDENTIALS_PATH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  })
+}
+
+/**
+ * Answers 204 with no body, so nothing is parsed - `.json()` on an empty
+ * body throws, and that would turn a delete that fully succeeded into an
+ * error the author would retry against a row that is already gone. The same
+ * shape as `BuilderApi.remove`. A 404 is absent-or-not-yours, collapsed on the
+ * server so a stranger's probe learns nothing.
+ */
+export async function deleteCredential(id: string): Promise<void> {
+  const response = await authedFetch(`${CREDENTIALS_PATH}/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (response.ok) return
+  const body = await response.text().catch(() => '')
+  let message = readErrorDetail(body, response.status)
+  if (response.status === 429) message += retryAfterSentence(response.headers.get('Retry-After'))
+  throw new Error(message)
+}
+
+/**
+ * Ask the vault to try the credential against its provider. User-initiated
+ * and rate-limited with the run limiter's key, so a 429 here carries the same
+ * `Retry-After` sentence a launch would.
+ */
+export async function testCredential(id: string): Promise<CredentialProbe> {
+  return fetchJson<CredentialProbe>(`${CREDENTIALS_PATH}/${encodeURIComponent(id)}/test`, {
+    method: 'POST',
+  })
+}
+
+/** What `CredentialPicker` depends on - the four calls, nothing else. */
+export interface CredentialApiLike {
+  listCredentials: typeof listCredentials
+  createCredential: typeof createCredential
+  deleteCredential: typeof deleteCredential
+  testCredential: typeof testCredential
+}
+
+export const credentialApi: CredentialApiLike = {
+  listCredentials,
+  createCredential,
+  deleteCredential,
+  testCredential,
+}

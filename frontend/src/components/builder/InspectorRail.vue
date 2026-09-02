@@ -85,7 +85,7 @@ const INSPECTORS: Record<NodeKind, Component> = {
  */
 const INSPECTOR_FIELDS: Record<NodeKind, readonly string[]> = {
   input: ['field', 'label', 'max_chars', 'required'],
-  agent: ['tier', 'agent_id', 'tools', 'max_iter', 'guardrail_max_retries', 'prompt_inputs'],
+  agent: ['tier', 'agent_id', 'credential_id', 'tools', 'max_iter', 'guardrail_max_retries', 'prompt_inputs'],
   crew: ['tier', 'crew_id', 'max_iter', 'guardrail_max_retries', 'prompt_inputs'],
   gate: ['message', 'editable_fields', 'max_turns'],
   router: ['branches'],

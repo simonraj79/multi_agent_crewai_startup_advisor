@@ -12,6 +12,11 @@ This repository now contains three things that share one Python package:
    here. Its contract is [`docs/flow-builder-spec.md`](docs/flow-builder-spec.md).
    Read that before changing anything under `src/brief_crew/builder/` or
    `frontend/src/components/builder/`.
+4. **The gauntlet build** - the visual agent builder planned on 2026-09-02
+   and not yet started. [`PLANS.md`](PLANS.md) tracks status and the open
+   owner decisions; [`.agent/plans/`](.agent/plans/README.md) holds one plan
+   per feature, `00` the contracts. Read a plan file before building its
+   feature; read nothing else of it into a session.
 
 Read [`AGENTS.md`](AGENTS.md) before changing CrewAI code. The specifications in [`agents/`](agents/) remain authoritative for behavior they already cover. [`PRD.md`](PRD.md) extends those specifications for Validator Studio.
 

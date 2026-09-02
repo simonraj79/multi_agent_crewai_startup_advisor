@@ -1,0 +1,319 @@
+"""The isolation matrix - plan 15 D9, criterion 10; the persistence half of rubric 14.
+
+Every route this plan owns or consumes, run as user A (the owner), user B (a
+signed-in stranger) and an anonymous caller, against a document A created,
+with authentication on:
+
+| Route                     | A               | B    | anonymous |
+| ------------------------- | --------------- | ---- | --------- |
+| list                      | sees it         | no   | 401       |
+| get / versions / export   | 200             | 404  | 401       |
+| save / delete / duplicate | 200 / 204 / 201 | 404  | 401       |
+| import                    | 201, owner A    | 201, owner B, no reference to A's id | 401 |
+| test inputs               | 200             | 404  | 401       |
+
+The "test inputs" row has no route in Stage 1 - plan 13 owns the panel - so it
+is covered here at the level the table can be: `builder_test_inputs.user_id`
+is NOT NULL, the only way to read a row is a query scoped to its owner, and
+the rows go with their document. The route asserts the same three things the
+day it exists.
+
+The unowned-row carve-out (`store._visible_to`) is asserted too: a row with
+`user_id IS NULL` is readable by A, by B, and by an anonymous caller when
+authentication is off, because rows written before authentication existed
+cannot be given an owner and refusing them would destroy the history the
+feature is meant to organise. An OWNED row stays invisible to an anonymous
+caller even with authentication off.
+
+404 and not 403 everywhere B is refused, because a 403 confirms the document
+exists; the assertion is on the status AND on the body carrying nothing of A's.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+import unittest
+
+from fastapi.testclient import TestClient
+from sqlalchemy import func, insert, select
+from sqlalchemy.exc import IntegrityError
+
+from brief_crew.builder.store import BuilderDocumentStore
+from brief_crew.config import BUILDER_DOCUMENT_ID_PATTERN
+from brief_crew.service.app import create_app
+from brief_crew.service.persistence import (
+    PostgresFlowPersistence,
+    builder_test_inputs,
+    utcnow,
+)
+from tests.builder.test_compiler import straight_line
+from tests.service.builder_auth import (
+    ADA,
+    ADA_TOKEN,
+    GRACE,
+    GRACE_TOKEN,
+    BuilderAuthCase,
+    document_payload,
+)
+
+ANON = None
+CALLERS = ((ADA_TOKEN, "A"), (GRACE_TOKEN, "B"), (ANON, "anonymous"))
+
+
+class MatrixCase(BuilderAuthCase):
+    """A's document, with two versions so `?version=` has something to pick."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.owned = self.create_as(ADA_TOKEN)["id"]
+        saved = self.save_as(
+            ADA_TOKEN, self.owned, document_payload(name="A's second"), expected_version=1
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+
+    def request(self, token: str | None, method: str, path: str, **kwargs: Any) -> Any:
+        return getattr(self.client, method)(
+            path, headers=self.auth(token) if token else {}, **kwargs
+        )
+
+    def assert_nothing_of_a_leaks(self, response: Any) -> None:
+        self.assertNotIn(self.owned, response.text)
+        self.assertNotIn("A's second", response.text)
+        self.assertNotIn(ADA.id, response.text)
+
+    def assert_a_untouched(self) -> None:
+        body = self.get_as(ADA_TOKEN, self.owned).json()
+        self.assertEqual(body["head_version"], 2)
+        self.assertEqual(body["document"]["name"], "A's second")
+        self.assertEqual(body["status"], "draft")
+
+
+class ReadRoutes(MatrixCase):
+    def test_list(self) -> None:
+        self.assertIn(self.owned, self.list_ids_as(ADA_TOKEN))
+        self.assertNotIn(self.owned, self.list_ids_as(GRACE_TOKEN))
+        self.assertEqual(self.list_ids_as(GRACE_TOKEN), [])
+        response = self.request(ANON, "get", "/api/builder/workflows")
+        self.assertEqual(response.status_code, 401)
+        self.assert_nothing_of_a_leaks(response)
+
+    def test_get(self) -> None:
+        for suffix in ("", "?version=1"):
+            with self.subTest(route=f"get{suffix}"):
+                path = f"/api/builder/workflows/{self.owned}{suffix}"
+                self.assertEqual(self.request(ADA_TOKEN, "get", path).status_code, 200)
+                refused = self.request(GRACE_TOKEN, "get", path)
+                self.assertEqual(refused.status_code, 404)
+                self.assert_nothing_of_a_leaks(refused)
+                anonymous = self.request(ANON, "get", path)
+                self.assertEqual(anonymous.status_code, 401)
+                self.assert_nothing_of_a_leaks(anonymous)
+
+    def test_versions(self) -> None:
+        path = f"/api/builder/workflows/{self.owned}/versions"
+        listed = self.request(ADA_TOKEN, "get", path)
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual([entry["version"] for entry in listed.json()], [2, 1])
+        refused = self.request(GRACE_TOKEN, "get", path)
+        self.assertEqual(refused.status_code, 404)
+        self.assert_nothing_of_a_leaks(refused)
+        self.assertEqual(self.request(ANON, "get", path).status_code, 401)
+
+    def test_export(self) -> None:
+        path = f"/api/builder/workflows/{self.owned}/export"
+        exported = self.request(ADA_TOKEN, "get", path)
+        self.assertEqual(exported.status_code, 200)
+        # A's own export carries neither A's row id nor A's identity (D1).
+        self.assertNotIn(self.owned, exported.text)
+        self.assertNotIn(ADA.id, exported.text)
+        refused = self.request(GRACE_TOKEN, "get", path)
+        self.assertEqual(refused.status_code, 404)
+        self.assert_nothing_of_a_leaks(refused)
+        anonymous = self.request(ANON, "get", path)
+        self.assertEqual(anonymous.status_code, 401)
+        self.assert_nothing_of_a_leaks(anonymous)
+
+
+class WriteRoutes(MatrixCase):
+    def test_save(self) -> None:
+        payload = document_payload(name="edited")
+        refused = self.save_as(GRACE_TOKEN, self.owned, payload, expected_version=2)
+        self.assertEqual(refused.status_code, 404)
+        self.assert_nothing_of_a_leaks(refused)
+        self.assertEqual(self.save_as(ANON, self.owned, payload, expected_version=2).status_code, 401)
+        self.assert_a_untouched()
+        accepted = self.save_as(ADA_TOKEN, self.owned, payload, expected_version=2)
+        self.assertEqual(accepted.status_code, 200, accepted.text)
+        self.assertEqual(accepted.json()["head_version"], 3)
+
+    def test_duplicate(self) -> None:
+        path = f"/api/builder/workflows/{self.owned}/duplicate"
+        refused = self.request(GRACE_TOKEN, "post", path)
+        self.assertEqual(refused.status_code, 404)
+        self.assert_nothing_of_a_leaks(refused)
+        self.assertEqual(self.list_ids_as(GRACE_TOKEN), [])
+        self.assertEqual(self.request(ANON, "post", path).status_code, 401)
+        accepted = self.request(ADA_TOKEN, "post", path)
+        self.assertEqual(accepted.status_code, 201, accepted.text)
+        self.assertIn(accepted.json()["id"], self.list_ids_as(ADA_TOKEN))
+        self.assertEqual(self.list_ids_as(GRACE_TOKEN), [])
+
+    def test_delete(self) -> None:
+        path = f"/api/builder/workflows/{self.owned}"
+        refused = self.request(GRACE_TOKEN, "delete", path)
+        self.assertEqual(refused.status_code, 404)
+        self.assert_nothing_of_a_leaks(refused)
+        self.assert_a_untouched()
+        self.assertEqual(self.request(ANON, "delete", path).status_code, 401)
+        self.assert_a_untouched()
+        self.assertEqual(self.request(ADA_TOKEN, "delete", path).status_code, 204)
+        self.assertEqual(self.get_as(ADA_TOKEN, self.owned).status_code, 404)
+
+    def test_import(self) -> None:
+        envelope = self.export_as(ADA_TOKEN, self.owned).json()
+
+        as_a = self.import_as(ADA_TOKEN, envelope)
+        self.assertEqual(as_a.status_code, 201, as_a.text)
+        self.assertIn(as_a.json()["id"], self.list_ids_as(ADA_TOKEN))
+        self.assertNotIn(as_a.json()["id"], self.list_ids_as(GRACE_TOKEN))
+
+        as_b = self.import_as(GRACE_TOKEN, envelope)
+        self.assertEqual(as_b.status_code, 201, as_b.text)
+        b_id = as_b.json()["id"]
+        self.assertRegex(b_id, BUILDER_DOCUMENT_ID_PATTERN)
+        self.assertNotEqual(b_id, self.owned)
+        self.assertIn(b_id, self.list_ids_as(GRACE_TOKEN))
+        self.assertNotIn(b_id, self.list_ids_as(ADA_TOKEN))
+        self.assertEqual(self.get_as(ADA_TOKEN, b_id).status_code, 404)
+        # No reference to A: not A's row id, not A's identity, and - because
+        # the export cannot carry them (D1) - no credential, server or skill
+        # id of A's anywhere in what B now holds.
+        self.assertNotIn(self.owned, as_b.text)
+        self.assertNotIn(ADA.id, as_b.text)
+        self.assertEqual(
+            re.findall(r"\b(?:cr|mcp|skill)_[0-9a-f]+\b", as_b.text), []
+        )
+
+        self.assertEqual(self.import_as(ANON, envelope).status_code, 401)
+        self.assertEqual(len(self.list_ids_as(GRACE_TOKEN)), 1)
+
+
+class TestInputsTable(MatrixCase):
+    """The row of the table with no route yet - plan 13 owns the panel."""
+
+    def persistence(self) -> PostgresFlowPersistence:
+        return self.app.state.run_registry.persistence
+
+    def seed_input(self, *, user_id: str | None, document_id: str | None = None) -> str:
+        row_id = f"ti_{(user_id or 'none')[-4:]}{document_id or self.owned}"[:32]
+        now = utcnow()
+        with self.persistence().begin() as connection:
+            connection.execute(
+                insert(builder_test_inputs).values(
+                    id=row_id,
+                    user_id=user_id,
+                    document_id=document_id or self.owned,
+                    label="clinics",
+                    inputs={"idea": "a scheduling assistant for clinics"},
+                    node_mocks=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        return row_id
+
+    def scoped(self, caller: str | None) -> list[str]:
+        """The only read the route may make: rows WHERE user_id = caller."""
+
+        predicate = (
+            builder_test_inputs.c.user_id.is_(None)
+            if caller is None
+            else builder_test_inputs.c.user_id == caller
+        )
+        with self.persistence().connect() as connection:
+            rows = connection.execute(
+                select(builder_test_inputs.c.id).where(predicate)
+            ).scalars().all()
+        return [str(row) for row in rows]
+
+    def test_a_row_without_an_owner_is_refused_by_the_table(self) -> None:
+        """Isolation rule 1: `user_id` is NOT NULL, so "anonymous" has no row."""
+
+        with self.assertRaises(IntegrityError):
+            self.seed_input(user_id=None)
+        self.assertEqual(self.scoped(None), [])
+
+    def test_a_s_input_is_visible_to_a_query_scoped_to_a_and_to_nobody_else(self) -> None:
+        row_id = self.seed_input(user_id=ADA.id)
+        self.assertEqual(self.scoped(ADA.id), [row_id])
+        self.assertEqual(self.scoped(GRACE.id), [])
+        self.assertEqual(self.scoped(None), [])
+
+    def test_the_rows_go_with_their_document(self) -> None:
+        self.seed_input(user_id=ADA.id)
+        self.assertEqual(self.request(ADA_TOKEN, "delete", f"/api/builder/workflows/{self.owned}").status_code, 204)
+        with self.persistence().connect() as connection:
+            remaining = connection.execute(
+                select(func.count()).select_from(builder_test_inputs)
+            ).scalar_one()
+        self.assertEqual(int(remaining), 0)
+
+
+class UnownedRowCarveOut(BuilderAuthCase):
+    """`_visible_to`: no owner means everybody; an owner means only them."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.unowned = self.store().create(straight_line()).id
+
+    def test_a_signed_in_a_and_b_both_read_an_unowned_row(self) -> None:
+        for token, who in ((ADA_TOKEN, "A"), (GRACE_TOKEN, "B")):
+            with self.subTest(caller=who):
+                self.assertEqual(self.get_as(token, self.unowned).status_code, 200)
+                self.assertEqual(
+                    self.request(token, "get", f"/api/builder/workflows/{self.unowned}/versions").status_code,
+                    200,
+                )
+                self.assertEqual(self.export_as(token, self.unowned).status_code, 200)
+
+    def test_an_unowned_row_is_not_in_a_signed_in_user_s_list(self) -> None:
+        """`list` is SQL-scoped to the caller: theirs, not theirs-plus-everything."""
+
+        self.assertNotIn(self.unowned, self.list_ids_as(ADA_TOKEN))
+        self.assertNotIn(self.unowned, self.list_ids_as(GRACE_TOKEN))
+
+    def test_an_anonymous_caller_is_still_refused_while_auth_is_required(self) -> None:
+        self.assertEqual(self.get_as(None, self.unowned).status_code, 401)
+
+    def request(self, token: str | None, method: str, path: str) -> Any:
+        return getattr(self.client, method)(path, headers=self.auth(token) if token else {})
+
+
+class UnownedRowWithAuthOff(unittest.TestCase):
+    """The same carve-out on a service with no identity to check."""
+
+    def setUp(self) -> None:
+        self.app = create_app(synthetic=True, database_url="sqlite+pysqlite:///:memory:")
+        self.client = TestClient(self.app)
+        self.addCleanup(self.client.close)
+        store = BuilderDocumentStore(self.app.state.run_registry.persistence)
+        self.unowned = store.create(straight_line()).id
+        owned_payload = straight_line().model_copy(update={"id": "ug_0000aaaa"})
+        self.owned = store.create(owned_payload, user_id=ADA.id).id
+
+    def test_anonymous_reads_and_lists_the_unowned_row(self) -> None:
+        self.assertEqual(self.client.get(f"/api/builder/workflows/{self.unowned}").status_code, 200)
+        self.assertEqual(
+            self.client.get(f"/api/builder/workflows/{self.unowned}/export").status_code, 200
+        )
+        listed = self.client.get("/api/builder/workflows")
+        self.assertEqual(listed.status_code, 200)
+        self.assertIn(self.unowned, [row["id"] for row in listed.json()])
+
+    def test_an_owned_row_stays_invisible_to_anonymous_even_with_auth_off(self) -> None:
+        """Signing out must not be the cheapest way to read everybody's drafts."""
+
+        self.assertEqual(self.client.get(f"/api/builder/workflows/{self.owned}").status_code, 404)
+        listed = self.client.get("/api/builder/workflows")
+        self.assertNotIn(self.owned, [row["id"] for row in listed.json()])

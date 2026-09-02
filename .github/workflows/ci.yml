@@ -81,6 +81,60 @@ jobs:
               print(f"{path} OK")
           PY
 
+  # Plan 15 D8 / criterion 9: the five compare-and-set paths against a real
+  # PostgreSQL 18, from two processes. Everything else in this workflow runs
+  # on SQLite, which is single-writer and can never exercise a row lock.
+  #
+  # `main` only (PLANS.md decision 25): a `pull_request` event runs at
+  # `refs/pull/N/merge` and a branch push at its own ref, so both skip; the
+  # job runs once per merge. Still no-cost - the service container is free
+  # and `tests/pg/test_two_writers.py` touches no network but the database.
+  # The test creates a throwaway database on the service and drops it again.
+  postgres:
+    name: Two writers on PostgreSQL 18
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CREWAI_DISABLE_TELEMETRY: "true"
+      CREWAI_TRACING_ENABLED: "false"
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:test@127.0.0.1:5432/postgres
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra service
+
+      # `-v` so the run log names each of the five paths; a skip here would
+      # mean TEST_DATABASE_URL did not reach the process, and the log must
+      # say "ok" five times rather than "skipped" once.
+      - name: Two writers, five paths
+        run: uv run --no-sync python -m unittest tests.pg.test_two_writers -v
+
   frontend:
     name: Frontend type-check and build
     runs-on: ubuntu-latest

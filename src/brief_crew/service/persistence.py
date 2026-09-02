@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 import json
@@ -31,6 +31,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    and_,
     create_engine,
     delete,
     func,
@@ -772,7 +773,23 @@ class PostgresFlowPersistence(FlowPersistence):
         flow_uuid: str,
         context: PendingFeedbackContext,
         state_data: dict[str, Any] | BaseModel,
-    ) -> None:
+    ) -> bool:
+        """Anchor a paused flow. True when this call's context is what is stored.
+
+        UPDATE-then-INSERT rather than an upsert, because the two dialects this
+        runs on spell upsert differently and the row is keyed by
+        ``flow_uuid`` alone. That shape has one race, and it is the one
+        ``tests/pg/test_two_writers.py`` drives: two processes raising
+        ``HumanFeedbackPending`` for one flow both read ``rowcount == 0`` from
+        the UPDATE, both INSERT, and the primary key decides. The loser's
+        transaction - the ``flow_states`` row included - is rolled back by the
+        raise, so nothing half-written remains, and it returns ``False``
+        rather than propagating ``IntegrityError``: the flow IS pending, which
+        is what the caller asked for, and the winner's context is the one
+        anchor a resume may read. Two processes pausing the same flow at once
+        means two processes are executing it, and the second anchor is the one
+        thing that must not overwrite the first.
+        """
         flow_uuid = _identifier(flow_uuid, label="flow_uuid")
         if _identifier(context.flow_id, label="context.flow_id") != flow_uuid:
             raise ValueError("pending feedback flow_id must match flow_uuid")
@@ -780,29 +797,48 @@ class PostgresFlowPersistence(FlowPersistence):
         context_data = _bounded_json(context.to_dict(), label="pending feedback")
         now = _utcnow()
 
-        with self._begin() as connection:
-            self._insert_flow_state(
-                connection,
-                flow_uuid=flow_uuid,
-                method_name=context.method_name,
-                state=state,
-                created_at=now,
-            )
-            result = connection.execute(
-                update(pending_feedback)
-                .where(pending_feedback.c.flow_uuid == flow_uuid)
-                .values(context=context_data, state=state, updated_at=now)
-            )
-            if result.rowcount == 0:
-                connection.execute(
-                    insert(pending_feedback).values(
-                        flow_uuid=flow_uuid,
-                        context=context_data,
-                        state=state,
-                        created_at=now,
-                        updated_at=now,
-                    )
+        try:
+            with self._begin() as connection:
+                self._insert_flow_state(
+                    connection,
+                    flow_uuid=flow_uuid,
+                    method_name=context.method_name,
+                    state=state,
+                    created_at=now,
                 )
+                result = connection.execute(
+                    update(pending_feedback)
+                    .where(pending_feedback.c.flow_uuid == flow_uuid)
+                    .values(context=context_data, state=state, updated_at=now)
+                )
+                if result.rowcount == 0:
+                    connection.execute(
+                        insert(pending_feedback).values(
+                            flow_uuid=flow_uuid,
+                            context=context_data,
+                            state=state,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+        except IntegrityError:
+            with self._connect() as connection:
+                existing = connection.execute(
+                    select(pending_feedback.c.flow_uuid).where(
+                        pending_feedback.c.flow_uuid == flow_uuid
+                    )
+                ).scalar_one_or_none()
+            if existing is None:
+                # Not the race: the constraint that fired was some other one,
+                # and hiding it behind "already pending" would be a lie.
+                raise
+            logger.warning(
+                "pending feedback for flow %s was written by another process "
+                "first; this context was not stored",
+                flow_uuid,
+            )
+            return False
+        return True
 
     def load_pending_feedback(
         self, flow_uuid: str
@@ -946,6 +982,60 @@ class PostgresFlowPersistence(FlowPersistence):
         if updated is None:
             raise KeyError(run_id)
         return updated
+
+    def claim_run_status(
+        self,
+        run_id: str,
+        status: Any,
+        *,
+        expected_statuses: Sequence[Any],
+    ) -> bool:
+        """Move a run's status only while it is still one of ``expected_statuses``.
+
+        The compare-and-set the orphan sweep needed and did not have. Plan 15
+        D8 and CLAUDE.md remaining-work item 3 both list the sweep among the
+        guarded ``UPDATE ... WHERE ...; rowcount`` paths, and until this method
+        it was not one: ``_fail_interrupted`` reached storage through
+        ``update_run_status``, which guards on ``id`` alone, so two API
+        instances sweeping one store - a deploy overlapping the instance it is
+        replacing, which ``autoDeploy: yes`` makes routine - would BOTH
+        reconcile one run, each writing its own terminal status and frames.
+        Guarding on the status the sweeper loaded means the second writer sees
+        ``rowcount == 0`` and learns the row is already terminal.
+
+        Only the status and its timestamps move here; ``completed_at`` is set
+        for a terminal target and left alone otherwise. The rest of the record
+        - result, error, usage, frame counters - is written afterwards by the
+        winner through ``update_run_status``, which stays unconditional and is
+        right to: it now runs only in the process holding the claim. Returns
+        True when this call made the change; False when the row is gone or
+        already left the expected set, which the caller must treat as somebody
+        else's reconciliation and not as an error.
+
+        ``tests/pg/test_two_writers.py`` drives two processes into this
+        UPDATE at once; ``tests/service/test_orphan_sweep_claim.py`` pins the
+        loser's behaviour on SQLite.
+        """
+        run_id = _identifier(run_id, label="run_id")
+        status_value = _identifier(_enum_value(status), label="status", limit=32)
+        expected = tuple(
+            _identifier(_enum_value(item), label="expected_status", limit=32)
+            for item in expected_statuses
+        )
+        if not expected:
+            raise ValueError("expected_statuses cannot be empty")
+        now = _utcnow()
+        values: dict[str, Any] = {"status": status_value, "updated_at": now}
+        if status_value in _TERMINAL_RUN_STATUSES:
+            values["completed_at"] = func.coalesce(runs.c.completed_at, now)
+        with self._begin() as connection:
+            result = connection.execute(
+                update(runs)
+                .where(runs.c.id == run_id, runs.c.status.in_(expected))
+                .values(**values)
+            )
+            claimed = result.rowcount == 1
+        return claimed
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")
@@ -1430,6 +1520,103 @@ class PostgresFlowPersistence(FlowPersistence):
             }
             for row in rows
         ]
+
+    def purge_expired_runs(
+        self,
+        *,
+        retention_days: int,
+        now: datetime | None = None,
+        limit: int = MAX_STALE_RUN_SCAN,
+        on_purged: Callable[[str], None] | None = None,
+    ) -> int:
+        """Delete terminal runs that finished more than ``retention_days`` ago.
+
+        Plan 15 D7. The in-memory eviction (``RunRegistry.evict_stale_runs``)
+        never touched a row, so completed runs, their frames, their node
+        metrics and their gates accumulated forever - CLAUDE.md closed item 32
+        names it. This is the durable half, and it is the only thing in this
+        module that deletes a run.
+
+        What it will not delete, each for a reason:
+
+        * anything but ``completed`` / ``failed`` / ``cancelled``. ``waiting``
+          above all: a gate answered late is deliberate behaviour, and a run
+          parked at a gate is never old enough. ``queued`` / ``running`` /
+          ``cancelling`` belong to the orphan sweep, which decides what they
+          are before anything decides how old they are.
+        * a terminal run that still has an UNANSWERED gate row. That shape
+          should not exist - ``_close_interrupted_gate`` answers it - but a
+          purge that could take a run out from under an open gate would be the
+          exact hazard the plan names, so the predicate refuses it outright
+          rather than trusting the sweep that ran before it.
+        * ``retention_days == 0``: never, which is the default and the
+          deployed behaviour today (PLANS.md decision 23).
+
+        Age is ``completed_at``, falling back to ``updated_at`` for a row that
+        reached a terminal status without one. The children go first and by
+        name - ``run_frames``, ``run_node_metrics``, ``run_gates`` - for the
+        reason ``BuilderDocumentStore.delete`` gives: they carry ``ON DELETE
+        CASCADE`` and PostgreSQL honours it, but SQLite only does with a pragma
+        this service never sets, so the cascade is done explicitly rather than
+        hopefully. Documents, versions, credentials, skills and tools are not
+        runs and are never touched.
+
+        Bounded by ``limit`` per call, like every other sweep here, so one
+        tick after a long retention change cannot hold a transaction over the
+        whole table. ``on_purged`` is told each deleted id after the commit, so
+        a caller holding an in-memory copy can let it go.
+        """
+        days = int(retention_days)
+        if days < 0:
+            raise ValueError("retention_days cannot be negative")
+        if days == 0:
+            return 0
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        moment = _as_utc(now) or _utcnow()
+        cutoff = moment - timedelta(days=days)
+        finished_at = func.coalesce(runs.c.completed_at, runs.c.updated_at)
+        open_gate = (
+            select(run_gates.c.gate_id)
+            .where(
+                run_gates.c.run_id == runs.c.id,
+                run_gates.c.answered_at.is_(None),
+            )
+            .exists()
+        )
+        expired = and_(
+            runs.c.status.in_(sorted(_TERMINAL_RUN_STATUSES)),
+            finished_at < cutoff,
+            ~open_gate,
+        )
+        purged: list[str] = []
+        with self._begin() as connection:
+            candidates = connection.execute(
+                select(runs.c.id).where(expired).order_by(finished_at).limit(limit)
+            ).scalars().all()
+            for run_id in candidates:
+                # The predicate is repeated on the DELETE, so a row that changed
+                # between the SELECT and here - answered, reopened, anything -
+                # is left alone by the write rather than by the read.
+                result = connection.execute(
+                    delete(runs).where(runs.c.id == run_id, expired)
+                )
+                if result.rowcount != 1:
+                    continue
+                for child in (run_frames, run_node_metrics, run_gates):
+                    connection.execute(delete(child).where(child.c.run_id == run_id))
+                purged.append(str(run_id))
+        if on_purged is not None:
+            for run_id in purged:
+                on_purged(run_id)
+        if purged:
+            logger.info(
+                "purged %d terminal run(s) that finished more than %d day(s) ago, "
+                "with their frames, node metrics and gates",
+                len(purged),
+                days,
+            )
+        return len(purged)
 
     def get_pending_gate(self, run_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")

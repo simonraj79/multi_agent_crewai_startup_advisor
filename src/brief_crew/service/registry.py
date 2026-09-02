@@ -42,6 +42,7 @@ from brief_crew.config import (
     VALIDATOR_ORPHAN_RUN_GRACE_SECONDS,
     VALIDATOR_ORPHAN_RUN_RECOVERY,
     VALIDATOR_PERSIST_QUEUE_CAPACITY,
+    VALIDATOR_RUN_RETENTION_DAYS,
     VALIDATOR_RUN_RETENTION_SECONDS,
     compute_cost_usd,
 )
@@ -1358,9 +1359,21 @@ class RunRegistry:
         orphan_grace: float | None = None,
         recover_orphans: bool | None = None,
         max_run_cost_usd: float | None = None,
+        run_retention_days: int | None = None,
     ) -> None:
         if max_workers is None:
             max_workers = RUN_CONCURRENCY
+        # Plan 15 D7. Days, not seconds, and 0 means keep everything - the
+        # deployed behaviour, and the default until PLANS.md decision 23 says
+        # otherwise. Negative is refused for the reason every other knob here
+        # refuses it: nonsense must not silently become "off".
+        self.run_retention_days = (
+            VALIDATOR_RUN_RETENTION_DAYS
+            if run_retention_days is None
+            else int(run_retention_days)
+        )
+        if self.run_retention_days < 0:
+            raise ValueError("run_retention_days cannot be negative")
         if max_workers < 1:
             raise ValueError("max_workers must be positive")
         # The per-run spend ceiling every record this registry creates inherits.
@@ -1443,6 +1456,7 @@ class RunRegistry:
         self._evicted_runs = 0
         self._interrupted_runs = 0
         self._readopted_gates = 0
+        self._purged_runs = 0
         self._sweeper_stop = Event()
         self._sweeper: Thread | None = None
         if self.gate_sweep_interval > 0:
@@ -1996,7 +2010,7 @@ class RunRegistry:
             }
 
     def _sweep_loop(self) -> None:
-        # One maintenance tick drives all three periodic jobs, so there is a
+        # One maintenance tick drives every periodic job, so there is a
         # single background thread with a single shutdown path rather than one
         # thread per concern. Event.wait parks it for the whole interval and
         # returns early the moment close() sets the flag, so this is neither a
@@ -2010,6 +2024,10 @@ class RunRegistry:
                 self.recover_orphaned_runs,
                 "the interrupted-run recovery sweep failed",
             ),
+            # After the recovery on purpose: a row the recovery just failed is
+            # terminal from this tick and old from the next, never both at
+            # once, so the two jobs cannot disagree about one run.
+            (self.purge_expired_runs, "the terminal-run retention purge failed"),
         )
         while not self._sweeper_stop.wait(self.gate_sweep_interval):
             for job, message in jobs:
@@ -2100,6 +2118,57 @@ class RunRegistry:
             )
         return evicted
 
+    def purge_expired_runs(self, *, now: datetime | None = None) -> int:
+        """Delete terminal runs older than the retention window. Plan 15 D7.
+
+        The durable counterpart of ``evict_stale_runs``, which only ever
+        dropped a run from memory. The decision - terminal, older than
+        ``run_retention_days``, no gate still open on it - is the store's
+        (``purge_expired_runs`` on persistence), because the store is the only
+        place that can make it atomically against another process. What this
+        method adds is the process-local half: a purged run still cached in
+        ``_records`` would be served from memory on the next ``require`` as if
+        it existed, so each purged id is let go here too. A run with a live
+        future in this process is never a candidate - it is not terminal in
+        storage - but the guard is kept beside the pop anyway, because "cannot
+        happen" is the phrase every sweep in this file was written to retire.
+
+        Never raises into the tick: ``_sweep_loop`` isolates it like every
+        other job, and ``0`` days means the store is not even asked.
+        """
+        if self.persistence is None or self.run_retention_days <= 0:
+            return 0
+        purger = getattr(self.persistence, "purge_expired_runs", None)
+        if not callable(purger):
+            return 0
+        purged = int(
+            purger(
+                retention_days=self.run_retention_days,
+                now=now,
+                on_purged=self._forget_purged_run,
+            )
+        )
+        if purged:
+            with self._lock:
+                self._purged_runs += purged
+            logger.info(
+                "purged %d terminal run(s) older than %d day(s) from storage",
+                purged,
+                self.run_retention_days,
+            )
+        return purged
+
+    def _forget_purged_run(self, run_id: str) -> None:
+        with self._lock:
+            future = self._futures.get(run_id)
+            if future is not None and not future.done():
+                return
+            record = self._records.get(run_id)
+            if record is not None and record.status not in TERMINAL_STATUSES:
+                return
+            self._records.pop(run_id, None)
+            self._futures.pop(run_id, None)
+
     def recover_orphaned_runs(self, *, now: datetime | None = None) -> list[str]:
         """Reconcile runs whose worker died with the process. Item 32.
 
@@ -2174,7 +2243,10 @@ class RunRegistry:
                 if self._adopt_interrupted_gate(record):
                     readopted += 1
                     continue
-                self._fail_interrupted(record)
+                if not self._fail_interrupted(record):
+                    # Another process reconciled it first (plan 15 D8). Not
+                    # ours to count, and the stale copy is already dropped.
+                    continue
             except Exception:
                 logger.exception("could not reconcile interrupted run %s", run_id)
                 continue
@@ -2234,8 +2306,8 @@ class RunRegistry:
         )
         return True
 
-    def _fail_interrupted(self, record: RunRecord) -> None:
-        """Take one orphaned run to a terminal state, loudly.
+    def _fail_interrupted(self, record: RunRecord) -> bool:
+        """Take one orphaned run to a terminal state, loudly. True if we did.
 
         The frames deliberately reuse the two shapes ``_execute`` already
         emits - ``ERROR``/``WORKFLOW_END`` for a failure, ``RUN_STATE``/
@@ -2249,8 +2321,18 @@ class RunRegistry:
         for the run to stop; it stopped, in the least graceful way available.
         Reporting that as a failure would blame the run for doing what it was
         told.
+
+        The terminal status is CLAIMED first, by compare-and-set against the
+        status this record was loaded with (plan 15 D8). Two instances sweeping
+        one store - a deploy overlapping its predecessor - both find the same
+        stale row; only the one whose claim lands writes frames and counts the
+        run, and the other returns False having dropped its stale copy.
         """
         cancelling = record.status is RunStatus.CANCELLING
+        if not self._claim_interrupted(
+            record, RunStatus.CANCELLED if cancelling else RunStatus.FAILED
+        ):
+            return False
         node_id = record.node_registry.workflow_node_id
         # A durable gate that could not be adopted must not stay open, or the
         # F03 sweeper keeps finding a gate on a terminal run forever.
@@ -2287,6 +2369,38 @@ class RunRegistry:
             record.mark_failed(RuntimeError(INTERRUPTED_ERROR))
             record.emit_metrics("run_failed")
         self._persist_status(record)
+        return True
+
+    def _claim_interrupted(self, record: RunRecord, status: RunStatus) -> bool:
+        """Win the right to reconcile this run, or forget it. Plan 15 D8.
+
+        ``claim_run_status`` guards on the status the record was loaded with,
+        so of two processes that both read ``running`` exactly one moves the
+        row and the other sees ``rowcount == 0``. The loser drops its in-memory
+        copy rather than correcting it: ``require()`` rehydrates from storage
+        on the next request, and the winner is still writing the frames and
+        the error that copy would otherwise lack.
+
+        A store without the compare-and-set - a test double, or an older
+        persistence - keeps the unconditional behaviour, which is what every
+        run of this sweep did before the claim existed.
+        """
+        claimer = getattr(self.persistence, "claim_run_status", None)
+        if not callable(claimer):
+            return True
+        claimed = bool(
+            claimer(record.run_id, status, expected_statuses=(record.status,))
+        )
+        if not claimed:
+            with self._lock:
+                self._records.pop(record.run_id, None)
+                self._futures.pop(record.run_id, None)
+            logger.info(
+                "run %s was reconciled by another process first; its stale "
+                "in-memory copy was dropped",
+                record.run_id,
+            )
+        return claimed
 
     def _close_interrupted_gate(self, record: RunRecord) -> None:
         gate_id = str((record.pending_gate or {}).get("gate_id") or "")
@@ -2333,6 +2447,8 @@ class RunRegistry:
                 # the process that owned them is gone, and gates it put back.
                 "interrupted_runs": self._interrupted_runs,
                 "readopted_gates": self._readopted_gates,
+                # Plan 15 D7: terminal runs deleted from storage by retention.
+                "purged_runs": self._purged_runs,
             }
 
     def _open_gates(

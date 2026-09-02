@@ -66,6 +66,7 @@ const { route, navigate } = useWorkspaceRoute()
     @run-workspace="navigate({ name: 'studio' })"
     @open-document="navigate({ name: 'builder', documentId: $event })"
     @adopt-document="navigate({ name: 'builder', documentId: $event }, { replace: true })"
+    @close-document="navigate({ name: 'builder', documentId: null }, { replace: true })"
   />
 
   <StudioView

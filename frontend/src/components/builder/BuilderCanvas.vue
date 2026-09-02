@@ -61,6 +61,17 @@ const props = defineProps<{
   canvas: BuilderCanvas
   /** The document's name, for the canvas's own accessible name. */
   label?: string
+  /**
+   * A stored version that is not head is on screen (plan 15 D3).
+   *
+   * The store's `readOnly` lock already refuses every commit, so nothing here
+   * is load-bearing for safety - this is what stops Vue Flow from DRAWING a
+   * drag the store will then refuse: a card that follows the pointer and snaps
+   * back on release reads as a broken canvas, where a card that will not lift
+   * reads as a locked one. Selection stays on, because reading v3 is the
+   * point of opening it.
+   */
+  readOnly?: boolean
 }>()
 
 const flow = useVueFlow('builder-flow')
@@ -504,7 +515,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
   <div
     ref="frame"
     class="builder-canvas"
-    :class="{ 'is-connecting': isConnecting, 'is-hovering': isHovering }"
+    :class="{ 'is-connecting': isConnecting, 'is-hovering': isHovering, 'is-read-only': readOnly }"
     :[BUILDER_CANVAS_ATTR]="''"
     data-mode="design"
     role="application"
@@ -521,10 +532,10 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       class="builder-flow"
       :nodes="canvas.nodes.value"
       :edges="canvas.edges.value"
-      :nodes-draggable="true"
-      :nodes-connectable="true"
+      :nodes-draggable="!readOnly"
+      :nodes-connectable="!readOnly"
       :elements-selectable="true"
-      :edges-updatable="true"
+      :edges-updatable="!readOnly"
       :snap-to-grid="canvas.gridSnapping.value"
       :snap-grid="[20, 20]"
       :selection-mode="SelectionMode.Partial"

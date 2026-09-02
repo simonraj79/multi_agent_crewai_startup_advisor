@@ -2,6 +2,7 @@ import { buildMockSegments, type MockScriptStep } from '../data/mockFrames'
 import { MOCK_GRAPH } from '../data/mockGraph'
 import { getAccessToken } from './authClient'
 import { API_BASE_URL, authedFetch, fetchJson } from './httpCore'
+import { saveBlob } from '../utils/saveBlob'
 import type {
   BackendFramePage,
   BackendGatePrompt,
@@ -654,37 +655,6 @@ export class StudioApi {
       }, elapsed)
       run.timers.push(timer)
     }
-  }
-}
-
-/**
- * Hands a blob to the browser's download machinery.
- *
- * An object URL is a document-lifetime entry in the blob URL store: nothing
- * reclaims it, so every one that is minted has to be revoked or the blob stays
- * resident until the tab closes. The revoke is in `finally` because `click()`
- * can throw - a blocked popup, a detached document during teardown - and a
- * throw on the happy path was the one way this could leak.
- *
- * The revoke is synchronous, immediately after the click. Chromium and Firefox
- * both resolve the blob URL while the click is still being dispatched, so the
- * download is already underway by then. WebKit has historically been less
- * forgiving; if a Safari download ever comes back empty, this is the line, and
- * the fix is to defer the revoke rather than to drop it.
- */
-function saveBlob(blob: Blob, filename: string): void {
-  const href = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = href
-  anchor.download = filename
-  anchor.rel = 'noopener'
-  anchor.style.display = 'none'
-  document.body.append(anchor)
-  try {
-    anchor.click()
-  } finally {
-    anchor.remove()
-    URL.revokeObjectURL(href)
   }
 }
 

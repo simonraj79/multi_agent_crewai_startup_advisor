@@ -597,6 +597,68 @@
 .builder-restore-accept:hover { background: color-mix(in srgb, var(--accent-cyan) 16%, transparent); }
 .builder-restore-dismiss:hover { border-color: var(--text-muted); }
 
+/* Plan 15's dock: the grid row under `DocumentBar` that holds every strip
+   sitting above the canvas IN THE LAYOUT - the version browser, the restore
+   bar, the import notice, the delete confirm. Empty, it is 0px tall; the row
+   is `auto`, so the canvas takes the difference. */
+.builder-dock { display: grid; min-width: 0; }
+
+/* Plan 15 D2's import notice (ruling S1-7): a notice, not a problem row. */
+.builder-import-notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--text-title);
+  font: 500 var(--fs-11)/1.4 var(--font-mono);
+}
+.builder-import-copy { flex: 0 1 auto; min-width: 0; }
+.builder-import-nodes { display: inline-flex; flex: 1 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.builder-import-node {
+  padding: 3px 9px;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--warn-text);
+  cursor: pointer;
+  font: 600 var(--fs-11)/1 var(--font-mono);
+}
+.builder-import-node:hover { background: color-mix(in srgb, var(--warn-text) 14%, transparent); }
+.builder-import-dismiss { flex: 0 0 auto; margin-left: auto; }
+
+/* Plan 15 D3's delete confirm, docked (R15). Mirrors the gallery's own. */
+.builder-delete-confirm {
+  display: grid;
+  gap: 9px;
+  padding: 12px 40px;
+  border-bottom: 1px solid var(--err-border);
+  background: var(--err-bg);
+  color: var(--text-body);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+}
+.builder-delete-copy { color: var(--text-muted); }
+.builder-delete-copy strong { color: var(--text-title); }
+.builder-delete-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; max-width: 640px; }
+.builder-delete-actions input {
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--text-body);
+  font-size: var(--fs-13);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  outline: 0;
+}
+.builder-delete-actions input:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
+.builder-delete-actions .button { min-height: 36px; }
+.builder-delete-confirm .button-danger { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
+.builder-delete-confirm .button-danger:disabled { cursor: not-allowed; opacity: 0.5; }
+.builder-delete-problem { margin: 0; color: var(--err-text); }
+
 /* Section 4.5's filter box - the control `/` focuses. */
 .builder-filter {
   display: flex;

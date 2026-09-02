@@ -204,6 +204,30 @@ export function useBuilderDocument(initial: BuilderDocument) {
   const revision = shallowRef(0)
 
   const dirty = computed(() => doc.value !== baseline.value)
+
+  /**
+   * While true, `commit()` refuses every write and the document stays exactly
+   * what it is.
+   *
+   * The lock for a stored version that is not head (plan 15 D3). It lives on
+   * the ONE write path rather than on each of the surfaces that reach it - the
+   * canvas, the inspector, the hotkeys, the clipboard, the port menu - because a
+   * surface-by-surface guard is a list, and the next surface added forgets to
+   * be on it. Set by `useBuilderPersistence.adoptIdentity`, which is the only
+   * place `version` and `headVersion` are written, so the lock and the two
+   * numbers it is derived from cannot disagree.
+   *
+   * `load()` is NOT locked: opening another version, or head, is exactly what
+   * an author viewing v3 of v7 does next.
+   */
+  const readOnly = shallowRef(false)
+  /**
+   * How many commits the lock has refused. A counter rather than an event so
+   * the shell can watch it and say "read-only" the moment a gesture is
+   * swallowed - a drag that snaps back with nothing on screen saying why reads
+   * as a broken canvas, not as a locked one.
+   */
+  const lockedRefusals = shallowRef(0)
   const canUndo = computed(() => revision.value >= 0 && history.length > 0)
   const canRedo = computed(() => revision.value >= 0 && future.length > 0)
   const undoLabel = computed(() =>
@@ -236,6 +260,10 @@ export function useBuilderDocument(initial: BuilderDocument) {
    */
   function commit(label: string, next: BuilderDocument, coalesceKey?: string | null): void {
     if (next === doc.value) return
+    if (readOnly.value) {
+      lockedRefusals.value += 1
+      return
+    }
 
     const key = coalesceKey ?? undefined
     const top = history[history.length - 1]
@@ -590,6 +618,8 @@ export function useBuilderDocument(initial: BuilderDocument) {
     doc,
     dirty,
     revision,
+    readOnly,
+    lockedRefusals,
     commit,
     load,
     markSaved,

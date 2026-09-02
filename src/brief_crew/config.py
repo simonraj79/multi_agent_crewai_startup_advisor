@@ -2293,6 +2293,51 @@ AUTH_JWT_LEEWAY_SECONDS = _env_positive_int("AUTH_JWT_LEEWAY_SECONDS", 60)
 AUTH_JWT_ALGORITHMS = ("EdDSA",)
 
 # --------------------------------------------------------------------------
+# The credential vault - contract C4, .agent/plans/01-auth-and-workspaces.md
+#
+# CREDENTIALS_MASTER_KEY is base64 of 32 bytes. It is read HERE and nowhere
+# else, through os.getenv like every other knob, so the section 6 scan in
+# docs/tech-stack.md finds it. The boot check that refuses to start with auth
+# on and no key lives in service/app.py beside the auth checks (01 D3), and
+# is the same shape as the VALIDATOR_REQUIRE_AUTH rule above: configuring the
+# vault half-way is the loud failure, not the quiet one. Empty with auth OFF
+# means "no vault" - the credential routes answer 503 and nothing else
+# changes, so tests, SYNTHETIC mode and a bare checkout keep working.
+# --------------------------------------------------------------------------
+CREDENTIALS_MASTER_KEY = os.getenv("CREDENTIALS_MASTER_KEY", "").strip()
+
+# One credential is one encrypted JSON object of its fields. 4 KiB is a
+# PostgreSQL DSN with room to spare and refuses a pasted PEM by an order of
+# magnitude; the POST answers 413 over it.
+MAX_CREDENTIAL_BYTES = 4096
+
+# `cr_` + 8 hex, minted like `ug_` document ids (BUILDER_DOCUMENT_ID_PATTERN).
+# The Integrator's S1 ruling: 15 D6 wrote `cred_` + 16 hex and 01 C4 wrote
+# this; C4 owns the id shape, and every consumer - the document field, the
+# export strip, the store - reads the pattern from here rather than restating
+# it. The column is String(128) regardless, like every other id.
+CREDENTIAL_ID_PATTERN = r"^cr_[0-9a-f]{8}$"
+
+# The kinds 01 D4 tables, and the fields the vault requires for each. A POST
+# naming a kind outside this set, or missing one of its fields, is a 422 with
+# the field named. `e2b` is listed so a row can exist; nothing constructs from
+# it in v1 (PLANS.md decision 3).
+CREDENTIAL_FIELDS: dict[str, tuple[str, ...]] = {
+    "openrouter": ("api_key",),
+    "firecrawl": ("api_key",),
+    "serper": ("api_key",),
+    "tavily": ("api_key",),
+    "exa": ("api_key",),
+    "brave": ("api_key",),
+    "github": ("token",),
+    "postgres": ("dsn",),
+    "http_header": ("name", "value"),
+    "mcp_header": ("name", "value"),
+    "e2b": ("api_key",),
+}
+CREDENTIAL_KINDS: frozenset[str] = frozenset(CREDENTIAL_FIELDS)
+
+# --------------------------------------------------------------------------
 # WebSocket inbound control channel - PRD F27/F37
 #
 # The socket now carries operator commands (gate replies), not just the
@@ -2395,6 +2440,23 @@ VALIDATOR_ORPHAN_RUN_GRACE_SECONDS = _env_positive_int(
     "VALIDATOR_ORPHAN_RUN_GRACE_SECONDS", 900
 )
 VALIDATOR_ORPHAN_RUN_RECOVERY = _env_flag("VALIDATOR_ORPHAN_RUN_RECOVERY", True)
+
+# --------------------------------------------------------------------------
+# Durable run retention - .agent/plans/15-persistence.md D7
+#
+# The in-memory eviction above (VALIDATOR_RUN_RETENTION_SECONDS) never touched
+# a row, so terminal runs, their frames, metrics and gates accumulated forever
+# (CLAUDE.md closed item 32). This is the durable half: terminal runs older
+# than this many DAYS are deleted by the same periodic sweep the orphan
+# recovery uses, and `run_frames` / `run_node_metrics` / `run_gates` follow by
+# ON DELETE CASCADE. Documents, versions, credentials, skills and tools are
+# never purged by it.
+#
+# 0 means keep everything, which is the deployed behaviour today and stays the
+# default until PLANS.md decision 23 is answered. `minimum=0` because zero is
+# the meaningful "off" value here, not a mistake.
+# --------------------------------------------------------------------------
+VALIDATOR_RUN_RETENTION_DAYS = _env_positive_int("VALIDATOR_RUN_RETENTION_DAYS", 0, minimum=0)
 
 # --------------------------------------------------------------------------
 # Fan-out execution mode - PRD F04 and risk R-3

@@ -22,8 +22,8 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 
 | # | Plan | Owner | Gates on | Criteria | Ticked | Round | Open defects | Status | Updated |
 | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
-| 00 | [Architecture](.agent/plans/00-architecture.md) | S1 / S9 | — | 7 | 0 | — | 0 | Planned | 2026-09-02 |
-| 01 | [Auth and workspaces](.agent/plans/01-auth-and-workspaces.md) | S1 | 00 | 13 | 0 | — | 0 | Planned | 2026-09-02 |
+| 00 | [Architecture](.agent/plans/00-architecture.md) | S1 / S9 | — | 7 | 0 | — | 0 | In build | 2026-09-02 |
+| 01 | [Auth and workspaces](.agent/plans/01-auth-and-workspaces.md) | S1 | 00 | 13 | 0 | — | 0 | In build | 2026-09-02 |
 | 02 | [Canvas](.agent/plans/02-canvas.md) | S2 | 00 | 14 | 0 | — | 0 | Planned | 2026-09-02 |
 | 03 | [Node library](.agent/plans/03-node-library.md) | S2 | 00 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
 | 04 | [Inspector and params](.agent/plans/04-inspector-and-params.md) | S3 | 03, 05 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
@@ -37,7 +37,7 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 | 12 | [Error handling](.agent/plans/12-error-handling.md) | S7 | 10 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
 | 13 | [Flow testing](.agent/plans/13-flow-testing.md) | S7 | 10 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
 | 14 | [Templates](.agent/plans/14-templates.md) | S8 | 09 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
-| 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
+| 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 0 | — | 0 | In build | 2026-09-02 |
 | | **Total** | | | **179** | **0** | | **0** | | |
 
 Build order: S1 (00, 01, 15) → S2 / S3 / S4 in parallel → S5 (09, 10) →
@@ -94,3 +94,4 @@ Consolidated from every plan's `Status` section. A decision moves from
 | Date | What |
 | --- | --- |
 | 2026-09-02 | Audit against `25634c0`; sixteen plans, three reference notes, design system, judge scaffolding written. Nothing committed. Decision 1 declined by the owner. |
+| 2026-09-02 | Plan set committed on `gauntlet/plans`. S1 starts on 01 and 15: the Integrator lands C10's six tables, `runs.mode`, the six config knobs and ten S1 rulings (`00-architecture.md`, Status) first, then four agents build 01 API, 01 UI, 15 API and 15 UI on their own branches. Decisions 23–26 are built on their recommendation and stay open. |

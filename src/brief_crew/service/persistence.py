@@ -26,9 +26,11 @@ from sqlalchemy import (
     Integer,
     MetaData,
     Numeric,
+    LargeBinary,
     String,
     Table,
     Text,
+    UniqueConstraint,
     create_engine,
     delete,
     func,
@@ -144,6 +146,11 @@ runs = Table(
     Column("flow_id", String(128)),
     Column("graph_version", String(128), nullable=False),
     Column("status", String(32), nullable=False),
+    # C7 (10-runtime.md): `run` / `test` / `node_test`. NULL reads as `run`,
+    # and it is NULLable because `runs` shipped without it - see
+    # _ADDITIVE_COLUMNS below for why a NOT NULL here would never reach the
+    # live table at all.
+    Column("mode", String(16)),
     Column("inputs", _json_type(), nullable=False),
     Column("usage", _json_type(), nullable=False),
     Column("result", _json_type()),
@@ -272,6 +279,142 @@ builder_document_versions = Table(
     Column("version", Integer, primary_key=True),
     Column("document", _json_type(), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+
+# --------------------------------------------------------------------------
+# Gauntlet tables - contract C10, owned by .agent/plans/15-persistence.md D6
+#
+# Six tables and one additive column, landed together by the Integrator before
+# any Stage 1 feature branched, so that 01 (credentials), 06 (custom tools),
+# 07 (MCP servers), 08 (skills) and 13 (test inputs) build against one shape
+# rather than five. None of these tables has ever shipped, so `create_all()`
+# creates each one WITH its indexes and constraints; the additive-column rule
+# below applies only to `runs.mode`, because `runs` has shipped.
+#
+# Every table carries a NOT NULL `user_id`. These rows never existed before
+# authentication did, so unlike `runs.user_id` and `builder_documents.user_id`
+# there are no legacy rows to protect and no reason to admit an ownerless one
+# (01 D2, isolation rule 1). There is still no ForeignKey to a `user` table,
+# for the reason given above `runs`.
+# --------------------------------------------------------------------------
+user_credentials = Table(
+    "user_credentials",
+    metadata,
+    # `cr_` + 8 hex (config.CREDENTIAL_ID_PATTERN), minted by
+    # service/credentials.py the way store.py mints `ug_` document ids.
+    # String(128) like every other id column here - 15 D6 wrote a longer id
+    # and 01 C4 a shorter one; the Integrator's S1 ruling is in 00's Status.
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("kind", String(32), nullable=False),
+    Column("label", String(80), nullable=False),
+    # AES-256-GCM over the fields JSON. The nonce is 12 random bytes per write,
+    # and the associated data binds `id` and `user_id` into the ciphertext, so
+    # a row copied under another user or id fails to authenticate rather than
+    # decrypting (01 D3). The plaintext never appears in any other table.
+    Column("ciphertext", LargeBinary, nullable=False),
+    Column("nonce", LargeBinary, nullable=False),
+    Column("key_version", Integer, nullable=False, default=1),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("last_used_at", DateTime(timezone=True)),
+    UniqueConstraint("user_id", "label", name="uq_user_credentials_user_label"),
+)
+Index("ix_user_credentials_user_kind", user_credentials.c.user_id, user_credentials.c.kind)
+
+# The index row for a SKILL.md pack on disk (08 owns the files, C11).
+user_skills = Table(
+    "user_skills",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("name", String(64), nullable=False),
+    Column("description", String(1024), nullable=False),
+    Column("path", String(255), nullable=False),
+    Column("bytes", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("user_id", "name", name="uq_user_skills_user_name"),
+)
+Index("ix_user_skills_user_updated", user_skills.c.user_id, user_skills.c.updated_at)
+
+# A per-user MCP server record and its last discovery result (07 owns
+# discovery, C12). `header_credential_id` / `env_credential_id` name rows in
+# `user_credentials` with no ForeignKey, as `runs.user_id` has none: a deleted
+# credential makes the server validate as `credential-missing`, not fail DDL.
+mcp_servers = Table(
+    "mcp_servers",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("label", String(80), nullable=False),
+    Column("transport", String(8), nullable=False),
+    Column("url", String(2048)),
+    Column("command", String(255)),
+    Column("args", _json_type()),
+    Column("header_credential_id", String(128)),
+    Column("env_credential_id", String(128)),
+    Column("status", String(16), nullable=False),
+    Column("discovered_tools", _json_type()),
+    Column("discovered_at", DateTime(timezone=True)),
+    Column("last_error", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+Index("ix_mcp_servers_user_updated", mcp_servers.c.user_id, mcp_servers.c.updated_at)
+
+# The declarative custom HTTP tool (00 D8, 06): a schema grid and a request
+# template, never code.
+user_tools = Table(
+    "user_tools",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("name", String(64), nullable=False),
+    Column("description", String(1024), nullable=False),
+    Column("input_schema", _json_type(), nullable=False),
+    Column("request", _json_type(), nullable=False),
+    Column("credential_id", String(128)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("user_id", "name", name="uq_user_tools_user_name"),
+)
+
+# A saved set of run inputs for the docked test panel (13). The ForeignKey is
+# real here because both tables are ours and a document's test inputs have no
+# meaning once the document is gone.
+builder_test_inputs = Table(
+    "builder_test_inputs",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column(
+        "document_id",
+        String(128),
+        ForeignKey("builder_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("label", String(80), nullable=False),
+    Column("inputs", _json_type(), nullable=False),
+    Column("node_mocks", _json_type()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+Index(
+    "ix_builder_test_inputs_document_updated",
+    builder_test_inputs.c.document_id,
+    builder_test_inputs.c.updated_at,
+)
+
+# The tables above, by name, for the boot-time inspector assertion and the
+# isolation matrix. Order is the order they were declared.
+GAUNTLET_TABLES: tuple[str, ...] = (
+    "user_credentials",
+    "user_skills",
+    "mcp_servers",
+    "user_tools",
+    "builder_test_inputs",
 )
 
 
@@ -546,6 +689,8 @@ class PostgresFlowPersistence(FlowPersistence):
     # which a real migration tool has become cheaper than this list.
     _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
         ("runs", "user_id", "VARCHAR(128)"),
+        # C7 run mode, .agent/plans/15-persistence.md D6. VARCHAR(16), NULL = `run`.
+        ("runs", "mode", "VARCHAR(16)"),
     )
 
     def _add_missing_columns(self) -> None:

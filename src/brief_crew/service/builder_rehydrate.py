@@ -217,7 +217,13 @@ def _restore(
 
     document_id = getattr(stored, "id", "<unknown>")
     try:
-        workflow = build_builder_workflow(stored.document)
+        # The owner comes back with the row (plan 01 D1), so a restart cannot
+        # turn somebody's graph into everybody's. No credential check: a boot
+        # has no identity, and a credential deleted since publish is the
+        # run-time `credential-not-yours`, not a reason to stop booting.
+        workflow = build_builder_workflow(
+            stored.document, user_id=getattr(stored, "user_id", None)
+        )
     except BuilderCompileError as exc:
         logger.warning(
             "builder graph %s no longer compiles and was not re-registered: %s",

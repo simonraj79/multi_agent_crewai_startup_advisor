@@ -51,3 +51,14 @@ _PLACEHOLDER = "ci-placeholder-not-a-real-key"
 
 for _name in ("OPENROUTER_API_KEY", "FIRECRAWL_API_KEY"):
     os.environ.setdefault(_name, _PLACEHOLDER)
+
+# The vault's master key, for the same reason as the two above: `create_app`
+# refuses to build with AUTH_BASE_URL set and no CREDENTIALS_MASTER_KEY (plan
+# 01 D3), and thirty-odd tests patch AUTH_BASE_URL onto a synthetic app. This
+# is base64 of the 32 bytes `ci-placeholder-not-a-master-key!` - decode it and
+# it says so - and it protects nothing but an in-memory SQLite the test throws
+# away. A test about the UNCONFIGURED vault patches `config.CREDENTIALS_MASTER_KEY`
+# to "" itself, the way the key-absent tool tests clear their environment.
+os.environ.setdefault(
+    "CREDENTIALS_MASTER_KEY", "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
+)

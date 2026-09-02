@@ -177,6 +177,9 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
       // find their way back to.
       agent_id: nodeId(vocabulary.agent_ids[0]),
       tools: [],
+      // No key by default: the platform key is used until the author picks one
+      // of their own vault rows (plan 01 D7; the picker is 04's).
+      credential_id: null,
     }),
     outPorts: () => SINGLE_OUT,
     acceptsIncoming: true,

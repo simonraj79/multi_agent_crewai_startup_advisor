@@ -72,7 +72,7 @@ class PersistenceTests(unittest.TestCase):
 
         self.assertEqual(
             self.store.load_state("flow-a"),
-            {"id": "flow-a", "count": 2, "api_key": "[REDACTED]"},
+            {"id": "flow-a", "count": 2, "api_key": "***"},
         )
         with self.assertRaises(PersistenceValueError):
             self.store.save_state("flow-a", "bad", {"live": object()})

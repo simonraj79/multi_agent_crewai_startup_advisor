@@ -54,6 +54,7 @@ from brief_crew.builder.runtime import (
     builder_cancellation,
     use_crew_factories,
 )
+from brief_crew.service.credentials import credential_scope
 from brief_crew.service.runner import RunExecution, Runner
 
 if TYPE_CHECKING:  # pragma: no cover - typing only; the import is not free
@@ -102,9 +103,17 @@ class BuilderFlowRunner:
         # gate reply, every `from_pending` resume and every restart recovery
         # resolves through.
         inputs["id"] = execution.flow_id or execution.run_id
+        # `credential_scope` is the plan 01 D5 seam: the run's OWNER and the
+        # service store, scoped over this thread and every worker CrewAI
+        # starts from it, so `resolve_credential` inside an entrypoint answers
+        # for this person and nobody else. An execution with no owner resolves
+        # nothing, which is the right answer for a run nobody signed in for.
         with builder_cancellation(execution.cancel_requested):
-            with use_crew_factories(self._factories()):
-                return flow.kickoff(inputs=inputs)
+            with credential_scope(
+                user_id=execution.user_id, persistence=execution.persistence
+            ):
+                with use_crew_factories(self._factories()):
+                    return flow.kickoff(inputs=inputs)
 
     def resume(self, execution: RunExecution, *, context: Any, feedback: str) -> Any:
         from crewai.flow.flow import Flow
@@ -115,8 +124,11 @@ class BuilderFlowRunner:
             definition=self._flow_definition(),
         )
         with builder_cancellation(execution.cancel_requested):
-            with use_crew_factories(self._factories()):
-                return flow.resume(feedback)
+            with credential_scope(
+                user_id=execution.user_id, persistence=execution.persistence
+            ):
+                with use_crew_factories(self._factories()):
+                    return flow.resume(feedback)
 
     def _flow_definition(self) -> Any:
         """This graph's declaration, parsed once and shared by both paths.
@@ -191,6 +203,10 @@ class SyntheticCrewFactories:
         tools: Sequence[str],
         max_iter: int,
         guardrail_max_retries: int,
+        # Accepted and ignored: a synthetic run resolves the author's credential
+        # (the vault is a database read, not a network call) and then calls no
+        # model, so the key has nowhere to go.
+        api_key: str | None = None,
     ) -> _SyntheticCrew:
         return _SyntheticCrew(node_id=node_id, produced_by=agent_id, tier=tier)
 

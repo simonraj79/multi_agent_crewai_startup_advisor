@@ -408,3 +408,27 @@ def builder_workflow(workflow_id: str) -> "BuilderWorkflow | None":
     """The builder record for this id, or None for a built-in or unknown id."""
 
     return BUILDER_WORKFLOWS.get(workflow_id)
+
+
+def workflow_visible_to(workflow_id: str, user_id: str | None) -> bool:
+    """Whether this caller may launch, list or read the graph of `workflow_id`.
+
+    Plan 01 D1. The two hand-written flows are public. A builder graph with
+    an owner is visible to that owner alone; one with NO owner - published
+    anonymously, in `SYNTHETIC` mode, or before ownership was recorded - is
+    visible to everyone, because refusing it would strand every graph ever
+    published (00 S1 ruling 10, decision 26). The predicate is the one
+    `builder/store.py::_visible_to` applies to documents, restated here
+    because this module deliberately imports nothing from the builder
+    package at runtime.
+
+    An unknown id is visible: the caller then meets the same 404 the
+    registration maps already answer, and this function must not become a
+    second oracle for which ids exist.
+    """
+
+    workflow = BUILDER_WORKFLOWS.get(workflow_id)
+    if workflow is None:
+        return True
+    owner = workflow.user_id
+    return owner is None or (user_id is not None and user_id == owner)

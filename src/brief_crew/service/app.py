@@ -12,6 +12,7 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+import re
 from threading import Lock
 from time import monotonic
 from types import MappingProxyType
@@ -49,6 +50,7 @@ from brief_crew.service.graph import (
     VALIDATOR_NODE_REGISTRY,
     VALIDATOR_WORKFLOW,
     WORKFLOWS,
+    workflow_visible_to,
 )
 from brief_crew.service.models import (
     CancelRunResponse,
@@ -531,6 +533,42 @@ def _assert_auth_startup_safety() -> None:
         )
 
 
+#: Plan 01 D8: the header a zero-cost test sets to BE somebody. Honoured only
+#: when the app was built `synthetic=True` AND `AUTH_BASE_URL` is unset - the
+#: same fail-closed shape as `expose_docs` - and ignored everywhere else.
+# TODO(integrator): move to config.py
+SYNTHETIC_USER_HEADER = "X-Synthetic-User"
+# TODO(integrator): move to config.py
+SYNTHETIC_USER_PATTERN = r"^[a-z0-9_-]{1,64}$"
+_SYNTHETIC_USER = re.compile(SYNTHETIC_USER_PATTERN)
+
+
+def _assert_credential_vault_startup_safety() -> None:
+    """Refuse to start with people signed in and nowhere to keep their keys.
+
+    Plan 01 D3, the same shape as `_assert_auth_startup_safety` above and for
+    the same reason: it starts cleanly, serves traffic, and is wrong. A
+    deployment that can sign people in and cannot keep their keys is
+    misconfigured; a bare checkout running `SYNTHETIC=1` with no key is merely
+    keyless, and its credential routes answer 503 naming the knob. A key that
+    is SET and malformed is refused in every configuration - `load_master_key`
+    raises with the knob's name and the command that mints a good one -
+    because that is a typo, not a decision.
+
+    Imported inside the function: the vault module pulls in SQLAlchemy through
+    the persistence module, and importing `app` must stay safe without it.
+    """
+    from brief_crew.service.credentials import load_master_key
+
+    if load_master_key() is None and project_config.AUTH_BASE_URL:
+        raise RuntimeError(
+            "AUTH_BASE_URL is set but CREDENTIALS_MASTER_KEY is empty; people can "
+            "sign in and the credential vault has no key to keep theirs with. Mint "
+            "one with python -c \"import base64, secrets; "
+            "print(base64.b64encode(secrets.token_bytes(32)).decode())\" and set it"
+        )
+
+
 def create_app(
     *,
     registry: RunRegistry | None = None,
@@ -558,6 +596,7 @@ def create_app(
 
     _assert_openrouter_startup_safety()
     _assert_auth_startup_safety()
+    _assert_credential_vault_startup_safety()
 
     try:
         from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
@@ -580,6 +619,8 @@ def create_app(
         create_builder_router,
     )
     from brief_crew.service.builder_rehydrate import rehydrate_published_workflows
+    from brief_crew.service.credentials import CredentialStore
+    from brief_crew.service.credentials_api import create_credentials_router
 
     if registry is not None and (
         runner is not None or validator_runner is not None or synthetic
@@ -713,45 +754,105 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 
-    def current_user(
+    def synthetic_identity(header_value: str | None) -> AuthenticatedUser | None:
+        """Plan 01 D8: `X-Synthetic-User`, so two users cost nothing.
+
+        Honoured under exactly two conditions - this app was built
+        `synthetic=True` AND `AUTH_BASE_URL` is unset - and ignored, not
+        refused, everywhere else: the same fail-closed shape as `expose_docs`
+        (CLAUDE.md section 9). With an auth server configured the bearer path
+        is the only identity there is, and a header a stranger can type must
+        not be able to become one. A malformed value under the two conditions
+        is a 400 naming the header, because a typo in a test fixture that
+        silently reads as anonymous costs an afternoon.
+        """
+        if header_value is None or not synthetic or project_config.AUTH_BASE_URL:
+            return None
+        if not _SYNTHETIC_USER.match(header_value):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{SYNTHETIC_USER_HEADER} must match {SYNTHETIC_USER_PATTERN}",
+            )
+        return AuthenticatedUser(
+            id=header_value, email=f"{header_value}@synthetic", name=header_value
+        )
+
+    def optional_user(
         authorization: str | None = Header(default=None),
+        x_synthetic_user: str | None = Header(default=None, alias=SYNTHETIC_USER_HEADER),
     ) -> AuthenticatedUser | None:
-        """Resolve the caller from an ``Authorization: Bearer`` header.
+        """Who is calling, or None - never a 401 for a MISSING credential.
+
+        Resolution order is plan 01 D2's: bearer JWT when ``AUTH_BASE_URL`` is
+        set, then the synthetic header under D8's two conditions, then None.
+        A token that is OFFERED is verified and a bad one is refused, exactly
+        as in ``current_user``; what differs is that nobody is sent away for
+        offering nothing. This is the dependency for the reads that were
+        public before ownership existed - the workflow list and the graph - so
+        a signed-out console still probes the transport and draws the fixed
+        topology, while a graph somebody owns collapses to 404 for everybody
+        else.
 
         Declared with ``def`` rather than ``async def`` deliberately. FastAPI
         runs a sync dependency in its threadpool, and the JWKS cache can make a
         blocking HTTP call on a miss; the same code as ``async def`` would stall
         the event loop for every other connection, including live run streams.
-
-        A token that is offered IS verified - silently ignoring a credential the
-        client believed in is not an answer. But only when there is something to
-        verify it against: with no ``AUTH_BASE_URL`` this service has no keys,
-        no issuer and no audience, so it cannot judge a token at all. Answering
-        401 there would tell a client its credential was bad when the truth is
-        that nobody asked for one, and it is also what ``stream_frames`` already
-        does for the WebSocket - the two paths must not disagree about who is
-        signed in.
         """
         token = bearer_token_from_header(authorization)
-        if token is None or not project_config.AUTH_BASE_URL:
-            if auth_is_required():
+        if token is not None and project_config.AUTH_BASE_URL:
+            try:
+                return verify_token(token)
+            except AuthError as exc:
                 raise HTTPException(
                     status_code=401,
-                    detail="sign in to use this endpoint",
-                    # RFC 9110: a 401 MUST carry this, and it is what tells a
-                    # client the credential is a bearer token rather than
-                    # cookies or basic auth.
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            return None
-        try:
-            return verify_token(token)
-        except AuthError as exc:
+                    detail="your session has expired; sign in again",
+                    headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+                ) from exc
+        return synthetic_identity(x_synthetic_user)
+
+    def current_user(
+        authorization: str | None = Header(default=None),
+        x_synthetic_user: str | None = Header(default=None, alias=SYNTHETIC_USER_HEADER),
+    ) -> AuthenticatedUser | None:
+        """Resolve the caller, refusing nobody-at-all when auth is required.
+
+        ``optional_user`` does the resolving; this adds the one refusal. A
+        token that is offered IS verified - silently ignoring a credential the
+        client believed in is not an answer. But only when there is something
+        to verify it against: with no ``AUTH_BASE_URL`` this service has no
+        keys, no issuer and no audience, so it cannot judge a token at all.
+        Answering 401 there would tell a client its credential was bad when the
+        truth is that nobody asked for one, and it is also what
+        ``stream_frames`` already does for the WebSocket - the two paths must
+        not disagree about who is signed in.
+        """
+        user = optional_user(authorization, x_synthetic_user)
+        if user is None and auth_is_required():
             raise HTTPException(
                 status_code=401,
-                detail="your session has expired; sign in again",
-                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
-            ) from exc
+                detail="sign in to use this endpoint",
+                # RFC 9110: a 401 MUST carry this, and it is what tells a
+                # client the credential is a bearer token rather than
+                # cookies or basic auth.
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
+
+    def require_user(user: AuthenticatedUser | None) -> AuthenticatedUser:
+        """Plan 01 D2, rule 1: an owned route with nobody on it is a 401.
+
+        A function a route calls on what ``current_user`` resolved rather than
+        a dependency of its own, so a route that needs an identity and a route
+        that merely uses one share a single resolver. The 401 is the one
+        ``current_user`` writes, header and sentence both.
+        """
+        if user is None:
+            raise HTTPException(
+                status_code=401,
+                detail="sign in to use this endpoint",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
 
     def require_own_run(run_id: str, user: AuthenticatedUser | None) -> RunRecord:
         """Fetch a run, refusing one that belongs to somebody else.
@@ -802,8 +903,28 @@ def create_app(
         return HealthResponse.model_validate(payload)
 
     @app.get("/api/workflows", response_model=list[WorkflowSummary])
-    async def list_workflows() -> list[WorkflowSummary]:
-        return [BRIEF_WORKFLOW, VALIDATOR_WORKFLOW]
+    async def list_workflows(
+        user: AuthenticatedUser | None = Depends(optional_user),
+    ) -> list[WorkflowSummary]:
+        """The two hand-written flows, plus the builder graphs THIS caller owns.
+
+        Plan 01 D1. The two literals stay public and stay first, which is what
+        every set-equality assertion in the suite reads. A builder graph is
+        listed to its owner alone; one nobody owns is launchable by anybody
+        (decision 26) but listed to nobody HERE - its home is
+        `GET /api/builder/workflows` - because an anonymous caller must keep
+        reading exactly the two literals, or this list becomes an index of
+        every graph ever published.
+        """
+        owner = user.id if user is not None else None
+        owned = [
+            WORKFLOWS[workflow_id]
+            for workflow_id, builder in sorted(BUILDER_WORKFLOWS.items())
+            if owner is not None
+            and builder.user_id == owner
+            and workflow_id in WORKFLOWS
+        ]
+        return [BRIEF_WORKFLOW, VALIDATOR_WORKFLOW, *owned]
 
     @app.get(
         "/api/workflows/{workflow_id}/graph",
@@ -814,6 +935,7 @@ def create_app(
         workflow_id: str,
         response: Response,
         if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+        user: AuthenticatedUser | None = Depends(optional_user),
     ) -> GraphDescriptor | Response:
         """The topology, with a conditional GET that is actually conditional.
 
@@ -834,6 +956,11 @@ def create_app(
         every 304 back into a 200 with nothing in the logs to say why.
         """
 
+        # Plan 01 D1: somebody else's graph is not distinguishable from one
+        # that does not exist. Asked before the map is read, so not even the
+        # ETag of an owned graph reaches a stranger.
+        if not workflow_visible_to(workflow_id, user.id if user is not None else None):
+            raise HTTPException(status_code=404, detail="workflow not found")
         graph = GRAPHS.get(workflow_id)
         if graph is None:
             raise HTTPException(status_code=404, detail="workflow not found")
@@ -887,12 +1014,41 @@ def create_app(
     # untouched: it returns the two literals, which is the only reason the
     # existing set-equality assertions still hold. Builder graphs list on
     # `GET /api/builder/workflows` instead, which costs nothing.
+    def credential_store_factory() -> Any:
+        """The vault over the same persistence, or None with nowhere to keep it.
+
+        Per call, like `builder_store_factory` and for the same reason. A store
+        whose `configured` is False - no master key - is returned rather than
+        hidden, so the routes can answer the 503 that names the knob instead of
+        the one that says this build has no store.
+        """
+
+        persistence = getattr(registry, "persistence", None)
+        if persistence is None:
+            return None
+        return CredentialStore(persistence)
+
     app.include_router(
         create_builder_router(
             store_factory=builder_store_factory,
             registry=registry,
             current_user=current_user,
             runner_factory=resolved_builder_runner_factory,
+            credential_store_factory=credential_store_factory,
+        )
+    )
+    # `/api/builder/credentials` (plan 01 C4). Under the builder prefix, so the
+    # body-size exemption above applies and the client reaches it through the
+    # same `authedFetch` path; a probe is charged to the RUN limiter under the
+    # caller's own key, because it is a user-initiated call to a third party
+    # and that bucket is the one that already means "spend per person".
+    app.include_router(
+        create_credentials_router(
+            store_factory=credential_store_factory,
+            current_user=current_user,
+            require_user=require_user,
+            rate_limiter=run_rate_limiter,
+            limit_key=lambda user: f"user:{user.id}",
         )
     )
 
@@ -943,6 +1099,14 @@ def create_app(
                 headers=_retry_after_header(retry_after),
             )
         if request.workflow_id not in WORKFLOWS:
+            raise HTTPException(status_code=404, detail="workflow not found")
+        # Plan 01 D1: a builder graph somebody else owns answers the same 404
+        # as an unknown id - BEFORE admission, so a stranger's probe holds no
+        # slot and learns nothing. The rate limiter above has already charged
+        # the probe, and deliberately: a flood of guessed ids is throttled too.
+        if not workflow_visible_to(
+            request.workflow_id, user.id if user is not None else None
+        ):
             raise HTTPException(status_code=404, detail="workflow not found")
         # Registration takes four places - GRAPHS, NODE_REGISTRIES, WORKFLOWS
         # and the `workflows=` runtime map above - and three of them are one
@@ -1465,6 +1629,21 @@ def create_app(
                 ws_user = verify_token(access_token)
             elif auth_is_required():
                 raise AuthError("no token on the socket handshake")
+            else:
+                # Plan 01 D8 on the handshake. The browser WebSocket API cannot
+                # set a header, but the E2E proxy can and does forward this one
+                # on the upgrade as on every other request; a run launched under
+                # a synthetic identity is OWNED, so without this its own console
+                # would be closed with 4404. Same two conditions as the HTTP
+                # path - `synthetic_identity` answers None everywhere else.
+                try:
+                    ws_user = synthetic_identity(
+                        websocket.headers.get(SYNTHETIC_USER_HEADER.lower())
+                    )
+                except HTTPException as exc:
+                    await websocket.accept()
+                    await websocket.close(code=4400, reason=str(exc.detail)[:120])
+                    return
         except AuthError:
             # accept() first, then close with a reason. A handshake REJECTED
             # outright surfaces in the browser as an opaque failure with no

@@ -45,6 +45,11 @@ from sqlalchemy.pool import StaticPool
 from threading import RLock
 
 from brief_crew.events import FrameData
+from brief_crew.events.redaction import (
+    REDACTED,
+    SECRET_KEYS,
+    normalize_secret_key as _normalize_secret_key,
+)
 
 
 if TYPE_CHECKING:
@@ -70,21 +75,10 @@ _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _LIVE_RUN_STATUSES = ("queued", "running", "cancelling")
 # F03/R-2 watch ladder for an unanswered gate: open -> expired -> alerted.
 _GATE_WATCH_STATUSES = frozenset({"expired", "alerted"})
-_SECRET_KEYS = frozenset(
-    {
-        "apikey",
-        "authorization",
-        "clientsecret",
-        "cookie",
-        "password",
-        "privatekey",
-        "refreshtoken",
-        "secret",
-        "setcookie",
-        "token",
-        "accesstoken",
-    }
-)
+# One list, shared with the frame serializer - `events/redaction.py` says why
+# it left this module. The old name is kept because tests and the docstring
+# above `_sanitize_json` refer to it.
+_SECRET_KEYS = SECRET_KEYS
 _URL_CREDENTIALS = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s:]+:[^/@\s]+@", re.I)
 
 
@@ -434,10 +428,6 @@ class PersistenceValueError(ValueError):
     """Raised when a value cannot be safely stored as bounded JSON."""
 
 
-def _normalize_secret_key(key: str) -> str:
-    return "".join(character for character in key.lower() if character.isalnum())
-
-
 def _redact_text(value: str) -> str:
     return _URL_CREDENTIALS.sub(r"\g<scheme>[REDACTED]@", value)
 
@@ -478,7 +468,7 @@ def _sanitize_json(value: Any, *, label: str, depth: int = 0) -> Any:
             if len(normalized_key) > 255:
                 raise PersistenceValueError(f"{label} contains an oversized key")
             if _normalize_secret_key(normalized_key) in _SECRET_KEYS:
-                sanitized[normalized_key] = "[REDACTED]"
+                sanitized[normalized_key] = REDACTED
             else:
                 sanitized[normalized_key] = _sanitize_json(
                     item, label=label, depth=depth + 1

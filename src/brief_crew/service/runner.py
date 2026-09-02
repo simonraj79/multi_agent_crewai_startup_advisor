@@ -32,6 +32,12 @@ class RunExecution:
     flow_id: str | None = None
     persistence: Any = None
     cancel_requested: Event | None = None
+    #: Who launched the run, or None for an unowned one. The builder runner
+    #: scopes the credential vault to it (plan 01 D5): a credential is
+    #: resolved for the run's owner and nobody else, so an execution that
+    #: does not know its owner can resolve nothing - which is the right
+    #: answer for the four runners that never read this field.
+    user_id: str | None = None
 
     def checkpoint(self, step_name: str) -> None:
         """Abort at an explicit runner boundary when cancellation was requested."""

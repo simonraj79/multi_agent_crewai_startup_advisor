@@ -34,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 from brief_crew.config import (
     BUILDER_DOCUMENT_ID_PATTERN,
+    CREDENTIAL_ID_PATTERN,
     BUILDER_DOCUMENT_SCHEMA,
     BUILDER_ID_PATTERN,
     BUILDER_MAX_AGENT_ITER,
@@ -70,6 +71,11 @@ JsonScalar = str | int | float | bool | None
 
 NodeId = Annotated[str, StringConstraints(pattern=BUILDER_ID_PATTERN)]
 DocumentId = Annotated[str, StringConstraints(pattern=BUILDER_DOCUMENT_ID_PATTERN)]
+# An OPAQUE reference into the caller's vault. The parser checks the spelling
+# and nothing else: whether the row exists, and whose it is, are questions
+# only an identity can answer, and they are asked by `validate` with one and
+# by `resolve_credential` at run time (plan 01 D6, D10).
+CredentialId = Annotated[str, StringConstraints(pattern=CREDENTIAL_ID_PATTERN)]
 Label = Annotated[str, StringConstraints(min_length=1, max_length=BUILDER_MAX_LABEL_CHARS)]
 
 _STATE_REF = re.compile(BUILDER_STATE_REF_PATTERN)
@@ -189,6 +195,11 @@ class AgentConfig(_BillableConfig):
 
     agent_id: NodeId
     tools: tuple[str, ...] = ()
+    # Stage 1's stand-in for C1 v2's `llm.credential_id` (00 S1 ruling 8): the
+    # author's own OpenRouter key for this node's model, by id. The compiler
+    # copies the id into `with:` and the runtime resolves it inside the
+    # entrypoint; no field value ever enters a document.
+    credential_id: CredentialId | None = None
 
     @field_validator("tools")
     @classmethod

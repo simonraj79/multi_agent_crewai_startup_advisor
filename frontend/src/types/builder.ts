@@ -403,6 +403,7 @@ export const PROBLEM_CODES = [
   'ident-pattern', 'ident-collision',
   'budget-over-ceiling', 'budget-unpriced-model',
   'library-unknown-id', 'library-missing-prompt-input', 'library-unbuildable-crew',
+  'credential-missing',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 
@@ -469,6 +470,9 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
   // where it belongs.
   'library-unknown-id': 'agent_id',
   'library-missing-prompt-input': 'prompt_inputs',
+  // Plan 01 D10: a `credential_id` the caller's vault does not hold anchors to
+  // the picker that chose it (`data-field="credential_id"` in the inspector).
+  'credential-missing': 'credential_id',
 }
 
 /* --- budget ------------------------------------------------------------ */

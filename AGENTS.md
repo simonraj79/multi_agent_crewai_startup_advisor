@@ -18,6 +18,15 @@ unless stated otherwise.
 FastAPI/WebSocket service and a Vue 3 + Vue Flow console, deployed on Render.
 `PRD.md` extends the specifications for it; `CLAUDE.md` is the current handoff.
 
+**The flow builder** (merged 2026-09-02, `b4ef654`) is not a third application —
+it is a canvas over the same package. A user-authored document compiles to a
+real `crewai.flow/v1` declaration and runs on the same service. Everything below
+about YAML prompts, `config.py` constants and OpenRouter applies to a compiled
+graph exactly as it applies to a hand-written crew; the section
+[**The flow builder compiles to CrewAI**](#the-flow-builder-compiles-to-crewai)
+says by what mechanism. Its contract is
+[`docs/flow-builder-spec.md`](docs/flow-builder-spec.md).
+
 `README.md` is the orientation; `agents/` holds the specifications and **they are
 authoritative** — where code and spec disagree, the spec is right and the code is
 a bug. `agents/00-shared-config.md` §11 maps every spec section to the file
@@ -34,6 +43,96 @@ implementing it.
 | **Do not install `crewai[litellm]`.** | OpenRouter is a native provider in 1.15.18. CrewAI's own docs are stale on this. |
 | **Never trim a `Task.context` list.** | `context` is three-valued: unset inherits all prior output, an explicit list *replaces* it, `[]` means nothing. Trimming the Writer's list silently strips every source URL. |
 | **The Researcher's tool list and its task variant change together.** | Selected from one `track` argument in `BriefCrew`. An agent told to call a tool it lacks fabricates the result. |
+
+### The flow builder compiles to CrewAI
+
+`src/brief_crew/builder/` parses a `builder.flow/v1` document — a canvas someone
+drew — bounds it structurally, prices it, and compiles it to a `crewai.flow/v1`
+declaration. `src/brief_crew/service/builder_runner.py` executes that
+declaration through `Flow.from_declaration(contents=…, persistence=…)` and
+resumes a paused one through
+`Flow.from_pending(flow_id, persistence, definition=…)`. There is no second
+orchestration engine and no interpreter: the output of the compiler is the same
+kind of object CrewAI would have loaded from a file you wrote by hand.
+
+**So the platform rules are not merely *also* true of a compiled graph — they
+are enforced by construction, and the enforcement is what you must not remove.**
+
+| Rule | How a compiled graph obeys it |
+|---|---|
+| **Prompts in YAML.** | A document names an **agent id**, never a role, goal, backstory or description. `runtime.BUILDER_AGENT_LIBRARY` maps six ids to a `crews/validator_crew/config/agents.yaml` entry paired with its `config/tasks.yaml` task; `DefaultCrewFactories.agent_crew` builds `Agent(config=agents_config[…])` and `Task(config=tasks_config[…])` from those files. There is **no field anywhere in the document schema that carries prompt text** — adding one would make the canvas a second place prompts live. |
+| **No model names outside `config.py`.** | A node declares a **tier**, `cheap` or `escalation`, and `runtime._model_for(tier)` resolves it to `CHEAP_MODEL` / `ESCALATION_MODEL`. A document cannot spell a model. |
+| **Constants in `config.py`.** | The bounds (`MAX_GRAPH_NODES`, `MAX_BILLABLE_NODES`, `MAX_ESCALATION_NODES`, `MAX_FANOUT_WIDTH`, `MAX_CYCLES`, `MAX_CYCLE_ITERATIONS`), the spend ceiling (`MAX_RUN_COST_USD`), every identifier pattern, and the ten action refs all live there. `bounds.py` and `budget.py` read them; neither inlines one. |
+| **No tools where the design says none.** | `BUILDER_RESEARCH_TOOLS` is an allowlist, and the compiler passes tool *names* that `runtime._tool_instance` resolves. A document cannot hand an agent an arbitrary callable. |
+| **No code on the canvas.** | `BUILDER_ACTION_REFS` is a frozenset of **ten** compiler-owned entrypoints, nine in `builder/runtime.py` plus `builder/gates.py:GATE_PROVIDER`. The document carries no `ref`, no module path and no Python; `compiler.assert_action_refs` re-checks the **emitted** definition against that frozenset, and `call: "script"` is never emitted. Author data travels in `with:` as values. |
+
+#### What each node kind emits
+
+Seven kinds, and one of them is not one method. Read
+`compiler.py::_Plan.methods_for` before changing this table.
+
+| Kind | Compiled shape |
+|---|---|
+| `input` | A `@start` method calling `runtime:seed_input`. |
+| `agent` | `runtime:run_agent` → one `Agent` from `agents.yaml`, one `Task` from `tasks.yaml`, one `Crew(process=Process.sequential, memory=False, cache=True)`. |
+| `crew` | `runtime:run_crew` → `getattr(validator_crew, ClassName)().crew()`, a registered `@CrewBase` run whole with its own guardrails. |
+| `gate` | **TWO methods.** A pause method (`runtime:render_gate` carrying a `human_feedback` block) *and* a paired deterministic `@router` (`runtime:route_gate`). |
+| `router` | One router method with declared `emit` labels, calling `runtime:route_branch`. |
+| `transform` | `runtime:transform`, over the ops in `BUILDER_TRANSFORM_OPS`. |
+| `output` | `runtime:emit_output`. |
+
+#### Six ways this goes wrong, five of them silently
+
+Items 1–4 are recorded in `compiler.py`'s own docstring as measured on a flow
+that ran, not argued from a schema; item 5 in `builder_runner.py`'s. **The first
+five all produce a run that ends *normally* having produced nothing** — no
+exception, no frame, no output, exit status fine. The sixth is the opposite and
+is here because its cost was worse.
+
+1. **A gate cannot be one method.** A single method that both pauses and routes
+   returns a `HumanFeedbackResult`, which is not a valid event name, so neither
+   branch fires. Hence the two-method shape above, and hence a gate consuming
+   two indices in the method namespace.
+2. **`human_feedback.emit` non-null with `llm: null` silently approves.** CrewAI
+   collapses the reply to `emit[0]` unconditionally — an operator who replies
+   `revise` runs the approve branch — and it logs the combination at
+   `severity="error"` **and runs the flow anyway**. Its own validation cannot be
+   relied on; `compiler.lint_gates` refuses the shape before anything executes.
+   Both nulls are emitted explicitly, `llm` especially: the schema default is
+   the string `"gpt-4o-mini"`, so an omitted key is a paid non-OpenRouter client
+   per gate — a platform-rule violation by omission.
+3. **Every loop-closing node must be a router.** Compiled as plain code, the
+   join fires once, the second arrival is suppressed and `kickoff()` returns
+   having produced nothing. This is the same multi-event `or_()` suppression
+   recorded in CLAUDE.md items 34/35. `bounds.py` refuses such a document and
+   the compiler additionally asserts the emitted shape — the two agreeing is the
+   guarantee.
+4. **`route_gate` is emitted with no `with:` block, deliberately.**
+   `CodeAction.run` calls `handler(**rendered)` whenever a `with:` block is
+   present, which **drops the positional** `HumanFeedbackResult` — the router
+   would route on nothing. Its node id, labels and turn cap travel in the
+   compiled state table instead.
+5. **`from_pending` needs `definition=`.** Without it CrewAI falls through to
+   `cls(persistence=…)` — a bare `Flow` with no methods — and the resume returns
+   having produced nothing. No exception, no frame, no output. Same for
+   `persistence=`: omitted, it falls back to a stray SQLite file on container
+   disk rather than the run's own store.
+6. **A `@CrewBase` class with a required `__init__` publishes cleanly and dies
+   on the first PAID run.** `crew_id: "synthesis"` passed every structural
+   check, published, and then raised a bare `TypeError` from inside a worker
+   thread *after* the scoper and all three research branches had billed. The
+   factory call is `Class().crew()` — zero arguments.
+   `compiler.library_problems` / `runtime.unbuildable_crew_reason` now refuse
+   such a document, closed at four doors including rehydration, so a row
+   published before the fix cannot come back.
+
+#### Running a builder graph without spending
+
+`SYNTHETIC=1` covers the builder too, and it is **not** a second runner: it is a
+`use_crew_factories` swap. The real compiled definition runs through the real
+engine over the real gates, and only the thing that would have called a model is
+replaced. That is deliberate — a double that diverges from its subject certifies
+nothing, which this repo has paid for twice (CLAUDE.md closed items 20 and 33).
 
 ### Running it
 
@@ -75,10 +174,44 @@ doubles the integration tests use — real frames, real WebSocket, both durable
 gates, no spend, no keys needed. Reach for the paid mode only when you mean to
 validate an idea.
 
+The same service serves the builder. `/api/builder/vocabulary`,
+`/api/builder/workflows` (list, create, get, save, delete),
+`/api/builder/validate` and `/api/builder/workflows/{id}/publish` are in
+`service/builder_api.py`; the canvas is the console's `#/build` route. Composing,
+pricing and validating a graph costs nothing in either mode, and so does
+publishing. **Launching what you published does not.** A published graph is a
+registered workflow like any other, so on the paid service its `agent` and
+`crew` nodes call real models — which is exactly what the budget meter's
+estimate was for.
+
 The same rule governs the browser suite: `frontend/e2e/` runs against its own
-`SYNTHETIC=1` backend, and the five run-launching specs are tagged `@launch` so
-that a smoke test against the deployed origin can exclude them with
+`SYNTHETIC=1` backend, and the run-launching specs are tagged `@launch` so that
+a smoke test against the deployed origin can exclude them with
 `--grep-invert @launch`. Without that flag it spends money per run.
+
+Measured 2026-09-02 with `npx playwright test --list`: **28 tests in 4 files** —
+`builder.spec.ts` 15, `studio.spec.ts` 7, `visual/run-canvas.spec.ts` 3,
+`builder-layout.spec.ts` 3. **Seven** carry `@launch` (five in `studio.spec.ts`,
+two in `visual/run-canvas.spec.ts`); `--grep-invert @launch` leaves 21. The
+figure in the previous revision of this paragraph was five, which was true of a
+7-test suite that no longer exists.
+
+⚠️ **The `@launch` contract has a hole, and it is untagged.**
+`e2e/builder.spec.ts::walks to a problem from the panel, fixes it, publishes,
+and the graph launches` does `request.post('/api/sessions/e2e-builder/runs', …)`
+directly and is **not** tagged. Its own comment — *"Synthetic runners, so this
+costs nothing"* — is true of the local backend and is not what the tag is for:
+the tag exists so that the same file can be pointed at a **deployed** origin. Do
+not run this suite against the paid API with `--grep-invert @launch` and assume
+it spent nothing. Tagging it is the fix; nobody has done it.
+
+⚠️ **The three `visual/run-canvas.spec.ts` specs need
+`SYNTHETIC_BRANCH_DELAY_SECONDS=5` on the backend**, or they fail with *"No
+branch stayed in flight"* — the synthetic runner finishes a branch instantly, so
+there is no running moment to screenshot. It reads exactly like a CSS regression
+and is not one. Note this knob is read in `service/runner.py`, which is **not**
+one of the two files the canonical environment-knob scan covers, so it does not
+appear in that list.
 
 ### CLI gotchas specific to this repo
 
@@ -93,6 +226,22 @@ that a smoke test against the deployed origin can exclude them with
 
 `brief_crew.guardrails.check_mechanics` and `BriefFlow.check_cache` are pure
 functions. Test changes against them before running a live crew.
+
+The whole builder front half is pure too, and this is the cheapest place in the
+repo to check a CrewAI shape. `builder.document` parses,
+`builder.bounds.document_problems` bounds, `builder.budget.estimate_budget`
+prices and `builder.compiler.compile_document` emits a `crewai.flow/v1`
+definition — all of it without a model call, a network call or a token.
+`from crewai import LLM, Agent, Crew, Process, Task` sits **inside**
+`DefaultCrewFactories.agent_crew` (`runtime.py:406`), not at module scope, so
+nothing is constructed until a node actually runs. `POST /api/builder/validate`
+is the same three steps over HTTP. If you want to know what a graph *would* do,
+compile it; do not publish it and press Launch.
+
+(Importing the package at all still pulls `crewai` in — `brief_crew/__init__.py`
+sees to that — so "no `crewai` in `sys.modules`" is *not* the property being
+claimed here. Measured 2026-09-02: `import brief_crew.builder.compiler` loads
+360 `crewai.*` modules and calls no model.)
 
 ---
 

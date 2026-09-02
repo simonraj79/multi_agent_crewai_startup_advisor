@@ -7,14 +7,16 @@ source would have told you, it belongs in a comment at the site, not here.
 ## How to use this file
 
 - **Numbering is continuous and is never compacted.** Other files cross-
-  reference these by number (`CLAUDE.md` says "see trap 5" in five places), so
+  reference these by number - `CLAUDE.md` alone cites them on eight lines - so
   entries are retired in place rather than removed and renumbered.
 - **Entries 1–6 keep the numbers they had** when they lived in `CLAUDE.md`
   under "Traps that were hit for real".
 - **This file is the only copy.** If you find yourself restating one of these
   somewhere else, link instead. The repo has already proved four separate times
-  that duplicated prose drifts — see entry 28, which is the story of a count
-  that was wrong five times running.
+  that duplicated prose drifts — see entry 28, which is the story of a knob
+  count whose **five** published figures in a row were all wrong before the
+  sixth. (`tech-stack.md` §6 owns that tally; it is deliberately not recounted
+  here — the count of wrong counts is itself a figure in prose.)
 - Each entry is **symptom → cause → what to do**. The symptom comes first
   because that is what you will have when you arrive.
 
@@ -397,6 +399,18 @@ service log rather than trusting a 200** — a 200 says something is listening, 
 that it is your code. This bit again during the authentication work: a 401 that
 looked like a real defect was a backend started before the fix.
 
+**It bit repeatedly again during the builder work, and on the other process.**
+The E2E Vite server sets `strictPort: true` on 5273
+(`frontend/e2e/vite.e2e.config.ts`), which is the right choice for a harness —
+a test must never quietly end up pointed at a different server — but it turns
+"port already in use" into an **exit**, not a warning. The first Vite goes on
+serving happily, the browser renders the page from the **old** config, and
+nothing on screen is wrong. Sharpen the rule accordingly: **read the new
+process's own log and find its bind line.** A process that never printed its
+`Local: http://localhost:…` line is not the one answering that URL, however
+healthy the URL looks. Reading the log is what caught this every single time;
+nothing else did.
+
 ### 26. `Stop-Process -Name node` kills your MCP servers
 
 **Symptom.** Six MCP servers disconnect mid-session, immediately after a cleanup
@@ -422,14 +436,53 @@ Verify by loading the keys and printing their *lengths*, never their values.
 ### 28. Counts in prose drift, and the fix is never to correct the number
 
 **Symptom.** Confident figures that are wrong. The environment-knob count has
-been published as *eleven*, *fifteen*, *eighteen*, *twenty*, and finally
-**thirty-six**. The Python test count has read 65, 295, 341, 378, 415, 459, 522,
-537, 660, 679, 698, 713, and 772. Both were re-corrected, and both went stale
-again within days.
+been published as *eleven*, *fifteen*, *eighteen*, *twenty*, *thirty-six*, and
+now **thirty-nine**. The Python test count has read 65, 295, 341, 378, 415, 459,
+522, 537, 660, 679, 698, 713, 772, and now **1228** (the last two regenerated
+2026-09-02 at `b4ef654`, by the scan in [`tech-stack.md` §1](tech-stack.md) and
+by `unittest discover`). Both were re-corrected, and both went stale again
+within days.
 
 **Cause.** Each correction fixed the number and left the process alone. As the
 knob paragraph's own earlier correction put it: *"the regex was fixed; the
 process was not."*
+
+*Thirty-six* — the fifth and last wrong knob figure — is the cleanest
+demonstration the file has. It was regenerated correctly on 2026-09-01 at
+`b1a9c19`, written into `CLAUDE.md` in bold with the scan beside it and a
+paragraph explaining why the figure had been wrong four times before it. It was
+stale one commit later, and **not because of the flow builder**:
+`AUTH_JWKS_TIMEOUT_SECONDS` landed in `5087f3c`, so the count was already wrong
+at **thirty-seven** at `4d70cbf`, the last commit before the builder existed.
+The builder then added exactly **two** knobs — `BUILDER_ALLOW_GATELESS_GRAPHS`
+and `BUILDER_REHYDRATE_PUBLISHED` — taking it to thirty-nine. Regenerated per
+commit on 2026-09-02 with the scan from [`tech-stack.md` §1](tech-stack.md):
+
+```text
+5087f3c total=37    4d70cbf total=37    6d2743c total=39    b4ef654 total=39
+ADDED BY 6d2743c: ['BUILDER_ALLOW_GATELESS_GRAPHS', 'BUILDER_REHYDRATE_PUBLISHED']
+```
+
+Nothing was careless. A figure in prose has a shelf life measured in commits,
+and no amount of care about the measurement extends it. **This entry is
+stronger for the correction, not weaker**: the real cause was a knob added five
+commits earlier that nobody scanned for, which is a purer instance of "the
+correction fixed the number and left the process alone" than a same-day merge
+would have been.
+
+**And this entry itself carried the wrong story until 2026-09-02**, in the
+identical shape it warns about. It named `MAX_RUN_COST_USD` as one of three
+knobs the builder added. `MAX_RUN_COST_USD` landed in `1b79197`
+(`git log -S MAX_RUN_COST_USD -- src/brief_crew/config.py`) and was already
+inside the correctly-measured thirty-six; `git log -S` names `6d2743c` only
+because the builder *changed an existing reference* to it. The claim came from
+the pass's own orchestrating handoff and was copied into two files without a
+scan — so the rule this entry now carries is: **a number handed down by an
+orchestrator, a handoff or a change author is exactly as trustworthy as one
+copied between two documents.** Reasoning about what a commit added is not
+regenerating the list. [`tech-stack.md` §6](tech-stack.md) owns the
+enumeration and got it right; this entry and `CLAUDE.md` were the two that
+restated it.
 
 **Do this.** **The command is the contract, not the figure.** Regenerate before
 quoting anything: the env scan in [`tech-stack.md` §1](tech-stack.md), and
@@ -490,6 +543,171 @@ exists, so create it first and hardcode second.
 
 ---
 
+## Checks that were satisfied by the wrong thing
+
+Five entries from the flow-builder work, kept together because they share a
+shape and the shape is the lesson. In each one a check **ran**, was
+**satisfied**, and was measuring something adjacent to the thing everybody
+believed it measured: a mirror compared against itself, a validator that ran
+earlier than the constructor, a leak hidden by a sort order, a mount with no
+layout engine, and honest arithmetic about a box that stopped existing one frame
+later. "Tests that pass for the wrong reason" above is the earlier half of the
+same family.
+
+### 31. A mirror kept honest by grepping for a *spelling*
+
+**Symptom.** `PROBLEM_CODES` in `frontend/src/types/builder.ts` listed 27 codes.
+The server emits 30. `builderTypes.spec.ts` — the test whose entire job is to
+keep those two in step — was green.
+
+**Cause.** Two independent failures of one mechanism. The gate greps the Python
+for module-level declarations,
+`/^[A-Z][A-Z0-9_]* = "([a-z]+(?:-[a-z]+)+)"$/gm`, so it is a gate on a
+**spelling**, not on the codes: write
+`problems.append(Problem(code="inline-literal", …))` and the regex finds
+nothing, the TypeScript tuple stays at its old length, and the frontend suite
+stays green while the client renders a problem it does not know. And it read two
+of the **three** Python files that declare codes — so the mirror agreed with
+**itself** at the wrong number, 27 against 27, with nothing left to disagree.
+Among the missing was `library-missing-prompt-input`, the most common problem in
+the whole builder, because a fresh agent node defaults `prompt_inputs: {}`. The
+code the client was least able to render was the one it would meet first.
+
+**Do this.** **Put the anti-drift check where the drift happens.** A test in
+`frontend/` cannot fail on a Python refactor it never reads, so the guard has to
+live on the Python side: `tests/builder/test_problem_code_declarations.py` walks
+the AST and forbids the one shape the frontend's regex is blind to — every
+`Problem(...)` must be constructed with `code=<NAME>`, and every such NAME must
+resolve to a module-level constant written in exactly the spelling the regex
+matches. Then enumerate the source files in both places and pin the two lists
+against each other; the third file's absence was the whole of the 27-versus-30.
+
+Both sides measured at **30** on 2026-09-02 at `b4ef654`, by the scan below and
+by counting `PROBLEM_CODES`:
+
+```bash
+./.venv/Scripts/python.exe -c "import re,pathlib; D=re.compile(r'^([A-Z][A-Z0-9_]*) = \"([a-z]+(?:-[a-z]+)+)\"$',re.M); b=pathlib.Path('src/brief_crew/builder'); print(len({v for f in ('bounds.py','budget.py','compiler.py') for _,v in D.findall((b/f).read_text(encoding='utf-8'))}))"
+```
+
+### 32. A validator that runs earlier than the constructor can be confidently wrong
+
+**Symptom.** A document naming `crew_id: "synthesis"` passed every structural
+check, **published cleanly**, was priced and registered — then raised a bare
+`TypeError` inside a worker thread at the moment that node ran, *after the
+scoper and all three research branches had billed real money* for a context
+nothing would consume.
+
+**Cause.** `BUILDER_CREW_LIBRARY` advertises six `@CrewBase` classes and
+`DefaultCrewFactories.crew` builds them with a bare zero-argument call. Two of
+the six have no zero-argument `__init__`: `SynthesisCrew` wants three typed
+research findings and `ReportCrew` wants a verdict and the tool URLs behind it,
+both passed in Python by the validator flow. *Registered* and *buildable* are
+different properties, and every check on the publish path tested the first one.
+
+**Do this.** Move the check to the earliest door at which the failure is
+knowable, then close **every** door — validate, publish **and rehydration**, so a
+row published before the fix cannot walk back in through the restart that
+`autoDeploy: yes` guarantees on every push to `main`. Where the check must be a
+declaration rather than a derivation — importing `crews.validator_crew` into the
+compiler would drag the Firecrawl, HN and GitHub clients in with it — pin the
+declaration against the real thing rather than trusting it:
+`tests/builder/test_crew_library_arity.py` imports the classes, reads
+`inspect.signature`, and asserts the map is exactly right for all six, at no
+cost and with nothing instantiated. The general form is worth saying plainly:
+**a bound enforced later than the money is spent is not a bound.**
+
+### 33. A test that was green only because `discover` sorted two modules kindly
+
+**Symptom.** `tests/service/test_builder_rehydration.py` asserts that no `ug_`
+workflow is left registered, and it passed. It passed because `unittest
+discover` sorts `test_builder_rehydration` before `test_builder_runner`. The
+ordering is alphabetical, so it is stable rather than flaky — which is worse,
+because it will hold right up until somebody renames a module, and then a suite
+that has been green for months goes red in a file nobody touched.
+
+**Cause.** Publishing through the real HTTP surface writes **five**
+process-global registration maps, and `TestClient.close` unwinds none of them,
+so a published graph outlived the case that made it. Reverse the two modules and
+a file that had done nothing wrong fails. Its sibling defect is the same
+arithmetic one layer down: `unregister_builder_workflow` cleared **four** maps
+while registration writes five, so even the explicit teardown left one behind —
+and that one is not inert. A stale `WORKFLOW_RESERVED_RUN_INPUT_KEYS` entry is
+the answer `all_reserved_run_input_keys` unions into **every unknown workflow
+id**, so a deleted graph goes on refusing its own state names as control keys in
+some later author's perfectly ordinary `inputs`, until the process restarts. The
+other four maps merely make a deleted graph 404, which is loud; this one is
+silent, which is why it was the one nobody cleared.
+
+**Do this.** Register the undo at the point of the mutation — `addCleanup`
+beside the publish, not at the bottom of the class — and **count the maps**: a
+registration that writes N places needs an unregistration that clears N, and
+that is worth an assertion rather than a careful reading. When you suspect an
+ordering dependency, run the module **alone**
+(`./.venv/Scripts/python.exe -m unittest tests.service.test_builder_runner`); a
+green full suite cannot tell you which ordering you were handed.
+
+### 34. A jsdom mount asserts structure and never asks how wide anything ended up
+
+**Symptom.** Two defects that shipped behind a green unit suite. On the empty
+gallery `BuilderView` renders neither rail, but `.studio-main` still declared
+three columns and `.graph-workspace` still declared its rows — so the gallery
+became the grid's first child and landed in the **236px palette column**, inside
+a row sized for a crew strip that is not there: measured at 2000x1150, a 236x70
+box holding 1356px of content, four template cards reduced to a clipped sliver.
+And the canvas fitted its viewport *before* the budget meter and the problems
+dock took their height, so a 16-node template opened with its last two nodes
+under the dock **while reporting itself fitted** (entry 35).
+
+**Cause.** A unit mount renders a tree and asserts on the tree. There is no
+layout engine behind it, so "how wide", "at what scale" and "is any of this
+clipped" are not answered wrongly — they are never asked. Every element was in
+the DOM and every assertion about the DOM was true.
+
+**Do this.** Treat it as a **recurring class**, because it is one. The console
+had already produced two more: the implicit `auto` grid row that let three panes
+overflow an 848px container to **1894px** (fixed with `minmax(0, 1fr)` on
+`.studio-main` *plus* `min-height: 0` on its children, since a grid item's
+automatic minimum size is its content), and the 18px `.canvas-heading` inset
+that let the two rail collapse toggles render straight through the text, so the
+heading read *"XED VALIDATOR GRAPH"*. All four were found by starting the app
+and **looking**, and none of the four was ever going to be found any other way.
+
+Note what this file's own history says about the class: it did **not** carry an
+entry for it until now. The two console instances were written up at their fix
+sites in `studio.css` and in `CLAUDE.md`'s frontend section — good comments, in
+two places neither of which is the file somebody reads before believing a green
+suite. That is exactly how a class recurs.
+
+So assert geometry where geometry exists.
+`frontend/e2e/builder-layout.spec.ts` measures the gallery's real `clientWidth`
+in a browser, puts every node of the validator template inside the canvas pane,
+and checks all three shell columns are present and non-zero once a document is
+open.
+
+### 35. Fitting a viewport against a container that is still settling
+
+**Symptom.** A 16-node template opens with its last two nodes hidden under the
+problems dock, on a canvas that reports itself fitted. The fits chose **0.544**,
+then **0.524**, against a settled container that wanted **0.466**.
+
+**Cause.** `fit-view-on-init` and the shell's own post-load fit each compute
+against what the element measures *at that instant* — and at that instant it is
+still full-bleed, because the budget meter sits in `.graph-workspace`'s `auto`
+row and the problems dock below it, and neither has taken its height yet. Both
+fits are honest arithmetic about a box that stops existing one frame later.
+
+**Do this.** Observe the real signal instead of guessing at it: a
+`ResizeObserver` on the canvas frame re-fits on each genuine height change. A
+`setTimeout` is a guess about somebody else's layout, and that layout is free to
+get slower — "long enough" is not a property you can assert. Two details the
+observer has to get right, each a bug of its own if skipped: **ignore the
+collapse to zero** that unmounting reports, and **stop at the author's first
+gesture**, because after a wheel or a pan the viewport is theirs and a late
+re-fit that discards a pan somebody just made is a worse bug than the one this
+fixes. `BuilderCanvas.vue` does both, and says why at the site.
+
+---
+
 ## Insights worth reusing
 
 Not traps — the positive patterns that repeatedly turned out to be right.
@@ -529,6 +747,38 @@ another person's row, because the row was never selected.
 Render and `false` in the Dockerfile, and that read as an inversion to an auditor
 until both comments said *which mode* each was choosing. A boolean without its
 rationale invites a well-meaning "fix".
+
+**Put the guard on the side that can break the invariant.** The frontend's copy
+of the server's problem codes was kept honest by a test in `frontend/` grepping
+Python — so the one change that would break it, a refactor inside Python, was
+the one change that test could never see. The guard belongs where the breaking
+edit happens (entry 31). Same shape as *prove a fix by breaking it*: ask what
+edit would falsify this, then check that the edit fails something.
+
+**Bound shape and bound money with two different bounds.** The builder's
+structural counts (`MAX_BILLABLE_NODES`, `MAX_ESCALATION_NODES`, `MAX_CYCLES`)
+say what a graph may look like; `MAX_RUN_COST_USD` says what it may cost.
+Because the two are independent, "may we raise a count?" becomes a question with
+an arithmetic answer instead of an argument:
+`test_the_worst_graph_the_counts_permit_is_still_refused_on_price` builds the
+pathological corner and watches the budget layer refuse it on price — so the
+count was never the money bound in the first place, and
+`tests/builder/test_budget.py`'s own docstring says so. A single bound doing
+both jobs could not have been interrogated that way.
+
+**Name the shape beside the money, or the money means nothing.** That test
+prices **$10.55**, and $10.55 is the *pre-raise* frontier: it builds
+`frontier_document(cheap=3, escalation=5)`, which is **8 billable / 5
+escalation**, the bounds as they stood before `MAX_BILLABLE_NODES` went 8→13
+and `MAX_ESCALATION_NODES` 5→8. The worst graph the counts permit **at head**
+is 13/8 and prices at **$21.62** — 468 modelled calls, floor $15.31, static
+$17.30, and the 1.25x margin applied to the *static* price rather than the
+floor. The figure [`CLAUDE.md`](../CLAUDE.md) section 14 owns and regenerates. So the test
+name is stale at head, and a document that quoted its $10.55 as the current
+frontier would be publishing a two-releases-old number under a name that
+promises the current one. Both figures were regenerated 2026-09-02 at
+`b4ef654`; only the test's own constant is unchanged, because the test still
+builds the old shape.
 
 **A comment earns its place by explaining what the code cannot.** Prefer the
 reason over the restatement — why the order is load-bearing, why the default is

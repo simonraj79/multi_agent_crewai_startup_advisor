@@ -1,48 +1,95 @@
 # Agentic Crew AI
 
-Two CrewAI applications sharing one Python package, plus a live web console for
-the second.
+**Draw a multi-agent workflow on a canvas, and it compiles to real CrewAI.** Not
+a picture of one — agents, crews, human gates, routers, joins and cycles, parsed
+into a typed document, structurally bounded, priced before a token is spent, and
+turned into a `crewai.flow/v1` declaration that this service then runs, streams,
+pauses at a gate and resumes after a restart. That is what the product now is.
+
+Three things share one Python package.
+
+**The flow builder** is the canvas — seven node kinds, two model tiers, a budget
+meter that prices a graph before it runs, and a publish step that registers the
+compiled flow as a first-class workflow the run API will launch. See
+[The flow builder](#the-flow-builder).
+
+**Validator Studio** takes a startup idea and returns a scored, cited verdict:
+six agents, three of them researching in parallel against real sources, two
+human approval gates that survive the process dying, and a browser console that
+draws the agent graph and animates it as the run happens. It is **also a
+template inside the builder** now — 16 nodes, 22 edges, two revise loops — rather
+than a special case beside it. What the template carries is its *shape*; the
+rubric, the confidence arithmetic, the guardrails and the warm cache are Python
+and stay Python.
 
 **Brief Crew** turns one topic into one one-page brief — a Researcher → Analyst →
 Writer pipeline sitting behind a warm vector cache, so repeat runs get cheaper.
 
-**Validator Studio** takes a startup idea and returns a scored, cited verdict.
-Six agents, three of them researching in parallel against real sources, two
-human approval gates that survive a process restart, and a browser UI that draws
-the agent graph and animates it as the run happens.
-
-Neither is a demo of a framework. Both are built around a specific claim: an
-agent's output is only worth what its evidence is worth, so the interesting
-engineering is in the parts that refuse to let a model assert something it
-cannot support.
+None of them is a demo of a framework. All three are built around a specific
+claim: an agent's output is only worth what its evidence is worth, so the
+interesting engineering is in the parts that refuse to let a model assert
+something it cannot support.
 
 ---
 
 ## Status — read this before you judge anything
 
-The service is **deployed and serving**, and CI is **green**. It has still
-**never validated an idea against paid live services in its integrated form.**
-Those sentences are not in tension, and holding all three is the single most
-important thing to know about this project: a deployment that answers its health
-checks is not a deployment that has done the work, and a green pipeline measures
-the code against doubles, not the product against reality.
+The service is **deployed and serving**, and CI is **green**. It has run end to
+end against paid live services **exactly once**, on 2026-08-30, and that run
+found three defects no test had caught. Those sentences are not in tension, and holding
+all three is the single most important thing to know about this project: a
+deployment that answers its health checks is not a deployment that has done the
+work, a green pipeline measures the code against doubles rather than the product
+against reality, and one paid run is evidence that the doubles are insufficient
+rather than evidence that the product works.
 
-There is also a live reason *not* to make that first paid run yet, and it is not
-a scheduling one — see the **Rubric** row below.
+**What that one paid run actually produced** (from the commit messages of
+`aa7bdc1` and `add21d1`, which are the record): a validation report **truncated
+at 4096 characters**, priced at **$0.00 over 128,069 real tokens**, with **two
+of three research branches empty** because the Scoper was asking keyword APIs in
+prose, scoring `NEEDS_WORK 4.2` at **0.17 confidence**. All three defects are
+fixed — the un-truncated body, the priced calls, the keyword-shaped queries —
+and **not one of them has been re-exercised against live tools.** So the
+un-run thing is not "a paid run"; it is *a paid run that produces a result worth
+reading*, and citation closure over an acceptance set is still unmeasured.
+
+Until 2026-09-02 this README said nothing had ever run against paid services.
+That was wrong from the moment `aa7bdc1` landed on 2026-08-30 - three days, in
+the first section a newcomer reads, and `new features/feature-list.md` struck
+the same claim the same day this one was found. The sentence understated what
+had happened **and** overstated what is proven, which is the pair of errors a
+status table exists to prevent.
+
+The reason not to make the *next* paid run used to be the rubric. That reason is
+gone — the rubric was ratified on 2026-09-01 — so what is left is nobody having
+spent the money a second time. The flow builder does not change this: a published
+graph runs end to end against the no-cost backend and has never been pointed at a
+paid model at all.
 
 | | State |
 |---|---|
-| Python test suite | ✅ 660 tests, 0 failures, 1 skipped |
-| Frontend unit tests | ✅ 203 tests across 19 files (Vitest + jsdom) |
-| Frontend end-to-end | ✅ 7 Playwright specs — real browser, real WebSocket, both durable gates, against a no-cost backend |
-| Frontend type-check + build | ✅ `vue-tsc` and `vite build` clean |
-| CI | ✅ green on `ubuntu-latest` — **for the first time**, at `e539811`. The three commits before it all failed. See [CI](#ci-and-the-clean-checkout). |
+| Python test suite | ✅ 1228 tests, 0 failures, 0 errors, 1 skipped |
+| Frontend unit tests | ✅ 1024 tests across 54 files (Vitest + jsdom) |
+| Frontend end-to-end | ✅ 28 Playwright specs — real browser, real WebSocket, both durable gates, the builder canvas, and three node-card visual baselines, against a no-cost backend. Zero console errors tolerated. ⚠️ **The 28 is a listing** (`npx playwright test --list`, 2026-09-02); the green is `6d2743c`'s own measurement, and no browser was launched on 2026-09-02. Seven of the 28 are `@launch` and are free only against the local `SYNTHETIC=1` backend. |
+| Frontend type-check + build | ✅ `vue-tsc -b --force` and `vite build` clean |
+| Flow builder | ✅ a graph composes, validates, prices, publishes and **runs** — gates open on the author's own canvas node id, resume produces output, cancel reaches `CANCELLED`, and a published graph survives the restart auto-deploy guarantees. ⚠️ All of that was proved against the **no-cost** backend. Nothing in this README rests on a builder graph having called a paid model, and this pass did not establish that one ever has. |
+| CI | ✅ green at `b4ef654`, both jobs, `ubuntu-latest` — clean checkout, no `.env`, no credential of any kind. Run `33597756398`. See [CI](#ci-and-the-clean-checkout). |
 | Brief Crew, live | ✅ run end to end against real OpenRouter / Firecrawl / Pinecone / Cohere; numbers below are measured |
-| Deployed | ✅ **live on Render** — API, static site and PostgreSQL 18. See [Live deployment](#live-deployment). |
-| Validator Studio, live | ⚠️ **launched, never finished.** Two runs were started from the deployed console on 2026-08-30 (`e0b3b65e…` 04:01, `8b5a0a78…` 05:13) and **both stopped at the scope gate** — one escalation-tier call each, well under a cent. No research branch, verdict or report has ever run against live services, so nothing end to end is proven. Every test still uses a double. |
-| Rubric | ⛔ an independent adversarial pass says **"do not spend money on a live acceptance run against this rubric as it stands"** — two findings rated *Critical* are still true at head. Nothing since has touched `RUBRIC_ANCHORS`. See [`docs/rubric-review.md`](docs/rubric-review.md). |
+| Deployed | ✅ **live on Render** — API, console and PostgreSQL 18. See [Live deployment](#live-deployment), and note that nothing there was re-probed on 2026-09-02. |
+| Validator Studio, live | ⚠️ **run once end to end, and the result was not usable.** One paid run (2026-08-30) produced a report truncated at 4096 chars, `cost_usd` $0.00 over 128,069 real tokens, two of three research branches empty, `NEEDS_WORK 4.2` at 0.17 confidence. All three defects fixed, **none re-exercised live**. The deployed console also recorded two runs that day (`e0b3b65e…` 04:01, `8b5a0a78…` 05:13) that **stopped at the scope gate** — one escalation-tier call each, well under a cent. Nothing in this repo records whether the completed paid run is one of those two or a third; `aa7bdc1` says its report existed only "on ephemeral container disk", which puts it on the deployed instance but does not identify it. Every automated test still uses a double. |
+| Rubric | ✅ **ratified 2026-09-01** — seven changes applied, four of them rated *Critical*, and the adversarial review's standing "do not spend money on a live acceptance run" verdict lifted. The record is [`docs/rubric-ratification.md`](docs/rubric-ratification.md); read it **beside** [`docs/rubric-review.md`](docs/rubric-review.md), which was never updated when its own findings were repaired and therefore overstates what is broken. |
 | PostgreSQL | ⚠️ the deployed API reports `"backend":"postgresql"` on `/readyz`, so the schema now exists on a real server. The automated suite still runs on SQLite only, and two-process gate contention remains untested. |
 | Fan-out speedup | ❌ the benchmark harness is built and tested; **the measurement has not been taken** |
+
+Every count above was **re-measured on 2026-09-02 at `b4ef654`** (the merge of
+PR #6) on Windows, and the CI row was read from `gh run list`, not assumed. The
+one exception is flagged in its own row: the E2E suite was *listed*, not run. The
+commands are in [Tests](#tests) — and the command is the contract, not the
+figure. These numbers have been published wrong here every time somebody
+reconciled prose instead of re-running the command; the tally and the sequence
+are owned by [`docs/gotchas-and-insights.md`](docs/gotchas-and-insights.md)
+rather than restated here, for exactly that reason. If yours disagree, yours are
+right.
 
 The test suite is deliberately free to run. CrewAI crews, OpenRouter, Pinecone,
 Cohere, Firecrawl, Hacker News and GitHub are all mocked or replaced with
@@ -56,19 +103,163 @@ as marketing, and it is the file to trust when this one and it disagree.
 
 ---
 
+## The flow builder
+
+> To open it: start the **free** backend with `SYNTHETIC=1 .venv/Scripts/serve`,
+> run `npm run dev` in `frontend/`, and go to `http://localhost:5173/#/build`.
+> Full steps in [As a service](#as-a-service-the-studio-and-the-builder).
+
+`#/build` is a canvas. Drag nodes onto it, wire them, and what comes out is not
+a diagram of a CrewAI flow — it is one.
+[`src/brief_crew/builder/compiler.py`](src/brief_crew/builder/compiler.py) turns
+a `builder.flow/v1` document into a `crewai.flow/v1` declaration made of real
+`Agent`, `Task`, `Crew` and `Flow` objects, and
+[`service/builder_runner.py`](src/brief_crew/service/builder_runner.py) runs it
+through the same run registry, the same frame spine, the same durable gates and
+the same WebSocket that Validator Studio uses. There is no second execution
+path, and that is the point: a builder whose output runs somewhere else is a
+diagram tool with extra steps.
+
+**Seven node kinds, two model tiers.** `input`, `agent`, `crew`, `gate`,
+`router`, `transform`, `output`; `cheap` and `escalation`, both resolved out of
+[`config.py`](src/brief_crew/config.py), so an authored graph cannot name a model
+the platform rules forbid. Gates are the native CrewAI `@human_feedback` ones —
+a published graph pauses, writes its state to SQL, lets the process exit, and
+resumes on a reply that arrives later. The gate opens on **the author's own
+canvas node id**, carrying the label and editable fields they declared, rather
+than on the compiler's generated `n1_confirm`; a builder whose runtime speaks a
+different vocabulary from its editor is one an author cannot debug.
+
+**A graph is priced before it runs.** The budget meter is live in the editor:
+every edit re-prices the document, and `POST /api/builder/validate` returns the
+same numbers the server will enforce. Two figures, because they answer different
+questions — `static_cost_usd` is the worst case with the cycle allowance
+inflated, `floor_cost_usd` the un-inflated one.
+
+**Three layers refuse a graph, and they refuse different things.** Conflating
+them is how a builder either blocks a legitimate shape or ships a money hole:
+
+| Layer | Refuses | Where |
+|---|---|---|
+| Parse | a document that is not a document — bad ids, dangling edges, an `int` position written `120.5` | `builder/document.py` |
+| Bounds | *shape*: at most 24 drawn nodes, 13 billable, 8 of those on the escalation tier, out-degree 4, 3 cycles | `builder/bounds.py`, constants in `config.py` |
+| Budget | *money*: a worst case priced above `MAX_RUN_COST_USD` (default `$10.00`) | `builder/budget.py` |
+
+The billable/escalation/cycle counts were raised (8→13, 5→8, 2→3) so the
+evaluator template had headroom instead of sitting exactly on every bound.
+Fan-out width deliberately **did not move**: it bounds concurrent threads and an
+external rate limit nobody has re-measured, not spend, and widening it on
+judgement alone would be inventing a number. The raise opened no money hole
+because the counts never bounded money — the budget layer does, and it refuses
+the worst shape the new counts permit *by price*: 13 billable / 8 escalation,
+468 modelled calls, floor $15.31, **static $17.30**, and **$21.62 once the 1.25x
+margin is applied to the static price** — against the $10.00 ceiling. (The
+margin multiplies the static figure, not the floor; $15.31 x 1.25 would be
+$19.14.) Regenerated 2026-09-02 at `b4ef654` by the command in
+[`CLAUDE.md`](CLAUDE.md) section 14, which owns this figure — do not copy it,
+run it. The same number is written beside the constant it justifies at
+`config.py:1793`.
+
+> This README published **$16.01** here until 2026-09-02, attributed to the
+> change author and hedged as "not re-derived". It reproduces from no shape:
+> probing `frontier_document(cheap, escalation)` at (3,5), (4,6), (5,8), (8,5)
+> and (13,8) gives $10.55, $14.57, $21.62, $21.28 and $45.12, and $16.01 is not
+> even the $15.31 floor. The hedge was honest about
+> provenance and did not stop a wrong figure reaching the front page, which is
+> the lesson: **a number handed down by a change author or a handoff is exactly
+> as trustworthy as one copied between two documents.**
+
+**Publish makes a graph a first-class workflow.** `register_builder_workflow`
+writes it into five places at once — the graph descriptor map, the node registry,
+the workflow map, the builder record, and the reserved-run-input-key table — and
+`service/graph.py` says in its own docstring what each omission looks like,
+because four of the five fail *silently* and differently. **A *publish* touches
+six**, and the difference is scope rather than disagreement: the sixth is the
+application's own runtime dict, which `service/builder_api.py::_register_runtime`
+writes in the same request because `service/graph.py` holds no registry
+instance. `config.py:1920` enumerates all six; count the function's writes and
+you get five, count the request's and you get six. Afterwards
+`GET /api/workflows`, `GET /api/workflows/{id}/graph` and
+`POST /api/sessions/{id}/runs` all work on the author's graph exactly as they do
+on `idea-validator`. `BUILDER_REHYDRATE_PUBLISHED` re-registers published graphs
+at startup, which matters because auto-deploy restarts the API on every push to
+`main`.
+
+### The evaluator is a template now, not a special case
+
+[`frontend/src/data/templates/ideaValidator.ts`](frontend/src/data/templates/ideaValidator.ts)
+is the six-agent startup-idea evaluator expressed as a builder document: **16
+nodes, 22 edges**, a `{score: all}` join, two revise loops closed through router
+nodes. Recorded against a live `POST /api/builder/validate`: `valid: true`, zero
+problems, `static_cost_usd $1.5137` / `floor_cost_usd $1.2159`, 8 billable nodes,
+5 escalation, 2 cycles, `over_ceiling: false`. (Those budget figures are the ones
+recorded in the template's own source comment and asserted by
+`frontend/tests/builderShell.spec.ts`; they were **not** re-measured against a
+running service for this README.)
+
+Its gallery card carries a caveat rendered verbatim, and the caveat is the
+honest half of the claim: **this is the evaluator's shape, not its judgement.**
+The rubric anchors, the confidence arithmetic, the guardrails that bind a score
+to counted evidence and the warm Pinecone cache are Python, they stay Python,
+and a template that draws the same boxes does not inherit any of them.
+
+### Two defects worth recording
+
+Not a changelog — these are the two that say something about how this kind of
+system fails.
+
+**A graph naming `crew_id: "synthesis"` validated clean, published clean, was
+priced, registered and launchable — and then raised a bare `TypeError` from
+inside the crew factory at the moment that node ran.** The library factory's
+whole body is a zero-argument call, and two of the six validator crews have no
+zero-argument `__init__`: `SynthesisCrew` and `ReportCrew` take typed pydantic
+findings from upstream nodes, which a drawn document has no way to express. So
+every structural check passed — the check was that the crew *exists*, not that
+it is constructible — and the failure landed at the one point where it costs the
+most: after the scoper and all three research branches have billed for context
+nothing would ever consume. `library_problems` now refuses it at validate, where
+it costs nothing, and the refusal is closed at four doors including rehydration,
+so a row published *before* the fix cannot return through a restart.
+`tests/builder/test_crew_library_arity.py` imports the crew module for real and
+asserts the declared map is exactly the required arguments of all six `__init__`s
+— so adding a seventh crew fails a test rather than a run.
+
+**A mirrored constant agreed with itself at the wrong number.** `PROBLEM_CODES`
+in `frontend/src/types/builder.ts` listed 27 codes where the server emits 30 —
+and the anti-rot test that was supposed to catch that read **two** of the
+**three** Python files declaring them, so the mirror and its guard were wrong
+together and confirmed each other. The code that fell through the gap,
+`library-missing-prompt-input`, is the single most common problem in the whole
+builder, because a fresh agent node defaults `prompt_inputs: {}`.
+
+At head it is guarded from both sides: `PROBLEM_CODES` has **30** entries and
+carries that code (counted from `builder.ts` on 2026-09-02),
+`tests/builder/test_problem_code_declarations.py` reads all three sources
+(`SOURCES = ("bounds.py", "budget.py", "compiler.py")`) and forbids the inline
+string-literal spelling that a grep of the frontend's mirror cannot see. This is
+the same failure this repository's *counts* keep having, one layer down: a
+duplicate is only safe for as long as something can fail when it drifts.
+
+---
+
 ## Live deployment
 
 | | |
 |---|---|
-| Web console | **https://agentic-crew-ai-web.onrender.com** — Render static site, free plan |
+| Web console | **https://agentic-crew-ai-web.onrender.com** — `render.yaml` now declares this as `agentic-crew-ai-studio`, a Render **Node web service** in `singapore` rather than a static site, because Better Auth needs a Node runtime and a session cookie cannot be shared across two `onrender.com` subdomains. A rename does not move a Render subdomain, and **the live URL was not re-probed for this README** — treat the address above as the last one confirmed, not as today's. |
 | API | **https://agentic-crew-ai-api.onrender.com** — Render web service, `python` runtime, `starter`, `singapore` |
 | Database | `agentic-crew-ai-db` — Render PostgreSQL **18**, `basic_256mb`, `singapore`. Pre-existing; **reused, not recreated.** |
 | Source | https://github.com/simonraj79/multi_agent_crewai_startup_advisor — public, `main`, auto-deploy on |
 
-Both services are running **`e539811`**, redeployed after the admission-control
-and CI work below.
+> ⚠️ **Everything in this section was measured on 2026-08-30 at `e539811` and
+> was NOT re-probed on 2026-09-02.** `main` is `b4ef654` and auto-deploy is on
+> for both services, so the deployment has almost certainly moved twice since —
+> once for authentication, once for the flow builder. "Almost certainly" is
+> doing real work in that sentence: nothing below was re-checked, and the service
+> exposes no version endpoint to check it against. Re-probe before quoting one of
+> these as current.
 
-What was verified against the deployed origin:
+What was verified against the deployed origin, at `e539811`:
 
 - `GET /healthz` returns `200`.
 - `GET /readyz` returns `200` with `"storage": {"backend": "postgresql"}` — the
@@ -85,10 +276,17 @@ What was verified against the deployed origin:
 - A **2-of-2 read-only Playwright smoke test** passes against the deployed web
   console (`--grep-invert @launch`, so nothing spent money).
 
-**What was not verified: anything that costs money.** No validator run has been
-launched against the deployed service. Pressing *Launch* there spends real
-OpenRouter, Firecrawl and Cohere credit, so the end-to-end claim in the status
-table above is still open. The deployment is live; the product is unproven.
+**What was not verified in this probe: anything that costs money.** Nothing here
+pressed *Launch* — that spends real OpenRouter, Firecrawl and Cohere credit.
+
+That is narrower than "nothing ever has", which this section claimed until
+2026-09-02 while the status table eighty lines above described three runs. The
+deployed console recorded two on 2026-08-30 (`e0b3b65e…` 04:01, `8b5a0a78…`
+05:13) that **stopped at the scope gate** — one escalation-tier call each, well
+under a cent — and `aa7bdc1`'s completed paid run left its report "on ephemeral
+container disk", which places it on the deployed instance without identifying
+it. See the [status table](#status) row for what that run produced and why it
+is not an acceptance. The deployment is live; the product is still unproven.
 
 > ⚠️ The API runs on Render's free-adjacent `starter` plan behind a proxy that
 > idles instances. A first request after a quiet period can take tens of seconds
@@ -98,8 +296,9 @@ table above is still open. The deployment is live; the product is unproven.
 
 ## What is actually interesting here
 
-Four things in this repository are unusual enough to be worth your time even if
-you never run it.
+[The flow builder](#the-flow-builder) is the headline and is covered above.
+Four more things here are unusual enough to be worth your time even if you never
+run any of it.
 
 ### A rubric bound to counted evidence
 
@@ -180,6 +379,10 @@ worse than one that admits it, because you will believe it.
 | Node | 20+ for the frontend (CI uses 24) |
 | [uv](https://docs.astral.sh/uv/) | for the Python environment and the lockfile |
 
+Those are floors, not pins. **Every exact version lives in
+[`docs/tech-stack.md`](docs/tech-stack.md)**, beside the command that
+regenerates it; do not read one out of prose here or anywhere else.
+
 ### API keys
 
 Copy [`.env.example`](.env.example) to `.env` and fill it in. That file documents
@@ -205,10 +408,10 @@ raising.
 prefix and the service refuses to start if one does not.
 
 You can run the whole test suite with none of these set — and, with
-`SYNTHETIC=1`, the whole application too. See
-[Running Validator Studio](#as-a-service-with-the-web-console). As of `e539811`
-that is checked by a machine that has no keys rather than asserted: CI runs from
-a clean checkout with no `.env`. See [CI](#ci-and-the-clean-checkout).
+`SYNTHETIC=1`, the whole application too, the flow builder included. See
+[As a service](#as-a-service-the-studio-and-the-builder). That is checked by a
+machine with no keys rather than asserted: CI runs from a clean checkout with no
+`.env`, and did so green at `b4ef654`. See [CI](#ci-and-the-clean-checkout).
 
 ### Service configuration
 
@@ -230,6 +433,17 @@ Not secrets. These only matter when you run the hosted service.
 | `PINECONE_INDEX_NAME` | *unset* | Named above under [API keys](#api-keys); it is read in `config.py` like the rest of this table. |
 | `VALIDATOR_FEASIBILITY_CACHE_ENABLED` | `false` | Opt the feasibility branch into the warm cache as a GitHub rate-limit shock absorber. |
 | `VALIDATOR_SEQUENTIAL_BRANCHES` | `false` | Withdraw the three-way fan-out to one-at-a-time without a code edit. Parallel stays the shipped default. |
+| `MAX_RUN_COST_USD` | `10.0` | Estimated per-run spend ceiling, enforced at the next CrewAI step boundary. **`0` disables it; unset does not** — a deployment that does nothing still gets a brake. It enforces an estimate, not an invoice, and it is blind to embeddings, rerank and Firecrawl. |
+| `BUILDER_REHYDRATE_PUBLISHED` | `true` | Re-register published builder graphs at startup, so one survives the restart auto-deploy causes on every push. |
+| `BUILDER_ALLOW_GATELESS_GRAPHS` | `false` | Permit an **anonymous** caller to **launch** a published graph that reaches a billable node before any human gate; otherwise `403`. It does **not** govern publishing — publishing such a graph is always allowed. Read at exactly one site, `service/app.py` inside `create_run` (`not (user or BUILDER_ALLOW_GATELESS_GRAPHS)`), so wherever auth is on — which `render.yaml` turns on — `user` is truthy and the flag is inert. Off, because while nobody is signed in, human inaction is the de facto spend cap. |
+
+**This table is a curated subset, not the list.** The canonical inventory — and
+the multiline scan that regenerates it, which is the only method that has ever
+produced a right answer here — lives in
+[`docs/tech-stack.md`](docs/tech-stack.md). Do not count the rows above and
+publish the number. Every figure this repository has published for it but the
+current one has been wrong; [`docs/tech-stack.md`](docs/tech-stack.md) §6 keeps
+the tally, and it is the only file that should.
 
 Everything above is read at **import time** in
 [`src/brief_crew/config.py`](src/brief_crew/config.py) — except `SYNTHETIC`,
@@ -387,10 +601,10 @@ This stops at both human gates and waits for you. To skip them:
 > ⚠️ `--no-gates` skips the *approvals*, not the *spending*. A real `--no-gates`
 > run still calls paid models and external tools.
 
-### As a service, with the web console
+### As a service: the studio and the builder
 
 Two processes. **Start the API in synthetic mode** — this is the way to try the
-app:
+app, and the only way to try it without spending anything:
 
 ```bash
 SYNTHETIC=1 .venv/Scripts/serve     # http://127.0.0.1:8000, spends nothing
@@ -405,7 +619,30 @@ npm run dev                         # http://localhost:5173
 ```
 
 The dev server proxies `/api` and `/ws` to `127.0.0.1:8000`, so no configuration
-is needed locally. Open `http://localhost:5173/`.
+is needed locally. (`/api/auth` is proxied separately to a Node server on
+`:3000` and is declared **before** `/api`, because Vite matches in declaration
+order and `/api` is a prefix of `/api/auth`. You only need that process if you
+are working on sign-in.)
+
+| Open | For |
+|---|---|
+| `http://localhost:5173/` | the studio — launch a run, watch the graph, answer both gates |
+| `http://localhost:5173/#/build` | **the flow builder** — the template gallery, then the canvas |
+| `http://localhost:5173/#/build/ug_xxxxxxxx` | one saved graph, deep-linked; this is the URL an author shares |
+
+Routing is a **108-line** hash router of this repo's own, not `vue-router`
+(`wc -l frontend/src/composables/useWorkspaceRoute.ts`, 2026-09-02 at
+`b4ef654`; the spec budgeted 60 at `docs/flow-builder-spec.md` R13, and the gap
+between the budget and what shipped is the more interesting of the two
+numbers). The reason is deployment:
+the SPA is served by a Node process, history mode needs a catch-all rewrite in
+two places, and everything after `#` never leaves the browser — so a deep link
+cannot 404 on a server that was never told about it.
+
+**Start in the builder with a template.** `Blank` is a legitimate starting point
+and a bad first impression; the gallery's three worked graphs — minimal gated
+agent, fan-out with a join, and the full idea-validator — each open as an
+editable document you can price, break and re-price.
 
 > ⚠️ **`serve` without `SYNTHETIC=1` is the paid service.** It builds the real
 > crew runners, so the first time anyone presses *Launch* — to look at the graph,
@@ -440,6 +677,27 @@ GET  /api/runs/{run_id}/logs?format=ndjson|zip
 WS   /ws?session_id=&run_id=&after=
 ```
 
+And the builder's own surface, all under `/api/builder`:
+
+```
+GET    /api/builder/vocabulary               node kinds, tiers, tools, bounds
+GET    /api/builder/workflows                the caller's graphs
+POST   /api/builder/workflows                create one
+GET    /api/builder/workflows/{document_id}
+PUT    /api/builder/workflows/{document_id}  save, expected_version compare-and-set
+DELETE /api/builder/workflows/{document_id}  unregisters first, then deletes
+POST   /api/builder/validate                 problems + budget for an unsaved document
+POST   /api/builder/workflows/{document_id}/publish
+```
+
+`PUT` answers **409** on a version mismatch rather than overwriting — two tabs
+editing one graph is the ordinary case, not the exotic one. `DELETE`
+unregisters before it deletes, deliberately: the window where a graph is stored
+but unlaunchable is survivable, and the reverse — a run compiling against a
+document nobody can read — is not. Once `publish` has registered a graph, its
+document id **is** a `workflow_id`, so the run endpoints above take it with no
+special casing.
+
 Run state, frames and gates persist to SQL — SQLite at
 `output/validator-studio.db` by default, PostgreSQL when `DATABASE_URL` is set.
 Cancellation is cooperative and lands at the next CrewAI step boundary.
@@ -450,11 +708,21 @@ unchanged and a reader can still find them.
 
 ### What the run endpoint refuses
 
-`POST /api/sessions/{session_id}/runs` is the only endpoint that spends money and
-it is **unauthenticated** — the deployed API serves an open demo, so anyone may
-call it and the owner pays for the run. These bounds are the defence in depth
-that replaces a login, chosen to be invisible to one honest visitor pressing
-*Launch* and expensive for a script:
+`POST /api/sessions/{session_id}/runs` is the only endpoint that spends money.
+
+**Whether it is authenticated depends on one variable, and the default is not
+`False`.** `VALIDATOR_REQUIRE_AUTH` defaults to `bool(AUTH_BASE_URL)`, so
+configuring an auth server *is* turning auth on and the half-configured state
+does not exist — a flat `False` default would fail open, serving every paid
+endpoint anonymously with nothing on screen to say so. `render.yaml` sets
+`AUTH_BASE_URL`, so the deployed API demands a verified identity; a local
+`SYNTHETIC=1` service sets neither and is open, which is what makes it
+convenient and also what makes it worth nothing.
+
+The bounds below run in **both** cases. They were written when the endpoint was
+an open demo and they are still the layer that holds if a signed-in caller
+misbehaves — chosen to be invisible to one honest visitor pressing *Launch* and
+expensive for a script:
 
 | Condition | Status | Response |
 |---|---|---|
@@ -481,11 +749,14 @@ so monitoring and a reconnecting UI are never affected.
 
 > ⚠️ **The rate limit is a courtesy limiter, not a security control**, and
 > `config.py` says so at length. It is an in-process token bucket in one
-> instance: it resets on every deploy, it multiplies by the instance count if the
-> service is ever scaled out, and its key is an IP that the client writes via
-> `X-Forwarded-For`. Anyone willing to rotate a header walks past it. The layer
-> that holds against someone actually trying is `MAX_QUEUED_RUNS`, because that
-> one is keyless and cannot be rotated around.
+> instance: it resets on every deploy and it multiplies by the instance count if
+> the service is ever scaled out. Its key is `user:<id>` when a caller is
+> authenticated and the client address otherwise — and an address is a poor
+> proxy for a person in both directions, since behind Render's proxy a shared
+> `X-Forwarded-For` puts strangers in one bucket while a phone changing network
+> gets a fresh allowance. Anonymously, anyone willing to rotate a header walks
+> past it. The layer that holds against someone actually trying is
+> `MAX_QUEUED_RUNS`, because that one is keyless and cannot be rotated around.
 
 Covered by `tests/service/test_run_admission.py` — 37 tests, including the two
 carve-outs, thread-safety of the bucket, and that hiding the docs does not hide
@@ -496,28 +767,62 @@ the API.
 ## Tests
 
 ```bash
-.venv/Scripts/python -m unittest discover -s tests -t .    # 660 tests
+.venv/Scripts/python -m unittest discover -s tests -t .    # 1228 tests, 1 skipped
 
 cd frontend
 npm run build                                              # vue-tsc -b && vite build
-npm test                                                   # 203 tests, vitest run
+npm test                                                   # 1024 tests over 54 files
 ```
 
-All three are free to run and touch no network.
+All three are free to run and touch no network. Measured 2026-09-02 at
+`b4ef654`; **the command is the contract, not the figure.**
+
+398 of the Python tests are the builder's, and they are worth running alone when
+you touch it:
+
+```bash
+.venv/Scripts/python -m unittest discover -s tests/builder -t .   # 310
+.venv/Scripts/python -m unittest tests.service.test_builder_gates tests.service.test_builder_runner tests.service.test_builder_rehydration tests.service.test_builder_validate_and_history   # 34 + 17 + 19 + 18
+```
 
 ### End to end, in a real browser
 
-Seven Playwright specs drive the operator's journey — launch, both durable gate
-round trips over a real WebSocket, the verdict gate's read-only fields, reload
-recovery — against a real FastAPI service. Start the **free** backend first:
+28 Playwright specs across four files — 15 for the builder, 3 for builder
+layout, 7 for the studio's operator journey (launch, both durable gate round
+trips over a real WebSocket, the verdict gate's read-only fields, reload
+recovery), and 3 node-card visual baselines — all against a real FastAPI
+service. Start the **free** backend first:
 
 ```bash
-SYNTHETIC=1 PORT=8099 .venv/Scripts/serve
+SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099 .venv/Scripts/serve
 
 cd frontend
 npx playwright install chromium     # once
-npm run test:e2e                    # 7 tests
+npm run test:e2e                    # 28 tests
 ```
+
+> ⚠️ **`SYNTHETIC_BRANCH_DELAY_SECONDS=5` is not optional**, and leaving it out
+> fails in a way that reads like something else entirely. (It is read in
+> `service/runner.py`, not `config.py`, so the knob scan in
+> [`docs/tech-stack.md`](docs/tech-stack.md) does not list it.) The three
+> `e2e/visual/run-canvas.spec.ts` specs screenshot a branch *while it is
+> running*; the synthetic runner finishes a branch instantly, so there is no
+> running moment to capture and they fail with `No branch stayed in flight`.
+> That reads exactly like a CSS regression in the node card. It is not one.
+
+Two of the layout specs exist because of defects found by *looking* rather than
+by testing. On an empty gallery neither rail renders, but the shell still
+declared three columns — so the gallery landed in the palette's narrow slot
+inside a zero-height row. And the canvas fitted its viewport *before* the budget
+meter and problems dock took their height, so a 16-node template opened with its
+last two nodes under the dock **while reporting itself fitted**. (The pixel
+figures behind both — a 236px-wide box holding 1356px of content, a fit of 0.544
+against a settled container wanting 0.466 — are the finding agent's measurements
+and were **not** re-derived for this README.) Both were invisible to a
+four-figure green unit suite, because a jsdom mount asserts structure and never
+asks how wide anything ended up. `e2e/builder-layout.spec.ts` — the three layout
+specs — asserts both in a real browser, which is the only place either question
+has an answer.
 
 The suite starts its own Vite server (`frontend/e2e/vite.e2e.config.ts`) pointed
 at port 8099, so `vite.config.ts` — which proxies to the *paid* service on 8000 —
@@ -530,18 +835,22 @@ E2E_BASE_URL=https://agentic-crew-ai-web.onrender.com \
   npx playwright test --grep-invert @launch
 ```
 
-> ⚠️ **`--grep-invert @launch` is not optional against production.** The five
-> tests that press Launch are tagged `@launch`; a deployed API is backed by paid
-> runners, so without that flag every smoke test spends real money on a full
-> six-agent run. What is left is the read-only half — topology, and that the page
-> reached the live backend rather than falling through to its mock.
+> ⚠️ **`--grep-invert @launch` is not optional against production.** Seven of
+> the 28 tests press Launch and are tagged `@launch`; a deployed API is backed
+> by paid runners, so without that flag every smoke test spends real money on a
+> full six-agent run. What that flag leaves is **21** — measured with
+> `npx playwright test --list --grep-invert @launch` — the read-only half:
+> topology, the builder canvas, and that the page reached the live backend
+> rather than falling through to its mock.
 
 ### CI and the clean checkout
 
 GitHub Actions runs the Python suite and the frontend build/unit tests on
-`ubuntu-latest`. As of `e539811` both jobs pass — **the first green run in this
-repository's history.** The three commits before it failed, and it is worth being
-precise about why, because the cause was not a broken test.
+`ubuntu-latest`. Both jobs pass at `b4ef654` — verified for this README with
+`gh run list`, run `33597756398`, rather than assumed. The **first** green run
+in this repository's history was `e539811`; the three commits before that one
+failed, and it is worth being precise about why, because the cause was not a
+broken test.
 
 No `.env` is ever committed, so CI starts from a genuinely clean checkout. But
 `brief_crew/__init__.py` calls `load_dotenv(..., override=True)` at import time,
@@ -565,7 +874,8 @@ install -e . && python -m unittest` now passes with no keys and no `.env` at
 all.**
 
 The Playwright suite is **not** in CI — that job would need the `SYNTHETIC=1`
-backend started alongside it plus a browser download.
+backend started alongside it, the `SYNTHETIC_BRANCH_DELAY_SECONDS` above, and a
+browser download.
 
 > ⚠️ **If you add a test directory, add its `__init__.py` in the same commit.**
 > This suite reported 65 passing tests for a long time and that number was a lie:
@@ -609,17 +919,53 @@ always the expensive one. That is the design working, not failing.
 
 ### Validator Studio
 
-**Unmeasured.** It has never been run end to end against live services, so any
-figure here would be invented. Structurally it is one escalation-tier scope, three
-cheap-tier research branches with real tool calls, then two escalation-tier
-passes — expect it to cost more than a Brief Crew run, and do not quote a number
-until someone has taken one.
+**Run once, priced never.** It has been run end to end against live services
+exactly once (2026-08-30), and that run reported `cost_usd` **$0.00 over 128,069
+real tokens** — a defect, since fixed, in which an unpriced model slug turned
+"no price on file" into "this call was free". So a paid run exists and a
+measured dollar figure does not, and the two facts are easy to confuse.
+
+Structurally it is one escalation-tier scope, three cheap-tier research branches
+with real tool calls, then two escalation-tier passes — expect it to cost more
+than a Brief Crew run. Do not quote a number until someone has taken a run with
+the pricing repair in place. Note also that every figure the product itself
+reports is tokens x a local price table; OpenRouter's own per-generation cost
+never reaches the process.
+
+### A per-run ceiling now exists, and it enforces an estimate
+
+`MAX_RUN_COST_USD` (default `$10.00`) stops a run at the next CrewAI step
+boundary once its accumulated estimate crosses the line, and the builder's budget
+layer refuses to publish a graph whose worst case prices above it. Three things
+it does **not** do, each structural rather than a tuning problem, and each
+written out at `config.py` where it is defined:
+
+1. **It enforces an estimate, not an invoice.** CrewAI never asks OpenRouter for
+   its per-generation cost, so every figure is recomputed from a local price
+   table. Cached-prompt discounts, BYOK fees and any price change made after that
+   table was written move the billed number away from the enforced one, in either
+   direction.
+2. **It cannot stop a call already in flight.** The total only moves when a call
+   *completes*. Expect to overshoot by roughly one escalation call.
+3. **It is blind to everything that is not an LLM call.** Embeddings, Cohere
+   rerank and Firecrawl never raise the event it reads, so the enforced total is
+   always a *lower* bound on true spend.
+
+`0` disables it; **unset does not** — a deployment that does nothing still gets a
+brake, and turning it off takes a deliberate `MAX_RUN_COST_USD=0`.
 
 ### Hosting
 
 About **$13.30/month** fixed on Render — `$6.30` Postgres `basic_256mb` with 1 GB,
-`$7.00` for the API on `starter`, `$0` for the static frontend. Model tokens,
-Firecrawl calls and Cohere rerank units are on top.
+`$7.00` for the API on `starter`, `$0` for the console. Model tokens, Firecrawl
+calls and Cohere rerank units are on top.
+
+The console's `$0` now costs something other than money: it is a Node web
+service on `plan: free`, and a free Render service spins down after inactivity —
+so the first visitor of the day waits out a cold start **on the sign-in page**,
+which is the worst place in the app to put a 30-second pause. `render.yaml` says
+so where it sets the plan. Moving it to `starter` is a one-word change and about
+`$7.00`.
 
 ---
 
@@ -628,9 +974,13 @@ Firecrawl calls and Cohere rerank units are on top.
 It is deployed. See [Live deployment](#live-deployment) for the URLs and for
 exactly what was and was not verified there.
 
-`render.yaml` is a complete Render Blueprint for the API, the static frontend and
-a PostgreSQL 18 database, and it remains the readable description of the target
-shape. **The live services were not created from it** — they were created
+`render.yaml` is a complete Render Blueprint for the API, the console and a
+PostgreSQL 18 database, and it remains the readable description of the target
+shape. The console is declared as a **Node web service**, not a static site: it
+serves the SPA *and* mounts Better Auth, because `onrender.com` is on the Public
+Suffix List and a browser will not set a cookie two subdomains can share. Serving
+both from one origin is what makes an ordinary httpOnly session cookie work at
+all. **The live services were not created from it** — they were created
 directly against the Render API, against the same GitHub repository, and the
 pre-existing `agentic-crew-ai-db` was reused rather than redefined.
 [`agents/07-deployment.md`](agents/07-deployment.md) records what is actually
@@ -646,7 +996,7 @@ Read it before you touch the deployment.
 
 ```
 src/brief_crew/
-├── config.py                  models · prices · thresholds · rubric anchors
+├── config.py                  models · prices · thresholds · rubric anchors · builder bounds
 ├── embeddings.py              OpenRouter embeddings, called directly
 ├── indexing.py                chunk / embed / upsert
 ├── guardrails.py              Brief Crew's evaluator gate
@@ -658,15 +1008,38 @@ src/brief_crew/
 ├── crews/                     @CrewBase wiring + agents.yaml / tasks.yaml
 ├── tools/                     Firecrawl · Hacker News · GitHub · Pinecone
 ├── events/                    the frame spine, registry and serializer
+├── builder/                   the authored-graph half
+│   ├── document.py                builder.flow/v1 — parse, types, 7 node kinds
+│   ├── bounds.py                  structural refusals: counts, fan-out, cycles
+│   ├── budget.py                  static / floor price, and the ceiling check
+│   ├── compiler.py                → crewai.flow/v1: Agent · Task · Crew · Flow
+│   ├── runtime.py                 node entrypoints, checkpoints, cancellation
+│   ├── gates.py                   author's node id ⇄ compiled gate
+│   ├── descriptor.py              the graph descriptor the console draws
+│   └── store.py                   documents, versions, compare-and-set saves
 └── service/                   FastAPI, WebSocket, SQL persistence, run registry
+    ├── builder_api.py             /api/builder/* — list, save, validate, publish
+    ├── builder_runner.py          what a published graph actually runs with
+    └── builder_rehydrate.py       re-register published graphs after a restart
 
-frontend/                      Vue 3 + TypeScript + Vite + Vue Flow console
-├── tests/                     203 Vitest specs over 19 files
-└── e2e/                       7 Playwright specs
+frontend/                      Vue 3 + TypeScript + Vite + Vue Flow
+├── src/components/builder/        33 components — palette, canvas, inspector,
+│                                  budget meter, problems dock, minimap, gallery
+├── src/composables/useBuilder*.ts document · canvas · validation · problems ·
+│                                  persistence · clipboard · hotkeys
+├── src/data/templates/            the evaluator as a BuilderDocument
+├── tests/                     1024 Vitest specs over 54 files
+└── e2e/                       28 Playwright specs over 4 files
 agents/                        the authoritative specifications
-tests/                         660 tests, all free to run
-docs/                          deployment and licensing notes
+tests/                         1228 tests, all free to run
+└── builder/                       310 of them, on the builder alone
+docs/                          the spec, deployment, gotchas, licensing
 ```
+
+Counts measured 2026-09-02 at `b4ef654`. **The builder added zero npm
+dependencies** — verified, not asserted: `git diff 6d2743c~1 6d2743c --
+frontend/package.json frontend/package-lock.json` is empty. The minimap and the
+hash router are hand-rolled, each for a reason written at its own source.
 
 **Prompts are data, wiring is code, and constants are neither duplicated nor
 inlined.** `agents.yaml` and `tasks.yaml` hold every word an agent reads;
@@ -707,8 +1080,11 @@ cause. Call `brief_crew.embeddings` directly, and keep `DOC_PREFIX` and
 | [`agents/`](agents/) | The authoritative specifications. Where code and spec disagree, the spec is right and the code is a bug. |
 | [`AGENTS.md`](AGENTS.md) | CrewAI reference for anyone — human or coding agent — changing crew code. |
 | [`PRD.md`](PRD.md) | The requirements document that extends `agents/` into Validator Studio. |
+| [`docs/flow-builder-spec.md`](docs/flow-builder-spec.md) | **The contract the flow builder was built against.** Fifteen numbered rulings on the questions the design judges disagreed about — ride Vue Flow or own the pointer layer, snapshot ring or command algebra, whether the client mirrors a server bound — each with the one-line reason. Where reality contradicts it, that is a finding to report, not a licence to improvise. |
 | [`new features/feature-list.md`](new%20features/feature-list.md) | Feature ledger. Every row names the test or source path it rests on. |
-| [`docs/tech-stack.md`](docs/tech-stack.md) | **Every version, pin and toolchain quirk**, with the command that regenerates each figure. Interpreter, packages, models, external API versions, the twenty environment knobs, and the open stack-hygiene defects. Check a version here, not in prose. |
+| [`docs/tech-stack.md`](docs/tech-stack.md) | **Every version, pin and toolchain quirk**, with the command that regenerates each figure. Interpreter, packages, models, external API versions, the canonical environment-knob inventory, and the open stack-hygiene defects. Check a version here, not in prose — and regenerate the knob list rather than quoting a count, because every figure published for it but the current one has been wrong — the tally lives in §6 of that file. |
+| [`docs/gotchas-and-insights.md`](docs/gotchas-and-insights.md) | **The mistakes, and how not to repeat them** — each one symptom → cause → what to do, and each one something not discoverable from the code. Read it before a deployment, before adding a column, and before believing a green suite. |
+| [`docs/rubric-ratification.md`](docs/rubric-ratification.md) | The record of the rubric decision, made 2026-09-01. Read it *beside* `rubric-review.md`, which was never updated when its own findings were repaired. |
 | [`docs/deploying.md`](docs/deploying.md) | Post-push Render checklist. |
 | [`docs/preflight.md`](docs/preflight.md) | What to check before the first **paid** validator run — credentials, the live path, cost estimate, failure modes. |
 | [`docs/rubric-review.md`](docs/rubric-review.md) | An independent adversarial pass over the five rubric ladders, `rubric_support` and the verdict arithmetic. Written by an agent that had no part in the derivation — which is not the same as a human having read them. |
@@ -725,8 +1101,9 @@ same CrewAI guidance without a separate install step.
 
 **Author: Simon Raj.** Every word of prose and every line of code in this
 repository is his own work — the CrewAI implementation, the six-agent validator,
-the event spine, the FastAPI / WebSocket service, the Vue 3 console, the
-specifications in [`agents/`](agents/), the scoring rubric and every test.
+the event spine, the FastAPI / WebSocket service, the Vue 3 console, the flow
+builder and its compiler, the specifications in [`agents/`](agents/), the scoring
+rubric and every test.
 Copyright © 2026 Simon Raj.
 
 Where it builds on published thinking it cites a public source. Five of the six
@@ -735,7 +1112,9 @@ orchestration *pattern names* used in
 parallelisation, orchestrator-workers, evaluator-optimizer — are Anthropic's,
 from [*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents),
 and are cited there directly; the sixth is this repository's own. The analysis of
-how each pattern maps onto CrewAI 1.15.18 is original throughout. The only
+how each pattern maps onto CrewAI — analysed against 1.15.18, the version
+pinned when it was written; [`docs/tech-stack.md`](docs/tech-stack.md) owns the
+current pin — is original throughout. The only
 third-party *files* in the repository are the four vendored MIT CrewAI skills
 noted above.
 

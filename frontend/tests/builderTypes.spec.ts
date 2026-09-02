@@ -452,19 +452,21 @@ describe('the problem codes are the python problem codes', () => {
     expect([...PROBLEM_CODES].sort()).toEqual(pythonProblemCodes())
   })
 
-  it('finds all thirty, so an empty read cannot pass as agreement', () => {
+  it('finds all thirty-one, so an empty read cannot pass as agreement', () => {
     // Without this the assertion above would be satisfied by a regex that
     // matched nothing against a tuple that had lost everything - and, as the
     // 27 that stood here until 2026-09-02 proved, by a file list missing a
     // whole module against a tuple missing the same three codes.
     //
-    // 30 is not this figure copied forward. It was re-derived by parsing every
-    // `Problem(...)` call under `src/brief_crew/builder/` - 32 sites, 30
-    // distinct codes: 25 in bounds.py (two of them raised through a loop
+    // 31 is not this figure copied forward. It was re-derived by parsing every
+    // `Problem(...)` call under `src/brief_crew/builder/` - 33 sites, 31
+    // distinct codes: 26 in bounds.py (two of them raised through a loop
     // variable at `_identity_problems`, so they have no literal to grep), 2 in
-    // budget.py, 3 in compiler.py.
-    expect(pythonProblemCodes()).toHaveLength(30)
-    expect(PROBLEM_CODES).toHaveLength(30)
+    // budget.py, 5 in compiler.py - the fifth being `credential-missing`,
+    // plan 01 D10's, emitted only when `validate` has an identity to check
+    // against.
+    expect(pythonProblemCodes()).toHaveLength(31)
+    expect(PROBLEM_CODES).toHaveLength(31)
   })
 
   it('declares the three warnings, and they are codes', () => {

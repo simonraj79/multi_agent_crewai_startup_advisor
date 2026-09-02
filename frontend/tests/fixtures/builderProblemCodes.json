@@ -9,6 +9,7 @@
     "billable-count",
     "budget-over-ceiling",
     "budget-unpriced-model",
+    "credential-missing",
     "cycle-count",
     "cycle-iterations",
     "duplicate-edge-id",
@@ -82,6 +83,18 @@
         "severity": "error",
         "message": "this graph cannot be priced: openrouter/example/unpriced-preview has no entry in PRICES, so every call it makes would contribute $0.00 to a total that is supposed to bound spend. Add the price in the same commit as the model",
         "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "credential-missing",
+      "scenario": "an agent naming a credential that is not in the caller's vault",
+      "why": "Plan 01 D10: absent and foreign are ONE code, because the vault answers both with one exception and a canvas that could tell them apart would be an oracle for other people's ids. Only produced when the caller has an identity; this fixture validates as somebody whose vault is empty.",
+      "problem": {
+        "code": "credential-missing",
+        "severity": "error",
+        "message": "draft names the credential cr_0badc0de, which is not in your vault; pick one of your own or create it first",
+        "node_id": "draft",
         "edge_id": null
       }
     },
@@ -3268,6 +3281,82 @@
             },
             "agent_id": "scoper",
             "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an agent naming a credential that is not in the caller's vault": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "foreign credential",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": [],
+            "credential_id": "cr_0badc0de"
           }
         },
         {

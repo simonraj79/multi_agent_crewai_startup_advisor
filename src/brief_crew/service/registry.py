@@ -61,7 +61,7 @@ from brief_crew.events import (
 )
 from brief_crew.service.models import RunStatus
 from brief_crew.service.runner import BriefFlowRunner, RunExecution, Runner
-from brief_crew.events.serializer import normalize_usage
+from brief_crew.events.serializer import error_class_of, normalize_usage
 
 
 DEFAULT_SUBSCRIBER_CAPACITY = 512
@@ -2540,6 +2540,7 @@ class RunRegistry:
             flow_id=record.flow_id,
             persistence=self.persistence,
             cancel_requested=record.cancel_requested,
+            user_id=record.user_id,
         )
         try:
             with scoped_hooks():
@@ -2603,7 +2604,10 @@ class RunRegistry:
                 event_type=UIEventType.WORKFLOW_END,
                 node_id=record.node_registry.workflow_node_id,
                 message="Run failed",
-                details={"error": str(exc)},
+                # `error_class` beside the sentence when the exception names
+                # one (C6): the node's own NODE_END frame already carries it,
+                # and the run-level frame is what a client reads last.
+                details={"error": str(exc), **error_class_of(exc)},
                 level=FrameLevel.ERROR,
             )
             record.mark_failed(exc)

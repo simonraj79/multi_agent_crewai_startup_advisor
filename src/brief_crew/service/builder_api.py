@@ -234,6 +234,10 @@ class BuilderValidationModel(BaseModel):
     valid: bool
     problems: list[BuilderProblemModel]
     budget: BuilderBudgetModel
+    #: False when the caller had no identity to check credential references
+    #: against (plan 01 D10), so `credential-missing` may still appear at
+    #: publish. Reported rather than passed off as a clean answer.
+    identity_checked: bool
 
 
 class BuilderPublishModel(BaseModel):
@@ -319,8 +323,14 @@ def create_builder_router(
     registry: RunRegistry,
     current_user: Callable[..., Any],
     runner_factory: BuilderRunnerFactory,
+    credential_store_factory: Callable[[], Any] | None = None,
 ) -> Any:
     """The `/api/builder` router, closed over the app's own dependencies.
+
+    `credential_store_factory` answers the vault for a validate or a publish
+    that has an identity (plan 01 D10); None - the shape a dozen test modules
+    build - means no credential reference is ever checked, and `validate`
+    says so with `identity_checked: false`.
 
     `runner_factory` is a factory rather than a runner because `RunExecution`
     carries no `workflow_id` - the registry hands the runner an execution and
@@ -356,6 +366,24 @@ def create_builder_router(
 
     def owner_of(user: Any) -> str | None:
         return getattr(user, "id", None)
+
+    def credential_check_for(user: Any) -> Callable[[str], bool] | None:
+        """This caller's vault as a predicate over credential ids, or None.
+
+        None when there is nobody to check for or nowhere to look - and the two
+        are deliberately the same answer, because a check that could not run
+        must not be reported as a check that passed. An unconfigured vault is
+        NOT None: it holds no rows, so every reference is missing, which is
+        exactly what a run on this deployment would find.
+        """
+
+        owner = owner_of(user)
+        if owner is None or credential_store_factory is None:
+            return None
+        vault = credential_store_factory()
+        if vault is None:
+            return None
+        return lambda credential_id: bool(vault.exists(owner, credential_id))
 
     def parse(payload: Mapping[str, Any], *, document_id: str, version: int) -> BuilderDocument:
         """Parse an author's JSON into a document, or 422 with the reason.
@@ -536,14 +564,19 @@ def create_builder_router(
         return Response(status_code=204)
 
     @router.post("/validate", response_model=BuilderValidationModel)
-    async def validate(request: BuilderDocumentRequest) -> BuilderValidationModel:
+    async def validate(
+        request: BuilderDocumentRequest, user: Any = Depends(current_user)
+    ) -> BuilderValidationModel:
         """Every problem with a document nobody has saved.
 
-        The canvas calls this on every meaningful edit, so it touches no
-        database and registers nothing. `document_problems` never raises; a
-        document that does not even PARSE is the 422 from `parse` above, and
-        one that cannot say which version it was edited from is the 422 from
-        `_requested_version`.
+        The canvas calls this on every meaningful edit, so it registers nothing
+        and touches the database only to ask the caller's vault whether a
+        `credential_id` is theirs (plan 01 D10) - with an identity. Without
+        one that check is skipped and `identity_checked` is false, so the
+        client can say why a problem may still appear at publish.
+        `document_problems` never raises; a document that does not even PARSE
+        is the 422 from `parse` above, and one that cannot say which version it
+        was edited from is the 422 from `_requested_version`.
         """
 
         document = parse(
@@ -551,11 +584,13 @@ def create_builder_router(
             document_id=str(request.document.get("id") or new_document_id()),
             version=_requested_version(request.document),
         )
-        problems = document_problems(document)
+        credential_check = credential_check_for(user)
+        problems = document_problems(document, credential_check=credential_check)
         return BuilderValidationModel(
             valid=not any(problem.severity == "error" for problem in problems),
             problems=[BuilderProblemModel.of(problem) for problem in problems],
             budget=BuilderBudgetModel.of(estimate_budget(document)),
+            identity_checked=credential_check is not None,
         )
 
     @router.post("/workflows/{document_id}/publish", response_model=BuilderPublishModel)
@@ -582,7 +617,16 @@ def create_builder_router(
             lambda: store.load(document_id, version=version, user_id=owner_of(user))
         )
         try:
-            workflow = build_builder_workflow(stored.document)
+            # Owned by the DOCUMENT's owner, not the publisher (plan 01 D1): a
+            # document nobody owns stays a graph anybody may launch. The
+            # publisher's own vault is what the credential references are
+            # re-validated against (D10); anonymous publishes check nothing,
+            # and a run nobody owns resolves nothing at its first agent.
+            workflow = build_builder_workflow(
+                stored.document,
+                user_id=stored.user_id,
+                credential_check=credential_check_for(user),
+            )
         except BuilderCompileError as exc:
             raise HTTPException(
                 status_code=422,

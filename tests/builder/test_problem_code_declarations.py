@@ -198,12 +198,14 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             )
 
     def test_the_three_files_carry_every_code_the_frontend_lists(self) -> None:
-        """Thirty, and the arithmetic is stated so a change has to face it.
+        """Thirty-one, and the arithmetic is stated so a change has to face it.
 
-        Twenty-five, two and three. The compiler's three were absent from the
-        TypeScript tuple for a while precisely because that file was not in the
-        frontend's source list, and one of them - `library-missing-prompt-input`
-        - is the most common problem in the whole builder.
+        Twenty-five, two and four. The compiler's first three were absent from
+        the TypeScript tuple for a while precisely because that file was not in
+        the frontend's source list, and one of them -
+        `library-missing-prompt-input` - is the most common problem in the
+        whole builder. The fourth is `credential-missing` (plan 01 D10), the
+        first code that is emitted only when `validate` has an identity.
         """
 
         codes: set[str] = set()
@@ -212,7 +214,7 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             codes |= {match.group(2) for match in DECLARATION.finditer(text)}
         self.assertEqual(
             len(codes),
-            30,
+            31,
             "the number of problem codes moved; frontend/src/types/builder.ts's "
             "PROBLEM_CODES and builderTypes.spec.ts's length assertion both "
             "have to move with it",

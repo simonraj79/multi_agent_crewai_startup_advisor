@@ -56,6 +56,7 @@ from brief_crew.events.models import (
     FrameLevel,
     UIEventType,
 )
+from brief_crew.events.redaction import REDACTED, is_secret_key
 from brief_crew.events.registry import NodeRegistry
 from brief_crew.events.verdict import (
     VerdictComputedEvent,
@@ -247,6 +248,21 @@ class SerializerLimits:
     max_tool_field: int = 512
 
 
+def error_class_of(error: Any) -> dict[str, str]:
+    """`{"error_class": ...}` when the exception names one, else nothing.
+
+    Contract C6: a step failure a client can act on carries a discriminator
+    beside the sentence - `credential-not-yours` is the first. Read off an
+    attribute rather than a type check so this module never imports the
+    service package that raises it.
+    """
+
+    error_class = getattr(error, "error_class", None)
+    if isinstance(error_class, str) and error_class:
+        return {"error_class": error_class[:64]}
+    return {}
+
+
 class FieldBoundedSerializer:
     """Convert supported events without traversing live CrewAI objects."""
 
@@ -275,8 +291,14 @@ class FieldBoundedSerializer:
                 if index >= self.limits.max_items:
                     clipped["__truncated__"] = True
                     break
-                clipped[str(key)[: self.limits.max_key]] = self.clip(
-                    item, depth=depth + 1
+                # The same list the persistence sanitiser applies on the
+                # way to a row, applied here on the way to the RING - which
+                # is what the live socket, `/frames` and the NDJSON export
+                # all read. Until 2026-09-03 only the row was clean.
+                clipped[str(key)[: self.limits.max_key]] = (
+                    REDACTED
+                    if is_secret_key(key)
+                    else self.clip(item, depth=depth + 1)
                 )
             return clipped
         if isinstance(value, Sequence) and not isinstance(value, bytes | bytearray):
@@ -421,7 +443,7 @@ class FieldBoundedSerializer:
                 frames.append(self._draft(timestamp, FrameKind.EDGE_TAKEN, UIEventType.EDGE_PROCESS, node_id, f"{event.method_name} routed to {route}", {"from": node_id, "to": registry.resolve_route(event.method_name, route), "route": self.clip(route)}))
             return tuple(frames)
         if isinstance(event, MethodExecutionFailedEvent):
-            return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} failed", {"stage": "error", "error": self.clip(str(event.error))}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} failed", {"stage": "error", "error": self.clip(str(event.error)), **error_class_of(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, HumanFeedbackRequestedEvent):
             return (self._draft(timestamp, FrameKind.GATE_OPEN, UIEventType.HUMAN_INTERACTION, node_id, event.message, {"stage": "before", "gate_id": event.request_id, "options": self.clip(event.emit), "output": self.clip(event.output)}),)

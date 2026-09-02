@@ -349,6 +349,10 @@ class CrewFactories(Protocol):
         tools: Sequence[str],
         max_iter: int,
         guardrail_max_retries: int,
+        # Only passed when the node names a credential (plan 01 D5/D7), so a
+        # factory written before the keyword existed keeps satisfying this
+        # protocol; one that ignores it must still ACCEPT it.
+        api_key: str | None = None,
     ) -> Any: ...
 
     def crew(
@@ -402,6 +406,7 @@ class DefaultCrewFactories:
         tools: Sequence[str],
         max_iter: int,
         guardrail_max_retries: int,
+        api_key: str | None = None,
     ) -> Any:
         from crewai import LLM, Agent, Crew, Process, Task
 
@@ -411,7 +416,12 @@ class DefaultCrewFactories:
         agent = Agent(
             config=dict(agents_config[spec.agent_key]),
             tools=[_tool_instance(name) for name in tools],
-            llm=LLM(model=_model_for(tier)),
+            # The author's own OpenRouter key when the node named one, else the
+            # platform key from the environment (plan 01 D7). Passed straight in
+            # and dropped: the string lives in this constructor call and nowhere
+            # this module could log it. Admission, `MAX_RUN_COST_USD` and the
+            # per-user rate limit are unchanged by whose key it is.
+            llm=LLM(model=_model_for(tier), **({"api_key": api_key} if api_key else {})),
             allow_delegation=False,
             max_iter=max_iter,
         )
@@ -619,8 +629,16 @@ def run_agent(
     max_iter: int = VALIDATOR_BRANCH_MAX_ITER,
     guardrail_max_retries: int = 0,
     prompt_inputs: Mapping[str, Any] | None = None,
+    credential_id: str | None = None,
 ) -> str:
-    """`agent` - one YAML agent, on one tier, doing its YAML task."""
+    """`agent` - one YAML agent, on one tier, doing its YAML task.
+
+    `credential_id` is the ONLY thing the compiled definition carries about a
+    credential (C5): an opaque `cr_` id, resolved here - inside the entrypoint,
+    for the run's owner and nobody else - and handed to the factory as the one
+    keyword argument its constructor takes (plan 01 D5). The definition, the
+    trace and the store never see a key.
+    """
 
     checkpoint(node_id)
     inputs = dict(prompt_inputs or {})
@@ -633,6 +651,13 @@ def run_agent(
             "the prompt would otherwise fail to interpolate after the upstream "
             "nodes had already been billed"
         )
+    # Resolved BEFORE the factory is asked for anything, so a foreign or
+    # deleted credential fails this node with nothing billed - and only passed
+    # when set, so every factory written before the keyword existed is
+    # untouched.
+    resolved_key = (
+        {"api_key": _agent_api_key(node_id, credential_id)} if credential_id else {}
+    )
     crew = _factories().agent_crew(
         node_id=node_id,
         agent_id=agent_id,
@@ -640,8 +665,38 @@ def run_agent(
         tools=tuple(tools),
         max_iter=max_iter,
         guardrail_max_retries=guardrail_max_retries,
+        **resolved_key,
     )
     return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+
+
+#: The credential kind an agent node's model key must be. An agent's
+#: `credential_id` is Stage 1's stand-in for C1 v2's `llm.credential_id`
+#: (00 S1 ruling 8), and the model is always OpenRouter here.
+_AGENT_CREDENTIAL_KIND = "openrouter"
+
+
+def _agent_api_key(node_id: str, credential_id: str) -> str:
+    """The plaintext key for this node, for the run's owner, or a refusal.
+
+    Imported inside the function: `service/credentials.py` pulls in SQLAlchemy
+    through the persistence module, and compiling or pricing a document must
+    not pay for that. `CredentialNotYours` and `VaultUnavailable` propagate
+    unchanged - the first is the `credential-not-yours` `node_error` (C6), and
+    neither sentence carries a field value. A credential of the wrong KIND is
+    refused here by kind name alone, for the same reason.
+    """
+
+    from brief_crew.service.credentials import resolve_credential
+
+    resolved = resolve_credential(credential_id)
+    if resolved.kind != _AGENT_CREDENTIAL_KIND:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} names the credential {credential_id}, which is a "
+            f"{resolved.kind} credential; an agent's model key must be an "
+            f"{_AGENT_CREDENTIAL_KIND} credential"
+        )
+    return resolved.fields["api_key"]
 
 
 def run_crew(

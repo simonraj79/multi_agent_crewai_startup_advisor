@@ -22,6 +22,7 @@ shape.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
 import json
@@ -362,6 +363,11 @@ class BuilderWorkflow:
     #: True when an anonymous launch is bounded by a human - see
     #: `gate_before_first_billable`.
     gated_before_spend: bool
+    #: Who published it, copied from the document row (plan 01 D1). None for
+    #: a graph published anonymously or before ownership was recorded, and
+    #: such a graph stays launchable by anyone - `service/graph.py::
+    #: workflow_visible_to` is the one place that rule is applied.
+    user_id: str | None = None
 
     @property
     def workflow_id(self) -> str:
@@ -381,7 +387,11 @@ class BuilderWorkflow:
 
 
 def build_builder_workflow(
-    document: BuilderDocument, *, ceiling_usd: float | None = None
+    document: BuilderDocument,
+    *,
+    ceiling_usd: float | None = None,
+    user_id: str | None = None,
+    credential_check: Callable[[str], bool] | None = None,
 ) -> BuilderWorkflow:
     """Compile a document and derive everything the four maps need.
 
@@ -389,12 +399,20 @@ def build_builder_workflow(
     which is every reason `validate_document` reports plus the compiler's own
     guards over what it emitted.
 
+    `credential_check` is the publisher's identity, as a predicate over
+    credential ids: a publish re-validates with it (plan 01 D10) so a graph
+    naming somebody else's row is refused here rather than failing its first
+    billable node. Rehydration passes none - a boot has no identity, and a
+    credential deleted since publish is the run-time `credential-not-yours`.
+
     Nothing is registered here. Registration is `service/graph.py`'s job, and
     keeping the two apart is what lets the API validate and preview a document
     with no side effect on what this service will run.
     """
 
-    compiled = compile_document(document, ceiling_usd=ceiling_usd)
+    compiled = compile_document(
+        document, ceiling_usd=ceiling_usd, credential_check=credential_check
+    )
     declared_state = compiled.definition["state"]["default"]
     # Every state key the compiled flow declares is a control key, because
     # CrewAI merges `inputs` into state wholesale - except the one the input
@@ -407,4 +425,5 @@ def build_builder_workflow(
         compiled=compiled,
         reserved_input_keys=reserved,
         gated_before_spend=gate_before_first_billable(document),
+        user_id=user_id,
     )

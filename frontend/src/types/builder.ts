@@ -147,6 +147,8 @@ export interface AgentConfig {
   agent_id: NodeId
   /** default []. Each in `vocabulary.research_tools`. Duplicates rejected server-side. */
   tools: string[]
+  /** default null. `cr_` + 8 hex naming one of the AUTHOR's vault rows (plan 01, S1 ruling 8). */
+  credential_id?: string | null
 }
 
 export interface CrewConfig {
@@ -385,6 +387,7 @@ export const PROBLEM_CODES = [
   'ident-pattern', 'ident-collision',
   'budget-over-ceiling', 'budget-unpriced-model',
   'library-unknown-id', 'library-missing-prompt-input', 'library-unbuildable-crew',
+  'credential-missing',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 
@@ -451,6 +454,9 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
   // where it belongs.
   'library-unknown-id': 'agent_id',
   'library-missing-prompt-input': 'prompt_inputs',
+  // Plan 01 D10: a `credential_id` the caller's vault does not hold anchors to
+  // the picker that chose it (`data-field="credential_id"` in the inspector).
+  'credential-missing': 'credential_id',
 }
 
 /* --- budget ------------------------------------------------------------ */

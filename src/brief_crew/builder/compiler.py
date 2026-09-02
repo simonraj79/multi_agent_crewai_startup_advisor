@@ -36,7 +36,7 @@ code. `call: "script"` is never emitted.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -87,6 +87,7 @@ __all__ = [
     "GATE_REPLY_INSTRUCTION",
     "assert_action_refs",
     "compile_document",
+    "credential_problems",
     "document_problems",
     "library_problems",
     "lint_gates",
@@ -203,7 +204,10 @@ class CompiledFlow:
 
 
 def compile_document(
-    document: BuilderDocument, *, ceiling_usd: float | None = None
+    document: BuilderDocument,
+    *,
+    ceiling_usd: float | None = None,
+    credential_check: Callable[[str], bool] | None = None,
 ) -> CompiledFlow:
     """Compile one document, or refuse it with every reason at once.
 
@@ -217,7 +221,9 @@ def compile_document(
     node the author has to change.
     """
 
-    problems = document_problems(document, ceiling_usd=ceiling_usd)
+    problems = document_problems(
+        document, ceiling_usd=ceiling_usd, credential_check=credential_check
+    )
     if has_errors(problems):
         blocking = [problem for problem in problems if problem.severity == "error"]
         raise BuilderCompileError(
@@ -536,6 +542,17 @@ class _Plan:
                     "max_iter": config.max_iter,
                     "guardrail_max_retries": config.guardrail_max_retries,
                     "prompt_inputs": dict(config.prompt_inputs),
+                    # The ID and only the id (C5). The runtime resolves it
+                    # inside `run_agent`, scoped to the run's owner; the
+                    # definition, the trace and the store never see a key.
+                    # Omitted rather than `null` when unset, so a document
+                    # that names no credential compiles byte-identical to
+                    # what it compiled to before the field existed.
+                    **(
+                        {"credential_id": config.credential_id}
+                        if config.credential_id
+                        else {}
+                    ),
                 },
             )
         elif isinstance(config, CrewConfig):
@@ -854,7 +871,10 @@ def _checked_field(field: str) -> str:
 
 
 def document_problems(
-    document: BuilderDocument, *, ceiling_usd: float | None = None
+    document: BuilderDocument,
+    *,
+    ceiling_usd: float | None = None,
+    credential_check: Callable[[str], bool] | None = None,
 ) -> list[Problem]:
     """Every reason this document may not be published. The whole list.
 
@@ -878,7 +898,14 @@ def document_problems(
     # import.
     from brief_crew.builder import validate_document
 
-    return validate_document(document, ceiling_usd=ceiling_usd) + library_problems(document)
+    problems = validate_document(document, ceiling_usd=ceiling_usd) + library_problems(document)
+    # Only with an identity to check against (plan 01 D10). `None` means the
+    # caller is anonymous, and the ABSENCE of a check is reported by the
+    # endpoint as `identity_checked: false` rather than passed off as a clean
+    # answer.
+    if credential_check is not None:
+        problems += credential_problems(document, owned=credential_check)
+    return problems
 
 
 #: The three ways a node can name work this service cannot do. Separate codes
@@ -888,6 +915,45 @@ def document_problems(
 LIBRARY_UNKNOWN = "library-unknown-id"
 LIBRARY_PROMPT_INPUT = "library-missing-prompt-input"
 LIBRARY_UNBUILDABLE = "library-unbuildable-crew"
+
+#: A credential id that is not one of the caller's (C8, plan 01 D6/D10). One
+#: code for absent and foreign, because the vault answers the two with one
+#: exception and a canvas that could tell them apart would be an oracle for
+#: other people's ids.
+CREDENTIAL_MISSING = "credential-missing"
+
+
+def credential_problems(
+    document: BuilderDocument, *, owned: Callable[[str], bool]
+) -> list[Problem]:
+    """Every credential reference `owned` does not vouch for.
+
+    `owned` is the caller's identity as a predicate - typically the vault's
+    `exists(user_id, credential_id)` - and this function never touches the
+    vault itself, so the compiler stays importable without the service
+    package and a test can prove the check with a lambda. The document
+    schema has already checked the id's spelling; what is asked here is only
+    whether it names a row this person may use.
+    """
+
+    problems: list[Problem] = []
+    for node in document.nodes:
+        config = node.config
+        credential_id = getattr(config, "credential_id", None)
+        if not credential_id or owned(credential_id):
+            continue
+        problems.append(
+            Problem(
+                code=CREDENTIAL_MISSING,
+                severity="error",
+                message=(
+                    f"{node.id} names the credential {credential_id}, which is not "
+                    "in your vault; pick one of your own or create it first"
+                ),
+                node_id=node.id,
+            )
+        )
+    return problems
 
 
 def library_problems(document: BuilderDocument) -> list[Problem]:

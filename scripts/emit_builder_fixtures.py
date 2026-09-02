@@ -144,6 +144,7 @@ def agent_node(
     tier: str = "cheap",
     prompt_inputs: dict[str, Any] | None = None,
     tools: Sequence[str] = (),
+    credential_id: str | None = None,
 ) -> dict[str, Any]:
     return node(
         node_id,
@@ -159,6 +160,9 @@ def agent_node(
             ),
             "agent_id": agent_id,
             "tools": list(tools),
+            # Only when named, so every scenario written before the field
+            # existed serialises byte-identical to what it did then.
+            **({"credential_id": credential_id} if credential_id else {}),
         },
     )
 
@@ -758,19 +762,46 @@ PROBLEM_SCENARIOS: list[dict[str, Any]] = [
             [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
         ),
     },
+    {
+        "name": "an agent naming a credential that is not in the caller's vault",
+        "expects": ["credential-missing"],
+        "why": (
+            "Plan 01 D10: absent and foreign are ONE code, because the vault answers "
+            "both with one exception and a canvas that could tell them apart would "
+            "be an oracle for other people's ids. Only produced when the caller has "
+            "an identity; this fixture validates as somebody whose vault is empty."
+        ),
+        "credential_check": "empty-vault",
+        "document": document(
+            "foreign credential",
+            [input_node(), agent_node("draft", credential_id="cr_0badc0de"), output_node()],
+            [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+        ),
+    },
 ]
 
 
 def _problems_for(scenario: dict[str, Any]) -> list[Any]:
     parsed = BuilderDocument.model_validate(scenario["document"])
+    # A scenario that names `credential_check` is validated AS somebody whose
+    # vault holds nothing - the identity plan 01 D10 checks references against,
+    # with no rows. None is the anonymous caller, for whom the check is skipped
+    # and `credential-missing` can never fire.
+    credential_check = (
+        (lambda _credential_id: False) if scenario.get("credential_check") else None
+    )
     slug = scenario.get("patch_cheap_model")
     if slug is None:
-        return document_problems(parsed, ceiling_usd=CEILING_USD)
+        return document_problems(
+            parsed, ceiling_usd=CEILING_USD, credential_check=credential_check
+        )
 
     from brief_crew.builder import budget as budget_module
 
     with mock.patch.dict(budget_module._MODEL_BY_TIER, {"cheap": slug}):
-        return document_problems(parsed, ceiling_usd=CEILING_USD)
+        return document_problems(
+            parsed, ceiling_usd=CEILING_USD, credential_check=credential_check
+        )
 
 
 def _declared_codes() -> set[str]:

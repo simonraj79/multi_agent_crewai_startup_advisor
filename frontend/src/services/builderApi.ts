@@ -3,9 +3,12 @@ import type {
   BuilderDocument,
   BuilderDocumentModel,
   BuilderDocumentSummary,
+  BuilderExportEnvelope,
+  BuilderImportResult,
   BuilderProblem,
   BuilderPublish,
   BuilderValidation,
+  BuilderVersionRow,
   CredentialDraft,
   CredentialProbe,
   CredentialSummary,
@@ -300,6 +303,70 @@ export class BuilderApi {
     )
   }
 
+  /* --- plan 15: export, import, duplicate, versions --------------------- */
+
+  /**
+   * The document as a file: secrets stripped, identity dropped.
+   *
+   * Answers the JSON envelope rather than a blob; the file is written on this
+   * side from it (`utils/builderExport.ts`). The response also carries
+   * `Content-Disposition: attachment; filename="<name>.builder.json"`, and it is
+   * unreadable here for the reason `create` gives about `Location`: not a
+   * CORS-safelisted header, not named by `CORS_EXPOSE_HEADERS`, so cross-origin
+   * - the deployed shape - `headers.get()` answers null with nothing raised.
+   * The envelope's own `name` is the same string, always present.
+   *
+   * `version` names a stored version; omitted, the server exports head.
+   * 404 for a document that is not the caller's, the way every read on this
+   * router answers - a 403 would confirm the document exists.
+   */
+  async exportWorkflow(id: string, version?: number): Promise<BuilderExportEnvelope> {
+    const query = version === undefined ? '' : `?version=${encodeURIComponent(String(version))}`
+    return this.json<BuilderExportEnvelope>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}/export${query}`,
+    )
+  }
+
+  /**
+   * A file becomes a NEW draft owned by the caller.
+   *
+   * Never an overwrite: the envelope carries no id, and the server mints one
+   * regardless of anything the file says. The client has already checked the
+   * envelope's SHAPE (`readExportFile`), so a 422 here is about the document
+   * inside it, in the server's words - and it goes through the plain string
+   * path like every refusal but publish's.
+   *
+   * The 201 is the create model plus `needs_credentials`, read off the BODY:
+   * `Location` is unreadable cross-origin (see `create`).
+   */
+  async importWorkflow(envelope: BuilderExportEnvelope): Promise<BuilderImportResult> {
+    return this.json<BuilderImportResult>(`${BUILDER_API_PREFIX}/workflows/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    })
+  }
+
+  /**
+   * `<name> copy`, version 1, `draft`, owner = caller, as a 201 whose body is
+   * the create model. `version` copies a stored version rather than head.
+   * 404 for a document that is not the caller's.
+   */
+  async duplicateWorkflow(id: string, version?: number): Promise<BuilderDocumentModel> {
+    const query = version === undefined ? '' : `?version=${encodeURIComponent(String(version))}`
+    return this.json<BuilderDocumentModel>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}/duplicate${query}`,
+      { method: 'POST' },
+    )
+  }
+
+  /** Every stored version of a document, newest first. Same visibility as `get`. */
+  async listVersions(id: string): Promise<BuilderVersionRow[]> {
+    return this.json<BuilderVersionRow[]>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}/versions`,
+    )
+  }
+
   private async json<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await authedFetch(path, init)
     if (!response.ok) throw await this.refusal(response)
@@ -348,6 +415,23 @@ export type BuilderApiLike = Pick<
   | 'remove'
   | 'validate'
   | 'publish'
+>
+
+/**
+ * The four routes plan 15 added, as their own surface.
+ *
+ * NOT folded into `BuilderApiLike`, and the reason is that plan's criterion 11:
+ * `tests/builderPersistence.spec.ts` (33) must pass unchanged, and both it and
+ * `tests/helpers.ts` carry a double declared `implements BuilderApiLike`.
+ * Widening that Pick would stop the persistence suite's double compiling -
+ * which is what the Pick is FOR, except that nothing in the save loop calls any
+ * of these, so the divergence would be a cost with no defect behind it. A
+ * surface that DOES call them asks for this type, and the compiler still forces
+ * its double to match its subject.
+ */
+export type BuilderLifecycleApiLike = Pick<
+  BuilderApi,
+  'exportWorkflow' | 'importWorkflow' | 'duplicateWorkflow' | 'listVersions'
 >
 
 export const builderApi = new BuilderApi()

@@ -8,6 +8,7 @@ import {
   BuilderPublishRefusedError,
   readPublishRefusal,
   type BuilderApiLike,
+  type BuilderLifecycleApiLike,
 } from '../src/services/builderApi'
 import { VOCABULARY_PATH } from '../src/data/builderVocabulary'
 import { clearAccessToken, setSessionActive } from '../src/services/authClient'
@@ -87,6 +88,16 @@ const DOCUMENT: BuilderDocument = {
   ],
   joins: {},
   budget: null,
+}
+
+/** The plan 15 D1 envelope, as `GET .../export` answers it and `POST .../import` takes it. */
+const ENVELOPE = {
+  export: 'builder.flow/v1' as const,
+  exported_at: '2026-09-02T10:14:00Z',
+  name: 'Clinic scheduling brief',
+  source_version: 7,
+  needs_credentials: ['search'],
+  document: { name: 'Clinic scheduling brief', nodes: [], edges: [], joins: {}, input_field: 'idea' },
 }
 
 /** What `POST /workflows` answers, trimmed to the keys these tests read. */
@@ -183,9 +194,25 @@ describe('the builder API client', () => {
           (match) => `${match[1].toUpperCase()} ${match[2]}`,
         ),
       )
-      // Eight routes, and the client reaches every one of them. A ninth
-      // appearing here with no caller is a capability nothing can use.
-      expect(declared.size).toBe(8)
+      /*
+       * Eight routes, and the client reaches every one of them. A ninth
+       * appearing here with no caller is a capability nothing can use.
+       *
+       * Plan 15 adds four (`s1/15-api`), and this client already calls them
+       * (`s1/15-ui`). The two land on `main` separately, so which world this
+       * test is in is READ off the python rather than assumed: before the API
+       * branch merges the table says eight and the four are not walked;
+       * after, it says twelve and they are - and a client route the python
+       * does not declare is still a failure either way.
+       */
+      const planFifteen = [
+        'GET /workflows/{document_id}/export',
+        'POST /workflows/import',
+        'POST /workflows/{document_id}/duplicate',
+        'GET /workflows/{document_id}/versions',
+      ]
+      const planFifteenLanded = planFifteen.every((route) => declared.has(route))
+      expect(declared.size).toBe(planFifteenLanded ? 12 : 8)
 
       /*
        * Seven of the eight are this class's. The eighth - `GET /vocabulary` -
@@ -209,6 +236,12 @@ describe('the builder API client', () => {
       await api.remove('ug_0a1b2c3d')
       await api.validate(DOCUMENT)
       await api.publish('ug_0a1b2c3d')
+      if (planFifteenLanded) {
+        await api.exportWorkflow('ug_0a1b2c3d')
+        await api.importWorkflow(ENVELOPE)
+        await api.duplicateWorkflow('ug_0a1b2c3d')
+        await api.listVersions('ug_0a1b2c3d')
+      }
 
       const asked = fetchMock.mock.calls.map(([url, init]) => {
         const path = String(url).split('?')[0].slice(BUILDER_API_PREFIX.length)
@@ -224,6 +257,7 @@ describe('the builder API client', () => {
         'DELETE /workflows/{document_id}',
         'POST /validate',
         'POST /workflows/{document_id}/publish',
+        ...(planFifteenLanded ? planFifteen : []),
       ])
       for (const route of asked) expect(declared).toContain(route)
       expect(new Set([...asked, vocabularyRoute]).size).toBe(declared.size)
@@ -550,6 +584,101 @@ describe('the builder API client', () => {
       )
 
       await expect(api.save('ug_0a1b2c3d', DOCUMENT, 7)).rejects.toThrow('262200')
+    })
+  })
+
+  describe('the four plan 15 routes', () => {
+    /*
+     * Built against the route table in `.agent/plans/15-persistence.md` D1/D3
+     * and ruling S1-7, on a branch whose python does not declare them yet. The
+     * walk above proves them reached once the API branch lands; this proves
+     * the exact path, method and body each one sends, so the two branches can
+     * be checked against each other before they meet.
+     */
+    it('exports at head or at a named version, and reads the envelope off the body', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(ENVELOPE))
+      await expect(api.exportWorkflow('ug_0a1b2c3d')).resolves.toEqual(ENVELOPE)
+      await api.exportWorkflow('ug_0a1b2c3d', 4)
+
+      expect(String(fetchMock.mock.calls[0][0])).toBe(`${BUILDER_API_PREFIX}/workflows/ug_0a1b2c3d/export`)
+      expect(String(fetchMock.mock.calls[1][0])).toBe(
+        `${BUILDER_API_PREFIX}/workflows/ug_0a1b2c3d/export?version=4`,
+      )
+      expect((fetchMock.mock.calls[0][1] as RequestInit | undefined)?.method ?? 'GET').toBe('GET')
+      // `Content-Disposition` is not CORS-safelisted and not in
+      // `CORS_EXPOSE_HEADERS`, so the name comes off the envelope, never the header.
+      const exposed = /^CORS_EXPOSE_HEADERS = \(([^)]*)\)/m.exec(PY('config.py'))?.[1] ?? ''
+      expect(exposed).not.toContain('Content-Disposition')
+    })
+
+    it('imports by POSTing the envelope itself, and reads needs_credentials off the 201', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ ...STORED, id: 'ug_9999beef', needs_credentials: ['search'] }, 201),
+      )
+
+      const imported = await api.importWorkflow(ENVELOPE)
+
+      expect(String(fetchMock.mock.calls[0][0])).toBe(`${BUILDER_API_PREFIX}/workflows/import`)
+      expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST')
+      expect(sentBody()).toEqual(ENVELOPE)
+      expect(imported.id).toBe('ug_9999beef')
+      expect(imported.needs_credentials).toEqual(['search'])
+    })
+
+    it('duplicates with an empty POST, at head or at a named version', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ ...STORED, id: 'ug_c0c0c0c0' }, 201))
+      await expect(api.duplicateWorkflow('ug_0a1b2c3d')).resolves.toMatchObject({ id: 'ug_c0c0c0c0' })
+      await api.duplicateWorkflow('ug_0a1b2c3d', 4)
+
+      expect(String(fetchMock.mock.calls[0][0])).toBe(`${BUILDER_API_PREFIX}/workflows/ug_0a1b2c3d/duplicate`)
+      expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST')
+      expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBeUndefined()
+      expect(String(fetchMock.mock.calls[1][0])).toBe(
+        `${BUILDER_API_PREFIX}/workflows/ug_0a1b2c3d/duplicate?version=4`,
+      )
+    })
+
+    it('lists versions with a GET and hands the rows back in the order they came', async () => {
+      const rows = [
+        { version: 7, status: 'draft', created_at: '2026-09-02T10:14:00Z', bytes: 2048 },
+        { version: 3, status: 'draft', created_at: '2026-09-01T18:30:00Z', bytes: 640 },
+      ]
+      fetchMock.mockResolvedValueOnce(jsonResponse(rows))
+
+      await expect(api.listVersions('ug_0a1b2c3d')).resolves.toEqual(rows)
+
+      expect(String(fetchMock.mock.calls[0][0])).toBe(`${BUILDER_API_PREFIX}/workflows/ug_0a1b2c3d/versions`)
+      expect((fetchMock.mock.calls[0][1] as RequestInit | undefined)?.method ?? 'GET').toBe('GET')
+    })
+
+    it('percent-encodes the id in all three id-bearing paths', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(ENVELOPE))
+      await api.exportWorkflow('ug/../x')
+      await api.duplicateWorkflow('ug/../x')
+      await api.listVersions('ug/../x')
+      for (const [url] of fetchMock.mock.calls) expect(String(url)).toContain('/workflows/ug%2F..%2Fx/')
+    })
+
+    it('is a second, narrower surface, so criterion 11 double keeps compiling', () => {
+      /*
+       * `BuilderLifecycleApiLike` is NOT folded into `BuilderApiLike`: the
+       * persistence suite's double implements the seven-method Pick and must
+       * pass unchanged (plan 15 criterion 11). A surface that calls these four
+       * asks for this type instead, and its double is still compiler-forced to
+       * match its subject.
+       */
+      const double: BuilderLifecycleApiLike = {
+        exportWorkflow: async () => ENVELOPE,
+        importWorkflow: async () => ({ ...STORED, needs_credentials: [] }) as never,
+        duplicateWorkflow: async () => STORED as never,
+        listVersions: async () => [],
+      }
+      expect(Object.keys(double).sort()).toEqual([
+        'duplicateWorkflow',
+        'exportWorkflow',
+        'importWorkflow',
+        'listVersions',
+      ])
     })
   })
 

@@ -101,6 +101,14 @@ const props = defineProps<{
   vocabularyProblem?: string
   selectedNodeIds: readonly string[]
   selectedEdgeIds: readonly string[]
+  /**
+   * A stored version that is not head is on screen (plan 15 D3): every control
+   * in the rail is disabled, and the forms still RENDER, because "is v3 the one
+   * I want back?" is answered by reading v3's configuration. The store's lock
+   * would refuse the commits anyway; this is so a field cannot be typed into
+   * and then watched revert.
+   */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -410,7 +418,12 @@ defineExpose({ focusField })
       }}</span>
     </div>
 
-    <template v-else>
+    <!--
+      A `fieldset` rather than a flag threaded into seven forms: `disabled` on a
+      fieldset disables every descendant control natively, keyboard included,
+      and `display: contents` keeps it out of the rail's layout entirely.
+    -->
+    <fieldset v-else class="rail-lock" :disabled="readOnly">
       <!-- 1. One node. -->
       <template v-if="node && meta">
         <header class="rail-head">
@@ -720,12 +733,15 @@ defineExpose({ focusField })
           <GraphSettings :doc="doc" :vocabulary="vocabulary" @commit="emit('commit', $event)" />
         </section>
       </template>
-    </template>
+    </fieldset>
   </aside>
 </template>
 
 <style scoped>
 .inspector-rail { display: flex; min-height: 0; flex-direction: column; overflow-y: auto; background: var(--surface-panel); border-left: 1px solid var(--border-default); }
+/* Not a box. The fieldset exists for its `disabled` and for nothing else. */
+.rail-lock { display: contents; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.rail-lock:disabled { opacity: 0.72; }
 .rail-head { padding: 15px 16px 13px; border-bottom: 1px solid var(--border-default); }
 .rail-ident { display: flex; align-items: center; gap: 7px; }
 /* The wash is `color-mix` over the kind's own accent rather than a new custom

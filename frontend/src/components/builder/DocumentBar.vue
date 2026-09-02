@@ -1,6 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
-import { Keyboard, Redo2, Rocket, Undo2 } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import {
+  Copy,
+  Download,
+  EllipsisVertical,
+  History,
+  Keyboard,
+  Redo2,
+  Rocket,
+  Trash2,
+  Undo2,
+  Upload,
+} from 'lucide-vue-next'
 import type { SaveState } from '../../composables/useBuilderPersistence'
 import type { DocumentStatus } from '../../types/builder'
 
@@ -21,7 +32,8 @@ import type { DocumentStatus } from '../../types/builder'
  * else's business until it is committed on blur or Enter.
  */
 
-const props = defineProps<{
+const props = withDefaults(
+  defineProps<{
   name: string
   saveState: SaveState
   /** The stored version on screen. 0 until the first successful save. */
@@ -56,7 +68,18 @@ const props = defineProps<{
   undoneLabel: string
   /** Longest a document name may be. `BUILDER_MAX_NAME_CHARS`. */
   maxNameChars: number
-}>()
+  /**
+   * Null until the first save (plan 15). Export, duplicate, delete and the
+   * version browser all act on a STORED document, so the four are disabled
+   * rather than hidden while there is none - a menu that changes shape on the
+   * first Ctrl+S teaches an author the items are not there.
+   */
+  documentId?: string | null
+  /** Whether the docked version browser is showing, for `aria-expanded`. */
+  versionsOpen?: boolean
+  }>(),
+  { documentId: null, versionsOpen: false },
+)
 
 const emit = defineEmits<{
   rename: [name: string]
@@ -64,7 +87,86 @@ const emit = defineEmits<{
   redo: []
   publish: []
   shortcuts: []
+  /** Show or hide the docked version browser (plan 15 D3). */
+  versions: []
+  /** Download the stored version as `<name>.builder.json` (plan 15 D1). */
+  export: []
+  /** A `.builder.json` the author picked, to become a NEW draft (plan 15 D2). */
+  import: [file: File]
+  /** `POST .../duplicate` - a copy named `<name> copy`, opened (plan 15 D3). */
+  duplicate: []
+  /** Ask to delete. The confirm is DOCKED under the bar, never a dialog (R15). */
+  delete: []
 }>()
+
+/**
+ * The overflow menu: five actions that act on the document as a WHOLE rather
+ * than on anything drawn in it, which is why they are not in the palette or
+ * the inspector.
+ *
+ * A menu, not a modal. It is dismissed by choosing, by Escape, by focus
+ * leaving it and by a pointer landing anywhere else; it covers nothing while
+ * the author is editing, and R15's rule is about overlays in the editing path.
+ * The file picker is the browser's own, opened from the Import item, and its
+ * `<input type="file">` lives here because the gesture starts here.
+ */
+const menuOpen = ref(false)
+const menuButton = ref<HTMLButtonElement | null>(null)
+const menuRoot = ref<HTMLElement | null>(null)
+const filePicker = ref<HTMLInputElement | null>(null)
+
+/** What `title` says on a stored-document action while nothing is stored. */
+const NOT_STORED = 'Save this graph first - this acts on the stored version'
+
+function toggleMenu(): void {
+  menuOpen.value = !menuOpen.value
+}
+
+function closeMenu(returnFocus = false): void {
+  if (!menuOpen.value) return
+  menuOpen.value = false
+  if (returnFocus) menuButton.value?.focus()
+}
+
+/** Run one item and close. Every item goes through here so none forgets to close. */
+function choose(action: () => void): void {
+  closeMenu()
+  action()
+}
+
+function onPointerDownOutside(event: PointerEvent): void {
+  if (!menuRoot.value?.contains(event.target as Node)) closeMenu()
+}
+
+function onMenuFocusOut(event: FocusEvent): void {
+  const next = event.relatedTarget
+  if (next instanceof Node && menuRoot.value?.contains(next)) return
+  closeMenu()
+}
+
+watch(menuOpen, (open) => {
+  if (open) document.addEventListener('pointerdown', onPointerDownOutside, true)
+  else document.removeEventListener('pointerdown', onPointerDownOutside, true)
+})
+
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownOutside, true))
+
+function pickFile(): void {
+  filePicker.value?.click()
+}
+
+/**
+ * Hand the picked file up, then clear the input so the SAME file can be picked
+ * again. A `change` event fires only when the value changes, so without the
+ * reset an author who fixed a refused export and re-picked it would get
+ * nothing - not a refusal, nothing.
+ */
+function onFilePicked(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) emit('import', file)
+}
 
 const editing = ref(false)
 const draftName = ref('')
@@ -198,6 +300,110 @@ function cancelRename(): void {
         <Keyboard :size="15" aria-hidden="true" />
       </button>
 
+      <div
+        ref="menuRoot"
+        class="document-menu-root"
+        @keydown.esc.stop.prevent="closeMenu(true)"
+        @focusout="onMenuFocusOut"
+      >
+        <button
+          ref="menuButton"
+          class="icon-button"
+          type="button"
+          title="More actions"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpen"
+          aria-controls="document-menu"
+          data-testid="document-menu-button"
+          @click="toggleMenu"
+        >
+          <EllipsisVertical :size="15" aria-hidden="true" />
+        </button>
+
+        <div
+          v-if="menuOpen"
+          id="document-menu"
+          class="document-menu"
+          role="menu"
+          aria-label="Document actions"
+          data-testid="document-menu"
+        >
+          <button
+            class="document-menu-item"
+            type="button"
+            role="menuitem"
+            :disabled="documentId === null"
+            :title="documentId === null ? NOT_STORED : undefined"
+            :aria-expanded="versionsOpen"
+            data-testid="menu-versions"
+            @click="choose(() => emit('versions'))"
+          >
+            <History :size="14" aria-hidden="true" />
+            {{ versionsOpen ? 'Hide versions' : 'Versions' }}
+          </button>
+          <button
+            class="document-menu-item"
+            type="button"
+            role="menuitem"
+            :disabled="documentId === null"
+            :title="documentId === null ? NOT_STORED : undefined"
+            data-testid="menu-export"
+            @click="choose(() => emit('export'))"
+          >
+            <Download :size="14" aria-hidden="true" />
+            Export .builder.json
+          </button>
+          <button
+            class="document-menu-item"
+            type="button"
+            role="menuitem"
+            data-testid="menu-import"
+            @click="choose(pickFile)"
+          >
+            <Upload :size="14" aria-hidden="true" />
+            Import .builder.json…
+          </button>
+          <button
+            class="document-menu-item"
+            type="button"
+            role="menuitem"
+            :disabled="documentId === null"
+            :title="documentId === null ? NOT_STORED : undefined"
+            data-testid="menu-duplicate"
+            @click="choose(() => emit('duplicate'))"
+          >
+            <Copy :size="14" aria-hidden="true" />
+            Duplicate
+          </button>
+          <button
+            class="document-menu-item is-danger"
+            type="button"
+            role="menuitem"
+            :disabled="documentId === null"
+            :title="documentId === null ? NOT_STORED : undefined"
+            data-testid="menu-delete"
+            @click="choose(() => emit('delete'))"
+          >
+            <Trash2 :size="14" aria-hidden="true" />
+            Delete…
+          </button>
+        </div>
+
+        <!-- Hidden, and reached only through the Import item. `accept` is a
+             hint to the picker, not a check: `readExportFile` decides. -->
+        <input
+          ref="filePicker"
+          class="document-file-picker"
+          type="file"
+          accept=".json,application/json"
+          tabindex="-1"
+          aria-hidden="true"
+          data-testid="import-file"
+          @change="onFilePicked"
+        />
+      </div>
+
       <button class="button button-primary document-publish" type="button" @click="emit('publish')">
         <Rocket :size="15" aria-hidden="true" />
         {{ publishedVersion === null ? 'Publish' : 'Republish' }}
@@ -265,5 +471,55 @@ function cancelRename(): void {
   color: var(--text-muted);
   font-size: var(--fs-11);
   white-space: nowrap;
+}
+
+.document-menu-root { position: relative; }
+
+/* Anchored under its button, above the bar's own z-index. It is a MENU: it
+   lasts one choice, and the only thing it can cover is the top-right corner of
+   the canvas for as long as it takes to read five lines. */
+.document-menu {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 212px;
+  padding: 6px;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+}
+
+.document-menu-item {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--text-body);
+  font-size: var(--fs-12);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.document-menu-item:hover:not(:disabled),
+.document-menu-item:focus-visible { background: var(--surface-raised); color: var(--text-title); outline: 0; }
+.document-menu-item:disabled { cursor: not-allowed; opacity: 0.42; }
+.document-menu-item.is-danger:hover:not(:disabled) { color: var(--err-text); background: var(--err-bg); }
+
+.document-file-picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  opacity: 0;
+  pointer-events: none;
 }
 </style>

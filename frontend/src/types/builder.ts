@@ -704,3 +704,61 @@ export interface CredentialProbe {
   ok: boolean
   detail: string
 }
+
+/* --- export, import, versions (plan 15) ---------------------------------
+ * The lifecycle the builder was missing: a document as a FILE, a file as a
+ * new draft, a copy, and the list of stored versions. Every shape here is the
+ * plan's contract as written on 2026-09-02, built against fakes on this side
+ * and against `builder_api.py` on the other; the Integrator reconciles the two
+ * the way `tests/builderApi.spec.ts` reconciles the route table. */
+
+/**
+ * The `export` values an import accepts.
+ *
+ * Ruling S1-4: the field carries the document's OWN `schema`, so today every
+ * file says `builder.flow/v1`, and the importer already admits the v2 spelling
+ * C1 will introduce because the server passes the document through
+ * `upgrade_document` on the way in. Checked client-side so a file that is not
+ * an export at all - a run log, a clipboard envelope, somebody's `package.json`
+ * - is refused with a sentence naming the FILE, rather than sent to
+ * `POST /import` for a 422 about a field the author never typed.
+ */
+export const EXPORT_SCHEMAS = ['builder.flow/v1', 'builder.flow/v2'] as const
+export type ExportSchema = (typeof EXPORT_SCHEMAS)[number]
+
+/** `GET /workflows/{id}/export` - plan 15 D1, `builder/export.py::strip_for_export`. */
+export interface BuilderExportEnvelope {
+  export: ExportSchema
+  /** ISO. */
+  exported_at: string
+  name: string
+  /** The stored version the file was taken from. */
+  source_version: number
+  /** Node ids whose `credential_id` was nulled on the way out. */
+  needs_credentials: string[]
+  /**
+   * The stripped document: no `id`, `version`, `budget` or `user_id`, every
+   * secret-bearing field null. Carried as the wire shape rather than as a
+   * `BuilderDocument`, because the importer mints its own identity and this
+   * client never parses it - the file round-trips, it is not edited here.
+   */
+  document: Record<string, unknown>
+}
+
+/**
+ * `POST /workflows/import` - the create model, plus the nodes that arrived
+ * without a credential. Ruling S1-7: that list is rendered as a client-side
+ * notice, never as a C8 problem code.
+ */
+export interface BuilderImportResult extends BuilderDocumentModel {
+  needs_credentials: string[]
+}
+
+/** One row of `GET /workflows/{id}/versions`, which answers newest first. */
+export interface BuilderVersionRow {
+  version: number
+  status: DocumentStatus
+  created_at: string
+  /** The stored JSON's size, for the browser's one number about weight. */
+  bytes: number
+}

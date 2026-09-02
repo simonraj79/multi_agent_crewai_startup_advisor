@@ -81,6 +81,7 @@ const { route, navigate } = useWorkspaceRoute()
     @adopt-document="navigate({ name: 'builder', documentId: $event }, { replace: true })"
     @sign-in="startGoogleSignIn"
     @sign-out="endSession"
+    @close-document="navigate({ name: 'builder', documentId: null }, { replace: true })"
   />
 
   <StudioView

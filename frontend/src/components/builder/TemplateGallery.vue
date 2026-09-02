@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Clock3, FilePlus2, Loader, Trash2, TriangleAlert } from 'lucide-vue-next'
+import { Clock3, FilePlus2, Loader, Trash2, TriangleAlert, Upload } from 'lucide-vue-next'
 import GraphThumbnail from './GraphThumbnail.vue'
 import { BUILDER_TEMPLATES } from '../../data/builderTemplates'
 import { builderApi } from '../../services/builderApi'
@@ -40,6 +40,12 @@ const emit = defineEmits<{
   start: [template: BuilderTemplate]
   /** Load a stored document by id. */
   open: [documentId: string]
+  /**
+   * A `.builder.json` the author picked (plan 15 D2). The gallery only hands
+   * the file up: reading it, posting it and opening the result is one code
+   * path in `BuilderView`, shared with the document bar's Import item.
+   */
+  import: [file: File]
 }>()
 
 /** What the server said one template costs, or why it did not say. */
@@ -64,6 +70,16 @@ const deleteProblem = ref('')
 const deleteInFlight = ref(false)
 
 const money = (value: number) => `$${value.toFixed(2)}`
+
+const filePicker = ref<HTMLInputElement | null>(null)
+
+/** Hand the file up and clear the input, so the same file can be picked twice. */
+function onFilePicked(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) emit('import', file)
+}
 
 onMounted(() => {
   void priceTemplates()
@@ -192,10 +208,33 @@ function when(iso: string): string {
           <span class="gallery-kicker">START FROM</span>
           <h2 id="gallery-templates-title">A shape that already works</h2>
         </div>
-        <p v-if="pricingProblem" class="gallery-notice" role="status">
-          <TriangleAlert :size="13" aria-hidden="true" />
-          Prices are unavailable — {{ pricingProblem }}
-        </p>
+        <div class="gallery-heading-aside">
+          <p v-if="pricingProblem" class="gallery-notice" role="status">
+            <TriangleAlert :size="13" aria-hidden="true" />
+            Prices are unavailable — {{ pricingProblem }}
+          </p>
+          <!-- The file picker is the browser's own. `accept` is a hint;
+               `readExportFile` in the shell is the check. -->
+          <button
+            class="button button-quiet gallery-import"
+            type="button"
+            data-testid="gallery-import"
+            @click="filePicker?.click()"
+          >
+            <Upload :size="14" aria-hidden="true" />
+            Import .builder.json
+          </button>
+          <input
+            ref="filePicker"
+            class="gallery-file-picker"
+            type="file"
+            accept=".json,application/json"
+            tabindex="-1"
+            aria-hidden="true"
+            data-testid="gallery-import-file"
+            @change="onFilePicked"
+          />
+        </div>
       </header>
 
       <ul class="template-grid">
@@ -352,6 +391,9 @@ function when(iso: string): string {
 .gallery-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .gallery-heading h2 { margin: 4px 0 0; font-size: 17px; }
 .gallery-notice { display: inline-flex; gap: 6px; align-items: center; margin: 0; color: var(--warn-text); font-size: var(--fs-11); }
+.gallery-heading-aside { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: flex-end; }
+.gallery-import { min-height: 32px; padding: 0 12px; font-size: var(--fs-12); }
+.gallery-file-picker { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); opacity: 0; pointer-events: none; }
 
 .template-grid {
   display: grid;

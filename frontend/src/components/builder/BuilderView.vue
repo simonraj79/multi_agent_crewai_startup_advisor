@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
-import { ChevronLeft, ChevronRight, CircleDot, PenTool, Play, RotateCcw } from 'lucide-vue-next'
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleDot,
+  KeyRound,
+  PenTool,
+  Play,
+  RotateCcw,
+  X,
+} from 'lucide-vue-next'
 import SignInPanel from '../SignInPanel.vue'
 import AccountChip from './AccountChip.vue'
 import BudgetMeter from './BudgetMeter.vue'
@@ -18,6 +27,7 @@ import PublishDialog from './PublishDialog.vue'
 import SaveChip from './SaveChip.vue'
 import ShortcutSheet from './ShortcutSheet.vue'
 import TemplateGallery from './TemplateGallery.vue'
+import VersionBrowser from './VersionBrowser.vue'
 import { useBuilderCanvas, canvasHasFocus, snapToGrid } from '../../composables/useBuilderCanvas'
 import { useBuilderClipboard } from '../../composables/useBuilderClipboard'
 import { useBuilderDocument } from '../../composables/useBuilderDocument'
@@ -26,7 +36,8 @@ import { useBuilderPersistence } from '../../composables/useBuilderPersistence'
 import { BUILDER_PROBLEMS, useBuilderProblems } from '../../composables/useBuilderProblems'
 import { useBuilderValidation } from '../../composables/useBuilderValidation'
 import { BLANK, documentFromTemplate } from '../../data/builderTemplates'
-import { builderApi } from '../../services/builderApi'
+import { BuilderConflictError, builderApi } from '../../services/builderApi'
+import { ExportFileError, downloadExport, exportFilename, readExportFile } from '../../utils/builderExport'
 import { loadVocabulary, vocabulary, vocabularyProblem } from '../../data/builderVocabulary'
 import { writeRunHandoff } from '../../data/builderRunHandoff'
 import type { BuilderTemplate } from '../../data/builderTemplates'
@@ -34,9 +45,12 @@ import type { SignedInUser } from '../../composables/useAuthGate'
 import type { InspectorCommit } from './commit'
 import type { PortMenuCreation } from './PortMenu.vue'
 import type {
+  BuilderDocumentModel,
   BuilderDocumentSummary,
+  BuilderExportEnvelope,
   BuilderProblem,
   BuilderPublish,
+  BuilderVersionRow,
   DocumentId,
   NodeId,
 } from '../../types/builder'
@@ -115,6 +129,14 @@ const emit = defineEmits<{
    * is still under the cursor, and only its address has become expressible.
    */
   adoptDocument: [documentId: DocumentId]
+  /**
+   * The document on screen was DELETED; take the address back to `#/build`.
+   *
+   * Replace rather than push, for the reason `adoptDocument` gives in reverse:
+   * the entry for a document that no longer exists must not stay on the stack,
+   * or Back lands on a 404 the author has just been told about.
+   */
+  closeDocument: []
 }>()
 
 /* ── the document, and everything hanging off it ───────────────────────────
@@ -125,7 +147,19 @@ const emit = defineEmits<{
  * required. BLANK is that document, and it is the same one the gallery hands
  * over when an author picks "Blank canvas", so the two paths cannot diverge. */
 const store = useBuilderDocument(documentFromTemplate(BLANK))
-const persistence = useBuilderPersistence(store, builderApi)
+/*
+ * `onSaved` is plan 15 D4's one permitted addition to the save loop, and it is
+ * what keeps two lists honest: the palette's library, which read "No saved
+ * graphs yet" under a chip saying `saved · v1`, and the version browser, which
+ * would otherwise list v1..v6 under a chip saying v7. It fires once per
+ * successful write, from inside the composable, so autosave reaches it too.
+ */
+const persistence = useBuilderPersistence(store, builderApi, {
+  onSaved: () => {
+    void refreshLibrary()
+    if (versionsOpen.value) void loadVersions()
+  },
+})
 const clipboard = useBuilderClipboard(store)
 
 /**
@@ -229,6 +263,92 @@ let noticeTimer = 0
 const started = ref(false)
 
 const doc = computed(() => store.doc.value)
+
+/* ── plan 15: versions, export, import, duplicate, delete ───────────────── */
+
+const versionsOpen = ref(false)
+const versions = shallowRef<readonly BuilderVersionRow[]>([])
+const versionsLoading = ref(false)
+const versionsProblem = ref('')
+/** True while Restore's GET-then-PUT is in flight. */
+const restoring = ref(false)
+
+/**
+ * Why the version browser's rows are disabled right now, or `''`.
+ *
+ * Opening a stored version LOADS it - history cleared, canvas replaced - so a
+ * canvas that is ahead of the store must be written first. Saying so in the
+ * browser is what turns a click that would have discarded work into a click
+ * that cannot.
+ */
+const versionsBlocked = computed(() => {
+  switch (persistence.saveState.value) {
+    case 'dirty':
+      return 'save your changes first — opening a stored version replaces what is on the canvas.'
+    case 'saving':
+      return 'saving… a stored version can be opened once this write lands.'
+    case 'conflict':
+      return 'resolve the save conflict first.'
+    case 'offline':
+      return 'the last save did not land — the canvas is ahead of every stored version.'
+    default:
+      return ''
+  }
+})
+
+/**
+ * Nodes the last import stripped a credential from (plan 15 D2, ruling S1-7).
+ *
+ * Keyed by document id so the notice cannot outlive the document it is about:
+ * open something else and it is gone. It is a NOTICE and not a problem code -
+ * C8's union is a Python-generated mirror and the only server-side
+ * `credential-missing` is the one `validate` emits - so it lives beside the
+ * restore bar rather than in `ProblemsPanel`.
+ */
+const importNotice = shallowRef<{ documentId: DocumentId; nodeIds: readonly string[] } | null>(null)
+const importNoticeShown = computed(
+  () =>
+    importNotice.value !== null &&
+    importNotice.value.documentId === persistence.documentId.value,
+)
+
+/** The docked delete confirm (plan 15 D3, R15: no dialog). */
+const deleteAsk = ref(false)
+const deleteTyped = ref('')
+const deleteProblem = ref('')
+const deleteInFlight = ref(false)
+/**
+ * The server said no and nothing here can change its mind - a 409 for a
+ * document that is published AND registered (owner decision 24). The confirm
+ * keeps the sentence and loses the button: nothing destructive is offered
+ * over a refusal that resending cannot lift.
+ */
+const deleteRefused = ref(false)
+
+/**
+ * Trimmed and case-insensitive, the same rule `TemplateGallery` applies and
+ * for the same reason: the typed name proves the author read WHICH graph, and
+ * an exact-bytes match would fail on a trailing space and teach nothing.
+ */
+const deleteConfirmed = computed(
+  () => deleteTyped.value.trim().toLowerCase() === doc.value.name.trim().toLowerCase(),
+)
+
+/** The one sentence a refused gesture gets while a stored version is on screen. */
+const readOnlyNotice = computed(
+  () =>
+    `v${persistence.version.value} is read-only — restore it, or go back to ` +
+    `v${persistence.headVersion.value}, to edit.`,
+)
+
+/** A node's label for the import notice, or its id when the document has moved on. */
+function nodeLabel(id: string): string {
+  return doc.value.nodes.find((node) => node.id === id)?.label ?? id
+}
+
+function messageOf(failure: unknown, fallback: string): string {
+  return failure instanceof Error && failure.message ? failure.message : fallback
+}
 
 /**
  * Errors the live loop reported, PLUS any the publish refusal added.
@@ -381,11 +501,21 @@ async function showGraph(): Promise<void> {
 async function openDocument(id: DocumentId): Promise<void> {
   try {
     await persistence.open(id)
-    publishProblems.value = []
-    await showGraph()
+    await afterAdopt()
   } catch (error) {
     say(error instanceof Error ? error.message : 'that graph could not be opened.')
   }
+}
+
+/**
+ * What every stored document goes through once `persistence.adopt` has it -
+ * a route open, an import, a duplicate followed through the route. One tail,
+ * so a third entry point cannot forget the fit or the validation kick.
+ */
+async function afterAdopt(): Promise<void> {
+  publishProblems.value = []
+  deleteAsk.value = false
+  await showGraph()
 }
 
 /**
@@ -401,8 +531,253 @@ function startTemplate(template: BuilderTemplate): void {
   store.applyTemplate(documentFromTemplate(template))
   persistence.startNew()
   publishProblems.value = []
+  versionsOpen.value = false
+  deleteAsk.value = false
   void showGraph()
 }
+
+/* ── plan 15 D3: the version browser ───────────────────────────────────── */
+
+async function loadVersions(): Promise<void> {
+  const id = persistence.documentId.value
+  if (id === null) {
+    versions.value = []
+    return
+  }
+  versionsLoading.value = true
+  try {
+    // Rendered in the server's order, newest first, and never re-sorted here:
+    // a client that sorted would hide a server that stopped.
+    versions.value = await builderApi.listVersions(id)
+    versionsProblem.value = ''
+  } catch (error) {
+    versionsProblem.value = messageOf(error, 'the stored versions could not be read.')
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+function toggleVersions(): void {
+  versionsOpen.value = !versionsOpen.value
+  if (versionsOpen.value) void loadVersions()
+}
+
+/** Open a stored version read-only. `persistence.adopt` sets the store's lock. */
+async function viewVersion(version: number): Promise<void> {
+  const id = persistence.documentId.value
+  if (id === null || versionsBlocked.value) return
+  if (version === persistence.version.value) return
+  try {
+    await persistence.open(id, version === persistence.headVersion.value ? undefined : version)
+    publishProblems.value = []
+    validation.validateNow()
+  } catch (error) {
+    say(messageOf(error, `v${version} could not be opened.`))
+  }
+}
+
+async function viewHead(): Promise<void> {
+  await viewVersion(persistence.headVersion.value)
+}
+
+/**
+ * Commit the version on screen as the NEXT head, through the ordinary CAS
+ * save. History is append-only on the server, so this is v8 whose content is
+ * v3's, with v4..v7 exactly where they were and head one Ctrl+Z away.
+ */
+async function restoreVersion(): Promise<void> {
+  if (restoring.value || versionsBlocked.value) return
+  const from = persistence.version.value
+  restoring.value = true
+  try {
+    await persistence.restoreVersion()
+    if (persistence.conflict.value === null && !persistence.error.value) {
+      say(`restored v${from} as v${persistence.version.value} — head is one undo away.`)
+    }
+  } catch (error) {
+    say(messageOf(error, `v${from} could not be restored.`))
+  } finally {
+    restoring.value = false
+  }
+}
+
+/* ── plan 15 D1: export ────────────────────────────────────────────────── */
+
+/**
+ * Whether an action on the STORED document may proceed, saying why not.
+ *
+ * Export, duplicate and the version list all read what the server holds, and
+ * a canvas that is ahead of it would hand the author a file, a copy or a list
+ * missing their last edit with nothing on screen saying so.
+ */
+function storedIsCurrent(verb: string): boolean {
+  if (persistence.documentId.value === null) {
+    say(`save this graph first — ${verb} works on the stored version.`)
+    return false
+  }
+  if (persistence.saveState.value !== 'clean') {
+    say(`save your changes first — ${verb} works on the stored version, and the canvas is ahead of it.`)
+    return false
+  }
+  return true
+}
+
+async function exportDocument(): Promise<void> {
+  if (!storedIsCurrent('export')) return
+  const id = persistence.documentId.value as DocumentId
+  try {
+    const envelope = await builderApi.exportWorkflow(
+      id,
+      persistence.viewingVersion.value ? persistence.version.value : undefined,
+    )
+    downloadExport(envelope)
+    say(`exported ${exportFilename(envelope.name)} — credentials stripped, ${envelope.needs_credentials.length} node${envelope.needs_credentials.length === 1 ? '' : 's'} will need one on import.`)
+  } catch (error) {
+    say(messageOf(error, 'the export could not be written.'))
+  }
+}
+
+/* ── plan 15 D2: import, through the one load path ─────────────────────── */
+
+/**
+ * A `.builder.json` becomes a NEW draft owned by the importer (ruling S1-7).
+ *
+ * Two refusals, kept apart on purpose. `readExportFile` refuses a file that
+ * is not an export at all - the wrong `export` field, no `document` - with a
+ * sentence naming the FILE, and nothing is sent. `POST /import` refuses the
+ * document inside it, in the server's own words. Neither path touches the
+ * canvas: the document on screen survives a bad import untouched.
+ *
+ * The 201 is opened through `persistence.adopt`, the same call a route open
+ * makes, so an imported graph and a stored one are one code path from here on.
+ */
+async function importFile(file: File): Promise<void> {
+  let envelope: BuilderExportEnvelope
+  try {
+    envelope = await readExportFile(file)
+  } catch (error) {
+    say(
+      error instanceof ExportFileError
+        ? error.message
+        : `${file.name} could not be read — ${messageOf(error, 'the browser refused the file')}`,
+    )
+    return
+  }
+  let result: BuilderDocumentModel & { needs_credentials: string[] }
+  try {
+    result = await builderApi.importWorkflow(envelope)
+  } catch (error) {
+    say(`${file.name} was not imported — ${messageOf(error, 'the server refused it')}`)
+    return
+  }
+  persistence.adopt(result)
+  importNotice.value =
+    result.needs_credentials.length > 0
+      ? { documentId: result.id as DocumentId, nodeIds: [...result.needs_credentials] }
+      : null
+  versionsOpen.value = false
+  void refreshLibrary()
+  await afterAdopt()
+  say(`imported ${file.name} as a new draft, “${result.document.name}”.`)
+}
+
+function dismissImportNotice(): void {
+  importNotice.value = null
+}
+
+/* ── plan 15 D3: duplicate and delete ──────────────────────────────────── */
+
+/**
+ * `<name> copy`, version 1, draft, then opened THROUGH THE ROUTE - the same
+ * path the gallery takes - so the address names the copy and Back returns to
+ * the original. The 201 body is read only for its id.
+ */
+async function duplicateDocument(): Promise<void> {
+  if (!storedIsCurrent('duplicate')) return
+  const id = persistence.documentId.value as DocumentId
+  try {
+    const copy = await builderApi.duplicateWorkflow(
+      id,
+      persistence.viewingVersion.value ? persistence.version.value : undefined,
+    )
+    void refreshLibrary()
+    say(`duplicated as “${copy.document.name}”.`)
+    emit('openDocument', copy.id as DocumentId)
+  } catch (error) {
+    say(messageOf(error, 'the graph could not be duplicated.'))
+  }
+}
+
+function askDelete(): void {
+  if (persistence.documentId.value === null) return
+  deleteAsk.value = true
+  deleteTyped.value = ''
+  deleteProblem.value = ''
+  deleteRefused.value = false
+}
+
+function cancelDelete(): void {
+  deleteAsk.value = false
+  deleteTyped.value = ''
+  deleteProblem.value = ''
+  deleteRefused.value = false
+}
+
+/**
+ * `DELETE /workflows/{id}`: the row and every version go together
+ * (`ON DELETE CASCADE`), and the canvas goes back to the gallery.
+ *
+ * A 409 is the one refusal with no retry: the head is published and
+ * registered, and a registered workflow with no document cannot be
+ * rehydrated. The sentence is the server's, verbatim, and the only control
+ * left is the one that closes the confirm.
+ */
+async function confirmDelete(): Promise<void> {
+  const id = persistence.documentId.value
+  if (id === null || !deleteConfirmed.value || deleteInFlight.value || deleteRefused.value) return
+  deleteInFlight.value = true
+  const name = doc.value.name
+  try {
+    await builderApi.remove(id)
+    cancelDelete()
+    versionsOpen.value = false
+    importNotice.value = null
+    publishProblems.value = []
+    persistence.startNew()
+    // Clean, not a template: a template is seeded dirty, and a dirty document
+    // nobody can see would arm `beforeunload` over a graph that is gone.
+    store.load(documentFromTemplate(BLANK))
+    started.value = false
+    void refreshLibrary()
+    emit('closeDocument')
+    say(`deleted “${name}”.`)
+  } catch (error) {
+    deleteProblem.value = messageOf(error, 'the graph could not be deleted.')
+    deleteRefused.value = error instanceof BuilderConflictError
+  } finally {
+    deleteInFlight.value = false
+  }
+}
+
+/* A swallowed gesture is never silent. Every write funnels through
+ * `store.commit`, so this one watcher covers the canvas, the inspector, the
+ * hotkeys, the clipboard and the port menu at once. */
+watch(
+  () => store.lockedRefusals.value,
+  () => {
+    if (store.readOnly.value) say(readOnlyNotice.value)
+  },
+)
+
+/* A different document, or none: the list and the notice were about the old one. */
+watch(
+  () => persistence.documentId.value,
+  (id) => {
+    versions.value = []
+    versionsProblem.value = ''
+    if (id !== null && versionsOpen.value) void loadVersions()
+  },
+)
 
 /**
  * The address follows the first save.
@@ -613,6 +988,10 @@ function escape(): void {
   }
   if (canvas.selectionSize.value > 0) {
     canvas.clearSelection()
+    return
+  }
+  if (deleteAsk.value) {
+    cancelDelete()
     return
   }
   if (publishOpen.value) {
@@ -923,11 +1302,18 @@ watch(
             :redo-label="store.redoLabel.value"
             :undone-label="undoneLabel"
             :max-name-chars="vocabulary?.bounds.max_name_chars ?? 80"
+            :document-id="persistence.documentId.value"
+            :versions-open="versionsOpen"
             @rename="store.setName"
             @undo="undo"
             @redo="store.redo"
             @publish="publishOpen = true"
             @shortcuts="shortcutsOpen = true"
+            @versions="toggleVersions"
+            @export="exportDocument"
+            @import="importFile"
+            @duplicate="duplicateDocument"
+            @delete="askDelete"
           >
             <template #save-chip>
               <SaveChip
@@ -941,53 +1327,184 @@ watch(
           </DocumentBar>
 
           <!--
-            Section 4.6's restore bar, and the reason it is here rather than
-            anywhere else: it must sit above the canvas it is offering to
-            replace, in the layout, so accepting it is a decision made while
-            looking at what is on screen.
-
-            `restoreOffer`, `acceptRestore` and `dismissRestore` all existed and
-            were unit-tested for months while NO component read them - so a
-            draft was written to `localStorage` on every commit and could never
-            be got back out. The composable tests passed because they called the
-            composable; nothing mounted anything. That is this repo's own "tests
-            that pass for the wrong reason", and the fix is a rendered control
-            with an E2E-addressable testid, not another composable test.
+            The DOCK: one grid row under the bar holding every strip that has
+            to sit above the canvas IN THE LAYOUT rather than over it - the
+            version browser, the restore bar, the import notice and the delete
+            confirm. One wrapper rather than four siblings, because
+            `.graph-workspace` names its rows by position and a conditional
+            sibling used to push the canvas into an implicit `auto` row the
+            moment the restore bar appeared. R15: nothing here covers the graph
+            it is about.
           -->
-          <div
-            v-if="persistence.restoreOffer.value"
-            class="builder-restore"
-            role="status"
-            data-testid="restore-bar"
-          >
-            <RotateCcw :size="14" aria-hidden="true" />
-            <span class="builder-restore-copy">
-              Unsaved work from this browser, saved
-              <time :datetime="persistence.restoreOffer.value.savedAt">{{
-                clockOf(persistence.restoreOffer.value.savedAt)
-              }}</time>
-              — the stored v{{ persistence.restoreOffer.value.baseVersion }} is from
-              <time :datetime="persistence.restoreOffer.value.storedAt">{{
-                clockOf(persistence.restoreOffer.value.storedAt)
-              }}</time
-              >.
-            </span>
-            <button
-              type="button"
-              class="builder-restore-accept"
-              data-testid="restore-accept"
-              @click="persistence.acceptRestore"
+          <div class="builder-dock" data-testid="builder-dock">
+            <VersionBrowser
+              v-if="versionsOpen"
+              :versions="versions"
+              :version="persistence.version.value"
+              :head-version="persistence.headVersion.value"
+              :loading="versionsLoading"
+              :problem="versionsProblem"
+              :restoring="restoring"
+              :document-id="persistence.documentId.value"
+              :blocked="versionsBlocked"
+              @view="viewVersion"
+              @head="viewHead"
+              @restore="restoreVersion"
+              @close="versionsOpen = false"
+            />
+
+            <!--
+              Section 4.6's restore bar, and the reason it is here rather than
+              anywhere else: it must sit above the canvas it is offering to
+              replace, in the layout, so accepting it is a decision made while
+              looking at what is on screen.
+
+              `restoreOffer`, `acceptRestore` and `dismissRestore` all existed and
+              were unit-tested for months while NO component read them - so a
+              draft was written to `localStorage` on every commit and could never
+              be got back out. The composable tests passed because they called the
+              composable; nothing mounted anything. That is this repo's own "tests
+              that pass for the wrong reason", and the fix is a rendered control
+              with an E2E-addressable testid, not another composable test.
+            -->
+            <div
+              v-if="persistence.restoreOffer.value"
+              class="builder-restore"
+              role="status"
+              data-testid="restore-bar"
             >
-              Restore it
-            </button>
-            <button
-              type="button"
-              class="builder-restore-dismiss"
-              data-testid="restore-dismiss"
-              @click="persistence.dismissRestore"
+              <RotateCcw :size="14" aria-hidden="true" />
+              <span class="builder-restore-copy">
+                Unsaved work from this browser, saved
+                <time :datetime="persistence.restoreOffer.value.savedAt">{{
+                  clockOf(persistence.restoreOffer.value.savedAt)
+                }}</time>
+                — the stored v{{ persistence.restoreOffer.value.baseVersion }} is from
+                <time :datetime="persistence.restoreOffer.value.storedAt">{{
+                  clockOf(persistence.restoreOffer.value.storedAt)
+                }}</time
+                >.
+              </span>
+              <button
+                type="button"
+                class="builder-restore-accept"
+                data-testid="restore-accept"
+                @click="persistence.acceptRestore"
+              >
+                Restore it
+              </button>
+              <button
+                type="button"
+                class="builder-restore-dismiss"
+                data-testid="restore-dismiss"
+                @click="persistence.dismissRestore"
+              >
+                Discard
+              </button>
+            </div>
+
+            <!--
+              Plan 15 D2's import notice (ruling S1-7): the nodes whose
+              credential the export stripped, each a jump to its card. A
+              notice group, not a problem code - the document opened honestly
+              rather than green, and the fix is in the inspector, not here.
+            -->
+            <div
+              v-if="importNoticeShown && importNotice"
+              class="builder-import-notice"
+              role="status"
+              data-testid="import-notice"
             >
-              Discard
-            </button>
+              <KeyRound :size="14" aria-hidden="true" />
+              <span class="builder-import-copy">
+                {{ importNotice.nodeIds.length }}
+                {{ importNotice.nodeIds.length === 1 ? 'node needs' : 'nodes need' }} a credential you
+                own — the export carried none.
+              </span>
+              <span class="builder-import-nodes">
+                <button
+                  v-for="id in importNotice.nodeIds"
+                  :key="id"
+                  type="button"
+                  class="builder-import-node"
+                  :data-testid="`import-notice-node-${id}`"
+                  :title="`Select ${nodeLabel(id)}`"
+                  @click="canvas.focusNode(id as NodeId)"
+                >
+                  {{ nodeLabel(id) }}
+                </button>
+              </span>
+              <button
+                type="button"
+                class="icon-button builder-import-dismiss"
+                aria-label="Dismiss the import notice"
+                title="Dismiss"
+                data-testid="import-notice-dismiss"
+                @click="dismissImportNotice"
+              >
+                <X :size="14" aria-hidden="true" />
+              </button>
+            </div>
+
+            <!--
+              Plan 15 D3's delete confirm, DOCKED (R15). Never `window.confirm`:
+              the browser dialog blocks the tab and hides the graph at the
+              moment the author is being asked about it, and it cannot say WHICH
+              graph in a way that survives a misread - typing the name is what
+              proves the right one was read.
+            -->
+            <form
+              v-if="deleteAsk"
+              class="builder-delete-confirm"
+              data-testid="delete-confirm"
+              @submit.prevent="confirmDelete"
+            >
+              <label for="builder-delete-name" class="builder-delete-copy">
+                <template v-if="!deleteRefused">
+                  Delete <strong>{{ doc.name }}</strong> and every stored version of it? Deleting a
+                  published graph unregisters it; running graphs are not affected. Type
+                  <strong>{{ doc.name }}</strong> to confirm.
+                </template>
+                <template v-else>Not deleted.</template>
+              </label>
+              <p
+                v-if="deleteProblem"
+                id="builder-delete-problem"
+                class="builder-delete-problem"
+                role="alert"
+                data-testid="delete-problem"
+              >
+                {{ deleteProblem }}
+              </p>
+              <div class="builder-delete-actions">
+                <input
+                  v-if="!deleteRefused"
+                  id="builder-delete-name"
+                  v-model="deleteTyped"
+                  type="text"
+                  autocomplete="off"
+                  :aria-describedby="deleteProblem ? 'builder-delete-problem' : undefined"
+                  data-testid="delete-name"
+                />
+                <button
+                  class="button button-quiet"
+                  type="button"
+                  data-testid="delete-cancel"
+                  @click="cancelDelete"
+                >
+                  {{ deleteRefused ? 'OK' : 'Keep it' }}
+                </button>
+                <button
+                  v-if="!deleteRefused"
+                  class="button button-danger"
+                  type="submit"
+                  :disabled="!deleteConfirmed || deleteInFlight"
+                  data-testid="delete-submit"
+                >
+                  {{ deleteInFlight ? 'Deleting…' : 'Delete' }}
+                </button>
+              </div>
+            </form>
           </div>
 
           <BudgetMeter
@@ -996,7 +1513,7 @@ watch(
             :stale="validation.phase.value === 'stale'"
           />
 
-          <BuilderCanvas :canvas="canvas" :label="doc.name">
+          <BuilderCanvas :canvas="canvas" :label="doc.name" :read-only="persistence.viewingVersion.value">
             <template #node="nodeProps">
               <BuilderNode
                 v-bind="nodeProps"
@@ -1037,7 +1554,7 @@ watch(
           grid. Not a separate page, so picking a template loses nothing and
           going back costs nothing.
         -->
-        <TemplateGallery v-else @start="startTemplate" @open="openFromGallery" />
+        <TemplateGallery v-else @start="startTemplate" @open="openFromGallery" @import="importFile" />
       </section>
 
       <InspectorRail
@@ -1048,6 +1565,7 @@ watch(
         :vocabulary-problem="vocabularyProblem"
         :selected-node-ids="[...canvas.selectedNodeIds.value]"
         :selected-edge-ids="[...canvas.selectedEdgeIds.value]"
+        :read-only="persistence.viewingVersion.value"
         @commit="applyInspectorCommit"
         @notice="say"
       />
@@ -1123,16 +1641,28 @@ watch(
 </template>
 
 <style scoped>
-/* Four rows, not three. The console's `.graph-workspace` reserves 64px for its
-   heading, an auto lane for the crew strip and the flow; the builder uses the
-   first for `DocumentBar`, the second for `BudgetMeter` and adds a fourth for
-   `ProblemsPanel` - a real track rather than an overlay, so an expanded problem
+/* Five rows, named by position. The console's `.graph-workspace` reserves 64px
+   for its heading, an auto lane for the crew strip and the flow; the builder
+   uses the first for `DocumentBar`, adds a DOCK row for the strips that sit
+   above the canvas in the layout (version browser, restore bar, import notice,
+   delete confirm), then `BudgetMeter`, the canvas, and a fifth for
+   `ProblemsPanel` - real tracks rather than overlays, so an expanded problem
    list SHRINKS the canvas instead of covering the nodes it is describing.
    Covering the graph you are editing is the single failure this product is
-   measured against. */
+   measured against.
+
+   Every child is PINNED to its row. Before this, the rows were positional and
+   the restore bar was a conditional sibling: the moment it rendered, the
+   budget meter took the canvas's `1fr` and the canvas fell into an implicit
+   `auto` row. A jsdom mount cannot see that; only a browser can. */
 .graph-workspace {
-  grid-template-rows: 64px auto minmax(0, 1fr) auto;
+  grid-template-rows: 64px auto auto minmax(0, 1fr) auto;
 }
+.graph-workspace > .document-bar { grid-row: 1; }
+.graph-workspace > .builder-dock { grid-row: 2; }
+.graph-workspace > .budget-meter { grid-row: 3; }
+.graph-workspace > .builder-canvas { grid-row: 4; }
+.graph-workspace > .problems-panel { grid-row: 5; }
 
 .workspace-switch { grid-template-columns: auto auto; padding: 2px; }
 .workspace-switch button { min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }

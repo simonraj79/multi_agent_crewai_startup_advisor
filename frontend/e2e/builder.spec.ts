@@ -962,6 +962,84 @@ test.describe('Flow builder', () => {
     expect(watch.unexpected).toEqual([])
   })
 
+  test('opens a prior version read-only, and Restore makes it the next head', async ({ page }) => {
+    /*
+     * Plan 15 D3, criterion 4's browser half. The unit suite proves the
+     * store's lock, the composable's CAS and the component's rendering each
+     * on their own; what only a browser can answer is whether the four agree
+     * on screen - that the row the author clicks is the version the canvas
+     * draws, that a Delete key over it lands nowhere, that the publish dialog
+     * names the mismatch, and that Restore comes back as a NEW head with the
+     * old one one undo away.
+     *
+     * Newest-first is asserted here and nowhere else on purpose: the
+     * component renders the server's order and never sorts, so this is the
+     * one place the contract is checked end to end.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    await page.keyboard.press('Control+s')
+    await expect(saveChip(page)).toContainText(/saved · v1/)
+    await documentIdFromRoute(page)
+
+    await placeKind(page, 'transform')
+    await page.keyboard.press('Control+s')
+    await expect(saveChip(page)).toContainText(/saved · v2/)
+    await expect(nodes(page)).toHaveCount(5)
+
+    await page.getByRole('button', { name: 'More actions' }).click()
+    await page.getByRole('menuitem', { name: 'Versions' }).click()
+    const browser = page.locator('[data-testid="version-browser"]')
+    await expect(browser).toBeVisible()
+    const rows = browser.locator('.version-row')
+    await expect(rows).toHaveCount(2)
+    await expect(rows.first()).toHaveAttribute('data-testid', 'version-row-2')
+    await expect(rows.first()).toContainText('head')
+
+    await page.locator('[data-testid="version-row-1"]').click()
+
+    await expect(page.locator('[data-testid="version-viewing"]')).toContainText('Viewing v1 of v2')
+    await expect(nodes(page)).toHaveCount(4)
+    await expect(page.locator('.builder-canvas')).toHaveClass(/is-read-only/)
+    // A gesture lands nowhere. Delete over a selected card commits nothing,
+    // and the notice says why rather than the canvas looking broken.
+    const agent = await firstOfKind(page, 'agent')
+    await agent.card.click()
+    await page.keyboard.press('Delete')
+    await expect(nodes(page)).toHaveCount(4)
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    await expect(page.locator('.builder-notice')).toContainText(/read-only/)
+
+    // The precondition `PublishDialog` already enforces keeps refusing a non-head.
+    await page.keyboard.press('Control+Shift+P')
+    const publish = page.locator('[aria-labelledby="publish-title"]')
+    await expect(publish).toContainText('you are viewing v1; publish works on head (v2)')
+    await expect(publish.getByRole('button', { name: /^(Publish|Republish)$/ })).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(publish).toBeHidden()
+
+    await page.locator('[data-testid="version-restore"]').click()
+
+    // v3 with v1's content. v2 is still listed - history was appended to,
+    // never rewritten - and head is one Ctrl+Z away.
+    await expect(saveChip(page)).toContainText(/saved · v3/)
+    await expect(page.locator('[data-testid="version-viewing"]')).toHaveCount(0)
+    await expect(page.locator('.builder-canvas')).not.toHaveClass(/is-read-only/)
+    await expect(nodes(page)).toHaveCount(4)
+    await expect(rows).toHaveCount(3)
+    await expect(rows.first()).toHaveAttribute('data-testid', 'version-row-3')
+    await expect(rows.first()).toContainText('head')
+    await expect(page.locator('[data-testid="version-row-2"]')).toBeVisible()
+
+    await canvas(page).click({ position: { x: 40, y: 40 } })
+    await page.keyboard.press('Control+z')
+    await expect(nodes(page)).toHaveCount(5)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
   test('recovers the open document across a reload without offering a stale draft', async ({
     page,
   }) => {

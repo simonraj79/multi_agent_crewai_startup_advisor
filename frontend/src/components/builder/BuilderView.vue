@@ -363,7 +363,7 @@ const blockingErrorCount = computed(() => {
   const seen = new Set<string>()
   let count = 0
   for (const problem of [...validation.problems.value, ...publishProblems.value]) {
-    const key = `${problem.code} ${problem.message} ${problem.node_id ?? ''} ${problem.edge_id ?? ''}`
+    const key = `${problem.code}\u0000${problem.message}\u0000${problem.node_id ?? ''}\u0000${problem.edge_id ?? ''}`
     if (seen.has(key)) continue
     seen.add(key)
     if (problem.severity !== 'warning') count += 1

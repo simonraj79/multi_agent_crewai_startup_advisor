@@ -829,14 +829,22 @@ reply.
 - Synthetic service mode for no-cost integration and UI testing, selected by
   `SYNTHETIC=1` through `app_from_env()`.
 
-**Environment knobs: there are THIRTY-NINE, and the canonical list lives in
-[`docs/tech-stack.md` §6](docs/tech-stack.md).** Thirty-five are read in
+**Environment knobs: there are FORTY-ONE, and the canonical list lives in
+[`docs/tech-stack.md` §6](docs/tech-stack.md).** Thirty-seven are read in
 `config.py`, four in `service/app.py` (`DATABASE_URL`, `HOST`, `PORT`,
-`SYNTHETIC`). Regenerated 2026-09-02 at `b4ef654` with the multiline scan below,
+`SYNTHETIC`). Regenerated 2026-09-03 at `ca43ba8` with the multiline scan below,
 per file rather than in aggregate, because "thirty-two and four" was itself a
 figure nobody had re-split.
 
-> **Thirty-nine is the SIXTH figure this paragraph has published, and the five
+> **Forty-one is the SEVENTH, regenerated 2026-09-03 at `ca43ba8`.** The two
+> new knobs are `CREDENTIALS_MASTER_KEY` (plan 01, the credential vault) and
+> `VALIDATOR_RUN_RETENTION_DAYS` (plan 15, durable run retention), landed
+> together in the Stage 1 contract commit `52a954f`, whose message said the
+> scan now answers 41 and deferred this regeneration to integration. It is the
+> first time the count has moved in a commit that announced it would.
+> [`docs/tech-stack.md` §6](docs/tech-stack.md) carries both rows.
+>
+> **Thirty-nine was the SIXTH figure this paragraph published, and the five
 > before it were all wrong — never twice for the same reason.** (Six published,
 > five wrong: that is the tally
 > [`docs/tech-stack.md` §6](docs/tech-stack.md) owns, and it is the only place

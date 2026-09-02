@@ -303,12 +303,14 @@ or `.parse_raw()` survives anywhere in `src/`. One helper is *named*
 
 ---
 
-## 6. Environment knobs — there are thirty-nine
+## 6. Environment knobs — there are forty-one
 
-Regenerated with the multiline scan in §1 on **2026-09-02**, at `main` =
-`b4ef654`. **Thirty-five** are read in `config.py` and **four** in
-`service/app.py` (`DATABASE_URL`, `HOST`, `PORT`, `SYNTHETIC`). That split is
-itself scan output, not arithmetic on the list below:
+Regenerated with the multiline scan in §1 on **2026-09-03**, at
+`gauntlet/plans` = `ca43ba8` (the Stage 1 contract commit `52a954f` plus one
+doc commit; `main` was still `25634c0`). **Thirty-seven** are read in
+`config.py` and **four** in `service/app.py` (`DATABASE_URL`, `HOST`, `PORT`,
+`SYNTHETIC`). That split is itself scan output, not arithmetic on the list
+below:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);[print(f,len(set(pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))))) for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py')]"
@@ -320,26 +322,40 @@ The block below is pasted scan output, not prose. Regenerate before trusting it.
 AUTH_BASE_URL                         AUTH_JWKS_CACHE_SECONDS
 AUTH_JWKS_TIMEOUT_SECONDS             AUTH_JWT_LEEWAY_SECONDS
 BUILDER_ALLOW_GATELESS_GRAPHS         BUILDER_REHYDRATE_PUBLISHED
-CORS_ALLOW_ORIGINS                    DATABASE_URL
-EXPOSE_API_DOCS                       HOST
-MAX_QUEUED_RUNS                       MAX_RUN_COST_USD
-PINECONE_INDEX_NAME                   PORT
-RUN_CONCURRENCY                       RUN_RATE_LIMIT_MAX_RUNS
-RUN_RATE_LIMIT_TRUST_FORWARDED_FOR    RUN_RATE_LIMIT_WINDOW_SECONDS
-RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS     SYNTHETIC
-VALIDATOR_ALLOW_AUTO_GATES            VALIDATOR_BRANCH_MAX_ITER
-VALIDATOR_BRANCH_MAX_TOKENS           VALIDATOR_BRANCH_TEMPERATURE
-VALIDATOR_FEASIBILITY_CACHE_ENABLED   VALIDATOR_FIRECRAWL_MAX_AGE_MS
-VALIDATOR_FIRECRAWL_MAX_RETRIES       VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS
-VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS   VALIDATOR_MARKET_SEARCH_LIMIT
-VALIDATOR_MAX_BRANCH_QUERIES          VALIDATOR_MAX_CLAIM_CHARS
-VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS    VALIDATOR_MAX_GATE_TURNS
-VALIDATOR_ORPHAN_RUN_GRACE_SECONDS    VALIDATOR_ORPHAN_RUN_RECOVERY
-VALIDATOR_REQUIRE_AUTH                VALIDATOR_SENTIMENT_STORY_LIMIT
+CORS_ALLOW_ORIGINS                    CREDENTIALS_MASTER_KEY
+DATABASE_URL                          EXPOSE_API_DOCS
+HOST                                  MAX_QUEUED_RUNS
+MAX_RUN_COST_USD                      PINECONE_INDEX_NAME
+PORT                                  RUN_CONCURRENCY
+RUN_RATE_LIMIT_MAX_RUNS               RUN_RATE_LIMIT_TRUST_FORWARDED_FOR
+RUN_RATE_LIMIT_WINDOW_SECONDS         RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS
+SYNTHETIC                             VALIDATOR_ALLOW_AUTO_GATES
+VALIDATOR_BRANCH_MAX_ITER             VALIDATOR_BRANCH_MAX_TOKENS
+VALIDATOR_BRANCH_TEMPERATURE          VALIDATOR_FEASIBILITY_CACHE_ENABLED
+VALIDATOR_FIRECRAWL_MAX_AGE_MS        VALIDATOR_FIRECRAWL_MAX_RETRIES
+VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS
+VALIDATOR_MARKET_SEARCH_LIMIT         VALIDATOR_MAX_BRANCH_QUERIES
+VALIDATOR_MAX_CLAIM_CHARS             VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS
+VALIDATOR_MAX_GATE_TURNS              VALIDATOR_ORPHAN_RUN_GRACE_SECONDS
+VALIDATOR_ORPHAN_RUN_RECOVERY         VALIDATOR_REQUIRE_AUTH
+VALIDATOR_RUN_RETENTION_DAYS          VALIDATOR_SENTIMENT_STORY_LIMIT
 VALIDATOR_SEQUENTIAL_BRANCHES
 ```
 
-### The three that are new since the thirty-six
+### The two that are new since the thirty-nine
+
+Both landed in one commit, `52a954f`, the Integrator's Stage 1 contract
+commit for the gauntlet build (`.agent/plans/00-architecture.md`, S1 ruling
+3), whose message said the scan now answers 41 and that this section would be
+regenerated at integration rather than in the same commit. This is that
+regeneration.
+
+| Knob | Default | Landed | What it decides |
+| --- | --- | --- | --- |
+| `CREDENTIALS_MASTER_KEY` | `""` | `52a954f` | The AES-256-GCM master key for the per-user credential vault (plan 01, contract C4), base64 of 32 bytes, read once in `config.py` and nowhere else. It is the same fail-loud shape as `VALIDATOR_REQUIRE_AUTH`: **auth on and no key refuses to start**, because a half-configured vault is the quiet failure; auth off and no key means "no vault" and the credential routes answer 503 while everything else keeps working, which is what keeps tests, `SYNTHETIC` mode and a bare checkout runnable. `render.yaml` does not set it yet; the deployed API therefore has no vault until it does. |
+| `VALIDATOR_RUN_RETENTION_DAYS` | `0` | `52a954f` | The durable half of run retention (plan 15 D7). `VALIDATOR_RUN_RETENTION_SECONDS` only ever evicted the in-memory ring, so terminal runs, their frames, metrics and gates accumulated in the database forever (CLAUDE.md closed item 32). Terminal runs older than this many days are deleted by the same periodic sweep the orphan recovery uses, and the child tables follow by `ON DELETE CASCADE`; documents, versions and credentials are never purged. `0` means keep everything, which is the deployed behaviour today and stays the default until PLANS.md decision 23 is answered; it is read with `minimum=0` because zero is the meaningful off value, not a mistake. |
+
+### The three that were new since the thirty-six
 
 | Knob | Default | Landed | What it decides |
 | --- | --- | --- | --- |
@@ -368,7 +384,7 @@ they are read in TypeScript rather than in `config.py`: `BETTER_AUTH_URL`,
 ### The scan reads exactly two files, and that is now the hole
 
 `config.py` and `service/app.py`. **Five more environment variables are read
-elsewhere in `src/`, and not one of them is in the thirty-nine.** Measured
+elsewhere in `src/`, and not one of them is in the forty-one.** Measured
 2026-09-02 by widening the same pattern over `src/**/*.py`:
 
 ```text
@@ -392,9 +408,13 @@ drifts without anyone ever publishing a wrong digit. It is recorded as a defect
 instead - §8, finding 7 - so that the widening happens once, everywhere, in a
 commit that says it did.
 
-> **WARNING: thirty-nine is the SIXTH figure published in this section, and the
-> five before it were all wrong.** In order: *eleven*, *fifteen*, *eighteen*,
-> *twenty*, *thirty-six*. Only the first has a technical excuse - a
+> **WARNING: forty-one is the SEVENTH figure published in this section, and
+> every one of the six before it went stale.** In order: *eleven*, *fifteen*,
+> *eighteen*, *twenty*, *thirty-six*, *thirty-nine*. The last two were right
+> when published and stale within a commit; thirty-nine lasted exactly one,
+> `52a954f`. The difference this time is that the commit which added the two
+> knobs said so in its message and named the regeneration as owed, which is
+> the first time the count has moved in a commit that announced it would. Only the first has a technical excuse - a
 > line-anchored `grep -oE 'os.getenv("[A-Z_]+"'` missed four calls the formatter
 > had wrapped onto the next line, which is why §1's scan is `re.S`-multiline
 > and why [gotchas](gotchas-and-insights.md) 6 exists.

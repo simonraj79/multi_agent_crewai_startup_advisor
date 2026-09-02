@@ -13,6 +13,7 @@ import type {
 } from '../../../types/builder'
 import FieldRow from '../fields/FieldRow.vue'
 import ScalarInput from '../fields/ScalarInput.vue'
+import CredentialPicker from '../CredentialPicker.vue'
 import { coalesceKeyFor, patchConfig } from '../commit'
 import type { InspectorCommit } from '../commit'
 
@@ -144,6 +145,25 @@ function toggleTool(tool: string, on: boolean): void {
   emit('commit', {
     label: on ? `Bind ${tool}` : `Unbind ${tool}`,
     next: patchConfig(props.doc, props.node, { tools } as Partial<AgentConfig & CrewConfig>),
+  })
+}
+
+/* --- BYO OpenRouter key (agent only) ------------------------------------ */
+
+/**
+ * The document carries the credential's ID and nothing else (plan 01 D5, D7).
+ * Same commit path as every other control here, so choosing a key is one undo
+ * step and `DocumentBar` can say what it undid. `null` rather than deleting
+ * the key: the server field is `str | None` and an explicit null is the one
+ * spelling that reads the same in a fingerprint, a saved draft and a diff.
+ */
+function commitCredential(credentialId: string | null): void {
+  if ((agent.value?.config.credential_id ?? null) === credentialId) return
+  emit('commit', {
+    label: credentialId ? 'Use your own OpenRouter key' : 'Use the platform OpenRouter key',
+    next: patchConfig(props.doc, props.node, {
+      credential_id: credentialId,
+    } as Partial<AgentConfig & CrewConfig>),
   })
 }
 
@@ -346,6 +366,30 @@ function commitValue(key: string, value: JsonScalar): void {
         </li>
       </ul>
       <p v-else class="empty-note">This build registers no research tools.</p>
+    </FieldRow>
+
+    <!-- Plan 04 owns this form's redesign; this is one field, wired the way
+         every other one is. The picker is docked inside the row (R15), and
+         the row is anchored by `field="credential_id"` so a server
+         `credential-missing` lands on it rather than on the strip. -->
+    <FieldRow
+      v-if="agent"
+      label="OpenRouter key"
+      :control-id="control('credential_id')"
+      field="credential_id"
+      :node-id="id"
+      :note="agent.config.credential_id ? 'your key' : 'platform key'"
+      help="Bring your own OpenRouter key and this node's calls are billed to it. The document keeps only the key's id; the secret stays in the vault and is resolved inside the run."
+      v-slot="row"
+    >
+      <CredentialPicker
+        kind="openrouter"
+        :model-value="agent.config.credential_id ?? null"
+        :control-id="control('credential_id')"
+        :described-by="row.describedBy"
+        :invalid="row.invalid"
+        @update:model-value="commitCredential"
+      />
     </FieldRow>
 
     <FieldRow

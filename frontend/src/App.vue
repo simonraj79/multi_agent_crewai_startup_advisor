@@ -60,12 +60,27 @@ const { route, navigate } = useWorkspaceRoute()
     viewports across a route change - the builder would open at whatever zoom
     the run console was left at, and a fitView in one would move the other.
   -->
+  <!--
+    Identity reaches the builder the same way it reaches the console (plan 01
+    D9): the account and the phase as props, sign-in and sign-out as events
+    handled HERE, so `endSession` stays the only code that ends a session.
+    `auth-configured` is what lets the builder tell "configured but signed out"
+    from "no auth server at all" - `unconfigured` is the bare local checkout
+    and the SYNTHETIC harness, where everything works exactly as before.
+  -->
   <BuilderView
     v-else-if="route.name === 'builder'"
     :document-id="route.documentId"
+    :user="signedInUser"
+    :authenticated="authPhase === 'authenticated'"
+    :auth-configured="authPhase !== 'unconfigured'"
+    :signing-in="signingIn"
+    :sign-in-error="signInError"
     @run-workspace="navigate({ name: 'studio' })"
     @open-document="navigate({ name: 'builder', documentId: $event })"
     @adopt-document="navigate({ name: 'builder', documentId: $event }, { replace: true })"
+    @sign-in="startGoogleSignIn"
+    @sign-out="endSession"
   />
 
   <StudioView

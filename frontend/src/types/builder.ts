@@ -71,6 +71,15 @@ export const STATE_REF_PATTERN = /^\$\{state\.[a-z0-9_]{1,64}\}$/
 export const STATE_OUTPUT_PREFIX = 'out__'
 /** `config.py:BUILDER_DOCUMENT_SCHEMA` - the only legal value of `schema`. */
 export const BUILDER_SCHEMA_ID = 'builder.flow/v1'
+/**
+ * `config.py:CREDENTIAL_ID_PATTERN` - `cr_` + 8 hex, server-minted like a
+ * document id. The document carries a credential as this OPAQUE id and nothing
+ * else: the parser never resolves it, the compiler never sees a field value,
+ * and `resolve_credential` reads the row at run time scoped to the user the
+ * run belongs to (plan 01 D5). Restated here so `credentialPicker.spec.ts` can
+ * assert the two agree, the `serverLimits.ts` way.
+ */
+export const CREDENTIAL_ID_PATTERN = /^cr_[0-9a-f]{8}$/
 
 export const isNodeId = (v: string): v is NodeId => NODE_ID_PATTERN.test(v)
 export const nodeId = (v: string): NodeId => {
@@ -147,6 +156,15 @@ export interface AgentConfig {
   agent_id: NodeId
   /** default []. Each in `vocabulary.research_tools`. Duplicates rejected server-side. */
   tools: string[]
+  /**
+   * A BYO OpenRouter key, as the id of one of the author's own credentials
+   * (`CREDENTIAL_ID_PATTERN`), or null for the platform key. Stage 1's stand-in
+   * for C1 v2's `llm.credential_id` (S1 ruling 8), which is why it is optional
+   * here: a document written before the field existed carries no key at all.
+   * Never a secret - the runtime resolves it inside the entrypoint, scoped to
+   * the run's user, and a foreign id fails as `credential-not-yours` there.
+   */
+  credential_id?: string | null
 }
 
 export interface CrewConfig {
@@ -635,4 +653,54 @@ export interface BuilderDocumentRequest {
    * update waiting to happen. Ignored on POST and on validate.
    */
   expected_version: number | null
+}
+
+/* --- credentials (plan 01, contract C4) ---------------------------------
+ * The vault's API shape. `config.py:CREDENTIAL_FIELDS` is the ground truth for
+ * the kinds and the field each one needs; `data/credentialKinds.ts` mirrors it
+ * and says so. What is deliberately NOT here is any type carrying a field
+ * VALUE on the way back: the server never returns one, and a client type that
+ * had somewhere to put one would be the first step towards rendering it. */
+
+/** `config.py:CREDENTIAL_KINDS`. */
+export type CredentialKind =
+  | 'openrouter' | 'firecrawl' | 'serper' | 'tavily' | 'exa' | 'brave'
+  | 'github' | 'postgres' | 'http_header' | 'mcp_header' | 'e2b'
+
+/**
+ * One row of `GET /api/builder/credentials`, and what `POST` answers with 201.
+ * Never a field - the list is what an author picks FROM, and the secret is
+ * encrypted at rest and decrypted only inside a tool constructor at run time.
+ */
+export interface CredentialSummary {
+  /** `CREDENTIAL_ID_PATTERN`. */
+  id: string
+  kind: CredentialKind
+  /** 1..80, unique per user. What the picker shows. */
+  label: string
+  created_at: string
+  updated_at: string
+  /** Written by `resolve_credential` on every run-time use; null until then. */
+  last_used_at: string | null
+}
+
+/**
+ * The body of `POST /api/builder/credentials`. The ONLY place a field value
+ * exists on this side is inside this object, on its way out.
+ */
+export interface CredentialDraft {
+  kind: CredentialKind
+  label: string
+  fields: Record<string, string>
+}
+
+/**
+ * `POST /api/builder/credentials/{id}/test`. `detail` is the provider's own
+ * sentence, or the vault's when a kind has no free probe (Firecrawl has no
+ * authenticated read that costs nothing, so its probe is a format check and
+ * says so). Never a stack trace.
+ */
+export interface CredentialProbe {
+  ok: boolean
+  detail: string
 }

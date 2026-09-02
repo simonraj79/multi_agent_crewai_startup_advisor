@@ -103,16 +103,13 @@ KEY_BYTES = 32
 #: a new key bumps this and keeps the old key readable until it is done.
 CURRENT_KEY_VERSION = 1
 
-# TODO(integrator): move to config.py
-VAULT_NOT_CONFIGURED_DETAIL = "credential vault is not configured"
-# TODO(integrator): move to config.py
-CREDENTIAL_PROBE_TIMEOUT_SECONDS = 5.0
-# TODO(integrator): move to config.py
-OPENROUTER_KEY_PROBE_URL = "https://openrouter.ai/api/v1/auth/key"
-# TODO(integrator): move to config.py
-GITHUB_RATE_LIMIT_PROBE_URL = "https://api.github.com/rate_limit"
-# TODO(integrator): move to config.py - the label column is String(80).
-MAX_CREDENTIAL_LABEL_CHARS = 80
+# Owned by config.py (S1 ruling 3) and re-exported here under the names
+# the routes and the tests import. Values and reasoning live there.
+VAULT_NOT_CONFIGURED_DETAIL = config.VAULT_NOT_CONFIGURED_DETAIL
+CREDENTIAL_PROBE_TIMEOUT_SECONDS = config.CREDENTIAL_PROBE_TIMEOUT_SECONDS
+OPENROUTER_KEY_PROBE_URL = config.OPENROUTER_KEY_PROBE_URL
+GITHUB_RATE_LIMIT_PROBE_URL = config.GITHUB_RATE_LIMIT_PROBE_URL
+MAX_CREDENTIAL_LABEL_CHARS = config.MAX_CREDENTIAL_LABEL_CHARS
 
 _CREDENTIAL_ID = re.compile(config.CREDENTIAL_ID_PATTERN)
 #: RFC 9110 `token` characters: what an HTTP header NAME may contain.

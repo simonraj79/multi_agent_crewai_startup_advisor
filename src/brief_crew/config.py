@@ -2337,6 +2337,55 @@ CREDENTIAL_FIELDS: dict[str, tuple[str, ...]] = {
 }
 CREDENTIAL_KINDS: frozenset[str] = frozenset(CREDENTIAL_FIELDS)
 
+# The vault's route-level constants (01 D3, D4), moved here at Stage 1
+# integration from service/credentials.py under S1 ruling 3. That module
+# re-exports them under the same names.
+#: What every credential route answers (503) while auth is OFF and no master
+#: key is set: "no vault", and nothing else about the service changes.
+VAULT_NOT_CONFIGURED_DETAIL = "credential vault is not configured"
+#: A probe is a user-initiated call to the provider's cheapest authenticated
+#: read, and it is rate-limited with the run limiter's key. Five seconds is
+#: the same budget 01 D4 gives the postgres `SELECT 1`.
+CREDENTIAL_PROBE_TIMEOUT_SECONDS = 5.0
+#: The two free authenticated reads 01 D4 names. Firecrawl has none, so its
+#: probe is a format check that says so.
+OPENROUTER_KEY_PROBE_URL = "https://openrouter.ai/api/v1/auth/key"
+GITHUB_RATE_LIMIT_PROBE_URL = "https://api.github.com/rate_limit"
+#: `user_credentials.label` is String(80) (15 D6, C10); the POST answers 422
+#: over it rather than letting the database truncate or refuse.
+MAX_CREDENTIAL_LABEL_CHARS = 80
+#: The kind an authored agent's `credential_id` must name. The agent's model
+#: is always OpenRouter here (S1 ruling 8: `credential_id` on AgentConfig is
+#: the stand-in for C1 v2's `llm.credential_id`), so a `github` token on an
+#: agent node is refused by name at resolution rather than failing inside
+#: `LLM(api_key=...)` after the run has started.
+AGENT_CREDENTIAL_KIND = "openrouter"
+if AGENT_CREDENTIAL_KIND not in CREDENTIAL_KINDS:
+    raise RuntimeError(
+        f"AGENT_CREDENTIAL_KIND {AGENT_CREDENTIAL_KIND!r} is not one of CREDENTIAL_KINDS"
+    )
+
+# The synthetic identity (01 D8): the header a zero-cost test sets to BE
+# somebody. `current_user` honours it only when the app was built
+# `synthetic=True` AND AUTH_BASE_URL is unset - the same fail-closed shape as
+# EXPOSE_API_DOCS - and ignores it everywhere else. The pattern is also the
+# bound the E2E harness checks a cookie against before forwarding it
+# (frontend/e2e/syntheticUser.ts), so the two must move together.
+SYNTHETIC_USER_HEADER = "X-Synthetic-User"
+SYNTHETIC_USER_PATTERN = r"^[a-z0-9_-]{1,64}$"
+
+# Two document-lifecycle constants (15 D3, S1 ruling 7), moved here from
+# service/builder_api.py under S1 ruling 3.
+#: What a duplicate is called. Appended, and the base is trimmed to make room
+#: rather than the suffix dropped, because a copy that cannot be told from its
+#: source in the sidebar is the one thing a duplicate must not be.
+COPY_SUFFIX = " copy"
+#: How many `needs_credentials` entries an import envelope may name. A node id
+#: per graph node is the most a strip can produce; anything beyond that is a
+#: file that was not written by an export. The server re-derives the list
+#: anyway; this only bounds what it is willing to parse.
+MAX_IMPORT_NEEDS_CREDENTIALS = MAX_GRAPH_NODES
+
 # --------------------------------------------------------------------------
 # WebSocket inbound control channel - PRD F27/F37
 #

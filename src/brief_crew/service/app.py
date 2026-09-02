@@ -536,10 +536,9 @@ def _assert_auth_startup_safety() -> None:
 #: Plan 01 D8: the header a zero-cost test sets to BE somebody. Honoured only
 #: when the app was built `synthetic=True` AND `AUTH_BASE_URL` is unset - the
 #: same fail-closed shape as `expose_docs` - and ignored everywhere else.
-# TODO(integrator): move to config.py
-SYNTHETIC_USER_HEADER = "X-Synthetic-User"
-# TODO(integrator): move to config.py
-SYNTHETIC_USER_PATTERN = r"^[a-z0-9_-]{1,64}$"
+#: Owned by config.py (S1 ruling 3); re-exported under the same names.
+SYNTHETIC_USER_HEADER = project_config.SYNTHETIC_USER_HEADER
+SYNTHETIC_USER_PATTERN = project_config.SYNTHETIC_USER_PATTERN
 _SYNTHETIC_USER = re.compile(SYNTHETIC_USER_PATTERN)
 
 

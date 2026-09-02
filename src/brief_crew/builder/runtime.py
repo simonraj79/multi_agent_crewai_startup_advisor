@@ -46,6 +46,7 @@ import yaml
 
 from brief_crew.builder.gates import gate_decision, gate_payload
 from brief_crew.config import (
+    AGENT_CREDENTIAL_KIND,
     BUILDER_ROUTER_COMPARISONS,
     BUILDER_ROUTER_OTHERWISE,
     BUILDER_STATE_OUTPUT_PREFIX,
@@ -672,8 +673,9 @@ def run_agent(
 
 #: The credential kind an agent node's model key must be. An agent's
 #: `credential_id` is Stage 1's stand-in for C1 v2's `llm.credential_id`
-#: (00 S1 ruling 8), and the model is always OpenRouter here.
-_AGENT_CREDENTIAL_KIND = "openrouter"
+#: (00 S1 ruling 8), and the model is always OpenRouter here. The value is
+#: config.py's, checked there against CREDENTIAL_KINDS at import.
+_AGENT_CREDENTIAL_KIND = AGENT_CREDENTIAL_KIND
 
 
 def _agent_api_key(node_id: str, credential_id: str) -> str:

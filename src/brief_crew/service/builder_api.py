@@ -93,14 +93,13 @@ FIRST_VERSION = 1
 #: What a duplicate is called. Appended, and the base is trimmed to make room
 #: rather than the suffix dropped, because a copy that cannot be told from its
 #: source in the sidebar is the one thing a duplicate must not be.
-# TODO(integrator): move to config.py (S1 ruling 3 - config.py is Integrator-owned)
-COPY_SUFFIX = " copy"
+#: Owned by config.py (S1 ruling 3); re-exported under the same name.
+COPY_SUFFIX = project_config.COPY_SUFFIX
 
 #: How many `needs_credentials` entries an import envelope may name. A node id
 #: per graph node is the most a strip can produce; anything beyond that is a
-#: file that was not written by an export.
-# TODO(integrator): move to config.py (S1 ruling 3 - config.py is Integrator-owned)
-MAX_IMPORT_NEEDS_CREDENTIALS = project_config.MAX_GRAPH_NODES
+#: file that was not written by an export. Owned by config.py.
+MAX_IMPORT_NEEDS_CREDENTIALS = project_config.MAX_IMPORT_NEEDS_CREDENTIALS
 
 
 class BuilderServiceUnavailable(RuntimeError):

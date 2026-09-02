@@ -39,6 +39,7 @@ from typing import Any
 from crewai.events.base_events import BaseEvent
 from crewai.events.event_bus import crewai_event_bus
 
+from brief_crew.events.registry import NodeRegistry
 from brief_crew.schemas.validator import Verdict
 # No cycle: `validator_guardrails` imports only config and schemas.
 from brief_crew.validator_guardrails import anchor_margins
@@ -56,6 +57,36 @@ logger = logging.getLogger(__name__)
 #: "the score" would have to know which of two nodes to read, and the corrected
 #: one would not replace the stale one it disagrees with.
 VERDICT_NODE_ID = "synthesize"
+
+
+def verdict_frame_node(registry: NodeRegistry) -> str:
+    """Which graph node this run's verdict frame is attributed to.
+
+    Three lines of resolution, and today only the last two ever run.
+    `registry.verdict_node_id` is a **seam nothing in this build sets**: it is
+    reserved for a builder scoring node that does not exist yet, because no
+    builder node kind emits a verdict and `publish_verdict` is called from
+    exactly one place - `validator_flow`, whose scoring node really is named
+    `synthesize`. The field's own comment in `registry.py` says the same thing
+    at more length, including why the seam is worth keeping unused.
+
+    What DOES run is the order, and the order is what keeps the validator
+    byte-identical: a registry that declares no verdict node falls through to
+    `declared_node(VERDICT_NODE_ID)` and answers exactly what `serializer.py`
+    answered before this function existed. Brief Flow, which declares no such
+    node, gets the visible quarantine node rather than an invented one - the
+    honest answer for a flow that never publishes a verdict at all.
+
+    Lives here rather than in the serializer for the reason the whole module
+    does: `service/runner.py` emits this same frame from the synthetic path, and
+    a double that diverges from its subject certifies nothing.
+    """
+
+    return (
+        registry.verdict_node_id
+        or registry.declared_node(VERDICT_NODE_ID)
+        or registry.quarantine_node_id
+    )
 
 
 def verdict_frame_details(verdict: Verdict) -> dict[str, Any]:

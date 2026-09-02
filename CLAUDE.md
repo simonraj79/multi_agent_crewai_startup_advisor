@@ -55,17 +55,28 @@ rests on committed history it says so.
 
 ## Verified Baseline
 
-Re-measured on 2026-08-31 against **HEAD `c63aca0`, clean tree**, on Windows.
-Both suites were run; the two build steps were not.
+Re-measured on **2026-09-02** against the `feat/flow-builder` working tree, on
+Windows. All four gates were run this time, including the two build steps and
+the full E2E suite.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:   772 run, 0 failures, 0 errors, 1 skipped - 32.6s
-Frontend unit:  324 run, 0 failures, 26 files (Vitest + jsdom) - 6.3s
-Frontend build: GREEN - `vue-tsc -b --force` clean over FIVE projects now
-                (app, node, vitest, e2e, server), `npm run build` in 464ms
-Playwright E2E:   7 tests, ALL GREEN with ZERO console errors tolerated - 14.6s
+Python tests:  1228 run, 0 failures, 0 errors, 1 skipped - 114.6s
+Frontend unit: 1024 run, 0 failures, 49 files (Vitest + jsdom) - 11.4s
+Frontend build: GREEN - `vue-tsc -b --force` exit 0, `npm run build` in 789ms
+Playwright E2E:  28 tests, ALL GREEN with ZERO console errors tolerated - 1.7m
+                 (15 builder + 10 studio + 3 node-card visual regression)
 ```
+
+> **The E2E backend needs `SYNTHETIC_BRANCH_DELAY_SECONDS=5`**, or the three
+> visual specs fail on an environment gap that reads exactly like a CSS
+> regression. See the E2E recipe below.
+
+> **These are the flow-builder numbers.** The previous line said 772 / 324 at
+> `c63aca0`; the builder added ~456 Python tests and ~700 frontend ones, so the
+> jump is real work rather than a counting change. It is also the SIXTH time
+> this figure has moved - re-run before quoting it, because the command is the
+> contract and the number never is.
 
 > **Re-measured 2026-09-01 after Better Auth landed.** The 698/311 above it were
 > themselves stale: HEAD (`e910d7d`) measured **713 / 324** before a line of
@@ -177,14 +188,23 @@ which in this project is the *paid* backend, and an automated suite must not be
 able to press that button. Start the free one yourself:
 
 ```powershell
-$env:SYNTHETIC = "1"; $env:PORT = "8099"; .\.venv\Scripts\serve.exe
+$env:SYNTHETIC = "1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS = "5"; $env:PORT = "8099"
+.\.venv\Scripts\serve.exe
 
 # second shell
 Push-Location frontend
-npx playwright test                          # all 7
-npx playwright test --grep-invert @launch    # the 2 that never press Launch
+npx playwright test                          # all 28
+npx playwright test --grep-invert @launch    # the ones that never press Launch
 Pop-Location
 ```
+
+> **`SYNTHETIC_BRANCH_DELAY_SECONDS=5` is not optional, and its absence looks
+> like a visual regression.** `e2e/visual/run-canvas.spec.ts` screenshots a
+> branch *while it is running*, and the synthetic runner finishes a branch
+> instantly - so without the delay there is no running moment to capture and
+> the test fails with `No branch stayed in flight`. The suite says so in its own
+> failure message, which is the only reason that costs a minute rather than an
+> afternoon. Every other spec is indifferent to it.
 
 Playwright starts its own second Vite server (`e2e/vite.e2e.config.ts`, port
 5273) which proxies to 8099. Five of the seven tests are tagged `@launch`;
@@ -1424,13 +1444,41 @@ cross-references keep resolving.
       `validator_guardrails.py:552-557`.
    8. **F=5's "together cover the separable parts of the scoped v1"** —
       inherited from the derivation, still judgement, still unenforced.
-6. **Sprites (F34).** The PRD's 144 downscaled character PNGs are not in the
-   repo, so this cannot be implemented as specified. The frontend ships a
-   vector/icon identity instead: no per-agent palette, no hash-based
-   assignment, no walk cycle. The new `CrewProgress.vue` strip is the closest
-   thing that now exists and is explicitly **not** the sprite system — it is an
-   SVG boat with three oars, driven by stage state. Either amend the criterion
-   or supply the assets.
+6. **Sprites (F34) — CLOSED BY A DELIBERATE DECISION NOT TO ADOPT THEM.**
+   Settled 2026-09-02, after the assets were obtained, wired, rendered, and
+   then removed on the evidence.
+
+   The blocker recorded here for months was "the PRD's 144 downscaled character
+   PNGs are not in the repo, so this cannot be implemented as specified".
+   That blocker is gone, and not by satisfying it. The assets were sourced from
+   [OpenBMB/ChatDev](https://github.com/OpenBMB/ChatDev) (**Apache-2.0**),
+   downscaled 14.08 MB -> 1.26 MB, un-ignored, drawn on every builder node, and
+   then **deleted** — because rendering them is what made three problems
+   visible at once:
+
+   - **The walk cycle was unreachable.** Nothing writes a design-time
+     `runState`, so 132 of the 144 frames could never be painted, while opening
+     the validator template still fetched ~191 KiB of frames 2 and 3 for a
+     first stride that cannot occur.
+   - **The spec forbade it.** §5.7 reserves the slot and rules out a
+     design-time animation in it — "an idle canvas that rows is the ChatDev
+     disco". Only R4 (the Run path) was lifted above the spec; §5.7 was not.
+   - **The art is the competitor's.** Importing ChatDev's characters into the
+     product whose whole argument is that it is not ChatDev is a strange thing
+     to ship, licence or no licence.
+
+   What exists instead: `.node-crew-slot`, a 34px reserved box with no content,
+   so the run console's crew mounts into space that already exists and nothing
+   reflows at the one moment an author is watching. The card's identity is its
+   per-kind lucide icon, which is ours. `frontend/tests/builderCardDesign.spec.ts`
+   asserts the rendered card contains no `/sprites/`, so this decision cannot be
+   quietly undone.
+
+   **Nothing sprite-shaped remains in the tree**: no `frontend/public/sprites/`,
+   no `.gitignore` exception, no reference under `frontend/src`. A future crew
+   layer wanting per-agent characters needs art this project owns — that is the
+   open question, and it is a design commission, not a download.
+
 7. **Dead scaffold — a seven-file cluster, not five.** Re-verified 2026-08-30,
    all still present, all still unreferenced by anything the app loads:
 

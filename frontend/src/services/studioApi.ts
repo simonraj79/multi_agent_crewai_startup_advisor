@@ -1,7 +1,7 @@
 import { buildMockSegments, type MockScriptStep } from '../data/mockFrames'
 import { MOCK_GRAPH } from '../data/mockGraph'
-import { readErrorDetail, retryAfterSentence } from '../data/serverLimits'
 import { getAccessToken } from './authClient'
+import { API_BASE_URL, authedFetch, fetchJson } from './httpCore'
 import type {
   BackendFramePage,
   BackendGatePrompt,
@@ -136,7 +136,12 @@ export class StudioApi {
    * operator tried the button that cannot work.
    */
   probeFailure: string | null = null
-  private readonly baseUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
+  /*
+   * Kept as a field rather than reaching for `API_BASE_URL` at each use, so
+   * `initialize`'s misconfiguration sentence and `subscribe`'s socket URL go on
+   * naming the same value the request layer resolved.
+   */
+  private readonly baseUrl = API_BASE_URL
   private readonly mockRuns = new Map<string, MockRun>()
   private readonly liveSockets = new Map<string, WebSocket>()
   private readonly pendingGateReplies = new Map<string, PendingGateReply>()
@@ -167,7 +172,7 @@ export class StudioApi {
        * function documents at length. The probe reads the status itself; it
        * does not need a retry to do that.
        */
-      const response = await this.authedFetch(
+      const response = await authedFetch(
         '/api/workflows',
         { headers: { Accept: 'application/json' }, signal: controller.signal },
         false,
@@ -245,7 +250,7 @@ export class StudioApi {
 
   async getGraph(workflowId = 'idea-validator'): Promise<GraphDescriptor> {
     if (this.mode === 'live') {
-      return this.fetchJson<GraphDescriptor>(`/api/workflows/${encodeURIComponent(workflowId)}/graph`)
+      return fetchJson<GraphDescriptor>(`/api/workflows/${encodeURIComponent(workflowId)}/graph`)
     }
     return structuredClone(MOCK_GRAPH)
   }
@@ -256,19 +261,29 @@ export class StudioApi {
    * refuses the reserved key `no_gates` there with a 422, because that
    * undeclared path used to reach the flow's state directly and start an
    * unattended run with no policy attached to it.
+   *
+   * `inputField` is the key inside `inputs`, and it is a parameter because a
+   * PUBLISHED BUILDER GRAPH declares its own. `create_run` resolves the
+   * workflow's `input_field` from its runtime registration and answers 422 -
+   * `workflow … declares no request input field` or a bound complaint naming
+   * the field - when the body does not carry that exact key, so a hardcoded
+   * `idea` was correct for exactly the two built-in workflows and a 422 for
+   * every graph an author draws. It defaults to `idea` because both built-ins
+   * use it, which keeps every existing caller unchanged.
    */
   async startRun(
     sessionId: string,
     idea: string,
     workflowId = 'idea-validator',
     gates: GatesMode = 'human',
+    inputField = 'idea',
   ): Promise<StartRunResponse> {
     await this.initialize(this.mode === 'mock')
     if (this.mode === 'live') {
-      return this.fetchJson<StartRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
+      return fetchJson<StartRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow_id: workflowId, inputs: { idea }, gates }),
+        body: JSON.stringify({ workflow_id: workflowId, inputs: { [inputField]: idea }, gates }),
       })
     }
 
@@ -284,7 +299,7 @@ export class StudioApi {
 
   async getRun(id: string): Promise<RunSnapshot> {
     if (this.mode === 'live') {
-      const snapshot = await this.fetchJson<BackendRunSnapshot>(`/api/runs/${encodeURIComponent(id)}`)
+      const snapshot = await fetchJson<BackendRunSnapshot>(`/api/runs/${encodeURIComponent(id)}`)
       return {
         run_id: snapshot.run_id,
         status: normalizeRunStatus(snapshot.status),
@@ -341,7 +356,7 @@ export class StudioApi {
       const frames: FrameData[] = []
       let cursor = after
       while (true) {
-        const payload = await this.fetchJson<FrameData[] | BackendFramePage>(
+        const payload = await fetchJson<FrameData[] | BackendFramePage>(
           `/api/runs/${encodeURIComponent(id)}/frames?after=${cursor}&limit=500`,
         )
         const page = Array.isArray(payload) ? payload : payload.frames
@@ -456,7 +471,7 @@ export class StudioApi {
         await this.replyGateOverSocket(socket, gateId, reply)
         return
       }
-      await this.fetchJson(`/api/runs/${encodeURIComponent(runIdValue)}/gates/${encodeURIComponent(gateId)}`, {
+      await fetchJson(`/api/runs/${encodeURIComponent(runIdValue)}/gates/${encodeURIComponent(gateId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reply),
@@ -520,7 +535,7 @@ export class StudioApi {
 
   async cancelRun(runIdValue: string): Promise<void> {
     if (this.mode === 'live') {
-      await this.fetchJson(`/api/runs/${encodeURIComponent(runIdValue)}/cancel`, { method: 'POST' })
+      await fetchJson(`/api/runs/${encodeURIComponent(runIdValue)}/cancel`, { method: 'POST' })
       return
     }
 
@@ -570,7 +585,7 @@ export class StudioApi {
    */
   async listRuns(limit = 25): Promise<RunHistoryEntry[]> {
     if (this.mode !== 'live') return []
-    const page = await this.fetchJson<{ runs: RunHistoryEntry[] }>(
+    const page = await fetchJson<{ runs: RunHistoryEntry[] }>(
       `/api/runs?limit=${encodeURIComponent(String(limit))}`,
     )
     return page.runs ?? []
@@ -578,7 +593,7 @@ export class StudioApi {
 
   async downloadLogs(runIdValue: string, format: LogFormat = 'ndjson'): Promise<void> {
     if (this.mode === 'live') {
-      const response = await this.authedFetch(
+      const response = await authedFetch(
         `/api/runs/${encodeURIComponent(runIdValue)}/logs?format=${encodeURIComponent(format)}`,
       )
       if (!response.ok) throw new Error(`Log download failed (${response.status})`)
@@ -639,85 +654,6 @@ export class StudioApi {
       }, elapsed)
       run.timers.push(timer)
     }
-  }
-
-  /**
-   * `fetch` with the bearer token attached, and one retry on 401.
-   *
-   * The retry matters because the client's idea of freshness is only a guess.
-   * `getAccessToken` decides from the token's own `exp`, but the API is the
-   * authority: a session revoked server-side, or a key rotated on the auth
-   * service, leaves a token here that still looks perfectly valid. Rather than
-   * showing the operator "your session has expired" for a session that has not,
-   * a 401 forces one fresh mint and one retry. Exactly one - a second 401 is
-   * the real answer, and looping would turn an expired login into a hot loop
-   * against the auth service.
-   */
-  private async authedFetch(
-    path: string,
-    init?: RequestInit,
-    allowRetry = true,
-    /*
-     * Whether to bypass the token cache. SEPARATE from `allowRetry`, because
-     * conflating them is a trap: the retry leg passed `allowRetry = false` and
-     * the force flag was derived from it as `!allowRetry`, so ANY caller asking
-     * merely "do not retry" also silently demanded a fresh network mint.
-     *
-     * `initialize` is exactly such a caller - and a forced mint there is a
-     * second round trip to a sleeping free-plan auth service, inside the very
-     * window the probe is timing. That is the defect the probe repair exists to
-     * remove, so deriving it would have reintroduced it one line later.
-     *
-     * The retry leg still forces, which is the whole point of retrying: a
-     * server-side revocation leaves a cached token that still looks valid.
-     */
-    forceToken = !allowRetry,
-    /*
-     * A token the caller already holds. `undefined` means "mint one";
-     * anything else (a string OR null) is used as-is with no mint at all.
-     *
-     * `initialize` needs this because `getAccessToken` shares one in-flight
-     * promise, so asking again after a timed-out race just awaits the same
-     * pending mint - outside the AbortController's reach.
-     */
-    presetToken?: string | null,
-  ): Promise<Response> {
-    const token =
-      presetToken === undefined ? await getAccessToken(forceToken) : presetToken
-    const headers = new Headers(init?.headers)
-    if (token) headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers })
-    if (response.status === 401 && allowRetry && token) {
-      return this.authedFetch(path, init, false)
-    }
-    return response
-  }
-
-  private async fetchJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
-    const response = await this.authedFetch(path, init)
-    if (!response.ok) {
-      /*
-       * What the operator is shown when the server refuses.
-       *
-       * This used to be `new Error(await response.text())`, so a 2001-character
-       * idea surfaced in the UI as the literal string
-       *   {"detail":"inputs.idea is limited to 2000 characters; this one is 2001"}
-       * - braces, quotes, key and all. The server's message was already good;
-       * the client was showing the envelope around it.
-       *
-       * The 429 is the sharper case. The server computes `Retry-After`, and
-       * `CORS_EXPOSE_HEADERS` names it precisely so a cross-origin client can
-       * read it - a deliberate decision made for a reader that did not exist.
-       * Now it does.
-       */
-      const body = await response.text().catch(() => '')
-      let message = readErrorDetail(body, response.status)
-      if (response.status === 429) {
-        message += retryAfterSentence(response.headers.get('Retry-After'))
-      }
-      throw new Error(message)
-    }
-    return response.json() as Promise<T>
   }
 }
 

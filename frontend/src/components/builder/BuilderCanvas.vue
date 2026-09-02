@@ -1,0 +1,703 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
+import { Background } from '@vue-flow/background'
+import { ControlButton, Controls } from '@vue-flow/controls'
+import { ConnectionMode, SelectionMode, VueFlow, useVueFlow } from '@vue-flow/core'
+import type { EdgeMouseEvent, EdgeUpdateEvent, NodeDragEvent, NodeMouseEvent } from '@vue-flow/core'
+import { Maximize, Minus, Plus } from 'lucide-vue-next'
+import BuilderMinimap from './BuilderMinimap.vue'
+import SelectionToolbar from './SelectionToolbar.vue'
+import type { MinimapNode } from './BuilderMinimap.vue'
+import { NODE_KINDS, NODE_KIND_ORDER } from '../../data/nodeKinds'
+import {
+  BUILDER_CANVAS_ATTR,
+  BUILDER_DND_MIME,
+  BUILDER_HOVERED_NODE,
+  BUILDER_SELECTED_IDS,
+  DEFAULT_NODE_HEIGHT,
+  DEFAULT_NODE_WIDTH,
+} from '../../composables/useBuilderCanvas'
+import type { BuilderCanvas } from '../../composables/useBuilderCanvas'
+import type { AlignMode, DistributeAxis } from '../../composables/useBuilderCanvas'
+import type { EdgeId, NodeId, NodeKind } from '../../types/builder'
+
+/**
+ * The `<VueFlow>` host, and nothing else.
+ *
+ * Every gesture below is wired to `useBuilderCanvas` rather than implemented
+ * here, which keeps the whole of the canvas's behaviour testable without a DOM
+ * (R2 again: the library does the pointers, the composable does the meaning,
+ * and this file does the wiring). What genuinely lives here is the handful of
+ * things that need a mounted instance: the viewport bridge, the alignment
+ * guides, and the two `provide`s that carry hover and selection to the cards
+ * without rebuilding the elements arrays.
+ *
+ * `id="builder-flow"` is load-bearing. `useVueFlow` keys per-instance state by
+ * id, and `StudioView` mounts `studio-flow`; sharing an id would let one view's
+ * viewport, selection and node lookup leak into the other's the moment both
+ * exist in one session (§1.3).
+ *
+ * THE NODE AND EDGE RENDERERS ARRIVE AS SLOTS. `BuilderNode` and `BuilderEdge`
+ * belong to a different work package, and importing them here would make this
+ * file uncompilable until that one landed. Forwarding Vue Flow's own
+ * `#node-builder` / `#edge-builder` slots outward is the same registration by a
+ * seam the shell fills, and it is what lets a spec mount this canvas against a
+ * one-line stub.
+ *
+ * `:auto-pan-on-connect="false"` is a REFUSAL of a Vue Flow default, and it is
+ * the one prop here whose absence was measured as a defect. The default is
+ * `true`: hold a connection near the pane edge and the viewport accelerates
+ * away, measured at ~670 px/s - 1,606 px of travel in 2.4 s, the entire graph
+ * off the top of the screen while the author is still holding the button - and
+ * returning the pointer to the centre does not bring it back. It also made the
+ * acceptance suite's very first drag time out with "element is not stable",
+ * because the target handle was drifting ~0.67 px per animation frame under a
+ * hover that waits for stillness. Section 4.2 describes no auto-pan, and a
+ * canvas that runs away from a gesture is worse than one that makes the author
+ * pan first.
+ */
+
+const props = defineProps<{
+  canvas: BuilderCanvas
+  /** The document's name, for the canvas's own accessible name. */
+  label?: string
+}>()
+
+const flow = useVueFlow('builder-flow')
+const frame = ref<HTMLElement | null>(null)
+
+/**
+ * The composable's window on the mounted instance.
+ *
+ * Attached on mount and detached on unmount, so a `focusNode` arriving from a
+ * problem row after the view has gone is a no-op rather than a call into a
+ * disposed d3 zoom behaviour.
+ */
+onMounted(() => {
+  props.canvas.attachViewport({
+    screenToFlowCoordinate: (point) => flow.screenToFlowCoordinate(point),
+    fitView: (options) => flow.fitView(options),
+    setCenter: (x, y, options) => flow.setCenter(x, y, options),
+    zoomTo: (zoom, options) => flow.zoomTo(zoom, options),
+    getViewport: () => flow.getViewport(),
+    getPaneSize: () => ({ width: flow.dimensions.value.width, height: flow.dimensions.value.height }),
+    // The RENDERED box, not the assumed one: align-bottom over cards of
+    // different heights is only correct against what each card actually
+    // measures. `findNode` answers `undefined` for a node the library has not
+    // mounted yet, and the composable falls back to the §5.2 defaults.
+    getNodeSize: (id) => {
+      const measured = flow.findNode(id)?.dimensions
+      return measured && measured.width > 0 ? { width: measured.width, height: measured.height } : null
+    },
+  })
+})
+
+/**
+ * Re-fit while the canvas is still settling into its final height.
+ *
+ * `fit-view-on-init` and the shell's own post-load fit both compute against
+ * whatever this element measures AT THAT INSTANT, and at that instant it is
+ * still full-bleed: the budget meter sits in `.graph-workspace`'s `auto` row
+ * and the problems dock below it, and neither has taken its height yet. So the
+ * first fit is honest arithmetic about a box that stops existing one frame
+ * later. Measured on the 16-node validator template, the fits chose 0.544 then
+ * 0.524 while the settled container wanted 0.466 - each time leaving the last
+ * two nodes under the dock, on a canvas that reported itself fitted.
+ *
+ * An observer rather than a longer wait, because "long enough" is a guess about
+ * someone else's layout and this is the actual signal. It stops at the author's
+ * first gesture: after that the viewport is THEIRS, and a late re-fit that
+ * throws away a pan the author just made would be a worse bug than the one this
+ * fixes.
+ */
+let settling: ResizeObserver | null = null
+
+function stopSettling(): void {
+  settling?.disconnect()
+  settling = null
+}
+
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined' || !frame.value) return
+  let last = 0
+  settling = new ResizeObserver((entries) => {
+    const height = entries[0]?.contentRect.height ?? 0
+    // Only a real change, and never the collapse to zero that unmounting shows.
+    if (height <= 0 || Math.abs(height - last) < 1) return
+    last = height
+    flow.fitView({ padding: 0.14 })
+  })
+  settling.observe(frame.value)
+})
+
+onBeforeUnmount(() => {
+  stopSettling()
+  props.canvas.detachViewport()
+})
+
+/**
+ * Vue Flow's selection, mirrored into the composable.
+ *
+ * There is no `selectionChange` hook - selection travels as `select` entries
+ * inside `nodesChange`, which is the same stream position changes arrive on and
+ * which invariant 4 forbids this canvas from listening to. Watching the two
+ * getters reads the settled answer instead of filtering a change list, and the
+ * composable's `sameMembers` guard is what stops the round trip from looping.
+ */
+watch(
+  [flow.getSelectedNodes, flow.getSelectedEdges],
+  ([nodes, edges]) => props.canvas.onSelectionChange({ nodes, edges }),
+)
+
+/* --- hover, published rather than passed ---------------------------------- */
+
+provide(BUILDER_HOVERED_NODE, props.canvas.hoveredNodeId)
+provide(BUILDER_SELECTED_IDS, computed(() => props.canvas.selectedIds.value))
+
+function onNodeEnter({ node }: NodeMouseEvent): void {
+  props.canvas.hoveredNodeId.value = node.id
+}
+
+function onNodeLeave(): void {
+  props.canvas.hoveredNodeId.value = null
+}
+
+/* --- pointer bookkeeping -------------------------------------------------- */
+
+function onPointerDown(event: PointerEvent): void {
+  // The viewport is the author's from here. See `stopSettling`.
+  stopSettling()
+  props.canvas.notePointerDown(event)
+}
+
+function onPointerMove(event: PointerEvent): void {
+  props.canvas.notePointerMove(event)
+}
+
+function onNodeClick({ event, node }: NodeMouseEvent): void {
+  if (event instanceof MouseEvent) props.canvas.onNodeClick(node.id as NodeId, event)
+}
+
+function onEdgeClick({ event, edge }: EdgeMouseEvent): void {
+  const additive = event instanceof MouseEvent && (event.shiftKey || event.metaKey || event.ctrlKey)
+  props.canvas.selectEdge(edge.id as EdgeId, additive ? 'add' : 'replace')
+}
+
+/* --- the palette drop ----------------------------------------------------- */
+
+const KINDS = new Set<string>(NODE_KIND_ORDER)
+
+/**
+ * A kind dragged off the palette.
+ *
+ * The read is validated against the kind list rather than trusted, because
+ * `dataTransfer` is a public channel: anything on the page - or off it - can be
+ * dropped here, and `newNode` on an unknown kind is a crash in a `switch` the
+ * type system was told is exhaustive.
+ */
+function onDrop(event: DragEvent): void {
+  event.preventDefault()
+  const raw =
+    event.dataTransfer?.getData(BUILDER_DND_MIME) || event.dataTransfer?.getData('text/plain') || ''
+  if (!KINDS.has(raw)) return
+  props.canvas.dropKind(raw as NodeKind, { x: event.clientX, y: event.clientY })
+  // The drag started on a palette tile, so that is where focus still is - and
+  // the arrow keys are gated on the canvas having it. Taking focus here is what
+  // makes "drop a node, then nudge it into place" work without a click nobody
+  // would think to make.
+  frame.value?.focus()
+}
+
+function onDragOver(event: DragEvent): void {
+  // Without a `preventDefault` on dragover the browser refuses the drop
+  // outright, and the failure is silent: the tile animates back to the palette
+  // and nothing anywhere reports why.
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+/* --- alignment guides ----------------------------------------------------- */
+
+interface Guide {
+  id: string
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+const guides = shallowRef<Guide[]>([])
+
+/**
+ * Six pixels of SCREEN, converted into flow units by dividing by the zoom.
+ *
+ * A raw flow-unit threshold is the mistake worth naming: at 0.4 zoom - the
+ * fitted view of a graph with a fan-out - six flow units is two pixels and the
+ * guides never appear, while at 2x they appear for anything vaguely nearby. The
+ * author's tolerance is in pixels, so the constant is too.
+ */
+const GUIDE_THRESHOLD_PX = 6
+/** At most two per axis, so a dense graph does not draw a barcode. */
+const MAX_GUIDES_PER_AXIS = 2
+
+/**
+ * The alignment guides for a drag in flight, in container-local pixels.
+ *
+ * Computed from Vue Flow's measured `dimensions` rather than from `NODE_W`, so
+ * a router that has grown a fourth port aligns on the edges it actually has.
+ * Screen conversion is done here rather than through `flowToScreenCoordinate`
+ * because these lines live in an overlay that is a sibling of the transformed
+ * pane, so what is wanted is the pane transform alone: `flow * zoom + pan`.
+ */
+function computeGuides(event: NodeDragEvent): void {
+  const viewport = flow.viewport.value
+  const threshold = GUIDE_THRESHOLD_PX / viewport.zoom
+  const moving = new Set(event.nodes.map((node) => node.id))
+  if (moving.size === 0) moving.add(event.node.id)
+
+  const rects = flow.getNodes.value.map((node) => ({
+    id: node.id,
+    moving: moving.has(node.id),
+    left: node.position.x,
+    top: node.position.y,
+    width: node.dimensions.width || DEFAULT_NODE_WIDTH,
+    height: node.dimensions.height || DEFAULT_NODE_HEIGHT,
+  }))
+  const dragged = rects.filter((rect) => rect.moving)
+  const others = rects.filter((rect) => !rect.moving)
+  if (dragged.length === 0 || others.length === 0) {
+    guides.value = []
+    return
+  }
+
+  const found: Guide[] = []
+  for (const axis of ['x', 'y'] as const) {
+    const candidates: { at: number; from: number; to: number }[] = []
+    for (const rect of dragged) {
+      for (const other of others) {
+        for (const edge of edgesOf(rect, axis)) {
+          for (const target of edgesOf(other, axis)) {
+            if (Math.abs(edge - target) > threshold) continue
+            candidates.push({
+              at: target,
+              from: Math.min(span(rect, axis)[0], span(other, axis)[0]),
+              to: Math.max(span(rect, axis)[1], span(other, axis)[1]),
+            })
+          }
+        }
+      }
+    }
+    const seen = new Set<number>()
+    for (const candidate of candidates) {
+      if (seen.has(candidate.at)) continue
+      if (seen.size >= MAX_GUIDES_PER_AXIS) break
+      seen.add(candidate.at)
+      const at = candidate.at * viewport.zoom + (axis === 'x' ? viewport.x : viewport.y)
+      const from = candidate.from * viewport.zoom + (axis === 'x' ? viewport.y : viewport.x)
+      const to = candidate.to * viewport.zoom + (axis === 'x' ? viewport.y : viewport.x)
+      found.push(
+        axis === 'x'
+          ? { id: `x${candidate.at}`, x1: at, y1: from, x2: at, y2: to }
+          : { id: `y${candidate.at}`, x1: from, y1: at, x2: to, y2: at },
+      )
+    }
+  }
+  guides.value = found
+}
+
+/** The three alignment edges of a rect on one axis: near, centre, far. */
+function edgesOf(
+  rect: { left: number; top: number; width: number; height: number },
+  axis: 'x' | 'y',
+): number[] {
+  return axis === 'x'
+    ? [rect.left, rect.left + rect.width / 2, rect.left + rect.width]
+    : [rect.top, rect.top + rect.height / 2, rect.top + rect.height]
+}
+
+/** How far a rect reaches along the OTHER axis, so a guide spans both cards. */
+function span(
+  rect: { left: number; top: number; width: number; height: number },
+  axis: 'x' | 'y',
+): [number, number] {
+  return axis === 'x' ? [rect.top, rect.top + rect.height] : [rect.left, rect.left + rect.width]
+}
+
+/**
+ * True between `@node-drag-start` and `@node-drag-stop`.
+ *
+ * §4.3 hides the `SelectionToolbar` "during any drag", and this is the only
+ * signal for it: `guides` goes empty whenever nothing is within the snap
+ * threshold, so a drag with no guide would look like no drag at all and the bar
+ * would flicker back under the pointer mid-gesture.
+ */
+const dragging = ref(false)
+
+function onDragStart(event: NodeDragEvent): void {
+  dragging.value = true
+  props.canvas.onNodeDragStart(event)
+  computeGuides(event)
+}
+
+function onDrag(event: NodeDragEvent): void {
+  props.canvas.onNodeDrag(event)
+  computeGuides(event)
+}
+
+function onDragStop(event: NodeDragEvent): void {
+  dragging.value = false
+  guides.value = []
+  props.canvas.onNodeDragStop(event)
+}
+
+function onEdgeUpdate(event: EdgeUpdateEvent): void {
+  props.canvas.onEdgeUpdate({ edge: event.edge, connection: event.connection })
+}
+
+/* --- the minimap's input -------------------------------------------------- */
+
+const minimapNodes = computed<MinimapNode[]>(() =>
+  props.canvas.nodes.value.map((node) => {
+    const measured = flow.findNode(node.id)
+    return {
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y,
+      width: measured?.dimensions.width || DEFAULT_NODE_WIDTH,
+      height: measured?.dimensions.height || DEFAULT_NODE_HEIGHT,
+      accent: NODE_KINDS[node.data.node.kind].accent,
+      severity: node.data.severity,
+      selected: Boolean(node.selected),
+    }
+  }),
+)
+
+const minimapViewport = computed(() => flow.viewport.value)
+const minimapPane = computed(() => ({
+  width: flow.dimensions.value.width,
+  height: flow.dimensions.value.height,
+}))
+
+/* --- the align / distribute toolbar (§4.3) -------------------------------- */
+
+/**
+ * The selection's bounding box in PANE pixels, or `null` when there is nothing
+ * to align.
+ *
+ * Computed here rather than in the composable because it is the one part of
+ * align that genuinely needs the mounted instance: `dimensions` is what Vue
+ * Flow measured and the viewport transform is what turns flow units into the
+ * pixels the bar has to sit at. The geometry that MOVES nodes stays in
+ * `useBuilderCanvas`, where a spec can drive it with no DOM at all.
+ */
+const selectionRect = computed(() => {
+  if (dragging.value || props.canvas.connectDrag.value !== null) return null
+  const selected = props.canvas.selectedNodeIds.value
+  if (selected.size < 2) return null
+  const { x: panX, y: panY, zoom } = flow.viewport.value
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const node of props.canvas.nodes.value) {
+    if (!selected.has(node.id as NodeId)) continue
+    const measured = flow.findNode(node.id)?.dimensions
+    const width = measured?.width || DEFAULT_NODE_WIDTH
+    const height = measured?.height || DEFAULT_NODE_HEIGHT
+    minX = Math.min(minX, node.position.x)
+    minY = Math.min(minY, node.position.y)
+    maxX = Math.max(maxX, node.position.x + width)
+    maxY = Math.max(maxY, node.position.y + height)
+  }
+  if (!Number.isFinite(minX)) return null
+  return {
+    x: minX * zoom + panX,
+    y: minY * zoom + panY,
+    width: (maxX - minX) * zoom,
+    height: (maxY - minY) * zoom,
+  }
+})
+
+function onAlign(mode: AlignMode): void {
+  props.canvas.alignSelection(mode)
+}
+
+function onDistribute(axis: DistributeAxis): void {
+  props.canvas.distributeSelection(axis)
+}
+
+/* --- Space-to-pan, the half Vue Flow does not finish (§4.5) --------------- */
+
+/**
+ * True while the space bar is held, and the reason `pan-on-drag` is a computed.
+ *
+ * §4.3 wants a plain left-drag on the empty pane to MARQUEE, which in Vue Flow
+ * 1.48 means `selection-key-code="true"` plus a `pan-on-drag` that excludes
+ * button 0 - and that takes the left button away from panning, which §4.5 says
+ * Space is supposed to give back. Vue Flow's own `panActivationKeyCode`
+ * (default `Space`) does half of it: measured, holding space correctly drops
+ * `.selection` off the pane so a drag no longer marquees, and then the drag
+ * does nothing at all, because the d3 filter still refuses button 0. Widening
+ * `pan-on-drag` to `true` for exactly as long as the key is down is the
+ * remaining half, and it is still Vue Flow doing the panning (R2) - this is one
+ * boolean, not a pointer layer.
+ *
+ * Scoped to `keyup`/`blur` as well as `keydown`, because a key released while
+ * the window is not focused never sends a `keyup` and the canvas would be stuck
+ * unable to marquee for the rest of the session.
+ */
+const spaceHeld = ref(false)
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return (
+    target.isContentEditable ||
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT'
+  )
+}
+
+function onSpaceDown(event: KeyboardEvent): void {
+  if (event.code !== 'Space' || event.repeat || isTypingTarget(event.target)) return
+  spaceHeld.value = true
+}
+
+function onSpaceUp(event: KeyboardEvent): void {
+  if (event.code === 'Space') spaceHeld.value = false
+}
+
+function releaseSpace(): void {
+  spaceHeld.value = false
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onSpaceDown)
+  window.addEventListener('keyup', onSpaceUp)
+  window.addEventListener('blur', releaseSpace)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onSpaceDown)
+  window.removeEventListener('keyup', onSpaceUp)
+  window.removeEventListener('blur', releaseSpace)
+})
+
+/**
+ * `true` (every button pans) while space is held; middle and right otherwise.
+ *
+ * Left is deliberately absent from the resting value: it belongs to the
+ * marquee, which is what §4.3 asks for and what a plain drag did nothing at all
+ * for before - measured, a corner-to-corner unmodified drag selected nothing
+ * and moved the viewport instead.
+ */
+const panOnDrag = computed<boolean | number[]>(() => (spaceHeld.value ? true : [1, 2]))
+
+/** §5.6: the empty document's one centred line, and only while it is empty. */
+const isEmptyDocument = computed(() => props.canvas.nodes.value.length === 0)
+
+const isConnecting = computed(() => props.canvas.connectDrag.value !== null)
+const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
+</script>
+
+<template>
+  <div
+    ref="frame"
+    class="builder-canvas"
+    :class="{ 'is-connecting': isConnecting, 'is-hovering': isHovering }"
+    :[BUILDER_CANVAS_ATTR]="''"
+    data-mode="design"
+    role="application"
+    tabindex="0"
+    :aria-label="label ? `Flow builder canvas for ${label}` : 'Flow builder canvas'"
+    @pointerdown="onPointerDown"
+    @wheel="stopSettling"
+    @pointermove="onPointerMove"
+    @drop="onDrop"
+    @dragover="onDragOver"
+  >
+    <VueFlow
+      id="builder-flow"
+      class="builder-flow"
+      :nodes="canvas.nodes.value"
+      :edges="canvas.edges.value"
+      :nodes-draggable="true"
+      :nodes-connectable="true"
+      :elements-selectable="true"
+      :edges-updatable="true"
+      :snap-to-grid="canvas.gridSnapping.value"
+      :snap-grid="[20, 20]"
+      :selection-mode="SelectionMode.Partial"
+      :selection-key-code="true"
+      :auto-pan-on-connect="false"
+      :pan-on-drag="panOnDrag"
+      :multi-selection-key-code="['Shift', 'Control', 'Meta']"
+      :connection-mode="ConnectionMode.Strict"
+      :is-valid-connection="canvas.isValidConnection"
+      :delete-key-code="null"
+      :min-zoom="0.2"
+      :max-zoom="1.4"
+      :default-viewport="{ x: 0, y: 0, zoom: 0.8 }"
+      :fit-view-on-init="true"
+      :fit-view-options="{ padding: 0.16, maxZoom: 1 }"
+      :zoom-on-double-click="false"
+      @connect-start="canvas.onConnectStart"
+      @click-connect-start="canvas.onConnectStart"
+      @connect="canvas.onConnect"
+      @connect-end="canvas.onConnectEnd"
+      @click-connect-end="canvas.onConnectEnd"
+      @node-click="onNodeClick"
+      @node-mouse-enter="onNodeEnter"
+      @node-mouse-leave="onNodeLeave"
+      @node-drag-start="onDragStart"
+      @node-drag="onDrag"
+      @node-drag-stop="onDragStop"
+      @selection-drag-start="onDragStart"
+      @selection-drag="onDrag"
+      @selection-drag-stop="onDragStop"
+      @edge-click="onEdgeClick"
+      @edge-update="onEdgeUpdate"
+      @pane-click="canvas.clearSelection"
+    >
+      <template #node-builder="nodeProps">
+        <slot name="node" v-bind="nodeProps" />
+      </template>
+      <template #edge-builder="edgeProps">
+        <slot name="edge" v-bind="edgeProps" />
+      </template>
+
+      <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />
+
+      <!--
+        Named, because the stock ones are not. `<Controls>` renders three
+        `<button>`s each wrapping a bare `<svg>` with no title and no text, so a
+        screen reader announces "button, button, button" - the only three
+        unnamed interactive elements in a builder where every other icon button
+        carries an `aria-label`. The `control-*` slots replace the whole button,
+        which is what lets a name be attached at all; `ControlButton` keeps the
+        library's own class and styling, so this is a label rather than a
+        reimplementation. Inherited from `StudioView`, and fixed there too.
+      -->
+      <Controls position="bottom-left" :show-interactive="false">
+        <template #control-zoom-in>
+          <ControlButton class="vue-flow__controls-zoomin" aria-label="Zoom in" @click="flow.zoomIn()">
+            <Plus :size="12" :stroke-width="2.5" aria-hidden="true" />
+          </ControlButton>
+        </template>
+        <template #control-zoom-out>
+          <ControlButton class="vue-flow__controls-zoomout" aria-label="Zoom out" @click="flow.zoomOut()">
+            <Minus :size="12" :stroke-width="2.5" aria-hidden="true" />
+          </ControlButton>
+        </template>
+        <template #control-fit-view>
+          <ControlButton
+            class="vue-flow__controls-fitview"
+            aria-label="Fit the graph to the view"
+            @click="canvas.fitView()"
+          >
+            <Maximize :size="12" :stroke-width="2.5" aria-hidden="true" />
+          </ControlButton>
+        </template>
+      </Controls>
+    </VueFlow>
+
+    <!--
+      Guides sit above the pane and below the chrome, and are `aria-hidden`
+      because they say nothing a screen reader user can act on - the position
+      they describe is announced by the node itself when the drag ends.
+    -->
+    <svg v-if="guides.length" class="builder-guides" aria-hidden="true">
+      <line
+        v-for="guide in guides"
+        :key="guide.id"
+        :x1="guide.x1"
+        :y1="guide.y1"
+        :x2="guide.x2"
+        :y2="guide.y2"
+      />
+    </svg>
+
+    <!--
+      §5.6, "Canvas, empty document": one centred mono line, no illustration.
+      It was missing entirely, so choosing "Blank canvas" opened a dot grid with
+      no affordance anywhere in it and the only hint that `1`-`7` exist was the
+      number badges in the palette, a rail away.
+    -->
+    <p v-if="isEmptyDocument" class="builder-canvas-hint">
+      Drag a kind from the palette, or press <kbd>1</kbd>–<kbd>7</kbd>
+    </p>
+
+    <!--
+      §4.3's floating align / distribute bar. Above a multi-selection, gone
+      during a drag, and gone again the moment the selection drops below two -
+      the same "appears when it has something to act on" rule the badge row on
+      the card follows.
+    -->
+    <SelectionToolbar
+      v-if="selectionRect"
+      :rect="selectionRect"
+      :count="canvas.selectedNodeIds.value.size"
+      @align="onAlign"
+      @distribute="onDistribute"
+    />
+
+    <BuilderMinimap
+      :nodes="minimapNodes"
+      :viewport="minimapViewport"
+      :pane="minimapPane"
+      @centre="canvas.centreOn"
+    />
+
+    <!-- `PortMenu`, and anything else the shell wants anchored to the canvas. -->
+    <slot name="overlay" />
+
+    <!--
+      Tab traversal has no visible cursor of its own - it selects a node and
+      centres the viewport - so without this a screen reader user pressing Tab
+      hears silence and has no way to know where they are.
+    -->
+    <p class="visually-hidden" role="status" aria-live="polite">{{ canvas.announcement.value }}</p>
+  </div>
+</template>
+
+<style scoped>
+.builder-canvas {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--canvas-bg);
+}
+
+.builder-canvas:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent-cyan);
+}
+
+.builder-flow { width: 100%; height: 100%; }
+
+.builder-guides {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-rail);
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.builder-guides line {
+  stroke: var(--accent-cyan);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.75;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+</style>

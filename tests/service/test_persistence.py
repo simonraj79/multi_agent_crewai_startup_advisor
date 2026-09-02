@@ -32,8 +32,16 @@ class PersistenceTests(unittest.TestCase):
 
     def test_schema_and_flow_state_roundtrip(self) -> None:
         self.assertIsInstance(self.store, FlowPersistence)
+        # An EXACT set, not a subset: `create_all` runs over one shared
+        # `MetaData`, so a table declared anywhere in `persistence.py` is
+        # created by every store - including the two the builder's saved
+        # documents live in, which arrive here without a line of this module
+        # changing. That is the whole value of the assertion, and it is why the
+        # answer is to name the new tables rather than to loosen the check.
         self.assertEqual(
             {
+                "builder_document_versions",
+                "builder_documents",
                 "flow_states",
                 "pending_feedback",
                 "run_frames",

@@ -1,0 +1,1089 @@
+<script setup lang="ts">
+import { computed, nextTick, onMounted, provide, ref, shallowRef, watch } from 'vue'
+import { useVueFlow } from '@vue-flow/core'
+import { ChevronLeft, ChevronRight, CircleDot, PenTool, Play, RotateCcw } from 'lucide-vue-next'
+import BudgetMeter from './BudgetMeter.vue'
+import BuilderCanvas from './BuilderCanvas.vue'
+import BuilderEdge from './BuilderEdge.vue'
+import BuilderNode from './BuilderNode.vue'
+import ConflictDialog from './ConflictDialog.vue'
+import DocumentBar from './DocumentBar.vue'
+import InspectorRail from './InspectorRail.vue'
+import NodePalette from './NodePalette.vue'
+import PortMenu from './PortMenu.vue'
+import ProblemsPanel from './ProblemsPanel.vue'
+import PublishDialog from './PublishDialog.vue'
+import SaveChip from './SaveChip.vue'
+import ShortcutSheet from './ShortcutSheet.vue'
+import TemplateGallery from './TemplateGallery.vue'
+import { useBuilderCanvas, canvasHasFocus, snapToGrid } from '../../composables/useBuilderCanvas'
+import { useBuilderClipboard } from '../../composables/useBuilderClipboard'
+import { useBuilderDocument } from '../../composables/useBuilderDocument'
+import { useBuilderHotkeys } from '../../composables/useBuilderHotkeys'
+import { useBuilderPersistence } from '../../composables/useBuilderPersistence'
+import { BUILDER_PROBLEMS, useBuilderProblems } from '../../composables/useBuilderProblems'
+import { useBuilderValidation } from '../../composables/useBuilderValidation'
+import { BLANK, documentFromTemplate } from '../../data/builderTemplates'
+import { builderApi } from '../../services/builderApi'
+import { loadVocabulary, vocabulary, vocabularyProblem } from '../../data/builderVocabulary'
+import { writeRunHandoff } from '../../data/builderRunHandoff'
+import type { BuilderTemplate } from '../../data/builderTemplates'
+import type { InspectorCommit } from './commit'
+import type { PortMenuCreation } from './PortMenu.vue'
+import type {
+  BuilderDocumentSummary,
+  BuilderProblem,
+  BuilderPublish,
+  DocumentId,
+  NodeId,
+} from '../../types/builder'
+
+/**
+ * The builder shell: the one place that knows every other builder package
+ * exists, and the only place a gesture becomes a commit.
+ *
+ * Everything below is wiring, and the shape of the wiring is spec §1.1's
+ * one-way loop. `useBuilderDocument.commit()` is the sole write path; the
+ * canvas, the inspectors and the hotkeys all propose and none of them assign.
+ * That is why the inspector emits a whole next document rather than a patch,
+ * why `@node-drag-stop` is the only drag event that reaches the store, and why
+ * an author can undo a router branch deletion and get the edge back with it.
+ *
+ * WHAT IS NOT HERE. No Launch control and no Build/Run toggle inside the
+ * builder (cut list item 1 stands): the run console keeps its own switch back
+ * here, and this view's header carries the mirror of it - one pair, one
+ * direction each. `PublishDialog` offers "Run it" AFTER a successful publish,
+ * which is a different claim entirely: that button names a workflow the server
+ * has just registered and confirmed it will accept a run for.
+ *
+ * IT REUSES `.studio-shell` / `.studio-main`. Not for tidiness - so the two
+ * workspaces cannot drift apart on row height, gutter, rail transition or
+ * either breakpoint, and so the `min-height: 0` lesson `studio.css` records at
+ * length is inherited rather than re-learned. An `auto` row there once grew an
+ * 848px container to 1894px and pushed Launch below the fold.
+ */
+
+const props = defineProps<{
+  /** From `#/build/:documentId`, or null for `#/build`. */
+  documentId: DocumentId | null
+}>()
+
+const emit = defineEmits<{
+  /** Leave for the run console. */
+  runWorkspace: []
+  /** Change the hash to this document, so a refresh comes back to it. */
+  openDocument: [documentId: DocumentId]
+  /**
+   * The document on screen just acquired a server id; put it in the address.
+   *
+   * Distinct from `openDocument` because it must REPLACE the history entry
+   * rather than push one: the author has not navigated anywhere, the same graph
+   * is still under the cursor, and only its address has become expressible.
+   */
+  adoptDocument: [documentId: DocumentId]
+}>()
+
+/* ── the document, and everything hanging off it ───────────────────────────
+ *
+ * Seeded from BLANK rather than from an empty object, because
+ * `useBuilderDocument` takes a document and `BuilderDocument` has no valid
+ * empty value - `schema`, `id`, `name`, `version` and `input_field` are all
+ * required. BLANK is that document, and it is the same one the gallery hands
+ * over when an author picks "Blank canvas", so the two paths cannot diverge. */
+const store = useBuilderDocument(documentFromTemplate(BLANK))
+const persistence = useBuilderPersistence(store, builderApi)
+const clipboard = useBuilderClipboard(store)
+
+/**
+ * True while a connect drag is live, which is the only gesture that can move
+ * the fingerprint.
+ *
+ * §6.2 says a drag suppresses validation; a NODE drag cannot reach it at all,
+ * because `fingerprint` omits `position` by construction. What can is a connect
+ * drag, where the author is halfway through describing an edge - so this is the
+ * one signal, and naming only it is more honest than passing a flag that also
+ * covers a gesture the loop is already blind to.
+ *
+ * A plain ref fed by a watcher rather than a `computed` over `canvas`, and the
+ * ordering is why: the canvas needs the problem index, the index needs the
+ * validation loop, and the loop needs this flag - a cycle. A computed reading
+ * `canvas` from above its own declaration threw
+ * `Cannot access 'canvas' before initialization` the first time this view was
+ * mounted in a test, because `useBuilderValidation` installs its watcher
+ * eagerly. Breaking the cycle at the cheapest link keeps every other dependency
+ * pointing one way.
+ */
+const gestureLive = ref(false)
+
+const validation = useBuilderValidation(store.doc, { api: builderApi, suppressed: gestureLive })
+const problems = useBuilderProblems(validation.problems)
+
+/**
+ * The canvas's view of the store, adapted rather than passed through.
+ *
+ * `CanvasDocumentStore` is a deliberately narrower interface with its own
+ * argument shapes - `addNode(node, connectFrom)` against the store's
+ * `addNode(node, { edge, label })` - and writing the adapter here is what keeps
+ * both files honest: the canvas cannot reach a method it was not handed, and
+ * the store is not reshaped to suit one caller.
+ */
+const canvas = useBuilderCanvas({
+  document: {
+    doc: store.doc,
+    addNode: (node, connectFrom) =>
+      store.addNode(
+        node,
+        connectFrom
+          ? {
+              // One commit carrying the node AND the edge. Two commits would be
+              // two undo steps forever, and the second would leave a node
+              // dangling where nobody had asked for one.
+              edge: { source: connectFrom.source, source_port: connectFrom.source_port, target: node.id },
+              label: `Add ${node.label.toLowerCase()}`,
+            }
+          : undefined,
+      ),
+    addEdge: (origin, target) =>
+      store.addEdge({ source: origin.source, source_port: origin.source_port, target }),
+    moveNodes: (moves, coalesceKey) => store.moveNodes(moves, { coalesce: coalesceKey !== undefined }),
+    deleteSelection: (nodes, edges) => store.deleteSelection(nodes, edges),
+    setEdgePort: (edge, port) => store.setEdgePort(edge, port),
+    retargetEdge: (edge, endpoint, node, port) =>
+      store.retargetEdge(
+        edge,
+        endpoint === 'source' ? { source: node, source_port: port } : { target: node },
+      ),
+    setJoin: (node, join) => store.setJoin(node, join === 'all'),
+  },
+  problems: {
+    byNode: () => problems.problemsByNode.value,
+    byEdge: () => problems.problemsByEdge.value,
+  },
+})
+
+watch(
+  () => canvas.connectDrag.value !== null,
+  (live) => {
+    gestureLive.value = live
+  },
+)
+
+/* ── shell state ───────────────────────────────────────────────────────── */
+
+const paletteCollapsed = ref(false)
+const inspectorCollapsed = ref(false)
+const publishOpen = ref(false)
+const shortcutsOpen = ref(false)
+const library = shallowRef<readonly BuilderDocumentSummary[]>([])
+/** A publish 422's problems, merged into the panel tagged `from publish`. */
+const publishProblems = shallowRef<readonly BuilderProblem[]>([])
+/** The label of the last undone command, for `DocumentBar`'s announcement. */
+const undoneLabel = ref('')
+let undoneTimer = 0
+/** One line from a structural rewrite or a denied clipboard. Never silent. */
+const notice = ref('')
+let noticeTimer = 0
+
+/**
+ * Whether the author has a document in hand yet.
+ *
+ * The gallery is the empty state of the CANVAS, not of the route: `#/build`
+ * with nothing started shows it, and picking a template or opening a saved
+ * graph replaces it. It is not a separate page, so there is nothing to navigate
+ * back from and no state to lose by starting.
+ */
+const started = ref(false)
+
+const doc = computed(() => store.doc.value)
+
+/**
+ * Errors the live loop reported, PLUS any the publish refusal added.
+ *
+ * The checklist read `problems.errorCount` alone, so a 422 from publish could
+ * sit in the panel underneath a green `No errors` tick in the very dialog that
+ * printed the refusal. `ProblemsPanel` already merges the two lists and
+ * de-duplicates them by identity; this counts the same union the same way, so
+ * the checklist can never outrank the server's own answer.
+ */
+const blockingErrorCount = computed(() => {
+  const seen = new Set<string>()
+  let count = 0
+  for (const problem of [...validation.problems.value, ...publishProblems.value]) {
+    const key = `${problem.code} ${problem.message} ${problem.node_id ?? ''} ${problem.edge_id ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (problem.severity !== 'warning') count += 1
+  }
+  return count
+})
+
+/** Every node and edge label, for `ProblemsPanel`'s anchor column. */
+const anchorLabels = computed(() => {
+  const labels: Record<string, string> = {}
+  for (const node of doc.value.nodes) labels[node.id] = node.label
+  for (const edge of doc.value.edges) labels[edge.id] = `${edge.source} → ${edge.target}`
+  return labels
+})
+
+function say(message: string): void {
+  window.clearTimeout(noticeTimer)
+  notice.value = message
+  if (!message) return
+  noticeTimer = window.setTimeout(() => {
+    notice.value = ''
+  }, 4000)
+}
+
+/* ── loading ───────────────────────────────────────────────────────────── */
+
+onMounted(async () => {
+  // Before anything else, because three of the seven kinds have REQUIRED fields
+  // whose legal values only the server knows. Every creation path is disabled
+  // until this resolves (cut list item 17 forbids a hardcoded fallback), so a
+  // late load means a briefly-disabled palette rather than a graph the compiler
+  // will reject.
+  void loadVocabulary()
+  void refreshLibrary()
+  if (props.documentId) await openDocument(props.documentId)
+})
+
+watch(
+  () => props.documentId,
+  async (id) => {
+    if (id && id !== persistence.documentId.value) await openDocument(id)
+  },
+)
+
+async function refreshLibrary(): Promise<void> {
+  try {
+    library.value = await builderApi.list()
+  } catch {
+    // The palette's library list degrades to empty. It is a convenience list;
+    // `TemplateGallery` is where a failure to read your own graphs is REPORTED,
+    // because that is the screen whose whole job is opening one.
+    library.value = []
+  }
+}
+
+/**
+ * Show the canvas with the whole graph in view.
+ *
+ * `fit-view-on-init` is not enough on its own and the reason is a sequencing
+ * one: the canvas is only mounted when `started` flips, so Vue Flow's init fit
+ * runs against a graph whose nodes have not been projected and measured yet.
+ * It fits nothing, and nothing ever fits again - which is why a 16-node
+ * template opened with its last two nodes below the bottom edge.
+ *
+ * And it has to wait for PAINT, not just for ticks. Two `nextTick`s do mount
+ * the canvas and project the nodes, but the budget meter and the problems dock
+ * have not taken their height yet, so the canvas is still full-bleed and the
+ * fit is computed against a box taller than the one it ends up in. Measured on
+ * the 16-node validator template: fitting after ticks alone chose scale 0.544
+ * and left the last node under the dock, where fitting once the rows had
+ * settled chose 0.466 and showed the whole graph. Both are "a fit" - only one
+ * of them fits the container that exists a frame later.
+ *
+ * Two frames rather than one, for the same reason there are two ticks: the
+ * first frame paints the new rows, the second measures against them.
+ */
+async function showGraph(): Promise<void> {
+  started.value = true
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
+  canvas.fitView()
+  /*
+   * Ask the compiler about this document, now, before the author touches it.
+   *
+   * `useBuilderValidation` watches the document's FINGERPRINT, so a document
+   * that arrives equal to the one the loop mounted with never moves the
+   * watcher. That is not a hypothetical: `store` is seeded from BLANK, and
+   * "Blank canvas" hands over BLANK - so the one card a first-time visitor is
+   * most likely to click produced a canvas that had never been validated,
+   * reading `Ready to publish` with Publish enabled over a graph the server
+   * refuses with `no-input-node`. Every other template differs from the seed
+   * and validated by accident, which is why 988 green tests never saw it.
+   *
+   * This is the kick the composable's own `idle` docstring always described.
+   * The second lock is in the composable: `idle` now blocks publish outright.
+   */
+  validation.validateNow()
+}
+
+async function openDocument(id: DocumentId): Promise<void> {
+  try {
+    await persistence.open(id)
+    publishProblems.value = []
+    await showGraph()
+  } catch (error) {
+    say(error instanceof Error ? error.message : 'that graph could not be opened.')
+  }
+}
+
+/**
+ * Seed a template as an ordinary unsaved draft.
+ *
+ * `applyTemplate` and `startNew` together, and both are needed: the first
+ * replaces the document and clears the history so the template is not something
+ * you can undo your way out of into a blank canvas, and the second forgets the
+ * previously-open document's id and version so the next save CREATES rather
+ * than overwriting whatever was open before.
+ */
+function startTemplate(template: BuilderTemplate): void {
+  store.applyTemplate(documentFromTemplate(template))
+  persistence.startNew()
+  publishProblems.value = []
+  void showGraph()
+}
+
+/**
+ * The address follows the first save.
+ *
+ * `persistence.documentId` is null for a draft and is assigned exactly once,
+ * by `adoptIdentity`, from the create response. Until this watcher existed the
+ * hash stayed `#/build` forever: the chip read `saved · v1`, the localStorage
+ * draft was keyed by an id the URL never carried, and a refresh landed on the
+ * gallery with the work unreachable - the one place a draft key and an address
+ * could disagree, and they did. The library path had always navigated
+ * correctly, so the plumbing was never the problem; only the create path
+ * failed to use it.
+ *
+ * Guarded on `props.documentId` being absent so that opening a document
+ * through the route does not re-navigate to the address it arrived from.
+ */
+watch(
+  () => persistence.documentId.value,
+  (id) => {
+    if (id && id !== props.documentId) emit('adoptDocument', id)
+  },
+)
+
+function openFromGallery(id: string): void {
+  // Through the route rather than straight to `openDocument`, so the address
+  // bar names the graph. `#/build/:documentId` is the URL an author sends a
+  // colleague, and one that silently stayed `#/build` would send them the
+  // gallery instead.
+  emit('openDocument', id as DocumentId)
+}
+
+/* ── the one write path ────────────────────────────────────────────────── */
+
+/** Every inspector patch, and the only place one becomes a commit (§2 WP-F). */
+function applyInspectorCommit(change: InspectorCommit): void {
+  store.commit(change.label, change.next, change.coalesceKey ?? null)
+}
+
+function onPortMenuCreate(creation: PortMenuCreation): void {
+  store.addNode(creation.node, {
+    edge: { source: creation.source, source_port: creation.sourcePort, target: creation.target },
+    label: creation.label,
+  })
+  canvas.cancelPortMenu()
+  canvas.selectNode(creation.node.id)
+}
+
+/**
+ * Undo, and say what it removed for two seconds.
+ *
+ * The label is read BEFORE the undo, because `store.undoLabel` afterwards names
+ * the command one step further back - announcing that would tell the author
+ * they undid something they still have.
+ *
+ * The timer lives here rather than in `DocumentBar` because two deletes in a
+ * row produce the same string, and Vue batches synchronous ref writes into one
+ * callback that never fires for an unchanged value: a watcher in the bar would
+ * announce the first and go silent on the second. Restarting the timer on every
+ * undo is also the behaviour an author expects - the message follows the last
+ * thing they did, not the first.
+ */
+function undo(): void {
+  const label = store.undoLabel.value
+  store.undo()
+  window.clearTimeout(undoneTimer)
+  undoneLabel.value = label
+  if (!label) return
+  undoneTimer = window.setTimeout(() => {
+    undoneLabel.value = ''
+  }, 2000)
+}
+
+/* ── publish and run ───────────────────────────────────────────────────── */
+
+async function onPublished(result: BuilderPublish): Promise<void> {
+  persistence.notePublished(result.version)
+  publishProblems.value = []
+  await refreshLibrary()
+}
+
+/**
+ * Hand the run console this workflow and leave.
+ *
+ * The handoff rides in `sessionStorage` beside the route rather than inside it -
+ * `useWorkspaceRoute`'s studio route is `{ name: 'studio' }` and belongs to
+ * another package - and `StudioView` renders a strip naming the graph with a
+ * control that clears it, so nothing about which workflow is loaded is hidden.
+ */
+function runPublished(workflowId: string, inputField: string): void {
+  writeRunHandoff({ workflowId, inputField, name: doc.value.name })
+  publishOpen.value = false
+  emit('runWorkspace')
+}
+
+/* ── keyboard ──────────────────────────────────────────────────────────── */
+
+useBuilderHotkeys(
+  {
+    undo,
+    redo: () => store.redo(),
+    save: () => void persistence.save(),
+    publish: () => {
+      publishOpen.value = true
+    },
+    validateNow: validation.validateNow,
+    deleteSelection: canvas.deleteSelection,
+    selectAll: canvas.selectAll,
+    escape,
+    leaveCanvas,
+    /*
+     * NODES ONLY, and the edges are not an omission. The clipboard keeps an
+     * edge exactly when BOTH its endpoints were copied, which is a fact about
+     * the selected nodes rather than about the selected edges - a lone edge on
+     * the clipboard could only be pasted onto nodes it would then be a
+     * duplicate of.
+     */
+    copy: () => void clipboard.copy(canvas.selectedNodeIds.value),
+    cut: () => void clipboard.cut(canvas.selectedNodeIds.value),
+    paste: () => void clipboard.paste(canvas.viewportCentre()),
+    duplicate: () => void clipboard.duplicate(canvas.selectedNodeIds.value),
+    insertKind: canvas.insertKind,
+    renameFocused,
+    linkFromFocused,
+    nudge: canvas.nudge,
+    /*
+     * Tab walks the numbered candidates while a keyboard link is live, and the
+     * graph's topological order otherwise. One key, two meanings, and the mode
+     * decides - the same way Escape already means four things down a ladder.
+     */
+    traverse: (step) => {
+      if (canvas.linkMode.value) canvas.cycleLink(step)
+      else canvas.traverse(step)
+    },
+    confirmLink: canvas.commitLink,
+    cycleSibling: canvas.cycleSibling,
+    fitView: canvas.fitView,
+    zoomToActual: canvas.zoomToActual,
+    zoomToSelection: canvas.zoomToSelection,
+    focusFilter,
+    walkProblems,
+    toggleShortcuts: () => {
+      shortcutsOpen.value = !shortcutsOpen.value
+    },
+  },
+  { canvasHasFocus },
+)
+
+/**
+ * `Shift+Escape` - the documented way out of the canvas.
+ *
+ * `BuilderCanvas` declares `role="application"` and the builder repurposes
+ * `Tab` inside it for topological traversal, which is legitimate under WCAG
+ * 2.1.1 and was argued for carefully in `useBuilderHotkeys`. What that argument
+ * never covered is 2.1.2, No Keyboard Trap, a separate criterion with a
+ * separate requirement: there must be a way OUT, and it must be discoverable.
+ * There was not one. Focus entering the canvas never left it - Tab traversed
+ * nodes forever, Shift+Tab traversed them backwards, and Escape cleared the
+ * selection without moving focus - so 57 controls after the canvas in DOM order
+ * became unreachable by keyboard for as long as the view was mounted.
+ *
+ * `blur()` rather than a hand-rolled focus advance: returning focus to the
+ * document body puts `Tab` back under the browser's own sequential navigation,
+ * which is the behaviour every other page on the web already has and the one an
+ * author trying to escape is expecting. The sheet renders this row from the
+ * binding table, so it is documented by construction.
+ */
+function leaveCanvas(): void {
+  const active = document.activeElement
+  if (active instanceof HTMLElement) active.blur()
+  /*
+   * Focus is HANDED to the problems dock, not merely dropped.
+   *
+   * A bare `blur()` returns focus to `<body>`, and the very next `Tab` lands on
+   * the first focusable element in the document - which is a node wrapper
+   * inside the canvas, so the author is back in the trap after one keystroke.
+   * The dock's disclosure button is the first control AFTER the canvas in DOM
+   * order, so handing focus there makes the remaining 50-odd controls - the
+   * inspector's fields, the zoom buttons, both rail toggles - reachable by
+   * ordinary sequential navigation, which is the whole of what 2.1.2 asks for.
+   */
+  const dock = document.querySelector<HTMLElement>('.problems-toggle')
+  dock?.focus()
+  say(
+    dock
+      ? 'left the canvas — focus is on the problems dock, and Tab moves through the page.'
+      : 'left the canvas — Tab now moves through the page.',
+  )
+}
+
+/**
+ * §4.5's Escape ladder, in order: abort the live gesture, then clear the
+ * selection, then close the topmost sheet.
+ *
+ * The order matters and it is the reverse of what feels natural. A connect drag
+ * aborted by Escape must leave ZERO commits, so it has to be caught before
+ * anything else can interpret the key - and a sheet closed while a drag is live
+ * would strand the drag with nothing on screen to cancel it.
+ */
+function escape(): void {
+  if (canvas.connectDrag.value || canvas.linkMode.value || canvas.portMenuRequest.value) {
+    // `cancelConnect`, not `cancelPortMenu`. The old call cleared one of the
+    // three refs a live connect owns, so Escape left `connectDrag` set - the
+    // container kept `.is-connecting`, two `port-ready` animations kept running
+    // on an idle canvas, and this ladder was pinned on its first rung for the
+    // rest of the session, so Escape could never clear a selection again.
+    canvas.cancelConnect()
+    return
+  }
+  if (canvas.selectionSize.value > 0) {
+    canvas.clearSelection()
+    return
+  }
+  if (publishOpen.value) {
+    publishOpen.value = false
+    return
+  }
+  shortcutsOpen.value = false
+}
+
+/**
+ * `R` - rename the focused node's label on the card.
+ *
+ * Focus rather than a store call: the card owns the contenteditable and commits
+ * the result through `@rename`, so the shortcut's whole job is to put the caret
+ * in it. Reaching into the store here would open a second rename path that the
+ * card's own Escape-reverts contract knows nothing about.
+ */
+function renameFocused(): void {
+  const id = canvas.anchorId.value ?? [...canvas.selectedNodeIds.value][0]
+  if (!id) return
+  canvas.requestRename(id)
+}
+
+/**
+ * `E` - the keyboard half of connecting (section 4.1).
+ *
+ * Every legal target is numbered on its card, Tab walks them, Enter connects,
+ * Escape aborts. Pressing `E` again while the mode is live cancels it, so the
+ * key that starts the gesture also ends it.
+ *
+ * It used to call `canvas.onConnectStart` and stop there, which armed the
+ * mouse's gesture from a keyboard that could never finish it: `connectDrag` is
+ * cleared only by `onConnectEnd`, which no pointer event was ever going to
+ * fire. The canvas was left `.is-connecting` forever with two infinite port
+ * animations running and Escape permanently stuck on the abort rung.
+ */
+function linkFromFocused(): void {
+  if (canvas.linkMode.value) {
+    canvas.cancelConnect()
+    say('link cancelled.')
+    return
+  }
+  const id = canvas.anchorId.value ?? [...canvas.selectedNodeIds.value][0]
+  if (!id) return
+  const node = doc.value.nodes.find((candidate) => candidate.id === id)
+  if (!node) return
+  if (node.kind === 'output') {
+    say(`${node.label} has no outgoing port to link from.`)
+    return
+  }
+  const count = canvas.beginLink(id)
+  if (count === 0) {
+    say(`nothing left for ${node.label} to connect to - every legal target already has that edge.`)
+    return
+  }
+  say(`${count} ${count === 1 ? 'target' : 'targets'}: Tab to choose, Enter to connect, Esc to abort.`)
+}
+
+/**
+ * `/` - focus the node filter (section 4.5).
+ *
+ * The selector is `.builder-filter-input` and there is now a control behind it.
+ * It used to read `.builder-palette input[type="search"]`, and `NodePalette`
+ * contained no `<input>` at all - so the key did nothing, the `?.` swallowed
+ * the miss, and `ShortcutSheet` advertised the binding anyway. The palette is
+ * collapsible, so the rail is opened first: focusing a control inside a
+ * `display: none` subtree silently fails and would put the key straight back
+ * where it was.
+ */
+function focusFilter(): void {
+  paletteCollapsed.value = false
+  void nextTick(() => {
+    document.querySelector<HTMLInputElement>('.builder-filter-input')?.focus()
+  })
+}
+
+/**
+ * An ISO timestamp as a local wall clock, for the restore bar's two times.
+ *
+ * Date and time when the draft is not from today, time alone when it is - the
+ * bar's whole job is to answer "is what is in this browser newer than what is
+ * on the server", and a full ISO string in two places makes that comparison
+ * harder rather than easier.
+ */
+function clockOf(iso: string): string {
+  const when = new Date(iso)
+  if (Number.isNaN(when.getTime())) return iso
+  const today = new Date()
+  const sameDay =
+    when.getFullYear() === today.getFullYear() &&
+    when.getMonth() === today.getMonth() &&
+    when.getDate() === today.getDate()
+  return sameDay
+    ? when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : when.toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+}
+
+/** How many graph nodes the current query matches, for the filter box's count. */
+const filterMatchCount = computed(
+  () => canvas.nodes.value.filter((node) => node.data.filterMatch).length,
+)
+
+/** `F8` / `⇧F8` - the same path a `ProblemsPanel` row click takes. */
+let problemCursor = -1
+function walkProblems(step: 1 | -1): void {
+  const list = problems.ordered.value
+  if (list.length === 0) return
+  problemCursor = (problemCursor + step + list.length) % list.length
+  canvas.focusProblem(list[problemCursor])
+}
+
+/* ── what the cards and edges hand back ────────────────────────────────── */
+
+function onNodeRename(payload: { id: string; label: string }): void {
+  store.setLabel(payload.id as NodeId, payload.label)
+}
+
+function onToggleJoin(payload: { id: string }): void {
+  canvas.toggleJoin(payload.id as NodeId)
+}
+
+function onInspectProblem(payload: { problem: BuilderProblem }): void {
+  canvas.focusProblem(payload.problem)
+}
+
+function onSelectBranch(payload: { nodeId: string }): void {
+  canvas.selectNode(payload.nodeId as NodeId)
+}
+
+function onEdgeSelectFromPanel(problem: BuilderProblem): void {
+  canvas.focusProblem(problem)
+}
+
+/**
+ * Where a palette click drops a node: the viewport centre, grid-snapped.
+ *
+ * `snapToGrid` on both axes rather than trusting Vue Flow's `snap-to-grid`,
+ * because that prop only governs a DRAG. `Position` declares `int` in
+ * `document.py` and pydantic coerces `120.0` but not `120.5`, so an unrounded
+ * drop is a hard 422 that arrives on a later save, long after the click.
+ */
+function placeKind(kind: Parameters<typeof canvas.insertKind>[0]): void {
+  const centre = canvas.viewportCentre()
+  canvas.dropKind(kind, { x: snapToGrid(centre.x), y: snapToGrid(centre.y) })
+}
+
+/**
+ * `PortMenu`'s three geometry props, from the one screen point the canvas
+ * recorded.
+ *
+ * `onConnectEnd` has a `MouseEvent` and nothing else, so what it stores is
+ * `clientX`/`clientY` - viewport pixels. The menu needs two other frames: `at`
+ * is pixels inside the canvas host it is absolutely positioned in, and
+ * `position` is FLOW coordinates, because that is where the node lands.
+ * Converting here rather than in the composable keeps `useBuilderCanvas`
+ * testable without a DOM, which is the whole reason its geometry lives behind
+ * an attached bridge.
+ *
+ * `useVueFlow('builder-flow')` from this level is deliberate and is the same
+ * instance `BuilderCanvas` mounts: the store is keyed by id, which is exactly
+ * why §1.3 insists the two views use different ones.
+ *
+ * `snapToGrid` on both axes, again. `Position` declares `int` and pydantic
+ * refuses `120.5`, so a node created from a drag that ended between two dots
+ * would be a 422 arriving on a save minutes later.
+ */
+const flow = useVueFlow('builder-flow')
+
+const portMenu = computed(() => {
+  const request = canvas.portMenuRequest.value
+  if (!request) return null
+  const rect = flow.vueFlowRef.value?.getBoundingClientRect()
+  const point = flow.screenToFlowCoordinate(request.at)
+  return {
+    origin: {
+      // Always `source`: the only gesture that opens this menu is a drag that
+      // LEFT an out-port. Retargeting an existing edge onto empty canvas is
+      // `onEdgeUpdate`'s business and reverts rather than creating.
+      direction: 'source' as const,
+      node: request.origin.source,
+      port: request.origin.source_port,
+    },
+    at: rect
+      ? { x: request.at.x - rect.left, y: request.at.y - rect.top }
+      : { x: request.at.x, y: request.at.y },
+    position: { x: snapToGrid(point.x), y: snapToGrid(point.y) },
+  }
+})
+
+/*
+ * The problem index, published rather than threaded.
+ *
+ * `InspectorRail` and every `FieldProblem` inside it read this, and both throw
+ * by name if it is absent - which is the right shape for a contract between two
+ * packages: passing it as a prop would mean every form, every field row and
+ * every control forwarding an index none of them chose to care about, and the
+ * one that forgot would render a control with no problem under it and nothing
+ * anywhere saying a problem existed. Hover and selection travel the same way
+ * from `BuilderCanvas`, for the reason stated there: per-edge props would
+ * rebuild both element arrays on every mousemove.
+ */
+provide(BUILDER_PROBLEMS, problems)
+
+/* The notice channel, so a structural rewrite deep in an inspector can say what
+ * it took with it. */
+provide('builder-notice', notice)
+
+watch(
+  () => clipboard.notice.value,
+  (message) => {
+    if (message) say(message)
+  },
+)
+</script>
+
+<template>
+  <a class="skip-link" href="#builder-canvas">Skip to the graph</a>
+  <div
+    class="studio-shell is-builder"
+    :class="{
+      'chat-is-collapsed': paletteCollapsed,
+      'controls-are-collapsed': inspectorCollapsed,
+      'is-gallery': !started,
+    }"
+  >
+    <header class="app-header">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
+        <div>
+          <span>M2</span>
+          <h1>Flow builder</h1>
+        </div>
+      </div>
+
+      <div class="header-context">
+        <div class="segmented workspace-switch" role="group" aria-label="Workspace">
+          <button type="button" :aria-pressed="true">
+            <PenTool :size="14" aria-hidden="true" /> Build
+          </button>
+          <button type="button" :aria-pressed="false" @click="emit('runWorkspace')">
+            <Play :size="14" aria-hidden="true" /> Run
+          </button>
+        </div>
+
+        <!--
+          One line, and never blank while something has happened. A denied
+          clipboard, a branch deletion that took an edge with it, a graph that
+          would not open - all three are things the author would otherwise
+          discover by finding something missing.
+        -->
+        <span v-if="notice" class="builder-notice" role="status">{{ notice }}</span>
+      </div>
+    </header>
+
+    <main class="studio-main">
+      <NodePalette
+        v-if="started"
+        class="builder-palette"
+        :budget="validation.budget.value"
+        :library="library"
+        :open-document-id="persistence.documentId.value"
+        :filter="canvas.filterQuery.value"
+        :filter-matches="filterMatchCount"
+        @place="placeKind"
+        @open="openFromGallery"
+        @update:filter="canvas.filterQuery.value = $event"
+      />
+
+      <section id="builder-canvas" class="graph-workspace" aria-label="Flow builder" tabindex="-1">
+        <template v-if="started">
+          <DocumentBar
+            :name="doc.name"
+            :save-state="persistence.saveState.value"
+            :version="persistence.version.value"
+            :status="persistence.status.value"
+            :published-version="persistence.publishedVersion.value"
+            :published-here="persistence.publishedHere.value"
+            :can-undo="store.canUndo.value"
+            :can-redo="store.canRedo.value"
+            :undo-label="store.undoLabel.value"
+            :redo-label="store.redoLabel.value"
+            :undone-label="undoneLabel"
+            :max-name-chars="vocabulary?.bounds.max_name_chars ?? 80"
+            @rename="store.setName"
+            @undo="undo"
+            @redo="store.redo"
+            @publish="publishOpen = true"
+            @shortcuts="shortcutsOpen = true"
+          >
+            <template #save-chip>
+              <SaveChip
+                :state="persistence.saveState.value"
+                :version="persistence.version.value"
+                :head-version="persistence.headVersion.value"
+                :error="persistence.error.value"
+                :draft-dropped="persistence.draftDropped.value"
+              />
+            </template>
+          </DocumentBar>
+
+          <!--
+            Section 4.6's restore bar, and the reason it is here rather than
+            anywhere else: it must sit above the canvas it is offering to
+            replace, in the layout, so accepting it is a decision made while
+            looking at what is on screen.
+
+            `restoreOffer`, `acceptRestore` and `dismissRestore` all existed and
+            were unit-tested for months while NO component read them - so a
+            draft was written to `localStorage` on every commit and could never
+            be got back out. The composable tests passed because they called the
+            composable; nothing mounted anything. That is this repo's own "tests
+            that pass for the wrong reason", and the fix is a rendered control
+            with an E2E-addressable testid, not another composable test.
+          -->
+          <div
+            v-if="persistence.restoreOffer.value"
+            class="builder-restore"
+            role="status"
+            data-testid="restore-bar"
+          >
+            <RotateCcw :size="14" aria-hidden="true" />
+            <span class="builder-restore-copy">
+              Unsaved work from this browser, saved
+              <time :datetime="persistence.restoreOffer.value.savedAt">{{
+                clockOf(persistence.restoreOffer.value.savedAt)
+              }}</time>
+              — the stored v{{ persistence.restoreOffer.value.baseVersion }} is from
+              <time :datetime="persistence.restoreOffer.value.storedAt">{{
+                clockOf(persistence.restoreOffer.value.storedAt)
+              }}</time
+              >.
+            </span>
+            <button
+              type="button"
+              class="builder-restore-accept"
+              data-testid="restore-accept"
+              @click="persistence.acceptRestore"
+            >
+              Restore it
+            </button>
+            <button
+              type="button"
+              class="builder-restore-dismiss"
+              data-testid="restore-dismiss"
+              @click="persistence.dismissRestore"
+            >
+              Discard
+            </button>
+          </div>
+
+          <BudgetMeter
+            :budget="validation.budget.value"
+            :node-count="doc.nodes.length"
+            :stale="validation.phase.value === 'stale'"
+          />
+
+          <BuilderCanvas :canvas="canvas" :label="doc.name">
+            <template #node="nodeProps">
+              <BuilderNode
+                v-bind="nodeProps"
+                @rename="onNodeRename"
+                @rename-started="canvas.noteRenameStarted"
+                @toggle-join="onToggleJoin"
+                @inspect-problem="onInspectProblem"
+              />
+            </template>
+            <template #edge="edgeProps">
+              <BuilderEdge v-bind="edgeProps" @select-branch="onSelectBranch" />
+            </template>
+            <template #overlay>
+              <PortMenu
+                :open="portMenu !== null"
+                :origin="portMenu?.origin ?? null"
+                :at="portMenu?.at ?? { x: 0, y: 0 }"
+                :position="portMenu?.position ?? { x: 0, y: 0 }"
+                :taken-ids="new Set(doc.nodes.map((node) => node.id))"
+                @create="onPortMenuCreate"
+                @close="canvas.cancelPortMenu"
+              />
+            </template>
+          </BuilderCanvas>
+
+          <ProblemsPanel
+            :problems="validation.problems.value"
+            :phase="validation.phase.value"
+            :reason="validation.unreachableReason.value"
+            :publish-problems="publishProblems"
+            :labels="anchorLabels"
+            @focus="onEdgeSelectFromPanel"
+          />
+        </template>
+
+        <!--
+          §5.6: the gallery IS the canvas's empty state, centred on the same dot
+          grid. Not a separate page, so picking a template loses nothing and
+          going back costs nothing.
+        -->
+        <TemplateGallery v-else @start="startTemplate" @open="openFromGallery" />
+      </section>
+
+      <InspectorRail
+        v-if="started"
+        class="builder-inspector"
+        :doc="doc"
+        :vocabulary="vocabulary"
+        :vocabulary-problem="vocabularyProblem"
+        :selected-node-ids="[...canvas.selectedNodeIds.value]"
+        :selected-edge-ids="[...canvas.selectedEdgeIds.value]"
+        @commit="applyInspectorCommit"
+        @notice="say"
+      />
+
+      <!--
+        The two rail toggles, positioned into the canvas heading strip from
+        either side by `studio.css`'s existing rules. They exist here for the
+        same reason the console has them: at 1180px the inspector is the first
+        thing an author wants out of the way, and at 860px the palette follows.
+      -->
+      <button
+        v-if="started"
+        class="rail-toggle icon-button"
+        type="button"
+        :aria-expanded="!paletteCollapsed"
+        :aria-label="paletteCollapsed ? 'Expand the palette' : 'Collapse the palette'"
+        :title="paletteCollapsed ? 'Expand the palette' : 'Collapse the palette'"
+        @click="paletteCollapsed = !paletteCollapsed"
+      >
+        <ChevronRight v-if="paletteCollapsed" :size="17" aria-hidden="true" />
+        <ChevronLeft v-else :size="17" aria-hidden="true" />
+      </button>
+      <button
+        v-if="started"
+        class="control-toggle icon-button"
+        type="button"
+        :aria-expanded="!inspectorCollapsed"
+        :aria-label="inspectorCollapsed ? 'Expand the inspector' : 'Collapse the inspector'"
+        :title="inspectorCollapsed ? 'Expand the inspector' : 'Collapse the inspector'"
+        @click="inspectorCollapsed = !inspectorCollapsed"
+      >
+        <ChevronLeft v-if="inspectorCollapsed" :size="17" aria-hidden="true" />
+        <ChevronRight v-else :size="17" aria-hidden="true" />
+      </button>
+    </main>
+
+    <!--
+      The two dialogs and the one overlay, and there are no others in the
+      editing path (R15). Both dialogs cover the graph because both are about
+      leaving it: publishing registers what is stored, and a conflict is a
+      decision between two documents.
+    -->
+    <ConflictDialog
+      v-if="persistence.conflict.value && persistence.documentId.value"
+      :conflict="persistence.conflict.value"
+      :mine="doc"
+      :document-id="persistence.documentId.value"
+      :load-head="persistence.loadHead"
+      @discard="persistence.discardMine"
+      @keep="persistence.keepMine"
+    />
+
+    <PublishDialog
+      :open="publishOpen"
+      :document="doc"
+      :document-id="persistence.documentId.value"
+      :error-count="blockingErrorCount"
+      :save-state="persistence.saveState.value"
+      :version="persistence.version.value"
+      :head-version="persistence.headVersion.value"
+      :phase="validation.phase.value"
+      :budget="validation.budget.value"
+      :published-version="persistence.publishedVersion.value"
+      @close="publishOpen = false"
+      @refused="publishProblems = $event"
+      @focus-node="canvas.focusNode($event as NodeId)"
+      @published="onPublished"
+      @run="runPublished"
+    />
+
+    <ShortcutSheet :open="shortcutsOpen" @close="shortcutsOpen = false" />
+  </div>
+</template>
+
+<style scoped>
+/* Four rows, not three. The console's `.graph-workspace` reserves 64px for its
+   heading, an auto lane for the crew strip and the flow; the builder uses the
+   first for `DocumentBar`, the second for `BudgetMeter` and adds a fourth for
+   `ProblemsPanel` - a real track rather than an overlay, so an expanded problem
+   list SHRINKS the canvas instead of covering the nodes it is describing.
+   Covering the graph you are editing is the single failure this product is
+   measured against. */
+.graph-workspace {
+  grid-template-rows: 64px auto minmax(0, 1fr) auto;
+}
+
+.workspace-switch { grid-template-columns: auto auto; padding: 2px; }
+.workspace-switch button { min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }
+
+.builder-notice {
+  max-width: 42ch;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--fs-12);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mirrors `.control-toggle` in `studio.css`, on the other side. Both sit in the
+   64px heading strip and both outrank it on z-index, which is why that strip
+   carries a 40px inset rather than 18px. */
+.rail-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 13px;
+  left: var(--chat-width);
+  width: 32px;
+  height: 38px;
+  border-left: 0;
+  border-radius: 0 var(--r-lg) var(--r-lg) 0;
+}
+
+.control-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 13px;
+  right: var(--control-width);
+  left: auto;
+  width: 32px;
+  height: 38px;
+  border-right: 0;
+  border-radius: var(--r-lg) 0 0 var(--r-lg);
+}
+
+@media (max-width: 860px) {
+  .workspace-switch { display: none; }
+}
+</style>

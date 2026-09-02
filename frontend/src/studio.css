@@ -1,5 +1,24 @@
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import './assets/styles/tokens.css';
+/* The node card's shell, global rather than scoped to WorkflowNode.vue for the
+   same reason `.markdown-body` at the foot of this file is: a scoped selector
+   carries a per-component `[data-v-...]` attribute and therefore cannot span
+   two components in two views. The run console's card and the builder's
+   design-time card have to be guaranteed identical, not merely identical
+   today, and one stylesheet is the only construction that guarantees it.
+   After tokens, because every rule in it resolves a token. */
+@import './assets/styles/node-card.css';
+/* The builder's chrome. Global for the same reason, plus one of its own: half
+   of it addresses elements Vue Flow renders - handles, the path inside
+   `BaseEdge` - which never carry any component's `[data-v-...]` attribute, so a
+   scoped selector would match nothing and say nothing about it.
+
+   AFTER node-card.css, and the order is load-bearing rather than tidy. The
+   design tenancy of `--node-gradient` and the card's run-state rules are
+   independent classes on one element at identical specificity, so source order
+   is the only thing that decides which wins. Swap these two imports and every
+   builder card loses its kind colour. */
+@import './assets/styles/builder.css';
 
 *,
 *::before,
@@ -441,4 +460,92 @@ h3 {
   /* The name is the first thing to go when the header runs out of room; the
      avatar and the sign-out control still identify and still work. */
   .account-name { display: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   The builder shell (WP-F).
+
+   `BuilderView` reuses `.studio-shell` / `.studio-main` rather than declaring a
+   second three-column grid, and it reuses the two variables those rules already
+   read - `--chat-width` for the palette, `--control-width` for the inspector -
+   instead of introducing `--palette-width` / `--inspector-width` beside them.
+   Two things fall out of that and both are the point: the two workspaces cannot
+   drift apart on row height, gutter or transition, and the rail-collapse
+   classes (`chat-is-collapsed`, `controls-are-collapsed`) and both responsive
+   breakpoints work in the builder without a line of their own.
+
+   `min-height: 0` on the two builder rails is the other half of the lesson
+   `.studio-main` records above: the row is a definite `minmax(0, 1fr)`, and a
+   grid item's automatic minimum size is its CONTENT, which re-inflates the row
+   unless every child overrides it. Without these two the palette's `overflow:
+   auto` would resolve against an over-tall parent and never clip - the same
+   failure that once pushed Launch below the fold at 1894px.
+   --------------------------------------------------------------------------- */
+.studio-shell.is-builder {
+  --chat-width: 236px;
+  --control-width: 340px;
+}
+
+/* ---------------------------------------------------------------------------
+   The gallery is a PAGE, not the middle column of the editor.
+
+   Before a document is open, `BuilderView` renders neither the palette nor the
+   inspector - there is nothing yet to put in them. But `.studio-main` still
+   declares three columns and `.graph-workspace` still declares the canvas's
+   three rows, so the gallery became the grid's FIRST child and was placed in
+   the 236px palette column, inside a row sized for a crew strip that is not
+   there. Measured at 2000x1150: a 236x70 box holding 1356px of content, so the
+   four template cards were a clipped sliver against an empty black canvas.
+
+   Nothing caught it. The templates were all in the DOM and every unit test
+   passed, because a jsdom mount asserts structure and never asks how wide
+   anything ended up. This is the layout class `.studio-main` and
+   `.canvas-heading` both already carry entries for, and like those two it was
+   found by starting the app and LOOKING.
+
+   One column, one row, and the gallery's own `width: min(1080px, 100%)` plus
+   `margin: 0 auto` then does the centring it was always written to do.
+   --------------------------------------------------------------------------- */
+.studio-shell.is-builder.is-gallery .studio-main {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.studio-shell.is-builder.is-gallery .graph-workspace {
+  grid-template-rows: minmax(0, 1fr);
+  place-items: start center;
+}
+
+.studio-main > .builder-palette,
+.studio-main > .builder-inspector {
+  min-height: 0;
+}
+
+/* The two rails slide out at the same widths the console's do, so a narrow
+   window loses the palette and the inspector rather than the canvas. */
+@media (max-width: 1180px) {
+  .studio-main > .builder-inspector {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 340px;
+    box-shadow: -18px 0 38px rgba(0, 0, 0, 0.34);
+    transform: translateX(0);
+    transition: transform var(--motion-medium) var(--ease-out);
+  }
+  .controls-are-collapsed .builder-inspector { transform: translateX(100%); }
+}
+
+@media (max-width: 860px) {
+  .studio-main > .builder-palette {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(236px, 52vw);
+    box-shadow: 18px 0 38px rgba(0, 0, 0, 0.34);
+    transform: translateX(0);
+    transition: transform var(--motion-medium) var(--ease-out);
+  }
+  .chat-is-collapsed .builder-palette { transform: translateX(-100%); }
 }

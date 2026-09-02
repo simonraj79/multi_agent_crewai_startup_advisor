@@ -1,0 +1,3502 @@
+{
+  "generator": "scripts/emit_builder_fixtures.py",
+  "source": "brief_crew.builder.bounds.back_edge_indices",
+  "mirror": "frontend/src/utils/builderGraph.ts::backEdges",
+  "note": "Every `permutations` row is the answer the REAL function gave for the base document with its edges reordered by `order`. The mirror is fed the same reordering and must return the same positions.",
+  "cases": [
+    {
+      "name": "an acyclic graph closes nothing",
+      "why": "The negative case, and one a mirror that returned every edge would fail and a mirror that returned nothing would pass. A gate with both ports drawn forward is the shape the minimal gated template ships in, so this is also the assertion that the flagship template draws no dashed edge.",
+      "document": {
+        "schema": "builder.flow/v1",
+        "id": "ug_0a1b2c3d",
+        "name": "acyclic",
+        "version": 1,
+        "input_field": "idea",
+        "nodes": [
+          {
+            "id": "idea",
+            "kind": "input",
+            "label": "idea",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "field": "idea",
+              "label": "Idea",
+              "max_chars": 2000,
+              "required": true
+            }
+          },
+          {
+            "id": "confirm",
+            "kind": "gate",
+            "label": "confirm",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "message": "Confirm before spending.",
+              "editable_fields": [],
+              "max_turns": 1,
+              "expiry_seconds": 1800
+            }
+          },
+          {
+            "id": "draft",
+            "kind": "agent",
+            "label": "draft",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "tier": "cheap",
+              "max_iter": 2,
+              "guardrail_max_retries": 2,
+              "prompt_inputs": {
+                "human_override": "",
+                "idea": "${state.idea}"
+              },
+              "agent_id": "scoper",
+              "tools": []
+            }
+          },
+          {
+            "id": "report",
+            "kind": "output",
+            "label": "report",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "body_key": "markdown_body",
+              "source": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "idea",
+            "source_port": "out",
+            "target": "confirm",
+            "target_port": "in"
+          },
+          {
+            "id": "e2",
+            "source": "confirm",
+            "source_port": "approve",
+            "target": "draft",
+            "target_port": "in"
+          },
+          {
+            "id": "e3",
+            "source": "confirm",
+            "source_port": "revise",
+            "target": "report",
+            "target_port": "in"
+          },
+          {
+            "id": "e4",
+            "source": "draft",
+            "source_port": "out",
+            "target": "report",
+            "target_port": "in"
+          }
+        ],
+        "joins": {},
+        "budget": null
+      },
+      "permutations": [
+        {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            0,
+            1,
+            3,
+            2
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            0,
+            2,
+            1,
+            3
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            0,
+            2,
+            3,
+            1
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            0,
+            3,
+            1,
+            2
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            0,
+            3,
+            2,
+            1
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            1,
+            0,
+            3,
+            2
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            1,
+            2,
+            0,
+            3
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            1,
+            3,
+            0,
+            2
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            1,
+            3,
+            2,
+            0
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            2,
+            0,
+            1,
+            3
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            2,
+            0,
+            3,
+            1
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            2,
+            1,
+            3,
+            0
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            3,
+            0,
+            1,
+            2
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            3,
+            0,
+            2,
+            1
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            3,
+            1,
+            2,
+            0
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            3,
+            2,
+            0,
+            1
+          ],
+          "back_edge_indices": []
+        },
+        {
+          "order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "back_edge_indices": []
+        }
+      ]
+    },
+    {
+      "name": "a gate's revise port closes a loop",
+      "why": "The revise loop, which is the only cycle most documents will ever have. A gate's second compiled method IS a router, so this is the legal shape: the client dashes it and `back-edge-not-router` never fires.",
+      "document": {
+        "schema": "builder.flow/v1",
+        "id": "ug_0a1b2c3d",
+        "name": "gate revise loop",
+        "version": 1,
+        "input_field": "idea",
+        "nodes": [
+          {
+            "id": "idea",
+            "kind": "input",
+            "label": "idea",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "field": "idea",
+              "label": "Idea",
+              "max_chars": 2000,
+              "required": true
+            }
+          },
+          {
+            "id": "draft",
+            "kind": "agent",
+            "label": "draft",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "tier": "cheap",
+              "max_iter": 2,
+              "guardrail_max_retries": 2,
+              "prompt_inputs": {
+                "human_override": "",
+                "idea": "${state.idea}"
+              },
+              "agent_id": "scoper",
+              "tools": []
+            }
+          },
+          {
+            "id": "confirm",
+            "kind": "gate",
+            "label": "confirm",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "message": "Confirm before spending.",
+              "editable_fields": [],
+              "max_turns": 1,
+              "expiry_seconds": 1800
+            }
+          },
+          {
+            "id": "report",
+            "kind": "output",
+            "label": "report",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "body_key": "markdown_body",
+              "source": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "idea",
+            "source_port": "out",
+            "target": "draft",
+            "target_port": "in"
+          },
+          {
+            "id": "e2",
+            "source": "draft",
+            "source_port": "out",
+            "target": "confirm",
+            "target_port": "in"
+          },
+          {
+            "id": "e3",
+            "source": "confirm",
+            "source_port": "approve",
+            "target": "report",
+            "target_port": "in"
+          },
+          {
+            "id": "e4",
+            "source": "confirm",
+            "source_port": "revise",
+            "target": "draft",
+            "target_port": "in"
+          }
+        ],
+        "joins": {},
+        "budget": null
+      },
+      "permutations": [
+        {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            1,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "two routers close two nested loops",
+      "why": "Two back edges whose ORDER in `edges` decides which position each is reported at. A mirror that collects edges rather than positions cannot tell these apart once the outer loop is permuted ahead of the inner one.",
+      "document": {
+        "schema": "builder.flow/v1",
+        "id": "ug_0a1b2c3d",
+        "name": "nested loops",
+        "version": 1,
+        "input_field": "idea",
+        "nodes": [
+          {
+            "id": "idea",
+            "kind": "input",
+            "label": "idea",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "field": "idea",
+              "label": "Idea",
+              "max_chars": 2000,
+              "required": true
+            }
+          },
+          {
+            "id": "draft",
+            "kind": "agent",
+            "label": "draft",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "tier": "cheap",
+              "max_iter": 2,
+              "guardrail_max_retries": 2,
+              "prompt_inputs": {
+                "human_override": "",
+                "idea": "${state.idea}"
+              },
+              "agent_id": "scoper",
+              "tools": []
+            }
+          },
+          {
+            "id": "inner",
+            "kind": "router",
+            "label": "inner",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "branches": [
+                {
+                  "label": "again",
+                  "op": "eq",
+                  "key": "idea",
+                  "value": "yes"
+                },
+                {
+                  "label": "on",
+                  "op": "otherwise",
+                  "key": null,
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "id": "outer",
+            "kind": "router",
+            "label": "outer",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "branches": [
+                {
+                  "label": "back",
+                  "op": "eq",
+                  "key": "idea",
+                  "value": "yes"
+                },
+                {
+                  "label": "done",
+                  "op": "otherwise",
+                  "key": null,
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "id": "report",
+            "kind": "output",
+            "label": "report",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "body_key": "markdown_body",
+              "source": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "idea",
+            "source_port": "out",
+            "target": "draft",
+            "target_port": "in"
+          },
+          {
+            "id": "e2",
+            "source": "draft",
+            "source_port": "out",
+            "target": "inner",
+            "target_port": "in"
+          },
+          {
+            "id": "e3",
+            "source": "inner",
+            "source_port": "again",
+            "target": "draft",
+            "target_port": "in"
+          },
+          {
+            "id": "e4",
+            "source": "inner",
+            "source_port": "on",
+            "target": "outer",
+            "target_port": "in"
+          },
+          {
+            "id": "e5",
+            "source": "outer",
+            "source_port": "back",
+            "target": "draft",
+            "target_port": "in"
+          }
+        ],
+        "joins": {},
+        "budget": null
+      },
+      "permutations": [
+        {
+          "order": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "back_edge_indices": [
+            2,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            1,
+            2,
+            4,
+            3
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            1,
+            3,
+            2,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            1,
+            3,
+            4,
+            2
+          ],
+          "back_edge_indices": [
+            3,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            1,
+            4,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3,
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            1,
+            4,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            2,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            1,
+            3,
+            4
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            1,
+            4,
+            3
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            3,
+            1,
+            4
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            3,
+            4,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            4,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            4,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            1,
+            2,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            1,
+            4,
+            2
+          ],
+          "back_edge_indices": [
+            3,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            2,
+            1,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            2,
+            4,
+            1
+          ],
+          "back_edge_indices": [
+            3,
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            4,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            2,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            4,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            4,
+            1,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3,
+            1
+          ]
+        },
+        {
+          "order": [
+            0,
+            4,
+            1,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            4,
+            2,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            2,
+            1
+          ]
+        },
+        {
+          "order": [
+            0,
+            4,
+            2,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            2,
+            1
+          ]
+        },
+        {
+          "order": [
+            0,
+            4,
+            3,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            0,
+            4,
+            3,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            2,
+            3,
+            4
+          ],
+          "back_edge_indices": [
+            2,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            2,
+            4,
+            3
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            3,
+            2,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            3,
+            4,
+            2
+          ],
+          "back_edge_indices": [
+            3,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            4,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3,
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            4,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            2,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            0,
+            3,
+            4
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            0,
+            4,
+            3
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            3,
+            0,
+            4
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            3,
+            4,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            4,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            4,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            0,
+            2,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            0,
+            4,
+            2
+          ],
+          "back_edge_indices": [
+            3,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            2,
+            0,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            2,
+            4,
+            0
+          ],
+          "back_edge_indices": [
+            3,
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            4,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            2,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            4,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            4,
+            0,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3,
+            1
+          ]
+        },
+        {
+          "order": [
+            1,
+            4,
+            0,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            4,
+            2,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            2,
+            1
+          ]
+        },
+        {
+          "order": [
+            1,
+            4,
+            2,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            2,
+            1
+          ]
+        },
+        {
+          "order": [
+            1,
+            4,
+            3,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            1,
+            4,
+            3,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            1,
+            3,
+            4
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            1,
+            4,
+            3
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            3,
+            1,
+            4
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            3,
+            4,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            4,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            4,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            0,
+            3,
+            4
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            0,
+            4,
+            3
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            3,
+            0,
+            4
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            3,
+            4,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            4,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            4,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            0,
+            1,
+            4
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            0,
+            4,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            1,
+            0,
+            4
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            1,
+            4,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            4,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            4,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            4,
+            0,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            4,
+            0,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            4,
+            1,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            4,
+            1,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            4,
+            3,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            4,
+            3,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            1,
+            2,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            3
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            1,
+            4,
+            2
+          ],
+          "back_edge_indices": [
+            3,
+            4
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            2,
+            1,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            2
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            2,
+            4,
+            1
+          ],
+          "back_edge_indices": [
+            3,
+            2
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            4,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            2,
+            4
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            4,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            0,
+            2,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            3
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            0,
+            4,
+            2
+          ],
+          "back_edge_indices": [
+            3,
+            4
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            2,
+            0,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            2
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            2,
+            4,
+            0
+          ],
+          "back_edge_indices": [
+            3,
+            2
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            4,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            2,
+            4
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            4,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            0,
+            1,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            0,
+            4,
+            1
+          ],
+          "back_edge_indices": [
+            3,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            1,
+            0,
+            4
+          ],
+          "back_edge_indices": [
+            4,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            1,
+            4,
+            0
+          ],
+          "back_edge_indices": [
+            3,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            4,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            2,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            4,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            2,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            4,
+            0,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            3,
+            4,
+            0,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            3,
+            4,
+            1,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            1,
+            4
+          ]
+        },
+        {
+          "order": [
+            3,
+            4,
+            1,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            3,
+            4,
+            2,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            3,
+            4,
+            2,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            4,
+            0,
+            1,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            0,
+            1,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            4,
+            0,
+            2,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            2,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            0,
+            2,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            2,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            0,
+            3,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            4,
+            0,
+            3,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            4,
+            1,
+            0,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            1,
+            0,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            4,
+            1,
+            2,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            2,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            1,
+            2,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            2,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            1,
+            3,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            4,
+            1,
+            3,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            4,
+            2,
+            0,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            1,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            2,
+            0,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            2,
+            1,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            1,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            2,
+            1,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            2,
+            3,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            2,
+            3,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            0
+          ]
+        },
+        {
+          "order": [
+            4,
+            3,
+            0,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            4,
+            3,
+            0,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            4,
+            3,
+            1,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            0,
+            4
+          ]
+        },
+        {
+          "order": [
+            4,
+            3,
+            1,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            4,
+            3,
+            2,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            4,
+            3,
+            2,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "two edges between one pair, on different ports",
+      "why": "The case `back_edge_indices` answers in POSITIONS for. A gate's approve and revise may both land on the same node; one of them closes the loop and the other does not, and nothing but the position says which.",
+      "document": {
+        "schema": "builder.flow/v1",
+        "id": "ug_0a1b2c3d",
+        "name": "parallel ports",
+        "version": 1,
+        "input_field": "idea",
+        "nodes": [
+          {
+            "id": "idea",
+            "kind": "input",
+            "label": "idea",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "field": "idea",
+              "label": "Idea",
+              "max_chars": 2000,
+              "required": true
+            }
+          },
+          {
+            "id": "draft",
+            "kind": "agent",
+            "label": "draft",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "tier": "cheap",
+              "max_iter": 2,
+              "guardrail_max_retries": 2,
+              "prompt_inputs": {
+                "human_override": "",
+                "idea": "${state.idea}"
+              },
+              "agent_id": "scoper",
+              "tools": []
+            }
+          },
+          {
+            "id": "confirm",
+            "kind": "gate",
+            "label": "confirm",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "message": "Confirm before spending.",
+              "editable_fields": [],
+              "max_turns": 1,
+              "expiry_seconds": 1800
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "idea",
+            "source_port": "out",
+            "target": "draft",
+            "target_port": "in"
+          },
+          {
+            "id": "e2",
+            "source": "draft",
+            "source_port": "out",
+            "target": "confirm",
+            "target_port": "in"
+          },
+          {
+            "id": "e3",
+            "source": "confirm",
+            "source_port": "approve",
+            "target": "draft",
+            "target_port": "in"
+          },
+          {
+            "id": "e4",
+            "source": "confirm",
+            "source_port": "revise",
+            "target": "draft",
+            "target_port": "in"
+          }
+        ],
+        "joins": {},
+        "budget": null
+      },
+      "permutations": [
+        {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            1,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            2,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            1,
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            1,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            0,
+            3
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            2
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a cycle no input can reach is still counted",
+      "why": "The second half of the root list. The search seeds from the input nodes FIRST so the numbering matches the order a run visits them, then sweeps every remaining node - drop that sweep and a detached loop is silently free, which is exactly the graph an author has mid-edit.",
+      "document": {
+        "schema": "builder.flow/v1",
+        "id": "ug_0a1b2c3d",
+        "name": "detached loop",
+        "version": 1,
+        "input_field": "idea",
+        "nodes": [
+          {
+            "id": "idea",
+            "kind": "input",
+            "label": "idea",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "field": "idea",
+              "label": "Idea",
+              "max_chars": 2000,
+              "required": true
+            }
+          },
+          {
+            "id": "report",
+            "kind": "output",
+            "label": "report",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "body_key": "markdown_body",
+              "source": null
+            }
+          },
+          {
+            "id": "orphan",
+            "kind": "agent",
+            "label": "orphan",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "tier": "cheap",
+              "max_iter": 2,
+              "guardrail_max_retries": 2,
+              "prompt_inputs": {
+                "human_override": "",
+                "idea": "${state.idea}"
+              },
+              "agent_id": "scoper",
+              "tools": []
+            }
+          },
+          {
+            "id": "spin",
+            "kind": "router",
+            "label": "spin",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "branches": [
+                {
+                  "label": "round",
+                  "op": "eq",
+                  "key": "idea",
+                  "value": "yes"
+                },
+                {
+                  "label": "stop",
+                  "op": "otherwise",
+                  "key": null,
+                  "value": null
+                }
+              ]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "idea",
+            "source_port": "out",
+            "target": "report",
+            "target_port": "in"
+          },
+          {
+            "id": "e2",
+            "source": "orphan",
+            "source_port": "out",
+            "target": "spin",
+            "target_port": "in"
+          },
+          {
+            "id": "e3",
+            "source": "spin",
+            "source_port": "round",
+            "target": "orphan",
+            "target_port": "in"
+          }
+        ],
+        "joins": {},
+        "budget": null
+      },
+      "permutations": [
+        {
+          "order": [
+            0,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an edge to an id no node has is skipped, not descended into",
+      "why": "A document mid-edit routinely names a node that was just deleted. The search steps over it rather than treating it as a fresh vertex - a mirror that descends reports a loop through a node that does not exist, and `edge-unknown-endpoint` is the server's to raise, not the canvas's to guess at.",
+      "document": {
+        "schema": "builder.flow/v1",
+        "id": "ug_0a1b2c3d",
+        "name": "dangling target",
+        "version": 1,
+        "input_field": "idea",
+        "nodes": [
+          {
+            "id": "idea",
+            "kind": "input",
+            "label": "idea",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "field": "idea",
+              "label": "Idea",
+              "max_chars": 2000,
+              "required": true
+            }
+          },
+          {
+            "id": "draft",
+            "kind": "agent",
+            "label": "draft",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "tier": "cheap",
+              "max_iter": 2,
+              "guardrail_max_retries": 2,
+              "prompt_inputs": {
+                "human_override": "",
+                "idea": "${state.idea}"
+              },
+              "agent_id": "scoper",
+              "tools": []
+            }
+          },
+          {
+            "id": "pick",
+            "kind": "router",
+            "label": "pick",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "branches": [
+                {
+                  "label": "go",
+                  "op": "eq",
+                  "key": "idea",
+                  "value": "yes"
+                },
+                {
+                  "label": "stop",
+                  "op": "otherwise",
+                  "key": null,
+                  "value": null
+                }
+              ]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "idea",
+            "source_port": "out",
+            "target": "draft",
+            "target_port": "in"
+          },
+          {
+            "id": "e2",
+            "source": "draft",
+            "source_port": "out",
+            "target": "pick",
+            "target_port": "in"
+          },
+          {
+            "id": "e3",
+            "source": "pick",
+            "source_port": "go",
+            "target": "ghost",
+            "target_port": "in"
+          },
+          {
+            "id": "e4",
+            "source": "pick",
+            "source_port": "stop",
+            "target": "draft",
+            "target_port": "in"
+          }
+        ],
+        "joins": {},
+        "budget": null
+      },
+      "permutations": [
+        {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            1,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            0,
+            3,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            2,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            3,
+            2
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            1,
+            3,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            1,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            3,
+            1
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "back_edge_indices": [
+            3
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            3,
+            0
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            2,
+            3,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            0,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            1,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            3,
+            2,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a router that points at itself",
+      "why": "The degenerate loop, one edge long. It reaches the on-the-stack branch on the same frame that pushed it, which is the one path a mirror written with a visited SET instead of a two-colour state gets wrong.",
+      "document": {
+        "schema": "builder.flow/v1",
+        "id": "ug_0a1b2c3d",
+        "name": "self loop",
+        "version": 1,
+        "input_field": "idea",
+        "nodes": [
+          {
+            "id": "idea",
+            "kind": "input",
+            "label": "idea",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "field": "idea",
+              "label": "Idea",
+              "max_chars": 2000,
+              "required": true
+            }
+          },
+          {
+            "id": "spin",
+            "kind": "router",
+            "label": "spin",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "branches": [
+                {
+                  "label": "again",
+                  "op": "eq",
+                  "key": "idea",
+                  "value": "yes"
+                },
+                {
+                  "label": "stop",
+                  "op": "otherwise",
+                  "key": null,
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "id": "report",
+            "kind": "output",
+            "label": "report",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "config": {
+              "body_key": "markdown_body",
+              "source": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "idea",
+            "source_port": "out",
+            "target": "spin",
+            "target_port": "in"
+          },
+          {
+            "id": "e2",
+            "source": "spin",
+            "source_port": "again",
+            "target": "spin",
+            "target_port": "in"
+          },
+          {
+            "id": "e3",
+            "source": "spin",
+            "source_port": "stop",
+            "target": "report",
+            "target_port": "in"
+          }
+        ],
+        "joins": {},
+        "budget": null
+      },
+      "permutations": [
+        {
+          "order": [
+            0,
+            1,
+            2
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        },
+        {
+          "order": [
+            0,
+            2,
+            1
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            1,
+            0,
+            2
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            1,
+            2,
+            0
+          ],
+          "back_edge_indices": [
+            0
+          ]
+        },
+        {
+          "order": [
+            2,
+            0,
+            1
+          ],
+          "back_edge_indices": [
+            2
+          ]
+        },
+        {
+          "order": [
+            2,
+            1,
+            0
+          ],
+          "back_edge_indices": [
+            1
+          ]
+        }
+      ]
+    }
+  ]
+}

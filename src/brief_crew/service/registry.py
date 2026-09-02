@@ -21,6 +21,10 @@ from crewai.hooks import HookAborted, InterceptionPoint
 from crewai.hooks.dispatch import register_scoped, scoped_hooks
 
 from brief_crew.config import (
+    GATE_EDITABLE_FIELDS_METADATA_KEY,
+    GATE_EXPIRY_METADATA_KEY,
+    GATE_LABEL_METADATA_KEY,
+    GATE_MAX_TURNS_METADATA_KEY,
     GATE_REVISE_TURNS_METADATA_KEY,
     MAX_QUEUED_RUNS,
     MAX_RUN_COST_USD,
@@ -304,6 +308,42 @@ class RunAdmissionError(RuntimeError):
         self.retry_after_seconds = RUN_ADMISSION_RETRY_AFTER_SECONDS
 
 
+class UnknownWorkflowError(KeyError):
+    """A workflow id reached this registry with no runtime registered for it.
+
+    A third sibling of :class:`RunBusyError` and :class:`RunAdmissionError`,
+    and the same idea: the transport can only answer honestly if the registry
+    says *which* kind of no this is. ``_runtime_for`` raised a bare
+    ``KeyError`` and nothing caught it, so a workflow registered in ``GRAPHS``,
+    ``NODE_REGISTRIES`` and ``WORKFLOWS`` but omitted from the ``workflows=``
+    map ``create_app`` builds - three of the four places, which is exactly the
+    mistake a fourth registration site invites - surfaced as an uncaught
+    exception and a **500**. That tells the caller the service is broken about
+    a request that is merely naming something this service does not run.
+
+    A ``KeyError`` subclass rather than a ``RuntimeError`` one, deliberately:
+    ``KeyError`` is already this module's vocabulary for "no such thing"
+    (``require`` raises one for an unknown run and ``app.py`` turns it into a
+    404), so nothing that catches the broad type changes behaviour, and the
+    404 the transport now answers is the same answer for the same reason.
+
+    ``__str__`` is overridden because ``KeyError.__str__`` reprs its argument;
+    without it the sentence below would arrive wrapped in a stray pair of
+    quotes wherever it is forwarded.
+    """
+
+    __slots__ = ("workflow_id",)
+
+    def __init__(self, workflow_id: str) -> None:
+        super().__init__(
+            f"workflow {workflow_id} is not registered on this service"
+        )
+        self.workflow_id = workflow_id
+
+    def __str__(self) -> str:
+        return str(self.args[0]) if self.args else ""
+
+
 class GateFieldError(ValueError):
     """A gate reply tried to set a field the gate does not accept.
 
@@ -355,8 +395,92 @@ def _metadata_turns_used(context: PendingFeedbackContext) -> int:
         return 0
 
 
-def _gate_derived_keys(node_id: str, parsed: Mapping[str, Any]) -> frozenset[str]:
+@dataclass(frozen=True, slots=True)
+class _AuthoredGate:
+    """What a gate somebody DREW on the builder canvas declares about itself.
+
+    Everything this module used to know about a gate it knew because there were
+    exactly two of them and both were compiled into ``validator_flow`` by hand.
+    A builder graph breaks all four assumptions at once: its gate is called
+    whatever its author called it, it declares which of its payload's keys an
+    operator may edit, it carries its own revise budget - which ``route_gate``
+    already honours, so a prompt offering more was offering buttons the router
+    would decline - and it may close sooner than the service's global timeout.
+
+    ``from_context`` returning ``None`` IS the discriminator between the two
+    shipped gates and an authored one. The validator's ``@human_feedback``
+    decorators declare no ``metadata=`` at all, so its contexts carry only the
+    revise count its provider stamps on; a compiled gate always carries the
+    four keys below. Nothing has to remember to set a flag.
+
+    Every field is read defensively. ``metadata`` is a free-form dict that has
+    been through JSON on the way to and from ``pending_feedback``, so a float,
+    a numeric string or a list of non-strings all have to resolve to something
+    rather than raise inside gate construction - which would fail the run at
+    the exact moment a human was about to be asked something.
+    """
+
+    label: str
+    editable_fields: frozenset[str]
+    max_turns: int
+    expiry_seconds: int
+
+    @classmethod
+    def from_context(cls, context: PendingFeedbackContext) -> _AuthoredGate | None:
+        metadata = context.metadata or {}
+        if GATE_EDITABLE_FIELDS_METADATA_KEY not in metadata:
+            return None
+        declared = metadata.get(GATE_EDITABLE_FIELDS_METADATA_KEY) or ()
+        if not isinstance(declared, list | tuple):
+            # A string would iterate into single characters, which is the one
+            # malformed shape that produces a plausible-looking answer instead
+            # of an obvious one.
+            declared = ()
+        return cls(
+            label=str(metadata.get(GATE_LABEL_METADATA_KEY) or "").strip(),
+            editable_fields=frozenset(str(name) for name in declared),
+            max_turns=_metadata_int(metadata, GATE_MAX_TURNS_METADATA_KEY, 0),
+            expiry_seconds=min(
+                # Bounded by the global timeout rather than trusted: the
+                # document schema caps `expiry_seconds` at exactly this value,
+                # and a gate that outlived the service's own sweep would be a
+                # promise nothing keeps. `max(1, ...)` because a zero here
+                # would open a gate that has already expired.
+                VALIDATOR_GATE_TIMEOUT_SECONDS,
+                max(
+                    1,
+                    _metadata_int(
+                        metadata,
+                        GATE_EXPIRY_METADATA_KEY,
+                        VALIDATOR_GATE_TIMEOUT_SECONDS,
+                    ),
+                ),
+            ),
+        )
+
+
+def _metadata_int(metadata: Mapping[str, Any], key: str, default: int) -> int:
+    try:
+        return int(metadata[key])
+    except (KeyError, TypeError, ValueError):
+        return default
+
+
+def _gate_derived_keys(
+    node_id: str,
+    parsed: Mapping[str, Any],
+    authored: _AuthoredGate | None = None,
+) -> frozenset[str]:
     """The keys at this gate whose value an operator edit cannot change.
+
+    An AUTHORED gate answers this itself: everything its ``editable_fields``
+    does not name is read-only, which is what makes that field mean something
+    rather than merely seed the payload. It is inverted deliberately - the
+    author lists what may be edited, and a key their upstream node started
+    emitting later is read-only by default rather than editable by default.
+    The note field is never derived whatever they declared, because it is not
+    part of the payload at all: it is how a ``revise`` is expressed, and a gate
+    that cannot carry one has no lever left but Approve.
 
     ``review_verdict`` shows a ``Verdict``, and every field of that model is one
     of two things. Seven are arithmetic the schema recomputes and discards on
@@ -384,6 +508,12 @@ def _gate_derived_keys(node_id: str, parsed: Mapping[str, Any]) -> frozenset[str
     Any other gate keeps the historical behaviour of everything editable: a gate
     this module has never seen is one whose semantics it cannot assert.
     """
+    if authored is not None:
+        return frozenset(
+            str(key)
+            for key in parsed
+            if str(key) not in authored.editable_fields and str(key) != GATE_NOTE_FIELD
+        )
     if node_id == VERDICT_GATE_NODE:
         return frozenset(str(key) for key in parsed)
     return frozenset()
@@ -398,6 +528,25 @@ def _gate_field_value(value: Any) -> str:
     """
     text = value if isinstance(value, str) else json.dumps(value, default=str)
     return text[:MAX_GATE_VALUE_CHARS]
+
+
+def _gate_summary_str(value: Any) -> str | None:
+    """A gate prompt's headline ``verdict``, or nothing.
+
+    ``GatePrompt`` declares this ``str | None`` and forbids extras, so anything
+    else here is not a display defect - it is a 500 on ``GET /api/runs/{id}``
+    for every subsequent read of that run. A gate on a canvas may show a key
+    called ``verdict`` holding an object, so the coercion has to happen where
+    the prompt is built rather than where it is rendered.
+    """
+    return value if isinstance(value, str) else None
+
+
+def _gate_summary_float(value: Any) -> float | None:
+    """The same for ``confidence``: a real number, or nothing at all."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
 
 
 def _gate_display_value(value: Any) -> tuple[str, str]:
@@ -423,6 +572,7 @@ def _display_kind(text: str) -> str:
 def _split_gate_fields(
     node_id: str,
     parsed: Mapping[str, Any],
+    authored: _AuthoredGate | None = None,
 ) -> tuple[dict[str, str], list[dict[str, str]]]:
     """Separate what an operator may edit from what they may only read.
 
@@ -431,7 +581,7 @@ def _split_gate_fields(
     means the defect cannot survive a stale UI; an ``editable`` flag beside a
     full dump would leave an old client inviting the impossible edit forever.
     """
-    derived_keys = _gate_derived_keys(node_id, parsed)
+    derived_keys = _gate_derived_keys(node_id, parsed, authored)
     fields: dict[str, str] = {}
     derived: list[dict[str, str]] = []
     for key, value in parsed.items():
@@ -481,9 +631,27 @@ def _normalize_gate_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
 
 @dataclass(frozen=True, slots=True)
 class WorkflowRuntime:
+    """Everything the registry needs to execute one workflow.
+
+    ``input_field`` is the request-input key this workflow reads - ``topic``
+    for Brief Flow, ``idea`` for the validator - and it is declared here
+    because the runtime is the one per-workflow record the service already
+    keeps. ``create_run`` used to derive it as ``"idea" if workflow_id ==
+    VALIDATOR_GRAPH.id else "topic"``, which is correct for exactly two
+    workflows and silently wrong for every other: a third would be told its
+    ``inputs.topic`` was missing, naming a field it never declared.
+
+    ``None`` means "this runtime declares nothing", which is not the same as
+    "topic". It is the state every ``WorkflowRuntime`` constructed before this
+    field existed is in - a dozen of them in ``tests/`` - so ``app.py`` resolves
+    it against its own per-workflow declaration and refuses, naming the
+    workflow, when neither knows. Silently guessing is the defect being fixed.
+    """
+
     graph_version: str
     node_registry: NodeRegistry
     runner: Runner
+    input_field: str | None = None
 
 
 class _FlushMarker:
@@ -1301,12 +1469,28 @@ class RunRegistry:
         except Exception:
             logger.exception("the interrupted-run recovery sweep failed at startup")
 
+    def workflow_runtime(self, workflow_id: str) -> WorkflowRuntime:
+        """The runtime that executes ``workflow_id``.
+
+        Public because the transport needs it before it needs a run: the
+        request-input key and the gate policy are both properties of the
+        workflow, and reaching through ``_runtime_for`` for them would be a
+        handler depending on a private name.
+
+        Raises :class:`UnknownWorkflowError` when this registry declares a
+        workflow map that has no entry for the id. A registry constructed
+        WITHOUT a map still answers for any id from its single default runtime,
+        which is the older single-workflow shape and is still legal.
+        """
+
+        return self._runtime_for(workflow_id)
+
     def _runtime_for(self, workflow_id: str) -> WorkflowRuntime:
         if self.workflows:
             try:
                 return self.workflows[workflow_id]
             except KeyError as exc:
-                raise KeyError(workflow_id) from exc
+                raise UnknownWorkflowError(workflow_id) from exc
         return self._default_runtime
 
     def _active_slots(self) -> int:
@@ -1471,7 +1655,12 @@ class RunRegistry:
         # Before the durable compare-and-set, never after: a refusal that ran
         # later would have already marked the gate answered and locked the
         # operator out of a run the server would otherwise finish.
-        self._reject_uneditable_fields(gate_id, prompt, fields or {})
+        self._reject_uneditable_fields(
+            gate_id,
+            prompt,
+            fields or {},
+            authored=_AuthoredGate.from_context(context) is not None,
+        )
 
         if self.persistence is not None:
             answer = self.persistence.answer_gate(
@@ -1495,7 +1684,7 @@ class RunRegistry:
         record.capture.emit(
             kind=FrameKind.GATE_CLOSED,
             event_type=UIEventType.HUMAN_INTERACTION,
-            node_id=context.method_name,
+            node_id=self._gate_node_id(record, prompt),
             message=f"{prompt['title']} answered",
             details={
                 "gate_id": gate_id,
@@ -1519,6 +1708,8 @@ class RunRegistry:
         gate_id: str,
         prompt: Mapping[str, Any],
         fields: Mapping[str, str],
+        *,
+        authored: bool = False,
     ) -> None:
         """Refuse an edit the gate never offered, rather than dropping it.
 
@@ -1551,12 +1742,23 @@ class RunRegistry:
         if not rejected:
             return
         editable = ", ".join(sorted(offered)) or "none"
+        # Two gates, two reasons, and telling an operator the wrong one is
+        # worse than telling them nothing: "recomputed from the dimension
+        # scores" is a sentence about a Verdict, and a graph somebody drew has
+        # no dimension scores. Its read-only keys are read-only because its
+        # author said which keys were not.
+        why = (
+            "This gate's author declared which of its fields an operator may "
+            "edit, and the rest are shown for reading only"
+            if authored
+            else "A derived value is recomputed from the dimension scores and "
+            "the evidence behind them"
+        )
         raise GateFieldError(
             gate_id,
             rejected,
             f"these fields cannot be set at this gate: {', '.join(rejected)}. "
-            f"Editable fields: {editable}. A derived value is recomputed from "
-            "the dimension scores and the evidence behind them, so reply with "
+            f"Editable fields: {editable}. {why}, so reply with "
             f"outcome=revise and say what to reconsider in {GATE_NOTE_FIELD!r} "
             "instead.",
         )
@@ -1711,6 +1913,7 @@ class RunRegistry:
             node_id = self._gate_node_id(record, prompt)
             title = str(prompt.get("title") or "Gate")
             overdue = int((moment - deadline).total_seconds())
+            timeout_seconds = self._gate_timeout_seconds(record, deadline)
             if record.claim_gate_expiry(gate_id):
                 counters["expired_now"] += 1
                 self._persist_gate_watch(record, gate_id, "expired")
@@ -1725,7 +1928,7 @@ class RunRegistry:
                         "title": title,
                         "status": "expired",
                         "expires_at": deadline.isoformat(),
-                        "timeout_seconds": VALIDATOR_GATE_TIMEOUT_SECONDS,
+                        "timeout_seconds": timeout_seconds,
                         "overdue_seconds": overdue,
                         "auto_answered": False,
                         "resumable": True,
@@ -1750,7 +1953,7 @@ class RunRegistry:
                         "status": "alerted",
                         "alert": "gate_open_without_gate_closed",
                         "expires_at": deadline.isoformat(),
-                        "timeout_seconds": VALIDATOR_GATE_TIMEOUT_SECONDS,
+                        "timeout_seconds": timeout_seconds,
                         "grace_seconds": VALIDATOR_GATE_EXPIRY_ALERT_GRACE_SECONDS,
                         "overdue_seconds": overdue,
                     },
@@ -1762,7 +1965,7 @@ class RunRegistry:
                     gate_id,
                     record.run_id,
                     overdue,
-                    VALIDATOR_GATE_TIMEOUT_SECONDS,
+                    timeout_seconds,
                 )
         with self._lock:
             self._gate_sweeps += 1
@@ -2199,12 +2402,51 @@ class RunRegistry:
 
     @staticmethod
     def _gate_node_id(record: RunRecord, prompt: Mapping[str, Any]) -> str:
+        """Which node on the CANVAS this gate is, for every frame that names it.
+
+        The prompt's own ``node_id`` first, because that is the one an operator
+        has already been shown. The fallback resolves the pending context's
+        method name through the node registry rather than using it raw: a
+        compiled builder gate pauses in ``n2_confirm`` while the canvas - and
+        therefore every node-state key the client holds - calls it ``confirm``,
+        so a frame carrying the ident marks no node at all. For the validator
+        the two are the same string and this changes nothing, which is exactly
+        how it stayed wrong until a graph existed whose names differed.
+        """
         context = record.pending_context
-        node_id = str(
-            prompt.get("node_id")
-            or (context.method_name if context is not None else "")
-        )
+        node_id = str(prompt.get("node_id") or "")
+        if not node_id and context is not None:
+            node_id = (
+                record.node_registry.declared_node(context.method_name)
+                or context.method_name
+            )
         return node_id or record.node_registry.workflow_node_id
+
+    @staticmethod
+    def _gate_timeout_seconds(record: RunRecord, deadline: datetime) -> int:
+        """How long this gate was actually open for, as the frames report it.
+
+        `GateConfig.expiry_seconds` lets an authored gate close sooner than the
+        service's global window, and `_gate_prompt` honours it - so a frame
+        that went on reporting VALIDATOR_GATE_TIMEOUT_SECONDS would tell an
+        operator their gate had thirty minutes when it had five. Derived from
+        the deadline the prompt actually carries rather than re-read from the
+        metadata, because the deadline is the thing the sweep just acted on.
+        A record hydrated from the database after a restart has no pending
+        context to subtract from, and the global window is the honest fallback
+        there: it is what every gate opened before this field was honoured had.
+        """
+        context = record.pending_context
+        if context is None:
+            return VALIDATOR_GATE_TIMEOUT_SECONDS
+        # `_gate_deadline` normalises a naive `expires_at` to UTC, and CrewAI
+        # stamps `requested_at` naive, so subtracting them raw is a TypeError
+        # on the ordinary path rather than an exotic one - and it would be
+        # raised from inside a background sweep, where nothing is watching.
+        opened = record.pending_context.requested_at
+        if opened.tzinfo is None:
+            opened = opened.replace(tzinfo=timezone.utc)
+        return max(0, int((deadline - opened).total_seconds()))
 
     def dependency_status(self) -> dict[str, dict[str, Any]]:
         storage = {"status": "not_configured"}
@@ -2395,7 +2637,13 @@ class RunRegistry:
     ) -> None:
         context = pending.context
         record.flow_id = context.flow_id
-        prompt = self._gate_prompt(record.run_id, context)
+        prompt = self._gate_prompt(record.run_id, context, record.node_registry)
+        # One node id, resolved once by the prompt and read back out of it
+        # everywhere else. The durable row and the frame must agree, because
+        # `_gate_node_id` reads the row on recovery and the expiry sweeper
+        # reads it again from there - a gate that announced itself on one node
+        # and expired on another would light up two cards for one pause.
+        node_id = str(prompt["node_id"])
         if self.persistence is not None:
             state = self.persistence.load_state(context.flow_id) or {
                 "id": context.flow_id
@@ -2404,7 +2652,7 @@ class RunRegistry:
             self.persistence.open_gate(
                 record.run_id,
                 str(prompt["gate_id"]),
-                node_id=context.method_name,
+                node_id=node_id,
                 request=prompt,
                 opened_at=context.requested_at,
                 expires_at=datetime.fromisoformat(str(prompt["expires_at"])),
@@ -2413,7 +2661,7 @@ class RunRegistry:
         record.capture.emit(
             kind=FrameKind.GATE_OPEN,
             event_type=UIEventType.HUMAN_INTERACTION,
-            node_id=context.method_name,
+            node_id=node_id,
             message=str(prompt["title"]),
             details=prompt,
         )
@@ -2472,10 +2720,15 @@ class RunRegistry:
         record.answered_gates.discard(gate_id)
         restored = dict(prompt)
         record.mark_waiting(restored, context)
+        # Off the restored prompt, so the reopened gate lands on the same node
+        # the original GATE_OPEN did: a client that already applied GATE_CLOSED
+        # is being handed its card back, and a card that comes back on a
+        # different node is not the same card.
+        node_id = self._gate_node_id(record, restored)
         record.capture.emit(
             kind=FrameKind.GATE_ALERT,
             event_type=UIEventType.HUMAN_INTERACTION,
-            node_id=context.method_name,
+            node_id=node_id,
             message=f"{prompt['title']} reopened; the reply could not be started",
             details={
                 "gate_id": gate_id,
@@ -2490,7 +2743,7 @@ class RunRegistry:
         record.capture.emit(
             kind=FrameKind.GATE_OPEN,
             event_type=UIEventType.HUMAN_INTERACTION,
-            node_id=context.method_name,
+            node_id=node_id,
             message=str(prompt["title"]),
             details=restored,
         )
@@ -2500,25 +2753,62 @@ class RunRegistry:
     def _gate_prompt(
         run_id: str,
         context: PendingFeedbackContext,
+        node_registry: NodeRegistry | None = None,
     ) -> dict[str, Any]:
+        """One pending pause as the payload both transports serve.
+
+        ``node_registry`` is how the prompt learns the node id the CANVAS
+        drew. A builder gate's method name is the compiler's identifier -
+        ``n2_confirm`` - and the client keys its node states by document node
+        id, so a prompt naming the ident marks nothing: the gate node stays
+        `idle` while the run waits on it, which is the one state an operator
+        has to be able to see. It is optional and defaults to the method name
+        because the validator's method names ARE its node ids, which is exactly
+        why this went unnoticed until a graph existed whose names differed.
+        """
+        authored = _AuthoredGate.from_context(context)
         parsed = _parsed_gate_output(context.method_output)
-        fields, derived = _split_gate_fields(context.method_name, parsed)
+        fields, derived = _split_gate_fields(context.method_name, parsed, authored)
+        node_id = (
+            node_registry.declared_node(context.method_name)
+            if node_registry is not None
+            else None
+        ) or context.method_name
         scope_gate = context.method_name == SCOPE_GATE_NODE
-        title = "Confirm scope" if scope_gate else "Review verdict"
-        summary = (
-            str(parsed.get("category") or parsed.get("startup_idea") or context.message)
-            if scope_gate
-            else str(parsed.get("cheapest_next_test") or context.message)
-        )
+        if authored is not None:
+            # The author's own label and their own message. Reading the
+            # validator's summary keys off a graph somebody drew is how every
+            # builder gate came to be titled "Review verdict" over a summary
+            # pulled from `cheapest_next_test`, a key no authored payload has.
+            # The label is empty only for a gate paused by a build that had not
+            # yet put it on the metadata - a run held across a deploy - since
+            # `BuilderNode.label` is `min_length=1`. The node id is the honest
+            # fallback there, being the other thing the author typed.
+            title = authored.label or node_id
+            summary = str(context.message)
+        else:
+            title = "Confirm scope" if scope_gate else "Review verdict"
+            summary = (
+                str(
+                    parsed.get("category")
+                    or parsed.get("startup_idea")
+                    or context.message
+                )
+                if scope_gate
+                else str(parsed.get("cheapest_next_test") or context.message)
+            )
         gate_id = str(
             uuid.uuid5(
                 uuid.NAMESPACE_URL,
                 f"{run_id}:{context.method_name}:{context.requested_at.isoformat()}",
             )
         )
-        expires_at = context.requested_at + timedelta(
-            seconds=VALIDATOR_GATE_TIMEOUT_SECONDS
+        timeout_seconds = (
+            authored.expiry_seconds
+            if authored is not None
+            else VALIDATOR_GATE_TIMEOUT_SECONDS
         )
+        expires_at = context.requested_at + timedelta(seconds=timeout_seconds)
         # How much of this gate's revise budget is left, and therefore whether
         # Revise is offered at all.
         #
@@ -2535,14 +2825,24 @@ class RunRegistry:
         # without it - the synthetic runner, or a gate opened by some other
         # flow - reads 0 used, which is the honest answer for a run that has
         # never spent a turn.
+        #
+        # An authored gate counts against ITS OWN budget. `route_gate` already
+        # honours `max_turns` off the compiled routing table, so a prompt
+        # offering five revises on a gate declared with one was offering four
+        # buttons whose replies the router silently downgrades to approvals -
+        # the operator sends "revise", the run goes forward, and nothing
+        # anywhere says why.
         used = _metadata_turns_used(context)
-        remaining = max(0, VALIDATOR_MAX_GATE_TURNS - used)
+        max_turns = (
+            authored.max_turns if authored is not None else VALIDATOR_MAX_GATE_TURNS
+        )
+        remaining = max(0, max_turns - used)
         options = [{"id": "approve", "label": "Approve", "emphasis": "primary"}]
         if remaining > 0:
             options.append({"id": "revise", "label": "Revise"})
         return {
             "gate_id": gate_id,
-            "node_id": context.method_name,
+            "node_id": node_id,
             "title": title,
             "summary": summary[:MAX_GATE_VALUE_CHARS],
             # Legacy flag, kept for the persisted contract: it now means "this
@@ -2552,11 +2852,19 @@ class RunRegistry:
             "expires_at": expires_at.isoformat(),
             "options": options,
             GATE_REVISE_REMAINING_KEY: remaining,
-            GATE_REVISE_MAX_KEY: VALIDATOR_MAX_GATE_TURNS,
+            GATE_REVISE_MAX_KEY: max_turns,
             "fields": fields,
             "derived": derived,
-            "verdict": parsed.get("verdict"),
-            "confidence": parsed.get("confidence"),
+            # Type-checked rather than passed through, because these two keys
+            # are the validator's vocabulary read off whatever the upstream
+            # node happened to emit. `GatePrompt.verdict` is `str | None`, so
+            # an authored payload carrying a `verdict` OBJECT - which is
+            # exactly what a gate downstream of a scoring node produces - made
+            # `GET /api/runs/{id}` fail validation and answer 500, permanently,
+            # for the rest of that run's life. A value of the wrong type is not
+            # this gate's verdict; it is a key that happens to share a name.
+            "verdict": _gate_summary_str(parsed.get("verdict")),
+            "confidence": _gate_summary_float(parsed.get("confidence")),
         }
 
     @staticmethod
@@ -2588,8 +2896,9 @@ class RunRegistry:
         if note:
             payload["feedback"] = note
 
+        authored = _AuthoredGate.from_context(context)
         original = _parsed_gate_output(context.method_output)
-        derived_keys = _gate_derived_keys(context.method_name, original)
+        derived_keys = _gate_derived_keys(context.method_name, original, authored)
         edits = {
             key: value
             for key, value in fields.items()
@@ -2603,7 +2912,22 @@ class RunRegistry:
                     original[key] = json.loads(value)
                 except json.JSONDecodeError:
                     original[key] = value
-            slot = "scope" if context.method_name == SCOPE_GATE_NODE else "verdict"
+            # An authored gate's edits go under `fields` - the name the request
+            # body, the prompt and `GateConfig.editable_fields` all already use
+            # - not under `verdict`. `verdict` is a slot `route_verdict` reads,
+            # and there is no `route_verdict` in a builder graph: `route_gate`
+            # hands every non-`decision` key of the reply to `gate_decision`,
+            # which records them as the gate node's own output for a downstream
+            # `${state.out__<gate>}` to read. So filing them under `verdict`
+            # did two things at once - it named the operator's edits after a
+            # model this graph has never heard of, and it put a mapping under a
+            # key `GatePrompt.verdict` declares to be a string, which is a 500
+            # on the next read of the run.
+            slot = (
+                "fields"
+                if authored is not None
+                else ("scope" if context.method_name == SCOPE_GATE_NODE else "verdict")
+            )
             payload[slot] = original
         return json.dumps(payload)
 

@@ -17,12 +17,18 @@ from brief_crew.events.models import (
     FrameLevel,
     UIEventType,
 )
-from brief_crew.events.registry import NodeRegistry, QUARANTINE_NODE_ID, WORKFLOW_NODE_ID
+from brief_crew.events.registry import (
+    NodeRegistry,
+    QUARANTINE_NODE_ID,
+    ROUTING_NODE_KINDS,
+    WORKFLOW_NODE_ID,
+)
 from brief_crew.events.serializer import FieldBoundedSerializer, SerializerLimits
 from brief_crew.events.verdict import (
     VERDICT_NODE_ID,
     VerdictComputedEvent,
     publish_verdict,
+    verdict_frame_node,
 )
 
 
@@ -40,6 +46,7 @@ __all__ = [
     "MAX_REPLAY_LIMIT",
     "NodeRegistry",
     "QUARANTINE_NODE_ID",
+    "ROUTING_NODE_KINDS",
     "SerializerLimits",
     "StreamSinkAdapter",
     "UIEventListener",
@@ -51,4 +58,5 @@ __all__ = [
     "current_capture",
     "publish_verdict",
     "ui_run_id",
+    "verdict_frame_node",
 ]

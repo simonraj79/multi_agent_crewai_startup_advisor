@@ -82,8 +82,14 @@ db/
 # because Render auto-detects it to pin the build.
 
 # The global *.png rule above is for run artifacts (plot output, screenshots).
-# Frontend source assets are real code and must survive a fresh clone -
-# frontend/src/components/HelloWorld.vue imports hero.png at build time.
+# Frontend source assets are real code and must survive a fresh clone.
+# The one file this currently rescues is hero.png, which
+# frontend/src/components/HelloWorld.vue imports - and this comment used to say
+# "at build time", which is not true: HelloWorld.vue has no importers anywhere
+# (`grep -rn HelloWorld frontend/src` is empty), so it never enters Vite's
+# module graph and hero.png is never emitted into a bundle. The exception is
+# kept anyway, because remaining-work item 7 is an open keep-or-delete decision
+# about that whole dead cluster and an ignore rule must not decide it silently.
 !frontend/src/assets/**/*.png
 
 # Lecture source material - 20 MB binary, not application source.

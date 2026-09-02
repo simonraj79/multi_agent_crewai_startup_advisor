@@ -260,42 +260,20 @@ const ariaLabel = computed(() => {
 </template>
 
 <style scoped>
-.workflow-node {
-  --node-gradient: linear-gradient(135deg, rgba(170, 255, 205, 0.5), rgba(153, 234, 249, 0.5), rgba(160, 196, 255, 0.5));
-  position: relative;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 10px;
-  width: 270px;
-  min-height: 116px;
-  padding: 13px;
-  color: var(--text-body);
-  background-image: linear-gradient(var(--bg-node), var(--bg-node)), var(--node-gradient);
-  background-origin: border-box;
-  background-clip: padding-box, border-box;
-  border: 2px solid transparent;
-  border-radius: var(--r-2xl);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
-  transition: filter var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
-}
-
-.workflow-node.is-gate {
-  --node-gradient: linear-gradient(135deg, rgba(255, 217, 122, 0.78), rgba(255, 184, 77, 0.68));
-}
-
-.workflow-node.is-output {
-  --node-gradient: var(--gradient-brand);
-}
-
-/* Running is CYAN, completed is MINT. They used to share `--gradient-brand`
-   verbatim, so the only thing separating "this agent is working" from "this
-   agent is done" was a state chip that the graph's own default fit renders at
-   under 5px. Two states that look identical are one state. */
-.workflow-node.is-running {
-  --node-gradient: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
-  box-shadow: 0 0 0 1px rgba(153, 234, 249, 0.3), 0 14px 34px rgba(0, 0, 0, 0.35);
-  animation: node-glowing 4s linear infinite, node-pulse 2s ease-in-out infinite;
-}
+/*
+ * What is NOT here any more: the card's visual shell - geometry, the
+ * double-clip gradient border, `.node-icon`, `.node-copy`, `.node-eyebrow-row`,
+ * `.node-meta`, `.node-state`, `.node-usage`, the in-flight call panel, the
+ * crew SVG, every `@keyframes` and the reduced-motion block - lives in
+ * `src/assets/styles/node-card.css`, global, so the builder's design-time card
+ * is guaranteed to be the same card rather than a copy that agrees today.
+ *
+ * What stayed is the RUN tenancy of `--node-gradient`: the per-state and
+ * per-kind rules that say what this card means while a flow is executing. That
+ * file's header records the three rules that had to travel with the shell for
+ * cascade reasons, and `e2e/visual/run-canvas.spec.ts` is the gate that proved
+ * the move changed nothing.
+ */
 
 .workflow-node.is-waiting {
   --node-gradient: linear-gradient(135deg, var(--accent-blue), var(--warn-text));
@@ -340,15 +318,6 @@ const ariaLabel = computed(() => {
 
 .is-holding .node-icon { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 .is-holding .node-copy strong { color: var(--warn-text); }
-
-.quarantine-count {
-  gap: 4px;
-  padding: 2px 7px;
-  color: var(--text-40);
-  font-variant-numeric: tabular-nums;
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-pill);
-}
 
 .is-holding .quarantine-count { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 
@@ -398,105 +367,14 @@ const ariaLabel = computed(() => {
 
 .is-step .node-icon { color: var(--accent-blue); background: rgba(160, 196, 255, 0.08); border-color: rgba(160, 196, 255, 0.22); }
 
-.node-icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  color: var(--accent-cyan);
-  background: rgba(153, 234, 249, 0.08);
-  border: 1px solid rgba(153, 234, 249, 0.22);
-  border-radius: var(--r-md);
-}
-
 .is-gate .node-icon { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 .is-output .node-icon { color: var(--accent-mint); }
 .is-error .node-icon { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
-
-.node-copy { min-width: 0; }
-.node-eyebrow { display: block; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); }
-.node-copy strong { display: block; color: var(--text-title); font: 600 var(--fs-15)/1.2 var(--font-display); }
-.node-copy p { margin: 6px 0 0; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.42; }
-
-.node-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-.node-meta span { padding: 3px 6px; color: var(--text-body); font: 500 10px/1.2 var(--font-mono); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-sm); }
-
-/* The in-flight call. Reads as a live panel rather than another metadata chip,
-   because it is the one thing on the card that answers "is this working?" */
-.node-active {
-  margin-top: 9px;
-  padding: 6px 7px;
-  background: color-mix(in srgb, var(--accent-running, #22d3ee) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-running, #22d3ee) 35%, transparent);
-  border-radius: var(--r-sm);
-}
-.node-active-head { display: flex; align-items: center; gap: 5px; }
-.node-active-dot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  background: var(--accent-running, #22d3ee);
-  border-radius: 50%;
-  animation: node-active-pulse 1.4s ease-in-out infinite;
-}
-.node-active-label {
-  overflow: hidden;
-  color: var(--text-body);
-  font: 600 9px/1.2 var(--font-mono);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-/* Tabular numerals so a ticking clock does not jitter its own width - a
-   number that reflows every second reads as broken rather than as live. */
-.node-active-elapsed {
-  margin-left: auto;
-  color: var(--accent-running, #22d3ee);
-  font: 600 9px/1.2 var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-/* Two lines, then clamp. The full string is on `title`: a long query must not
-   grow the card and shift the whole graph under the operator. */
-.node-active-query {
-  display: -webkit-box;
-  margin: 4px 0 0;
-  overflow: hidden;
-  color: var(--text-40);
-  font: 400 9px/1.35 var(--font-mono);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-}
-.node-active-hint { margin: 4px 0 0; color: var(--text-40); font: 400 9px/1.35 var(--font-sans, inherit); }
-
-@keyframes node-active-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.node-usage { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 8px 0 0; color: var(--text-40); font: 500 9px/1.2 var(--font-mono); }
-.node-usage div { display: inline-flex; gap: 3px; }
-.node-usage dt { text-transform: uppercase; }
-.node-usage dd { margin: 0; color: var(--text-body); font-variant-numeric: tabular-nums; }
-
-.node-state {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-muted);
-  font: 600 10px/1 var(--font-mono);
-  text-transform: uppercase;
-}
 
 .is-running .node-state { color: var(--accent-cyan); }
 .is-waiting .node-state { color: var(--warn-text); }
 .is-completed .node-state { color: var(--accent-mint); }
 .is-error .node-state { color: var(--err-text); }
-
-.state-dot { width: 6px; height: 6px; background: currentColor; border-radius: 50%; }
-.is-running .state-dot { animation: dot-pulse 1s ease-in-out infinite; }
 
 .node-handle {
   width: 7px;
@@ -504,85 +382,6 @@ const ariaLabel = computed(() => {
   background: var(--bg-node);
   border: 1px solid var(--accent-cyan);
   opacity: 0.72;
-}
-
-@keyframes node-glowing {
-  0%, 100% { filter: saturate(1) drop-shadow(0 0 5px rgba(153, 234, 249, 0.3)); }
-  50% { filter: saturate(1.35) drop-shadow(0 0 14px rgba(153, 234, 249, 0.56)); }
-}
-
-@keyframes node-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(153, 234, 249, 0), 0 12px 30px rgba(0, 0, 0, 0.26); }
-  50% { box-shadow: 0 0 0 7px rgba(153, 234, 249, 0.08), 0 12px 30px rgba(0, 0, 0, 0.3); }
-}
-
-@keyframes dot-pulse { 50% { opacity: 0.35; } }
-
-/*
- * The crew, moored to the running card.
- *
- * It sits ABOVE the card rather than inside it, for the same reason ChatDev
- * stands its character on the node: the card's own interior is already full of
- * label, description, model, tool and a three-column usage table, and anything
- * added inside competes with all of it. Above the top edge the marker is the
- * only thing at that height on the whole canvas, so "what is running" is
- * answered by the eye before any text is read - which matters most at the
- * default fit, where none of the text is legible anyway.
- */
-.node-crew {
-  position: absolute;
-  top: -26px;
-  left: 50%;
-  width: 52px;
-  height: 26px;
-  color: var(--accent-cyan);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-.node-crew-svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45)); }
-
-/* Two rowers here, not the strip's three: the strip's three ARE the three
-   research branches, and repeating that count on a single card would claim a
-   fan-out that a single node does not have. */
-.node-crew-oar { transform-box: fill-box; transform-origin: top right; animation: node-oar-stroke 1.05s ease-in-out infinite; }
-.node-crew-rower { animation: node-rower-pull 1.05s ease-in-out infinite; }
-.node-crew-hull { animation: node-hull-bob 2.1s ease-in-out infinite; }
-
-@keyframes node-oar-stroke {
-  0%, 100% { transform: rotate(0deg); }
-  40% { transform: rotate(26deg); }
-  70% { transform: rotate(-8deg); }
-}
-@keyframes node-rower-pull {
-  0%, 100% { transform: translateX(0); }
-  40% { transform: translateX(-2px); }
-}
-@keyframes node-hull-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(1.2px); }
-}
-
-/*
- * The eyebrow's margin moved here from `.node-eyebrow`, so the row's spacing is
- * byte-identical to the old single span whether or not a lap chip is present.
- *
- * `padding-right` reserves the lane the absolutely-positioned state chip
- * occupies. Without it the chip and a long eyebrow simply overlapped - which
- * they did not before only because nothing else shared the line.
- */
-.node-eyebrow-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-  margin: 1px 0 3px;
-  padding-right: 62px;
-}
-.node-eyebrow-row .node-eyebrow {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 /* The lap chip, sized to sit on the eyebrow's own baseline without pushing the
@@ -602,18 +401,4 @@ const ariaLabel = computed(() => {
   border-radius: var(--r-pill);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .workflow-node.is-running,
-  .is-running .state-dot,
-  .node-crew-oar,
-  .node-crew-rower,
-  .node-crew-hull,
-  /* The dot stops pulsing; the elapsed COUNT keeps advancing, and that is the
-     load-bearing signal anyway. Reduced motion must not cost a viewer the one
-     piece of evidence that the run is alive. */
-  .node-active-dot { animation: none; }
-  /* The boat itself stays. Its PRESENCE is the signal - the stroke was only
-     ever the flourish - so a reduced-motion viewer still sees which card the
-     crew is on, and the lap chip is text and was never at risk. */
-}
 </style>

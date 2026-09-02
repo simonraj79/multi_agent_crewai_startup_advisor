@@ -92,6 +92,8 @@ const initialUsage = (): UsageMetrics => ({
 })
 
 const DEFAULT_WORKFLOW_ID = 'idea-validator'
+/** What both built-in workflows call their request input. `BUILTIN_WORKFLOW_INPUT_FIELDS`. */
+const DEFAULT_INPUT_FIELD = 'idea'
 const SESSION_STORAGE_KEY = 'validator-session-id'
 const ACTIVE_RUN_STORAGE_KEY = 'validator-active-run'
 
@@ -118,6 +120,16 @@ interface StoredRunContext {
   runId: string
   sessionId: string
   workflowId: string
+  /**
+   * The `inputs` key this run was launched under.
+   *
+   * Optional, and read with a fallback, because contexts written before builder
+   * graphs existed do not carry it - bumping `version` would have discarded
+   * every in-flight run on the deploy that shipped this, which is the opposite
+   * of what refresh recovery is for. Absent means `idea`, which is what both
+   * built-in workflows declare and what every such context was launched with.
+   */
+  inputField?: string
 }
 
 /**
@@ -176,13 +188,36 @@ function newSessionId(): string {
   )
 }
 
-export function useValidatorRun(api: StudioApiLike = studioApi) {
+/** Which workflow this console drives, when it is not the built-in validator. */
+export interface ValidatorRunOptions {
+  /**
+   * A published workflow id. Defaults to `idea-validator`.
+   *
+   * A run already in flight still wins: `initialize` overwrites this from the
+   * stored run context, because that run is the operator's money and the
+   * console must show the graph it is actually streaming. The requested
+   * workflow therefore applies on any load with nothing in flight, which is
+   * every load after a publish.
+   */
+  workflowId?: string
+  /**
+   * The key inside `inputs` that this workflow's run request must carry - a
+   * builder graph's own `input_field`. Defaults to `idea`.
+   */
+  inputField?: string
+}
+
+export function useValidatorRun(
+  api: StudioApiLike = studioApi,
+  options: ValidatorRunOptions = {},
+) {
   const storedAtLoad = readStoredRun()
   const sessionId = storedAtLoad?.sessionId ?? readStorage(SESSION_STORAGE_KEY) ?? newSessionId()
   writeStorage(SESSION_STORAGE_KEY, sessionId)
 
   const descriptor = ref<GraphDescriptor>(structuredClone(MOCK_GRAPH))
-  const workflowId = ref(storedAtLoad?.workflowId ?? DEFAULT_WORKFLOW_ID)
+  const workflowId = ref(storedAtLoad?.workflowId ?? options.workflowId ?? DEFAULT_WORKFLOW_ID)
+  const inputField = ref(storedAtLoad?.inputField ?? options.inputField ?? DEFAULT_INPUT_FIELD)
   const idea = ref('An AI tool that turns Figma files into production React')
   /**
    * Who answers the two gates. `human` pauses at both; `auto` runs the whole
@@ -375,7 +410,14 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     transportMode.value = await api.initialize()
     transportProblem.value = api.probeFailure ?? ''
     const storedRun = readStoredRun()
-    workflowId.value = storedRun?.workflowId ?? workflowId.value
+    if (storedRun) {
+      // Both together or neither. Taking the workflow id from the stored run
+      // while leaving `inputField` at whatever the caller asked for would
+      // launch the restored workflow under another graph's input key, which is
+      // a 422 the operator never typed anything to cause.
+      workflowId.value = storedRun.workflowId
+      inputField.value = storedRun.inputField ?? DEFAULT_INPUT_FIELD
+    }
     try {
       descriptor.value = await api.getGraph(workflowId.value)
       resetNodes()
@@ -396,7 +438,13 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
     launching.value = true
     lastError.value = ''
     try {
-      const response = await api.startRun(sessionId, idea.value.trim(), workflowId.value, gatesMode.value)
+      const response = await api.startRun(
+        sessionId,
+        idea.value.trim(),
+        workflowId.value,
+        gatesMode.value,
+        inputField.value,
+      )
       transportMode.value = api.mode
       /*
        * The banner must be refreshed with the mode, never left behind.
@@ -419,6 +467,7 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
         runId: response.run_id,
         sessionId,
         workflowId: workflowId.value,
+        inputField: inputField.value,
       })
       connectStream()
     } catch (error) {
@@ -1063,6 +1112,8 @@ export function useValidatorRun(api: StudioApiLike = studioApi) {
 
   return {
     descriptor,
+    workflowId,
+    inputField,
     idea,
     gatesMode,
     status,

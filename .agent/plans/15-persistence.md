@@ -330,3 +330,57 @@ Open decisions for the owner: (1) `VALIDATOR_RUN_RETENTION_DAYS` default —
 delete of a published document should unpublish automatically instead of
 refusing; (3) whether CI should run the PostgreSQL job on every push or only
 on `main`.
+
+**Criteria complete · 2026-09-03.** Built on `s1/15-api` (`9f6e63b`) and
+`s1/15-ui` (`831ae6b`), integrated on `gauntlet/plans` at `18a7944`. **No
+judge round has run**; PLANS.md carries the status. Every row below was
+measured on the integrated tree.
+
+| # | State | Where |
+| ---: | --- | --- |
+| 1 | done | `tests/builder/test_export.py` (38) — plus `tests/service/test_builder_export_route.py` (13) for the route and the two `Content-Disposition` forms |
+| 2 | done | server `tests/service/test_builder_import.py` (21); client `frontend/tests/builderImport.spec.ts` (9). `needs_credentials` is **re-derived**; the envelope's list is accepted and ignored |
+| 3 | done | `tests/service/test_builder_duplicate.py` (16) |
+| 4 | done, run | `frontend/tests/versionBrowser.spec.ts` (23) and the `e2e/builder.spec.ts` step, green in the 33-test run of 2026-09-03 |
+| 5 | done | server `tests/service/test_builder_delete.py` (11); client `frontend/tests/documentLifecycle.spec.ts` (10). Delete cascades `builder_test_inputs` explicitly, because SQLite honours no FK pragma |
+| 6 | done | `tests/builder/test_upgrade.py` (12) — the Stage 1 hook, per S1 ruling 5 |
+| 7 | done, one correction | `tests/service/test_additive_migration.py` (19). The criterion says **six** new tables; the DDL and S1 ruling 2 have **five** plus `runs.mode`. The test is right |
+| 8 | done | `docs/tech-stack.md` §6 regenerated at 41 (`52bdc2e`) |
+| 9 | done, **run against PostgreSQL 18.6, 5/5** | `tests/pg/test_two_writers.py`, one throwaway database per test; skips cleanly without `TEST_DATABASE_URL`; CI job `postgres` on `main` only (decision 25) |
+| 10 | done, one scope note | `tests/service/test_isolation_matrix.py` (16). The **test-inputs row is covered at the table level** — `user_id NOT NULL`, owner-scoped SELECT, cascade on delete — because Stage 1 has no route; plan 13 owns it |
+| 11 | done | `frontend/tests/builderPersistence.spec.ts` unchanged, 33/33 |
+| D7 | done | `tests/service/test_run_retention.py` (24) — same tick as orphan recovery, after it; never a `waiting` run, never a terminal run with an unanswered gate, never a document |
+
+What the build found that the plan did not know:
+
+- **The orphan sweep was not a compare-and-set.** D8's table and CLAUDE.md
+  remaining-work item 3 both list it as one; `_fail_interrupted` went through
+  `update_run_status`, which guards on `id` alone, so two instances — a deploy
+  overlapping its predecessor — would both reconcile one run. Now
+  `claim_run_status`; the loser drops its stale copy and counts nothing
+  (`tests/service/test_orphan_sweep_claim.py`, 12). The adopt path is
+  deliberately unclaimed: idempotent, and the reply is guarded by
+  `answer_gate`.
+- **A losing `save` reported the pre-CAS version** — "is at version 1, not 1;
+  reload it" — reachable only with two real writers. `store.save` and
+  `mark_published` now re-read the head inside the transaction.
+- **Two defects only the merged tree could show**, both fixed at integration:
+  `strip_for_export` noted a node on the credential KEY alone, and since S1
+  ruling 8 every agent node serialises `credential_id: null`, so a clean export
+  reported `needs_credentials: ['scoper']` (merge commit `348af34`; one test
+  pins the null default). And the post-save draft was written from the local
+  copy, which no longer fingerprints equal to the server's defaulted one, so
+  the restore bar offered the version on screen after a reload; the draft is
+  now written from the response when nothing changed during the round trip
+  (`frontend/tests/builderDraftCanonical.spec.ts`, 3; `e62235a`).
+- D2 is built as a **server route** with a client-side notice, per S1 ruling
+  7; D3's delete confirm is a strip docked under the document bar, in the
+  layout, never an overlay. An export of an unsaved draft is refused with a
+  sentence rather than written from nothing.
+- `BuilderView.vue` and `ProblemsPanel.vue` carried literal NUL bytes in
+  their dedup keys and were **binary to git** — every merge of the file every
+  branch touches conflicted as a whole. Spelled as escapes now (`5ebe001`).
+- `GET …/versions` can show the published head and an older still-registered
+  version both as `published`; the client never sorts, the server answers
+  newest first.
+- Decisions 23–25 are built on their recommendation and stay open.

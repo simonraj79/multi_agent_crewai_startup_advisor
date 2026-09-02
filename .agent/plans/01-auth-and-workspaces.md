@@ -255,3 +255,63 @@ for the owner: (a) whether `e2b` / `daytona` credentials ship in v1 — tied
 to the code-interpreter decision in 06; (b) whether unowned published
 workflows stay launchable in production (D1 keeps them so; a deployment
 that never published anonymously can turn that off with a one-line check).
+
+**Criteria complete · 2026-09-03.** Built on `s1/01-api` (`bc6eab6`) and
+`s1/01-ui` (`a44fa3d`), integrated on `gauntlet/plans` at `18a7944`. **No
+judge round has run**; PLANS.md carries the status. Every row below was
+measured on the integrated tree, not copied from a branch report.
+
+| # | State | Where |
+| ---: | --- | --- |
+| 1 | done | `tests/service/test_workflow_ownership.py` (14) — the 404 fires before any admission counter moves and beats the `gates: auto` 403; ownership survives a restart |
+| 2 | done | `tests/service/test_credentials.py` (19) |
+| 3 | done | `tests/service/test_credential_crypto.py` (24) — plus a real row re-labelled by SQL `UPDATE` failing to decrypt |
+| 4 | done | `tests/service/test_boot_checks.py` (8) |
+| 5 | done | `tests/builder/test_credential_resolution.py` (15) — a registry run fails with a frame carrying `error_class: credential-not-yours` |
+| 6 | done, one deviation | `tests/service/test_secret_redaction.py` (13). **`fields` is NOT on the redaction list**: it is the gate form's own key, and redacting it turned every gate into `***`. Pinned by a test |
+| 7 | done | `tests/service/test_synthetic_identity.py` (14) — also honoured on the `/ws` handshake (4404 for others, 4400 malformed), which D8 did not say |
+| 8 | done | `tests/service/test_validate_identity.py` (18); `credential-missing` is problem code 31, fixtures regenerated, both mirrors agree |
+| 9 | done | `frontend/tests/builderAccountChip.spec.ts` (12) |
+| 10 | done | `frontend/tests/credentialPicker.spec.ts` (29) — a leaking fake API never reaches markup or component state |
+| 11 | done, run | `frontend/e2e/isolation.spec.ts` (4, last `@launch`), green in the 33-test run of 2026-09-03 against `SYNTHETIC=1` |
+| 12 | done | `docs/tech-stack.md` §6 regenerated at 41 (`52bdc2e`) |
+| 13 | done | `credentials.py` matches no `print`/`logging` on a field; neither module imports `logging` |
+
+What the build decided that the plan did not say, in the order a reader
+will meet it:
+
+- **D2's list**: `GET /api/workflows` answers the two hand-written flows plus
+  the caller's own published graphs. **Unowned** builder graphs are not
+  listed there — their home is `/api/builder/workflows` — so the anonymous
+  set-equality invariant every existing test reads still holds. They remain
+  launchable (decision 26, built on its recommendation).
+- **A behaviour change on two read routes**: `GET /api/workflows` and the
+  graph now take an optional identity, so an *offered bad* bearer is 401 where
+  it was silently ignored. A *missing* one still gets 200.
+- The run rate limiter still runs **before** the ownership 404 (existing,
+  deliberate); only the registry's admission counter is guaranteed untouched.
+- A **synthetic** run does resolve credentials — a database read, offline —
+  and writes `last_used_at`; the plan's sentence that synthetic *factories*
+  never call `resolve_credential` stays literally true.
+- **Anonymous publish with credential ids is not checked** (D10 as written);
+  such a graph fails at its first agent with `credential-not-yours`.
+- **D9's chip sits in the builder's header row**, not the document bar: the
+  bar exists only once a graph is open. Commented in `BuilderView.vue`.
+- **The E2E backend needs `CREDENTIALS_MASTER_KEY`** set, or Alice's
+  credential step answers 503 — the same placeholder `tests/__init__.py`
+  uses is fine. And a context with no synthetic-user cookie is now
+  `e2e-user` at the API as well as at the SPA (`DEFAULT_SYNTHETIC_USER`),
+  because an anonymous API behind a signed-in page is a state production
+  never reaches and it failed seven builder tests on the zero-console-errors
+  rule (integration commit `e62235a`).
+- **A console defect this plan's E2E walked into, not fixed here**: a 404 on
+  `GET /api/workflows/{id}/graph` drops the console into **mock mode** and
+  draws the demonstration graph under a banner naming the foreign workflow,
+  because `studioApi.ts`'s probe treats every non-401 failure as "no
+  backend". The launch still fails honestly (it re-probes live) and the
+  isolation spec asserts that sentence. CLAUDE.md remaining-work item 43.
+- `redaction.py` claimed `x-api-key` was covered; it normalises to `xapikey`
+  and now has its own entry. SQLite returned naive timestamps so a row and
+  its 201 disagreed by a `Z`; normalised in the summary.
+- The two open decisions: (a) `e2b` — the row can exist, nothing constructs
+  from it, tied to decision 3; (b) unowned launchable — built per decision 26.

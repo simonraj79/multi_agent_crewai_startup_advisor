@@ -12,8 +12,10 @@ This repository now contains three things that share one Python package:
    here. Its contract is [`docs/flow-builder-spec.md`](docs/flow-builder-spec.md).
    Read that before changing anything under `src/brief_crew/builder/` or
    `frontend/src/components/builder/`.
-4. **The gauntlet build** - the visual agent builder planned on 2026-09-02
-   and not yet started. [`PLANS.md`](PLANS.md) tracks status and the open
+4. **The gauntlet build** - the visual agent builder planned on 2026-09-02.
+   **Stage 1 (plans 01 and 15) was built and integrated on 2026-09-03** on
+   branch `gauntlet/plans`, not on `main`; no judge round has run. Section 15
+   below is the summary. [`PLANS.md`](PLANS.md) tracks status and the open
    owner decisions; [`.agent/plans/`](.agent/plans/README.md) holds one plan
    per feature, `00` the contracts. Read a plan file before building its
    feature; read nothing else of it into a session.
@@ -81,24 +83,38 @@ rests on committed history it says so.
 
 ## Verified Baseline
 
-Re-measured on **2026-09-02** against the `feat/flow-builder` working tree, on
-Windows. Three of the four gates were executed here - the Python suite, the
-frontend unit suite and the two build steps. **The E2E row is inherited, not
-re-run**, and the block says so on its own line rather than in a footnote,
-because a baseline that does not distinguish "I ran this" from "I copied this"
-is the exact failure the stamp above promises to avoid.
+Re-measured on **2026-09-03** against `gauntlet/plans` = `18a7944`, in the
+integration worktree (`D:\MultiAgentSystem-wt\integration`), on Windows.
+**Every row below was run by the pass that wrote it** - the Python suite,
+the frontend suite, the type-check, the E2E suite in a real browser, and the
+two-writer test against a real PostgreSQL 18 - which is the first time this
+block has been able to say that. One thing was not: `npm run build` (the
+three-step production build) was not re-run; `vue-tsc -b --force` was.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:  1228 run, 0 failures, 0 errors, 1 skipped - 114.6s
-Frontend unit: 1024 run, 0 failures, 54 files (Vitest + jsdom) - 13.3s
-Frontend build: GREEN - `vue-tsc -b --force` exit 0, `npm run build` in 789ms
-Playwright E2E:  28 tests, ALL GREEN with ZERO console errors tolerated - 1.7m
-                 (15 builder + 3 builder-layout + 7 studio + 3 node-card visual)
-                 ^ NOT RE-RUN. This is `6d2743c`'s own measurement, carried
-                   forward; the doc pass only LISTED the suite. No browser was
-                   launched and no backend was started.
+Python tests:  1548 run, 0 failures, 0 errors, 6 skipped - 67.5s
+               (5 of the 6 skips are tests/pg/ with no TEST_DATABASE_URL)
+PostgreSQL 18.6: tests/pg/test_two_writers.py - 5 run, OK - 28.0s
+               (all five compare-and-set paths, two processes each)
+Frontend unit: 1131 run, 0 failures, 61 files (Vitest + jsdom) - ~11s
+Frontend build: `vue-tsc -b --force` exit 0; `npm run build` NOT re-run
+Playwright E2E:  33 tests in 5 files, ALL GREEN, ZERO console errors - 1.8m
+                 (16 builder + 4 isolation + 3 builder-layout + 7 studio
+                  + 3 node-card visual) - RUN, against the recipe below with
+                 CREDENTIALS_MASTER_KEY set; 8 of the 33 are @launch
 ```
+
+> **These are `gauntlet/plans` figures, not `main`'s.** `main` is still
+> `25634c0`, where the previous block's 1228 / 1024 / 28 stand. The 320
+> Python and 107 frontend tests added are Stage 1 of the gauntlet (section
+> 15). The three visual specs need the gitignored PNG baselines copied from
+> the main tree into a fresh worktree, or they fail with "a snapshot doesn't
+> exist" - an environment gap, not a regression, and it cost one run here.
+
+> **Superseded 2026-09-03**: the note below explains why the *previous*
+> baseline's E2E row had to say it was inherited. This pass ran the suite.
+
 
 > **What "28 tests, ALL GREEN" is and is not evidence of.** The figure comes
 > from the builder commit, whose message records `E2E 28 tests, zero console
@@ -145,8 +161,8 @@ Playwright E2E:  28 tests, ALL GREEN with ZERO console errors tolerated - 1.7m
 
 ⚠️ These counts move, and they move fast. The Python suite has gone
 65 → 295 → 341 → 378 → 415 → 459 → 522 → 537 → 660 → 679 → 698 → 713 → 772 →
-**1228** and the frontend
-103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → **1024**. Re-run before
+1228 → **1548** (on `gauntlet/plans`) and the frontend
+103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → 1024 → **1131**. Re-run before
 quoting a number; the command is the contract, not the figure. The last step in
 each series is one commit.
 
@@ -246,14 +262,24 @@ able to press that button. Start the free one yourself:
 
 ```powershell
 $env:SYNTHETIC = "1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS = "5"; $env:PORT = "8099"
+# Since plan 01 (2026-09-03): the vault must be configured or the isolation
+# spec's credential step answers 503. Any base64 of 32 bytes; this is the
+# placeholder tests/__init__.py uses and it authenticates against nothing.
+$env:CREDENTIALS_MASTER_KEY = "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
 .\.venv\Scripts\serve.exe
 
 # second shell
 Push-Location frontend
-npx playwright test                          # all 28
+npx playwright test                          # all 33
 npx playwright test --grep-invert @launch    # the ones that never press Launch
 Pop-Location
 ```
+
+> **In a worktree, `serve.exe` serves the MAIN tree's source unless
+> `PYTHONPATH=<worktree>/src` is set** - the venv's editable install points at
+> `D:\MultiAgentSystem\src`, and a backend that answers `/healthz` proves
+> nothing about which tree it loaded. Prove it with a route that exists only
+> on the branch under test before trusting a green run.
 
 > **`SYNTHETIC_BRANCH_DELAY_SECONDS=5` is not optional, and its absence looks
 > like a visual regression.** `e2e/visual/run-canvas.spec.ts` screenshots a
@@ -1396,7 +1422,22 @@ PUT    /api/builder/workflows/{id}
 DELETE /api/builder/workflows/{id}
 POST   /api/builder/validate
 POST   /api/builder/workflows/{id}/publish
+
+GET    /api/builder/workflows/{id}/export?version=       # plan 15, 2026-09-03
+POST   /api/builder/workflows/import
+POST   /api/builder/workflows/{id}/duplicate?version=
+GET    /api/builder/workflows/{id}/versions
+
+GET    /api/builder/credentials                          # plan 01, 2026-09-03
+POST   /api/builder/credentials
+DELETE /api/builder/credentials/{id}
+POST   /api/builder/credentials/{id}/test
 ```
+
+The eight below the gap landed with Stage 1 of the gauntlet (section 15);
+their shapes are in `.agent/plans/15-persistence.md` D1/D3 and
+`.agent/plans/01-auth-and-workspaces.md` C4, each plan's Status section
+naming where the build diverged from the text.
 
 A save is a **compare-and-set on the head version**, in the same
 `UPDATE ... WHERE ...; rowcount` shape `answer_gate` and `reopen_gate` already
@@ -1564,8 +1605,9 @@ and it is bigger than all of them.
    committed (normalising line endings first, because `core.autocrlf` is `true`
    here and a raw comparison would report the platform instead of the drift), and
    `tests/builder/test_problem_code_declarations.py` forbids the inline-literal
-   spelling that the frontend's grep cannot see. Both sides answer **30** at
-   head; regenerate rather than trust that sentence.
+   spelling that the frontend's grep cannot see. Both sides answered **30** at
+   `b4ef654` and answer **31** on `gauntlet/plans` since 2026-09-03
+   (`credential-missing`, plan 01 D10); regenerate rather than trust either.
 3. **On the empty gallery, a 236x70 box held 1356px of content.** Neither rail
    renders there, but the shell still declared three columns, so the gallery
    landed in the 236px palette slot inside a 0px row. An `is-gallery` modifier in
@@ -1642,6 +1684,68 @@ of the older sections above:
   its own state names through `register_workflow_reserved_run_input_keys`, and
   `all_reserved_run_input_keys` is what an unknown workflow id is answered
   against. That registration is the fifth map of defect 6.
+
+### 15. The gauntlet, Stage 1 - plans 01 and 15, on `gauntlet/plans`
+
+Built 2026-09-02 to 2026-09-03 by four parallel builder agents on their own
+worktrees (`s1/01-api`, `s1/01-ui`, `s1/15-api`, `s1/15-ui`) and integrated
+by a fifth, on branch `gauntlet/plans` at `18a7944`. **Not on `main`.** The
+plan files own the detail and this section does not restate it:
+[`.agent/plans/01-auth-and-workspaces.md`](.agent/plans/01-auth-and-workspaces.md)
+(workflow ownership, the AES-256-GCM credential vault, synthetic identity,
+secret redaction, the credential picker, the two-user isolation E2E) and
+[`.agent/plans/15-persistence.md`](.agent/plans/15-persistence.md) (export,
+import, duplicate, version history, delete, retention, the two-writer
+PostgreSQL test). Each carries a dated Status entry with every criterion's
+test file and count and every place the build diverged from the plan.
+[`PLANS.md`](PLANS.md) is the tracker; both plans read
+`In judge (round 1 pending)`, which means every criterion is ticked and the
+critic in `benchmarks/README.md` has not been invoked.
+
+What is worth knowing here rather than there, because it is about how the
+work was done and not what it does:
+
+- **Three defects were visible only to the merged tree**, after every branch
+  was green alone. Plan 15's export strip noted a node on the credential KEY,
+  and plan 01 made every agent node serialise `credential_id: null`, so a clean
+  export reported `needs_credentials` (`348af34`). The E2E harness told the
+  SPA it was signed in and told the API nothing, so plan 01's first owned
+  route answered 401 and seven builder tests failed the zero-console-errors
+  rule. And the post-save draft was written from the local copy, which no
+  longer fingerprinted equal to the server's defaulted one, so the restore bar
+  offered the version on screen (`e62235a`). A branch suite cannot see any of
+  these; only the merge can. That is the argument for integrating early.
+- **`BuilderView.vue` and `ProblemsPanel.vue` were binary to git** - literal
+  NUL bytes in three dedup keys since `6d2743c` - so the one file every
+  builder branch touches could not be merged by line. Spelled as escapes now
+  (`5ebe001`). Check `git ls-files --eol` before assuming a source file is
+  text.
+- **`config.py` stayed Integrator-owned** (S1 ruling 3). The builders left
+  ten `# TODO(integrator)` constants, moved in `18a7944`; each module
+  re-exports its old name. No environment knob was added by any builder; the
+  two Stage 1 knobs landed in the contract commit and §6 counts 41.
+- **The synthetic backend for E2E now needs `CREDENTIALS_MASTER_KEY`**, and
+  in a worktree needs `PYTHONPATH`; the recipe in the Verified Baseline says
+  both. A cookieless E2E context is `e2e-user` at the API, not nobody.
+- **New test modules** (Python, 2026-09-03, run alone):
+  `test_workflow_ownership` 14, `test_credentials` 19,
+  `test_credential_crypto` 24, `test_boot_checks` 8,
+  `test_credential_resolution` 15, `test_secret_redaction` 13,
+  `test_synthetic_identity` 14, `test_validate_identity` 18,
+  `test_export` 38, `test_upgrade` 12, `test_builder_import` 21,
+  `test_builder_duplicate` 16, `test_builder_delete` 11,
+  `test_builder_export_route` 13, `test_builder_versions` 14,
+  `test_isolation_matrix` 16, `test_run_retention` 24,
+  `test_orphan_sweep_claim` 12, `tests/pg/test_two_writers` 5. Frontend:
+  `builderAccountChip` 12, `credentialPicker` 29, `versionBrowser` 23,
+  `builderImport` 9, `builderExport` 15, `documentLifecycle` 10,
+  `builderDraftCanonical` 3; E2E `isolation.spec.ts` 4 and one new
+  `builder.spec.ts` step. These are the builders' own counts; the suite
+  totals in the Verified Baseline are the measurement.
+- **Still open from Stage 1**: item 43 (the console's mock-mode fallback on a
+  foreign 404); the `postgres` CI job has never run; decisions 23-26 are
+  built on their recommendation and unanswered; and no judge round has
+  scored either plan.
 
 ## No-Cost Integration Coverage
 
@@ -1883,7 +1987,16 @@ What the builder added is items 40-42.
    real Firecrawl scrapes at 10-30 s, projecting 2.8x-2.9x. Two things could
    still sink it: unequal branch latencies, and GitHub's shared 10 req/min
    per-IP limit serializing the feasibility branch (R-7).
-3. **Live PostgreSQL 18 exercise — still half closed.** `metadata.create_all()`
+3. **Live PostgreSQL 18 exercise — the concurrency half is CLOSED LOCALLY as
+   of 2026-09-03, and not yet in CI.** `tests/pg/test_two_writers.py` (plan
+   15 D8) races two processes from a barrier on each of the five paths and
+   passed 5/5 against PostgreSQL 18.6 in the `pg18-test` container, three
+   times over. Two things it found: the **orphan sweep was not a
+   compare-and-set** (`_fail_interrupted` guarded on `id` alone; it is
+   `claim_run_status` now), and a losing `save` reported the pre-CAS version.
+   `ci.yml` gained a `postgres` job on `main` only (decision 25) that has not
+   yet run. Everything below this line is the entry as it stood before, kept
+   for the reasoning. `metadata.create_all()`
    has run clean against PG 18 in production: the deployed API answered
    `/readyz` with `"backend":"postgresql"`. Every test still runs on SQLite, so
    that is one DDL pass on one dialect, not coverage.
@@ -2495,6 +2608,21 @@ true.
     this document refuses to do. Either record the method (the dimensions, what
     each was scored against, at what viewport) or stop quoting the number.
 
+#### New with Stage 1 of the gauntlet
+
+43. **[Medium] A foreign workflow's 404 reads as demonstration mode.** Found
+    2026-09-03 by plan 01's isolation E2E. When Bob deep-links to Alice's
+    published workflow, `GET /api/workflows/{id}/graph` correctly answers
+    **404** - and the console's transport probe in `studioApi.ts` treats every
+    non-401 failure as "no backend", drops into **mock mode**, and draws the
+    demonstration graph under a banner naming Alice's graph. The launch then
+    fails honestly only because `startRun` re-probes live; the E2E asserts that
+    sentence and dismisses the load-time error. It is the 401-to-mock bug of
+    closed item 31 one status code over: a 404 or 403 can only come from a real
+    server, so the answer is `mode = 'live'` plus the server's sentence, never
+    a fabricated run. Not fixed at integration because `useValidatorRun.ts` is
+    open in another agent's uncommitted main-tree work.
+
 Item 34 below is **resolved** (see item 35 in the closed ledger) and is kept
 only because its diagnosis is the valuable part. It appears after 36-42 because
 those are the open ones; the numbering is chronological, not a priority order.
@@ -2670,8 +2798,10 @@ Kept because the *reasoning* is what stops the defect coming back.
     and `cancelling` reaches `CANCELLED`. The one shape that **is** resumable — a
     crash between `open_gate` and `mark_waiting`, where both durable anchors
     survive — is adopted back to `WAITING` instead. `VALIDATOR_ORPHAN_RUN_RECOVERY`
-    / `VALIDATOR_ORPHAN_RUN_GRACE_SECONDS`; 22 tests. Related: there is still no
-    retention or purge, so terminal rows accumulate.
+    / `VALIDATOR_ORPHAN_RUN_GRACE_SECONDS`; 22 tests. Related: retention now
+    exists on `gauntlet/plans` - `VALIDATOR_RUN_RETENTION_DAYS` (plan 15 D7,
+    default `0` = keep everything, decision 23) purges terminal runs on the
+    same sweep - so terminal rows accumulate only until it is set.
 33. **The console shows the run's conclusion.** The backend had always delivered
     it — `GET /api/runs/{id}` returns `result`, and the terminal frame carries
     `details.result` — and the client discarded it at **three** separate layers,

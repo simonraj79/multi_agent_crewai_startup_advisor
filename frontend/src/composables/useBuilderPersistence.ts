@@ -234,7 +234,7 @@ export function useBuilderPersistence(
    * worse than no draft: it would be offered on the next load and would restore
    * work the author has since moved past.
    */
-  function writeDraft(): void {
+  function writeDraft(source: BuilderDocument = document.doc.value): void {
     const id = documentId.value
     if (id === null) return
     // A draft is a claim about HEAD. While an older version is on screen nothing
@@ -244,7 +244,7 @@ export function useBuilderPersistence(
     if (viewingVersion.value) return
 
     const limit = vocabulary.value?.bounds.max_document_bytes
-    if (limit !== undefined && wireBytes(document.doc.value) > limit) {
+    if (limit !== undefined && wireBytes(source) > limit) {
       draftDropped.value = true
       try {
         window.localStorage.removeItem(draftKey(id))
@@ -258,7 +258,7 @@ export function useBuilderPersistence(
       v: 1,
       baseVersion: version.value,
       savedAt: new Date().toISOString(),
-      document: toWire(document.doc.value),
+      document: toWire(source),
     }
     try {
       window.localStorage.setItem(draftKey(id), JSON.stringify(draft))
@@ -465,11 +465,25 @@ export function useBuilderPersistence(
         id === null ? await api.create(snapshot) : await api.save(id, snapshot, version.value)
       adoptIdentity(model)
       error.value = ''
-      if (document.doc.value === snapshot) document.markSaved()
       // Rewritten rather than removed, so the key carries the NEW baseVersion.
       // A draft left behind at an older base is discarded on the next load and
       // the author is told nothing; one that matches head is simply not offered.
-      writeDraft()
+      //
+      // Written from the RESPONSE when nothing changed during the round trip.
+      // The server fills in schema defaults on the way in (since plan 01,
+      // `credential_id: null` on every agent node), so a document born from a
+      // template no longer round-trips byte-identical, and a draft written from
+      // the local copy fingerprinted differently from the document the next
+      // load fetched - the restore bar then offered the author the version they
+      // were looking at. The response is the canonical form of exactly what is
+      // on screen; the local copy is written only when it holds work the
+      // response does not. `tests/builderDraftCanonical.spec.ts`.
+      if (document.doc.value === snapshot) {
+        document.markSaved()
+        writeDraft(model.document)
+      } else {
+        writeDraft()
+      }
       // Last, and inside the `try`: a save that threw did not change what the
       // library holds, and telling the caller otherwise would have it fetch a
       // list to redraw it identically.

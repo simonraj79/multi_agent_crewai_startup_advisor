@@ -15,11 +15,29 @@
  * "Bob can see Alice's graph" - the one false negative this file must not be
  * able to produce.
  *
- * When the cookie is absent the harness behaves exactly as it did before it
- * existed: the stub answers as `E2E Operator` and no header is forwarded. The
- * other 28 tests never set it.
+ * When the cookie is absent the stub answers as `E2E Operator` and the proxies
+ * forward `DEFAULT_SYNTHETIC_USER`, so the API sees the same signed-in person
+ * the page does. The other 29 tests never set the cookie.
  */
 export const SYNTHETIC_USER_COOKIE = 'e2e_synthetic_user'
+
+/**
+ * Who a context with NO cookie is, at the API.
+ *
+ * The stub auth origin answers every cookieless context as the E2E Operator,
+ * signed in, and the SPA behaves accordingly: it mints a bearer and calls the
+ * routes a signed-in author may call. Forwarding nobody for that context made
+ * the API see an anonymous caller behind a signed-in page - a state production
+ * cannot reach - and the first owned route the builder learned to call
+ * (`GET /api/builder/credentials`, plan 01) answered 401, which Chrome logs as
+ * a console error and the suite's zero-tolerance rule failed seven tests on.
+ * Found at integration on 2026-09-03, by the merged suite and by nothing else.
+ *
+ * The id is the stub session's own `user.id`, so the header chip, the owner
+ * column and the forwarded header name one person. `isolation.spec.ts` still
+ * overrides it per context with the cookie.
+ */
+export const DEFAULT_SYNTHETIC_USER = 'e2e-user'
 
 /** The server's own bound on the header: `^[a-z0-9_-]{1,64}$` (plan 01, C4). */
 export const SYNTHETIC_USER_PATTERN = /^[a-z0-9_-]{1,64}$/

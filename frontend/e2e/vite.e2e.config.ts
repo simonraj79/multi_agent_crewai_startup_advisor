@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
-import { syntheticUserOf } from './syntheticUser'
+import { DEFAULT_SYNTHETIC_USER, syntheticUserOf } from './syntheticUser'
 
 /**
  * A second dev server for the end-to-end suite, kept separate from
@@ -45,7 +45,7 @@ const wsTarget = target.replace(/^http/, 'ws')
 function stubAuthOrigin(): Plugin {
   const now = new Date().toISOString()
   const user = {
-    id: 'e2e-user',
+    id: DEFAULT_SYNTHETIC_USER,
     name: 'E2E Operator',
     email: 'e2e@example.test',
     emailVerified: true,
@@ -136,13 +136,14 @@ function stubAuthOrigin(): Plugin {
  * here can make a paid or an authenticated service believe a cookie.
  */
 const forwardSyntheticUser: NonNullable<ProxyOptions['configure']> = (proxy) => {
+  // No cookie is the E2E Operator, not nobody: the stub already signed that
+  // context in, and an API that sees a stranger behind a signed-in page is a
+  // state production never reaches (see DEFAULT_SYNTHETIC_USER).
   proxy.on('proxyReq', (proxyReq, req) => {
-    const id = syntheticUserOf(req.headers.cookie)
-    if (id) proxyReq.setHeader('X-Synthetic-User', id)
+    proxyReq.setHeader('X-Synthetic-User', syntheticUserOf(req.headers.cookie) ?? DEFAULT_SYNTHETIC_USER)
   })
   proxy.on('proxyReqWs', (proxyReq, req) => {
-    const id = syntheticUserOf(req.headers.cookie)
-    if (id) proxyReq.setHeader('X-Synthetic-User', id)
+    proxyReq.setHeader('X-Synthetic-User', syntheticUserOf(req.headers.cookie) ?? DEFAULT_SYNTHETIC_USER)
   })
 }
 

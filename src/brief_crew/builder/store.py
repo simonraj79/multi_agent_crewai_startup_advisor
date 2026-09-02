@@ -35,7 +35,7 @@ Nothing in this module compiles, registers or runs anything.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -47,12 +47,14 @@ from pydantic import ValidationError
 from sqlalchemy import delete, func, insert, select, update
 
 from brief_crew.builder.document import BuilderDocument
+from brief_crew.builder.upgrade import upgrade_document
 from brief_crew.config import MAX_BUILDER_DOCUMENT_BYTES
 from brief_crew.service.persistence import (
     PostgresFlowPersistence,
     bounded_json,
     builder_document_versions,
     builder_documents,
+    builder_test_inputs,
     identifier,
     utcnow,
 )
@@ -164,6 +166,38 @@ class DocumentSummary:
     updated_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class VersionSummary:
+    """One stored version, as the version browser lists it - never parsed.
+
+    `bytes` is the serialised size of the row as `_checked_size` measures it,
+    so the number the browser shows is the one `MAX_BUILDER_DOCUMENT_BYTES` is
+    compared against. Not parsed, deliberately: a version written under a
+    schema this service no longer reads must still appear in the history, or
+    an author cannot see which version it was that stopped opening.
+    """
+
+    version: int
+    created_at: datetime
+    bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class VersionHistory:
+    """Every version of one document, newest first, with the head beside it.
+
+    The head's version and status travel with the list because a version has
+    no status of its own - `status` lives on the head row - and the transport
+    has to say which entry is the head and whether that head is published
+    without a second query the browser would then have to reconcile.
+    """
+
+    document_id: str
+    head_version: int
+    status: str
+    entries: tuple[VersionSummary, ...]
+
+
 def new_document_id() -> str:
     """A server-assigned id matching `BUILDER_DOCUMENT_ID_PATTERN`.
 
@@ -190,10 +224,16 @@ def _document_json(document: BuilderDocument) -> dict[str, Any]:
     return document.model_dump(mode="json", by_alias=True)
 
 
+def _encoded_size(payload: Any) -> int:
+    """The bytes a row costs, measured the one way this module measures it."""
+
+    return len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+
+
 def _checked_size(document_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    if len(encoded) > MAX_BUILDER_DOCUMENT_BYTES:
-        raise DocumentTooLarge(document_id, len(encoded))
+    encoded = _encoded_size(payload)
+    if encoded > MAX_BUILDER_DOCUMENT_BYTES:
+        raise DocumentTooLarge(document_id, encoded)
     return payload
 
 
@@ -272,6 +312,48 @@ class BuilderDocumentStore:
                 .order_by(builder_document_versions.c.version.desc())
             ).scalars().all()
         return [int(value) for value in rows]
+
+    def history(
+        self, document_id: str, *, user_id: str | None = None
+    ) -> VersionHistory:
+        """Every stored version with its size and date, newest first.
+
+        `versions` above answers only the numbers and is what the publish path
+        needs. This is what the version browser needs: enough to pick a version
+        and to say which one is the head, without parsing any of them - see
+        `VersionSummary` for why parsing here would hide the one row an author
+        most wants to see.
+        """
+
+        document_id = identifier(document_id, label="document_id")
+        with self._store.connect() as connection:
+            head = connection.execute(
+                select(builder_documents).where(builder_documents.c.id == document_id)
+            ).mappings().one_or_none()
+            if head is None or not _visible_to(head["user_id"], user_id):
+                raise DocumentNotFound(document_id)
+            rows = connection.execute(
+                select(
+                    builder_document_versions.c.version,
+                    builder_document_versions.c.created_at,
+                    builder_document_versions.c.document,
+                )
+                .where(builder_document_versions.c.document_id == document_id)
+                .order_by(builder_document_versions.c.version.desc())
+            ).mappings().all()
+        return VersionHistory(
+            document_id=document_id,
+            head_version=int(head["version"]),
+            status=str(head["status"]),
+            entries=tuple(
+                VersionSummary(
+                    version=int(row["version"]),
+                    created_at=row["created_at"],
+                    bytes=_encoded_size(row["document"]),
+                )
+                for row in rows
+            ),
+        )
 
     def list(
         self, *, user_id: str | None = None, limit: int = DEFAULT_LIST_LIMIT
@@ -424,7 +506,9 @@ class BuilderDocumentStore:
             )
             if result.rowcount != 1:
                 raise DocumentVersionConflict(
-                    stamped.id, expected=expected, stored=stored_version
+                    stamped.id,
+                    expected=expected,
+                    stored=_head_version_now(connection, stamped.id, stored_version),
                 )
             connection.execute(
                 insert(builder_document_versions).values(
@@ -467,7 +551,9 @@ class BuilderDocumentStore:
             )
             if result.rowcount != 1:
                 raise DocumentVersionConflict(
-                    loaded.id, expected=version, stored=loaded.head_version
+                    loaded.id,
+                    expected=version,
+                    stored=_head_version_now(connection, loaded.id, loaded.head_version),
                 )
         return StoredDocument(
             document=loaded.document,
@@ -479,12 +565,15 @@ class BuilderDocumentStore:
         )
 
     def delete(self, document_id: str, *, user_id: str | None = None) -> None:
-        """Remove a document and every version of it.
+        """Remove a document, every version of it, and its saved test inputs.
 
         The one destructive operation, and it takes the ownership check before
-        it takes the lock. `builder_document_versions` has ON DELETE CASCADE,
-        but SQLite does not enforce a foreign key unless the pragma is on, so
-        the child rows are deleted explicitly rather than hopefully.
+        it takes the lock. `builder_document_versions` and
+        `builder_test_inputs` both carry ON DELETE CASCADE, but SQLite does not
+        enforce a foreign key unless the pragma is on, so the child rows are
+        deleted explicitly rather than hopefully. Test inputs are plan 13's
+        rows; they are named here because they are keyed by this document and
+        a document that is gone must not leave inputs that reference it.
         """
 
         document_id = identifier(document_id, label="document_id")
@@ -496,6 +585,11 @@ class BuilderDocumentStore:
             ).mappings().one_or_none()
             if head is None or not _visible_to(head["user_id"], user_id):
                 raise DocumentNotFound(document_id)
+            connection.execute(
+                delete(builder_test_inputs).where(
+                    builder_test_inputs.c.document_id == document_id
+                )
+            )
             connection.execute(
                 delete(builder_document_versions).where(
                     builder_document_versions.c.document_id == document_id
@@ -599,6 +693,26 @@ class BuilderDocumentStore:
                 )
 
 
+def _head_version_now(connection: Any, document_id: str, fallback: int) -> int:
+    """The head version AFTER a compare-and-set lost, for the 409 to name.
+
+    Found by `tests/pg/test_two_writers.py`, and only findable there: the
+    version a losing `save` reported was the one it had READ before its UPDATE,
+    which under two real writers is the version that had just been replaced. The
+    409 then said "is at version 1, not 1; reload it" - nonsense, and worse than
+    nonsense, because the client obeys and reloads the version that lost. On
+    SQLite the read and the UPDATE can never be separated by a commit, so no
+    single-writer test could see it. Read again inside the same transaction:
+    under READ COMMITTED the row the UPDATE just re-evaluated against is the one
+    this SELECT sees.
+    """
+
+    current = connection.execute(
+        select(builder_documents.c.version).where(builder_documents.c.id == document_id)
+    ).scalar_one_or_none()
+    return int(current) if current is not None else int(fallback)
+
+
 def _visible_to(owner: str | None, caller: str | None) -> bool:
     """Whether `caller` may see a row owned by `owner`.
 
@@ -621,10 +735,18 @@ def _parse(document_id: str, payload: Any) -> BuilderDocument:
     Raising is right for `load`, which was asked for this document by name.
     `published` catches it per row instead: see that method for why a raise from
     inside a generator is a different, much larger failure.
+
+    `upgrade_document` runs first (plan 15 D5), on the raw row and before the
+    schema sees it, so a version written under an older `builder.flow/*` parses
+    as the current one without the row being rewritten. Only a mapping is
+    handed to it: a row that is not even a mapping is not an old shape, it is a
+    corrupt one, and the schema's own message names that better than a
+    TypeError from the upgrade would.
     """
 
     try:
-        return BuilderDocument.model_validate(payload)
+        candidate = upgrade_document(payload) if isinstance(payload, Mapping) else payload
+        return BuilderDocument.model_validate(candidate)
     except ValidationError as exc:
         raise BuilderStoreError(
             f"document {document_id} is stored in a shape this service no longer "
@@ -644,5 +766,7 @@ __all__: Sequence[str] = (
     "STATUS_DRAFT",
     "STATUS_PUBLISHED",
     "StoredDocument",
+    "VersionHistory",
+    "VersionSummary",
     "new_document_id",
 )

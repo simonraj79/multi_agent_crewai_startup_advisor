@@ -51,6 +51,11 @@ from brief_crew.builder.descriptor import (
     static_cost_over_ceiling,
 )
 from brief_crew.builder.document import BuilderDocument
+from brief_crew.builder.export import (
+    export_content_disposition,
+    export_envelope,
+    strip_for_export,
+)
 from brief_crew.builder.runtime import BUILDABLE_BUILDER_CREW_IDS, BUILDER_AGENT_LIBRARY
 from brief_crew.builder.store import (
     BuilderDocumentStore,
@@ -59,10 +64,14 @@ from brief_crew.builder.store import (
     DocumentNotFound,
     DocumentTooLarge,
     DocumentVersionConflict,
+    STATUS_PUBLISHED,
     StoredDocument,
+    VersionHistory,
     new_document_id,
 )
+from brief_crew.builder.upgrade import KNOWN_SCHEMAS, upgrade_document
 from brief_crew.service.graph import (
+    builder_workflow as registered_workflow,
     register_builder_workflow,
     unregister_builder_workflow,
 )
@@ -80,6 +89,18 @@ BUILDER_API_PREFIX = "/api/builder"
 #: version is monotonic and the ETag is derived from it, so it starts at the
 #: schema's own floor rather than at zero.
 FIRST_VERSION = 1
+
+#: What a duplicate is called. Appended, and the base is trimmed to make room
+#: rather than the suffix dropped, because a copy that cannot be told from its
+#: source in the sidebar is the one thing a duplicate must not be.
+# TODO(integrator): move to config.py (S1 ruling 3 - config.py is Integrator-owned)
+COPY_SUFFIX = " copy"
+
+#: How many `needs_credentials` entries an import envelope may name. A node id
+#: per graph node is the most a strip can produce; anything beyond that is a
+#: file that was not written by an export.
+# TODO(integrator): move to config.py (S1 ruling 3 - config.py is Integrator-owned)
+MAX_IMPORT_NEEDS_CREDENTIALS = project_config.MAX_GRAPH_NODES
 
 
 class BuilderServiceUnavailable(RuntimeError):
@@ -224,6 +245,59 @@ class BuilderDocumentModel(BaseModel):
     graph: GraphDescriptor
     #: True when this exact version is the one registered on this service.
     published: bool
+
+
+class BuilderImportedDocumentModel(BuilderDocumentModel):
+    """A `create` response plus the nodes the file said lost a credential.
+
+    The same shape as `POST /workflows` on purpose (S1 ruling 7): the client
+    already knows how to open that, and an import IS a create with one extra
+    fact attached. The extra fact is a list of node ids rather than a problem
+    code, because C8's union is a Python-generated mirror and the only
+    server-side `credential-missing` belongs to `validate` (plan 01 D10).
+    """
+
+    needs_credentials: list[str]
+
+
+class BuilderImportRequest(BaseModel):
+    """A `.builder.json` on its way in - the D1 envelope, verbatim.
+
+    `document` is untyped for the reason `BuilderDocumentRequest` gives; the
+    handler parses it so the refusal is a sentence naming a node rather than
+    pydantic's echo of a quarter-megabyte file. `export` is checked by name
+    against the two schema strings this service reads or will read (ruling 4);
+    everything else on the envelope is informational and the importer minted
+    its own id, version and owner before any of it is looked at. In particular
+    `needs_credentials` is accepted so the file the export wrote round-trips
+    unchanged, and then IGNORED: the answer's list is re-derived from the
+    document itself, never copied from the client.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    export: str = Field(min_length=1, max_length=64)
+    document: dict[str, Any]
+    exported_at: str | None = Field(default=None, max_length=64)
+    name: str | None = Field(default=None, max_length=project_config.BUILDER_MAX_NAME_CHARS)
+    source_version: int | None = Field(default=None, ge=0)
+    needs_credentials: list[str] = Field(
+        default_factory=list, max_length=MAX_IMPORT_NEEDS_CREDENTIALS
+    )
+
+
+class BuilderVersionModel(BaseModel):
+    """One row of the version browser."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    #: `published` for the version this service is running or the head that
+    #: was published; `draft` for every other version. A version has no status
+    #: column of its own - see `store.VersionHistory`.
+    status: str
+    created_at: datetime
+    bytes: int
 
 
 class BuilderValidationModel(BaseModel):
@@ -388,14 +462,22 @@ def create_builder_router(
                 status_code=422, detail=_first_schema_error(exc)
             ) from exc
 
-    def judged(stored: StoredDocument) -> BuilderDocumentModel:
-        """A stored document plus its problems, price and drawn graph."""
+    def judged(
+        stored: StoredDocument,
+        *,
+        model: type[BuilderDocumentModel] = BuilderDocumentModel,
+        **extra: Any,
+    ) -> BuilderDocumentModel:
+        """A stored document plus its problems, price and drawn graph.
 
-        from brief_crew.service.graph import builder_workflow as registered_workflow
+        `model` lets `import_document` answer with the same fields plus one,
+        built once rather than dumped and re-parsed through a subclass.
+        """
 
         problems = document_problems(stored.document)
         live = registered_workflow(stored.id)
-        return BuilderDocumentModel(
+        return model(
+            **extra,
             id=stored.id,
             document=stored.document.model_dump(mode="json", by_alias=True),
             status=stored.status,
@@ -459,6 +541,67 @@ def create_builder_router(
         response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
         return judged(stored)
 
+    # Declared BEFORE every `/workflows/{document_id}` route. FastAPI matches in
+    # declaration order, and `import` is a perfectly good-looking path segment
+    # - declared below them it would be answered by `get_document` as a lookup
+    # of a document called "import", which is a 404 that reads as a missing
+    # feature.
+    @router.post(
+        "/workflows/import",
+        response_model=BuilderImportedDocumentModel,
+        status_code=201,
+    )
+    async def import_document(
+        request: BuilderImportRequest,
+        response: Response,
+        user: Any = Depends(current_user),
+    ) -> BuilderDocumentModel:
+        """A `.builder.json` becomes a NEW draft owned by the caller. Always new.
+
+        Never an overwrite (D2): the file carries no id worth honouring - the
+        export dropped it, and a hand-edited one is somebody else's row - so
+        the importer mints an id the way `create` does and the version is
+        `FIRST_VERSION`. The document goes through `upgrade_document` first, so
+        a v1 file imports unchanged today and a v2 file imports the day C1
+        lands (ruling 4), and then through `strip_for_export` AGAIN on the way
+        in: the export made the file secret-free by construction, but nothing
+        makes a file honest, and a `credential_id` typed into one by hand must
+        not become a reference to a credential the importer does not own.
+
+        `needs_credentials` is RE-DERIVED from that inbound strip and nothing
+        else. The envelope's own list is accepted and ignored: a client may
+        send `[]`, or the list the export wrote, or anything at all, and none
+        of it is trusted - the file's nulled `credential_id` / `server_id`
+        keys are the evidence, and the strip reads them directly. Kept to node
+        ids the document actually has, once each, so the client can point at
+        every one.
+        """
+
+        if request.export not in KNOWN_SCHEMAS:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"export must be one of {list(KNOWN_SCHEMAS)}; this file says "
+                    f"{request.export[:64]!r}"
+                ),
+            )
+        store = require_store()
+        raw, stripped_nodes = strip_for_export(upgrade_document(request.document))
+        if not raw.get("name") and request.name:
+            raw["name"] = request.name
+        document = parse(raw, document_id=new_document_id(), version=FIRST_VERSION)
+        stored = _guarded(lambda: store.create(document, user_id=owner_of(user)))
+        response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
+        node_ids = {node.id for node in document.nodes}
+        needs_credentials = [
+            node_id for node_id in dict.fromkeys(stripped_nodes) if node_id in node_ids
+        ]
+        return judged(
+            stored,
+            model=BuilderImportedDocumentModel,
+            needs_credentials=needs_credentials,
+        )
+
     @router.get("/workflows/{document_id}", response_model=BuilderDocumentModel)
     async def get_document(
         document_id: str,
@@ -515,14 +658,111 @@ def create_builder_router(
         )
         return judged(stored)
 
+    @router.get("/workflows/{document_id}/export")
+    async def export_document(
+        document_id: str,
+        version: int | None = Query(default=None, ge=1),
+        user: Any = Depends(current_user),
+    ) -> Response:
+        """The D1 envelope as a download: secret-free, owner-free, id-free.
+
+        Visibility is `store.load`'s, so somebody else's document is the same
+        404 every other route answers. The body is built by `export_envelope`
+        from the parsed document's own dump rather than from the raw row, so a
+        row this service can no longer read is a 422 naming the document, not
+        a file that will not import anywhere.
+        """
+
+        store = require_store()
+        stored = _guarded(
+            lambda: store.load(document_id, version=version, user_id=owner_of(user))
+        )
+        envelope = export_envelope(
+            stored.document.model_dump(mode="json", by_alias=True),
+            source_version=stored.document.version,
+            name=stored.document.name,
+        )
+        return Response(
+            content=json.dumps(envelope, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": export_content_disposition(stored.document.name)
+            },
+        )
+
+    @router.get(
+        "/workflows/{document_id}/versions",
+        response_model=list[BuilderVersionModel],
+    )
+    async def list_versions(
+        document_id: str, user: Any = Depends(current_user)
+    ) -> list[BuilderVersionModel]:
+        """Every stored version, newest first, sized and dated. Same visibility."""
+
+        store = require_store()
+        history = _guarded(lambda: store.history(document_id, user_id=owner_of(user)))
+        live = registered_workflow(document_id)
+        live_version = live.document.version if live is not None else None
+        return [
+            BuilderVersionModel(
+                version=entry.version,
+                status=_version_status(entry.version, history, live_version),
+                created_at=entry.created_at,
+                bytes=entry.bytes,
+            )
+            for entry in history.entries
+        ]
+
+    @router.post(
+        "/workflows/{document_id}/duplicate",
+        response_model=BuilderDocumentModel,
+        status_code=201,
+    )
+    async def duplicate_document(
+        document_id: str,
+        response: Response,
+        version: int | None = Query(default=None, ge=1),
+        user: Any = Depends(current_user),
+    ) -> BuilderDocumentModel:
+        """A new draft, version 1, `"<name> copy"`, owned by the caller (D3).
+
+        Goes through `parse` and `store.create` exactly as a fresh document
+        does, so the copy gets a server-minted id and a recomputed price - the
+        source's `budget` is dropped because it was measured against the
+        ceiling of the day it was published, not today's.
+        """
+
+        store = require_store()
+        source = _guarded(
+            lambda: store.load(document_id, version=version, user_id=owner_of(user))
+        )
+        payload = source.document.model_dump(mode="json", by_alias=True)
+        payload["name"] = copy_name(source.document.name)
+        payload.pop("budget", None)
+        document = parse(payload, document_id=new_document_id(), version=FIRST_VERSION)
+        stored = _guarded(lambda: store.create(document, user_id=owner_of(user)))
+        response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
+        return judged(stored)
+
     @router.delete(
         "/workflows/{document_id}", status_code=204, response_class=Response
     )
     async def delete_document(
         document_id: str, user: Any = Depends(current_user)
     ) -> Response:
-        """Delete a graph, and unregister it if it was published.
+        """Delete a graph and every version of it - unless it is launchable.
 
+        A head that is `published` AND registered on this service is refused
+        with a **409**, not unpublished on the way out (PLANS.md decision 24,
+        built on the plan's recommendation). Deleting it would take the graph
+        out of the registration maps and the row out of the table in one
+        request, which is the one shape the boot sweep can never put back and
+        the one shape a run queued a moment earlier compiles against nothing.
+        The sentence says what to do instead: a save returns the head to
+        `draft`, and a draft deletes.
+
+        For a draft, or a published row this process never registered (one the
+        boot sweep skipped), the order is unchanged: unregister, then delete.
         Unregistering first would leave a window in which the graph is
         unlaunchable but still stored; deleting first would leave one in which
         it is launchable but gone. The second is worse - a run would compile
@@ -530,7 +770,16 @@ def create_builder_router(
         """
 
         store = require_store()
-        _guarded(lambda: store.load(document_id, user_id=owner_of(user)))
+        stored = _guarded(lambda: store.load(document_id, user_id=owner_of(user)))
+        if stored.status == STATUS_PUBLISHED and registered_workflow(document_id) is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"document {document_id} is published and registered as a "
+                    "launchable workflow, so it cannot be deleted; save a new "
+                    "version to return it to draft, then delete it"
+                ),
+            )
         _unregister(registry, document_id)
         _guarded(lambda: store.delete(document_id, user_id=owner_of(user)))
         return Response(status_code=204)
@@ -648,6 +897,40 @@ def _first_schema_error(exc: Exception) -> str:
     first = reported[0]
     location = ".".join(str(part) for part in first.get("loc", ())) or "document"
     return f"{location}: {str(first.get('msg', 'is invalid'))[:200]}"
+
+
+def copy_name(name: str) -> str:
+    """`"<name> copy"`, trimmed from the front so the suffix always survives.
+
+    `BUILDER_MAX_NAME_CHARS` bounds the schema, and a name already at the bound
+    would otherwise fail `parse` on the duplicate of a perfectly valid document
+    - a 422 the author cannot act on, about a field they did not type.
+    """
+
+    limit = project_config.BUILDER_MAX_NAME_CHARS
+    base = str(name)
+    room = limit - len(COPY_SUFFIX)
+    if len(base) > room:
+        base = base[:room].rstrip()
+    return f"{base}{COPY_SUFFIX}"
+
+
+def _version_status(version: int, history: VersionHistory, live_version: int | None) -> str:
+    """`published` for the version running or the published head; else `draft`.
+
+    Two versions can legitimately be `published` at once: the head, after a
+    publish, and an OLDER version this service is still running because the
+    head was edited afterwards - `store.save` returns the head to draft while
+    the registered workflow keeps the version whose budget was priced. The
+    browser has to show both, or an author sees `draft` on the graph that is
+    answering launches.
+    """
+
+    if live_version is not None and version == live_version:
+        return STATUS_PUBLISHED
+    if version == history.head_version and history.status == STATUS_PUBLISHED:
+        return STATUS_PUBLISHED
+    return "draft"
 
 
 def _requested_version(payload: Mapping[str, Any]) -> int:

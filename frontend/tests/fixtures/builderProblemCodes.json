@@ -1,0 +1,3307 @@
+{
+  "generator": "scripts/emit_builder_fixtures.py",
+  "source": "brief_crew.builder.compiler.document_problems",
+  "mirror": "frontend/src/types/builder.ts::PROBLEM_CODES",
+  "ceiling_usd": 10.0,
+  "note": "One real instance of every problem code, produced by running the named function over a document that provokes it. The `message` strings are verbatim: the canvas renders them unaltered, so a client test asserting against a paraphrase would be asserting about a fiction.",
+  "codes": [
+    "back-edge-not-router",
+    "billable-count",
+    "budget-over-ceiling",
+    "budget-unpriced-model",
+    "cycle-count",
+    "cycle-iterations",
+    "duplicate-edge-id",
+    "duplicate-node-id",
+    "edge-target-refuses-incoming",
+    "edge-unknown-endpoint",
+    "edge-unknown-port",
+    "escalation-count",
+    "fanout-width",
+    "ident-collision",
+    "ident-pattern",
+    "input-field-ambiguous",
+    "input-field-undeclared",
+    "join-single-predecessor",
+    "join-unknown-node",
+    "library-missing-prompt-input",
+    "library-unbuildable-crew",
+    "library-unknown-id",
+    "no-input-node",
+    "no-output-node",
+    "node-count",
+    "node-unreachable",
+    "router-branch-count",
+    "router-branch-unconnected",
+    "router-duplicate-branch",
+    "router-otherwise"
+  ],
+  "instances": [
+    {
+      "code": "back-edge-not-router",
+      "scenario": "four loops against the cycle ceiling, one of them from a plain agent",
+      "why": "`back-edge-not-router` is the measured one: with a plain node closing the loop the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing - no exception, no warning.",
+      "problem": {
+        "code": "back-edge-not-router",
+        "severity": "error",
+        "message": "edge 'e9' closes a loop from 'b' back to 'a', and 'b' is a agent node. A loop-closing node MUST be a router: insert a router node between 'b' and 'a' and draw the back edge from that router instead. This is measured, not cautious - with a plain node here the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing, with no exception and no warning",
+        "node_id": "b",
+        "edge_id": "e9"
+      }
+    },
+    {
+      "code": "billable-count",
+      "scenario": "more model-calling nodes than the billable ceiling",
+      "why": "",
+      "problem": {
+        "code": "billable-count",
+        "severity": "error",
+        "message": "this graph has 14 nodes that call a model and the ceiling is 13 (MAX_BILLABLE_NODES), which is the shipped validator's 8 with the same 1.7 headroom MAX_GRAPH_NODES applies. This bound is about shape rather than spend - what a graph COSTS is checked separately, against the per-run ceiling, and that check names a dollar figure you can act on",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "budget-over-ceiling",
+      "scenario": "a graph whose worst case prices past the per-run ceiling",
+      "why": "",
+      "problem": {
+        "code": "budget-over-ceiling",
+        "severity": "error",
+        "message": "this graph's worst case prices at $8.24 over 288 model calls, and $10.30 with the 1.25x margin, against a per-run ceiling of $10.00. Remove a node that calls a model, move one to the cheap tier, take a node off a cycle, or lower a retry ceiling",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "budget-unpriced-model",
+      "scenario": "a tier pointed at a model PRICES cannot price",
+      "why": "Provoked by pointing the cheap tier at a slug with no PRICES entry, which is the shape a model swap without a matching price commit takes. The failure it stands against is the one that reported a 128,069-token run at $0.00: `PRICES.get(model, (0.0, 0.0))` turning 'no price on file' into 'this call was free'.",
+      "problem": {
+        "code": "budget-unpriced-model",
+        "severity": "error",
+        "message": "this graph cannot be priced: openrouter/example/unpriced-preview has no entry in PRICES, so every call it makes would contribute $0.00 to a total that is supposed to bound spend. Add the price in the same commit as the model",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "cycle-count",
+      "scenario": "four loops against the cycle ceiling, one of them from a plain agent",
+      "why": "`back-edge-not-router` is the measured one: with a plain node closing the loop the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing - no exception, no warning.",
+      "problem": {
+        "code": "cycle-count",
+        "severity": "error",
+        "message": "this graph closes 4 loops and the ceiling is 3 (MAX_CYCLES), the validator's own measured back-edge count. Each loop multiplies the price of every node inside it",
+        "node_id": null,
+        "edge_id": "e4"
+      }
+    },
+    {
+      "code": "cycle-iterations",
+      "scenario": "a gate allowing more revise turns than the cycle-iteration ceiling",
+      "why": "",
+      "problem": {
+        "code": "cycle-iterations",
+        "severity": "error",
+        "message": "gate 'confirm' allows 4 revise turns and the ceiling is 3 (MAX_CYCLE_ITERATIONS), because a revise loop is a cycle and every node on one is billed again each time round. It is deliberately below the validator's own 5: that number prices a human in the loop, who is both the cause of the delay and the brake on it, and a builder cycle need not have one",
+        "node_id": "confirm",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "duplicate-edge-id",
+      "scenario": "two nodes and two edges sharing an id",
+      "why": "",
+      "problem": {
+        "code": "duplicate-edge-id",
+        "severity": "error",
+        "message": "2 edges share the id 'e1'; ids address a node in every frame, every edge and every problem message, so they must be unique",
+        "node_id": null,
+        "edge_id": "e1"
+      }
+    },
+    {
+      "code": "duplicate-node-id",
+      "scenario": "two nodes and two edges sharing an id",
+      "why": "",
+      "problem": {
+        "code": "duplicate-node-id",
+        "severity": "error",
+        "message": "2 nodes share the id 'step'; ids address a node in every frame, every edge and every problem message, so they must be unique",
+        "node_id": "step",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "edge-target-refuses-incoming",
+      "scenario": "an edge arriving at the input node",
+      "why": "",
+      "problem": {
+        "code": "edge-target-refuses-incoming",
+        "severity": "error",
+        "message": "edge 'e2' arrives at 'idea', which is the graph's input: an input node starts the run and has nothing upstream of it",
+        "node_id": "idea",
+        "edge_id": "e2"
+      }
+    },
+    {
+      "code": "edge-unknown-endpoint",
+      "scenario": "an edge naming a node that was deleted",
+      "why": "",
+      "problem": {
+        "code": "edge-unknown-endpoint",
+        "severity": "error",
+        "message": "edge 'e2' names 'ghost' as its target, and no node has that id",
+        "node_id": null,
+        "edge_id": "e2"
+      }
+    },
+    {
+      "code": "edge-unknown-port",
+      "scenario": "an edge leaving an agent by a gate's port",
+      "why": "",
+      "problem": {
+        "code": "edge-unknown-port",
+        "severity": "error",
+        "message": "edge 'e2' leaves 'draft' by the port 'approve', and a agent node offers out",
+        "node_id": "draft",
+        "edge_id": "e2"
+      }
+    },
+    {
+      "code": "escalation-count",
+      "scenario": "more escalation-tier nodes than the escalation ceiling",
+      "why": "",
+      "problem": {
+        "code": "escalation-count",
+        "severity": "error",
+        "message": "this graph puts 9 nodes on the escalation tier and the ceiling is 8 (MAX_ESCALATION_NODES), the validator's own measured split of 5 escalation to 3 cheap carried up by the same headroom as the node count. Move one to the cheap tier",
+        "node_id": "a8",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "fanout-width",
+      "scenario": "one node fanning out wider than the concurrency ceiling",
+      "why": "",
+      "problem": {
+        "code": "fanout-width",
+        "severity": "error",
+        "message": "'idea' fans out to 5 nodes and the ceiling is 4 (MAX_FANOUT_WIDTH), the validator's own measured maximum. What this bounds is concurrent branches, and the real constraint behind it is GitHub's 10 requests a minute per IP",
+        "node_id": "idea",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "ident-collision",
+      "scenario": "a router declaring the same branch label twice",
+      "why": "The two codes come from one mistake, and `ident-collision` comes from nothing else. Method idents are n<index>_<id> and event labels e<index>_<port>, and the index is unique per node, so the ONLY way two compiled names collide is a router emitting one label twice - which is what a duplicate branch is.",
+      "problem": {
+        "code": "ident-collision",
+        "severity": "error",
+        "message": "2 nodes compile to the same router label 'e1_same'; frames from both would attribute to one node",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "ident-pattern",
+      "scenario": "a gate whose id leaves no room for its compiled router",
+      "why": "",
+      "problem": {
+        "code": "ident-pattern",
+        "severity": "error",
+        "message": "'gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' compiles to the flow method 'n2_route_gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', which does not match ^n[0-9]{1,2}_[a-z0-9_]{1,40}$. A gate compiles to two methods and the second is prefixed 'route_', so a gate's id has six characters less room than any other node's; shorten it",
+        "node_id": "gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "input-field-ambiguous",
+      "scenario": "two input nodes asking for the same key",
+      "why": "",
+      "problem": {
+        "code": "input-field-ambiguous",
+        "severity": "error",
+        "message": "2 input nodes both ask for 'idea'; the run request carries one value under that name and there would be no saying which node it seeded",
+        "node_id": "second",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "input-field-undeclared",
+      "scenario": "an input node asking for a different key than the document declares",
+      "why": "",
+      "problem": {
+        "code": "input-field-undeclared",
+        "severity": "error",
+        "message": "the document declares input_field 'idea' and no input node asks for it; the input nodes ask for topic",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "join-single-predecessor",
+      "scenario": "joins naming a node that is not there, and one with a single arrival",
+      "why": "",
+      "problem": {
+        "code": "join-single-predecessor",
+        "severity": "warning",
+        "message": "'step' is declared a join and 1 edge(s) arrive at it. A join over one edge is the same as no join at all",
+        "node_id": "step",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "join-unknown-node",
+      "scenario": "joins naming a node that is not there, and one with a single arrival",
+      "why": "",
+      "problem": {
+        "code": "join-unknown-node",
+        "severity": "error",
+        "message": "joins names 'ghost', and no node has that id",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "library-missing-prompt-input",
+      "scenario": "an agent whose task placeholders are left unfilled",
+      "why": "",
+      "problem": {
+        "code": "library-missing-prompt-input",
+        "severity": "error",
+        "message": "draft runs 'scoper', whose task needs human_override, idea and this node does not supply them",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "library-unbuildable-crew",
+      "scenario": "a crew that is registered but cannot be constructed",
+      "why": "`SynthesisCrew` takes typed findings at construction, so a document naming it once compiled, published and priced cleanly and then raised a bare TypeError at the first PAID run - after the scoper and all three research branches had billed.",
+      "problem": {
+        "code": "library-unbuildable-crew",
+        "severity": "error",
+        "message": "combine: the crew 'synthesis' cannot be built from a document: SynthesisCrew requires market, sentiment, feasibility at construction, and those are typed findings the validator flow hands over in Python rather than anything a drawn graph can supply. The crews a document may name are feasibility, market, scope, sentiment",
+        "node_id": "combine",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "library-unknown-id",
+      "scenario": "an agent naming a library id this deployment does not register",
+      "why": "",
+      "problem": {
+        "code": "library-unknown-id",
+        "severity": "error",
+        "message": "draft names the agent 'nobody'; the registered agents are feasibility_analyst, market_analyst, reporter, scoper, sentiment_analyst, synthesist",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "no-input-node",
+      "scenario": "a graph with nothing to seed it",
+      "why": "",
+      "problem": {
+        "code": "no-input-node",
+        "severity": "error",
+        "message": "this graph has no input node, so there is nothing to seed a run with and no field for the run request to carry",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "no-output-node",
+      "scenario": "an input node asking for a different key than the document declares",
+      "why": "",
+      "problem": {
+        "code": "no-output-node",
+        "severity": "warning",
+        "message": "this graph has no output node, so a completed run hands back no body. Everything it produced would be visible only as streamed frames",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "node-count",
+      "scenario": "more nodes than the graph ceiling",
+      "why": "",
+      "problem": {
+        "code": "node-count",
+        "severity": "error",
+        "message": "this graph has 26 nodes and the ceiling is 24 (MAX_GRAPH_NODES); above that a single pass of the graph no longer fits comfortably in the 2,000-frame replay ring, and a reconnecting client would receive an incomplete run with nothing saying so",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "node-unreachable",
+      "scenario": "a node nothing leads to",
+      "why": "",
+      "problem": {
+        "code": "node-unreachable",
+        "severity": "error",
+        "message": "nothing leads to 'stranded' from an input node, so it can never run. Connect it, or delete it",
+        "node_id": "stranded",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "router-branch-count",
+      "scenario": "a router with five branches and no otherwise",
+      "why": "",
+      "problem": {
+        "code": "router-branch-count",
+        "severity": "error",
+        "message": "router 'wide' declares 5 branches; a router takes 2 to 4. Fewer than 2 is a decision that cannot go either way, and more than 4 crosses MAX_FANOUT_WIDTH",
+        "node_id": "wide",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "router-branch-unconnected",
+      "scenario": "a router with five branches and no otherwise",
+      "why": "",
+      "problem": {
+        "code": "router-branch-unconnected",
+        "severity": "warning",
+        "message": "router 'wide' declares the branch 'five' and no edge leaves by it, so a run taking that branch stops here. That is legal - it is how a graph ends early - but it is rarely intended",
+        "node_id": "wide",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "router-duplicate-branch",
+      "scenario": "a router declaring the same branch label twice",
+      "why": "The two codes come from one mistake, and `ident-collision` comes from nothing else. Method idents are n<index>_<id> and event labels e<index>_<port>, and the index is unique per node, so the ONLY way two compiled names collide is a router emitting one label twice - which is what a duplicate branch is.",
+      "problem": {
+        "code": "router-duplicate-branch",
+        "severity": "error",
+        "message": "router 'pick' declares the branch 'same' 2 times; a branch label is the port an edge leaves by, so a duplicate makes the drawn edge ambiguous",
+        "node_id": "pick",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "router-otherwise",
+      "scenario": "a router with five branches and no otherwise",
+      "why": "",
+      "problem": {
+        "code": "router-otherwise",
+        "severity": "error",
+        "message": "router 'wide' declares 0 otherwise branches and must declare exactly one. Without it a value that matches no comparison wedges the run at this router; with two, which one takes an unmatched value is a coin toss written into the document",
+        "node_id": "wide",
+        "edge_id": null
+      }
+    }
+  ],
+  "documents": {
+    "more nodes than the graph ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too many nodes",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "n0",
+          "kind": "transform",
+          "label": "n0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n1",
+          "kind": "transform",
+          "label": "n1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n2",
+          "kind": "transform",
+          "label": "n2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n3",
+          "kind": "transform",
+          "label": "n3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n4",
+          "kind": "transform",
+          "label": "n4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n5",
+          "kind": "transform",
+          "label": "n5",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n6",
+          "kind": "transform",
+          "label": "n6",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n7",
+          "kind": "transform",
+          "label": "n7",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n8",
+          "kind": "transform",
+          "label": "n8",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n9",
+          "kind": "transform",
+          "label": "n9",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n10",
+          "kind": "transform",
+          "label": "n10",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n11",
+          "kind": "transform",
+          "label": "n11",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n12",
+          "kind": "transform",
+          "label": "n12",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n13",
+          "kind": "transform",
+          "label": "n13",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n14",
+          "kind": "transform",
+          "label": "n14",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n15",
+          "kind": "transform",
+          "label": "n15",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n16",
+          "kind": "transform",
+          "label": "n16",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n17",
+          "kind": "transform",
+          "label": "n17",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n18",
+          "kind": "transform",
+          "label": "n18",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n19",
+          "kind": "transform",
+          "label": "n19",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n20",
+          "kind": "transform",
+          "label": "n20",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n21",
+          "kind": "transform",
+          "label": "n21",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n22",
+          "kind": "transform",
+          "label": "n22",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n23",
+          "kind": "transform",
+          "label": "n23",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "n24",
+          "kind": "transform",
+          "label": "n24",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "n0",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "more model-calling nodes than the billable ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too many billable",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "a0",
+          "kind": "agent",
+          "label": "a0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a1",
+          "kind": "agent",
+          "label": "a1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a2",
+          "kind": "agent",
+          "label": "a2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a3",
+          "kind": "agent",
+          "label": "a3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a4",
+          "kind": "agent",
+          "label": "a4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a5",
+          "kind": "agent",
+          "label": "a5",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a6",
+          "kind": "agent",
+          "label": "a6",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a7",
+          "kind": "agent",
+          "label": "a7",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a8",
+          "kind": "agent",
+          "label": "a8",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a9",
+          "kind": "agent",
+          "label": "a9",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a10",
+          "kind": "agent",
+          "label": "a10",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a11",
+          "kind": "agent",
+          "label": "a11",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a12",
+          "kind": "agent",
+          "label": "a12",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a13",
+          "kind": "agent",
+          "label": "a13",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "a0",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "more escalation-tier nodes than the escalation ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too much escalation",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "a0",
+          "kind": "agent",
+          "label": "a0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a1",
+          "kind": "agent",
+          "label": "a1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a2",
+          "kind": "agent",
+          "label": "a2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a3",
+          "kind": "agent",
+          "label": "a3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a4",
+          "kind": "agent",
+          "label": "a4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a5",
+          "kind": "agent",
+          "label": "a5",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a6",
+          "kind": "agent",
+          "label": "a6",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a7",
+          "kind": "agent",
+          "label": "a7",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "a8",
+          "kind": "agent",
+          "label": "a8",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "a0",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "two nodes and two edges sharing an id": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "duplicate ids",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "step",
+          "kind": "transform",
+          "label": "step",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "step",
+          "kind": "transform",
+          "label": "step",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "step",
+          "target_port": "in"
+        },
+        {
+          "id": "e1",
+          "source": "step",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an edge naming a node that was deleted": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "dangling edge",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "idea",
+          "source_port": "out",
+          "target": "ghost",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an edge leaving an agent by a gate's port": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "wrong port",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "approve",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an edge arriving at the input node": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "edge into the input",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "idea",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "one node fanning out wider than the concurrency ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too wide",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "t0",
+          "kind": "transform",
+          "label": "t0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "t1",
+          "kind": "transform",
+          "label": "t1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "t2",
+          "kind": "transform",
+          "label": "t2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "t3",
+          "kind": "transform",
+          "label": "t3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "t4",
+          "kind": "transform",
+          "label": "t4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e0",
+          "source": "idea",
+          "source_port": "out",
+          "target": "t0",
+          "target_port": "in"
+        },
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "t1",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "idea",
+          "source_port": "out",
+          "target": "t2",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "idea",
+          "source_port": "out",
+          "target": "t3",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "idea",
+          "source_port": "out",
+          "target": "t4",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "t0",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a router with five branches and no otherwise": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "router shape",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "wide",
+          "kind": "router",
+          "label": "wide",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "one",
+                "op": "eq",
+                "key": "idea",
+                "value": "yes"
+              },
+              {
+                "label": "two",
+                "op": "eq",
+                "key": "idea",
+                "value": "two"
+              },
+              {
+                "label": "three",
+                "op": "eq",
+                "key": "idea",
+                "value": "three"
+              },
+              {
+                "label": "four",
+                "op": "eq",
+                "key": "idea",
+                "value": "four"
+              },
+              {
+                "label": "five",
+                "op": "eq",
+                "key": "idea",
+                "value": "five"
+              }
+            ]
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "wide",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "wide",
+          "source_port": "one",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a router declaring the same branch label twice": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "duplicate branch",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "pick",
+          "kind": "router",
+          "label": "pick",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "same",
+                "op": "eq",
+                "key": "idea",
+                "value": "yes"
+              },
+              {
+                "label": "same",
+                "op": "eq",
+                "key": "idea",
+                "value": "other"
+              },
+              {
+                "label": "rest",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "pick",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "pick",
+          "source_port": "same",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "pick",
+          "source_port": "rest",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "four loops against the cycle ceiling, one of them from a plain agent": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too many loops",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "a",
+          "kind": "agent",
+          "label": "a",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "g1",
+          "kind": "gate",
+          "label": "g1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "message": "Confirm before spending.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "g2",
+          "kind": "gate",
+          "label": "g2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "message": "Confirm before spending.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "g3",
+          "kind": "gate",
+          "label": "g3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "message": "Confirm before spending.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "b",
+          "kind": "agent",
+          "label": "b",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "a",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "a",
+          "source_port": "out",
+          "target": "g1",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "g1",
+          "source_port": "approve",
+          "target": "g2",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "g1",
+          "source_port": "revise",
+          "target": "a",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "g2",
+          "source_port": "approve",
+          "target": "g3",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "g2",
+          "source_port": "revise",
+          "target": "a",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "g3",
+          "source_port": "approve",
+          "target": "b",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "g3",
+          "source_port": "revise",
+          "target": "a",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "b",
+          "source_port": "out",
+          "target": "a",
+          "target_port": "in"
+        },
+        {
+          "id": "e10",
+          "source": "b",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a gate allowing more revise turns than the cycle-iteration ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too many turns",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "confirm",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "message": "Confirm before spending.",
+            "editable_fields": [],
+            "max_turns": 4,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "confirm",
+          "source_port": "revise",
+          "target": "draft",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a graph with nothing to seed it": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "no input",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "step",
+          "kind": "transform",
+          "label": "step",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "step",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an input node asking for a different key than the document declares": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "undeclared field",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "topic",
+          "kind": "input",
+          "label": "topic",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "topic",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "step",
+          "kind": "transform",
+          "label": "step",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "topic",
+          "source_port": "out",
+          "target": "step",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "two input nodes asking for the same key": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "ambiguous field",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "second",
+          "kind": "input",
+          "label": "second",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "second",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a node nothing leads to": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "orphan",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "step",
+          "kind": "transform",
+          "label": "step",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "stranded",
+          "kind": "transform",
+          "label": "stranded",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "step",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "step",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "joins naming a node that is not there, and one with a single arrival": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "join shapes",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "step",
+          "kind": "transform",
+          "label": "step",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "step",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "step",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "step": "all",
+        "ghost": "all"
+      },
+      "budget": null
+    },
+    "a gate whose id leaves no room for its compiled router": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "long gate id",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "gate",
+          "label": "gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "message": "Confirm before spending.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_port": "approve",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_port": "revise",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an agent naming a library id this deployment does not register": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unknown agent",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "nobody",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an agent whose task placeholders are left unfilled": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "missing prompt inputs",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a crew that is registered but cannot be constructed": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unbuildable crew",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "combine",
+          "kind": "crew",
+          "label": "combine",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "crew_id": "synthesis"
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "combine",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "combine",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a graph whose worst case prices past the per-run ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "expensive",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "a0",
+          "kind": "agent",
+          "label": "a0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "synthesist",
+            "tools": [
+              "research_market_landscape"
+            ]
+          }
+        },
+        {
+          "id": "a1",
+          "kind": "agent",
+          "label": "a1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "synthesist",
+            "tools": [
+              "research_market_landscape"
+            ]
+          }
+        },
+        {
+          "id": "a2",
+          "kind": "agent",
+          "label": "a2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "synthesist",
+            "tools": [
+              "research_market_landscape"
+            ]
+          }
+        },
+        {
+          "id": "a3",
+          "kind": "agent",
+          "label": "a3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "synthesist",
+            "tools": [
+              "research_market_landscape"
+            ]
+          }
+        },
+        {
+          "id": "a4",
+          "kind": "agent",
+          "label": "a4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "synthesist",
+            "tools": [
+              "research_market_landscape"
+            ]
+          }
+        },
+        {
+          "id": "a5",
+          "kind": "agent",
+          "label": "a5",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "synthesist",
+            "tools": [
+              "research_market_landscape"
+            ]
+          }
+        },
+        {
+          "id": "a6",
+          "kind": "agent",
+          "label": "a6",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "synthesist",
+            "tools": [
+              "research_market_landscape"
+            ]
+          }
+        },
+        {
+          "id": "a7",
+          "kind": "agent",
+          "label": "a7",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "agent_id": "synthesist",
+            "tools": [
+              "research_market_landscape"
+            ]
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "confirm",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "message": "Confirm before spending.",
+            "editable_fields": [],
+            "max_turns": 3,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "a0",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "a0",
+          "source_port": "out",
+          "target": "a1",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "a1",
+          "source_port": "out",
+          "target": "a2",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "a2",
+          "source_port": "out",
+          "target": "a3",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "a3",
+          "source_port": "out",
+          "target": "a4",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "a4",
+          "source_port": "out",
+          "target": "a5",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "a5",
+          "source_port": "out",
+          "target": "a6",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "a6",
+          "source_port": "out",
+          "target": "a7",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "a7",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e10",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e11",
+          "source": "confirm",
+          "source_port": "revise",
+          "target": "a0",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tier pointed at a model PRICES cannot price": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unpriced",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    }
+  }
+}

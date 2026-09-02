@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from threading import Lock
 from time import monotonic
+from types import MappingProxyType
 from typing import Any, Callable
 import zipfile
 
@@ -41,6 +42,7 @@ from brief_crew.service.graph import (
     BRIEF_GRAPH,
     BRIEF_NODE_REGISTRY,
     BRIEF_WORKFLOW,
+    BUILDER_WORKFLOWS,
     GRAPHS,
     NODE_REGISTRIES,
     VALIDATOR_GRAPH,
@@ -70,6 +72,7 @@ from brief_crew.service.registry import (
     RunBusyError,
     RunRecord,
     RunRegistry,
+    UnknownWorkflowError,
     WorkflowRuntime,
 )
 from brief_crew.service.runner import (
@@ -79,10 +82,113 @@ from brief_crew.service.runner import (
     SyntheticValidatorRunner,
     ValidatorFlowRunner,
 )
+# Module scope rather than inside `create_app`, unlike the store and the router
+# below it: `create_app`'s signature annotates a parameter with
+# `BuilderRunnerFactory`, this module has no `from __future__ import
+# annotations` (see the note above `create_builder_router` for why that
+# omission is load-bearing for FastAPI), so the name must resolve at import.
+# It costs nothing extra - this pulls in no service extra, only `crewai` and
+# `yaml`, both of which `service.registry` above already required.
+from brief_crew.service.builder_runner import (
+    BuilderFlowRunner,
+    BuilderRunnerFactory,
+    synthetic_builder_runner,
+)
 
 
 class ServiceDependencyError(RuntimeError):
     pass
+
+
+# `builder_runner_unavailable` used to stand here: a placeholder runner that
+# raised, so a published graph could be launched, admitted and rate limited and
+# then fail with a sentence saying no runner had been injected yet. One exists
+# now (`service/builder_runner.py`), which makes the placeholder unreachable -
+# and an unreachable fallback is dead code that reads like a supported mode.
+
+
+# The request-input key each BUILT-IN workflow reads, for a registry whose
+# ``WorkflowRuntime`` predates ``input_field`` - which is every one constructed
+# by hand in ``tests/`` and by any caller passing ``registry=`` to
+# ``create_app``. ``create_app``'s own registration declares the field on the
+# runtime; this is the compatibility half, not the source of truth, and it is
+# deliberately NOT a default: an id in neither is refused by name rather than
+# quietly asked for ``topic``.
+BUILTIN_WORKFLOW_INPUT_FIELDS: Mapping[str, str] = MappingProxyType(
+    {
+        BRIEF_GRAPH.id: "topic",
+        VALIDATOR_GRAPH.id: "idea",
+    }
+)
+
+
+def workflow_input_field(workflow_id: str, runtime: WorkflowRuntime) -> str | None:
+    """The request-input key ``workflow_id`` reads, or ``None`` if undeclared.
+
+    The runtime's own declaration wins; the built-in table answers for a
+    runtime that predates the field. Returning ``None`` rather than a fallback
+    string is the point of the whole function: ``create_run`` derived this as
+    ``"idea" if workflow_id == VALIDATOR_GRAPH.id else "topic"``, so a third
+    workflow was told ``inputs.topic must contain non-whitespace text`` about a
+    field it had never heard of, and no reply the operator could send would
+    have satisfied it.
+    """
+
+    if runtime.input_field is not None:
+        return runtime.input_field
+    return BUILTIN_WORKFLOW_INPUT_FIELDS.get(workflow_id)
+
+
+def run_history_label(registry: RunRegistry, workflow_id: str, inputs: Mapping[str, Any]) -> str:
+    """The one line of prose the history sidebar shows for a run.
+
+    It reads the key the WORKFLOW declares. `inputs.get("idea") or
+    inputs.get("topic")` is the same two-literal guess `create_run` used to
+    make and that `workflow_input_field` was written to retire: it is right for
+    exactly the two built-in workflows and blank for every other, so a builder
+    graph whose input field is anything else drew an EMPTY row - which reads as
+    a run that lost its inputs rather than as a sidebar asking the wrong key.
+
+    The two literals survive only as the fallback, for a row whose workflow
+    declares nothing. And an unknown workflow is answered rather than raised:
+    a builder graph published before the process restarted still has rows in
+    this table, and a history page must not fail whole because one of its rows
+    names a workflow this process has never heard of.
+    """
+
+    field: str | None = None
+    try:
+        runtime = registry.workflow_runtime(workflow_id)
+    except UnknownWorkflowError:
+        pass
+    else:
+        field = workflow_input_field(workflow_id, runtime)
+    if field is not None:
+        declared = inputs.get(field)
+        if declared:
+            return str(declared)
+    return str(inputs.get("idea") or inputs.get("topic") or "")
+
+
+def workflow_has_gates(workflow_id: str) -> bool:
+    """Whether this workflow has a human gate there is any point skipping.
+
+    Read off the descriptor, which gets ``human_feedback`` from CrewAI's own
+    ``FlowDefinition`` rather than from anybody's opinion (``graph.py``'s
+    ``_human_feedback_methods``) - so this asks the workflow instead of
+    comparing its id to the validator's, and a third workflow that really does
+    declare ``@human_feedback`` is no longer refused with a sentence its own
+    graph contradicts.
+
+    An id with no descriptor answers False, which is the fail-closed direction:
+    ``gates="auto"`` runs a whole pipeline unattended, and a workflow the
+    service cannot describe is not one to run that way.
+    """
+
+    descriptor = GRAPHS.get(workflow_id)
+    if descriptor is None:
+        return False
+    return any(node.human_feedback for node in descriptor.nodes)
 
 
 class RequestBodySizeLimitMiddleware:
@@ -100,11 +206,41 @@ class RequestBodySizeLimitMiddleware:
 
     WARNING, and it is why the per-field bounds in ``models.py`` exist as well:
     a chunked request declares no ``Content-Length`` and is NOT caught here.
+
+    ``overrides`` raises the bound for one path prefix and nothing else. There
+    is exactly one: a builder document is legitimately bigger than any gate
+    reply or idea will ever be - 24 nodes with positions, labels, prompts and
+    router rules - and raising the GLOBAL bound to fit it would also raise it
+    on the endpoint that spends money, where a quarter of a megabyte of
+    ``inputs`` is a cost rather than a drawing. The longest matching prefix
+    wins, so a nested route cannot accidentally inherit a looser bound from a
+    shorter one.
     """
 
-    def __init__(self, app: Any, *, max_bytes: int) -> None:
+    def __init__(
+        self,
+        app: Any,
+        *,
+        max_bytes: int,
+        overrides: Sequence[tuple[str, int]] = (),
+    ) -> None:
         self.app = app
         self.max_bytes = int(max_bytes)
+        # Longest prefix first, so the lookup is the first match rather than a
+        # scan that has to compare lengths.
+        self.overrides: tuple[tuple[str, int], ...] = tuple(
+            sorted(
+                ((str(prefix), int(limit)) for prefix, limit in overrides),
+                key=lambda entry: len(entry[0]),
+                reverse=True,
+            )
+        )
+
+    def limit_for(self, path: str) -> int:
+        for prefix, limit in self.overrides:
+            if path.startswith(prefix):
+                return limit
+        return self.max_bytes
 
     @staticmethod
     def _declared_length(scope: Mapping[str, Any]) -> int | None:
@@ -119,12 +255,13 @@ class RequestBodySizeLimitMiddleware:
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         if scope.get("type") == "http":
             declared = self._declared_length(scope)
-            if declared is not None and declared > self.max_bytes:
+            limit = self.limit_for(str(scope.get("path", "")))
+            if declared is not None and declared > limit:
                 body = json.dumps(
                     {
                         "detail": (
                             "the request body is limited to "
-                            f"{self.max_bytes} bytes"
+                            f"{limit} bytes"
                         )
                     }
                 ).encode("utf-8")
@@ -404,8 +541,20 @@ def create_app(
     database_url: str | None = None,
     expose_docs: bool | None = None,
     rate_limiter: RunRateLimiter | None = None,
+    builder_runner_factory: BuilderRunnerFactory | None = None,
 ) -> Any:
-    """Create the API; inject a runner to keep tests and local demos unmetered."""
+    """Create the API; inject a runner to keep tests and local demos unmetered.
+
+    ``builder_runner_factory`` is a *factory* and not a runner, because
+    ``RunExecution`` carries no ``workflow_id``: the registry hands a runner an
+    execution and nothing that says which graph it belongs to. One runner is
+    therefore built per published graph, closed over that graph's compiled
+    definition, and ``publish`` and the boot rehydration both call this to get
+    it. The default builds the real thing; ``synthetic=True`` builds the same
+    runner over the same compiled definition with the crew factories swapped,
+    so a free run exercises the real engine rather than a second implementation
+    of it.
+    """
 
     _assert_openrouter_startup_safety()
     _assert_auth_startup_safety()
@@ -418,6 +567,19 @@ def create_app(
         raise ServiceDependencyError(
             "FastAPI is not installed; install the existing project service extra"
         ) from exc
+
+    # Imported here rather than at module scope for the reason this module's
+    # own docstring gives: importing `app` must stay safe without the service
+    # extras, and the builder pulls in SQLAlchemy (the document store) and the
+    # CrewAI flow runtime (the compiler). Both are needed only once an app is
+    # actually being built.
+    from brief_crew.builder.descriptor import static_cost_over_ceiling
+    from brief_crew.builder.store import BuilderDocumentStore
+    from brief_crew.service.builder_api import (
+        BUILDER_API_PREFIX,
+        create_builder_router,
+    )
+    from brief_crew.service.builder_rehydrate import rehydrate_published_workflows
 
     if registry is not None and (
         runner is not None or validator_runner is not None or synthetic
@@ -466,11 +628,13 @@ def create_app(
                     graph_version=BRIEF_GRAPH.version,
                     node_registry=BRIEF_NODE_REGISTRY,
                     runner=brief_runner,
+                    input_field=BUILTIN_WORKFLOW_INPUT_FIELDS[BRIEF_GRAPH.id],
                 ),
                 VALIDATOR_GRAPH.id: WorkflowRuntime(
                     graph_version=VALIDATOR_GRAPH.version,
                     node_registry=VALIDATOR_NODE_REGISTRY,
                     runner=idea_runner,
+                    input_field=BUILTIN_WORKFLOW_INPUT_FIELDS[VALIDATOR_GRAPH.id],
                 ),
             },
             persistence=owned_store,
@@ -506,6 +670,14 @@ def create_app(
     app.add_middleware(
         RequestBodySizeLimitMiddleware,
         max_bytes=project_config.MAX_REQUEST_BODY_BYTES,
+        # The one exemption, and it is scoped to the prefix that needs it.
+        # `config.py` argues for this shape rather than a raised global bound;
+        # the handlers behind it re-check the parsed document's own size,
+        # because a chunked request declares no Content-Length and reaches them
+        # regardless.
+        overrides=(
+            (BUILDER_API_PREFIX, project_config.MAX_BUILDER_DOCUMENT_BYTES),
+        ),
     )
 
     # Cross-origin access. In development Vite proxies /api and /ws to this
@@ -673,6 +845,57 @@ def create_app(
         response.headers["ETag"] = etag
         return graph
 
+    def builder_store_factory() -> Any:
+        """The document store, or None when this service has nowhere to save.
+
+        Resolved per call rather than once, because a dozen test modules build
+        an app around an injected registry with no persistence at all, and the
+        builder routes must answer 503 naming that rather than 404 - which
+        would read as "this build has no builder".
+        """
+
+        persistence = getattr(registry, "persistence", None)
+        if persistence is None:
+            return None
+        return BuilderDocumentStore(persistence)
+
+    # `synthetic` reaches the builder here and nowhere else. It picks the crew
+    # factories and NOTHING else: same compiled definition, same CrewAI engine,
+    # same durable gates, same routers, same cancellation. A separate synthetic
+    # runner would be a double free to drift from its subject, which is how the
+    # missing report body and the missing `status` key each survived a green
+    # suite (CLAUDE.md closed items 33 and 20).
+    resolved_builder_runner_factory = builder_runner_factory or (
+        synthetic_builder_runner if synthetic else BuilderFlowRunner
+    )
+
+    # A publish registers into six process-local places and nothing else, so
+    # before this call every restart silently unpublished every user graph -
+    # the document still said `published` and the launch answered 404. Run here
+    # rather than in the lifespan: `registry` exists, the store factory can
+    # answer, and no request has been served, so no client can ever observe the
+    # window where a published graph is not registered. It cannot raise; see
+    # `builder_rehydrate` for why a row that will not compile is a log line
+    # rather than a boot failure.
+    rehydrate_published_workflows(
+        store=builder_store_factory(),
+        registry=registry,
+        runner_factory=resolved_builder_runner_factory,
+    )
+
+    # Mounted on its own prefix, and `GET /api/workflows` above is deliberately
+    # untouched: it returns the two literals, which is the only reason the
+    # existing set-equality assertions still hold. Builder graphs list on
+    # `GET /api/builder/workflows` instead, which costs nothing.
+    app.include_router(
+        create_builder_router(
+            store_factory=builder_store_factory,
+            registry=registry,
+            current_user=current_user,
+            runner_factory=resolved_builder_runner_factory,
+        )
+    )
+
     @app.post(
         "/api/sessions/{session_id}/runs",
         response_model=CreateRunResponse,
@@ -721,7 +944,90 @@ def create_app(
             )
         if request.workflow_id not in WORKFLOWS:
             raise HTTPException(status_code=404, detail="workflow not found")
-        input_name = "idea" if request.workflow_id == VALIDATOR_GRAPH.id else "topic"
+        # Registration takes four places - GRAPHS, NODE_REGISTRIES, WORKFLOWS
+        # and the `workflows=` runtime map above - and three of them are one
+        # import away from each other, so omitting the fourth is the natural
+        # mistake. It used to answer 500 from an uncaught KeyError deep in
+        # `create_run`; it is a 404 naming the workflow now, because the
+        # request is not malformed and the service is not broken.
+        try:
+            runtime = registry.workflow_runtime(request.workflow_id)
+        except UnknownWorkflowError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"workflow {request.workflow_id} is declared but has no "
+                    "runtime on this service"
+                ),
+            ) from exc
+        input_name = workflow_input_field(request.workflow_id, runtime)
+        if input_name is None:
+            # Better than the old `else "topic"`: a workflow that declares no
+            # input key is a registration defect, and saying so with its own id
+            # is actionable where being asked for `inputs.topic` was not.
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"workflow {request.workflow_id} declares no request input "
+                    "field, so there is nothing to launch it with"
+                ),
+            )
+        # The other half of the reserved-key check, and it is deliberately
+        # NARROWER than the sentence that used to sit here claimed.
+        #
+        # `CreateRunRequest` refuses the three keys CrewAI's runtime reads on
+        # any flow - that much needs no registry - and it can go no further,
+        # because it holds a workflow id and nothing else: it cannot tell a
+        # workflow it has never heard of from one that does not exist, and
+        # failing closed to the union at that layer told a third workflow's
+        # author that `brief`, their own declared prompt, was Brief Crew's
+        # reserved result slot.
+        #
+        # Here the workflow is resolved, so `reserved_run_input_keys` answers
+        # THIS workflow's own control keys - every state field its flow declares
+        # - and the one key that is its public prompt is subtracted from them.
+        # For a DECLARED workflow both layers then read the same map entry and
+        # the schema gets there first, so this line refuses nothing the request
+        # had not already been refused; its work is the fallback below.
+        # What that does NOT do is refuse every OTHER workflow's control keys,
+        # and the claim that it did was the lie: for `brief-flow` and
+        # `idea-validator` the union is never consulted at all, so `verdict` on
+        # a Brief Crew run is a 202 rather than the 422 the old comment
+        # promised.
+        #
+        # Kept narrow rather than repaired to match the prose, because the prose
+        # was asking for something worth less than it cost. `route`, `brief` and
+        # `usage` are Brief Crew's state names and ordinary English words on
+        # anybody else's graph; a key belonging to a flow that is not the one
+        # running reaches nothing, while refusing it refuses an author a word
+        # they had every right to. Each workflow's own keys are still refused,
+        # which is the half that protects anything.
+        #
+        # The union has not been abandoned - it is the FALLBACK, and that is why
+        # this asks `reserved_run_input_keys` rather than reading one map entry
+        # itself. A workflow in `WORKFLOWS` that never declared its state names
+        # is a registration defect, and it is the one shape where "this
+        # workflow's own keys" would otherwise answer the empty set: it gets
+        # every reserved key of every workflow instead, minus its own prompt.
+        # An invented id buys nothing either way - it is a 404 above, before
+        # this line - and `no_gates` stays unsettable for every id, declared or
+        # not, which is what keeps the 403-versus-422 distinction meaningful.
+        smuggled = sorted(
+            (
+                project_config.reserved_run_input_keys(request.workflow_id)
+                - {input_name}
+            ).intersection(request.inputs)
+        )
+        if smuggled:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "inputs may not carry the reserved control "
+                    f"{'keys' if len(smuggled) > 1 else 'key'} "
+                    f"{', '.join(smuggled)}; workflow {request.workflow_id} is "
+                    f"launched from inputs.{input_name}"
+                ),
+            )
         input_value = request.inputs.get(input_name)
         if not isinstance(input_value, str) or not input_value.strip():
             raise HTTPException(
@@ -745,6 +1051,49 @@ def create_app(
                     f"this one is {len(input_value)}"
                 ),
             )
+        # --- the two questions only a USER-DRAWN graph raises ---------------
+        #
+        # Both are answered from the record registered beside the descriptor,
+        # never recomputed here: the estimate is versioned with the graph ETag
+        # precisely so a republish cannot race an in-flight admission read.
+        # `brief-flow` and `idea-validator` are not in this map, so neither
+        # check can change what they do.
+        builder = BUILDER_WORKFLOWS.get(request.workflow_id)
+        if builder is not None:
+            if not builder.gated_before_spend and not (
+                user or project_config.BUILDER_ALLOW_GATELESS_GRAPHS
+            ):
+                # The same shape, and the same argument, as the `gates="auto"`
+                # refusal below: while nobody is signed in, human inaction IS
+                # the spend cap, and a graph with no gate above its first
+                # billable node has removed it. 403 rather than 422 because the
+                # request is well formed and would be honoured for a signed-in
+                # caller - "I sent this wrong" and "this server will not do
+                # that" must not be the same status.
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"workflow {request.workflow_id} reaches a billable node "
+                        "before any human gate; sign in, or add a gate above the "
+                        "first agent"
+                    ),
+                )
+            if static_cost_over_ceiling(builder.static_cost_usd):
+                # Belt to the compiler's braces. `compile_document` already
+                # refuses an unpriceable graph, so this is only reachable when
+                # MAX_RUN_COST_USD was LOWERED after the graph was published -
+                # at which point the stored estimate is still right and the
+                # ceiling it was measured against is not.
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"workflow {request.workflow_id} is estimated at "
+                        f"${builder.static_cost_usd:.2f}, over the "
+                        f"${project_config.MAX_RUN_COST_USD:.2f} run ceiling with "
+                        f"{project_config.GRAPH_STATIC_BUDGET_MARGIN:g}x margin; "
+                        "republish it with fewer billable nodes"
+                    ),
+                )
         run_inputs = dict(request.inputs)
         if request.gates == "auto":
             # An AUTHENTICATED caller may run unattended. An anonymous one may
@@ -776,7 +1125,13 @@ def create_app(
                         "deployment; sign in, omit gates, or set gates=human"
                     ),
                 )
-            if request.workflow_id != VALIDATOR_GRAPH.id:
+            # "Has this workflow got gates?" is a question its descriptor
+            # answers - CrewAI reports which methods carry @human_feedback -
+            # and comparing the id to the validator's only answered it by
+            # coincidence, for as long as the validator was the only gated
+            # workflow. A third gated workflow was refused here with a sentence
+            # its own graph contradicts.
+            if not workflow_has_gates(request.workflow_id):
                 raise HTTPException(
                     status_code=422,
                     detail=f"workflow {request.workflow_id} has no gates to skip",
@@ -836,7 +1191,7 @@ def create_app(
         entries: list[RunHistoryEntry] = []
         for row in rows:
             inputs = row.get("inputs") or {}
-            raw_label = inputs.get("idea") or inputs.get("topic") or ""
+            raw_label = run_history_label(registry, row["workflow_id"], inputs)
             usage = row.get("usage") or {}
             entries.append(
                 RunHistoryEntry(

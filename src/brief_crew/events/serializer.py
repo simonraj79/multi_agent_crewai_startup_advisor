@@ -58,10 +58,10 @@ from brief_crew.events.models import (
 )
 from brief_crew.events.registry import NodeRegistry
 from brief_crew.events.verdict import (
-    VERDICT_NODE_ID,
     VerdictComputedEvent,
     verdict_frame_details,
     verdict_frame_message,
+    verdict_frame_node,
 )
 from brief_crew.config import compute_cost_usd
 from brief_crew.schemas.validator import Verdict
@@ -675,13 +675,15 @@ class FieldBoundedSerializer:
         from. What this method decides is the *frame*: the kind, the event type
         and the node.
 
-        Attributed to `VERDICT_NODE_ID` rather than to the resolved calling
-        method, so the revise loop republishes onto the node it corrects. A graph
-        that does not declare that node - Brief Flow - gets the visible
-        quarantine node, which is the honest answer rather than an invented one.
+        Attributed to the registry's declared verdict node rather than to the
+        resolved calling method, so the revise loop republishes onto the node it
+        corrects. `verdict_frame_node` is where the order of that resolution is
+        argued; a graph that declares no such node - Brief Flow - gets the
+        visible quarantine node, which is the honest answer rather than an
+        invented one.
         """
 
-        node_id = registry.declared_node(VERDICT_NODE_ID) or registry.quarantine_node_id
+        node_id = verdict_frame_node(registry)
         return self._draft(
             timestamp,
             FrameKind.VERDICT,

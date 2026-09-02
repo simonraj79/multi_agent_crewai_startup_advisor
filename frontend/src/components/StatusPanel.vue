@@ -17,7 +17,7 @@ import type { ConnectionStatus, GatesMode, LogFormat, TransportMode } from '../s
 import type { RunStatus, UsageMetrics } from '../types/studio'
 import { IDEA_CHARS_WARN_AT, MAX_IDEA_CHARS, MIN_IDEA_CHARS } from '../data/serverLimits'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   status: RunStatus
   transportMode: TransportMode
   connection: ConnectionStatus
@@ -41,7 +41,22 @@ const props = defineProps<{
   transportProblem: string
   downloadStatus: 'idle' | 'pending' | 'success' | 'error'
   downloadMessage: string
-}>()
+  /**
+   * The graph this console is pointed at, and what its request input is called.
+   *
+   * Both defaulted to the built-in validator's, so every existing caller is
+   * unchanged - and both are props rather than literals because the console now
+   * also runs a PUBLISHED BUILDER GRAPH. The well used to read "Idea Validator"
+   * unconditionally, which on a graph an author drew and named themselves is
+   * not a small cosmetic slip: it is the panel that says which workflow the
+   * Launch button is about to spend money on.
+   */
+  workflowName?: string
+  inputLabel?: string
+}>(), {
+  workflowName: 'Idea Validator',
+  inputLabel: 'IDEA TO VALIDATE',
+})
 
 const emit = defineEmits<{
   'update:idea': [value: string]
@@ -115,7 +130,7 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <div class="control-section">
-      <label for="idea" class="control-label">IDEA TO VALIDATE</label>
+      <label for="idea" class="control-label">{{ inputLabel }}</label>
       <textarea
         id="idea"
         :value="idea"
@@ -143,7 +158,7 @@ const logFormat = ref<LogFormat>('ndjson')
       <span class="control-label">WORKFLOW</span>
       <div class="read-only-well">
         <GitBranch :size="15" aria-hidden="true" />
-        <span>Idea Validator</span>
+        <span class="workflow-title">{{ workflowName }}</span>
         <span class="version">M2</span>
       </div>
     </div>
@@ -279,7 +294,11 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
    warning the operator ever got. */
 .field-meta.is-warn { color: var(--warn-text); }
 .read-only-well { display: flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 10px; color: var(--text-body); font-size: var(--fs-13); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); }
-.read-only-well .version { margin-left: auto; color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
+/* A drawn graph's name can be 80 characters; the well is 310px wide minus a
+   rail. Ellipsis rather than wrap, so the panel's height does not change with
+   the length of somebody's title. */
+.read-only-well .workflow-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.read-only-well .version { flex: 0 0 auto;  margin-left: auto; color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-lg); }
 .segmented button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 6px; color: var(--text-muted); background: transparent; border: 0; border-radius: var(--r-md); cursor: pointer; }
 .segmented button[aria-pressed='true'] { color: var(--text-title); background: var(--surface-raised); box-shadow: inset 0 0 0 1px rgba(153, 234, 249, 0.2); }

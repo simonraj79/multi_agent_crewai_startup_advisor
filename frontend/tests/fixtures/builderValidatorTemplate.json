@@ -1,0 +1,580 @@
+{
+  "_source": "Recorded from a live SYNTHETIC=1 backend on port 8099. Regenerate with: SYNTHETIC=1 PORT=8099 ./.venv/Scripts/serve.exe, then POST forValidate(IDEA_VALIDATOR_DOCUMENT) to /api/builder/validate and GET /api/builder/vocabulary.",
+  "recorded_at": "2026-09-02T06:05:28.635Z",
+  "vocabulary": {
+    "schema_id": "builder.flow/v1",
+    "node_kinds": [
+      "input",
+      "agent",
+      "crew",
+      "gate",
+      "router",
+      "transform",
+      "output"
+    ],
+    "tiers": [
+      "cheap",
+      "escalation"
+    ],
+    "agent_ids": [
+      "feasibility_analyst",
+      "market_analyst",
+      "reporter",
+      "scoper",
+      "sentiment_analyst",
+      "synthesist"
+    ],
+    "crew_ids": [
+      "feasibility",
+      "market",
+      "scope",
+      "sentiment"
+    ],
+    "research_tools": [
+      "analyze_community_sentiment",
+      "assess_technical_feasibility",
+      "research_market_landscape"
+    ],
+    "transform_ops": [
+      "default",
+      "format",
+      "join_text",
+      "merge",
+      "pick",
+      "to_json"
+    ],
+    "router_comparisons": [
+      "contains",
+      "eq",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "ne"
+    ],
+    "router_otherwise": "otherwise",
+    "result_body_keys": [
+      "markdown_body"
+    ],
+    "bounds": {
+      "max_graph_nodes": 24,
+      "max_billable_nodes": 13,
+      "max_escalation_nodes": 8,
+      "max_fanout_width": 4,
+      "min_router_branches": 2,
+      "max_cycles": 3,
+      "max_cycle_iterations": 3,
+      "max_agent_iter": 8,
+      "max_guardrail_retries": 2,
+      "max_label_chars": 40,
+      "max_name_chars": 80,
+      "max_gate_message_chars": 2000,
+      "max_input_chars": 2000,
+      "max_document_bytes": 262144,
+      "run_cost_ceiling_usd": 10
+    }
+  },
+  "document": {
+    "schema": "builder.flow/v1",
+    "name": "Idea validator",
+    "version": 1,
+    "input_field": "idea",
+    "nodes": [
+      {
+        "id": "idea",
+        "kind": "input",
+        "label": "Startup idea",
+        "position": {
+          "x": 0,
+          "y": 190
+        },
+        "config": {
+          "field": "idea",
+          "label": "Describe the idea in a sentence or two",
+          "max_chars": 2000,
+          "required": true
+        }
+      },
+      {
+        "id": "scoper",
+        "kind": "agent",
+        "label": "Scope the idea",
+        "position": {
+          "x": 300,
+          "y": 190
+        },
+        "config": {
+          "tier": "escalation",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "agent_id": "scoper",
+          "tools": [],
+          "prompt_inputs": {
+            "idea": "${state.idea}",
+            "human_override": ""
+          }
+        }
+      },
+      {
+        "id": "confirm_scope",
+        "kind": "gate",
+        "label": "Confirm scope",
+        "position": {
+          "x": 600,
+          "y": 190
+        },
+        "config": {
+          "message": "Read the scope below. Approve it, or send it back with what to change.",
+          "editable_fields": [
+            "segment",
+            "job"
+          ],
+          "max_turns": 2,
+          "expiry_seconds": 1800
+        }
+      },
+      {
+        "id": "revise_scope",
+        "kind": "agent",
+        "label": "Revise scope",
+        "position": {
+          "x": 600,
+          "y": 0
+        },
+        "config": {
+          "tier": "escalation",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "agent_id": "scoper",
+          "tools": [],
+          "prompt_inputs": {
+            "idea": "${state.idea}",
+            "human_override": "${state.out__confirm_scope}"
+          }
+        }
+      },
+      {
+        "id": "route_scope",
+        "kind": "router",
+        "label": "Scope again?",
+        "position": {
+          "x": 900,
+          "y": 0
+        },
+        "config": {
+          "branches": [
+            {
+              "label": "again",
+              "op": "lt",
+              "key": "turns__confirm_scope",
+              "value": 2
+            },
+            {
+              "label": "otherwise",
+              "op": "otherwise",
+              "key": null,
+              "value": null
+            }
+          ]
+        }
+      },
+      {
+        "id": "scope_brief",
+        "kind": "transform",
+        "label": "Agreed scope",
+        "position": {
+          "x": 900,
+          "y": 190
+        },
+        "config": {
+          "op": "default",
+          "args": {
+            "value": "${state.out__revise_scope}",
+            "default": "${state.out__scoper}"
+          }
+        }
+      },
+      {
+        "id": "market_analyst",
+        "kind": "agent",
+        "label": "Market",
+        "position": {
+          "x": 1200,
+          "y": 0
+        },
+        "config": {
+          "tier": "cheap",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "agent_id": "market_analyst",
+          "tools": [
+            "research_market_landscape"
+          ],
+          "prompt_inputs": {
+            "scoped_idea_json": "${state.out__scope_brief}",
+            "market_query": "${state.out__scope_brief}",
+            "cached_evidence_block": ""
+          }
+        }
+      },
+      {
+        "id": "sentiment_analyst",
+        "kind": "agent",
+        "label": "Signal",
+        "position": {
+          "x": 1200,
+          "y": 190
+        },
+        "config": {
+          "tier": "cheap",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "agent_id": "sentiment_analyst",
+          "tools": [
+            "analyze_community_sentiment"
+          ],
+          "prompt_inputs": {
+            "scoped_idea_json": "${state.out__scope_brief}",
+            "community_queries_block": "${state.out__scope_brief}"
+          }
+        }
+      },
+      {
+        "id": "feasibility_analyst",
+        "kind": "agent",
+        "label": "Build",
+        "position": {
+          "x": 1200,
+          "y": 380
+        },
+        "config": {
+          "tier": "cheap",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "agent_id": "feasibility_analyst",
+          "tools": [
+            "assess_technical_feasibility"
+          ],
+          "prompt_inputs": {
+            "scoped_idea_json": "${state.out__scope_brief}",
+            "tech_queries_block": "${state.out__scope_brief}",
+            "cached_evidence_block": ""
+          }
+        }
+      },
+      {
+        "id": "score",
+        "kind": "agent",
+        "label": "Score the evidence",
+        "position": {
+          "x": 1500,
+          "y": 190
+        },
+        "config": {
+          "tier": "escalation",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "agent_id": "synthesist",
+          "tools": [],
+          "prompt_inputs": {
+            "scoped_idea_json": "${state.out__scope_brief}",
+            "market_findings_json": "${state.out__market_analyst}",
+            "sentiment_findings_json": "${state.out__sentiment_analyst}",
+            "feasibility_findings_json": "${state.out__feasibility_analyst}",
+            "human_override": ""
+          }
+        }
+      },
+      {
+        "id": "review_verdict",
+        "kind": "gate",
+        "label": "Review verdict",
+        "position": {
+          "x": 300,
+          "y": 700
+        },
+        "config": {
+          "message": "Read the scored verdict. Approve it, or send it back with what to reconsider.",
+          "editable_fields": [],
+          "max_turns": 2,
+          "expiry_seconds": 1800
+        }
+      },
+      {
+        "id": "revise_verdict",
+        "kind": "agent",
+        "label": "Rescore",
+        "position": {
+          "x": 300,
+          "y": 890
+        },
+        "config": {
+          "tier": "escalation",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "agent_id": "synthesist",
+          "tools": [],
+          "prompt_inputs": {
+            "scoped_idea_json": "${state.out__scope_brief}",
+            "market_findings_json": "${state.out__market_analyst}",
+            "sentiment_findings_json": "${state.out__sentiment_analyst}",
+            "feasibility_findings_json": "${state.out__feasibility_analyst}",
+            "human_override": "${state.out__review_verdict}"
+          }
+        }
+      },
+      {
+        "id": "route_verdict",
+        "kind": "router",
+        "label": "Score again?",
+        "position": {
+          "x": 600,
+          "y": 890
+        },
+        "config": {
+          "branches": [
+            {
+              "label": "again",
+              "op": "lt",
+              "key": "turns__review_verdict",
+              "value": 2
+            },
+            {
+              "label": "otherwise",
+              "op": "otherwise",
+              "key": null,
+              "value": null
+            }
+          ]
+        }
+      },
+      {
+        "id": "verdict_brief",
+        "kind": "transform",
+        "label": "Standing verdict",
+        "position": {
+          "x": 600,
+          "y": 700
+        },
+        "config": {
+          "op": "default",
+          "args": {
+            "value": "${state.out__revise_verdict}",
+            "default": "${state.out__score}"
+          }
+        }
+      },
+      {
+        "id": "reporter",
+        "kind": "agent",
+        "label": "Write the report",
+        "position": {
+          "x": 900,
+          "y": 700
+        },
+        "config": {
+          "tier": "escalation",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "agent_id": "reporter",
+          "tools": [],
+          "prompt_inputs": {
+            "scoped_idea_json": "${state.out__scope_brief}",
+            "market_findings_json": "${state.out__market_analyst}",
+            "sentiment_findings_json": "${state.out__sentiment_analyst}",
+            "feasibility_findings_json": "${state.out__feasibility_analyst}",
+            "verdict_json": "${state.out__verdict_brief}"
+          }
+        }
+      },
+      {
+        "id": "brief",
+        "kind": "output",
+        "label": "Validation report",
+        "position": {
+          "x": 1200,
+          "y": 700
+        },
+        "config": {
+          "body_key": "markdown_body",
+          "source": "${state.out__reporter}"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "idea",
+        "source_port": "out",
+        "target": "scoper",
+        "target_port": "in"
+      },
+      {
+        "id": "e2",
+        "source": "scoper",
+        "source_port": "out",
+        "target": "confirm_scope",
+        "target_port": "in"
+      },
+      {
+        "id": "e3",
+        "source": "confirm_scope",
+        "source_port": "approve",
+        "target": "scope_brief",
+        "target_port": "in"
+      },
+      {
+        "id": "e4",
+        "source": "confirm_scope",
+        "source_port": "revise",
+        "target": "revise_scope",
+        "target_port": "in"
+      },
+      {
+        "id": "e5",
+        "source": "revise_scope",
+        "source_port": "out",
+        "target": "route_scope",
+        "target_port": "in"
+      },
+      {
+        "id": "e6",
+        "source": "route_scope",
+        "source_port": "again",
+        "target": "confirm_scope",
+        "target_port": "in"
+      },
+      {
+        "id": "e7",
+        "source": "route_scope",
+        "source_port": "otherwise",
+        "target": "scope_brief",
+        "target_port": "in"
+      },
+      {
+        "id": "e8",
+        "source": "scope_brief",
+        "source_port": "out",
+        "target": "market_analyst",
+        "target_port": "in"
+      },
+      {
+        "id": "e9",
+        "source": "scope_brief",
+        "source_port": "out",
+        "target": "sentiment_analyst",
+        "target_port": "in"
+      },
+      {
+        "id": "e10",
+        "source": "scope_brief",
+        "source_port": "out",
+        "target": "feasibility_analyst",
+        "target_port": "in"
+      },
+      {
+        "id": "e11",
+        "source": "scope_brief",
+        "source_port": "out",
+        "target": "score",
+        "target_port": "in"
+      },
+      {
+        "id": "e12",
+        "source": "market_analyst",
+        "source_port": "out",
+        "target": "score",
+        "target_port": "in"
+      },
+      {
+        "id": "e13",
+        "source": "sentiment_analyst",
+        "source_port": "out",
+        "target": "score",
+        "target_port": "in"
+      },
+      {
+        "id": "e14",
+        "source": "feasibility_analyst",
+        "source_port": "out",
+        "target": "score",
+        "target_port": "in"
+      },
+      {
+        "id": "e15",
+        "source": "score",
+        "source_port": "out",
+        "target": "review_verdict",
+        "target_port": "in"
+      },
+      {
+        "id": "e16",
+        "source": "review_verdict",
+        "source_port": "approve",
+        "target": "verdict_brief",
+        "target_port": "in"
+      },
+      {
+        "id": "e17",
+        "source": "review_verdict",
+        "source_port": "revise",
+        "target": "revise_verdict",
+        "target_port": "in"
+      },
+      {
+        "id": "e18",
+        "source": "revise_verdict",
+        "source_port": "out",
+        "target": "route_verdict",
+        "target_port": "in"
+      },
+      {
+        "id": "e19",
+        "source": "route_verdict",
+        "source_port": "again",
+        "target": "review_verdict",
+        "target_port": "in"
+      },
+      {
+        "id": "e20",
+        "source": "route_verdict",
+        "source_port": "otherwise",
+        "target": "verdict_brief",
+        "target_port": "in"
+      },
+      {
+        "id": "e21",
+        "source": "verdict_brief",
+        "source_port": "out",
+        "target": "reporter",
+        "target_port": "in"
+      },
+      {
+        "id": "e22",
+        "source": "reporter",
+        "source_port": "out",
+        "target": "brief",
+        "target_port": "in"
+      }
+    ],
+    "joins": {
+      "score": "all"
+    },
+    "budget": null
+  },
+  "validation": {
+    "valid": true,
+    "problems": [],
+    "budget": {
+      "static_cost_usd": 1.5136647299999997,
+      "floor_cost_usd": 1.2159238499999998,
+      "modelled_calls": 60,
+      "billable_nodes": 8,
+      "escalation_nodes": 5,
+      "cycles": 2,
+      "unpriced_models": [],
+      "over_ceiling": false,
+      "ceiling_usd": 10
+    }
+  }
+}

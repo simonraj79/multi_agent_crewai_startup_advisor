@@ -10,6 +10,7 @@ retrieval quality just quietly degrades.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from urllib.parse import urlsplit
 
 # --------------------------------------------------------------------------
@@ -1463,6 +1464,25 @@ VALIDATOR_FIRECRAWL_MAX_AGE_MS = _env_positive_int(
 # row does.
 GATE_REVISE_TURNS_METADATA_KEY = "revise_turns_used"
 
+# The four `PendingFeedbackContext.metadata` keys a BUILDER gate declares about
+# itself, for the same reason as the key above: `builder/compiler.py` writes
+# them into the compiled `human_feedback` block and `service/registry.py` reads
+# them back out, and neither may import the other - the compiler must not drag
+# the service in, and the service must not learn the document schema.
+#
+# Everything the service used to assume about a gate is one of these. Without
+# them a builder gate is titled "Review verdict", offers every key of its
+# payload as editable whatever its author declared, counts its revise budget
+# against VALIDATOR_MAX_GATE_TURNS instead of its own `max_turns`, and expires
+# on the global clock. A validator gate declares NONE of them - its
+# `@human_feedback` decorators carry no `metadata=` at all - so the absence of
+# these keys is what tells the two apart, rather than a flag somebody has to
+# remember to set.
+GATE_LABEL_METADATA_KEY = "label"
+GATE_EDITABLE_FIELDS_METADATA_KEY = "editable_fields"
+GATE_MAX_TURNS_METADATA_KEY = "max_turns"
+GATE_EXPIRY_METADATA_KEY = "expiry_seconds"
+
 # Keys a caller must never be able to set through the free-form `inputs` map.
 # `ValidatorState` is a pydantic model and CrewAI merges kickoff inputs into it
 # wholesale (`{**current_state, **inputs}` then `model_validate`), so every
@@ -1528,6 +1548,513 @@ RESERVED_RUN_INPUT_KEYS: frozenset[str] = frozenset(
         # what happened.
         "scope_edit_error",
         "verdict_edit_error",
+    }
+)
+
+# --------------------------------------------------------------------------
+# Reserved input keys, PER WORKFLOW
+#
+# The set above is the VALIDATOR's, and until the builder existed it was also
+# the only set, applied to every workflow by one `field_validator` on
+# `CreateRunRequest.inputs`. That was correct while two flows shipped and both
+# were written here. A user-authored graph declares its own state names, so
+# "reserved" stops being one global fact: `verdict` is a control key on the
+# validator and an ordinary word on somebody's competitor-sweep graph.
+#
+# Three sets rather than one, because the failure modes differ:
+#
+#   GLOBAL_RESERVED_RUN_INPUT_KEYS - names CrewAI's own runtime reads on ANY
+#     flow, so they are refused whatever the workflow is.
+#   WORKFLOW_RESERVED_RUN_INPUT_KEYS - what each registered workflow's state
+#     declares beyond the one public prompt it reads.
+#   the UNION - the answer for a workflow id nobody recognises. Fail CLOSED:
+#     inventing a workflow id must never be the cheapest way to get a control
+#     key past the check, and an id that failed its OWN validation arrives
+#     here as None.
+#
+# The check stays ON the pydantic model, which is what keeps the existing
+# 403-vs-422 distinction meaningful: pydantic validates fields in DECLARATION
+# order and `workflow_id` is declared before `inputs` (`service/models.py`), so
+# `info.data` already carries a validated workflow id when `inputs` is checked.
+#
+# But the model holds an id and no registry, so it cannot ask the union without
+# refusing a registered third workflow's own public prompt - `brief` is a Brief
+# Crew result slot AND somebody else's legitimate prompt field. So the two
+# questions have two functions: the SCHEMA asks
+# `declared_reserved_run_input_keys`, which answers only the global keys for an
+# id it cannot resolve, and `create_run` asks `reserved_run_input_keys` for the
+# fail-closed union once it knows which single key is this workflow's prompt.
+# --------------------------------------------------------------------------
+
+# `id` is here rather than in the validator's list because it is not this
+# project's control key at all - it is CrewAI's. `kickoff(inputs={"id": ...})`
+# restores a persisted flow STATE with an empty completed-method set, which
+# re-runs the flow from @start rather than resuming it (the same mechanism
+# VALIDATOR_ORPHAN_RUN_RECOVERY's note below spells out). A caller who could
+# set it would be choosing which stored state their run starts from.
+#
+# `no_gates` and `sequential_branches` are global for a weaker but sufficient
+# reason: they are execution-mode words any flow here would spell the same way,
+# and refusing them everywhere costs a legitimate caller nothing.
+GLOBAL_RESERVED_RUN_INPUT_KEYS: frozenset[str] = frozenset(
+    {"id", "no_gates", "sequential_branches"}
+)
+
+# Keyed by workflow id. The two literals MUST equal `service/graph.py`'s
+# BRIEF_WORKFLOW_ID and VALIDATOR_WORKFLOW_ID; they are spelled out because
+# that module imports this one and the dependency cannot run both ways.
+# `tests/builder/test_document.py::ReservedRunInputKeyTests` pins both spellings
+# and the Brief Crew field list against `BriefState`, so a renamed state field
+# fails a test instead of quietly opening a control key.
+#
+# Brief Crew's entry is everything `main.BriefState` declares except `topic`,
+# which is its one public prompt. `run_id` is on the list for the same reason
+# the validator reserves `source_run_id`: it stamps attribution on indexed
+# cache evidence.
+WORKFLOW_RESERVED_RUN_INPUT_KEYS: dict[str, frozenset[str]] = {
+    "brief-flow": frozenset(
+        {
+            "run_id",
+            "retrieved",
+            "route",
+            "research_notes",
+            "scraped_sources",
+            "brief",
+            "usage",
+        }
+    ),
+    "idea-validator": RESERVED_RUN_INPUT_KEYS,
+}
+
+
+def register_workflow_reserved_run_input_keys(
+    workflow_id: str, keys: Iterable[str]
+) -> None:
+    """Declare a compiled builder graph's own state names as reserved.
+
+    The seam a builder registration uses, and deliberately a mutation rather
+    than a literal: a builder graph's state names are not knowable when this
+    file is written. It mirrors `RunRegistry.workflows`, which is likewise a
+    plain mutable dict a builder workflow is registered into.
+
+    The union `reserved_run_input_keys` falls back to is RECOMPUTED on every
+    call rather than snapshotted at import, so a graph registered afterwards
+    still fails closed for an unknown id.
+    """
+
+    WORKFLOW_RESERVED_RUN_INPUT_KEYS[workflow_id] = (
+        GLOBAL_RESERVED_RUN_INPUT_KEYS | frozenset(keys)
+    )
+
+
+def forget_workflow_reserved_run_input_keys(workflow_id: str) -> None:
+    """Undo the declaration above, and refuse to disarm a built-in.
+
+    The mirror image of `register_workflow_reserved_run_input_keys`, and it
+    exists because for a while there was no mirror: `unregister_builder_workflow`
+    cleared four maps while registration wrote five, so a publish rollback, a
+    rehydration rollback or a delete left this dict declaring state names for a
+    workflow the service no longer has. That stale entry is not inert. It is
+    the answer `reserved_run_input_keys` gives for that id, and
+    `all_reserved_run_input_keys` unions it into the answer for EVERY unknown
+    id - so a deleted graph goes on refusing its own state names as control
+    keys in some later author's perfectly ordinary `inputs`, and the only way
+    back is a process restart.
+
+    The two built-in ids are literals here for the same reason they are
+    literals in `WORKFLOW_RESERVED_RUN_INPUT_KEYS` above - `service/graph.py`
+    imports this module and the dependency cannot run both ways - and the guard
+    is the same one `unregister_builder_workflow` makes: a pop keyed on a
+    bug-supplied id would silently open every control key on `idea-validator`,
+    which is the single check standing between a request body and `no_gates`.
+    """
+
+    if workflow_id in {"brief-flow", "idea-validator"}:
+        raise ValueError(f"{workflow_id} is a built-in workflow and is not removable")
+    WORKFLOW_RESERVED_RUN_INPUT_KEYS.pop(workflow_id, None)
+
+
+def all_reserved_run_input_keys() -> frozenset[str]:
+    """Every reserved key of every registered workflow, plus the global set."""
+
+    union = GLOBAL_RESERVED_RUN_INPUT_KEYS
+    for declared in WORKFLOW_RESERVED_RUN_INPUT_KEYS.values():
+        union = union | declared
+    return union
+
+
+def reserved_run_input_keys(workflow_id: str | None) -> frozenset[str]:
+    """The `inputs` keys this workflow refuses, failing CLOSED on an unknown id.
+
+    `None` reaches here when nobody could name a workflow at all; an
+    unregistered id reaches here when a caller invents one, or when a workflow
+    is registered on the service without declaring its state names here. All of
+    them answer the UNION, so no control key is ever free by accident.
+
+    The caller is `create_run`, which subtracts the workflow's own public
+    prompt before intersecting - see `declared_reserved_run_input_keys` below
+    for why that subtraction cannot be made here, and why the request SCHEMA
+    asks that function instead of this one.
+    """
+
+    if workflow_id is not None:
+        declared = WORKFLOW_RESERVED_RUN_INPUT_KEYS.get(workflow_id)
+        if declared is not None:
+            return GLOBAL_RESERVED_RUN_INPUT_KEYS | declared
+    return all_reserved_run_input_keys()
+
+
+def declared_reserved_run_input_keys(workflow_id: str | None) -> frozenset[str]:
+    """The same question, asked by a layer that cannot resolve a workflow.
+
+    Identical to `reserved_run_input_keys` for a workflow declared above, and
+    only the GLOBAL keys for one that is not - because the pydantic model that
+    calls this holds a workflow id and nothing else. It cannot tell "registered
+    on this service but undeclared here" from "invented", and failing closed to
+    the union at that layer refused a third workflow's own public prompt: a
+    graph whose input field is `brief` collides with Brief Crew's result slot,
+    and its author was told their prompt was a reserved control key by a
+    workflow that has never heard of their graph.
+
+    The union has not been abandoned; it has moved one layer down, to
+    `create_run` - the only code that has resolved the workflow far enough to
+    know which single key is its public prompt, and which can therefore refuse
+    every other workflow's control keys without refusing this one's. Inventing
+    an id buys nothing there either: an id in no map at all is a 404 before
+    that check is reached, and the three keys CrewAI's own runtime reads on ANY
+    flow are refused here for every id, invented ones included - which is what
+    keeps `no_gates` unsettable from a request body, and therefore keeps the
+    403-versus-422 distinction in `create_run` meaningful.
+    """
+
+    if workflow_id is not None:
+        declared = WORKFLOW_RESERVED_RUN_INPUT_KEYS.get(workflow_id)
+        if declared is not None:
+            return GLOBAL_RESERVED_RUN_INPUT_KEYS | declared
+    return GLOBAL_RESERVED_RUN_INPUT_KEYS
+
+
+# --------------------------------------------------------------------------
+# Builder graphs - the bounds a user-authored flow is compiled against
+#
+# A canvas lets somebody who has never read this file draw a graph that spends
+# money. Every constant below is one of two things: a COUNT that bounds what
+# can be drawn, or a term in the static price of what was drawn. They are
+# grouped because they are read together - `builder/bounds.py` enforces the
+# counts and `builder/budget.py` prices the result, and both refuse at COMPILE
+# time, before a graph can ever take an admission slot.
+#
+# Enforcement stays three-layered, and the layers bound different things.
+# Compile time refuses an unpriceable graph. Admission compares the stored
+# estimate against MAX_QUEUED_RUNS. Runtime is MAX_RUN_COST_USD, the only one
+# of the three that ever sees a real token count.
+#
+# THE PREMISE THIS REPLACES. "Human inaction is the de facto spend cap" - the
+# argument VALIDATOR_ALLOW_AUTO_GATES is still built on - was already obsolete
+# when MAX_RUN_COST_USD landed: spend is arithmetic now. A builder graph has to
+# make that arithmetic possible BEFORE the run, which is what "statically
+# priceable" means, and why a graph that cannot be priced is refused rather
+# than admitted optimistically.
+# --------------------------------------------------------------------------
+
+# The whole graph, every kind of node, including the ones that cost nothing.
+#
+# 24 is the validator's 14 x 1.7, and the multiplier is checked against the
+# frame ring rather than chosen: at the production rate of 102 frames per run
+# over 14 nodes, 24 nodes is ~175 frames, so DEFAULT_RING_CAPACITY (2,000,
+# `events/buffer.py`) still holds 11 complete passes of the graph. A bound that
+# let a single pass overflow the ring would make the replay a reconnecting
+# client receives structurally incomplete, and nothing would say so.
+MAX_GRAPH_NODES = 24
+
+# Nodes that call a model: `agent` and `crew`.
+#
+# THIS BOUND IS NOT THE MONEY BOUND, and reading it as one is what set it at 8.
+# The sweep behind that number reported a pure chain - every node tooled, every
+# node on a cycle, escalation deepest where the accumulated context is largest
+# - pricing at $7.36 over 8 nodes and $10.14 over 10, against a $10 ceiling. It
+# looked like a frontier. It was not: those are FLOOR prices, and the figure
+# `budget_problems` actually enforces is the nitro-inflated one times
+# GRAPH_STATIC_BUDGET_MARGIN, which puts that same 8-node corner at **$10.55 -
+# already over.** `tests/builder/test_budget.py` has said so in its own
+# docstring since it was written, and one of its tests is literally named
+# `test_the_worst_graph_the_counts_permit_is_still_refused_on_price`.
+#
+# So the count never bounded the expensive graph. What it bounded was the
+# CHEAP one: a 9-node chain with no tools, no cycle and no escalation node
+# prices at $0.99 with the margin applied, and was refused anyway - by a
+# sentence quoting two dollar figures that had nothing to do with it. The
+# validator's own topology is exactly 8 billable, so the gallery hero errored
+# on the first node a user added, and the error blamed a price the graph did
+# not have.
+#
+# 13 is the validator's measured 8 x 1.7, the same headroom multiplier
+# MAX_GRAPH_NODES already applies to the validator's 14 drawn nodes. Measured
+# at 13, with `builder/budget.py`: the pathological shape prices at $21.62 with
+# the margin and is refused ON PRICE, where that refusal belongs and where it
+# names something an author can act on; an ordinary tooled chain prices at
+# $5.41 and is allowed; a chain with no tools prices at $1.66.
+#
+# What this bound does now is bound SHAPE, not spend - 24 drawn nodes may not
+# all be agents - and the layer that can measure money is left to do it.
+MAX_BILLABLE_NODES = 13
+
+# Of those 13, how many may sit on the escalation tier. 8 is the validator's
+# measured split (5 of its 8 agent nodes) carried up by the same 1.7, which
+# keeps the ratio it was derived from: 8/13 against the validator's 5/8. It
+# moves for the same reason the count above does - the validator sat exactly on
+# 5, so the template could not gain a single escalation node - and it is safe
+# for the same reason: escalation is the priced tier, and thirteen escalation
+# nodes on a cycle is a graph `budget_problems` refuses long before this does.
+MAX_ESCALATION_NODES = 8
+
+# Maximum out-degree of any node, and so the maximum number of branches a
+# router may declare. 4 is the validator's measured maximum, at `route_scope`
+# (market, sentiment, feasibility, revise_scope). It is cost-neutral - the node
+# count already bounds spend - and what it really bounds is THREADS: three
+# concurrent branches is what the fan-out was measured at, and GitHub's 10
+# requests/minute per IP is the real constraint on widening it.
+#
+# THIS ONE DELIBERATELY DID NOT MOVE when the node counts did. The validator
+# also sits exactly on it - `route_scope` fans out four ways - so the same
+# "no headroom" complaint applies, and the answer is different because the
+# bound is different in kind: the counts above were proxies for money and money
+# has a layer that measures it, while this is a bound on CONCURRENT THREADS and
+# on an external rate limit nobody here has re-measured. Widening it on
+# judgement alone would be inventing a number, which is the mistake the counts
+# above are being corrected for. The visible consequence is precise and worth
+# stating: a template graph may gain nodes freely, but not a fifth branch off
+# that one gate until somebody measures a four-branch fan-out for real.
+MAX_FANOUT_WIDTH = 4
+
+# A router may not declare fewer than two branches, because a one-branch router
+# is a node with a decision that cannot go either way: it compiles, it runs and
+# it means nothing. Exactly one branch must additionally be the `otherwise`, so
+# an unmatched value goes FORWARD rather than wedging the run at a router whose
+# declared comparisons all missed.
+MIN_ROUTER_BRANCHES = 2
+
+# Back edges in the drawn graph. The validator's measured count is 2
+# (revise_scope -> confirm_scope, revise_verdict -> review_verdict), and the
+# bound was that count with no headroom over it - so the template that ships in
+# the gallery could not be given a third revise loop. 3 is the same 1.7 applied
+# to the same measurement, and a cycle is the one shape here that is already
+# priced exactly: every node on one is billed (1 + MAX_CYCLE_ITERATIONS) times
+# by `builder/budget.py`, so a third loop that costs too much is refused with a
+# dollar figure rather than with a count.
+MAX_CYCLES = 3
+
+# How many times a cycle may re-enter, worst case, and the multiplier the
+# static price applies to every node on one.
+#
+# Deliberately NOT VALIDATOR_MAX_GATE_TURNS (5). That number is sized so a real
+# scoping conversation is not cut short - it prices a HUMAN in the loop, who is
+# both the cause of the delay and the brake on it. A builder cycle need not
+# have one, and the arithmetic agrees: at 8 billable nodes, loop=5 costs $11.04
+# and loop=3 costs $7.36. Both are FLOOR prices, and the note above
+# MAX_BILLABLE_NODES is where that distinction was found to matter: the figure
+# `budget_problems` enforces puts loop=3 at that shape at $10.55, so loop=3 is
+# chosen because loop=5 is very much worse, not because loop=3 fits under the
+# ceiling. It does not, and it is refused there.
+#
+# It is also the ceiling on a builder gate's own `max_turns`, for the same
+# reason and by the same arithmetic - a revise loop through a gate IS a cycle,
+# and giving it a second, larger bound would be two numbers for one fact.
+MAX_CYCLE_ITERATIONS = 3
+
+# Headroom over the static estimate, applied when the estimate is compared to
+# MAX_RUN_COST_USD. The estimate is a token model calibrated on ONE paid run;
+# 1.25 is the margin that stops a graph priced at the very edge of the ceiling
+# being admitted on the strength of that one calibration.
+GRAPH_STATIC_BUDGET_MARGIN = 1.25
+
+# `:nitro` routes to the FASTEST provider, not the cheapest, so the cheap
+# tier's entry in PRICES is a floor rather than a bound - the note above
+# CHEAP_MODEL says exactly that. Measured against the live catalogue: eight
+# endpoints serve `gemini-3.5-flash-lite`, from $0.15/$1.25 to $0.54/$4.50,
+# with the configured $0.30/$2.50 sitting in the middle. 1.8 is that spread's
+# top over the recorded price, applied to every cheap-tier node in the STATIC
+# estimate only.
+#
+# Interim, and it says so: drop the factor once a provider is pinned. It is
+# deliberately NOT applied inside `compute_cost_usd`, which reports what a call
+# is believed to have actually cost and must not inflate a figure an operator
+# reads as a measurement.
+NITRO_PRICE_FACTOR = 1.8
+
+# The two token terms in the static estimate, both taken from the first paid
+# run (`8b5a0a78`: 11 calls, 128,069 tokens, 46,787 of them completion).
+#
+# 46,787 / 11 = 4,253 completion tokens per call, and that same figure is the
+# per-call CONTEXT growth term: a node's prompt is modelled as the seed plus
+# every upstream billable node's output. That is why the estimate prices each
+# node at its own DEPTH rather than at an average - a 20-deep chain costs 3.9x
+# per call what a 1-deep one does, and an average would under-price precisely
+# the shape that gets expensive.
+GRAPH_BUDGET_SEED_PROMPT_TOKENS = 2000
+GRAPH_BUDGET_CALL_COMPLETION_TOKENS = 4253
+
+# Whether a graph with no human gate may be launched ANONYMOUSLY. Read the way
+# `service/app.py` already reads VALIDATOR_ALLOW_AUTO_GATES:
+# `if not (user or BUILDER_ALLOW_GATELESS_GRAPHS): 403`.
+#
+# Default OFF, and - exactly like VALIDATOR_ALLOW_AUTO_GATES - that is a cost
+# decision rather than a security one, which is why it is a flat False and not
+# a value derived from AUTH_BASE_URL the way VALIDATOR_REQUIRE_AUTH's is. The
+# difference is what the wrong answer costs. Getting VALIDATOR_REQUIRE_AUTH
+# wrong serves every paid endpoint anonymously with nothing on screen to say
+# so, so its default has to fail closed by derivation. This flag is already
+# irrelevant wherever auth is on, because `user` is then always truthy: it
+# binds only the anonymous case, which is the one it was written for.
+#
+# What it costs when it is on: a gateless graph runs every billable node it
+# declares with nobody watching, up to the static estimate bounded above. With
+# it off, an anonymous author must keep one gate reachable before the first
+# billable node, so an unanswered run stops after at most one model call - the
+# same brake, and the same reasoning, as the validator's.
+BUILDER_ALLOW_GATELESS_GRAPHS = _env_flag("BUILDER_ALLOW_GATELESS_GRAPHS", False)
+
+# Whether a booting process re-registers every PUBLISHED builder graph from the
+# document store. Default ON, and the default is the whole point.
+#
+# All six registration sites a publish writes to - GRAPHS, NODE_REGISTRIES,
+# WORKFLOWS, BUILDER_WORKFLOWS, the reserved-key map, and the registry's own
+# runtime dict - are process-local. The documents are not. Both Render services
+# carry `autoDeploy: yes`, so before this pass existed every push to `main`
+# silently unpublished every user graph: the row still said `published`, the
+# canvas still said `published`, and `POST /api/sessions/{id}/runs` answered 404
+# for a workflow the author had published an hour earlier. That is the same
+# shape as the orphaned runs of remaining-work item 32 - durable state and
+# process state disagreeing across a restart, with only the process state
+# consulted - and it gets the same answer: reconcile at boot, loudly.
+#
+# The switch exists for the one case where re-registering is the wrong move: a
+# graph that compiles and then wedges or bankrupts this deployment. Turning it
+# off is a deploy-time flip that boots with no user graph registered at all,
+# rather than an edit to code or a DELETE against somebody's document. It is
+# NOT a test lever - a test that wants no rehydration builds an app with no
+# persistence, and the sweep is then a no-op with nowhere to read from.
+BUILDER_REHYDRATE_PUBLISHED = _env_flag("BUILDER_REHYDRATE_PUBLISHED", True)
+
+# The saved document, in bytes. MAX_REQUEST_BODY_BYTES (64 KiB) is the bound on
+# every other request into this service and it is far too small here: 24 nodes
+# with positions, labels, prompts and router rules is legitimately larger than
+# any gate reply will ever be. 256 KiB is ~10 KiB a node at the node ceiling,
+# generous for a document whose largest field is a gate message. The save
+# endpoint therefore needs its own exemption from the ASGI-edge check rather
+# than a raised global bound: a megabyte of `inputs` on the RUN endpoint would
+# still be a cost, and this is not that endpoint.
+MAX_BUILDER_DOCUMENT_BYTES = 256 * 1024
+
+# --------------------------------------------------------------------------
+# Builder documents - the author-facing vocabulary
+#
+# Every pattern and allowlist the document schema and the compiler both read.
+# They live here for the usual reason and one extra one: `builder/document.py`
+# validates what an author may write and `builder/compiler.py` asserts what it
+# emitted, and those two agreeing is the whole of the compiled-namespace
+# guarantee.
+# --------------------------------------------------------------------------
+BUILDER_DOCUMENT_SCHEMA = "builder.flow/v1"
+
+# Server-assigned, never author-chosen, so the shape is exact.
+BUILDER_DOCUMENT_ID_PATTERN = r"^ug_[0-9a-f]{8}$"
+
+# Author-facing node and edge ids. Lowercase, identifier-shaped and at most 40
+# characters, which is what keeps the compiled `n{index}_{node_id}` well under
+# MAX_IDENTIFIER_LENGTH (128, `events/models.py`) - a limit that TRUNCATES
+# silently rather than raising, and a truncation there merges two nodes into
+# one in every frame the run emits.
+BUILDER_ID_PATTERN = r"^[a-z][a-z0-9_]{0,39}$"
+BUILDER_MAX_ID_CHARS = 40
+
+# The compiled flow method idents and router event labels. Every method starts
+# `n`, every label starts `e`, so the two namespaces cannot collide - and
+# `builder/bounds.py` asserts the disjointness rather than trusting the prefix,
+# because the guarantee is only ever worth what the generator does.
+#
+# The `{1,40}` body is a real bound, not decoration: a GATE compiles to two
+# methods and the second is `n{index}_route_{node_id}`, so a gate's node id has
+# BUILDER_GATE_ROUTER_PREFIX's six characters less room than any other node's.
+BUILDER_METHOD_IDENT_PATTERN = r"^n[0-9]{1,2}_[a-z0-9_]{1,40}$"
+BUILDER_EVENT_LABEL_PATTERN = r"^e[0-9]{1,2}_[a-z0-9_]{1,40}$"
+BUILDER_MAX_IDENT_BODY_CHARS = 40
+BUILDER_GATE_ROUTER_PREFIX = "route_"
+
+# The ONE expression shape a `with:` value may take besides a JSON literal.
+# Single-key by construction: only `${state.a_value}` was ever measured
+# resolving, and nested dotted access into a sub-dict was not - which is why
+# the compiler writes every node's return to a flat `out__<node_id>` key rather
+# than nesting it.
+BUILDER_STATE_REF_PATTERN = r"^\$\{state\.[a-z0-9_]{1,64}\}$"
+BUILDER_STATE_OUTPUT_PREFIX = "out__"
+
+# Display text. The label is what the canvas draws on a node; the name is what
+# the author calls the whole graph.
+BUILDER_MAX_LABEL_CHARS = 40
+BUILDER_MAX_NAME_CHARS = 80
+
+# A gate's message is the only long free text in the document, and it is shown
+# to the operator who has to answer it.
+BUILDER_MAX_GATE_MESSAGE_CHARS = 2000
+
+# Per-node agent limits. Both are ceilings on RETRY, which is where one node's
+# cost multiplies: CrewAI counts guardrail retries PER GUARDRAIL, so the unset
+# default of 3 permits eight full regenerations of a two-guardrail task.
+# `max_iter` is the agent's own tool loop; 8 is CrewAI-generous, and the
+# research branches in this repo run at VALIDATOR_BRANCH_MAX_ITER = 2.
+BUILDER_MAX_AGENT_ITER = 8
+BUILDER_MAX_GUARDRAIL_RETRIES = 2
+
+# The three registered research tools an `agent` node may bind, by the name
+# each tool declares. Restated here because `tools/` imports this module and
+# the dependency cannot run both ways; `tests/builder/test_document.py` asserts
+# this set equals the three modules' own TOOL_NAME constants, so a renamed tool
+# fails a test rather than silently becoming unbindable.
+BUILDER_RESEARCH_TOOLS: frozenset[str] = frozenset(
+    {
+        "research_market_landscape",
+        "analyze_community_sentiment",
+        "assess_technical_feasibility",
+    }
+)
+
+# The six transform operations, and the whole of the "no user Python" position.
+# A transform node picks, merges, joins, serialises, defaults or formats - each
+# with a declared argument shape - and there is no seventh escape hatch.
+BUILDER_TRANSFORM_OPS: frozenset[str] = frozenset(
+    {"pick", "merge", "join_text", "to_json", "default", "format"}
+)
+
+# The comparisons a router branch may declare over ONE state key. No user
+# expressions, because an expression surface is an evaluation surface.
+# `otherwise` is not a comparison and is named separately: exactly one branch
+# must carry it, and it takes no key and no value.
+BUILDER_ROUTER_COMPARISONS: frozenset[str] = frozenset(
+    {"eq", "ne", "gt", "gte", "lt", "lte", "contains"}
+)
+BUILDER_ROUTER_OTHERWISE = "otherwise"
+
+# The ten compiler-owned entrypoints, and the ONLY values a compiled `do.ref`
+# may take. The document carries no ref of its own - that is the whole answer
+# to the code-execution surface a canvas would otherwise open, and author data
+# travels in `with:` as data instead.
+#
+# `call: "script"` is never emitted: CrewAI's own `_actions.py` records that
+# inline script execution is not sandboxed, and it is gated behind an env var
+# this service refuses to boot with.
+BUILDER_ACTION_REFS: frozenset[str] = frozenset(
+    {
+        "brief_crew.builder.runtime:seed_input",
+        "brief_crew.builder.runtime:run_agent",
+        "brief_crew.builder.runtime:run_crew",
+        "brief_crew.builder.runtime:render_gate",
+        "brief_crew.builder.gates:GATE_PROVIDER",
+        "brief_crew.builder.runtime:route_gate",
+        "brief_crew.builder.runtime:route_branch",
+        "brief_crew.builder.runtime:transform",
+        "brief_crew.builder.runtime:rejoin",
+        "brief_crew.builder.runtime:emit_output",
     }
 )
 

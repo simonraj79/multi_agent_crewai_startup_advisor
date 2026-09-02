@@ -7,12 +7,12 @@ from enum import Enum
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from brief_crew.config import (
     MAX_RUN_INPUT_BYTES,
     MAX_RUN_INPUT_KEYS,
-    RESERVED_RUN_INPUT_KEYS,
+    declared_reserved_run_input_keys,
 )
 
 
@@ -163,7 +163,9 @@ class CreateRunRequest(BaseModel):
 
     @field_validator("inputs")
     @classmethod
-    def _bounded_inputs(cls, value: dict[str, Any]) -> dict[str, Any]:
+    def _bounded_inputs(
+        cls, value: dict[str, Any], info: ValidationInfo
+    ) -> dict[str, Any]:
         try:
             encoded = json.dumps(value, separators=(",", ":")).encode("utf-8")
         except (TypeError, ValueError) as exc:
@@ -181,7 +183,38 @@ class CreateRunRequest(BaseModel):
         # disguise and skipping every policy attached to it. Answering 422
         # tells an honest client its request was misread; dropping the key
         # would let a stale one think it had switched modes.
-        reserved = sorted(RESERVED_RUN_INPUT_KEYS.intersection(value))
+        #
+        # PER WORKFLOW, because a user-authored graph declares its own state
+        # names and "reserved" stopped being one global fact the moment a third
+        # workflow could exist: `verdict` is a control key on the validator and
+        # an ordinary word on somebody's competitor-sweep graph. This works
+        # without moving the check off the model - which is what keeps the
+        # 403-versus-422 distinction in `create_run` meaningful - because
+        # pydantic validates fields in DECLARATION order and `workflow_id` is
+        # declared above `inputs`, so `info.data` already carries a VALIDATED
+        # workflow id here.
+        #
+        # DECLARED keys only, and the distinction is the whole reason there are
+        # two functions. This layer holds a workflow id and nothing else - no
+        # registry, no descriptor, no runtime - so it cannot tell "registered on
+        # this service but undeclared in config" from "invented". Failing closed
+        # to the union of every workflow's keys here therefore refused a third
+        # workflow's own prompt field: `brief` is Brief Crew's result slot and
+        # somebody else's perfectly ordinary public input, and its author was
+        # told their prompt was a reserved control key by a workflow that has
+        # never heard of their graph.
+        #
+        # The union still applies - `create_run` asks for it, once it has
+        # resolved the workflow and knows which single key is its prompt. What
+        # survives here is the part that needs no registry to be right: the keys
+        # CrewAI's own runtime reads on ANY flow, refused for every id including
+        # invented ones. `no_gates` is one of them, so setting it in `create_run`
+        # remains the only way it can become true.
+        reserved = sorted(
+            declared_reserved_run_input_keys(
+                info.data.get("workflow_id")
+            ).intersection(value)
+        )
         if reserved:
             raise ValueError(
                 "inputs may not carry the reserved control "

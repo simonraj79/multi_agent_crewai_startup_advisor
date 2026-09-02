@@ -215,6 +215,65 @@ run_gates = Table(
 )
 Index("ix_run_gates_pending", run_gates.c.run_id, run_gates.c.status)
 
+# --------------------------------------------------------------------------
+# Builder documents
+#
+# Two tables, and the split is the versioning: `builder_documents` is the ONE
+# row per graph that says what its current version is, and
+# `builder_document_versions` is the append-only history keyed by
+# `(document_id, version)`, which is exactly the storage shape locked spec C
+# names. A save writes the new version row and then compare-and-sets the head
+# pointer, so two browsers saving the same graph produce two versions and one
+# 409 rather than one lost edit.
+#
+# The document itself is stored as JSON rather than shredded into columns. It
+# is validated by `builder/document.py` on the way in and on the way out, and
+# a relational projection of a seven-kind polymorphic node would be a second
+# schema to keep in step with the first for no query that anybody makes - the
+# only predicates here are by id, by owner and by version.
+#
+# `user_id` is nullable for the same two reasons `runs.user_id` is: this
+# service still runs unauthenticated by design in tests and in SYNTHETIC mode,
+# and there is no ForeignKey to a `user` table that Better Auth owns in another
+# language. Ownership is enforced in the service layer, where the 404-not-403
+# decision already lives.
+builder_documents = Table(
+    "builder_documents",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128)),
+    Column("name", String(255), nullable=False),
+    # The head version. Every UPDATE of this column is a compare-and-set
+    # against the version the client was editing.
+    Column("version", Integer, nullable=False),
+    # "draft" until a compile has succeeded and the graph was registered;
+    # "published" after. A draft is editable and unrunnable, which is why the
+    # status lives on the head row rather than on a version.
+    Column("status", String(16), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+# "my graphs, newest edit first" is the only query the builder list makes.
+Index(
+    "ix_builder_documents_user_updated",
+    builder_documents.c.user_id,
+    builder_documents.c.updated_at,
+)
+
+builder_document_versions = Table(
+    "builder_document_versions",
+    metadata,
+    Column(
+        "document_id",
+        String(128),
+        ForeignKey("builder_documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("version", Integer, primary_key=True),
+    Column("document", _json_type(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class GateAnswerResult:
@@ -350,6 +409,18 @@ def _parse_datetime(value: Any, *, label: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+# Public names for `builder/store.py`, which writes `builder_documents` and
+# `builder_document_versions` on this module's engine and must bound and
+# sanitise its JSON exactly the way every other writer here does. Aliases
+# rather than a second implementation: a store that redacted differently, or
+# bounded strings at a different length, would be a second answer to a question
+# this module already answers - and the one that got it wrong would be the one
+# nobody re-read.
+bounded_json = _bounded_json
+identifier = _identifier
+utcnow = _utcnow
+
+
 def _engine_for(database: str | Engine, engine_options: Mapping[str, Any]) -> tuple[Engine, bool]:
     if isinstance(database, Engine):
         if engine_options:
@@ -425,6 +496,29 @@ class PostgresFlowPersistence(FlowPersistence):
 
     def _guard(self) -> Any:
         return nullcontext() if self._access_lock is None else self._access_lock
+
+    @contextmanager
+    def begin(self) -> Iterator[Any]:
+        """A guarded write transaction, for a sibling store on this engine.
+
+        `builder/store.py` writes two of the tables above and must not open its
+        own engine to do it: on in-memory SQLite the database only exists for
+        as long as its one connection does, and `_access_lock` is what stops
+        two threads sharing that single connection's transaction. A second
+        store reaching for `engine.begin()` directly would bypass the guard and
+        commit somebody else's half-finished unit of work.
+
+        Public rather than a `_begin` a sibling reaches into, because that is
+        what it is: one module in this package is expected to write through it.
+        """
+        with self._begin() as connection:
+            yield connection
+
+    @contextmanager
+    def connect(self) -> Iterator[Any]:
+        """A guarded read connection, for a sibling store on this engine."""
+        with self._connect() as connection:
+            yield connection
 
     @property
     def engine(self) -> Engine:

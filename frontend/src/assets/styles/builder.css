@@ -1,0 +1,880 @@
+/* ---------------------------------------------------------------------------
+   The builder's chrome: the design-time tenancy of the node card, the ports,
+   the edges, the palette and the port menu.
+
+   GLOBAL, like `node-card.css` above it and for a second reason on top of that
+   one. The builder shell has no `<style scoped>` block at all - `BuilderView`
+   is a grid of other people's components - and half the rules here address
+   elements Vue Flow renders (`.vue-flow__handle`, the edge `<path>` inside
+   `BaseEdge`), which never carry any component's `[data-v-...]` attribute. A
+   scoped selector would match nothing, silently.
+
+   ORDER MATTERS AND IS DELIBERATE. This file is imported from `studio.css`
+   AFTER `node-card.css`, so where the two set the same property at the same
+   specificity this one wins. Every such collision below is intentional and
+   commented at the site; nothing here restates the card's geometry, its
+   double-clip gradient border, its radius, its fill or its shadow - those come
+   from `node-card.css` unchanged, which is the whole reason the build card and
+   the run card are one card rather than two that agree today.
+
+   ZERO NEW CUSTOM PROPERTIES. Every colour is a `tokens.css` value or a
+   `color-mix(in srgb, var(--token) N%, transparent)` wash, which is the
+   technique `node-card.css` already uses for the in-flight call panel. The one
+   apparent exception is `--node-shadow-color`, which is set by the tenancy
+   block below and READ by the hover rule beside it: it is a second channel of
+   the same kind as `--node-gradient`, written out literally by
+   `flow-builder-spec.md` §5.1, and it has a reader here rather than being
+   declared and ignored.
+   --------------------------------------------------------------------------- */
+
+/* ===========================================================================
+   §5.1 - the two tenancies of `--node-gradient`
+   ===========================================================================
+
+   ONE DELIBERATE DEVIATION FROM §5.1's LITERAL SELECTORS, reported rather than
+   improvised. The spec writes the design tenancy as
+   `[data-mode='design'] .workflow-node.is-kind-agent`, which requires an
+   ancestor to carry `data-mode`. If that attribute is ever absent - a card in a
+   thumbnail, a card in a spec, a canvas host that forgot - EVERY card falls
+   back to `node-card.css`'s neutral three-stop default and the entire kind
+   palette disappears with no error anywhere. Design is the default state, so it
+   is written unconditionally against `.builder-node` here; the RUN tenancy
+   keeps its `[data-mode='run']` guard and outranks it by one class, which is
+   exactly the specificity handover §5.1 describes. The failure mode is
+   inverted: a missing `data-mode` now costs the run colours on a canvas that is
+   not running, instead of costing every colour on every canvas. */
+
+.builder-node.is-kind-input     { --node-gradient: linear-gradient(135deg, #aaffcd, #99eaf9); --node-shadow-color: rgba(170, 255, 205, 0.42); }
+.builder-node.is-kind-agent     { --node-gradient: linear-gradient(135deg, #99eaf9, #a0c4ff); --node-shadow-color: rgba(153, 234, 249, 0.42); }
+.builder-node.is-kind-crew      { --node-gradient: linear-gradient(135deg, #a0c4ff, #bdb2ff); --node-shadow-color: rgba(160, 196, 255, 0.42); }
+.builder-node.is-kind-gate      { --node-gradient: linear-gradient(135deg, #ffe082, #ffb84d); --node-shadow-color: rgba(255, 224, 130, 0.42); }
+.builder-node.is-kind-router    { --node-gradient: linear-gradient(135deg, #b3b3b3, #7dc6ff); --node-shadow-color: rgba(125, 198, 255, 0.34); }
+.builder-node.is-kind-transform { --node-gradient: linear-gradient(135deg, #8892a0, #b3b3b3); --node-shadow-color: rgba(179, 179, 179, 0.30); }
+.builder-node.is-kind-output    { --node-gradient: linear-gradient(135deg, #aaffcd, #7bdff2); --node-shadow-color: rgba(170, 255, 205, 0.42); }
+
+/* Problem tenancy OUTRANKS kind - an invalid node is red before you read a
+   word. Same specificity as the block above and written after it, which is the
+   whole mechanism: `is-kind` and `has-error` are independent classes on one
+   element, so source order is the only thing separating them. Moving either
+   block past the other silently inverts the meaning of the canvas. */
+.builder-node.has-warning { --node-gradient: linear-gradient(135deg, var(--warn-border), var(--warn-text)); --node-shadow-color: rgba(255, 204, 0, 0.34); }
+.builder-node.has-error   { --node-gradient: linear-gradient(135deg, var(--err-border), var(--err-text));   --node-shadow-color: rgba(255, 82, 82, 0.40); }
+
+/* Run tenancy. One extra attribute of specificity, so a published graph that is
+   executing reads as a RUN and not as seven kinds - and the handover costs no
+   JavaScript at all, which is the point §5.1 was making.
+
+   Each of the four is byte-for-byte the gradient `WorkflowNode.vue` sets for
+   the same state. They are restated rather than referenced because the run
+   console holds them in a SCOPED block, which by construction cannot reach
+   here - the same wall that made `node-card.css` necessary. §5.1 writes them as
+   `var(--gradient-running)` / `var(--gradient-complete)`; no such tokens exist
+   in `tokens.css`, and a `var()` on an undefined custom property resolves to
+   nothing at all, so the reference is spelled out instead of shipped dead. */
+[data-mode='run'] .builder-node.is-running   { --node-gradient: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue)); }
+[data-mode='run'] .builder-node.is-waiting   { --node-gradient: linear-gradient(135deg, var(--accent-blue), var(--warn-text)); }
+[data-mode='run'] .builder-node.is-completed { --node-gradient: linear-gradient(135deg, var(--accent-mint), rgba(170, 255, 205, 0.55)); }
+[data-mode='run'] .builder-node.is-error     { --node-gradient: linear-gradient(135deg, var(--err-border), #bd4a4a); }
+
+/* The one reader of `--node-shadow-color`. ChatDev declares this property and
+   then spends it on a `hue-rotate` that overwrites the hue it names; here it is
+   a lift on hover and nothing else, so the card's own colour is what glows. */
+.builder-node:hover { box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34), 0 0 16px -4px var(--node-shadow-color, transparent); }
+
+/* ===========================================================================
+   §5.2 - the design-time card
+   =========================================================================== */
+
+/* `node-card.css` lays the RUN card out as `34px icon | copy`, 270px wide, with
+   a 116px floor for the usage table. The design card has no usage table, no
+   description and no in-flight panel; it has five stacked rows and a port
+   footer. Only the LAYOUT is restated - the border, radius, fill, shadow and
+   transition all still come from `.workflow-node`. */
+.builder-node {
+  display: block;
+  width: 240px;
+  min-height: 0;
+  padding: 9px 11px 12px;
+  overflow: visible;
+  cursor: default;
+}
+
+/* The lane the two labelled ports need. Reserved on the CARD rather than by a
+   positioned footer, because the handles are absolutely positioned against the
+   card's own box and a positioned footer would anchor them to itself - lifting
+   every port off the bottom edge by exactly the height of the label row. */
+.builder-node.has-port-labels { padding-bottom: 22px; }
+
+/* 1. Eyebrow row: icon left, `03 · AGENT` right. `node-card.css` reserves a
+      62px right lane for the run card's absolutely-positioned state chip; the
+      design card has no state chip, so the lane is given back. */
+.builder-eyebrow-row {
+  justify-content: space-between;
+  height: 20px;
+  margin: 0 0 2px;
+  padding-right: 0;
+}
+.builder-kind-icon { flex: 0 0 auto; color: var(--text-muted); }
+.builder-eyebrow {
+  color: var(--text-40);
+  font: 700 var(--fs-11)/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+
+/* 2. Title. Two-line clamp, then ellipsis: a 40-character label at 15px does
+      not fit one 240px line, and a card that grows with its name reflows the
+      whole canvas under the author who is typing it. */
+.builder-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-title);
+  font: 600 var(--fs-15)/1.2 var(--font-display);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.builder-title[contenteditable='true'] {
+  display: block;
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+  cursor: text;
+  white-space: pre-wrap;
+}
+
+/* 3. The one mono config line. Ellipsised rather than wrapped: it is a summary,
+      and a summary that becomes three lines has stopped being one. */
+.builder-summary {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font: 500 10px/1.2 var(--font-mono);
+}
+/* Each line ellipsises on its own. An agent - the only kind with four facts -
+   sends two; every other kind sends one and this is the old rule exactly.
+   The split is decided in `summaryLines`, not by measurement, so a card's
+   height never depends on how long its label happens to be. */
+.builder-summary-line {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.builder-summary-line + .builder-summary-line { margin-top: 2px; }
+
+/* 4. Badge row - present only when it has something to say. */
+.builder-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 18px;
+  margin-top: 6px;
+}
+.builder-badge {
+  position: relative;
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  color: var(--text-muted);
+  font: 700 10px/1 var(--font-mono);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: color var(--motion-fast) ease, background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+.builder-badge-problem.is-error   { color: var(--err-text);  background: var(--err-bg);  border-color: var(--err-border); }
+.builder-badge-problem.is-warning { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
+.builder-badge-join.is-on {
+  color: var(--accent-blue);
+  background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-blue) 42%, transparent);
+}
+.builder-badge:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+
+/* The server's sentence, verbatim, on hover OR focus. Focus as well as hover
+   because a keyboard reaches the badge and a tooltip that only answers a mouse
+   is a tooltip half the audience cannot open. */
+.builder-problem-pop {
+  position: absolute;
+  z-index: var(--z-control);
+  bottom: calc(100% + 7px);
+  left: 0;
+  display: none;
+  width: 232px;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 9px;
+  color: var(--text-body);
+  font: 400 var(--fs-11)/1.45 var(--font-body);
+  text-align: left;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.44);
+  white-space: normal;
+  pointer-events: none;
+}
+.builder-badge-problem:hover .builder-problem-pop,
+.builder-badge-problem:focus-visible .builder-problem-pop { display: flex; }
+
+/* The escalation dot. A DOT and not a word, because the ring below already
+   carries the fact and two shouts about one tier is furniture. */
+.builder-badge-escalation {
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  background: var(--warn-text);
+  border-radius: var(--r-full);
+  box-shadow: 0 0 0 3px var(--warn-bg);
+}
+
+/* Escalation tier: a second inset ring, so only SPEND shouts. Cheap gets
+   nothing at all - a marker on every billable node would mark nothing. */
+.builder-node.is-tier-escalation {
+  box-shadow: inset 0 0 0 1px var(--warn-border), 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+/* ---- per-kind deviations (§5.2) ---------------------------------------- */
+
+/* A human stop is categorically different from a machine step, and the card
+   says so before the icon is read. Inside the radius, so it does not fight the
+   gradient border it sits against. */
+.builder-node.is-kind-gate {
+  border-left-color: transparent;
+  box-shadow: inset 2px 0 0 0 var(--warn-border), 0 12px 30px rgba(0, 0, 0, 0.26);
+}
+.builder-node.is-kind-gate.is-tier-escalation {
+  box-shadow: inset 2px 0 0 0 var(--warn-border), inset 0 0 0 1px var(--warn-border),
+    0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+.builder-node.is-kind-gate .builder-kind-icon { color: var(--warn-text); }
+
+/* The run ends here, and the underline is the full stop. */
+.builder-node.is-kind-output { box-shadow: inset 0 -2px 0 0 var(--accent-mint), 0 12px 30px rgba(0, 0, 0, 0.26); }
+.builder-node.is-kind-output .builder-kind-icon { color: var(--accent-mint); }
+
+/* Plumbing, and the palette says so. A transform makes no model call and
+   decides nothing; it should not compete with the nodes that do. */
+.builder-node.is-kind-transform .builder-title { color: var(--text-body); }
+.builder-node.is-kind-transform .builder-summary { color: var(--text-40); }
+
+.builder-node.is-kind-router .builder-title { font: 600 var(--fs-13)/1.2 var(--font-mono); }
+.builder-node.is-kind-input .builder-kind-icon { color: var(--accent-mint); }
+.builder-node.is-kind-agent .builder-kind-icon,
+.builder-node.is-kind-crew .builder-kind-icon { color: var(--accent-cyan); }
+.builder-node.is-kind-router .builder-kind-icon { color: var(--link-cyan); }
+
+/* ---- selection (§5.2) --------------------------------------------------- */
+
+/* The anchor at full strength, members at .6, so align/distribute has a
+   visible winner. Without a defined anchor "align left" is a question with
+   several answers and the canvas picks one of them silently. */
+.builder-node.is-selected { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-cyan) 60%, transparent), var(--glow-input); }
+.builder-node.is-selected.is-anchor { box-shadow: 0 0 0 2px var(--accent-cyan), var(--glow-input); }
+
+/* ---- the loop advisory (§4.2) ------------------------------------------- */
+
+/* An ancestor of the node an edge is being dragged from: landing here closes a
+   loop. ADVISORY - the drop is still permitted, because `back-edge-not-router`
+   and `cycle-count` are the server's to report (§6.1) and a client that refused
+   the gesture would be a second opinion that silently disagrees after any
+   bounds change. */
+.builder-node.is-loop-target { box-shadow: 0 0 0 2px var(--link-cyan), 0 0 18px -2px color-mix(in srgb, var(--link-cyan) 55%, transparent); }
+.builder-node.is-loop-illegal { box-shadow: 0 0 0 2px var(--warn-border), 0 0 18px -2px color-mix(in srgb, var(--warn-text) 45%, transparent); }
+
+/* Section 4.1's keyboard link, `E`. A candidate wears its number for the length
+   of the gesture and nothing longer; the one Enter would take is lit. Static
+   properties only - section 5.5 forbids an infinite animation at rest, and the
+   whole point of this badge is that the canvas is NOT at rest while it shows. */
+.builder-link-index {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  z-index: 4;
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0 4px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-full);
+  background: var(--surface-panel);
+  color: var(--text-muted);
+  font: 700 10px/1 var(--font-mono);
+}
+.builder-link-index.is-current {
+  border-color: var(--accent-cyan);
+  background: var(--accent-cyan);
+  color: #05141a;
+}
+.builder-node.is-link-current { box-shadow: 0 0 0 2px var(--accent-cyan), var(--glow-input); }
+
+/* Section 4.5's node filter. Matches keep full strength and gain the same ring
+   selection uses at half weight; everything else drops to .35 - the figure the
+   spec names - and stays on screen, because the point of a filter here is to
+   find a node inside a shape, not to redraw the shape. */
+.builder-node.is-filter-dimmed { opacity: 0.35; }
+.builder-node.is-filter-match { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-cyan) 60%, transparent); }
+.builder-loop-note {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  margin: 0;
+  padding: 4px 7px;
+  color: var(--warn-text);
+  font: 500 9px/1.3 var(--font-mono);
+  text-align: center;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-sm);
+  pointer-events: none;
+}
+
+/* ===========================================================================
+   §5.7 - the crew slot, reserved and empty
+   ===========================================================================
+
+   34px of reserved box and no content. The run console's rowing crew and lap
+   chip are `WorkflowNode.vue`'s, driven by `data.state` / `data.visits`; when
+   the runner reaches this card the crew mounts into a slot that already
+   occupies its space, so nothing reflows at the one moment an author is
+   watching.
+
+   This carried twelve ChatDev character sprites until 2026-09-02. They are gone
+   for three reasons that stack: §5.7 reserved this slot and forbade a
+   design-time animation in it (only R4 was lifted above the spec); the walk
+   cycle was unreachable, because nothing writes `runState`, so 132 of the 144
+   PNGs could never be painted and every template open still fetched 191 KiB of
+   them; and the art was the competitor's own, which is a strange thing to
+   import into the product whose argument is that it is not that competitor.
+
+   `pointer-events: none` because an empty box that can eat a click on the card
+   underneath it presents as "the node sometimes will not select". */
+.node-crew-slot {
+  position: absolute;
+  top: -34px;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* ===========================================================================
+   §5.3 - ports
+   ===========================================================================
+
+   9px at rest. Hover scales by TRANSFORM and not by width, so a port growing
+   under the pointer never reflows the footer or nudges its neighbour - the
+   thing that makes a small target feel like it is running away. */
+.builder-port.vue-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: var(--bg-node);
+  border: 1.5px solid var(--accent-cyan);
+  border-radius: var(--r-full);
+  opacity: 1;
+  transition: transform var(--motion-fast) ease, opacity var(--motion-fast) ease,
+    border-color var(--motion-fast) ease, background var(--motion-fast) ease;
+}
+/* The per-side offset has to be RESTATED in the hover transform, not replaced.
+   Vue Flow centres a handle on the card's edge with `translate(-50%, 50%)` at
+   the bottom and `translate(-50%, -50%)` at the top; a hover rule that writes
+   only `scale()` drops that offset and the port jumps half its own height the
+   moment the pointer arrives - which reads as the target running away, on the
+   one control where that is fatal. */
+.builder-node:hover .builder-port.vue-flow__handle-bottom { transform: translate(-50%, 50%) scale(1.33); }
+.builder-node:hover .builder-port.vue-flow__handle-top { transform: translate(-50%, -50%) scale(1.33); }
+
+.builder-port.is-approve  { border-color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 30%, var(--bg-node)); }
+.builder-port.is-revise   { border-color: var(--warn-text);   background: color-mix(in srgb, var(--warn-text) 30%, var(--bg-node)); }
+.builder-port.is-branch   { border-color: var(--link-cyan);   background: color-mix(in srgb, var(--link-cyan) 30%, var(--bg-node)); }
+/* The `otherwise` port is what happens when every declared comparison missed,
+   so it is drawn as the fallback it is: dashed and muted, never the same weight
+   as a branch somebody wrote a condition for. */
+.builder-port.is-otherwise { border-style: dashed; border-color: var(--text-40); background: var(--bg-node); }
+
+/* Permanently visible port labels. NEVER hover-only: which of a gate's two
+   exits an edge leaves by is the single fact the canvas exists to show, and
+   ChatDev puts the equivalent ten clicks and three modals deep. */
+.builder-port-label {
+  position: absolute;
+  bottom: 5px;
+  transform: translateX(-50%);
+  color: var(--text-40);
+  font: 600 9px/1 var(--font-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.builder-port-label.is-approve   { color: var(--accent-mint); }
+.builder-port-label.is-revise    { color: var(--warn-text); }
+.builder-port-label.is-branch    { color: var(--link-cyan); }
+.builder-port-label.is-otherwise { color: var(--text-40); font-style: italic; }
+
+/* The connect-drag affordance.
+
+   `is-port-ready` is set by the card from `data.connectable`, which
+   `useBuilderCanvas` computes with the SAME predicate `isValidConnection` runs.
+   There is one implementation, so a port that pulses is a port the mouse will
+   accept - a card that recomputed the four §6.1 refusals for itself would be a
+   second opinion, and a port drawn valid that the pointer then refuses is
+   exactly the disagreement `nodeKinds.ts` exists to prevent.
+
+   The muting is the container's job rather than another class per handle,
+   because "a drag is in flight" is one fact about the canvas and not
+   twenty-four facts about nodes. `.is-connecting` is set by `BuilderCanvas`;
+   every port that is not a live candidate recedes, including every SOURCE port,
+   because during a drag there is exactly one of those and it is the one you are
+   holding. */
+.builder-canvas.is-connecting .builder-port.is-port-in:not(.is-port-ready) { opacity: 0.25; }
+.builder-canvas.is-connecting .builder-port.is-port-out { opacity: 0.25; }
+.builder-port.is-port-ready {
+  border-color: var(--accent-mint);
+  animation: builder-port-ready 1.2s ease-in-out infinite;
+}
+
+/* ===========================================================================
+   §5.4 - edges
+   =========================================================================== */
+
+/* `--edge-inactive`, and NOT `--edge-stroke`, which is what §5.4 names.
+   The two canvases stroked the same object in two different colours - the
+   builder at #f2f2f2, the run console's `WorkflowEdge.vue` at #777a7c - so a
+   side-by-side of the two views read as two products. It is also the louder of
+   the two on the denser canvas: 22 near-white hairlines behind the cards, at
+   which strength the `.is-hovering` dim-to-.22 field effect §5.4 depends on is
+   barely legible - and a hover model that is barely legible is §5.4's actual
+   subject, so this is a deliberate deviation from §5.4's WORDING in favour of
+   §5.4's own argument. Reported rather than improvised. `--edge-stroke` is left
+   in `tokens.css` untouched: it was already there and already unreferenced
+   before this deliverable, so it is not this file's to retire. */
+.builder-edge-path {
+  fill: none;
+  stroke: var(--edge-inactive);
+  stroke-width: var(--edge-width);
+  transition: stroke var(--motion-fast) ease, stroke-width var(--motion-fast) ease;
+}
+/* The 16px grab lane under the 1.2px line. Transparent rather than
+   `pointer-events: all` on the visible path, because widening the visible one
+   is the other way to solve this and it makes the graph look like plumbing. */
+.builder-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.builder-edge.has-warning .builder-edge-path { stroke: var(--warn-border); }
+.builder-edge.has-error   .builder-edge-path { stroke: var(--err-border); }
+
+/* A loop, drawn as one. `bounds.py` allows two cycles and refuses a third, and
+   a back edge drawn identically to a forward edge makes that a count you infer
+   from the topology rather than one you can see. Styling only (R7): the mirror
+   that decides this is pinned against a Python-generated fixture. */
+.builder-edge.is-back-edge .builder-edge-path { stroke-dasharray: 5 4; stroke: var(--link-cyan); }
+
+.builder-edge.is-lit-in  .builder-edge-path { stroke: var(--accent-blue); stroke-width: 2; }
+.builder-edge.is-lit-out .builder-edge-path { stroke: var(--accent-mint); stroke-width: 2; }
+/* Hover dims the FIELD. See `BuilderEdge.vue` for why this is manufactured
+   contrast rather than borrowed contrast, and why it keeps working at 40 nodes
+   where ChatDev's highlight-two-sets stops working at about 15. */
+.builder-edge.is-dim { opacity: 0.22; }
+
+.builder-edge.is-selected .builder-edge-path {
+  stroke: var(--accent-cyan);
+  stroke-width: 2.5;
+  stroke-dasharray: 7 13;
+  animation: builder-edge-march 1.2s linear infinite;
+}
+/* The RUN console marches at 0.75s. Two legible tempos, so marching dashes mean
+   "this is the live one" in both modes without either borrowing the other's
+   meaning. */
+.builder-edge-traversal {
+  fill: none;
+  stroke: var(--accent-cyan);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 7 13;
+  filter: drop-shadow(0 0 5px rgba(153, 234, 249, 0.9));
+  pointer-events: none;
+  animation: builder-edge-march 0.75s linear infinite;
+}
+
+.builder-edge-bracket {
+  fill: none;
+  stroke: var(--accent-blue);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.builder-edge-chip {
+  position: absolute;
+  z-index: 4;
+  padding: 2px 6px;
+  color: var(--text-body);
+  font: 600 var(--fs-11)/1.2 var(--font-mono);
+  background: var(--edge-label-bg);
+  border: 1px solid var(--edge-label-brd);
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.builder-edge-chip.is-clickable { cursor: pointer; pointer-events: all; }
+.builder-edge-chip.is-clickable:hover { border-color: var(--accent-cyan); }
+.builder-edge-chip.is-clickable:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
+.builder-edge-chip.is-approve   { color: var(--accent-mint); border-color: color-mix(in srgb, var(--accent-mint) 60%, transparent); }
+.builder-edge-chip.is-revise    { color: var(--warn-text);   border-color: var(--warn-border); }
+.builder-edge-chip.is-branch    { color: var(--link-cyan);   border-color: color-mix(in srgb, var(--link-cyan) 60%, transparent); }
+.builder-edge-chip.is-otherwise { color: var(--text-40); border-style: dashed; border-color: var(--border-default); }
+
+/* ===========================================================================
+   The palette (§5.6, §6.1's one sanctioned disable)
+   =========================================================================== */
+
+.builder-palette {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 12px;
+  overflow: auto;
+  background: var(--surface-panel);
+  border-right: 1px solid var(--border-default);
+}
+.builder-palette-head { display: flex; flex-direction: column; gap: 2px; }
+.builder-palette-head-library { margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--border-default); }
+.builder-palette-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
+.builder-palette-head h2 { margin: 0; font-size: var(--fs-15); }
+.builder-palette-alert {
+  margin: 0;
+  padding: 8px 9px;
+  color: var(--err-text);
+  font-size: var(--fs-12);
+  background: var(--err-bg);
+  border: 1px solid var(--err-border);
+  border-radius: var(--r-md);
+}
+.builder-palette-empty { margin: 0; color: var(--text-40); font-size: var(--fs-12); }
+
+/* Section 4.6's restore bar. In the layout above the canvas, not over it: an
+   author deciding whether to take unsaved work back must be able to see the
+   graph the decision applies to. */
+.builder-restore {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--warn-border);
+  background: color-mix(in srgb, var(--warn-text) 12%, transparent);
+  color: var(--text-title);
+  font: 500 var(--fs-11)/1.4 var(--font-mono);
+}
+.builder-restore-copy { flex: 1 1 auto; min-width: 0; }
+.builder-restore-accept,
+.builder-restore-dismiss {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-title);
+  cursor: pointer;
+  font: 600 var(--fs-11)/1 var(--font-mono);
+  transition: color var(--motion-fast) ease, background var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.builder-restore-accept { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.builder-restore-accept:hover { background: color-mix(in srgb, var(--accent-cyan) 16%, transparent); }
+.builder-restore-dismiss:hover { border-color: var(--text-muted); }
+
+/* Section 4.5's filter box - the control `/` focuses. */
+.builder-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--surface-input, var(--bg-node));
+}
+.builder-filter:focus-within { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
+.builder-filter-icon { flex: 0 0 auto; color: var(--text-40); }
+.builder-filter-input {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-title);
+  font: 500 var(--fs-11)/1.3 var(--font-mono);
+  outline: none;
+}
+.builder-filter-input::placeholder { color: var(--text-40); }
+.builder-filter-count { flex: 0 0 auto; color: var(--text-muted); font: 500 9px/1 var(--font-mono); }
+
+.builder-tiles { display: flex; flex-direction: column; gap: 6px; }
+
+/* Each tile is a MINIATURE of the card it produces - the same well, the same
+   gradient border, the same double-clip - so dragging one is a promise about
+   what lands. ChatDev's palette is a flat list of type names, which is a menu
+   rather than a preview. */
+.builder-tile {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 9px;
+  color: var(--text-body);
+  text-align: left;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+  cursor: grab;
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.builder-tile:hover:not(:disabled) { background: var(--surface-raised); border-color: var(--border-hover); }
+.builder-tile:active:not(:disabled) { cursor: grabbing; }
+.builder-tile:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+.builder-tile:disabled { cursor: not-allowed; opacity: 0.42; }
+
+.builder-tile-well {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--text-title);
+  background-image: linear-gradient(var(--bg-node), var(--bg-node)), var(--node-gradient);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  border: 2px solid transparent;
+  border-radius: var(--r-md);
+}
+.builder-tile-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.builder-tile-name { display: flex; align-items: center; gap: 6px; color: var(--text-title); font: 600 var(--fs-13)/1.2 var(--font-display); }
+.builder-tile-key {
+  padding: 1px 5px;
+  color: var(--text-40);
+  font: 700 9px/1.4 var(--font-mono);
+  background: var(--bg-app);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-xs);
+}
+.builder-tile-blurb { color: var(--text-muted); font-size: var(--fs-11); line-height: 1.35; }
+.builder-tile-counts { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 3px; }
+.builder-tile-count { color: var(--text-40); font: 600 9px/1.3 var(--font-mono); font-variant-numeric: tabular-nums; }
+/* Amber AT the bound, not past it. Past it the server has already reported a
+   problem, and this is the warning that is supposed to precede one. */
+.builder-tile-count.is-at-bound { color: var(--warn-text); }
+
+.builder-library { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.builder-library-row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 13px minmax(0, 1fr) auto auto;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 8px;
+  color: var(--text-body);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.builder-library-row:hover { background: var(--surface-raised); border-color: var(--border-default); }
+.builder-library-row:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
+.builder-library-row.is-open { background: var(--surface-well); border-color: var(--accent-cyan); }
+.builder-library-icon { color: var(--text-40); }
+.builder-library-name { overflow: hidden; font-size: var(--fs-12); white-space: nowrap; text-overflow: ellipsis; }
+.builder-library-version { color: var(--text-40); font: 600 9px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.builder-library-status { padding: 2px 6px; font: 700 9px/1 var(--font-mono); border: 1px solid var(--border-default); border-radius: var(--r-pill); text-transform: uppercase; }
+.builder-library-status.is-draft { color: var(--text-40); }
+.builder-library-status.is-published { color: var(--accent-mint); border-color: color-mix(in srgb, var(--accent-mint) 42%, transparent); }
+
+/* ===========================================================================
+   The port menu (§4.1)
+   ===========================================================================
+
+   A POPOVER, not a modal. It is anchored at the point the drag ended, it is
+   240px wide, and the graph behind it stays visible and stays interactive -
+   R15's rule, and the single defining difference from ChatDev, whose equivalent
+   is a centred `SettingsModal` over the graph you are editing. */
+.builder-portmenu {
+  position: absolute;
+  z-index: var(--z-control);
+  display: flex;
+  width: 244px;
+  max-height: 320px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: var(--blur-panel);
+}
+.builder-portmenu-head { margin: 0; color: var(--text-40); font: 600 9px/1.3 var(--font-mono); overflow-wrap: anywhere; }
+.builder-portmenu-alert { margin: 0; color: var(--err-text); font-size: var(--fs-12); }
+.builder-portmenu-input {
+  padding: 6px 8px;
+  color: var(--text-body);
+  font-size: var(--fs-13);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+}
+.builder-portmenu-input:focus-visible { outline: none; border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
+.builder-portmenu-list { display: flex; min-height: 0; flex-direction: column; gap: 1px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.builder-portmenu-row {
+  display: grid;
+  grid-template-columns: 13px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  padding: 6px 7px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.builder-portmenu-row.is-active { background: var(--surface-raised); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 40%, transparent); }
+.builder-portmenu-icon { color: var(--text-muted); }
+.builder-portmenu-title { overflow: hidden; color: var(--text-body); font-size: var(--fs-13); white-space: nowrap; text-overflow: ellipsis; }
+.builder-portmenu-hint { color: var(--text-40); font: 600 9px/1 var(--font-mono); }
+.builder-portmenu-none { padding: 8px 7px; color: var(--text-40); font-size: var(--fs-12); }
+
+/* ===========================================================================
+   §4.3 - the align / distribute toolbar, and §5.6's empty document
+   ===========================================================================
+
+   Floating over the pane, above the selection, and NOT a modal (R15). It is
+   chrome the way the minimap is chrome: it appears when there is something for
+   it to act on and takes no space when there is not. */
+.builder-selection-toolbar {
+  position: absolute;
+  z-index: var(--z-rail);
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--r-pill);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
+  transform: translateX(-50%);
+}
+
+.builder-selection-action {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: color var(--motion-fast) ease, background var(--motion-fast) ease;
+}
+.builder-selection-action:hover:not(:disabled) { color: var(--text-title); background: var(--surface-raised); }
+.builder-selection-action:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: -2px; }
+.builder-selection-action:disabled { opacity: 0.35; cursor: default; }
+
+.builder-selection-rule { width: 1px; height: 16px; margin: 0 3px; background: var(--border-default); }
+
+.builder-selection-count {
+  padding: 0 8px 0 4px;
+  color: var(--text-40);
+  font: 600 10px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* §5.6, "Canvas, empty document": a dot grid and a single centred mono line.
+   No illustration, and nothing else - the palette is two seconds away and the
+   line's whole job is to say which two seconds. It was missing entirely, so the
+   first thing an author saw after choosing "Blank canvas" was 1424 x 849 of
+   void with no affordance in it. `pointer-events: none` so it never eats the
+   drop it is asking for. */
+.builder-canvas-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: 0;
+  color: var(--text-40);
+  font: 500 var(--fs-12)/1.4 var(--font-mono);
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+}
+.builder-canvas-hint kbd {
+  padding: 1px 5px;
+  color: var(--text-muted);
+  font: inherit;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-xs);
+}
+
+/* ===========================================================================
+   Motion (§5.5)
+   ===========================================================================
+
+   THE DESIGN CANVAS IS STILL. Nothing here loops at rest. `builder-port-ready`
+   runs only while a connect drag is live, `builder-edge-march` only on a
+   selected or traversing edge, and `builder-node-land` and
+   `builder-problem-anchor` are both finite one-shots. */
+
+@keyframes builder-node-land {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+.builder-node.is-landing { animation: builder-node-land 260ms var(--ease-out) 1; }
+
+/* Deliberately the same tempo and the same iteration count as `CrewProgress`'s
+   `lap-flash`, so "look here" is one idiom across the whole app rather than two
+   that nearly match. */
+@keyframes builder-problem-anchor {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--err-border) 60%, transparent); }
+}
+.builder-node.is-anchored { animation: builder-problem-anchor 1.1s ease-out 3; }
+
+@keyframes builder-port-ready {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-mint) 55%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent-mint) 0%, transparent); }
+}
+
+@keyframes builder-edge-march { to { stroke-dashoffset: -20; } }
+
+/* ---------------------------------------------------------------------------
+   Reduced motion, and exactly what survives.
+
+   All four animations stop. Every STATE they encode is a static property and is
+   untouched: the problem rim is a gradient, the selected edge is 2.5px of cyan,
+   a valid port is mint-bordered and an invalid one is at .25 opacity, and a
+   landing card is simply there - which is the whole point of the rule below
+   listing `is-landing`: the arrival is acknowledged by the card BEING there,
+   and the 260ms scale was only ever the manners around it.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .builder-node.is-landing,
+  .builder-node.is-anchored,
+  .builder-port.is-port-ready,
+  .builder-edge.is-selected .builder-edge-path,
+  .builder-edge-traversal { animation: none; }
+  /* The traversal overlay would otherwise sit as a static dashed line on top of
+     the edge it is meant to be sweeping, which reads as a rendering fault. */
+  .builder-edge-traversal { stroke-dasharray: none; }
+}

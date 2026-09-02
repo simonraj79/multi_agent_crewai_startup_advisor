@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from crewai.flow import build_flow_structure
 
@@ -13,6 +13,14 @@ from brief_crew.events import NodeRegistry, QUARANTINE_NODE_ID
 from brief_crew.main import BriefFlow
 from brief_crew.service.models import GraphDescriptor, GraphEdge, GraphNode, WorkflowSummary
 from brief_crew.validator_flow import ValidatorFlow
+
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    # Under TYPE_CHECKING because the dependency runs the other way at runtime:
+    # `builder/descriptor.py` imports `service/models.py`, and importing the
+    # builder package from here would drag the compiler, the runtime and the
+    # whole document schema into every module that only wanted a graph.
+    from brief_crew.builder.descriptor import BuilderWorkflow
 
 
 BRIEF_WORKFLOW_ID = "brief-flow"
@@ -280,3 +288,116 @@ WORKFLOWS = {
     BRIEF_WORKFLOW.id: BRIEF_WORKFLOW,
     VALIDATOR_WORKFLOW.id: VALIDATOR_WORKFLOW,
 }
+
+
+# --------------------------------------------------------------------------
+# Builder graphs, registered additively at runtime
+#
+# The three maps above are literals because both hand-written flows exist at
+# import. A builder graph does not: it is a row in a database that somebody
+# published after this module was imported, so registration is a MUTATION of
+# the same three dicts plus a fourth of its own.
+#
+# Additive by construction, and the measurement is why that word is doing real
+# work here. Registering a third workflow into the three maps and running the
+# whole suite is `Ran 809 tests ... OK`, with the validator's ETag byte
+# identical either side. MUTATING the validator's topology instead - which is
+# what any attempt to route a builder graph through `build_graph_descriptor`
+# would eventually require - is 480 run / 77 errors across 28 modules, because
+# the overlay assertion at `:150` raises inside the module-level constant at
+# `:251` and every importer dies at import.
+#
+# So: nothing below touches BRIEF_*, VALIDATOR_*, either overlay, or
+# `build_graph_descriptor`. A builder descriptor is built directly from its
+# document by `builder/descriptor.py`.
+#
+# `GET /api/workflows` is deliberately NOT fed from `WORKFLOWS`; it returns the
+# two literals, and builder graphs are listed on their own route. That literal
+# is the only reason `test_validator_service`'s set equality still holds, and
+# relaxing it to make room here would be a weakening rather than a feature.
+# --------------------------------------------------------------------------
+BUILDER_WORKFLOWS: dict[str, "BuilderWorkflow"] = {}
+
+
+def register_builder_workflow(workflow: "BuilderWorkflow") -> "BuilderWorkflow":
+    """Put a compiled builder graph into every map that has to know about it.
+
+    Four places, and omitting any one of them is a distinct wrong answer rather
+    than a missing feature:
+
+    * `GRAPHS` - or `GET /api/workflows/{id}/graph` answers 404 for a graph the
+      service is willing to run, and `workflow_has_gates` fails closed on it.
+    * `NODE_REGISTRIES` - or every frame the run emits lands on the
+      quarantine node.
+    * `WORKFLOWS` - or `create_run` answers 404 before it reaches the runtime.
+    * `BUILDER_WORKFLOWS` - the record `app.py` reads for the two policy
+      questions a hand-written flow never raises: is there a gate before the
+      first billable node, and what does this graph cost before it starts.
+    * and `config.register_workflow_reserved_run_input_keys`, which is not a
+      map on this module but is the fifth thing that must move in step: a
+      builder graph declares its own state names, and until they are declared
+      here `reserved_run_input_keys` fails closed to the union - refusing an
+      author's perfectly ordinary `verdict` key because the validator reserves
+      one.
+
+    The RUNTIME map `create_app` builds is the sixth, and it is not touched
+    here: this module has no registry instance. `service/builder_api.py`
+    registers that half in the same request, and `UnknownWorkflowError` is what
+    reports it if the two ever come apart.
+
+    Re-registering the same workflow id replaces every entry, which is what a
+    republish is.
+    """
+
+    from brief_crew.config import register_workflow_reserved_run_input_keys
+
+    workflow_id = workflow.workflow_id
+    GRAPHS[workflow_id] = workflow.descriptor
+    NODE_REGISTRIES[workflow_id] = workflow.node_registry
+    WORKFLOWS[workflow_id] = WorkflowSummary(
+        id=workflow_id,
+        name=workflow.descriptor.name,
+        graph_version=workflow.graph_version,
+    )
+    BUILDER_WORKFLOWS[workflow_id] = workflow
+    register_workflow_reserved_run_input_keys(
+        workflow_id, workflow.reserved_input_keys
+    )
+    return workflow
+
+
+def unregister_builder_workflow(workflow_id: str) -> None:
+    """Remove a builder graph from all FIVE maps, refusing to touch a built-in.
+
+    Five, because `register_builder_workflow` writes five, and this function
+    said four and cleared four for long enough that three separate reviewers
+    filed it independently. The missing one is
+    `config.WORKFLOW_RESERVED_RUN_INPUT_KEYS`, and it is the one whose staleness
+    does not announce itself: the other four make a deleted graph 404, which is
+    loud, while a left-behind reserved-key declaration silently goes on
+    refusing that dead graph's state names in some later author's `inputs` -
+    and, through `all_reserved_run_input_keys`, in every unknown id's answer
+    too. Publish rollback, rehydration rollback and delete all land here, so
+    all three leaked it.
+
+    The guard is not defensive politeness: `GRAPHS` and `WORKFLOWS` are the
+    dicts the two hand-written flows live in, and a delete keyed on an
+    attacker- or bug-supplied id would take `idea-validator` out of the service
+    with no error anywhere.
+    """
+
+    from brief_crew.config import forget_workflow_reserved_run_input_keys
+
+    if workflow_id in {BRIEF_GRAPH.id, VALIDATOR_GRAPH.id}:
+        raise ValueError(f"{workflow_id} is a built-in workflow and is not removable")
+    BUILDER_WORKFLOWS.pop(workflow_id, None)
+    GRAPHS.pop(workflow_id, None)
+    NODE_REGISTRIES.pop(workflow_id, None)
+    WORKFLOWS.pop(workflow_id, None)
+    forget_workflow_reserved_run_input_keys(workflow_id)
+
+
+def builder_workflow(workflow_id: str) -> "BuilderWorkflow | None":
+    """The builder record for this id, or None for a built-in or unknown id."""
+
+    return BUILDER_WORKFLOWS.get(workflow_id)

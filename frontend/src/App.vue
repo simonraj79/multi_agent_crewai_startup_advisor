@@ -1,145 +1,37 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
-import { VueFlow } from '@vue-flow/core'
-import { Activity, ChevronLeft, ChevronRight, CircleDot, FileText, GitBranch, LogOut, Radio } from 'lucide-vue-next'
-import ChatRail from './components/ChatRail.vue'
-import CrewProgress from './components/CrewProgress.vue'
-import GateCard from './components/GateCard.vue'
-import ReportPanel from './components/ReportPanel.vue'
-import RunHistory from './components/RunHistory.vue'
+import { CircleDot } from 'lucide-vue-next'
 import SignInPanel from './components/SignInPanel.vue'
-import StatusPanel from './components/StatusPanel.vue'
-import WorkflowEdge from './components/WorkflowEdge.vue'
-import WorkflowNode from './components/WorkflowNode.vue'
-import { useValidatorRun } from './composables/useValidatorRun'
+import StudioView from './views/StudioView.vue'
+import BuilderView from './components/builder/BuilderView.vue'
 import { useAuthGate } from './composables/useAuthGate'
-
-const {
-  descriptor,
-  idea,
-  gatesMode,
-  status,
-  transportMode,
-  connection,
-  runId,
-  pendingGate,
-  gateSubmitting,
-  downloadStatus,
-  downloadMessage,
-  lastError,
-  transportProblem,
-  report,
-  verdictSummary,
-  lastSequence,
-  droppedFrames,
-  chatEntries,
-  usage,
-  nodeStates,
-  nodeVisits,
-  graphNodes,
-  graphEdges,
-  isActive,
-  canLaunch,
-  primaryLabel,
-  initialize,
-  launch,
-  submitGate,
-  cancel,
-  downloadLogs,
-  dismissError,
-} = useValidatorRun()
+import { useWorkspaceRoute } from './composables/useWorkspaceRoute'
 
 /**
- * What the header badge says about the backend.
+ * The auth gate, then the route. Nothing else lives here any more.
  *
- * `connection` tracks the WebSocket alone, and no socket is opened until a run
- * is launched - so a freshly loaded console read "Offline" while the API was
- * answering perfectly, and it is the first thing a visitor sees. "The backend
- * is down" and "no run yet" were the same word.
+ * The console that used to be this file's whole body is `views/StudioView.vue`,
+ * moved out unchanged; the builder is `BuilderView`. Keeping the gate HERE and
+ * only here is what makes the two workspaces the same product rather than two
+ * apps behind one login: there is one session request, one splash while it is
+ * in flight, and one sign-in wall, and neither view can accidentally render
+ * before the answer.
  *
- * When nothing is streaming, report the transport we actually probed instead:
- * `live` means the graph on screen came from the API, which is the honest
- * claim to make at that moment. Once a run is in flight the socket is the
- * truth again and its own state wins.
+ * WHY THE GATE IS OUTSIDE THE ROUTER. `#/build` reached before a session
+ * resolves must show the same splash as `#/`, not a builder that will be
+ * replaced by a login wall a tick later. Routing first and gating inside each
+ * view would put that flash in two places and fix it in one.
  */
-const connectionLabel = computed(() => {
-  if (transportMode.value === 'mock') return 'Mock mode'
-  if (transportMode.value === 'probing') return 'connecting'
-  if (!isActive.value && connection.value === 'offline') return 'ready'
-  return connection.value
-})
-
-/**
- * The report sheet opens itself the first time a body arrives and stays
- * dismissible after that. Auto-opening is the point: the previous behaviour
- * was that a finished run showed no conclusion at all, and a reveal the
- * operator has to discover is barely better than none.
- *
- * Keyed on the run id as well as the body so a relaunch re-arms it.
- */
-const reportOpen = ref(false)
-let announcedReport = ''
-watch(
-  () => [runId.value, report.value?.markdown_body] as const,
-  ([id, body]) => {
-    if (!body) return
-    const key = `${id}:${body.length}`
-    if (key === announcedReport) return
-    announcedReport = key
-    reportOpen.value = true
-  },
-)
-
-const chatCollapsed = ref(window.matchMedia('(max-width: 860px)').matches)
-const controlsCollapsed = ref(false)
-const activeView = ref<'graph' | 'activity'>('graph')
-
-watch(activeView, (view) => {
-  if (view === 'activity') chatCollapsed.value = false
-})
 
 const {
   phase: authPhase,
   user: signedInUser,
-  mayUseStudio,
   signingIn,
   signInError,
   startGoogleSignIn,
   endSession,
 } = useAuthGate()
 
-/*
- * The studio probes the API only once it is allowed to.
- *
- * `initialize()` used to run unconditionally on mount. With authentication in
- * front of it that would fire a guaranteed 401 before the visitor has had a
- * chance to sign in - wasted, and it would leave `transportMode` decided by a
- * request made on behalf of nobody. `{ immediate: true }` keeps the
- * already-signed-in and the auth-disabled cases behaving exactly as before,
- * because `mayUseStudio` is already true on the first tick for both.
- */
-/*
- * What tells the history list to refetch.
- *
- * A string rather than a watcher on the run itself, so RunHistory needs to know
- * nothing about how a run progresses - only that something worth re-reading has
- * happened. It changes when a run starts (new id) and on every status
- * transition, which is exactly when the row for that run would be stale.
- */
-const historyReloadKey = computed(() => `${runId.value ?? ''}:${status.value}`)
-
-let studioStarted = false
-watch(
-  mayUseStudio,
-  (allowed) => {
-    if (!allowed || studioStarted) return
-    studioStarted = true
-    void initialize()
-  },
-  { immediate: true },
-)
+const { route, navigate } = useWorkspaceRoute()
 </script>
 
 <template>
@@ -161,173 +53,26 @@ watch(
     @sign-in="startGoogleSignIn"
   />
 
-  <template v-else>
-  <a class="skip-link" href="#workflow-canvas">Skip to workflow canvas</a>
-  <div
-    class="studio-shell"
-    :class="{
-      'chat-is-collapsed': chatCollapsed,
-      'controls-are-collapsed': controlsCollapsed,
-      'activity-is-active': activeView === 'activity',
-    }"
-  >
-    <header class="app-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
-        <div>
-          <span>M2</span>
-          <h1>Validator Studio</h1>
-        </div>
-      </div>
+  <!--
+    Two views, and each mounts its own <VueFlow> with a distinct `id`
+    (`studio-flow` / `builder-flow`). `useVueFlow` keys viewport, selection and
+    node state per instance id, so two instances sharing one would trade
+    viewports across a route change - the builder would open at whatever zoom
+    the run console was left at, and a fitView in one would move the other.
+  -->
+  <BuilderView
+    v-else-if="route.name === 'builder'"
+    :document-id="route.documentId"
+    @run-workspace="navigate({ name: 'studio' })"
+    @open-document="navigate({ name: 'builder', documentId: $event })"
+    @adopt-document="navigate({ name: 'builder', documentId: $event }, { replace: true })"
+  />
 
-      <div class="header-context">
-        <span class="workflow-name"><GitBranch :size="14" aria-hidden="true" />{{ descriptor.name }}</span>
-        <span class="live-status" :class="`is-${connection}`" aria-live="polite">
-          <Radio :size="13" aria-hidden="true" />
-          {{ connectionLabel }}
-        </span>
-
-        <div v-if="signedInUser" class="account-chip">
-          <!--
-            `referrerpolicy` is not decoration. Google's avatar host receives a
-            Referer naming this app on every load otherwise, and `no-referrer`
-            costs nothing here because the image is public.
-            @error hides a broken avatar rather than showing the browser's
-            placeholder - Google's URLs do expire.
-          -->
-          <img
-            v-if="signedInUser.image"
-            class="account-avatar"
-            :src="signedInUser.image"
-            alt=""
-            referrerpolicy="no-referrer"
-            @error="($event.target as HTMLImageElement).style.display = 'none'"
-          />
-          <span class="account-name">{{ signedInUser.name || signedInUser.email }}</span>
-          <button class="account-signout" type="button" title="Sign out" @click="endSession">
-            <LogOut :size="14" aria-hidden="true" />
-            <span class="sr-only">Sign out</span>
-          </button>
-        </div>
-      </div>
-    </header>
-
-    <main class="studio-main">
-      <ChatRail :entries="chatEntries" :collapsed="chatCollapsed" @toggle="chatCollapsed = !chatCollapsed" />
-
-      <section id="workflow-canvas" class="graph-workspace" aria-labelledby="graph-title" tabindex="-1">
-        <div class="canvas-heading">
-          <div>
-            <span class="canvas-kicker">FIXED VALIDATOR GRAPH</span>
-            <h2 id="graph-title">Evidence pipeline</h2>
-          </div>
-          <div class="canvas-meta">
-            <span><Activity :size="13" aria-hidden="true" />{{ status }}</span>
-            <code>{{ descriptor.version }}</code>
-          </div>
-        </div>
-
-        <CrewProgress
-          :node-states="nodeStates"
-          :node-visits="nodeVisits"
-          :descriptor="descriptor"
-          :active="isActive"
-        />
-
-        <VueFlow
-          class="validator-flow"
-          :nodes="graphNodes"
-          :edges="graphEdges"
-          :min-zoom="0.28"
-          :max-zoom="1.45"
-          :default-viewport="{ x: 0, y: 0, zoom: 0.72 }"
-          :nodes-draggable="false"
-          :nodes-connectable="false"
-          :elements-selectable="false"
-          :zoom-on-double-click="false"
-          :fit-view-on-init="true"
-          :fit-view-options="{ padding: 0.12, maxZoom: 0.9 }"
-          aria-label="Idea validator workflow graph"
-        >
-          <template #node-workflow="nodeProps">
-            <WorkflowNode v-bind="nodeProps" />
-          </template>
-          <template #edge-workflow="edgeProps">
-            <WorkflowEdge v-bind="edgeProps" />
-          </template>
-          <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />
-          <Controls position="bottom-left" :show-interactive="false" />
-        </VueFlow>
-
-        <ReportPanel
-          :report="report"
-          :verdict="verdictSummary"
-          :open="reportOpen"
-          @close="reportOpen = false"
-        />
-
-        <button
-          v-if="report && !reportOpen"
-          class="report-reopen"
-          type="button"
-          @click="reportOpen = true"
-        >
-          <FileText :size="14" aria-hidden="true" />
-          View validation report
-        </button>
-      </section>
-
-      <aside class="control-rail" aria-label="Validation controls">
-        <button
-          class="control-toggle icon-button"
-          type="button"
-          :aria-expanded="!controlsCollapsed"
-          :aria-label="controlsCollapsed ? 'Expand control panel' : 'Collapse control panel'"
-          :title="controlsCollapsed ? 'Expand controls' : 'Collapse controls'"
-          @click="controlsCollapsed = !controlsCollapsed"
-        >
-          <ChevronLeft v-if="controlsCollapsed" :size="17" aria-hidden="true" />
-          <ChevronRight v-else :size="17" aria-hidden="true" />
-        </button>
-
-        <div v-show="!controlsCollapsed" class="control-scroll">
-          <GateCard
-            v-if="pendingGate"
-            :gate="pendingGate"
-            :submitting="gateSubmitting"
-            @submit="submitGate"
-          />
-          <StatusPanel
-            v-model:idea="idea"
-            :status="status"
-            :transport-mode="transportMode"
-            :connection="connection"
-            :run-id="runId"
-            :usage="usage"
-            :last-sequence="lastSequence"
-            :dropped-frames="droppedFrames"
-            :can-launch="canLaunch"
-            :is-active="isActive"
-            :primary-label="primaryLabel"
-            :active-view="activeView"
-            v-model:gates-mode="gatesMode"
-            :error="lastError"
-            :transport-problem="transportProblem"
-            :download-status="downloadStatus"
-            :download-message="downloadMessage"
-            @launch="launch"
-            @cancel="cancel"
-            @download="downloadLogs"
-            @dismiss-error="dismissError"
-            @select-view="activeView = $event"
-          />
-          <RunHistory
-            :reload-key="historyReloadKey"
-            :enabled="authPhase === 'authenticated'"
-          />
-        </div>
-      </aside>
-    </main>
-  </div>
-  </template>
+  <StudioView
+    v-else
+    :user="signedInUser"
+    :authenticated="authPhase === 'authenticated'"
+    @build="navigate({ name: 'builder', documentId: null })"
+    @sign-out="endSession"
+  />
 </template>

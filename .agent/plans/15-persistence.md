@@ -531,7 +531,7 @@ opened (D-15-13 … D-15-22): **17 open**, the round-3 build list, read top
 to bottom. Round 3's critic is the CrewAI power user.
 
 **Round 3 was BUILT on 2026-09-03** on `gauntlet/plans`, `f2a3bb8` ->
-`849fd48` (after plan 01's round 3, which shares the branch and is a
+`38d7635` (after plan 01's round 3, which shares the branch and is a
 separate session's work). **Every D-15 row below stays `open` with
 `closed by` empty**: closing is the critic's, after it re-runs each command
 itself. Two docs commits come first and fix no defect.
@@ -549,8 +549,8 @@ itself. Two docs commits come first and fix no defect.
 | D-15-18 | `0376987` | `test_builder_delete.py` (12) - the name present, the id ABSENT, "publish" occurring exactly once |
 | D-15-16 | `3cec3f7` | `documentLifecycle.spec.ts` - and one test asserting the SERVER still has the last word when the client thought it was a draft |
 | D-15-15 | `f6ed348` | `builderShell.spec.ts` - DOM order, the sort, distinct stamps, three new actions |
-| D-15-4 | `d822150` | `e2e/builder-layout.spec.ts`. Red measured: `toBeVisible() failed ... element(s) not found` |
 | D-15-2 | `849fd48` | `e2e/builder-layout.spec.ts`. Red measured: the node title at **9.56px** against an 11px floor |
+| D-15-4 | `d822150`, then `38d7635` | the second pass came from handing the capture to a reviewer with no context: the list was a 74px window onto 441px of rows under a badge saying eight. `min-height: 168px` and an assertion on the list's own client height |
 
 D-15-19 and D-15-20 share ONE commit because they are one defect the critic
 scored twice - the behaviour on dimension 12 and the criterion its falsity
@@ -583,7 +583,7 @@ plus reachable. It now asserts the disjunction that keeps its original guard
 sharp: every node inside, OR the fit sitting exactly on the floor. A stale
 fit - the defect it exists to catch - satisfies neither.
 
-**Measured at `849fd48`**, on Windows, in this worktree with
+**Measured at `38d7635`**, on Windows, in this worktree with
 `PYTHONPATH=D:\MultiAgentSystem-wt\integration\src`:
 
 ```text

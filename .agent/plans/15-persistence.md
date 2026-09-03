@@ -351,7 +351,7 @@ with 08 / 07).
 4. The version browser opens a prior version read-only and Restore creates head + 1 through the CAS — `frontend/tests/versionBrowser.spec.ts` plus an `e2e/builder.spec.ts` step. Rubric 4.
 5. Delete from the UI removes the row and its versions (`ON DELETE CASCADE`, `persistence.py:263-275`) and refuses 409 while published-and-registered. Rubric 12.
 6. `tests/builder/test_upgrade.py`: every committed v1 fixture upgrades to a clean v2 document; upgrade is idempotent. Rubric 11.
-7. `tests/service/test_additive_migration.py` covers `runs.mode`; `create_all` on a database that already has `runs` yields all six new tables with their indexes — asserted with the inspector. Rubric 16.
+7. `tests/service/test_additive_migration.py` covers `runs.mode`; `create_all` on a database that already has `runs` yields all ~~six~~ **five** new tables with their indexes — asserted with the inspector. Rubric 16.
    *Amended 2026-09-03 (D-15-11):* **five** new tables plus `runs.mode`,
    not six. D6 declares five — `user_credentials`, `user_skills`,
    `mcp_servers`, `user_tools`, `builder_test_inputs` — and `GAUNTLET_TABLES`
@@ -360,18 +360,29 @@ with 08 / 07).
    five; "six" counted the additive column as a table. The Status table
    recorded the correction on 2026-09-03 and left this sentence unamended,
    which round 1 was right to refuse: a criterion ticked "done" over a false
-   sentence is a contract nobody can hold anyone to. The earlier wording
-   stands above so the correction is visible. (D-15-3 has since added a
-   second additive column, `builder_document_versions.source`; the count of
+   sentence is a contract nobody can hold anyone to. (D-15-3 has since added
+   a second additive column, `builder_document_versions.source`; the count of
    tables is unchanged.)
-8. The knob scan in CLAUDE.md answers forty after `VALIDATOR_RUN_RETENTION_DAYS` lands, and `docs/tech-stack.md` §6 is regenerated in the same commit. Rubric 16.
+
+   **The wrong figure is now struck through in the sentence itself
+   (2026-09-03, the owner's ruling).** Until today this plan's convention was
+   to leave the earlier wording intact and put the correction beneath it, so
+   the *first sentence a reader meets* stayed false while a dated amendment
+   two lines down said so. That convention has now been landed on three
+   times - D-15-11 here, D-15-12 on criterion 8, and D-15-20 on criterion 2 -
+   and a convention that guarantees a fourth is the wrong convention. The
+   strike-through keeps the earlier wording visible, which is what the
+   convention was for, without asserting it.
+8. The knob scan in CLAUDE.md answers ~~forty~~ **41** after `VALIDATOR_RUN_RETENTION_DAYS` lands, and `docs/tech-stack.md` §6 is regenerated in the same commit. Rubric 16.
    *Amended 2026-09-03 (D-15-12):* the scan answers **41**, and
    `docs/tech-stack.md` §6 says forty-one (`52bdc2e`). "Forty" assumed one
    new knob over thirty-nine; Stage 1 landed the six config knobs of S1
    ruling 3 before the count was regenerated, and the criterion was ticked
    against the prose rather than the scan. Re-run on 2026-09-03 while
    building round 2, with no knob added or removed by it: **41**. The
-   command is the contract; the earlier wording stands above.
+   command is the contract. The earlier wording is struck through in the
+   sentence rather than left standing above it - see criterion 7's note on
+   why that convention changed on 2026-09-03.
 9. `tests/pg/test_two_writers.py` passes against PostgreSQL 18 for all five paths, and CI gains a `services: postgres:18` job that sets `TEST_DATABASE_URL`. Rubric 11, 14.
 10. `tests/service/test_isolation_matrix.py` passes with the table in D9 exactly. Rubric 14.
     *Amended 2026-09-03 (D-15-12):* "the table in D9" means the table **and

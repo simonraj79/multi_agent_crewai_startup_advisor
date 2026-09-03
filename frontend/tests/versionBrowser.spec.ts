@@ -14,7 +14,7 @@ import { useBuilderPersistence } from '../src/composables/useBuilderPersistence'
 import { MINIMAL_GATED_AGENT, documentFromTemplate } from '../src/data/builderTemplates'
 import { resetVocabulary } from '../src/data/builderVocabulary'
 import { BuilderConflictError } from '../src/services/builderApi'
-import type { BuilderApiLike } from '../src/services/builderApi'
+import type { BuilderApiLike, SaveOptions } from '../src/services/builderApi'
 import { BUILDER_SCHEMA_ID, documentId, nodeId } from '../src/types/builder'
 import type {
   BuilderDocument,
@@ -95,7 +95,7 @@ class VersionedApi implements BuilderApiLike {
   readonly versions = new Map<number, BuilderDocument>()
   head = 0
   gets: Array<{ id: string; version: number | undefined }> = []
-  saves: Array<{ id: string; expectedVersion: number; document: BuilderDocument }> = []
+  saves: Array<{ id: string; expectedVersion: number; document: BuilderDocument; options: SaveOptions }> = []
   /** Another writer lands a version the moment head is read - the restore race. */
   bumpHeadOnGet = false
 
@@ -148,8 +148,9 @@ class VersionedApi implements BuilderApiLike {
     id: string,
     document: BuilderDocument,
     expectedVersion: number,
+    options: SaveOptions = {},
   ): Promise<BuilderDocumentModel> {
-    this.saves.push({ id, expectedVersion, document })
+    this.saves.push({ id, expectedVersion, document, options })
     if (expectedVersion !== this.head) {
       throw new BuilderConflictError(
         `document ${id} is at version ${this.head}, not ${expectedVersion}; reload it before saving again`,
@@ -299,6 +300,21 @@ describe('opening a stored version that is not head', () => {
 })
 
 describe('restoreVersion', () => {
+  it('declares itself to the server, and the idle autosave declares itself too (D-15-3)', async () => {
+    vi.useFakeTimers()
+    const { api, document, persistence } = session()
+    await persistence.open(DOC_ID, 3)
+    await persistence.restoreVersion()
+    expect(api.saves.at(-1)?.options).toEqual({ source: 'restore', restoredFrom: 3 })
+
+    document.commit('Rename', { ...document.doc.value, name: 'Idle' })
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(api.saves.at(-1)?.options).toEqual({ source: 'autosave', restoredFrom: undefined })
+
+    await persistence.save()
+    expect(api.saves.at(-1)?.options).toEqual({ source: 'save', restoredFrom: undefined })
+  })
+
   it('commits the version on screen as head + 1 through the CAS, with head one undo away', async () => {
     const onSaved = vi.fn()
     const { api, persistence, document } = session({ onSaved })
@@ -366,10 +382,12 @@ describe('restoreVersion', () => {
 
 describe('VersionBrowser', () => {
   const ROWS: BuilderVersionRow[] = [
-    { version: 7, status: 'draft', created_at: '2026-09-02T10:14:00Z', bytes: 2048 },
-    { version: 5, status: 'published', created_at: '2026-09-02T09:00:00Z', bytes: 1900 },
-    { version: 3, status: 'draft', created_at: '2026-09-01T18:30:00Z', bytes: 640 },
+    { version: 7, status: 'draft', created_at: '2026-09-02T10:14:00Z', bytes: 2048, source: 'saved', name: 'Seven', node_count: 5 },
+    { version: 5, status: 'published', created_at: '2026-09-02T09:00:00Z', bytes: 1900, source: 'restored from v3', name: 'Five', node_count: 4 },
+    { version: 3, status: 'draft', created_at: '2026-09-01T18:30:00Z', bytes: 640, source: 'created', name: 'Three', node_count: 1 },
   ]
+  /** Held still, so the relative times below are facts rather than a race. */
+  const NOW = Date.parse('2026-09-02T10:15:00Z')
 
   function browser(overrides: Record<string, unknown> = {}) {
     return mount(VersionBrowser, {
@@ -381,10 +399,49 @@ describe('VersionBrowser', () => {
         problem: '',
         restoring: false,
         documentId: DOC_ID,
+        clock: () => NOW,
         ...overrides,
       },
     })
   }
+
+  it('tells two versions from the same minute apart by label, source and seconds (D-15-3)', () => {
+    /*
+     * Round 1's capture: "v2 HEAD DRAFT 3 Sept, 00:19 1.4 KB" over
+     * "v1 DRAFT 3 Sept, 00:19 1.2 KB". Two autosaves, one minute, nothing to
+     * choose by. The same minute here, and every row differs in three places.
+     */
+    const twins: BuilderVersionRow[] = [
+      { version: 2, status: 'draft', created_at: '2026-09-02T10:14:48Z', bytes: 1400, source: 'autosaved', name: 'Minimal gated agent', node_count: 5 },
+      { version: 1, status: 'draft', created_at: '2026-09-02T10:14:12Z', bytes: 1200, source: 'created', name: 'Minimal gated agent', node_count: 4 },
+    ]
+    const wrapper = browser({ versions: twins, version: 2, headVersion: 2 })
+    const [head, older] = wrapper.findAll('.version-row')
+    expect(head.get('[data-testid="version-label"]').text()).toBe('Minimal gated agent · 5 nodes')
+    expect(older.get('[data-testid="version-label"]').text()).toBe('Minimal gated agent · 4 nodes')
+    expect(head.get('[data-testid="version-source"]').text()).toBe('autosaved')
+    expect(older.get('[data-testid="version-source"]').text()).toBe('created')
+    expect(head.get('[data-testid="version-when"]').text()).toBe('12 s ago')
+    expect(older.get('[data-testid="version-when"]').text()).toBe('48 s ago')
+    // The full stamp, seconds included, is one hover away - in the author's
+    // own zone, so only the minute and second are asserted.
+    expect(head.get('[data-testid="version-when"]').attributes('title')).toMatch(/:14:48/)
+    expect(head.get('time').attributes('datetime')).toBe('2026-09-02T10:14:48Z')
+    expect(head.text()).not.toEqual(older.text())
+  })
+
+  it('scales the relative time and falls back to the dated form', () => {
+    const wrapper = browser()
+    const whens = wrapper.findAll('[data-testid="version-when"]').map((w) => w.text())
+    expect(whens).toEqual(['1 min ago', '1 h ago', '16 h ago'])
+    const label = wrapper.findAll('[data-testid="version-label"]').map((w) => w.text())
+    expect(label).toEqual(['Seven · 5 nodes', 'Five · 4 nodes', 'Three · 1 node'])
+    const old = browser({
+      versions: [{ ...ROWS[2], created_at: '2026-08-20T08:00:00Z', name: null, node_count: null }],
+    })
+    expect(old.get('[data-testid="version-when"]').text()).toMatch(/20 Aug/)
+    expect(old.get('[data-testid="version-label"]').text()).toBe('unreadable version')
+  })
 
   it('renders the rows in the order the server sent them, and never re-sorts', () => {
     // Deliberately NOT newest-first, so a component that sorted would pass a
@@ -587,6 +644,7 @@ function stubServer() {
   const state = {
     head: 2,
     versions: new Map<number, Record<string, unknown>>(),
+    sources: new Map<number, string>(),
     versionsCalls: 0,
     puts: [] as Array<Record<string, unknown>>,
   }
@@ -638,6 +696,9 @@ function stubServer() {
           status: 'draft',
           created_at: `2026-09-02T00:0${version}:00Z`,
           bytes: JSON.stringify(state.versions.get(version)).length,
+          source: state.sources.get(version) ?? 'created',
+          name: (state.versions.get(version) as { name?: string }).name ?? null,
+          node_count: ((state.versions.get(version) as { nodes?: unknown[] }).nodes ?? []).length,
         }))
       return json(rows)
     }
@@ -646,7 +707,12 @@ function stubServer() {
       return json(model(at ? Number(at) : state.head))
     }
     if (path === `/api/builder/workflows/${SHELL_ID}` && method === 'PUT') {
-      const body = JSON.parse(String(init?.body)) as { document: Record<string, unknown>; expected_version: number }
+      const body = JSON.parse(String(init?.body)) as {
+        document: Record<string, unknown>
+        expected_version: number
+        source?: string
+        restored_from?: number
+      }
       state.puts.push(body)
       if (body.expected_version !== state.head) {
         return json(
@@ -656,6 +722,10 @@ function stubServer() {
       }
       state.head += 1
       state.versions.set(state.head, { ...body.document, id: SHELL_ID, version: state.head })
+      state.sources.set(
+        state.head,
+        body.source === 'restore' ? `restored from v${body.restored_from}` : body.source === 'autosave' ? 'autosaved' : 'saved',
+      )
       return json(model(state.head))
     }
     if (path === '/api/builder/workflows' && method === 'GET') return json([])
@@ -769,6 +839,9 @@ describe('the shell', () => {
     expect(state.puts).toHaveLength(1)
     expect(state.puts[0].expected_version).toBe(2)
     expect((state.puts[0].document as { name: string }).name).toBe('First')
+    // D-15-3: the restore says what it is, so the new row can say "restored from v1".
+    expect(state.puts[0].source).toBe('restore')
+    expect(state.puts[0].restored_from).toBe(1)
     expect(state.head).toBe(3)
     expect(wrapper.get('[data-testid="save-chip"]').text()).toContain('saved · v3')
     expect(wrapper.find('[data-testid="version-viewing"]').exists()).toBe(false)
@@ -780,6 +853,7 @@ describe('the shell', () => {
       'version-row-2',
       'version-row-1',
     ])
+    expect(wrapper.get('[data-testid="version-row-3"] [data-testid="version-source"]').text()).toBe('restored from v1')
     wrapper.unmount()
   })
 

@@ -33,7 +33,7 @@ with the same admission control, the same rate limit and the same ownership.
 from collections.abc import Mapping
 from datetime import datetime
 import json
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -208,6 +208,12 @@ class BuilderDocumentRequest(BaseModel):
     #: Required on a save, ignored on a create and on a validate. The server
     #: assigns the new version; this says which one it is replacing.
     expected_version: int | None = Field(default=None, ge=0)
+    #: How this save came about, for the version browser (round 2, D-15-3):
+    #: one of `BUILDER_VERSION_SAVE_SOURCES`, or absent, which reads as a plain
+    #: save. The server composes the stored string - see `_version_source`.
+    source: Literal["save", "autosave", "restore"] | None = None
+    #: The version a `restore` put back, so the row can say "restored from v3".
+    restored_from: int | None = Field(default=None, ge=1)
 
 
 class BuilderDocumentSummaryModel(BaseModel):
@@ -287,7 +293,15 @@ class BuilderImportRequest(BaseModel):
 
 
 class BuilderVersionModel(BaseModel):
-    """One row of the version browser."""
+    """One row of the version browser.
+
+    Round 1 (D-15-3) found two rows that read "3 Sept, 00:19 · DRAFT" and
+    differed by 0.2 KB in 11px text, so choosing which to restore was
+    guesswork. Three facts were added: `name` and `node_count` read leniently
+    off the stored row (the label), and `source` from the column of the same
+    round (how the row came to be). The relative time is the client's, from
+    `created_at`, which already carried seconds.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -298,6 +312,13 @@ class BuilderVersionModel(BaseModel):
     status: str
     created_at: datetime
     bytes: int
+    #: `created`, `saved`, `autosaved`, `restored from v3`, `imported`,
+    #: `duplicated` - or `stored`, for a row older than the column.
+    source: str
+    #: The document's name at that version; None when the row cannot say.
+    name: str | None
+    #: How many nodes that version has; None when the row cannot say.
+    node_count: int | None
 
 
 class BuilderValidationModel(BaseModel):
@@ -668,7 +689,7 @@ def create_builder_router(
         if not raw.get("name") and request.name:
             raw["name"] = request.name
         document = parse(raw, document_id=new_document_id(), version=FIRST_VERSION)
-        stored = _guarded(lambda: store.create(document, user_id=owner))
+        stored = _guarded(lambda: store.create(document, user_id=owner, source="imported"))
         response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
         node_ids = {node.id for node in document.nodes}
         needs_credentials = [
@@ -732,6 +753,7 @@ def create_builder_router(
                 document,
                 expected_version=request.expected_version,
                 user_id=owner_of(user),
+                source=_version_source(request),
             )
         )
         return judged(stored)
@@ -787,6 +809,9 @@ def create_builder_router(
                 status=_version_status(entry.version, history, live_version),
                 created_at=entry.created_at,
                 bytes=entry.bytes,
+                source=entry.source or "stored",
+                name=entry.name,
+                node_count=entry.node_count,
             )
             for entry in history.entries
         ]
@@ -819,7 +844,7 @@ def create_builder_router(
         payload["name"] = copy_name(source.document.name)
         payload.pop("budget", None)
         document = parse(payload, document_id=new_document_id(), version=FIRST_VERSION)
-        stored = _guarded(lambda: store.create(document, user_id=owner))
+        stored = _guarded(lambda: store.create(document, user_id=owner, source="duplicated"))
         response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
         return judged(stored)
 
@@ -1109,6 +1134,22 @@ def copy_name(name: str) -> str:
     if len(base) > room:
         base = base[:room].rstrip()
     return f"{base}{COPY_SUFFIX}"
+
+
+def _version_source(request: BuilderDocumentRequest) -> str:
+    """The stored provenance of a save, composed from what the client declared.
+
+    The client says WHICH gesture (`save`, `autosave`, `restore`) and, for a
+    restore, which version it put back; the server writes the sentence, so
+    the vocabulary in the browser is the server's and a stale client cannot
+    invent a fourth kind of row.
+    """
+
+    if request.source == "restore":
+        return f"restored from v{request.restored_from}" if request.restored_from else "restored"
+    if request.source == "autosave":
+        return "autosaved"
+    return "saved"
 
 
 def _version_status(version: int, history: VersionHistory, live_version: int | None) -> str:

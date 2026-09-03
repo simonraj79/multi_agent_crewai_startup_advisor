@@ -84,8 +84,8 @@ function stubServer(options: ServerOptions = {}) {
     }
     if (url.pathname === `/api/builder/workflows/${DOC}/versions`) {
       return json([
-        { version: 2, status: 'draft', created_at: '2026-09-02T00:02:00Z', bytes: 10 },
-        { version: 1, status: 'draft', created_at: '2026-09-02T00:01:00Z', bytes: 10 },
+        { version: 2, status: 'draft', created_at: '2026-09-02T00:02:00Z', bytes: 10, source: 'saved', name: 'Stored', node_count: 4 },
+        { version: 1, status: 'draft', created_at: '2026-09-02T00:01:00Z', bytes: 10, source: 'created', name: 'Stored', node_count: 4 },
       ])
     }
     if (url.pathname === `/api/builder/workflows/${DOC}` && method === 'DELETE') {

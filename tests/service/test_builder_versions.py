@@ -64,7 +64,10 @@ class TheList(VersionsCase):
         created = self.create_as(ADA_TOKEN)
         entries = self.listed(ADA_TOKEN, created["id"])
         self.assertEqual(len(entries), 1)
-        self.assertEqual(set(entries[0]), {"version", "status", "created_at", "bytes"})
+        self.assertEqual(
+            set(entries[0]),
+            {"version", "status", "created_at", "bytes", "source", "name", "node_count"},
+        )
         self.assertEqual(entries[0]["version"], 1)
         self.assertEqual(entries[0]["status"], "draft")
         self.assertGreater(entries[0]["bytes"], 0)
@@ -101,6 +104,93 @@ class TheList(VersionsCase):
             )
         entries = self.listed(ADA_TOKEN, created["id"])
         self.assertEqual([entry["version"] for entry in entries], [2, 1])
+
+
+class WhatARowSays(VersionsCase):
+    """Round 2, D-15-3: a row carries a label, its source and a dated time.
+
+    Round 1 found two rows that read "3 Sept, 00:19 · DRAFT" apart from 0.2 KB
+    of size, so choosing which to restore was guesswork. `name` and
+    `node_count` are the label, read leniently off the stored row; `source` is
+    the new column, composed by the server from what the client declared.
+    """
+
+    def row(self, document_id: str, version: int) -> dict[str, Any]:
+        return next(r for r in self.listed(ADA_TOKEN, document_id) if r["version"] == version)
+
+    def test_every_row_carries_its_name_node_count_and_source(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        self.save_named(created["id"], "two", expected_version=1)
+        first, second = self.row(created["id"], 1), self.row(created["id"], 2)
+        self.assertEqual(first["name"], "Test graph")
+        self.assertEqual(second["name"], "two")
+        self.assertEqual(first["node_count"], len(document_payload()["nodes"]))
+        self.assertEqual(second["node_count"], len(document_payload()["nodes"]))
+        self.assertEqual(first["source"], "created")
+        self.assertEqual(second["source"], "saved")
+
+    def test_the_save_source_is_composed_from_what_the_client_declared(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        for version, body, expected in (
+            (2, {"source": "autosave"}, "autosaved"),
+            (3, {"source": "save"}, "saved"),
+            (4, {"source": "restore", "restored_from": 1}, "restored from v1"),
+            (5, {"source": "restore"}, "restored"),
+            (6, {}, "saved"),
+        ):
+            with self.subTest(expected=expected):
+                saved = self.client.put(
+                    f"/api/builder/workflows/{created['id']}",
+                    json={"document": document_payload(), "expected_version": version - 1, **body},
+                    headers=self.auth(ADA_TOKEN),
+                )
+                self.assertEqual(saved.status_code, 200, saved.text)
+                self.assertEqual(self.row(created["id"], version)["source"], expected)
+
+    def test_a_source_the_server_does_not_know_is_refused(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        refused = self.client.put(
+            f"/api/builder/workflows/{created['id']}",
+            json={"document": document_payload(), "expected_version": 1, "source": "magic"},
+            headers=self.auth(ADA_TOKEN),
+        )
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_an_import_and_a_duplicate_say_where_they_came_from(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        envelope = self.export_as(ADA_TOKEN, created["id"]).json()
+        imported = self.import_as(ADA_TOKEN, envelope)
+        self.assertEqual(imported.status_code, 201, imported.text)
+        self.assertEqual(self.row(imported.json()["id"], 1)["source"], "imported")
+        duplicated = self.client.post(
+            f"/api/builder/workflows/{created['id']}/duplicate", headers=self.auth(ADA_TOKEN)
+        )
+        self.assertEqual(duplicated.status_code, 201, duplicated.text)
+        self.assertEqual(self.row(duplicated.json()["id"], 1)["source"], "duplicated")
+
+    def test_a_row_older_than_the_column_reads_stored(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        persistence = self.app.state.run_registry.persistence
+        with persistence.begin() as connection:
+            connection.execute(
+                update(builder_document_versions)
+                .where(builder_document_versions.c.document_id == created["id"])
+                .values(source=None)
+            )
+        self.assertEqual(self.row(created["id"], 1)["source"], "stored")
+
+    def test_a_row_the_schema_refuses_still_says_what_it_can(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        persistence = self.app.state.run_registry.persistence
+        with persistence.begin() as connection:
+            connection.execute(
+                update(builder_document_versions)
+                .where(builder_document_versions.c.document_id == created["id"])
+                .values(document={"name": "Only a name", "nodes": "not a list"})
+            )
+        row = self.row(created["id"], 1)
+        self.assertEqual(row["name"], "Only a name")
+        self.assertIsNone(row["node_count"])
 
 
 class OpeningAnOlderVersion(VersionsCase):

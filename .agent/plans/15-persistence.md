@@ -220,6 +220,21 @@ Known gap carried, not fixed: `_add_missing_columns` re-ensures indexes on
 need its own entry there. None of the tables above is shipped, so
 `create_all` creates them with their indexes.
 
+> **Amended 2026-09-03 (round 2, D-15-3) — a second additive column, C10.**
+> `("builder_document_versions", "source", "VARCHAR(64)")` is appended to
+> `_ADDITIVE_COLUMNS`, nullable, read as `stored` when `NULL`. It carries how
+> a version came to be — `created`, `saved`, `autosaved`, `restored from v3`,
+> `imported`, `duplicated` — for the version browser, whose rows round 1 found
+> indistinguishable at minute resolution. `builder_document_versions` shipped
+> on 2026-09-02 (`b4ef654`), so `create_all` never adds this column to a
+> deployed database; the additive path is the only way it arrives, and
+> `tests/service/test_additive_migration.py::VersionSourceColumnTests` builds
+> the table as it shipped and asserts the upgrade. Nothing is backfilled. The
+> client declares one of `BUILDER_VERSION_SAVE_SOURCES` on a save and the
+> server composes the stored string; the label beside it (`name`,
+> `node_count`) is read leniently off the stored row and needs no column.
+> Recorded against C10 in `00-architecture.md`.
+
 ### D7 — Retention
 
 `VALIDATOR_RUN_RETENTION_DAYS` (int, default `0` = keep forever, read in

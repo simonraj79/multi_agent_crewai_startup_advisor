@@ -48,7 +48,7 @@ from sqlalchemy import delete, func, insert, select, update
 
 from brief_crew.builder.document import BuilderDocument
 from brief_crew.builder.upgrade import upgrade_document
-from brief_crew.config import MAX_BUILDER_DOCUMENT_BYTES
+from brief_crew.config import BUILDER_VERSION_SOURCE_MAX_CHARS, MAX_BUILDER_DOCUMENT_BYTES
 from brief_crew.service.persistence import (
     PostgresFlowPersistence,
     bounded_json,
@@ -218,11 +218,21 @@ class VersionSummary:
     compared against. Not parsed, deliberately: a version written under a
     schema this service no longer reads must still appear in the history, or
     an author cannot see which version it was that stopped opening.
+
+    `name` and `node_count` are READ off the raw row, not validated out of it
+    (round 2, D-15-3): a mapping with a `name` string and a `nodes` list gives
+    both, anything else gives None, and a row the schema would refuse still
+    lists with whatever it can say. `source` is the column of the same round -
+    `created`, `saved`, `autosaved`, `restored from v3`, `imported`,
+    `duplicated` - and None for a row written before the column existed.
     """
 
     version: int
     created_at: datetime
     bytes: int
+    source: str | None = None
+    name: str | None = None
+    node_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -391,6 +401,7 @@ class BuilderDocumentStore:
                     builder_document_versions.c.version,
                     builder_document_versions.c.created_at,
                     builder_document_versions.c.document,
+                    builder_document_versions.c.source,
                 )
                 .where(builder_document_versions.c.document_id == document_id)
                 .order_by(builder_document_versions.c.version.desc())
@@ -404,6 +415,8 @@ class BuilderDocumentStore:
                     version=int(row["version"]),
                     created_at=row["created_at"],
                     bytes=_encoded_size(row["document"]),
+                    source=row["source"],
+                    **_lenient_summary(row["document"]),
                 )
                 for row in rows
             ),
@@ -454,7 +467,11 @@ class BuilderDocumentStore:
 
     # ----------------------------------------------------------------- write
     def create(
-        self, document: BuilderDocument, *, user_id: str | None = None
+        self,
+        document: BuilderDocument,
+        *,
+        user_id: str | None = None,
+        source: str = "created",
     ) -> StoredDocument:
         """Insert a brand new document at the version it declares.
 
@@ -463,6 +480,11 @@ class BuilderDocumentStore:
         name is `builder_{id}_v{version}` - and a store that assigned it after
         validation would be handing back a different document from the one it
         was given.
+
+        `source` is what the version browser will say this first version came
+        from (D-15-3): `created` from the canvas, `imported` from a file,
+        `duplicated` from another document. The routes that mint rows say
+        which; the store only stores it.
         """
 
         payload = _checked_size(document.id, _document_json(document))
@@ -496,6 +518,7 @@ class BuilderDocumentStore:
                     version=document.version,
                     document=safe,
                     created_at=now,
+                    source=_version_source(source),
                 )
             )
         return StoredDocument(
@@ -513,6 +536,7 @@ class BuilderDocumentStore:
         *,
         expected_version: int,
         user_id: str | None = None,
+        source: str | None = None,
     ) -> StoredDocument:
         """Write a new version, if `expected_version` is still the head.
 
@@ -521,6 +545,10 @@ class BuilderDocumentStore:
         stored budget is versioned against it - and a client that could choose
         it could make two different graphs share one tag, which is precisely
         what the ETag exists to prevent.
+
+        `source` is the version browser's provenance for the new row (D-15-3),
+        composed by the route from what the client declared: `saved`,
+        `autosaved`, `restored from v3`. None reads as `saved`.
         """
 
         expected = int(expected_version)
@@ -572,6 +600,7 @@ class BuilderDocumentStore:
                     version=next_version,
                     document=safe,
                     created_at=now,
+                    source=_version_source(source or "saved"),
                 )
             )
         return StoredDocument(
@@ -780,6 +809,33 @@ class BuilderDocumentStore:
                     updated_at=head["updated_at"],
                     head_version=int(head["version"]),
                 )
+
+
+def _version_source(value: str) -> str:
+    """The provenance string as stored: bounded to the column, never empty."""
+
+    text = str(value).strip()[:BUILDER_VERSION_SOURCE_MAX_CHARS]
+    return text or "saved"
+
+
+def _lenient_summary(payload: Any) -> dict[str, Any]:
+    """`name` and `node_count` off a raw stored row, or None for each.
+
+    Read, not validated (D-15-3): the version browser lists every stored row,
+    including one the schema no longer parses, and a summary that went through
+    `BuilderDocument` would hide exactly the row an author most wants to see.
+    A mapping with a string `name` gives a name; a list under `nodes` gives a
+    count; anything else gives None for that field and the row still lists.
+    """
+
+    if not isinstance(payload, Mapping):
+        return {"name": None, "node_count": None}
+    name = payload.get("name")
+    nodes = payload.get("nodes")
+    return {
+        "name": name if isinstance(name, str) and name else None,
+        "node_count": len(nodes) if isinstance(nodes, list) else None,
+    }
 
 
 def _head_version_now(connection: Any, document_id: str, fallback: int) -> int:

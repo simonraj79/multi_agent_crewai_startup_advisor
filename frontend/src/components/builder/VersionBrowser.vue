@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArchiveRestore, Clock3, CornerUpLeft, Eye, Loader, Lock, TriangleAlert, X } from 'lucide-vue-next'
 import type { BuilderVersionRow } from '../../types/builder'
 
@@ -51,8 +51,10 @@ const props = withDefaults(
      * a click quietly discarding the last 2.5 seconds of work.
      */
     blocked?: string
+    /** The clock the relative times read. Injected so a spec can hold it still. */
+    clock?: () => number
   }>(),
-  { blocked: '' },
+  { blocked: '', clock: () => () => Date.now() },
 )
 
 const emit = defineEmits<{
@@ -67,6 +69,30 @@ const emit = defineEmits<{
 
 const viewing = computed(() => props.headVersion > 0 && props.version !== props.headVersion)
 
+/*
+ * WHAT A ROW SAYS, and why it says three things (round 2, D-15-3).
+ *
+ * Round 1 put two rows on screen that read "v2 HEAD DRAFT 3 Sept, 00:19" and
+ * "v1 DRAFT 3 Sept, 00:19", differing by 0.2 KB in ten-pixel text at the far
+ * right; choosing which to restore was guesswork. A row now carries a LABEL
+ * (the name at that version and its node count, read off the stored row by
+ * the server), its SOURCE (`created`, `saved`, `autosaved`, `restored from
+ * v1`, `imported`, `duplicated`), and a RELATIVE time that keeps seconds under
+ * a minute - "12 s ago" against "48 s ago" - with the full timestamp, seconds
+ * included, in the title. Two autosaves from the same minute now differ in at
+ * least one of the three.
+ */
+
+/** Ticks so "12 s ago" does not read "12 s ago" all afternoon. */
+const now = ref(props.clock())
+let ticker = 0
+onMounted(() => {
+  ticker = window.setInterval(() => {
+    now.value = props.clock()
+  }, 30_000)
+})
+onBeforeUnmount(() => window.clearInterval(ticker))
+
 /** `2026-09-02T10:14:00Z` -> `2 Sep, 10:14`. Undated rows show the raw value. */
 function when(iso: string): string {
   const at = Date.parse(iso)
@@ -77,6 +103,48 @@ function when(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(at)
+}
+
+/** The full stamp, seconds included, for the title: `2 Sep 2026, 10:14:32`. */
+function stamp(iso: string): string {
+  const at = Date.parse(iso)
+  if (!Number.isFinite(at)) return iso
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(at)
+}
+
+/**
+ * `12 s ago`, `3 min ago`, `2 h ago`, `yesterday`, else the dated form.
+ * Seconds are kept under a minute because that is the resolution two versions
+ * from one minute need; a row from the future (a clock skewed against the
+ * server's) reads `just now` rather than a negative number.
+ */
+function ago(iso: string): string {
+  const at = Date.parse(iso)
+  if (!Number.isFinite(at)) return iso
+  const seconds = Math.round((now.value - at) / 1000)
+  if (seconds < 5) return 'just now'
+  if (seconds < 60) return `${seconds} s ago`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 22) return `${hours} h ago`
+  if (hours < 36) return 'yesterday'
+  return when(iso)
+}
+
+/** `Minimal gated agent · 5 nodes`; a nameless row still shows its count. */
+function label(row: BuilderVersionRow): string {
+  const parts: string[] = []
+  if (row.name) parts.push(row.name)
+  if (row.node_count !== null) parts.push(`${row.node_count} ${row.node_count === 1 ? 'node' : 'nodes'}`)
+  return parts.join(' · ') || 'unreadable version'
 }
 
 /** `1234` -> `1.2 KB`. Bytes below a kilobyte stay as bytes. */
@@ -177,7 +245,12 @@ function weight(bytes: number): string {
             <span v-if="row.version === headVersion" class="version-pill is-headpill">head</span>
             <span class="version-pill" :class="`is-${row.status}`">{{ row.status }}</span>
           </span>
-          <span class="version-when"><Clock3 :size="11" aria-hidden="true" />{{ when(row.created_at) }}</span>
+          <span class="version-label" :title="label(row)" data-testid="version-label">{{ label(row) }}</span>
+          <span class="version-source" data-testid="version-source">{{ row.source }}</span>
+          <span class="version-when" :title="stamp(row.created_at)" data-testid="version-when">
+            <Clock3 :size="11" aria-hidden="true" />
+            <time :datetime="row.created_at">{{ ago(row.created_at) }}</time>
+          </span>
           <span class="version-bytes">{{ weight(row.bytes) }}</span>
         </button>
       </li>
@@ -242,7 +315,7 @@ function weight(bytes: number): string {
 
 .version-row {
   display: grid;
-  grid-template-columns: 44px auto minmax(0, 1fr) auto;
+  grid-template-columns: 44px auto minmax(0, 1fr) auto auto auto;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -265,6 +338,11 @@ function weight(bytes: number): string {
 .version-pill.is-draft { color: var(--text-muted); background: var(--surface-raised); }
 .version-pill.is-published { color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
 .version-pill.is-headpill { color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
-.version-when { display: inline-flex; gap: 4px; align-items: center; color: var(--text-40); font: 500 10px/1 var(--font-mono); }
-.version-bytes { color: var(--text-40); font: 500 10px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+/* The label is the row's identity and takes the flexible column; the source
+   and the time are facts beside it, in the type scale's smallest step rather
+   than the 10px the critic measured - and the same tokens the chip uses. */
+.version-label { min-width: 0; overflow: hidden; color: var(--text-body); font-size: var(--fs-12); text-overflow: ellipsis; white-space: nowrap; }
+.version-source { color: var(--text-muted); font: 500 var(--fs-11)/1 var(--font-mono); white-space: nowrap; }
+.version-when { display: inline-flex; gap: 4px; align-items: center; color: var(--text-40); font: 500 var(--fs-11)/1 var(--font-mono); white-space: nowrap; }
+.version-bytes { color: var(--text-40); font: 500 var(--fs-11)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
 </style>

@@ -9,6 +9,7 @@ import type {
   BuilderPublish,
   BuilderValidation,
   BuilderVersionRow,
+  SaveSource,
   CredentialDraft,
   CredentialProbe,
   CredentialSummary,
@@ -58,6 +59,13 @@ export const BUILDER_API_PREFIX = '/api/builder'
  * with no version at all answers the same question, so a parse failure costs
  * one extra request rather than reaching a dead end.
  */
+/** How a save came about, for the version browser (D-15-3). */
+export interface SaveOptions {
+  source?: SaveSource
+  /** With `source: 'restore'`: the version that was put back. */
+  restoredFrom?: number
+}
+
 export class BuilderConflictError extends Error {
   readonly name = 'BuilderConflictError'
   /** The version the server actually holds, or null when unparseable. */
@@ -223,18 +231,30 @@ export class BuilderApi {
    * `validate` round trip is not the stored version at all.
    *
    * A 409 is a `BuilderConflictError`, not a message. See its docblock.
+   *
+   * `options` says how the save came about (round 2, D-15-3) - `save`,
+   * `autosave`, or `restore` with the version it put back - and the server
+   * composes the version browser's `source` from it. Omitted, the server
+   * writes `saved`; the three doubles that implement `BuilderApiLike` with the
+   * three-parameter shape keep compiling, because a caller may pass more.
    */
   async save(
     id: string,
     doc: BuilderDocument,
     expectedVersion: number,
+    options: SaveOptions = {},
   ): Promise<BuilderDocumentModel> {
     return this.json<BuilderDocumentModel>(
       `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document: toWire(doc), expected_version: expectedVersion }),
+        body: JSON.stringify({
+          document: toWire(doc),
+          expected_version: expectedVersion,
+          ...(options.source ? { source: options.source } : {}),
+          ...(options.restoredFrom ? { restored_from: options.restoredFrom } : {}),
+        }),
       },
     )
   }

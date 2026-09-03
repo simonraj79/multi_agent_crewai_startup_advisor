@@ -229,5 +229,96 @@ class GauntletSchemaTests(AdditiveMigrationTests):
         self.assertTrue(set(self.EXPECTED_INDEXES) <= set(inspect(engine).get_table_names()))
 
 
+# `builder_documents` and `builder_document_versions` exactly as they shipped
+# on 2026-09-02 (`b4ef654`), before `source` existed.
+LEGACY_BUILDER_DOCUMENTS_DDL = """
+CREATE TABLE builder_documents (
+    id VARCHAR(128) NOT NULL PRIMARY KEY,
+    user_id VARCHAR(128),
+    name VARCHAR(255) NOT NULL,
+    version INTEGER NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+)
+"""
+LEGACY_BUILDER_VERSIONS_DDL = """
+CREATE TABLE builder_document_versions (
+    document_id VARCHAR(128) NOT NULL,
+    version INTEGER NOT NULL,
+    document JSON NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (document_id, version),
+    FOREIGN KEY(document_id) REFERENCES builder_documents (id) ON DELETE CASCADE
+)
+"""
+LEGACY_BUILDER_ROWS = (
+    "INSERT INTO builder_documents VALUES ('ug_0ld0ld00',NULL,'Old graph',1,'draft',"
+    "'2026-09-02','2026-09-02')",
+    "INSERT INTO builder_document_versions VALUES ('ug_0ld0ld00',1,'{\"name\":\"Old graph\"}',"
+    "'2026-09-02')",
+)
+
+
+class VersionSourceColumnTests(unittest.TestCase):
+    """Plan 15 D6 amended 2026-09-03 (C10; round 2 D-15-3): `builder_document_versions.source`.
+
+    The second column to reach a SHIPPED table by the additive path. The
+    fixture is the two builder tables as `b4ef654` created them, with one
+    version row; `init_db` must add the column, leave that row's source NULL
+    (which the route reads as `stored`), and do nothing on a second call.
+    """
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.engine = create_engine(f"sqlite:///{Path(directory.name) / 'legacy-builder.db'}")
+        self.addCleanup(self.engine.dispose)
+        with self.engine.begin() as connection:
+            connection.execute(text(LEGACY_BUILDER_DOCUMENTS_DDL))
+            connection.execute(text(LEGACY_BUILDER_VERSIONS_DDL))
+            for statement in LEGACY_BUILDER_ROWS:
+                connection.execute(text(statement))
+
+    def columns(self) -> set[str]:
+        return {c["name"] for c in inspect(self.engine).get_columns("builder_document_versions")}
+
+    def upgrade(self) -> PostgresFlowPersistence:
+        store = PostgresFlowPersistence(self.engine, initialize=False)
+        store.init_db()
+        return store
+
+    def test_the_fixture_really_is_the_shipped_shape(self) -> None:
+        self.assertNotIn("source", self.columns())
+
+    def test_the_source_column_is_added_to_a_shipped_versions_table(self) -> None:
+        self.upgrade()
+        self.assertIn("source", self.columns())
+
+    def test_a_row_written_before_source_existed_keeps_a_null_source(self) -> None:
+        self.upgrade()
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT document_id, version, source FROM builder_document_versions")
+            ).one()
+        self.assertEqual((row.document_id, row.version), ("ug_0ld0ld00", 1))
+        self.assertIsNone(row.source)
+
+    def test_running_it_twice_changes_nothing(self) -> None:
+        self.upgrade()
+        before = self.columns()
+        self.upgrade()
+        self.assertEqual(self.columns(), before)
+
+    def test_a_fresh_database_has_source_without_the_alter(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        engine = create_engine(f"sqlite:///{Path(directory.name) / 'fresh.db'}")
+        self.addCleanup(engine.dispose)
+        PostgresFlowPersistence(engine, initialize=False).init_db()
+        columns = {c["name"] for c in inspect(engine).get_columns("builder_document_versions")}
+        self.assertIn("source", columns)
+
+
 if __name__ == "__main__":
     unittest.main()

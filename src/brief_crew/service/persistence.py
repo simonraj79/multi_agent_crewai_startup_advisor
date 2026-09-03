@@ -278,6 +278,13 @@ builder_document_versions = Table(
     Column("version", Integer, primary_key=True),
     Column("document", _json_type(), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    # How this version came to be - `created`, `saved`, `autosaved`,
+    # `restored from v3`, `imported`, `duplicated` - for the version browser
+    # (plan 15 D6 amended 2026-09-03, C10; round 2 D-15-3). Nullable, because
+    # the table shipped without it: `create_all` never alters a shipped table,
+    # so the column reaches a deployed database only through
+    # `_ADDITIVE_COLUMNS`, and every row written before it stays NULL.
+    Column("source", String(64)),
 )
 
 
@@ -686,6 +693,11 @@ class PostgresFlowPersistence(FlowPersistence):
         ("runs", "user_id", "VARCHAR(128)"),
         # C7 run mode, .agent/plans/15-persistence.md D6. VARCHAR(16), NULL = `run`.
         ("runs", "mode", "VARCHAR(16)"),
+        # Plan 15 D6 amended 2026-09-03 (C10, round 2 D-15-3): how a version
+        # came to be. `builder_document_versions` shipped on 2026-09-02, so
+        # this is the second column to reach a deployed table by this path.
+        # NULL reads as `stored`; nothing is backfilled.
+        ("builder_document_versions", "source", "VARCHAR(64)"),
     )
 
     def _add_missing_columns(self) -> None:

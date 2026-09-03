@@ -2411,6 +2411,20 @@ COPY_SUFFIX = " copy"
 #: anyway; this only bounds what it is willing to parse.
 MAX_IMPORT_NEEDS_CREDENTIALS = MAX_GRAPH_NODES
 
+# How a stored version came to be, for the version browser (round 2, D-15-3).
+#: What a CLIENT may declare on a save. The server composes the stored string
+#: from it - `saved`, `autosaved`, `restored from v3` - and writes `created`,
+#: `imported` and `duplicated` itself on the routes that mint a row. Round 1
+#: found two rows that read "3 Sept, 00:19 · DRAFT" apart from 0.2 KB, so
+#: choosing which to restore was guesswork; the source is one of the three
+#: facts that tell them apart, beside the name-and-node-count label and a
+#: relative time with seconds.
+BUILDER_VERSION_SAVE_SOURCES: tuple[str, ...] = ("save", "autosave", "restore")
+#: `builder_document_versions.source` is VARCHAR(64), added through
+#: `persistence._ADDITIVE_COLUMNS` because that table shipped before it
+#: (plan 15 D6, C10, amended 2026-09-03). NULL on older rows reads as `stored`.
+BUILDER_VERSION_SOURCE_MAX_CHARS = 64
+
 # --------------------------------------------------------------------------
 # WebSocket inbound control channel - PRD F27/F37
 #

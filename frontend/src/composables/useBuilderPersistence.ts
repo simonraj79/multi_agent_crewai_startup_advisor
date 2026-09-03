@@ -9,6 +9,7 @@ import type {
   DocumentId,
   DocumentStatus,
   NodeId,
+  SaveSource,
 } from '../types/builder'
 import { BuilderConflictError, builderApi } from '../services/builderApi'
 import type { BuilderApiLike } from '../services/builderApi'
@@ -209,7 +210,7 @@ export function useBuilderPersistence(
     if (!dirty.value || documentId.value === null || saving.value || conflict.value) return
     idleTimer = window.setTimeout(() => {
       idleTimer = 0
-      void save()
+      void save('autosave')
     }, AUTOSAVE_IDLE_MS)
   }
 
@@ -461,7 +462,7 @@ export function useBuilderPersistence(
    * spec §4.6 is explicit that a 409 never auto-reloads, because the author's
    * only copy of their work is the one on screen.
    */
-  async function save(): Promise<void> {
+  async function save(origin: SaveSource = 'save', restoredFrom?: number): Promise<void> {
     if (saving.value || conflict.value) return
     // Ctrl+S over v3 of v7 would PUT with `expected_version: 3` and be a 409
     // about a conflict nobody had - the version on screen is read-only, so
@@ -475,8 +476,14 @@ export function useBuilderPersistence(
     const id = documentId.value
     saving.value = true
     try {
+      // `origin` is what the version browser will say this row came from
+      // (D-15-3): the idle timer says `autosave`, Ctrl+S says `save`, and
+      // `restoreVersion` says which version it put back. A create carries
+      // none - the server writes `created` itself.
       const model =
-        id === null ? await api.create(snapshot) : await api.save(id, snapshot, version.value)
+        id === null
+          ? await api.create(snapshot)
+          : await api.save(id, snapshot, version.value, { source: origin, restoredFrom })
       adoptIdentity(model)
       error.value = ''
       // Rewritten rather than removed, so the key carries the NEW baseVersion.
@@ -611,7 +618,7 @@ export function useBuilderPersistence(
     // function could do nothing and say so nowhere.
     adoptIdentity(head)
     document.commit(`Restored v${from} over v${head.version}`, restored)
-    await save()
+    await save('restore', from)
   }
 
   /* --- wiring ------------------------------------------------------------- */

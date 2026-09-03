@@ -459,3 +459,15 @@ it binds; the plan files themselves are unchanged.
     published-and-registered document refuses with 409), 25 (the PostgreSQL
     CI job runs on `main` only), 26 (unowned published workflows stay
     launchable).
+
+### C10 amendments — round 2, 2026-09-03
+
+Recorded here because C10 is indexed above and its body is plan 15 D6; the
+plan carries the same note beside its table.
+
+- **`builder_document_versions.source VARCHAR(64)`, nullable, through
+  `_ADDITIVE_COLUMNS`** (plan 15 round 2, D-15-3). How a version came to be,
+  for the version browser. The table shipped on 2026-09-02, so this is the
+  second column to reach a deployed table by the additive path after
+  `runs.mode`; `NULL` reads as `stored`, nothing is backfilled, and the
+  upgrade is asserted against the shipped DDL. Consumers: 15 only.

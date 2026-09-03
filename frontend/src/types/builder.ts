@@ -765,4 +765,18 @@ export interface BuilderVersionRow {
   created_at: string
   /** The stored JSON's size, for the browser's one number about weight. */
   bytes: number
+  /**
+   * How the row came to be (round 2, D-15-3): `created`, `saved`, `autosaved`,
+   * `restored from v3`, `imported`, `duplicated`, or `stored` for a row older
+   * than the column. Composed by the server from what this client declares on
+   * a save - see `SaveOptions`.
+   */
+  source: string
+  /** The document's name at that version, read leniently off the row; null if it has none. */
+  name: string | null
+  /** How many nodes that version has; null when the row could not say. */
+  node_count: number | null
 }
+
+/** What a save may declare about itself, for the version browser's `source`. */
+export type SaveSource = 'save' | 'autosave' | 'restore'

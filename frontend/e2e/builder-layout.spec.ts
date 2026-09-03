@@ -454,6 +454,32 @@ test.describe('the saved-graphs library (D-15-4)', () => {
       expect(box.scrollHeight).toBeLessThanOrEqual(box.clientHeight + 1)
     }
 
+    /*
+     * D-15-4, round 2: something VISIBLE says there is more.
+     *
+     * Every row was already reachable - the scroll below proves it - and the
+     * critic's sentence is that nothing on screen said so: the second row's
+     * card was cut at y900 in five captures with no scrollbar and no count.
+     * What is scored is what is visible.
+     *
+     * The count is asserted rather than the scrollbar because a scrollbar is
+     * a platform decision: an overlay one is drawn only while scrolling,
+     * which is exactly why this was invisible on the capture machine. The
+     * count is in the layout, in every screenshot, at every platform.
+     */
+    const count = palette.locator('[data-testid="library-count"]')
+    await expect(count).toBeVisible()
+    // At least the six this test seeded; the store is shared, so never `toBe`.
+    expect(Number(await count.textContent())).toBeGreaterThanOrEqual(NAMES.length)
+    const countBox = (await count.boundingBox())!
+    expect(countBox.y + countBox.height, 'the count is above the fold').toBeLessThanOrEqual(900)
+    // And the list really is longer than what is on screen, or the affordance
+    // would be answering a question nobody has.
+    const listOverflow = await palette
+      .locator('.builder-library')
+      .evaluate((el) => el.scrollHeight - el.clientHeight)
+    expect(listOverflow, 'the premise: the list has more than it shows').toBeGreaterThan(0)
+
     // The palette ends inside the viewport, and the last seeded row can be
     // reached - the sixth, whose name says why it exists.
     const paletteBox = (await palette.boundingBox())!

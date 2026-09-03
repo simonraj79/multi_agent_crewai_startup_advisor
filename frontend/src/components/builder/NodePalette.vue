@@ -266,7 +266,26 @@ function place(kind: NodeKind): void {
 
     <header class="builder-palette-head builder-palette-head-library">
       <span class="builder-palette-kicker">LIBRARY</span>
-      <h2>Saved graphs</h2>
+      <div class="builder-library-headline">
+        <h2>Saved graphs</h2>
+        <!--
+        HOW MANY THERE ARE (D-15-4, round 2). The list scrolls, and 87px of
+        it are on screen at 1440x900 - so the second row's card was cut at
+        the viewport edge in five captures with nothing visible to say a
+        third existed. Every row was REACHABLE, which the layout spec already
+        proved by scrolling to the last one; what was missing was any way to
+        know to scroll. What is scored is what is visible.
+
+        A count rather than a styled scrollbar alone: it is legible at a
+        glance, it survives a platform that draws overlay scrollbars only
+        while scrolling (which is what made this invisible on the capture
+        machine), and it answers "how much more" rather than "there is more".
+          The list also keeps a permanent gutter, below.
+        -->
+        <span v-if="library.length" class="builder-library-count" data-testid="library-count">
+          {{ library.length }}
+        </span>
+      </div>
     </header>
 
     <p v-if="library.length === 0" class="builder-palette-empty">No saved graphs yet</p>

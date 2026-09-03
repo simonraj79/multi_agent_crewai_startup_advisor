@@ -754,7 +754,43 @@
 /* The list scrolls on its own inside the palette (D-15-4): a library of
    many rows must never push the palette past the viewport with nothing to
    grab, and `min-height: 0` is what lets a flex child shrink to be clipped. */
-.builder-library { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-height: 0; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+/*
+ * `scrollbar-gutter: stable` and a drawn scrollbar (D-15-4, round 2). An
+ * overlay scrollbar - the platform default on the machine this was captured
+ * on - appears only while scrolling, so a clipped list looked like a complete
+ * one. The gutter also stops the rows shifting sideways the moment a sixth
+ * graph makes the list scroll.
+ */
+.builder-library {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong, var(--border-default)) transparent;
+  list-style: none;
+}
+.builder-library::-webkit-scrollbar { width: 8px; }
+.builder-library::-webkit-scrollbar-thumb {
+  background: var(--border-strong, var(--border-default));
+  border-radius: var(--r-pill);
+}
+
+/* The total, on the heading's own row - the head itself is a column. */
+.builder-library-headline { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.builder-library-count {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  color: var(--text-muted);
+  font: 700 10px/1.6 var(--font-mono);
+  background: var(--surface-well);
+  border-radius: var(--r-pill);
+}
 /* The name takes the row's whole width and the version and status sit under
    it (D-15-4): beside them it had ~100px in a 236px rail, which is thirteen
    characters a line, and "Minimal gated agent copy" lost its last word even

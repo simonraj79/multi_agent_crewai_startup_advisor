@@ -829,16 +829,24 @@ def create_builder_router(
     async def delete_document(
         document_id: str, user: Any = Depends(current_user)
     ) -> Response:
-        """Delete a graph and every version of it - unless it is launchable.
+        """Delete a graph and every version of it - unless ANY version is launchable.
 
-        A head that is `published` AND registered on this service is refused
-        with a **409**, not unpublished on the way out (PLANS.md decision 24,
-        built on the plan's recommendation). Deleting it would take the graph
-        out of the registration maps and the row out of the table in one
-        request, which is the one shape the boot sweep can never put back and
-        the one shape a run queued a moment earlier compiles against nothing.
-        The sentence says what to do instead: a save returns the head to
-        `draft`, and a draft deletes.
+        A document with a version registered on this service is refused with a
+        **409**, not unpublished on the way out (PLANS.md decision 24, built on
+        the plan's recommendation). Deleting it would take the graph out of the
+        registration maps and the row out of the table in one request, which
+        is the one shape the boot sweep can never put back and the one shape a
+        run queued a moment earlier compiles against nothing. The sentence
+        says what to do instead, in the words the docked confirm uses:
+        unpublish it first, then delete it.
+
+        Round 1 (D-15-10) found the guard one save deep. It read
+        `stored.status == STATUS_PUBLISHED and registered_workflow(...)`, and
+        its own sentence told the author to save - which returned the HEAD to
+        `draft` while the older version stayed registered and launchable, so
+        the very next delete passed the guard and unregistered a live graph.
+        The condition is now the registration alone, and the remedy is a route
+        the server honours: `POST .../unpublish`.
 
         For a draft, or a published row this process never registered (one the
         boot sweep skipped), the order is unchanged: unregister, then delete.
@@ -851,21 +859,50 @@ def create_builder_router(
         store = require_store()
         # `writable=True` BEFORE `_unregister`: a refusal must leave the graph
         # exactly as registered as it was (D-15-7).
-        stored = _guarded(
-            lambda: store.load(document_id, user_id=owner_of(user), writable=True)
-        )
-        if stored.status == STATUS_PUBLISHED and registered_workflow(document_id) is not None:
+        _guarded(lambda: store.load(document_id, user_id=owner_of(user), writable=True))
+        live = registered_workflow(document_id)
+        if live is not None:
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"document {document_id} is published and registered as a "
-                    "launchable workflow, so it cannot be deleted; save a new "
-                    "version to return it to draft, then delete it"
+                    f"document {document_id} is published - v{live.document.version} "
+                    "is registered as a launchable workflow - and cannot be "
+                    "deleted; unpublish it first, then delete it"
                 ),
             )
         _unregister(registry, document_id)
         _guarded(lambda: store.delete(document_id, user_id=owner_of(user)))
         return Response(status_code=204)
+
+    @router.post("/workflows/{document_id}/unpublish", response_model=BuilderDocumentModel)
+    async def unpublish(
+        document_id: str, user: Any = Depends(current_user)
+    ) -> BuilderDocumentModel:
+        """Take this graph out of service and return its head to `draft`.
+
+        The remedy the delete 409 names, and the route that makes decision 24
+        honest (D-15-10): "refuse to delete a published graph" is only a rule
+        an author can act on if unpublishing is something the server does.
+
+        The row moves FIRST, then the registration. A crash between the two
+        leaves a draft that is still registered until the next restart, which
+        then does not re-register it - the right end state, one restart late.
+        The other order would leave a `published` row with no registration,
+        and the boot sweep would put the graph back into service on the next
+        deploy: the author's unpublish, silently undone. Idempotent, and a
+        graph that was never published answers 200 with nothing changed - the
+        author asked for a state, and that is the state.
+
+        Same visibility as every other write: a stranger's document is 404,
+        an unowned one is 403 naming Duplicate.
+        """
+
+        store = require_store()
+        stored = _guarded(
+            lambda: store.mark_unpublished(document_id, user_id=owner_of(user))
+        )
+        _unregister(registry, document_id)
+        return judged(stored)
 
     @router.post("/validate", response_model=BuilderValidationModel)
     async def validate(

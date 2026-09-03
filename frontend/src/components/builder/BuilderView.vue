@@ -9,6 +9,7 @@ import {
   PenTool,
   Play,
   RotateCcw,
+  Unplug,
   X,
 } from 'lucide-vue-next'
 import SignInPanel from '../SignInPanel.vue'
@@ -318,12 +319,17 @@ const deleteTyped = ref('')
 const deleteProblem = ref('')
 const deleteInFlight = ref(false)
 /**
- * The server said no and nothing here can change its mind - a 409 for a
- * document that is published AND registered (owner decision 24). The confirm
- * keeps the sentence and loses the button: nothing destructive is offered
- * over a refusal that resending cannot lift.
+ * The server said no and resending cannot change its mind - a 409 for a
+ * document with a version still registered (owner decision 24). The confirm
+ * keeps the sentence and loses the Delete button, and offers the ONE thing
+ * that lifts the refusal: Unpublish (round 2, D-15-10). Until then the
+ * confirm's own copy promised that deleting a published graph would
+ * unregister it, the server said the opposite, and the 409's remedy was a
+ * save that turned the guard off one version deep.
  */
 const deleteRefused = ref(false)
+/** True while the confirm's Unpublish is in flight, so it cannot be pressed twice. */
+const unpublishing = ref(false)
 
 /**
  * Trimmed and case-insensitive, the same rule `TemplateGallery` applies and
@@ -714,6 +720,38 @@ function askDelete(): void {
   deleteTyped.value = ''
   deleteProblem.value = ''
   deleteRefused.value = false
+}
+
+/**
+ * `POST /workflows/{id}/unpublish`: the graph leaves service, the head
+ * returns to draft, and the document on screen is untouched (decision 24,
+ * D-15-10). Reached from the menu and from the delete confirm's refusal; from
+ * the confirm, a success puts the confirm back the way it was - typed name
+ * kept - so the delete the author asked for is one more click, not a fresh
+ * start.
+ */
+async function unpublishDocument(): Promise<void> {
+  const id = persistence.documentId.value
+  if (id === null || unpublishing.value) return
+  unpublishing.value = true
+  try {
+    await builderApi.unpublish(id)
+    persistence.noteUnpublished()
+    publishProblems.value = []
+    if (deleteRefused.value) {
+      deleteRefused.value = false
+      deleteProblem.value = ''
+    }
+    if (versionsOpen.value) void loadVersions()
+    void refreshLibrary()
+    say(`unpublished “${doc.value.name}” — it no longer answers launches.`)
+  } catch (error) {
+    const message = messageOf(error, 'the graph could not be unpublished.')
+    if (deleteAsk.value) deleteProblem.value = message
+    else say(message)
+  } finally {
+    unpublishing.value = false
+  }
 }
 
 function cancelDelete(): void {
@@ -1313,6 +1351,7 @@ watch(
             @export="exportDocument"
             @import="importFile"
             @duplicate="duplicateDocument"
+            @unpublish="unpublishDocument"
             @delete="askDelete"
           >
             <template #save-chip>
@@ -1459,13 +1498,20 @@ watch(
               data-testid="delete-confirm"
               @submit.prevent="confirmDelete"
             >
+              <!--
+                The second sentence is the SERVER's rule in the server's words
+                (D-15-10): `delete_document`'s 409 ends "cannot be deleted;
+                unpublish it first, then delete it", and a confirm that
+                promised anything else would be a remedy the server does not
+                honour. `documentLifecycle.spec.ts` pins the shared clause.
+              -->
               <label for="builder-delete-name" class="builder-delete-copy">
                 <template v-if="!deleteRefused">
-                  Delete <strong>{{ doc.name }}</strong> and every stored version of it? Deleting a
-                  published graph unregisters it; running graphs are not affected. Type
+                  Delete <strong>{{ doc.name }}</strong> and every stored version of it? A published
+                  graph cannot be deleted; unpublish it first, then delete it. Type
                   <strong>{{ doc.name }}</strong> to confirm.
                 </template>
-                <template v-else>Not deleted.</template>
+                <template v-else>Not deleted — it is still published.</template>
               </label>
               <p
                 v-if="deleteProblem"
@@ -1486,13 +1532,29 @@ watch(
                   :aria-describedby="deleteProblem ? 'builder-delete-problem' : undefined"
                   data-testid="delete-name"
                 />
+                <!--
+                  The remedy the 409 names, where the 409 is read. Unpublish
+                  lifts the refusal; the confirm then returns to its asking
+                  state with the typed name kept.
+                -->
+                <button
+                  v-if="deleteRefused"
+                  class="button button-primary"
+                  type="button"
+                  :disabled="unpublishing"
+                  data-testid="delete-unpublish"
+                  @click="unpublishDocument"
+                >
+                  <Unplug :size="14" aria-hidden="true" />
+                  {{ unpublishing ? 'Unpublishing…' : 'Unpublish' }}
+                </button>
                 <button
                   class="button button-quiet"
                   type="button"
                   data-testid="delete-cancel"
                   @click="cancelDelete"
                 >
-                  {{ deleteRefused ? 'OK' : 'Keep it' }}
+                  {{ deleteRefused ? 'Keep it published' : 'Keep it' }}
                 </button>
                 <button
                   v-if="!deleteRefused"

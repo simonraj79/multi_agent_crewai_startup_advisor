@@ -60,6 +60,10 @@ function model(id: string, name: string, version = 2, head = 2) {
 
 interface ServerOptions {
   deleteAnswer?: { status: number; detail: string }
+  /** A second delete, after an unpublish, answers this instead. */
+  deleteAnswerAfterUnpublish?: { status: number; detail: string }
+  /** What the stored document reports itself as. */
+  status?: 'draft' | 'published'
 }
 
 function stubServer(options: ServerOptions = {}) {
@@ -67,6 +71,7 @@ function stubServer(options: ServerOptions = {}) {
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
   const duplicates: string[] = []
   const deletes: string[] = []
+  const unpublishes: string[] = []
   let listCalls = 0
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), 'http://localhost')
@@ -85,12 +90,21 @@ function stubServer(options: ServerOptions = {}) {
     }
     if (url.pathname === `/api/builder/workflows/${DOC}` && method === 'DELETE') {
       deletes.push(url.pathname)
-      if (options.deleteAnswer) return json({ detail: options.deleteAnswer.detail }, options.deleteAnswer.status)
+      // After an unpublish the server's 409 is lifted: answer 204 unless the
+      // test says otherwise.
+      const answer = unpublishes.length > 0 ? options.deleteAnswerAfterUnpublish : options.deleteAnswer
+      if (answer) return json({ detail: answer.detail }, answer.status)
       return new Response(null, { status: 204 })
+    }
+    if (url.pathname === `/api/builder/workflows/${DOC}/unpublish` && method === 'POST') {
+      unpublishes.push(url.pathname)
+      return json({ ...model(DOC, 'Stored', 2, 2), status: 'draft', published: false })
     }
     if (url.pathname === `/api/builder/workflows/${DOC}` && method === 'GET') {
       const at = url.searchParams.get('version')
-      return json(model(DOC, 'Stored', at ? Number(at) : 2, 2))
+      const stored = model(DOC, 'Stored', at ? Number(at) : 2, 2)
+      if (options.status === 'published') return json({ ...stored, status: 'published', published: true })
+      return json(stored)
     }
     if (url.pathname === '/api/builder/workflows' && method === 'GET') {
       listCalls += 1
@@ -103,6 +117,7 @@ function stubServer(options: ServerOptions = {}) {
     fetch,
     duplicates,
     deletes,
+    unpublishes,
     get listCalls() {
       return listCalls
     },
@@ -225,6 +240,10 @@ describe('Delete', () => {
     expect(wrapper.get('[data-testid="builder-dock"]').find('[data-testid="delete-confirm"]').exists()).toBe(true)
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     expect(confirm.text()).toContain('Delete Stored and every stored version')
+    // D-15-10: the rule is the server's, in the server's words. The 409 from
+    // `delete_document` ends with exactly this clause.
+    expect(confirm.text()).toContain('cannot be deleted; unpublish it first, then delete it')
+    expect(confirm.text()).not.toContain('unregisters it')
     expect(confirm.get('[data-testid="delete-submit"]').attributes('disabled')).toBeDefined()
 
     // The wrong name keeps it disabled; the right one, trimmed and
@@ -262,8 +281,8 @@ describe('Delete', () => {
     wrapper.unmount()
   })
 
-  it('renders a 409 for a published-and-registered graph verbatim and offers nothing destructive', async () => {
-    const sentence = `document ${DOC} is published and registered; unpublish it before deleting it`
+  it('renders a 409 for a registered graph verbatim and offers only the remedy it names', async () => {
+    const sentence = `document ${DOC} is published - v1 is registered as a launchable workflow - and cannot be deleted; unpublish it first, then delete it`
     const server = stubServer({ deleteAnswer: { status: 409, detail: sentence } })
     const wrapper = await mountStored()
     await choose(wrapper, 'menu-delete')
@@ -274,16 +293,18 @@ describe('Delete', () => {
     const confirm = wrapper.get('[data-testid="delete-confirm"]')
     expect(confirm.get('[data-testid="delete-problem"]').text()).toBe(sentence)
     expect(confirm.get('[data-testid="delete-problem"]').attributes('role')).toBe('alert')
-    // The button and the box are GONE, not disabled: a refusal that resending
-    // cannot lift has no retry, and the only control left closes the confirm.
+    // The Delete button and the box are GONE, not disabled: resending cannot
+    // lift a 409. What is offered is the one thing that can (D-15-10).
     expect(confirm.find('[data-testid="delete-submit"]').exists()).toBe(false)
     expect(confirm.find('[data-testid="delete-name"]').exists()).toBe(false)
-    expect(confirm.get('[data-testid="delete-cancel"]').text()).toBe('OK')
+    expect(confirm.get('[data-testid="delete-unpublish"]').text()).toContain('Unpublish')
+    expect(confirm.get('[data-testid="delete-cancel"]').text()).toBe('Keep it published')
 
     // Submitting the form again sends nothing.
     await confirm.trigger('submit')
     await settled()
     expect(server.deletes).toHaveLength(1)
+    expect(server.unpublishes).toHaveLength(0)
 
     // And the document is still open, still addressed.
     expect(wrapper.find('.builder-canvas').exists()).toBe(true)
@@ -292,6 +313,64 @@ describe('Delete', () => {
     await confirm.get('[data-testid="delete-cancel"]').trigger('click')
     await flush(2)
     expect(wrapper.find('[data-testid="delete-confirm"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('Unpublish in the refusal POSTs the remedy, keeps the typed name, and the delete then goes through', async () => {
+    const sentence = `document ${DOC} is published - v1 is registered as a launchable workflow - and cannot be deleted; unpublish it first, then delete it`
+    const server = stubServer({
+      deleteAnswer: { status: 409, detail: sentence },
+      deleteAnswerAfterUnpublish: undefined,
+      status: 'published',
+    })
+    const wrapper = await mountStored()
+    await choose(wrapper, 'menu-delete')
+    await wrapper.get('[data-testid="delete-name"]').setValue('Stored')
+    await wrapper.get('[data-testid="delete-confirm"]').trigger('submit')
+    await settled()
+    expect(server.deletes).toHaveLength(1)
+
+    await wrapper.get('[data-testid="delete-unpublish"]').trigger('click')
+    await settled()
+
+    expect(server.unpublishes).toEqual([`/api/builder/workflows/${DOC}/unpublish`])
+    const confirm = wrapper.get('[data-testid="delete-confirm"]')
+    // Back to the asking state, name kept, nothing destructive pressed for the author.
+    expect(confirm.find('[data-testid="delete-problem"]').exists()).toBe(false)
+    expect((confirm.get('[data-testid="delete-name"]').element as HTMLInputElement).value).toBe('Stored')
+    expect(confirm.get('[data-testid="delete-submit"]').attributes('disabled')).toBeUndefined()
+    expect(server.deletes).toHaveLength(1)
+
+    await confirm.trigger('submit')
+    await settled()
+    expect(server.deletes).toHaveLength(2)
+    expect(wrapper.find('[data-testid="delete-confirm"]').exists()).toBe(false)
+    expect(wrapper.emitted('closeDocument')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('Unpublish in the menu POSTs the same route and the bar stops calling the version live', async () => {
+    const server = stubServer({ status: 'published' })
+    const wrapper = await mountStored()
+    expect(wrapper.text()).toContain('is live')
+
+    await choose(wrapper, 'menu-unpublish')
+
+    expect(server.unpublishes).toEqual([`/api/builder/workflows/${DOC}/unpublish`])
+    expect(wrapper.text()).not.toContain('is live')
+    expect(wrapper.find('.builder-notice').text()).toContain('unpublished')
+    // The document, its history and its address are untouched.
+    expect(wrapper.find('.builder-canvas').exists()).toBe(true)
+    expect(wrapper.emitted('closeDocument')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('offers Unpublish only when something is known to be published', async () => {
+    stubServer()
+    const wrapper = await mountStored()
+    await wrapper.get('[data-testid="document-menu-button"]').trigger('click')
+    await flush(2)
+    expect(wrapper.get('[data-testid="menu-unpublish"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
@@ -353,6 +432,7 @@ describe('the overflow menu', () => {
       'menu-export',
       'menu-import',
       'menu-duplicate',
+      'menu-unpublish',
       'menu-delete',
     ])
     expect(button.attributes('aria-expanded')).toBe('true')

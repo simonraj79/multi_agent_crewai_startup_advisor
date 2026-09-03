@@ -620,6 +620,37 @@ class BuilderDocumentStore:
             head_version=version,
         )
 
+    def mark_unpublished(
+        self, document_id: str, *, user_id: str | None = None
+    ) -> StoredDocument:
+        """Return a published head to `draft`, touching no version.
+
+        The other half of `mark_published`, and the store half of the
+        unpublish route (round 2, D-15-10; PLANS.md decision 24). The status
+        has to move HERE and not only in the process-local registration maps,
+        because the boot sweep re-registers every row whose status says
+        `published`: an unpublish that left the row alone would be undone by
+        the next deploy, and both Render services carry `autoDeploy: yes`.
+
+        Idempotent, and guarded on the status rather than on the version. A
+        head that is already `draft` - edited after the publish, while an
+        older version stayed registered - is left as it is; the route's
+        unregister is what takes that older version out of service.
+        """
+
+        loaded = self.load(document_id, user_id=user_id, writable=True)
+        now = utcnow()
+        with self._store.begin() as connection:
+            connection.execute(
+                update(builder_documents)
+                .where(
+                    builder_documents.c.id == loaded.id,
+                    builder_documents.c.status == STATUS_PUBLISHED,
+                )
+                .values(status=STATUS_DRAFT, updated_at=now)
+            )
+        return self.load(document_id, user_id=user_id)
+
     def delete(self, document_id: str, *, user_id: str | None = None) -> None:
         """Remove a document, every version of it, and its saved test inputs.
 

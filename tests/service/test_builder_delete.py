@@ -9,11 +9,16 @@ Two things the route has to get right and one thing it has to refuse:
   be the answer if only the head had gone.
 * a draft that still has an OLDER version registered is unregistered on the
   way out - the graph must not stay launchable after its document is gone.
-* a head that is `published` AND registered on this service is refused with a
+* a document with ANY version registered on this service is refused with a
   **409** (PLANS.md decision 24, S1 ruling 10). Deleting it would take the
   graph out of the registration maps and the row out of the table in one
   request - the one shape the boot sweep can never put back. The sentence says
-  what to do instead: a save returns the head to `draft`, and a draft deletes.
+  what to do instead, in the words the docked confirm uses: unpublish it
+  first, then delete it. Round 1 (D-15-10) found the guard one save deep - it
+  keyed on the HEAD's status, and its own remedy ("save a new version") turned
+  the head to draft while the older version stayed registered, so the next
+  delete unregistered a live graph. `test_builder_unpublish.py` is the route
+  the remedy now names.
 
 The UI half - the confirm inside the docked rail - is criterion 5's other half
 and belongs to `s1/15-ui`.
@@ -156,7 +161,10 @@ class PublishedDeletion(DeleteCase):
         self.assertEqual(response.status_code, 409, response.text)
         detail = response.json()["detail"]
         self.assertIn("published", detail)
-        self.assertIn("draft", detail)
+        # D-15-10: the remedy is one the server honours, in the docked
+        # confirm's own words.
+        self.assertIn("cannot be deleted; unpublish it first, then delete it", detail)
+        self.assertNotIn("save a new version", detail)
         self.assertIn(created["id"], detail)
         # Still there, still launchable, still published.
         self.assertEqual(self.counts(created["id"]), (1, 1, 0))
@@ -164,8 +172,14 @@ class PublishedDeletion(DeleteCase):
         self.assertIn(published["workflow_id"], self.app.state.run_registry.workflows)
         self.assertEqual(self.get_as(ADA_TOKEN, created["id"]).json()["status"], "published")
 
-    def test_a_save_returns_it_to_draft_and_then_it_deletes_and_unregisters(self) -> None:
-        """The sentence in the 409 is a recipe, and the recipe works."""
+    def test_a_save_does_not_make_a_registered_graph_deletable(self) -> None:
+        """D-15-10: the guard was one save deep, and this is the save.
+
+        Before round 2 this test asserted the opposite - that a save returned
+        the head to draft and the delete then went through - and it was green
+        while the delete unregistered a still-launchable v1. The registered
+        version is what the guard keys on now; the head's status is not.
+        """
 
         created = self.create_as(ADA_TOKEN)
         published = self.publish_as(ADA_TOKEN, created["id"])
@@ -174,16 +188,49 @@ class PublishedDeletion(DeleteCase):
         )
         self.assertEqual(saved.status_code, 200, saved.text)
         self.assertEqual(saved.json()["status"], "draft")
-        # The older version is still the one registered - a draft with a live
-        # graph behind it, which is exactly the shape the delete must clean up.
+        # The older version is still the one registered and still launchable.
         self.assertIsNotNone(builder_workflow(published["workflow_id"]))
+        graph = self.client.get(
+            f"/api/workflows/{published['workflow_id']}/graph", headers=self.auth(ADA_TOKEN)
+        )
+        self.assertEqual(graph.status_code, 200, graph.text)
+
+        response = self.delete_as(ADA_TOKEN, created["id"])
+
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn("v1 is registered", response.json()["detail"])
+        self.assertIn("unpublish it first, then delete it", response.json()["detail"])
+        self.assertEqual(self.counts(created["id"]), (1, 2, 0))
+        self.assertIsNotNone(builder_workflow(published["workflow_id"]))
+        self.assertEqual(
+            self.client.get(
+                f"/api/workflows/{published['workflow_id']}/graph", headers=self.auth(ADA_TOKEN)
+            ).status_code,
+            200,
+        )
+
+    def test_unpublish_then_delete_removes_the_row_and_the_registration(self) -> None:
+        """The recipe the 409 now names, followed to the end."""
+
+        created = self.create_as(ADA_TOKEN)
+        published = self.publish_as(ADA_TOKEN, created["id"])
+        unpublished = self.client.post(
+            f"/api/builder/workflows/{created['id']}/unpublish", headers=self.auth(ADA_TOKEN)
+        )
+        self.assertEqual(unpublished.status_code, 200, unpublished.text)
+        self.assertIsNone(builder_workflow(published["workflow_id"]))
 
         response = self.delete_as(ADA_TOKEN, created["id"])
 
         self.assertEqual(response.status_code, 204, response.text)
         self.assertEqual(self.counts(created["id"]), (0, 0, 0))
-        self.assertIsNone(builder_workflow(published["workflow_id"]))
         self.assertNotIn(published["workflow_id"], self.app.state.run_registry.workflows)
+        self.assertEqual(
+            self.client.get(
+                f"/api/workflows/{published['workflow_id']}/graph", headers=self.auth(ADA_TOKEN)
+            ).status_code,
+            404,
+        )
 
     def test_a_published_row_this_process_never_registered_deletes(self) -> None:
         """The boot sweep skips a row that no longer compiles; that row is

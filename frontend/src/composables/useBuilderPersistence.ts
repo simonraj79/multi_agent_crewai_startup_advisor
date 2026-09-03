@@ -430,6 +430,20 @@ export function useBuilderPersistence(
     if (publishedAt === version.value) publishedHere.value = true
   }
 
+  /**
+   * The reverse: `POST .../unpublish` landed (plan 15 D3, round 2 D-15-10).
+   *
+   * Three facts and nothing else - the document on screen, its history and
+   * its version are untouched, because unpublishing changes what the SERVICE
+   * runs and not what the author drew. `adopt` would have reloaded the
+   * document and cleared the undo ring for a change that edited nothing.
+   */
+  function noteUnpublished(): void {
+    publishedVersion.value = null
+    publishedHere.value = false
+    status.value = 'draft'
+  }
+
   /* --- the save ----------------------------------------------------------- */
 
   /**
@@ -643,6 +657,7 @@ export function useBuilderPersistence(
     adopt,
     startNew,
     notePublished,
+    noteUnpublished,
     loadHead,
     discardMine,
     keepMine,

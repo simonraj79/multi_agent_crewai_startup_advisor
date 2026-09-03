@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Clock3, FilePlus2, Loader, Trash2, TriangleAlert, Upload } from 'lucide-vue-next'
+import { Clock3, FilePlus2, Loader, Trash2, TriangleAlert, Unplug, Upload } from 'lucide-vue-next'
 import GraphThumbnail from './GraphThumbnail.vue'
 import { BUILDER_TEMPLATES } from '../../data/builderTemplates'
-import { builderApi } from '../../services/builderApi'
+import { BuilderConflictError, builderApi } from '../../services/builderApi'
 import type { BuilderApiLike } from '../../services/builderApi'
 import type { BuilderTemplate } from '../../data/builderTemplates'
 import type { BuilderDocumentSummary } from '../../types/builder'
@@ -31,8 +31,15 @@ const props = withDefaults(
   defineProps<{
     /** Injected so a spec can drive the two requests without a server. */
     api?: BuilderApiLike
+    /**
+     * `POST .../unpublish`, the remedy a delete's 409 names (D-15-10). Its own
+     * prop rather than a member of `api`, because `BuilderApiLike` is the Pick
+     * three test doubles are compiler-forced to match and plan 15 criterion 11
+     * says one of them passes unchanged.
+     */
+    unpublish?: (id: string) => Promise<unknown>
   }>(),
-  { api: () => builderApi },
+  { api: () => builderApi, unpublish: () => (id: string) => builderApi.unpublish(id) },
 )
 
 const emit = defineEmits<{
@@ -68,6 +75,9 @@ const deleting = ref<string | null>(null)
 const typedName = ref('')
 const deleteProblem = ref('')
 const deleteInFlight = ref(false)
+/** The 409: a version is still registered, and only Unpublish lifts it. */
+const deleteRefused = ref(false)
+const unpublishing = ref(false)
 
 const money = (value: number) => `$${value.toFixed(2)}`
 
@@ -149,12 +159,37 @@ function askToDelete(id: string): void {
   deleting.value = id
   typedName.value = ''
   deleteProblem.value = ''
+  deleteRefused.value = false
 }
 
 function cancelDelete(): void {
   deleting.value = null
   typedName.value = ''
   deleteProblem.value = ''
+  deleteRefused.value = false
+}
+
+/**
+ * Lift the 409 the way its sentence says: unpublish, then the confirm returns
+ * to its asking state with the typed name kept, and the row's pill follows.
+ */
+async function unpublishRefused(): Promise<void> {
+  const id = deleting.value
+  if (!id || unpublishing.value) return
+  unpublishing.value = true
+  try {
+    await props.unpublish(id)
+    deleteRefused.value = false
+    deleteProblem.value = ''
+    library.value = library.value.map((entry) =>
+      entry.id === id ? { ...entry, status: 'draft' } : entry,
+    )
+  } catch (error) {
+    deleteProblem.value =
+      error instanceof Error ? error.message : 'the graph could not be unpublished.'
+  } finally {
+    unpublishing.value = false
+  }
 }
 
 /**
@@ -182,6 +217,7 @@ async function confirmDelete(): Promise<void> {
   } catch (error) {
     deleteProblem.value =
       error instanceof Error ? error.message : 'the graph could not be deleted.'
+    deleteRefused.value = error instanceof BuilderConflictError
   } finally {
     deleteInFlight.value = false
   }
@@ -341,20 +377,44 @@ function when(iso: string): string {
             misread - typing the name is what proves the right row was read.
           -->
           <form v-if="deleting === entry.id" class="delete-confirm" @submit.prevent="confirmDelete">
+            <!-- The server's rule in the server's words (D-15-10); see the
+                 docked confirm in `BuilderView` for why the clause is shared. -->
             <label :for="`confirm-${entry.id}`">
-              Deleting a published graph unregisters it, and running graphs are not affected.
-              Type <strong>{{ entry.name }}</strong> to confirm.
+              <template v-if="!deleteRefused">
+                A published graph cannot be deleted; unpublish it first, then delete it.
+                Type <strong>{{ entry.name }}</strong> to confirm.
+              </template>
+              <template v-else>Not deleted — it is still published.</template>
             </label>
-            <div class="delete-actions">
+            <div class="delete-actions" :class="{ 'is-refused': deleteRefused }">
               <input
+                v-if="!deleteRefused"
                 :id="`confirm-${entry.id}`"
                 v-model="typedName"
                 type="text"
                 autocomplete="off"
                 :aria-describedby="deleteProblem ? `confirm-problem-${entry.id}` : undefined"
               />
-              <button class="button button-quiet" type="button" @click="cancelDelete">Keep it</button>
-              <button class="button button-danger" type="submit" :disabled="!confirmed || deleteInFlight">
+              <button
+                v-if="deleteRefused"
+                class="button button-primary"
+                type="button"
+                :disabled="unpublishing"
+                data-testid="gallery-unpublish"
+                @click="unpublishRefused"
+              >
+                <Unplug :size="14" aria-hidden="true" />
+                {{ unpublishing ? 'Unpublishing…' : 'Unpublish' }}
+              </button>
+              <button class="button button-quiet" type="button" @click="cancelDelete">
+                {{ deleteRefused ? 'Keep it published' : 'Keep it' }}
+              </button>
+              <button
+                v-if="!deleteRefused"
+                class="button button-danger"
+                type="submit"
+                :disabled="!confirmed || deleteInFlight"
+              >
                 {{ deleteInFlight ? 'Deleting…' : 'Delete' }}
               </button>
             </div>
@@ -540,6 +600,9 @@ function when(iso: string): string {
 .delete-confirm label { color: var(--text-muted); }
 .delete-confirm strong { color: var(--text-title); }
 .delete-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+/* Refused: no text box, so the two buttons sit at the start rather than in a
+   column reserved for an input that is not there. */
+.delete-actions.is-refused { grid-template-columns: auto auto; justify-content: start; }
 .delete-actions input {
   min-height: 38px;
   padding: 0 10px;

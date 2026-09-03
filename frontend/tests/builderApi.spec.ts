@@ -198,21 +198,23 @@ describe('the builder API client', () => {
        * Eight routes, and the client reaches every one of them. A ninth
        * appearing here with no caller is a capability nothing can use.
        *
-       * Plan 15 adds four (`s1/15-api`), and this client already calls them
-       * (`s1/15-ui`). The two land on `main` separately, so which world this
-       * test is in is READ off the python rather than assumed: before the API
-       * branch merges the table says eight and the four are not walked;
-       * after, it says twelve and they are - and a client route the python
-       * does not declare is still a failure either way.
+       * Plan 15 adds five (`s1/15-api`, and `unpublish` in round 2 for
+       * D-15-10), and this client already calls them (`s1/15-ui`). The two
+       * land on `main` separately, so which world this test is in is READ
+       * off the python rather than assumed: before the API branch merges the
+       * table says eight and the five are not walked; after, it says thirteen
+       * and they are - and a client route the python does not declare is
+       * still a failure either way.
        */
       const planFifteen = [
         'GET /workflows/{document_id}/export',
         'POST /workflows/import',
         'POST /workflows/{document_id}/duplicate',
         'GET /workflows/{document_id}/versions',
+        'POST /workflows/{document_id}/unpublish',
       ]
       const planFifteenLanded = planFifteen.every((route) => declared.has(route))
-      expect(declared.size).toBe(planFifteenLanded ? 12 : 8)
+      expect(declared.size).toBe(planFifteenLanded ? 13 : 8)
 
       /*
        * Seven of the eight are this class's. The eighth - `GET /vocabulary` -
@@ -241,6 +243,7 @@ describe('the builder API client', () => {
         await api.importWorkflow(ENVELOPE)
         await api.duplicateWorkflow('ug_0a1b2c3d')
         await api.listVersions('ug_0a1b2c3d')
+        await api.unpublish('ug_0a1b2c3d')
       }
 
       const asked = fetchMock.mock.calls.map(([url, init]) => {
@@ -672,12 +675,14 @@ describe('the builder API client', () => {
         importWorkflow: async () => ({ ...STORED, needs_credentials: [] }) as never,
         duplicateWorkflow: async () => STORED as never,
         listVersions: async () => [],
+        unpublish: async () => STORED as never,
       }
       expect(Object.keys(double).sort()).toEqual([
         'duplicateWorkflow',
         'exportWorkflow',
         'importWorkflow',
         'listVersions',
+        'unpublish',
       ])
     })
   })

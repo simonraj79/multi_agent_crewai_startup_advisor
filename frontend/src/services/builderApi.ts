@@ -360,6 +360,22 @@ export class BuilderApi {
     )
   }
 
+  /**
+   * Take a published graph out of service and return its head to draft.
+   *
+   * The remedy the delete 409 names (plan 15 D3; PLANS.md decision 24, round 2
+   * D-15-10): "a published graph cannot be deleted; unpublish it first" is only
+   * a rule an author can act on if this route exists. Answers the document
+   * model with `published: false` and `status: 'draft'`; idempotent, so a graph
+   * that was never published answers 200 with nothing changed.
+   */
+  async unpublish(id: string): Promise<BuilderDocumentModel> {
+    return this.json<BuilderDocumentModel>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}/unpublish`,
+      { method: 'POST' },
+    )
+  }
+
   /** Every stored version of a document, newest first. Same visibility as `get`. */
   async listVersions(id: string): Promise<BuilderVersionRow[]> {
     return this.json<BuilderVersionRow[]>(
@@ -418,7 +434,7 @@ export type BuilderApiLike = Pick<
 >
 
 /**
- * The four routes plan 15 added, as their own surface.
+ * The five routes plan 15 added, as their own surface.
  *
  * NOT folded into `BuilderApiLike`, and the reason is that plan's criterion 11:
  * `tests/builderPersistence.spec.ts` (33) must pass unchanged, and both it and
@@ -431,7 +447,7 @@ export type BuilderApiLike = Pick<
  */
 export type BuilderLifecycleApiLike = Pick<
   BuilderApi,
-  'exportWorkflow' | 'importWorkflow' | 'duplicateWorkflow' | 'listVersions'
+  'exportWorkflow' | 'importWorkflow' | 'duplicateWorkflow' | 'listVersions' | 'unpublish'
 >
 
 export const builderApi = new BuilderApi()

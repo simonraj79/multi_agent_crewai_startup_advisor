@@ -10,6 +10,7 @@ import {
   Rocket,
   Trash2,
   Undo2,
+  Unplug,
   Upload,
 } from 'lucide-vue-next'
 import type { SaveState } from '../../composables/useBuilderPersistence'
@@ -95,6 +96,12 @@ const emit = defineEmits<{
   import: [file: File]
   /** `POST .../duplicate` - a copy named `<name> copy`, opened (plan 15 D3). */
   duplicate: []
+  /**
+   * `POST .../unpublish` - take the graph out of service (decision 24, round 2
+   * D-15-10). The remedy the delete refusal names, offered where the author
+   * can reach it.
+   */
+  unpublish: []
   /** Ask to delete. The confirm is DOCKED under the bar, never a dialog (R15). */
   delete: []
 }>()
@@ -117,6 +124,18 @@ const filePicker = ref<HTMLInputElement | null>(null)
 
 /** What `title` says on a stored-document action while nothing is stored. */
 const NOT_STORED = 'Save this graph first - this acts on the stored version'
+
+/**
+ * Whether Unpublish has anything to act on, as far as THIS session knows.
+ *
+ * `status` is the stored fact and `publishedVersion` is what this session was
+ * told; either is enough. An older version registered under a head that was
+ * edited since is invisible to both - that case is answered by the delete
+ * confirm's own Unpublish, which the server's 409 reveals.
+ */
+const canUnpublish = computed(
+  () => props.documentId !== null && (props.status === 'published' || props.publishedVersion !== null),
+)
 
 function toggleMenu(): void {
   menuOpen.value = !menuOpen.value
@@ -375,6 +394,18 @@ function cancelRename(): void {
           >
             <Copy :size="14" aria-hidden="true" />
             Duplicate
+          </button>
+          <button
+            class="document-menu-item"
+            type="button"
+            role="menuitem"
+            :disabled="!canUnpublish"
+            :title="documentId === null ? NOT_STORED : canUnpublish ? undefined : 'Nothing is published'"
+            data-testid="menu-unpublish"
+            @click="choose(() => emit('unpublish'))"
+          >
+            <Unplug :size="14" aria-hidden="true" />
+            Unpublish
           </button>
           <button
             class="document-menu-item is-danger"

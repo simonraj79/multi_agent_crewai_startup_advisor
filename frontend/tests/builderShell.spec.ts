@@ -11,6 +11,7 @@ import { BUILDER_TEMPLATES, IDEA_VALIDATOR } from '../src/data/builderTemplates'
 import { HOTKEY_BINDINGS } from '../src/composables/useBuilderHotkeys'
 import { clearRunHandoff, readRunHandoff, writeRunHandoff } from '../src/data/builderRunHandoff'
 import { resetVocabulary } from '../src/data/builderVocabulary'
+import { BuilderConflictError } from '../src/services/builderApi'
 import vocabularyPayload from './fixtures/builderValidatorTemplate.json'
 import { FakeBuilderApi, flush, zeroBudget } from './helpers'
 
@@ -303,13 +304,13 @@ describe('the document bar says what happened to the work', () => {
 })
 
 describe('the gallery is the empty state and the way back into saved work', () => {
-  async function gallery(api = new FakeBuilderApi()) {
+  async function gallery(api = new FakeBuilderApi(), extra: Record<string, unknown> = {}) {
     api.validation = {
       valid: true,
       problems: [],
       budget: zeroBudget({ billable_nodes: 8, floor_cost_usd: 1.2159, static_cost_usd: 1.5137 }),
     }
-    const wrapper = mount(TemplateGallery, { props: { api } })
+    const wrapper = mount(TemplateGallery, { props: { api, ...extra } })
     await flush(12)
     return { wrapper, api }
   }
@@ -392,6 +393,48 @@ describe('the gallery is the empty state and the way back into saved work', () =
     await form.trigger('submit')
     await flush()
     expect(api.removeCalls).toHaveLength(1)
+    expect(wrapper.findAll('.library-row')).toHaveLength(0)
+  })
+
+  it("states the server's rule in the server's words, and offers Unpublish on the 409", async () => {
+    /*
+     * D-15-10. The confirm used to promise that deleting a published graph
+     * unregisters it; the server's 409 said the opposite. The clause below is
+     * the tail of `delete_document`'s sentence, and the button is the remedy
+     * that sentence names.
+     */
+    const api = new FakeBuilderApi()
+    const id = api.seed({ ...IDEA_VALIDATOR.document, name: 'Clinic scheduler' }, 2, 'published')
+    const sentence = `document ${id} is published - v2 is registered as a launchable workflow - and cannot be deleted; unpublish it first, then delete it`
+    api.failWith.remove = new BuilderConflictError(sentence, null)
+    const unpublished: string[] = []
+    const { wrapper } = await gallery(api, {
+      unpublish: async (target: string) => {
+        unpublished.push(target)
+        delete api.failWith.remove
+      },
+    })
+    await wrapper.find('.library-delete').trigger('click')
+    const form = wrapper.find('.delete-confirm')
+    expect(form.text()).toContain('cannot be deleted; unpublish it first, then delete it')
+    expect(form.text()).not.toContain('unregisters it')
+
+    await form.find('input').setValue('Clinic scheduler')
+    await form.trigger('submit')
+    await flush()
+    expect(form.find('.delete-problem').text()).toBe(sentence)
+    expect(form.find('[data-testid="gallery-unpublish"]').exists()).toBe(true)
+    expect(form.find('input').exists()).toBe(false)
+
+    await form.find('[data-testid="gallery-unpublish"]').trigger('click')
+    await flush()
+    expect(unpublished).toEqual([id])
+    expect(wrapper.find('.status-pill').text()).toBe('draft')
+    // Back to asking, with the name kept; one more submit deletes.
+    expect((form.find('input').element as HTMLInputElement).value).toBe('Clinic scheduler')
+    await form.trigger('submit')
+    await flush()
+    expect(api.removeCalls).toHaveLength(2)
     expect(wrapper.findAll('.library-row')).toHaveLength(0)
   })
 })

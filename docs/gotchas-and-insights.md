@@ -938,3 +938,86 @@ revision into a path, and prefer a second worktree (`git worktree add`) for
 any measurement against an older tree. The repair here was re-applying the
 edit script; a hand edit would have been re-typed from memory.
 
+
+### 43. .NET's current directory does not follow PowerShell's `Set-Location`
+
+**Symptom.** A script that did `Set-Location <worktree>\frontend` and then
+`[IO.File]::ReadAllText("src\components\builder\BuilderView.vue")` reported
+`Could not find a part of the path 'D:\MultiAgentSystem\src\components\...'` -
+a path in the MAIN tree, from a shell whose prompt was in the worktree. The
+same script's `npx` call in the next line ran in the right place, so the
+failure read as an intermittent path problem rather than a systematic one.
+
+**Cause.** `Set-Location` moves the PowerShell provider's location.
+`[System.IO]` reads `Environment.CurrentDirectory`, which PowerShell does not
+keep in step - by design, because a provider location can be a registry key
+or a certificate store. A native process launched from the shell inherits the
+provider location, which is why `npx` was fine.
+
+**Do this.** Give every `[IO.File]` and `[IO.Directory]` call an ABSOLUTE
+path. The dangerous shape is a revert-and-restore probe - read the file,
+patch it, run a test, write the original back - because the read throws, the
+variable is null, the write throws, and the *test still runs and passes*
+against an unmodified file. That is a red-then-green measurement reporting
+green for the wrong reason, and it happened here: "1 passed" for a probe that
+had reverted nothing.
+
+### 44. An HTML comment inside a tag's attribute list is a Vue compile error
+
+**Symptom.** Adding a three-line `<!-- … -->` between two attributes of
+`<VueFlow>` took the whole builder off the air. Playwright reported
+`locator.click: Timeout` waiting for a template card; the page snapshot held
+`[plugin:vite:vue] Duplicate attribute` and Vite's error overlay.
+
+**Cause.** Vue's template compiler tokenises a tag's attribute list and has no
+state for a comment inside it; the `<!--` is parsed as an attribute name and
+the second `--` collides. The message names neither comments nor the line the
+comment starts on.
+
+**Do this.** Put the comment ABOVE the tag, or move the value into a named
+constant in `<script setup>` and comment it there - which is what
+`initialFitOptions` in `BuilderCanvas.vue` is for. The wider lesson is that a
+timeout waiting for an element that should exist is worth one look at the
+page snapshot before it is worth any look at the selector: the snapshot said
+exactly what was wrong and the selector was never the problem.
+
+### 45. `vi.useFakeTimers()` around a mount that awaits real work hangs the file
+
+**Symptom.** One new test installed fake timers, mounted a component through a
+helper that awaits a stubbed fetch, advanced 30 s and asserted. It failed -
+and took ten OTHER tests in the file with it, including three about delete,
+with a 55-second duration. The eleven failures read as a regression in the
+code under test.
+
+**Cause.** Two compounding. The helper's awaits resolve on timers that fake
+timers now control, so the mount never finishes. And the one test that failed
+never reached its `wrapper.unmount()`, leaking the `beforeunload` listener
+`useBuilderPersistence` registers on the shared `window` - so a later test's
+unload assertion read the leaked, dirty document instead of its own.
+
+**Do this.** To assert that *no* timer was armed, `vi.spyOn(window,
+'setTimeout')` - a spy records and keeps the original, so nothing else in the
+mount changes - and read `spy.mock.calls` for the delay. Reserve fake timers
+for a subject with no async mount. And when a change makes a cluster of
+unrelated tests fail, suspect a leaked listener from the one test that failed
+first before suspecting the change: the file's own `openScopes` comment
+already says this about scopes, and `beforeunload` is the same hazard one
+level up.
+
+### 46. The builder canvas pans on space-drag or middle-drag, never on a left drag
+
+**Symptom.** An E2E step that panned by pressing the canvas background and
+dragging reported "a pan did not reach it" for a node 3 px outside the pane.
+The canvas pans perfectly well by hand.
+
+**Cause.** `pan-on-drag` is `[1, 2]` - middle and right button - unless the
+space bar is held, at which point it is `true` (`BuilderCanvas.vue`, §1.48,
+so that `selection-key-code="true"` can own the left button). A left drag
+therefore drew a selection box and moved the viewport not at all.
+
+**Do this.** `keyboard.down('Space')` around the drag, which is also the
+gesture a human uses, or `mouse.down({ button: 'middle' })`. And read the
+viewport's zoom as `rect.width / offsetWidth` on any node rather than off
+`getComputedStyle(...).transform`, which answered `none` here and yields an
+identity matrix - a zoom of 1 that is really 0.66 is exactly the confident
+wrong number a layout test exists to catch.

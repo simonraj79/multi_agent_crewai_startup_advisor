@@ -14,8 +14,13 @@ This repository now contains three things that share one Python package:
    `frontend/src/components/builder/`.
 4. **The gauntlet build** - the visual agent builder planned on 2026-09-02.
    **Stage 1 (plans 01 and 15) was built and integrated on 2026-09-03** on
-   branch `gauntlet/plans`, not on `main`; no judge round has run. Section 15
-   below is the summary. [`PLANS.md`](PLANS.md) tracks status and the open
+   branch `gauntlet/plans`, not on `main`. **Three judge rounds have now been
+   through it**: rounds 1 and 2 SCORED (`benchmarks/rounds/`), and round 3
+   BUILT on 2026-09-03 with its critic not yet invoked - so "round 3" means
+   the fixes are in and nobody hostile has looked at them yet. Neither plan
+   has met its gate: **13 rows are open** in `benchmarks/DEFECTS.md`, 1 for
+   plan 01 and 12 for plan 15, and a row is closed by the CRITIC, never by
+   the builder. Section 15 below is the summary. [`PLANS.md`](PLANS.md) tracks status and the open
    owner decisions; [`.agent/plans/`](.agent/plans/README.md) holds one plan
    per feature, `00` the contracts. Read a plan file before building its
    feature; read nothing else of it into a session.
@@ -37,7 +42,7 @@ neither should ever be restated here.**
 > arrangement that has ever stopped this drifting.)*
 
 > **[`docs/gotchas-and-insights.md`](docs/gotchas-and-insights.md) — the
-> mistakes, and how not to repeat them.** **42** numbered entries as of
+> mistakes, and how not to repeat them.** **46** numbered entries as of
 > 2026-09-03 — count it, never copy it:
 > `grep -cE '^### [0-9]+\.|^## [0-9]+\.' docs/gotchas-and-insights.md`. It said
 > 30 in two places in this file until today; the grep answered 30 when this
@@ -83,33 +88,35 @@ rests on committed history it says so.
 
 ## Verified Baseline
 
-Re-measured on **2026-09-03** against `gauntlet/plans` = `90699e9` (plan 15
-round 2 built), in the integration worktree
+Re-measured on **2026-09-03** against `gauntlet/plans` = `5f63cc8` (plans 01
+and 15, round 3 BUILT), in the integration worktree
 (`D:\MultiAgentSystem-wt\integration`), on Windows. **Every row below was
-run by the pass that wrote it**, `npm run build` included this time.
+run by the pass that wrote it**, `npm run build` and the PostgreSQL job
+included.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:  1642 run, 0 failures, 0 errors, 6 skipped - 116.3s
+Python tests:  1655 run, 0 failures, 0 errors, 6 skipped - 86.3s
                (5 of the 6 skips are tests/pg/ with no TEST_DATABASE_URL)
-PostgreSQL 18.6: tests/pg/test_two_writers.py - 5 run, OK - 37.5s
+PostgreSQL 18.6: tests/pg/test_two_writers.py - 5 run, OK - 25.2s
                (all five compare-and-set paths, two processes each)
-Frontend unit: 1157 run, 0 failures, 62 files (Vitest + jsdom) - 13.4s
-Frontend build: `vue-tsc -b --force` exit 0; `npm run build` GREEN, vite 803ms
-Playwright E2E:  34 tests in 5 files, 34 GREEN on the final run, ZERO console
-                 errors - 1.9m (16 builder + 4 isolation + 4 builder-layout
+Frontend unit: 1195 run, 0 failures, 65 files (Vitest + jsdom)
+Frontend build: `vue-tsc -b --force` exit 0; `npm run build` exit 0
+Playwright E2E:  37 tests in 5 files, 37 GREEN on the final run, ZERO console
+                 errors - 1.7m (16 builder + 5 isolation + 6 builder-layout
                  + 7 studio + 3 node-card visual), against the recipe below
-                 with CREDENTIALS_MASTER_KEY set; 8 of the 34 are @launch.
+                 with CREDENTIALS_MASTER_KEY set; 9 of the 37 are @launch.
                  Two builder tests are timing-flaky - MEASURED, item 44 -
-                 and the untracked round-2 capture spec makes it 35 if left
-                 in e2e/.
+                 and a throwaway capture spec left in e2e/ makes the LIST
+                 one higher than the suite, which is why none is committed.
 ```
 
 > **These are `gauntlet/plans` figures, not `main`'s.** `main` is still
 > `25634c0`, where the previous block's 1228 / 1024 / 28 stand. Stage 1 of
 > the gauntlet (section 15) took the suites to 1548 / 1131 / 33; plan 15's
-> round 2 (`a952c74` → `90699e9`, `benchmarks/DEFECTS.md`) added 94 Python
-> and 26 frontend tests and one E2E layout test. The three visual specs need
+> round 2 (`a952c74` → `90699e9`) added 94 Python and 26 frontend tests and
+> one E2E layout test; **round 3 for both plans** (`f2a3bb8` → `5f63cc8`)
+> added 13 Python and 38 frontend tests and three E2E tests. The three visual specs need
 > the gitignored PNG baselines copied from the main tree into a fresh
 > worktree, or they fail with "a snapshot doesn't exist" - an environment
 > gap, not a regression, and it cost one run here.
@@ -163,8 +170,9 @@ Playwright E2E:  34 tests in 5 files, 34 GREEN on the final run, ZERO console
 
 ⚠️ These counts move, and they move fast. The Python suite has gone
 65 → 295 → 341 → 378 → 415 → 459 → 522 → 537 → 660 → 679 → 698 → 713 → 772 →
-1228 → 1548 → **1642** (on `gauntlet/plans`) and the frontend
-103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → 1024 → 1131 → **1157**. Re-run before
+1228 → 1548 → 1642 → **1655** (on `gauntlet/plans`) and the frontend
+103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → 1024 → 1131 → 1157 →
+**1195**. Re-run before
 quoting a number; the command is the contract, not the figure. The last step in
 each series is one commit.
 
@@ -272,9 +280,10 @@ $env:CREDENTIALS_MASTER_KEY = "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
 
 # second shell
 Push-Location frontend
-npx playwright test                          # all 34 (35 with the untracked
-                                             # round-2 capture spec; exclude it
-                                             # with --grep-invert "round 2 captures")
+npx playwright test                          # all 37. A throwaway capture spec
+                                             # left in e2e/ raises the LIST by
+                                             # one per test it holds, which is
+                                             # why none is ever committed.
 npx playwright test --grep-invert @launch    # the ones that never press Launch
 Pop-Location
 ```
@@ -397,9 +406,12 @@ recreate the problem this move solves.
 | 7 | `onrender.com` is on the Public Suffix List |
 | 8 | A free Render web service sleeps, and that decides your architecture |
 
-That file carries **42 numbered entries** plus a set of reusable design
+That file carries **46 numbered entries** plus a set of reusable design
 insights — measured 2026-09-03 with the `grep -cE` above, after plan 15's
-round-2 build added six, so regenerate rather than quote this. It covers the toolchain (`tsc -b` skipping an unreferenced config,
+round-2 build added six and round 3 added four more (43-46: .NET's current
+directory ignoring `Set-Location`, an HTML comment inside a Vue tag, fake
+timers around a mount, and the canvas's space-drag pan), so regenerate rather
+than quote this. It covers the toolchain (`tsc -b` skipping an unreferenced config,
 Node's literal import resolution, Vite proxy ordering), the runtime
 (`create_all` never altering a shipped table, `value or DEFAULT` eating a
 legitimate zero, `Authorization` not being CORS-safelisted), an entire section
@@ -1784,10 +1796,51 @@ work was done and not what it does:
   recorded against C10 in `00-architecture.md` and asserted against the
   shipped DDL in `test_additive_migration.py::VersionSourceColumnTests`.
   New module `test_builder_unpublish` (12); the isolation matrix went
-  16 → 31. Two of the fixing commits (`b249d89`, `d9672a0`) exist only
+  16 → 31, and **32** by the time round 3 re-ran it alone, which is why
+  plan 15's Status regenerated every per-module count rather than carrying
+  one forward. Two of the fixing commits (`b249d89`, `d9672a0`) exist only
   because the 1440x900 captures were LOOKED at: a Function-typed prop's
   `withDefaults` default is the value, not a factory, and a template ref is
   null at a child's `onMounted` - gotchas 37-42 are that session's traps.
+- **Judge round 2 SCORED both plans on 2026-09-03** (`f2a3bb8`,
+  `benchmarks/rounds/01-2.md` and `15-2.md`): plan 01 dim 14 = 9, dim 16 =
+  10; plan 15 dim 4 = 7 against Flowise 3.1.4 at 4 (blind), 11 = 10, 12 = 6,
+  14 = 10, 16 = 7. Neither met the gate. A row verifier re-ran every round-1
+  row and found all sixteen defects absent as written (two partly), the
+  critics landed two of plan 15's again with new sentences, and eleven new
+  rows opened.
+- **Round 3 was BUILT for both plans on 2026-09-03**, plan 01 at
+  `f2a3bb8` → `b176dda` and plan 15 at `b176dda` → `5f63cc8`, one commit per
+  ledger id with the id in the subject, and **every built row left `open`**
+  because a row is the critic's to close. **Round 3's critic has not been
+  invoked**, so nothing here is scored. Each plan's Status carries a table
+  naming every commit per id, round 2's included.
+
+  What round 3 changed that a reader of the sections above will not expect:
+
+  - **Per-user browser storage** (D-01-5). A draft, a run handoff and a run
+    pointer are keyed `u:<user id>:<base>` (`frontend/src/data/identityStorage.ts`),
+    so the next person on a shared browser reads none of them even without a
+    sign-out, and `endSession` sweeps that prefix. Section 13's account of
+    sign-out is now incomplete: it ended the token and nothing else.
+  - **One app-wide `RequestValidationError` handler** (D-15-21,
+    `service/app.py::_install_validation_handler`). FastAPI's default echoes
+    the offending `input`, measured at **200,159 bytes** from `create`. The
+    import door keeps its own hand-written parsing, for the 413-on-bytes and
+    the JSON decode a pydantic handler cannot see.
+  - **The import's `needs_credentials` is an intersection** (D-15-19/20), not
+    the re-derivation section 14's export notes describe: the export nulls
+    each key, so re-deriving found nothing and the list was always empty for
+    the file the criterion is about. Plan 15's Status records one departure
+    from the ruling here for the owner to confirm.
+  - **The delete 409 names the graph, not its id** (D-15-18), and the
+    docked and gallery confirms now use one layout.
+  - **A refusal no longer retires itself** (D-15-22): `say()` arms no timer
+    for `kind: 'error'`.
+  - **A legibility floor on the automatic canvas fits** (D-15-2,
+    `MIN_LEGIBLE_ZOOM = 11 / 15`). It trades whole for readable, and what it
+    crops is reachable by a pan - which is why one existing E2E assertion
+    was AMENDED rather than added to. Gotchas 43-46 are this session's traps.
 
 ## No-Cost Integration Coverage
 
@@ -2696,8 +2749,45 @@ true.
     hover-hover-release sequence is the moving part. Neither is a plan-15
     defect; both are a green suite that is green by a margin.
 
+    **Corroborated 2026-09-03 by round 3**, which ran the full suite four
+    times across the two plans: 35/35, then 34/35 on the router-branch test
+    (which passed alone immediately afterwards), then 37/37 twice. So the
+    base rate is real and low, the failure is not new, and the isolated
+    re-run is the right protocol - but nobody has reproduced it at a base
+    commit within one session, so "pre-existing" still rests on this item's
+    own measurement rather than on a controlled comparison.
+
+45. **[Decision] Two round-3 departures need the owner's word.** Both are
+    recorded where the work is, not only here: plan 15's Status carries the
+    first at length, and `service/builder_api.py::import_document`'s
+    docstring carries it beside the code.
+
+    - **D-15-19's rule is an intersection UNION the strip's own report.** The
+      ruling said "the intersection of the envelope's list and the nodes
+      whose credential key is null in the file". Applied literally it also
+      drops a hand-typed, non-empty `credential_id` in a foreign file - which
+      the inbound strip really does remove, so nobody would be told, which is
+      the harm D-15-19 is about - and it turns
+      `test_a_hand_typed_credential_id_never_becomes_a_reference` red, a test
+      that predates the row. Both of the ruling's stated reasons still hold:
+      a name alone buys nothing, an empty key alone buys nothing.
+    - **One E2E assertion was AMENDED, not added to.** `builder-layout`'s
+      `lands every node of the validator template inside the canvas pane`
+      asserted zero overflow, which D-15-2's legibility floor makes
+      impossible for a 16-node graph at 1440x900. It now asserts the
+      disjunction - every node inside, OR the fit sitting exactly on the
+      floor - which a stale fit satisfies neither of. If the owner would
+      rather have whole-over-legible, the floor is one constant
+      (`MIN_LEGIBLE_ZOOM`) and this assertion goes back.
+
+    Also worth a look and not a departure: with the delete strip docked the
+    floor crops the first and last node, and nothing on screen says the
+    graph is cropped. A reviewer handed the capture cold called that worse
+    than illegible. The pan reaches them and the E2E proves it; whether a
+    cue is wanted is a design call.
+
 Item 34 below is **resolved** (see item 35 in the closed ledger) and is kept
-only because its diagnosis is the valuable part. It appears after 36-44 because
+only because its diagnosis is the valuable part. It appears after 36-45 because
 those are the open ones; the numbering is chronological, not a priority order.
 
 34. **A latent CrewAI defect in `or_()`, under investigation by another agent —

@@ -627,6 +627,19 @@
   font: 600 var(--fs-11)/1 var(--font-mono);
 }
 .builder-import-node:hover { background: color-mix(in srgb, var(--warn-text) 14%, transparent); }
+/* The one thing to DO, filled rather than outlined so it reads as the action
+   among a row of node chips that only navigate (D-15-19). */
+.builder-import-fix {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--warn-text);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--warn-text) 18%, transparent);
+  color: var(--text-title);
+  cursor: pointer;
+  font: 700 var(--fs-11)/1 var(--font-mono);
+}
+.builder-import-fix:hover { background: color-mix(in srgb, var(--warn-text) 30%, transparent); }
 .builder-import-dismiss { flex: 0 0 auto; margin-left: auto; }
 
 /* Plan 15 D3's delete confirm, docked (R15). Mirrors the gallery's own. */

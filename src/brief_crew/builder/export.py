@@ -276,6 +276,70 @@ def strip_for_export(
     return document, stripped
 
 
+def nulled_reference_nodes(raw: Mapping[str, Any]) -> list[str]:
+    """Node ids whose credential or server reference is PRESENT and empty.
+
+    The evidence half of the import's `needs_credentials` (round 3, D-15-19),
+    and the exact COMPLEMENT of what `strip_for_export` reports: `_scrub`
+    notes a node when the key it found carried something
+    (`if item not in (None, "")`), and this notes it when the key was there
+    and did not. Between them every node carrying such a key falls in exactly
+    one list, which is what lets the importer reason about a file whose keys
+    the export has already nulled.
+
+    Why it exists. The export nulls every credential key and records the node
+    in the envelope; on re-import the strip therefore finds nothing to note,
+    so the import derived an EMPTY list from a file that had just said three
+    nodes lost a key, and the graph silently dropped from the author's key to
+    the platform key. Reading the envelope alone is not the answer either - a
+    file can say anything - so the import takes the intersection, and this is
+    the half a file cannot forge: the nulled key has to actually be there.
+
+    Present-and-empty, not merely absent. A node that never had a credential
+    slot has no such key at all and is not a claim about anything; flagging it
+    would put every input and output node in the list.
+
+    Pure, and `raw` is not mutated. Keys are matched at any depth under a node
+    for the same reason `_scrub` matches them there.
+    """
+
+    if not isinstance(raw, Mapping):
+        raise TypeError(
+            f"a builder document is a mapping; this is {type(raw).__name__}"
+        )
+    found: list[str] = []
+    nodes = raw.get("nodes")
+    if not isinstance(nodes, (list, tuple)):
+        return found
+    for node in nodes:
+        if not isinstance(node, Mapping):
+            continue
+        node_id = node.get("id")
+        if not isinstance(node_id, str):
+            continue
+        if _has_empty_reference(node) and node_id not in found:
+            found.append(node_id)
+    return found
+
+
+def _has_empty_reference(value: Any) -> bool:
+    """True when some credential or server key under `value` is there and empty."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            name = key if isinstance(key, str) else str(key)
+            if _is_credential_key(name) or name == SERVER_KEY:
+                if item in (None, ""):
+                    return True
+                continue
+            if _has_empty_reference(item):
+                return True
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(_has_empty_reference(item) for item in value)
+    return False
+
+
 def export_envelope(
     raw: Mapping[str, Any],
     *,
@@ -364,5 +428,6 @@ __all__: Sequence[str] = (
     "export_envelope",
     "export_filename",
     "mask_url",
+    "nulled_reference_nodes",
     "strip_for_export",
 )

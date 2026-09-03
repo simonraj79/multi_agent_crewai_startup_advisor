@@ -226,6 +226,30 @@ describe('import from the gallery', () => {
     wrapper.unmount()
   })
 
+  it('offers the one thing to do, and it opens the picker on the first node (D-15-19)', async () => {
+    /*
+     * The chips navigate; this is the ACTION. `InspectorRail.focusField` was
+     * written for exactly this journey and had no caller anywhere in `src/`
+     * until the notice became reachable at all - which it was not, because
+     * the server answered `needs_credentials: []` for the very file the
+     * export wrote.
+     */
+    stubServer()
+    const wrapper = mount(BuilderView, { props: { documentId: null }, global: { stubs: STUBS } })
+    await settled()
+    await pick(wrapper, 'gallery-import-file', exportFile())
+
+    const fix = wrapper.get('[data-testid="import-notice-fix"]')
+    expect(fix.text()).toBe('Choose a key')
+    await fix.trigger('click')
+    await flush(6)
+
+    // The FIRST named node is selected, so the form the credential row lives
+    // on is the one on screen.
+    expect(wrapper.get('[data-testid="inspector-rail"]').text()).toContain('Draft')
+    wrapper.unmount()
+  })
+
   it('says what it imported in full, as a success, with a dismiss (D-15-5)', async () => {
     /*
      * Round 1's capture: `imported alice.builder.json as a new draft, "Minimal

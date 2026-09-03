@@ -54,6 +54,7 @@ from brief_crew.builder.document import BuilderDocument
 from brief_crew.builder.export import (
     export_content_disposition,
     export_envelope,
+    nulled_reference_nodes,
     strip_for_export,
 )
 from brief_crew.builder.runtime import BUILDABLE_BUILDER_CREW_IDS, BUILDER_AGENT_LIBRARY
@@ -666,13 +667,50 @@ def create_builder_router(
         makes a file honest, and a `credential_id` typed into one by hand must
         not become a reference to a credential the importer does not own.
 
-        `needs_credentials` is RE-DERIVED from that inbound strip and nothing
-        else. The envelope's own list is accepted and ignored: a client may
-        send `[]`, or the list the export wrote, or anything at all, and none
-        of it is trusted - the file's nulled `credential_id` / `server_id`
-        keys are the evidence, and the strip reads them directly. Kept to node
-        ids the document actually has, once each, so the client can point at
-        every one.
+        `needs_credentials` is the INTERSECTION of the envelope's list and the
+        nodes whose credential or server key is present and empty in the file
+        (round 3, D-15-19 / D-15-20).
+
+        The paragraph this replaces said the list was re-derived from the
+        inbound strip and the envelope ignored, and it was wrong in a way no
+        test caught for two rounds: the EXPORT nulls the key and records the
+        node in the envelope, so on re-import the strip finds nothing left to
+        strip and reported an empty list for the exact file that had just said
+        three nodes lost a credential. The notice built for that case was
+        unreachable and the graph silently dropped from the author's key to
+        the platform key.
+
+        Neither half is trustworthy alone, and that is why it is an
+        intersection rather than either one:
+
+        * the envelope is a claim by a file, and a file can say anything, so a
+          name with no empty key behind it is dropped - a hand-written
+          envelope cannot talk a node into a notice;
+        * an empty key is not a claim at all, so a node that never had a
+          credential is not flagged - otherwise every clean export would open
+          under a problem group, which is the defect the `if item not in
+          (None, "")` guard in `_scrub` was added to fix.
+
+        ONE CASE SITS OUTSIDE THAT INTERSECTION, and it is here deliberately:
+        a node whose key arrives NON-empty, which the inbound strip removes.
+        The ruling as written drops it - the key is not empty, so the first
+        rule applies - and dropping it would silently undo the very harm this
+        row is about, because such a node really did lose a credential on the
+        way in and nobody would be told. It is also not a file's claim in the
+        first place: `stripped_nodes` is this server's own report of a value
+        it removed, and a file cannot inject a name into it without actually
+        carrying a credential for a node of its own document, which is
+        harmless. `tests/service/test_builder_import.py`'s
+        `test_a_hand_typed_credential_id_never_becomes_a_reference` pins that
+        case and predates this row; honouring the intersection alone turns it
+        red. So the answer is the intersection OR the strip's own report,
+        which keeps both of the ruling's stated reasons exactly:
+        a name alone still buys nothing, and an empty key alone still buys
+        nothing.
+
+        Ordered by the document's own nodes rather than by the envelope, so
+        the list reads in canvas order whatever order the file listed, and
+        kept to ids the document actually has, once each.
         """
 
         request = _import_envelope(await http_request.body())
@@ -686,7 +724,14 @@ def create_builder_router(
             )
         store = require_store()
         owner = owner_for_new_row(user)
-        raw, stripped_nodes = strip_for_export(upgrade_document(request.document))
+        incoming = upgrade_document(request.document)
+        # The file's own empty keys, read BEFORE the strip: afterwards every
+        # such key is null and the two cases are indistinguishable.
+        empty_in_file = set(nulled_reference_nodes(incoming))
+        # The strip still runs, and it is still what makes the file safe -
+        # nothing makes a file honest. What it reports is no longer the
+        # answer's only source, but it is still A source: see below.
+        raw, stripped_nodes = strip_for_export(incoming)
         if not raw.get("name") and request.name:
             raw["name"] = request.name
         # Distinct in the caller's own library (D-15-4). The file's name is kept
@@ -697,9 +742,12 @@ def create_builder_router(
         document = parse(raw, document_id=new_document_id(), version=FIRST_VERSION)
         stored = _guarded(lambda: store.create(document, user_id=owner, source="imported"))
         response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
-        node_ids = {node.id for node in document.nodes}
+        declared = {name for name in request.needs_credentials if isinstance(name, str)}
+        removed_here = set(stripped_nodes)
         needs_credentials = [
-            node_id for node_id in dict.fromkeys(stripped_nodes) if node_id in node_ids
+            node.id
+            for node in document.nodes
+            if node.id in removed_here or (node.id in declared and node.id in empty_in_file)
         ]
         return judged(
             stored,

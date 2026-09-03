@@ -150,30 +150,85 @@ class NeedsCredentials(ImportRouteCase):
         self.assertEqual(envelope["needs_credentials"], [])
         self.assertEqual(self.import_as(ADA_TOKEN, envelope).json()["needs_credentials"], [])
 
-    def test_the_envelope_s_own_list_is_never_trusted(self) -> None:
-        """Criterion 2, the problem-group half: the list is RE-DERIVED.
+    def test_the_file_the_export_wrote_names_the_node_that_lost_a_key(self) -> None:
+        """The defect, as its own round trip (round 3, D-15-19).
 
-        A client may send `[]`, the list the export wrote, or a list naming
-        nodes that have no credential slot at all. None of it reaches the
-        answer: the server reads the document's own nulled keys and nothing
-        else, so a file cannot talk a node into a notice - or out of one.
+        This is the critic's probe: A sets a credential, exports, and B
+        imports THAT FILE. Before the intersection the answer was `[]` - the
+        export had already nulled the key, so the inbound strip found nothing
+        to strip and reported nothing, the notice built for exactly this case
+        was unreachable, and the graph silently dropped from A's key to the
+        platform key.
+
+        The secret itself must not be in the file either, which is the
+        property the export has always had and this must not cost.
+        """
+
+        created = self.create_as(ADA_TOKEN)
+        payload = document_payload()
+        for node in payload["nodes"]:
+            if node["id"] == "scoper":
+                node.setdefault("config", {})["credential_id"] = "cr_421c20d8"
+        saved = self.save_as(
+            ADA_TOKEN, created["id"], payload, expected_version=created["version"]
+        )
+        if saved.status_code != 200:
+            self.skipTest(f"the schema refuses a credential_id here: {saved.text[:120]}")
+
+        exported = self.export_as(ADA_TOKEN, created["id"])
+        self.assertEqual(exported.status_code, 200, exported.text)
+        envelope = exported.json()
+        self.assertEqual(envelope["needs_credentials"], ["scoper"])
+        self.assertNotIn("cr_421c20d8", exported.text)
+
+        body = self.import_as(GRACE_TOKEN, envelope).json()
+        self.assertEqual(body["needs_credentials"], ["scoper"])
+        self.assertNotIn("cr_421c20d8", str(body))
+
+    def test_the_intersection_drops_a_name_the_file_cannot_back_up(self) -> None:
+        """Direction one: the envelope alone is a claim, and a file can lie.
+
+        `ghost` is not a node at all; `report` is a node with no credential
+        slot, so nothing about it is empty-and-present. Neither reaches the
+        answer, which is what stops a hand-written envelope talking a node
+        into a notice.
         """
 
         _, envelope = self.exported_by_ada()
-        for declared in ([], ["scoper"], ["ghost", "scoper", "scoper", "report"]):
-            with self.subTest(declared=declared):
-                envelope["needs_credentials"] = declared
-                body = self.import_as(GRACE_TOKEN, envelope).json()
-                self.assertEqual(body["needs_credentials"], [])
+        envelope["needs_credentials"] = ["ghost", "report", "scoper", "scoper"]
+        body = self.import_as(GRACE_TOKEN, envelope).json()
+        self.assertNotIn("ghost", body["needs_credentials"])
+        self.assertNotIn("report", body["needs_credentials"])
 
-    def test_the_inbound_strip_is_on_the_path_and_is_the_only_source(self) -> None:
-        """Nothing makes a file honest, so the importer strips again.
+    def test_the_intersection_drops_an_empty_key_the_envelope_never_claimed(self) -> None:
+        """Direction two: an empty key is not a claim.
 
-        Proved by observation rather than by a field: no committed schema
-        carries a secret-bearing key yet (plan 01 lands `credential_id`), so
-        the spy stands in for the day one does - and asserts that what the
-        strip reports is what the answer carries, kept to node ids the
-        document has, once each, with the envelope's list playing no part.
+        Every agent node serialises with `credential_id: null` since S1
+        ruling 8, so reading the keys alone reported every clean export as
+        needing a credential. An empty list therefore stays empty however
+        many null keys the document carries.
+        """
+
+        _, envelope = self.exported_by_ada()
+        from brief_crew.builder.export import nulled_reference_nodes
+
+        # The premise: there IS an empty key to be tempted by.
+        self.assertTrue(nulled_reference_nodes(envelope["document"]))
+        envelope["needs_credentials"] = []
+        body = self.import_as(GRACE_TOKEN, envelope).json()
+        self.assertEqual(body["needs_credentials"], [])
+
+    def test_the_inbound_strip_is_on_the_path_and_is_one_of_the_two_sources(self) -> None:
+        """Nothing makes a file honest, so the importer still strips again.
+
+        What changed in round 3 is that the strip is no longer the ONLY
+        source. A node it reports really did lose a value here, which is this
+        server's own observation rather than the file's claim, so it is
+        answered on its own - that is the case
+        `test_a_hand_typed_credential_id_never_becomes_a_reference` fixes in
+        place. What the strip cannot do is invent a node: `ghost` is not in
+        the document and does not appear, and the list is de-duplicated and
+        ordered by the document rather than by the strip.
         """
 
         _, envelope = self.exported_by_ada()
@@ -191,7 +246,12 @@ class NeedsCredentials(ImportRouteCase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(len(seen), 1)
         self.assertEqual(seen[0]["name"], envelope["document"]["name"])
-        self.assertEqual(response.json()["needs_credentials"], ["report", "idea"])
+        answered = response.json()["needs_credentials"]
+        self.assertNotIn("ghost", answered)
+        self.assertEqual(len(answered), len(set(answered)))
+        # Document order, not the strip's - the strip said report before idea.
+        document_order = [node["id"] for node in envelope["document"]["nodes"]]
+        self.assertEqual(answered, [n for n in document_order if n in set(answered)])
 
     def test_a_hand_typed_credential_id_never_becomes_a_reference(self) -> None:
         """The v1 schema forbids the key, so the file is refused by name.

@@ -333,6 +333,8 @@ const versionsBlocked = computed(() => {
  * `credential-missing` is the one `validate` emits - so it lives beside the
  * restore bar rather than in `ProblemsPanel`.
  */
+/** The inspector, for `focusField` - the notice's "Choose a key" (D-15-19). */
+const inspectorRef = ref<{ focusField: (field: string) => Promise<boolean> } | null>(null)
 const importNotice = shallowRef<{ documentId: DocumentId; nodeIds: readonly string[] } | null>(null)
 const importNoticeShown = computed(
   () =>
@@ -743,6 +745,25 @@ async function importFile(file: File): Promise<void> {
 
 function dismissImportNotice(): void {
   importNotice.value = null
+}
+
+/**
+ * Take the author to the credential picker on the first node that needs one
+ * (round 3, D-15-19).
+ *
+ * The notice could already point at each node, and pointing selects it - but
+ * the thing to actually DO then sat unnamed in an inspector the author had to
+ * find. `InspectorRail.focusField` was written for exactly this journey and
+ * had no caller anywhere in `src/`; this is it.
+ *
+ * Two steps, and the order matters: selecting the node is what mounts the
+ * agent form the credential row lives on, so the field cannot be focused
+ * until the selection has rendered - `focusField` awaits a tick of its own
+ * for that reason and reports whether it found the row.
+ */
+async function openCredentialPicker(nodeId: string): Promise<void> {
+  canvas.focusNode(nodeId as NodeId)
+  await inspectorRef.value?.focusField('credential_id')
 }
 
 /* ── plan 15 D3: duplicate and delete ──────────────────────────────────── */
@@ -1550,6 +1571,19 @@ watch(
                 {{ importNotice.nodeIds.length === 1 ? 'node needs' : 'nodes need' }} a credential you
                 own — the export carried none.
               </span>
+              <!--
+                The one thing to DO, named (D-15-19). The per-node buttons
+                below select a node; this opens the control that fixes it, on
+                the first one, which is what the notice is for.
+              -->
+              <button
+                type="button"
+                class="builder-import-fix"
+                data-testid="import-notice-fix"
+                @click="openCredentialPicker(importNotice.nodeIds[0])"
+              >
+                Choose a key
+              </button>
               <span class="builder-import-nodes">
                 <button
                   v-for="id in importNotice.nodeIds"
@@ -1711,6 +1745,7 @@ watch(
 
       <InspectorRail
         v-if="started"
+        ref="inspectorRef"
         class="builder-inspector"
         :doc="doc"
         :vocabulary="vocabulary"

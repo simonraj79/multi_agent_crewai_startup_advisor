@@ -347,6 +347,24 @@ with 08 / 07).
 
 1. `tests/builder/test_export.py`: an exported document with every secret-bearing field set contains none of their values, and `needs_credentials` names every stripped node. Rubric 14, forbidden-list "credentials in exports".
 2. Import of that file as user B creates a draft owned by B with a fresh `ug_` id and a problem group naming each `needs_credentials` node — `tests/service/test_builder_import.py`. Rubric 14.
+
+   **Amended 2026-09-03 (round 3, D-15-19 / D-15-20).** "Naming each
+   `needs_credentials` node" was ticked over a list that was **always empty
+   for the file this criterion is about**, which is why the critic scored it
+   on rubric 16 as well: the export nulls each credential key and records the
+   node in the envelope, so the import's re-derivation from the inbound strip
+   found nothing left to strip. `needs_credentials` is now the **intersection**
+   of the envelope's list and the nodes whose credential or server key is
+   present and empty in the file, **union the nodes this server's own strip
+   actually took a value out of**. A name alone buys nothing, so a file cannot
+   talk a node into the notice; an empty key alone buys nothing, so a clean
+   export does not open under a problem group; and a hand-typed key that the
+   importer really did remove is still named, which is the one signal that is
+   not a file's claim at all. The notice this makes reachable also gained the
+   action the mechanism always carried and nothing used - "Choose a key",
+   which opens the credential picker on the first named node through
+   `InspectorRail.focusField`, a function written for this journey with no
+   caller in `src/` until now.
 3. `POST …/duplicate` on another user's document answers 404; on one's own answers 201 with version 1 and `draft` — `tests/service/test_builder_duplicate.py`. Rubric 14.
 4. The version browser opens a prior version read-only and Restore creates head + 1 through the CAS — `frontend/tests/versionBrowser.spec.ts` plus an `e2e/builder.spec.ts` step. Rubric 4.
 5. Delete from the UI removes the row and its versions (`ON DELETE CASCADE`, `persistence.py:263-275`) and refuses 409 while published-and-registered. Rubric 12.

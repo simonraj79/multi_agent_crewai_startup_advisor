@@ -1581,9 +1581,12 @@ RESERVED_RUN_INPUT_KEYS: frozenset[str] = frozenset(
 # refusing a registered third workflow's own public prompt - `brief` is a Brief
 # Crew result slot AND somebody else's legitimate prompt field. So the two
 # questions have two functions: the SCHEMA asks
-# `declared_reserved_run_input_keys`, which answers only the global keys for an
-# id it cannot resolve, and `create_run` asks `reserved_run_input_keys` for the
-# fail-closed union once it knows which single key is this workflow's prompt.
+# `declared_reserved_run_input_keys`, which answers the two built-ins' declared
+# names and only the global keys for EVERY other id - registered or invented,
+# because a registered graph has an owner and the schema layer runs before
+# ownership is checked (D-01-1) - and `create_run` asks
+# `reserved_run_input_keys` for the fail-closed union once it has resolved the
+# workflow, checked who may see it, and knows which single key is its prompt.
 # --------------------------------------------------------------------------
 
 # `id` is here rather than in the validator's list because it is not this
@@ -1611,6 +1614,12 @@ GLOBAL_RESERVED_RUN_INPUT_KEYS: frozenset[str] = frozenset(
 # which is its one public prompt. `run_id` is on the list for the same reason
 # the validator reserves `source_run_id`: it stamps attribution on indexed
 # cache evidence.
+#: The two workflows whose state names are DECLARED in this file, as opposed to
+#: registered into the dict below by a publish. `declared_reserved_run_input_keys`
+#: answers the dict only for these two - see its docstring for why the schema
+#: layer may never read a registered graph's entry.
+BUILT_IN_WORKFLOW_IDS: frozenset[str] = frozenset({"brief-flow", "idea-validator"})
+
 WORKFLOW_RESERVED_RUN_INPUT_KEYS: dict[str, frozenset[str]] = {
     "brief-flow": frozenset(
         {
@@ -1669,7 +1678,7 @@ def forget_workflow_reserved_run_input_keys(workflow_id: str) -> None:
     which is the single check standing between a request body and `no_gates`.
     """
 
-    if workflow_id in {"brief-flow", "idea-validator"}:
+    if workflow_id in BUILT_IN_WORKFLOW_IDS:
         raise ValueError(f"{workflow_id} is a built-in workflow and is not removable")
     WORKFLOW_RESERVED_RUN_INPUT_KEYS.pop(workflow_id, None)
 
@@ -1725,12 +1734,28 @@ def declared_reserved_run_input_keys(workflow_id: str | None) -> frozenset[str]:
     flow are refused here for every id, invented ones included - which is what
     keeps `no_gates` unsettable from a request body, and therefore keeps the
     403-versus-422 distinction in `create_run` meaningful.
+
+    **"Declared above" means the two literals, and NEVER an entry a publish
+    registered** (D-01-1, 2026-09-03). This function used to read the whole
+    dict, so for a PUBLISHED graph it answered that graph's own `__builder__`
+    and `out__<node>` names to anybody who named its id - and pydantic runs
+    before `create_run`'s rate limiter and its ownership 404. A stranger, or
+    nobody at all, could therefore post `{"inputs": {"idea": "p",
+    "out__scoper": "x"}}` and read off the 422-versus-404 whether the id
+    existed and what its nodes were called, unthrottled, for a graph the same
+    request with a clean body was told did not exist. That is the oracle
+    `graph.py::workflow_visible_to` says it must not become, one layer up.
+
+    So the schema layer consults a workflow's registered keys ONLY through
+    `create_run`, after the caller has been allowed to see that workflow; here
+    a registered id and an invented one get the same answer, which is the
+    global set. The two built-ins are public to everyone, so their declared
+    names leak nothing - and they are the only ids this function has ever been
+    entitled to call "declared".
     """
 
-    if workflow_id is not None:
-        declared = WORKFLOW_RESERVED_RUN_INPUT_KEYS.get(workflow_id)
-        if declared is not None:
-            return GLOBAL_RESERVED_RUN_INPUT_KEYS | declared
+    if workflow_id in BUILT_IN_WORKFLOW_IDS:
+        return GLOBAL_RESERVED_RUN_INPUT_KEYS | WORKFLOW_RESERVED_RUN_INPUT_KEYS[workflow_id]
     return GLOBAL_RESERVED_RUN_INPUT_KEYS
 
 

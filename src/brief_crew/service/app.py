@@ -1166,6 +1166,13 @@ def create_app(
         # they had every right to. Each workflow's own keys are still refused,
         # which is the half that protects anything.
         #
+        # This is also the ONLY place a published graph's registered state
+        # names are ever consulted, and it sits below the rate limit and the
+        # ownership 404 on purpose (D-01-1): a stranger's or an anonymous
+        # body carrying `__builder__` or `out__<node>` meets the same
+        # `workflow not found` as a clean one, and is charged for it, before
+        # any answer can depend on which names this graph declared.
+        #
         # The union has not been abandoned - it is the FALLBACK, and that is why
         # this asks `reserved_run_input_keys` rather than reading one map entry
         # itself. A workflow in `WORKFLOWS` that never declared its state names

@@ -210,6 +210,16 @@ class CreateRunRequest(BaseModel):
         # CrewAI's own runtime reads on ANY flow, refused for every id including
         # invented ones. `no_gates` is one of them, so setting it in `create_run`
         # remains the only way it can become true.
+        #
+        # And NOTHING a publish registered (D-01-1). This validator runs before
+        # `create_run`'s rate limiter and before its ownership check, so any
+        # answer that differs between a published id and an invented one is an
+        # unthrottled oracle for which ids exist and what their nodes are
+        # called - which is exactly what it was while
+        # `declared_reserved_run_input_keys` read the registered map. It now
+        # answers the two public built-ins' declared names and the global set
+        # for every other id; a published graph's own keys are refused by
+        # `create_run`, after the caller has been allowed to see that graph.
         reserved = sorted(
             declared_reserved_run_input_keys(
                 info.data.get("workflow_id")

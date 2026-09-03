@@ -20,6 +20,15 @@ Two properties carry the weight:
 
 Nothing here spends anything: the app is `synthetic=True`, so a launch that is
 admitted runs the real compiled definition over `SyntheticCrewFactories`.
+
+**Round 2 (D-01-1).** The first version of this file sent only clean
+`{"idea": ...}` bodies, and the criterion it ticked - "the 404 fires before any
+admission counter moves" - was false for any body carrying one of the graph's
+own state names: `CreateRunRequest.inputs`'s validator read the published
+graph's registered keys and answered 422 BEFORE the rate limiter and before
+the ownership 404, so a stranger could tell Alice's id from an invented one,
+enumerate her node names, and never be throttled for it. The state-key classes
+below send the bodies the first version did not, as Bob.
 """
 
 from __future__ import annotations
@@ -43,6 +52,12 @@ from tests.service.identities import (
     wire,
 )
 
+UNKNOWN_ID = "ug_00000000"
+#: A name shaped like a builder state slot that this graph does NOT declare.
+#: The critic's probe distinguished `out__scoper` (422) from `out__market`
+#: (404) on one id; both must now read as the plain 404 to anyone but the owner.
+UNDECLARED_STATE_KEY = "out__not_a_node_here"
+
 try:  # pragma: no cover - the service extra is optional, as elsewhere in tests/
     from fastapi.testclient import TestClient  # noqa: F401
 
@@ -57,6 +72,20 @@ RUNS = "/api/sessions/session-ownership/runs"
 
 def launch(workflow_id: str, **extra: Any) -> dict[str, Any]:
     return {"workflow_id": workflow_id, "inputs": {"idea": IDEA}, **extra}
+
+
+def launch_with(workflow_id: str, state_key: str, **extra: Any) -> dict[str, Any]:
+    """`launch`, plus one of the graph's own state names in `inputs`."""
+
+    return {"workflow_id": workflow_id, "inputs": {"idea": IDEA, state_key: "x"}, **extra}
+
+
+def graph_state_keys(workflow_id: str) -> list[str]:
+    """The names a publish registered for this graph, beyond the global set."""
+
+    return sorted(
+        config.reserved_run_input_keys(workflow_id) - config.GLOBAL_RESERVED_RUN_INPUT_KEYS
+    )
 
 
 @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
@@ -150,6 +179,124 @@ class OwnedWorkflowTests(AuthenticatedTwoUserCase):
         foreign = self.client.post(RUNS, json=launch(self.workflow_id), headers=self.as_bob())
         unknown = self.client.post(RUNS, json=launch("ug_00000000"), headers=self.as_bob())
         self.assertEqual((foreign.status_code, foreign.json()), (unknown.status_code, unknown.json()))
+
+
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class StateKeyProbeTests(AuthenticatedTwoUserCase):
+    """D-01-1: a body carrying one of Alice's state names tells Bob nothing.
+
+    The order on `POST /runs` is rate limit, then ownership, then everything
+    else - and "everything else" includes the reserved-key check, which for a
+    published graph reads names only the owner is entitled to learn.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.document_id, self.workflow_id = self.publish(straight_line(), self.as_alice())
+        self.registry = self.app.state.run_registry
+        self.state_keys = graph_state_keys(self.workflow_id)
+        # The probe space the critic used: the compiler's own marker, and one
+        # `out__<node>` per node. Both must be present for the test to mean
+        # anything.
+        self.assertIn("__builder__", self.state_keys)
+        self.assertTrue(any(key.startswith("out__") for key in self.state_keys), self.state_keys)
+
+    def probe_keys(self) -> list[str]:
+        declared_out = next(key for key in self.state_keys if key.startswith("out__"))
+        return ["__builder__", declared_out, UNDECLARED_STATE_KEY]
+
+    def test_a_strangers_state_key_probe_is_the_same_404_as_an_unknown_id(self) -> None:
+        before = self.registry.admission_status()
+        for key in self.probe_keys():
+            with self.subTest(key=key):
+                foreign = self.client.post(
+                    RUNS, json=launch_with(self.workflow_id, key), headers=self.as_bob()
+                )
+                unknown = self.client.post(
+                    RUNS, json=launch_with(UNKNOWN_ID, key), headers=self.as_bob()
+                )
+                self.assertEqual(foreign.status_code, 404, foreign.text)
+                self.assertEqual(foreign.json(), {"detail": "workflow not found"})
+                self.assertEqual(
+                    (foreign.status_code, foreign.json()), (unknown.status_code, unknown.json())
+                )
+                # Neither the key nor the id comes back: the body is the same
+                # three words whatever was sent.
+                self.assertNotIn(key, foreign.text)
+                self.assertNotIn(self.workflow_id, foreign.text)
+        self.assertEqual(self.registry.admission_status(), before)
+
+    def test_a_declared_and_an_undeclared_state_key_read_the_same_to_a_stranger(self) -> None:
+        """The enumeration half: `out__scoper` and `out__market` were 422 and 404."""
+
+        declared = next(key for key in self.state_keys if key.startswith("out__"))
+        answers = {
+            key: self.client.post(
+                RUNS, json=launch_with(self.workflow_id, key), headers=self.as_bob()
+            )
+            for key in (declared, UNDECLARED_STATE_KEY)
+        }
+        self.assertEqual(
+            {key: (r.status_code, r.json()) for key, r in answers.items()},
+            {key: (404, {"detail": "workflow not found"}) for key in answers},
+        )
+
+    def test_the_owner_is_still_refused_a_state_key_with_a_422_naming_it(self) -> None:
+        """Ownership moved the check later; it did not remove it."""
+
+        for key in ("__builder__", next(k for k in self.state_keys if k.startswith("out__"))):
+            with self.subTest(key=key):
+                response = self.client.post(
+                    RUNS, json=launch_with(self.workflow_id, key), headers=self.as_alice()
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn(key, response.json()["detail"])
+                self.assertIn("reserved control key", response.json()["detail"])
+
+    def test_the_global_keys_are_still_refused_for_every_id_before_anything_else(self) -> None:
+        """`no_gates` stays unsettable, and says so identically for any id."""
+
+        for workflow_id in (self.workflow_id, UNKNOWN_ID):
+            with self.subTest(workflow_id=workflow_id):
+                response = self.client.post(
+                    RUNS, json=launch_with(workflow_id, "no_gates"), headers=self.as_bob()
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn("no_gates", response.text)
+
+
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class StateKeyProbeIsChargedTests(AuthenticatedTwoUserCase):
+    """The limiter runs FIRST, so a flood of state-key probes is throttled too.
+
+    The critic's control: 15 rapid `__builder__` probes as a fresh user never
+    tripped the 10/60 s limiter that a clean 404 probe trips on the 11th,
+    because the schema refused them before the limiter saw them.
+    """
+
+    MAX_RUNS = 3
+
+    def app_kwargs(self) -> dict[str, Any]:
+        from brief_crew.service.app import RunRateLimiter
+
+        return {
+            "synthetic": True,
+            "rate_limiter": RunRateLimiter(max_runs=self.MAX_RUNS, window_seconds=60),
+        }
+
+    def test_the_probe_after_the_limit_is_429(self) -> None:
+        _, workflow_id = self.publish(straight_line(), self.as_alice())
+        statuses = [
+            self.client.post(
+                RUNS, json=launch_with(workflow_id, "__builder__"), headers=self.as_bob()
+            ).status_code
+            for _ in range(self.MAX_RUNS + 1)
+        ]
+        self.assertEqual(statuses, [404] * self.MAX_RUNS + [429])
+        # And the owner's bucket is her own: she is not paying for Bob's flood.
+        owner = self.client.post(RUNS, json=launch(workflow_id), headers=self.as_alice())
+        self.assertEqual(owner.status_code, 202, owner.text)
+        self.app.state.run_registry.wait(owner.json()["run_id"], timeout=30)
 
 
 @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")

@@ -742,11 +742,16 @@
    many rows must never push the palette past the viewport with nothing to
    grab, and `min-height: 0` is what lets a flex child shrink to be clipped. */
 .builder-library { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-height: 0; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+/* The name takes the row's whole width and the version and status sit under
+   it (D-15-4): beside them it had ~100px in a 236px rail, which is thirteen
+   characters a line, and "Minimal gated agent copy" lost its last word even
+   with two lines to say it. The gallery row already reads this way. */
 .builder-library-row {
   display: grid;
   width: 100%;
-  grid-template-columns: 13px minmax(0, 1fr) auto auto;
-  gap: 7px;
+  grid-template-columns: 13px minmax(0, 1fr);
+  grid-template-areas: 'icon name' 'icon meta';
+  gap: 4px 7px;
   align-items: start;
   padding: 7px 8px;
   color: var(--text-body);
@@ -760,7 +765,9 @@
 .builder-library-row:hover { background: var(--surface-raised); border-color: var(--border-default); }
 .builder-library-row:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
 .builder-library-row.is-open { background: var(--surface-well); border-color: var(--accent-cyan); }
-.builder-library-icon { color: var(--text-40); }
+.builder-library-icon { grid-area: icon; margin-top: 1px; color: var(--text-40); }
+.builder-library-name { grid-area: name; }
+.builder-library-meta { display: flex; grid-area: meta; gap: 6px; align-items: center; }
 /* Two lines, then an ellipsis - never one line that eats the last word. A
    duplicate's "copy" and an import's "imported" sit at the END of the name,
    which is exactly what a single nowrap line drops first (D-15-4). */

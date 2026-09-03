@@ -324,14 +324,18 @@ test.describe('the saved-graphs library (D-15-4)', () => {
    * measurements only a browser can make: how wide a name ended up, and
    * whether the last row is reachable at all.
    */
+  // Prefixed so the rows are this test's own: the synthetic store is shared
+  // with the other suites, and a published document the cleanup cannot
+  // delete (409) is named exactly like the template.
   const NAMES = [
-    'Minimal gated agent copy',
-    'Minimal gated agent imported',
-    'Minimal gated agent',
-    'A fourth graph so the list has to earn its height',
-    'A fifth graph, for the same reason',
-    'A sixth graph, because the capture showed three and clipped the third',
+    'LP Minimal gated agent copy',
+    'LP Minimal gated agent imported',
+    'LP Minimal gated agent',
+    'LP a fourth graph so the list has to earn its height',
+    'LP a fifth graph, for the same reason',
+    'LP a sixth graph, because the capture clipped the third',
   ]
+  for (const name of NAMES) expect(name.length).toBeLessThanOrEqual(80)
   const created: string[] = []
 
   test.beforeEach(async ({ page }) => {
@@ -349,12 +353,13 @@ test.describe('the saved-graphs library (D-15-4)', () => {
     await page.getByRole('button', { name: /minimal gated agent/i }).first().click()
     const palette = page.locator('.builder-palette')
     await expect(palette).toBeVisible()
-    const rows = palette.locator('.builder-library-row')
+    // Only the rows this test seeded.
+    const rows = palette.locator('.builder-library-row', { hasText: /^LP / })
     await expect(rows).toHaveCount(NAMES.length)
 
     // No name is cut horizontally: the distinguishing word is on screen, on a
     // second line if it must be, never behind an ellipsis in the first.
-    for (const name of ['Minimal gated agent copy', 'Minimal gated agent imported']) {
+    for (const name of NAMES.slice(0, 2)) {
       const label = palette.locator('.builder-library-name', { hasText: name }).first()
       await expect(label).toBeVisible()
       const box = await label.evaluate((el) => ({
@@ -367,10 +372,11 @@ test.describe('the saved-graphs library (D-15-4)', () => {
       expect(box.scrollHeight).toBeLessThanOrEqual(box.clientHeight + 1)
     }
 
-    // The palette ends inside the viewport, and the last row can be reached.
+    // The palette ends inside the viewport, and the last seeded row can be
+    // reached - the sixth, whose name says why it exists.
     const paletteBox = (await palette.boundingBox())!
     expect(paletteBox.y + paletteBox.height).toBeLessThanOrEqual(900 + 1)
-    const last = rows.last()
+    const last = palette.locator('.builder-library-row', { hasText: 'LP a sixth graph' })
     await last.scrollIntoViewIfNeeded()
     const lastBox = (await last.boundingBox())!
     expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(paletteBox.y + paletteBox.height + 1)

@@ -285,8 +285,10 @@ function place(kind: NodeKind): void {
                (D-15-4): "Minimal gated age…" lost the one word - copy - that
                told the row from its source. -->
           <span class="builder-library-name" :title="entry.name">{{ entry.name }}</span>
-          <span class="builder-library-version">v{{ entry.version }}</span>
-          <span class="builder-library-status" :class="`is-${entry.status}`">{{ entry.status }}</span>
+          <span class="builder-library-meta">
+            <span class="builder-library-version">v{{ entry.version }}</span>
+            <span class="builder-library-status" :class="`is-${entry.status}`">{{ entry.status }}</span>
+          </span>
         </button>
       </li>
     </ul>

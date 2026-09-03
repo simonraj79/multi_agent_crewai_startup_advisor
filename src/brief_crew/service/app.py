@@ -445,6 +445,81 @@ class GateReplyError(Exception):
         self.detail = detail
 
 
+#: How many of pydantic's errors a refusal names, and how long each half may
+#: be. Three is enough to fix a client that got several fields wrong at once
+#: and short enough that the answer stays a sentence rather than a report.
+_MAX_REPORTED_VALIDATION_ERRORS = 3
+_MAX_VALIDATION_LOCATION_CHARS = 120
+_MAX_VALIDATION_MESSAGE_CHARS = 200
+
+
+def request_validation_detail(errors: "Sequence[Mapping[str, Any]]") -> str:
+    """Pydantic's error list as `loc: msg` sentences, with no `input` in it.
+
+    FastAPI's default handler answers `{"detail": [...]}` with the offending
+    **`input` echoed back**, and the reflection is bounded only by the body
+    ceiling - 256 KiB on the builder prefix. A 200 KB string in the wrong
+    field comes back as a 200 KB refusal.
+
+    This class of defect has now been found on FOUR doors one at a time:
+    the import envelope in round 2 (D-15-9), then create, save and validate
+    in round 3 (D-15-21). Each was answered where it was found, by writing
+    the body-parsing by hand. A fifth hand-written envelope would be the
+    wrong answer to a question that is plainly app-wide, so this handler
+    covers every typed body on every route at once, including the ones
+    nobody has probed yet.
+
+    `_import_envelope` in `builder_api.py` keeps its own parsing: it does
+    more than this can (a 413 measured on the bytes, and a JSON decode whose
+    failure is not a pydantic error at all), and a door that never reaches
+    FastAPI's parser cannot rely on FastAPI's handler.
+    """
+
+    sentences: list[str] = []
+    for error in list(errors)[:_MAX_REPORTED_VALIDATION_ERRORS]:
+        raw_location = error.get("loc") or ()
+        # `body` leads almost every location and says nothing to a client that
+        # knows it sent a body; dropping it makes `document.nodes.0.kind` read
+        # as the path the client actually wrote.
+        parts = [str(part) for part in raw_location]
+        if parts and parts[0] in ("body", "query", "path", "header", "cookie"):
+            parts = parts[1:] or [str(raw_location[0])]
+        location = ".".join(parts) or "request"
+        message = str(error.get("msg", "is invalid"))
+        sentences.append(
+            f"{location[:_MAX_VALIDATION_LOCATION_CHARS]}: "
+            f"{message[:_MAX_VALIDATION_MESSAGE_CHARS]}"
+        )
+    if not sentences:
+        return "request failed validation"
+    return "; ".join(sentences)
+
+
+def _install_validation_handler(app: Any) -> None:
+    """Answer every request-validation failure without echoing the request.
+
+    Registered on the app rather than per router, because the defect is a
+    property of FastAPI's default handler and not of any one door. The status
+    stays **422**, and the body becomes `{"detail": "<loc>: <msg>; ..."}` - a
+    string rather than pydantic's list, which the console already renders:
+    `readErrorDetail` (`frontend/src/data/serverLimits.ts`) reads a `detail`
+    string first and falls back to a list of `msg`, so both shapes were
+    already handled and this is the shape it handles best.
+    """
+
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+
+    async def handle_validation_error(_request: Any, exc: Any) -> Any:
+        errors = exc.errors() if hasattr(exc, "errors") else []
+        return JSONResponse(
+            status_code=422,
+            content={"detail": request_validation_detail(errors)},
+        )
+
+    app.add_exception_handler(RequestValidationError, handle_validation_error)
+
+
 def _validation_detail(error: ValidationError) -> str:
     """A short, bounded description of the first schema failure.
 
@@ -704,6 +779,8 @@ def create_app(
         redoc_url="/redoc" if expose_docs else None,
         openapi_url="/openapi.json" if expose_docs else None,
     )
+
+    _install_validation_handler(app)
 
     # Added BEFORE the CORS middleware so CORS ends up outermost and a 413
     # still carries the allow-origin header a browser needs to show it.

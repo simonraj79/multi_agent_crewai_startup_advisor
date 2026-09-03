@@ -13,6 +13,7 @@ import {
   BUILDER_CANVAS_ATTR,
   BUILDER_DND_MIME,
   BUILDER_HOVERED_NODE,
+  BUILDER_READ_ONLY,
   BUILDER_SELECTED_IDS,
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
@@ -164,6 +165,7 @@ watch(
 
 provide(BUILDER_HOVERED_NODE, props.canvas.hoveredNodeId)
 provide(BUILDER_SELECTED_IDS, computed(() => props.canvas.selectedIds.value))
+provide(BUILDER_READ_ONLY, computed(() => props.readOnly === true))
 
 function onNodeEnter({ node }: NodeMouseEvent): void {
   props.canvas.hoveredNodeId.value = node.id

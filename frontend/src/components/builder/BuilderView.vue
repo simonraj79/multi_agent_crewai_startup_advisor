@@ -1320,6 +1320,7 @@ watch(
         :open-document-id="persistence.documentId.value"
         :filter="canvas.filterQuery.value"
         :filter-matches="filterMatchCount"
+        :read-only="persistence.viewingVersion.value"
         @place="placeKind"
         @open="openFromGallery"
         @update:filter="canvas.filterQuery.value = $event"
@@ -1342,6 +1343,8 @@ watch(
             :max-name-chars="vocabulary?.bounds.max_name_chars ?? 80"
             :document-id="persistence.documentId.value"
             :versions-open="versionsOpen"
+            :read-only="persistence.viewingVersion.value"
+            :head-version="persistence.headVersion.value"
             @rename="store.setName"
             @undo="undo"
             @redo="store.redo"
@@ -1361,6 +1364,7 @@ watch(
                 :head-version="persistence.headVersion.value"
                 :error="persistence.error.value"
                 :draft-dropped="persistence.draftDropped.value"
+                :viewing="persistence.viewingVersion.value"
               />
             </template>
           </DocumentBar>

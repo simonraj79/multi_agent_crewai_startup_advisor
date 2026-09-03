@@ -6,6 +6,7 @@ import {
   EllipsisVertical,
   History,
   Keyboard,
+  Lock,
   Redo2,
   Rocket,
   Trash2,
@@ -78,8 +79,20 @@ const props = withDefaults(
   documentId?: string | null
   /** Whether the docked version browser is showing, for `aria-expanded`. */
   versionsOpen?: boolean
+  /**
+   * A stored version that is not head is on the canvas (round 2, D-15-1).
+   *
+   * The bar has to LOOK read-only, not only the canvas: the name is not a
+   * text control, Publish is disabled with the same sentence the dialog
+   * would refuse with, and a lock sits beside the title. Before this the only
+   * cues were a banner in the dock and greyed inspector fields 700px away,
+   * under a bar that said `saved · v1` in the editable colour.
+   */
+  readOnly?: boolean
+  /** Head, for the Publish tooltip while `readOnly`. */
+  headVersion?: number
   }>(),
-  { documentId: null, versionsOpen: false },
+  { documentId: null, versionsOpen: false, readOnly: false, headVersion: 0 },
 )
 
 const emit = defineEmits<{
@@ -225,6 +238,11 @@ const liveIsCurrent = computed(
   () => props.publishedHere && props.publishedVersion === props.version,
 )
 
+/** The dialog's own refusal, on the button that would open it. */
+const publishBlocked = computed(() =>
+  props.readOnly ? `you are viewing v${props.version}; publish works on head (v${props.headVersion})` : '',
+)
+
 async function startRename(): Promise<void> {
   draftName.value = props.name
   editing.value = true
@@ -250,8 +268,12 @@ function cancelRename(): void {
 </script>
 
 <template>
-  <div class="document-bar">
+  <div class="document-bar" :class="{ 'is-read-only': readOnly }" :data-read-only="readOnly ? 'true' : undefined">
     <div class="document-identity">
+      <span v-if="readOnly" class="document-lock" title="Read-only — a stored version is on the canvas" data-testid="document-lock">
+        <Lock :size="13" aria-hidden="true" />
+        <span class="visually-hidden">Read-only</span>
+      </span>
       <input
         v-if="editing"
         ref="nameInput"
@@ -268,7 +290,8 @@ function cancelRename(): void {
         v-else
         class="document-name"
         type="button"
-        :title="`Rename ${name}`"
+        :disabled="readOnly"
+        :title="readOnly ? 'Read-only — restore this version or go back to head to rename it' : `Rename ${name}`"
         @click="startRename"
       >
         {{ name }}
@@ -435,7 +458,14 @@ function cancelRename(): void {
         />
       </div>
 
-      <button class="button button-primary document-publish" type="button" @click="emit('publish')">
+      <button
+        class="button button-primary document-publish"
+        type="button"
+        :disabled="readOnly"
+        :title="publishBlocked || undefined"
+        data-testid="document-publish"
+        @click="emit('publish')"
+      >
         <Rocket :size="15" aria-hidden="true" />
         {{ publishedVersion === null ? 'Publish' : 'Republish' }}
       </button>
@@ -474,7 +504,16 @@ function cancelRename(): void {
 }
 
 .document-name { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
-.document-name:hover { border-color: var(--border-default); }
+.document-name:hover:not(:disabled) { border-color: var(--border-default); }
+.document-name:disabled { color: var(--text-muted); cursor: default; }
+
+/* Read-only, said in the bar's own colours: the lock and the chip share the
+   restore banner's amber, and the bar's ground steps to the warn tint so the
+   whole strip reads as a mode rather than as one changed word. */
+.document-lock { display: inline-flex; align-items: center; color: var(--warn-text); }
+.document-bar.is-read-only { background: linear-gradient(to bottom, var(--warn-bg), transparent); }
+.document-publish:disabled { cursor: not-allowed; opacity: 0.42; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .document-name-input { background: var(--surface-well); border-color: var(--accent-cyan); box-shadow: var(--glow-input); outline: 0; }
 
 .live-note {

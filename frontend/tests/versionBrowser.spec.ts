@@ -1,10 +1,14 @@
-import { effectScope, nextTick } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BuilderView from '../src/components/builder/BuilderView.vue'
+import BuilderNode from '../src/components/builder/BuilderNode.vue'
+import DocumentBar from '../src/components/builder/DocumentBar.vue'
+import NodePalette from '../src/components/builder/NodePalette.vue'
 import PublishDialog from '../src/components/builder/PublishDialog.vue'
 import VersionBrowser from '../src/components/builder/VersionBrowser.vue'
+import { BUILDER_READ_ONLY } from '../src/composables/useBuilderCanvas'
 import { useBuilderDocument } from '../src/composables/useBuilderDocument'
 import { useBuilderPersistence } from '../src/composables/useBuilderPersistence'
 import { MINIMAL_GATED_AGENT, documentFromTemplate } from '../src/data/builderTemplates'
@@ -452,6 +456,80 @@ describe('VersionBrowser', () => {
   })
 })
 
+/* --- the palette and the card say read-only too (D-15-1) ------------------- */
+
+describe('read-only on the palette and on the card', () => {
+  const vocabularyServer = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify(vocabularyPayload.vocabulary), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+
+  it('disables every tile, says why, and drops nothing on click', async () => {
+    vocabularyServer()
+    const wrapper = mount(NodePalette, { props: { readOnly: true } })
+    await flush(6)
+    expect(wrapper.get('.builder-palette').classes()).toContain('is-read-only')
+    expect(wrapper.get('[data-testid="palette-read-only"]').text()).toContain('Read-only')
+    const tiles = wrapper.findAll('.builder-tile')
+    expect(tiles.length).toBeGreaterThan(0)
+    for (const tile of tiles) {
+      expect(tile.attributes('disabled')).toBeDefined()
+      expect(tile.attributes('title')).toContain('Read-only')
+    }
+    await tiles[0].trigger('click')
+    expect(wrapper.emitted('place')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('is an ordinary palette when nothing is being viewed', async () => {
+    vocabularyServer()
+    const wrapper = mount(NodePalette)
+    await flush(6)
+    expect(wrapper.get('.builder-palette').classes()).not.toContain('is-read-only')
+    expect(wrapper.find('[data-testid="palette-read-only"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('puts a lock in the card eyebrow only while the canvas is read-only', () => {
+    // Shaped as `useBuilderCanvas` projects a node, the way `builderNode.spec.ts` does.
+    const data = {
+      node: sample('x', 1).nodes[0],
+      index: 1,
+      ports: [],
+      acceptsIncoming: false,
+      problems: [],
+      severity: null,
+      joined: false,
+      anchor: false,
+      loopTarget: false,
+      loopIllegal: false,
+      connectable: false,
+      flashing: false,
+      runState: 'idle',
+      inbound: 0,
+      landing: false,
+    }
+    const locked = mount(BuilderNode, {
+      props: { id: 'idea', data: data as never },
+      global: { stubs: { Handle: true }, provide: { [BUILDER_READ_ONLY as symbol]: ref(true) } },
+    })
+    expect(locked.find('[data-testid="node-lock"]').exists()).toBe(true)
+    const open = mount(BuilderNode, {
+      props: { id: 'idea', data: data as never },
+      global: { stubs: { Handle: true }, provide: { [BUILDER_READ_ONLY as symbol]: ref(false) } },
+    })
+    expect(open.find('[data-testid="node-lock"]').exists()).toBe(false)
+    const outsideACanvas = mount(BuilderNode, { props: { id: 'idea', data: data as never }, global: { stubs: { Handle: true } } })
+    expect(outsideACanvas.find('[data-testid="node-lock"]').exists()).toBe(false)
+  })
+})
+
 /* --- publish keeps refusing a non-head ------------------------------------- */
 
 describe('PublishDialog over a viewed version', () => {
@@ -635,11 +713,30 @@ describe('the shell', () => {
     expect(wrapper.text()).not.toContain('Extra')
     expect(wrapper.get('.builder-canvas').classes()).toContain('is-read-only')
     expect(wrapper.get('fieldset.rail-lock').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-testid="save-chip"]').text()).toContain('saved · v1')
 
-    await wrapper.findAll('button').find((button) => /^Publish$/.test(button.text()))!.trigger('click')
-    await flush(4)
-    expect(wrapper.text()).toContain('you are viewing v1; publish works on head (v2)')
+    // D-15-1: the DOCUMENT BAR says read-only too, not only the dock and the
+    // rail. The chip stops calling v1 "saved" in the editable colour, the
+    // name is no longer a text control, a lock sits beside it, and Publish is
+    // disabled with the dialog's own sentence rather than left looking live.
+    const chip = wrapper.get('[data-testid="save-chip"]')
+    expect(chip.text()).toContain('viewing v1 of v2 · read-only')
+    expect(chip.text()).not.toContain('saved · v1')
+    expect(wrapper.get('.save-chip').classes()).toContain('is-viewing')
+    expect(wrapper.get('.document-bar').classes()).toContain('is-read-only')
+    expect(wrapper.find('[data-testid="document-lock"]').exists()).toBe(true)
+    expect(wrapper.get('.document-name').attributes('disabled')).toBeDefined()
+    const publish = wrapper.get('[data-testid="document-publish"]')
+    expect(publish.attributes('disabled')).toBeDefined()
+    expect(publish.attributes('title')).toBe('you are viewing v1; publish works on head (v2)')
+    // The palette is stubbed in this mount; it is handed the same fact.
+    expect(wrapper.findComponent(NodePalette).props('readOnly')).toBe(true)
+
+    await wrapper.get('[data-testid="version-back"]').trigger('click')
+    await settled()
+    expect(chip.text()).toContain('saved · v2')
+    expect(wrapper.get('.document-bar').classes()).not.toContain('is-read-only')
+    expect(wrapper.find('[data-testid="document-lock"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="document-publish"]').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 
@@ -648,12 +745,12 @@ describe('the shell', () => {
     await wrapper.get('[data-testid="version-row-1"]').trigger('click')
     await settled()
 
-    // A rename from the bar is the one gesture reachable without Vue Flow.
-    await wrapper.get('.document-name').trigger('click')
-    await flush(2)
-    const input = wrapper.get('.document-name-input')
-    await input.setValue('Typed over v1')
-    await input.trigger('blur')
+    // The bar's name is not a text control while read-only (D-15-1), so the
+    // rename cannot start there; a rename REQUEST reaching the shell - the
+    // bar's own event, as a stale surface might still send it - is the one
+    // gesture reachable without Vue Flow, and the store must swallow it aloud.
+    expect(wrapper.get('.document-name').attributes('disabled')).toBeDefined()
+    wrapper.findComponent(DocumentBar).vm.$emit('rename', 'Typed over v1')
     await flush(4)
 
     expect(wrapper.get('.document-name').text()).toBe('First')

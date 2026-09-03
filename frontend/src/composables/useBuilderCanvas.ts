@@ -349,6 +349,12 @@ export type BuilderFlowEdge = Edge<BuilderEdgeData> & {
  * visibly stops working somewhere past fifteen nodes.
  */
 export const BUILDER_HOVERED_NODE: InjectionKey<Ref<string | null>> = Symbol('builder-hovered-node')
+/**
+ * Whether the canvas is showing a stored version read-only (round 2, D-15-1).
+ * Provided by `BuilderCanvas`, read by every card, so each one can wear a lock
+ * without the projection carrying a flag per node.
+ */
+export const BUILDER_READ_ONLY: InjectionKey<Ref<boolean>> = Symbol('builder-read-only')
 export const BUILDER_SELECTED_IDS: InjectionKey<Ref<ReadonlySet<string>>> =
   Symbol('builder-selected-ids')
 

@@ -128,7 +128,8 @@ export const KIND_EYEBROW: Record<NodeKind, string> = {
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { BUILDER_HOVERED_NODE } from '../../composables/useBuilderCanvas'
+import { Lock } from 'lucide-vue-next'
+import { BUILDER_HOVERED_NODE, BUILDER_READ_ONLY } from '../../composables/useBuilderCanvas'
 import { NODE_KINDS } from '../../data/nodeKinds'
 import type { BuilderProblem } from '../../types/builder'
 
@@ -179,6 +180,13 @@ const isEscalation = computed(
  * canvas - in a spec, in a thumbnail - renders instead of throwing.
  */
 const hovered = inject(BUILDER_HOVERED_NODE, null)
+/**
+ * The canvas's read-only flag, for the lock in the eyebrow (D-15-1). Null
+ * outside a canvas. A top-level ref, so the template reads it unwrapped -
+ * `readOnly`, never `readOnly.value`, which on an unwrapped boolean is
+ * `undefined` and hides the lock everywhere.
+ */
+const readOnly = inject(BUILDER_READ_ONLY, null)
 function setHover(value: string | null): void {
   if (hovered) hovered.value = value
 }
@@ -447,6 +455,19 @@ const ariaLabel = computed(() => {
         aria-hidden="true"
       />
       <span class="node-eyebrow builder-eyebrow">{{ eyebrow }}</span>
+      <!--
+        Round 2, D-15-1: a stored version on the canvas is read-only, and the
+        card says so where the eye lands rather than leaving it to a banner in
+        the dock. The store refuses every commit either way; this is the cue.
+      -->
+      <span
+        v-if="readOnly"
+        class="builder-node-lock"
+        title="Read-only — a stored version is on the canvas"
+        data-testid="node-lock"
+      >
+        <Lock :size="11" :stroke-width="2" aria-hidden="true" />
+      </span>
     </span>
 
     <!--

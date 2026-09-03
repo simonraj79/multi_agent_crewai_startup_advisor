@@ -764,6 +764,23 @@
 .builder-library-status.is-draft { color: var(--text-40); }
 .builder-library-status.is-published { color: var(--accent-mint); border-color: color-mix(in srgb, var(--accent-mint) 42%, transparent); }
 
+/* Read-only, on the canvas (round 2, D-15-1). Every card carries a lock in
+   its eyebrow and recedes a little; the tiles are disabled by the palette's
+   own rule and say why. Tokens only: the lock is the warn colour the restore
+   banner and the chip already use, the recede is opacity. */
+.builder-node-lock { display: inline-flex; align-items: center; margin-left: auto; color: var(--warn-text); }
+.builder-canvas.is-read-only .builder-node { opacity: 0.86; }
+.builder-palette-readonly {
+  margin: 0;
+  padding: 8px 9px;
+  color: var(--warn-text);
+  font-size: var(--fs-11);
+  line-height: 1.45;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-md);
+}
+
 /* ===========================================================================
    The port menu (§4.1)
    ===========================================================================

@@ -77,8 +77,15 @@ const props = withDefaults(
     filter?: string
     /** How many graph nodes the current query matches, for the live count. */
     filterMatches?: number
+    /**
+     * A stored version that is not head is on the canvas (round 2, D-15-1).
+     * Every tile is disabled and says why: the store would refuse the commit
+     * anyway, and a palette that still invited a drop over a read-only canvas
+     * was the loudest of the cues the bar failed to give.
+     */
+    readOnly?: boolean
   }>(),
-  { budget: null, library: () => [], openDocumentId: null, filter: '', filterMatches: 0 },
+  { budget: null, library: () => [], openDocumentId: null, filter: '', filterMatches: 0, readOnly: false },
 )
 
 const emit = defineEmits<{
@@ -124,12 +131,17 @@ const atBillableCeiling = computed(
   () => billableMax.value !== null && billableUsed.value >= billableMax.value,
 )
 
+/** Why nothing can be placed, while a stored version is on screen. */
+const READ_ONLY = 'Read-only — a stored version is on the canvas. Restore it, or go back to head, to edit.'
+
 function disabledFor(kind: NodeKind): boolean {
+  if (props.readOnly) return true
   if (vocabularyUnavailable.value) return true
   return isBillableKind(kind) && atBillableCeiling.value
 }
 
 function tooltipFor(kind: NodeKind): string {
+  if (props.readOnly) return READ_ONLY
   if (!isBillableKind(kind)) return NODE_KINDS[kind].blurb
   if (!atBillableCeiling.value) return NODE_KINDS[kind].blurb
   // The bound is named, because "you cannot add another" without the name of
@@ -161,7 +173,7 @@ function place(kind: NodeKind): void {
 </script>
 
 <template>
-  <aside class="builder-palette" aria-label="Node palette and saved graphs">
+  <aside class="builder-palette" :class="{ 'is-read-only': readOnly }" aria-label="Node palette and saved graphs">
     <header class="builder-palette-head">
       <span class="builder-palette-kicker">PALETTE</span>
       <h2>Kinds</h2>
@@ -196,6 +208,10 @@ function place(kind: NodeKind): void {
         {{ filterMatches }} {{ filterMatches === 1 ? 'match' : 'matches' }}
       </span>
     </div>
+
+    <p v-if="readOnly" class="builder-palette-readonly" role="status" data-testid="palette-read-only">
+      {{ READ_ONLY }}
+    </p>
 
     <div class="builder-tiles" role="list">
       <button

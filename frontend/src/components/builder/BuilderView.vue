@@ -4,7 +4,10 @@ import { useVueFlow } from '@vue-flow/core'
 import {
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
+  CircleCheck,
   CircleDot,
+  Info,
   KeyRound,
   PenTool,
   Play,
@@ -254,6 +257,27 @@ const notice = ref('')
 let noticeTimer = 0
 
 /**
+ * What KIND of line, and what it offers (round 2, D-15-5).
+ *
+ * The notice was a bare string in the header: no icon, no dismiss, no action,
+ * and `max-width: 42ch; white-space: nowrap` cut the one fact an author
+ * needed off the end - `imported alice.builder.json as a new draft, "Minimal
+ * g…` in a library that had just gained a second row by that name. `notice`
+ * stays a string, because inspectors inject it as one; the kind and the
+ * action ride beside it and are cleared with it.
+ */
+type NoticeKind = 'info' | 'success' | 'error'
+interface NoticeAction {
+  label: string
+  run: () => void
+}
+const noticeKind = ref<NoticeKind>('info')
+const noticeAction = shallowRef<NoticeAction | null>(null)
+const noticeIcon = computed(() =>
+  noticeKind.value === 'success' ? CircleCheck : noticeKind.value === 'error' ? CircleAlert : Info,
+)
+
+/**
  * Whether the author has a document in hand yet.
  *
  * The gallery is the empty state of the CANVAS, not of the route: `#/build`
@@ -385,13 +409,31 @@ const anchorLabels = computed(() => {
   return labels
 })
 
-function say(message: string): void {
+function say(
+  message: string,
+  options: { kind?: NoticeKind; action?: NoticeAction | null } = {},
+): void {
   window.clearTimeout(noticeTimer)
   notice.value = message
+  noticeKind.value = options.kind ?? 'info'
+  noticeAction.value = options.action ?? null
   if (!message) return
+  // Longer when there is something to press: a notice that offers a way
+  // back and then leaves in four seconds is a door that closes on its own.
   noticeTimer = window.setTimeout(() => {
     notice.value = ''
-  }, 4000)
+    noticeAction.value = null
+  }, noticeAction.value ? 8000 : 4000)
+}
+
+function dismissNotice(): void {
+  say('')
+}
+
+function runNoticeAction(): void {
+  const action = noticeAction.value
+  dismissNotice()
+  action?.run()
 }
 
 /* ── loading ───────────────────────────────────────────────────────────── */
@@ -509,7 +551,7 @@ async function openDocument(id: DocumentId): Promise<void> {
     await persistence.open(id)
     await afterAdopt()
   } catch (error) {
-    say(error instanceof Error ? error.message : 'that graph could not be opened.')
+    say(error instanceof Error ? error.message : 'that graph could not be opened.', { kind: 'error' })
   }
 }
 
@@ -598,10 +640,10 @@ async function restoreVersion(): Promise<void> {
   try {
     await persistence.restoreVersion()
     if (persistence.conflict.value === null && !persistence.error.value) {
-      say(`restored v${from} as v${persistence.version.value} — head is one undo away.`)
+      say(`restored v${from} as v${persistence.version.value} — head is one undo away.`, { kind: 'success' })
     }
   } catch (error) {
-    say(messageOf(error, `v${from} could not be restored.`))
+    say(messageOf(error, `v${from} could not be restored.`), { kind: 'error' })
   } finally {
     restoring.value = false
   }
@@ -637,9 +679,12 @@ async function exportDocument(): Promise<void> {
       persistence.viewingVersion.value ? persistence.version.value : undefined,
     )
     downloadExport(envelope)
-    say(`exported ${exportFilename(envelope.name)} — credentials stripped, ${envelope.needs_credentials.length} node${envelope.needs_credentials.length === 1 ? '' : 's'} will need one on import.`)
+    say(
+      `exported ${exportFilename(envelope.name)} — credentials stripped, ${envelope.needs_credentials.length} node${envelope.needs_credentials.length === 1 ? '' : 's'} will need one on import.`,
+      { kind: 'success' },
+    )
   } catch (error) {
-    say(messageOf(error, 'the export could not be written.'))
+    say(messageOf(error, 'the export could not be written.'), { kind: 'error' })
   }
 }
 
@@ -666,6 +711,7 @@ async function importFile(file: File): Promise<void> {
       error instanceof ExportFileError
         ? error.message
         : `${file.name} could not be read — ${messageOf(error, 'the browser refused the file')}`,
+      { kind: 'error' },
     )
     return
   }
@@ -673,7 +719,7 @@ async function importFile(file: File): Promise<void> {
   try {
     result = await builderApi.importWorkflow(envelope)
   } catch (error) {
-    say(`${file.name} was not imported — ${messageOf(error, 'the server refused it')}`)
+    say(`${file.name} was not imported — ${messageOf(error, 'the server refused it')}`, { kind: 'error' })
     return
   }
   persistence.adopt(result)
@@ -684,7 +730,9 @@ async function importFile(file: File): Promise<void> {
   versionsOpen.value = false
   void refreshLibrary()
   await afterAdopt()
-  say(`imported ${file.name} as a new draft, “${result.document.name}”.`)
+  // The new document's name IN FULL - it may carry an ` imported` the file did
+  // not (D-15-4), and it is the one fact that finds the row in the library.
+  say(`imported ${file.name} as a new draft, “${result.document.name}”.`, { kind: 'success' })
 }
 
 function dismissImportNotice(): void {
@@ -707,10 +755,10 @@ async function duplicateDocument(): Promise<void> {
       persistence.viewingVersion.value ? persistence.version.value : undefined,
     )
     void refreshLibrary()
-    say(`duplicated as “${copy.document.name}”.`)
+    say(`duplicated as “${copy.document.name}”.`, { kind: 'success' })
     emit('openDocument', copy.id as DocumentId)
   } catch (error) {
-    say(messageOf(error, 'the graph could not be duplicated.'))
+    say(messageOf(error, 'the graph could not be duplicated.'), { kind: 'error' })
   }
 }
 
@@ -744,11 +792,11 @@ async function unpublishDocument(): Promise<void> {
     }
     if (versionsOpen.value) void loadVersions()
     void refreshLibrary()
-    say(`unpublished “${doc.value.name}” — it no longer answers launches.`)
+    say(`unpublished “${doc.value.name}” — it no longer answers launches.`, { kind: 'success' })
   } catch (error) {
     const message = messageOf(error, 'the graph could not be unpublished.')
     if (deleteAsk.value) deleteProblem.value = message
-    else say(message)
+    else say(message, { kind: 'error' })
   } finally {
     unpublishing.value = false
   }
@@ -788,7 +836,7 @@ async function confirmDelete(): Promise<void> {
     started.value = false
     void refreshLibrary()
     emit('closeDocument')
-    say(`deleted “${name}”.`)
+    say(`deleted “${name}”.`, { kind: 'success' })
   } catch (error) {
     deleteProblem.value = messageOf(error, 'the graph could not be deleted.')
     deleteRefused.value = error instanceof BuilderConflictError
@@ -803,7 +851,11 @@ async function confirmDelete(): Promise<void> {
 watch(
   () => store.lockedRefusals.value,
   () => {
-    if (store.readOnly.value) say(readOnlyNotice.value)
+    if (store.readOnly.value) {
+      say(readOnlyNotice.value, {
+        action: { label: `Back to v${persistence.headVersion.value}`, run: () => void viewHead() },
+      })
+    }
   },
 )
 
@@ -1285,7 +1337,35 @@ watch(
           would not open - all three are things the author would otherwise
           discover by finding something missing.
         -->
-        <span v-if="notice" class="builder-notice" role="status">{{ notice }}</span>
+        <div
+          v-if="notice"
+          class="builder-notice"
+          :class="`is-${noticeKind}`"
+          role="status"
+          data-testid="builder-notice"
+        >
+          <component :is="noticeIcon" class="builder-notice-icon" :size="14" aria-hidden="true" />
+          <span class="builder-notice-text" :title="notice">{{ notice }}</span>
+          <button
+            v-if="noticeAction"
+            type="button"
+            class="builder-notice-action"
+            data-testid="notice-action"
+            @click="runNoticeAction"
+          >
+            {{ noticeAction.label }}
+          </button>
+          <button
+            type="button"
+            class="icon-button builder-notice-dismiss"
+            aria-label="Dismiss"
+            title="Dismiss"
+            data-testid="notice-dismiss"
+            @click="dismissNotice"
+          >
+            <X :size="13" aria-hidden="true" />
+          </button>
+        </div>
 
         <!--
           The console's chip, in the console's place. Plan 01 D9 says "the
@@ -1733,14 +1813,51 @@ watch(
 .workspace-switch { grid-template-columns: auto auto; padding: 2px; }
 .workspace-switch button { min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }
 
+/* A toast in the header row, in the layout (never over the canvas, R15): an
+   icon that says which kind of line it is, room for two lines before an
+   ellipsis so a document's name survives, an action when there is one, and a
+   dismiss. Every value is a token; the three kinds are the three semantic
+   colours the rest of the builder already uses. */
 .builder-notice {
-  max-width: 42ch;
-  overflow: hidden;
-  color: var(--text-muted);
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  max-width: min(64ch, 42vw);
+  padding: 4px 4px 4px 10px;
+  color: var(--text-body);
   font-size: var(--fs-12);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.3;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
 }
+.builder-notice-icon { flex: 0 0 auto; color: var(--text-muted); }
+.builder-notice.is-success { border-color: color-mix(in srgb, var(--accent-mint) 42%, transparent); }
+.builder-notice.is-success .builder-notice-icon { color: var(--accent-mint); }
+.builder-notice.is-error { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
+.builder-notice.is-error .builder-notice-icon { color: var(--err-text); }
+.builder-notice-text {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.builder-notice-action {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--accent-cyan);
+  font: 600 var(--fs-11)/1 var(--font-mono);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 42%, transparent);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.builder-notice-action:hover { background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
+.builder-notice-dismiss { flex: 0 0 auto; width: 24px; height: 24px; }
 
 /* The wall takes the shell's main row rather than its own viewport: the panel
    declares `min-height: 100vh` for the page it usually IS, and under a 52px

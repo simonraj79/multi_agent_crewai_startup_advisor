@@ -840,6 +840,13 @@ describe('the shell', () => {
 
     expect(wrapper.get('.document-name').text()).toBe('First')
     expect(wrapper.get('.builder-notice').text()).toContain('v1 is read-only')
+    // D-15-5: the notice offers the way back, and pressing it takes it.
+    const back = wrapper.get('[data-testid="notice-action"]')
+    expect(back.text()).toBe('Back to v2')
+    await back.trigger('click')
+    await settled()
+    expect(wrapper.find('[data-testid="version-viewing"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="save-chip"]').text()).toContain('saved · v2')
     wrapper.unmount()
   })
 

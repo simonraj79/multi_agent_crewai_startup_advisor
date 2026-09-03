@@ -226,6 +226,34 @@ describe('import from the gallery', () => {
     wrapper.unmount()
   })
 
+  it('says what it imported in full, as a success, with a dismiss (D-15-5)', async () => {
+    /*
+     * Round 1's capture: `imported alice.builder.json as a new draft, "Minimal
+     * g…` - a bare string, no icon, no dismiss, truncated on the one fact that
+     * finds the new row in a library that had just gained a second row by that
+     * name. The name is asserted whole, and the toast is asserted to be one.
+     */
+    const server = stubServer()
+    const wrapper = mount(BuilderView, { global: { stubs: STUBS } })
+    await settled()
+    await pick(wrapper, 'gallery-import-file', exportFile(ENVELOPE, 'alice.builder.json'))
+
+    const toast = wrapper.get('[data-testid="builder-notice"]')
+    expect(toast.classes()).toContain('is-success')
+    expect(toast.attributes('role')).toBe('status')
+    expect(toast.get('.builder-notice-text').text()).toBe(
+      'imported alice.builder.json as a new draft, “Brought in from a file”.',
+    )
+    expect(toast.get('.builder-notice-text').attributes('title')).toContain('Brought in from a file')
+    expect(toast.find('svg').exists()).toBe(true)
+    expect(server.imports).toHaveLength(1)
+
+    await toast.get('[data-testid="notice-dismiss"]').trigger('click')
+    await flush(2)
+    expect(wrapper.find('[data-testid="builder-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('shows no notice when every node arrived with what it needs', async () => {
     stubServer()
     const wrapper = mount(BuilderView, { props: { documentId: null }, global: { stubs: STUBS } })

@@ -62,6 +62,7 @@ from brief_crew.builder.store import (
     BuilderStoreError,
     DEFAULT_LIST_LIMIT,
     DocumentNotFound,
+    DocumentReadOnly,
     DocumentTooLarge,
     DocumentVersionConflict,
     STATUS_PUBLISHED,
@@ -440,6 +441,31 @@ def create_builder_router(
     def owner_of(user: Any) -> str | None:
         return getattr(user, "id", None)
 
+    def owner_for_new_row(user: Any) -> str | None:
+        """The owner a create, an import or a duplicate writes - or a 401.
+
+        Round 2, D-15-7: on a backend with an auth server configured, no
+        caller may create an UNOWNED row. `current_user` already refuses an
+        anonymous caller when `VALIDATOR_REQUIRE_AUTH` is on, which is that
+        flag's default the moment `AUTH_BASE_URL` is set; this is the second
+        lock for the one shape that reaches a handler with nobody in hand -
+        auth configured, requirement switched off by hand. An unowned row on
+        such a deployment is writable by nobody (`store._writable_by`), so
+        minting one would hand the caller a graph they could read and never
+        edit. Without an auth server there is no identity to record and
+        creation stays open, which is what keeps `SYNTHETIC=1` and a bare
+        local checkout working.
+        """
+
+        owner = owner_of(user)
+        if owner is None and project_config.AUTH_BASE_URL:
+            raise HTTPException(
+                status_code=401,
+                detail="sign in to create a graph; every graph on this service has an owner",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return owner
+
     def credential_check_for(user: Any) -> Callable[[str], bool] | None:
         """This caller's vault as a predicate over credential ids, or None.
 
@@ -561,10 +587,11 @@ def create_builder_router(
         """
 
         store = require_store()
+        owner = owner_for_new_row(user)
         document = parse(
             request.document, document_id=new_document_id(), version=FIRST_VERSION
         )
-        stored = _guarded(lambda: store.create(document, user_id=owner_of(user)))
+        stored = _guarded(lambda: store.create(document, user_id=owner))
         response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
         return judged(stored)
 
@@ -613,11 +640,12 @@ def create_builder_router(
                 ),
             )
         store = require_store()
+        owner = owner_for_new_row(user)
         raw, stripped_nodes = strip_for_export(upgrade_document(request.document))
         if not raw.get("name") and request.name:
             raw["name"] = request.name
         document = parse(raw, document_id=new_document_id(), version=FIRST_VERSION)
-        stored = _guarded(lambda: store.create(document, user_id=owner_of(user)))
+        stored = _guarded(lambda: store.create(document, user_id=owner))
         response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
         node_ids = {node.id for node in document.nodes}
         needs_credentials = [
@@ -760,6 +788,7 @@ def create_builder_router(
         """
 
         store = require_store()
+        owner = owner_for_new_row(user)
         source = _guarded(
             lambda: store.load(document_id, version=version, user_id=owner_of(user))
         )
@@ -767,7 +796,7 @@ def create_builder_router(
         payload["name"] = copy_name(source.document.name)
         payload.pop("budget", None)
         document = parse(payload, document_id=new_document_id(), version=FIRST_VERSION)
-        stored = _guarded(lambda: store.create(document, user_id=owner_of(user)))
+        stored = _guarded(lambda: store.create(document, user_id=owner))
         response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
         return judged(stored)
 
@@ -797,7 +826,11 @@ def create_builder_router(
         """
 
         store = require_store()
-        stored = _guarded(lambda: store.load(document_id, user_id=owner_of(user)))
+        # `writable=True` BEFORE `_unregister`: a refusal must leave the graph
+        # exactly as registered as it was (D-15-7).
+        stored = _guarded(
+            lambda: store.load(document_id, user_id=owner_of(user), writable=True)
+        )
         if stored.status == STATUS_PUBLISHED and registered_workflow(document_id) is not None:
             raise HTTPException(
                 status_code=409,
@@ -861,8 +894,13 @@ def create_builder_router(
         """
 
         store = require_store()
+        # `writable=True` BEFORE the compile: an unowned row is 403 here, in
+        # one query, rather than after a compile and a registration that
+        # `mark_published` would then have to roll back (D-15-7).
         stored = _guarded(
-            lambda: store.load(document_id, version=version, user_id=owner_of(user))
+            lambda: store.load(
+                document_id, version=version, user_id=owner_of(user), writable=True
+            )
         )
         try:
             # Owned by the DOCUMENT's owner, not the publisher (plan 01 D1): a
@@ -1013,11 +1051,17 @@ def _requested_version(payload: Mapping[str, Any]) -> int:
 
 
 def _guarded(action: Callable[[], Any]) -> Any:
-    """Run a store call, translating its three refusals into HTTP.
+    """Run a store call, translating its four refusals into HTTP.
 
     404 for both "no such document" and "not yours", which is one exception on
     purpose - a 403 confirms the document exists, and the whole point of the
     distinction `require_own_run` draws is that a stranger hears nothing.
+
+    The ONE 403 is `DocumentReadOnly`, for an unowned row a signed-in caller
+    tried to write (D-15-7). It confirms nothing a stranger could not already
+    read: an unowned row is visible to everyone, so the only fact the status
+    adds is "and it is not yours to change", with Duplicate named as the way
+    to own one.
     """
 
     from fastapi import HTTPException
@@ -1026,6 +1070,8 @@ def _guarded(action: Callable[[], Any]) -> Any:
         return action()
     except DocumentNotFound as exc:
         raise HTTPException(status_code=404, detail="document not found") from exc
+    except DocumentReadOnly as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except DocumentVersionConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DocumentTooLarge as exc:

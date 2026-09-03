@@ -277,6 +277,43 @@ carry them (D1). The unowned-row carve-out (`store.py:602-610`) is asserted
 too: a row with `user_id IS NULL` is readable by both and by anonymous when
 auth is off, because refusing it would destroy pre-auth history.
 
+> **Amended 2026-09-03 (round 2, D-15-7 and D-15-12).** Two things the table
+> above did not say, recorded beside it rather than edited into it, so the
+> earlier wording stays visible.
+>
+> 1. **The unowned row has a row per verb.** Round 1 found that "readable by
+>    everyone" had silently become "controllable by everyone": `_visible_to`
+>    was the sole gate on save, publish and delete. The rule is now that an
+>    unowned document is readable and launchable by everyone and writable by
+>    nobody who has an identity; `store._writable_by` is the second gate,
+>    and the refusal is a **403** naming Duplicate — safe here, and only
+>    here, because an unowned row is visible to everyone already. On a
+>    backend with an auth server configured no caller can create an unowned
+>    row (401 on create, import and duplicate for nobody-at-all); under
+>    `SYNTHETIC` and a bare local checkout creation stays open, and the
+>    anonymous caller keeps write there because they are the only author
+>    that deployment has. Foreign owned documents keep their 404, which is a
+>    different rule with its own reason.
+>
+>    | Route, unowned row | A | B | anonymous, auth on | anonymous, auth off |
+>    | --- | --- | --- | --- | --- |
+>    | list | not listed | not listed | 401 | listed |
+>    | get / versions / export | 200 | 200 | 401 | 200 |
+>    | duplicate | 201, owner A | 201, owner B | 401 | 201, unowned |
+>    | save / publish / delete | **403**, names Duplicate | **403**, names Duplicate | 401 | 200 / 200 / 204 |
+>    | launch (published) | 202 | 202 | 401 | 202, or plan 01's gateless-graph 403 |
+>    | create an unowned row | impossible | impossible | 401 | 201 |
+>
+> 2. **The test-inputs row is asserted at the table level, and the table now
+>    says so.** Stage 1 has no test-inputs route — plan 13 owns the panel —
+>    so `tests/service/test_isolation_matrix.py::TestInputsTable` asserts what
+>    the table can be asserted at: `builder_test_inputs.user_id` is NOT NULL,
+>    the only read is a query scoped to its owner, and the rows go with their
+>    document on delete. Criterion 10's "exactly" is measured against this
+>    note; the route asserts the same three things the day it exists. Round 1
+>    (D-15-12) was right that a narrowing declared only in the Status table
+>    is a narrowing the contract does not carry.
+
 ## Interfaces
 
 **Owned — C10:** the six tables and one additive column in D6, verbatim.
@@ -303,6 +340,10 @@ with 08 / 07).
 8. The knob scan in CLAUDE.md answers forty after `VALIDATOR_RUN_RETENTION_DAYS` lands, and `docs/tech-stack.md` §6 is regenerated in the same commit. Rubric 16.
 9. `tests/pg/test_two_writers.py` passes against PostgreSQL 18 for all five paths, and CI gains a `services: postgres:18` job that sets `TEST_DATABASE_URL`. Rubric 11, 14.
 10. `tests/service/test_isolation_matrix.py` passes with the table in D9 exactly. Rubric 14.
+    *Amended 2026-09-03 (D-15-12):* "the table in D9" means the table **and
+    its dated amendment** — the unowned row per verb, and the test-inputs row
+    asserted at the table level until plan 13's route exists. The test's own
+    docstring carries the same two tables.
 11. `frontend/tests/builderPersistence.spec.ts` (33) passes unchanged. Rubric 16.
 
 ## References

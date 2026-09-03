@@ -95,6 +95,27 @@ class DocumentNotFound(BuilderStoreError, LookupError):
         self.version = version
 
 
+class DocumentReadOnly(BuilderStoreError):
+    """This caller may read the document and may not write it.
+
+    Raised for an UNOWNED row when the caller has an identity (round 2,
+    D-15-7). The read carve-out in `_visible_to` exists so rows written before
+    authentication stay usable; it was never a licence for a signed-in stranger
+    to overwrite, publish or delete them. The transport answers **403**, not
+    404, and that is safe here for the one reason a 403 is refused everywhere
+    else: an unowned row is visible to everyone already, so confirming that it
+    exists tells nobody anything. The sentence names the way out - Duplicate
+    gives the caller a copy they own.
+    """
+
+    def __init__(self, document_id: str) -> None:
+        super().__init__(
+            f"document {document_id} has no owner and is read-only for every "
+            "signed-in user; Duplicate it to get a copy you own"
+        )
+        self.document_id = document_id
+
+
 class DocumentVersionConflict(BuilderStoreError):
     """Somebody else saved this document while this edit was in the browser.
 
@@ -260,6 +281,7 @@ class BuilderDocumentStore:
         *,
         version: int | None = None,
         user_id: str | None = None,
+        writable: bool = False,
     ) -> StoredDocument:
         """One document, at `version` or at the head.
 
@@ -267,6 +289,11 @@ class BuilderDocumentStore:
         no owner is readable by anyone, and one with an owner is readable only
         by them. Both directions matter - the first is what keeps a bare local
         checkout working, the second is the whole of the access control.
+
+        `writable=True` asks the second question too - `_writable_by` - and
+        raises `DocumentReadOnly` when the answer is no. A route that is about
+        to unregister a graph or compile one asks BEFORE it does either, so a
+        refusal costs nothing and leaves nothing half done (D-15-7, D-15-10).
         """
 
         document_id = identifier(document_id, label="document_id")
@@ -276,6 +303,8 @@ class BuilderDocumentStore:
             ).mappings().one_or_none()
             if head is None or not _visible_to(head["user_id"], user_id):
                 raise DocumentNotFound(document_id, version)
+            if writable and not _writable_by(head["user_id"], user_id):
+                raise DocumentReadOnly(document_id)
             wanted = int(head["version"]) if version is None else int(version)
             row = connection.execute(
                 select(builder_document_versions).where(
@@ -482,6 +511,8 @@ class BuilderDocumentStore:
             ).mappings().one_or_none()
             if head is None or not _visible_to(head["user_id"], user_id):
                 raise DocumentNotFound(stamped.id)
+            if not _writable_by(head["user_id"], user_id):
+                raise DocumentReadOnly(stamped.id)
             stored_version = int(head["version"])
             # The compare-and-set. Guarding on the version in the WHERE clause
             # rather than on the row read above is what makes this safe against
@@ -538,7 +569,7 @@ class BuilderDocumentStore:
         `published` over a document the service is not running.
         """
 
-        loaded = self.load(document_id, version=version, user_id=user_id)
+        loaded = self.load(document_id, version=version, user_id=user_id, writable=True)
         now = utcnow()
         with self._store.begin() as connection:
             result = connection.execute(
@@ -585,6 +616,8 @@ class BuilderDocumentStore:
             ).mappings().one_or_none()
             if head is None or not _visible_to(head["user_id"], user_id):
                 raise DocumentNotFound(document_id)
+            if not _writable_by(head["user_id"], user_id):
+                raise DocumentReadOnly(document_id)
             connection.execute(
                 delete(builder_test_inputs).where(
                     builder_test_inputs.c.document_id == document_id
@@ -724,6 +757,27 @@ def _visible_to(owner: str | None, caller: str | None) -> bool:
     return owner is None or (caller is not None and caller == owner)
 
 
+def _writable_by(owner: str | None, caller: str | None) -> bool:
+    """Whether `caller` may WRITE a row owned by `owner`. Presumes `_visible_to`.
+
+    The rule is equality, and the two ends of it are the whole decision
+    (round 2, D-15-7):
+
+    * An owned row is writable by its owner. `_visible_to` already hides it
+      from everybody else, so this never turns a 404 into a 403.
+    * An unowned row is writable by a caller with NO identity, and by nobody
+      who has one. Where identity does not exist - `SYNTHETIC=1` with no
+      header, a bare local checkout - the anonymous caller IS the author, and
+      refusing them would make every local save a 403. Where it does, an
+      unowned row is history from before authentication, and "readable by
+      everyone" had silently become "controllable by everyone": alice could
+      overwrite, bob could publish, and either could delete a row nobody
+      could be asked about. Duplicate is the way to own one.
+    """
+
+    return owner == caller
+
+
 def _parse(document_id: str, payload: Any) -> BuilderDocument:
     """Re-validate a stored row, naming the document when it no longer parses.
 
@@ -759,6 +813,7 @@ __all__: Sequence[str] = (
     "BuilderStoreError",
     "DEFAULT_LIST_LIMIT",
     "DocumentNotFound",
+    "DocumentReadOnly",
     "DocumentSummary",
     "DocumentTooLarge",
     "DocumentVersionConflict",

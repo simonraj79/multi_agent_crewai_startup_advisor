@@ -140,6 +140,26 @@ class ReadRoutes(MatrixCase):
                 self.assertEqual(anonymous.status_code, 401)
                 self.assert_nothing_of_a_leaks(anonymous)
 
+    def test_an_unknown_version_is_named_for_a_and_is_the_constant_for_b(self) -> None:
+        """D-15-8's other half: the version sentence must not become an oracle.
+
+        A hears which version is missing and which is newest. B hears the same
+        constant B hears for an id that does not exist at all, so `?version=`
+        cannot be used to learn whether A's document exists.
+        """
+
+        path = f"/api/builder/workflows/{self.owned}?version=99"
+        named = self.request(ADA_TOKEN, "get", path)
+        self.assertEqual(named.status_code, 404)
+        self.assertIn("version 99", named.json()["detail"])
+        self.assertIn("newest is v2", named.json()["detail"])
+        refused = self.request(GRACE_TOKEN, "get", path)
+        control = self.request(GRACE_TOKEN, "get", "/api/builder/workflows/ug_00000000?version=99")
+        self.assertEqual(refused.status_code, 404)
+        self.assertEqual(refused.json(), {"detail": "document not found"})
+        self.assertEqual(refused.json(), control.json())
+        self.assert_nothing_of_a_leaks(refused)
+
     def test_versions(self) -> None:
         path = f"/api/builder/workflows/{self.owned}/versions"
         listed = self.request(ADA_TOKEN, "get", path)

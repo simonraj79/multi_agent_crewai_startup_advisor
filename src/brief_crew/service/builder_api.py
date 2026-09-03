@@ -1069,7 +1069,15 @@ def _guarded(action: Callable[[], Any]) -> Any:
     try:
         return action()
     except DocumentNotFound as exc:
-        raise HTTPException(status_code=404, detail="document not found") from exc
+        # The constant when the DOCUMENT is absent or not this caller's. The
+        # store's own sentence when the document is visible and the VERSION is
+        # not (D-15-8): `_guarded` used to flatten that too, so an author
+        # looking at v2 who asked for `?version=99` was told "document not
+        # found" about a document on their screen, and went looking for the
+        # wrong thing. The store sets `version` only after the visibility
+        # check has passed, which is what makes reading it here safe.
+        detail = "document not found" if exc.version is None else str(exc)
+        raise HTTPException(status_code=404, detail=detail) from exc
     except DocumentReadOnly as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except DocumentVersionConflict as exc:

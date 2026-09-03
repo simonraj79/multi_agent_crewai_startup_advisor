@@ -145,9 +145,18 @@ class Refusals(ExportRouteCase):
         created = self.create_as(ADA_TOKEN)
         self.assertEqual(self.export_as(None, created["id"]).status_code, 401)
 
-    def test_a_version_that_does_not_exist_is_a_404(self) -> None:
+    def test_a_version_that_does_not_exist_is_a_404_naming_the_version(self) -> None:
+        """D-15-8: the document is on the caller's screen; the 404 says which
+        version is missing and which is newest, not that the document is."""
+
         created = self.create_as(ADA_TOKEN)
-        self.assertEqual(self.export_as(ADA_TOKEN, created["id"], version=4).status_code, 404)
+        refused = self.export_as(ADA_TOKEN, created["id"], version=4)
+        self.assertEqual(refused.status_code, 404)
+        detail = refused.json()["detail"]
+        self.assertNotEqual(detail, "document not found")
+        self.assertIn(created["id"], detail)
+        self.assertIn("version 4", detail)
+        self.assertIn("newest is v1", detail)
 
     def test_a_version_this_service_can_no_longer_read_is_a_422_naming_it(self) -> None:
         """Built from the parsed row, so an unreadable one is refused here

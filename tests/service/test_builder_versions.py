@@ -119,6 +119,30 @@ class OpeningAnOlderVersion(VersionsCase):
         head = self.get_as(ADA_TOKEN, created["id"]).json()
         self.assertEqual((head["version"], head["head_version"]), (3, 3))
 
+    def test_an_unknown_version_of_your_own_document_names_the_version_on_every_route(self) -> None:
+        """D-15-8. GET, export, duplicate and publish all take `?version=`, and
+        all four used to flatten the store's sentence to "document not found"
+        about a document the caller was looking at. A stranger still hears the
+        constant - see `test_isolation_matrix`."""
+
+        created = self.create_as(ADA_TOKEN)
+        self.save_named(created["id"], "two", expected_version=1)
+        routes = (
+            ("get", f"/api/builder/workflows/{created['id']}?version=99"),
+            ("get", f"/api/builder/workflows/{created['id']}/export?version=99"),
+            ("post", f"/api/builder/workflows/{created['id']}/duplicate?version=99"),
+            ("post", f"/api/builder/workflows/{created['id']}/publish?version=99"),
+        )
+        for method, path in routes:
+            with self.subTest(route=f"{method} {path}"):
+                refused = getattr(self.client, method)(path, headers=self.auth(ADA_TOKEN))
+                self.assertEqual(refused.status_code, 404, refused.text)
+                detail = refused.json()["detail"]
+                self.assertNotEqual(detail, "document not found")
+                self.assertIn(created["id"], detail)
+                self.assertIn("version 99", detail)
+                self.assertIn("newest is v2", detail)
+
     def test_restore_is_a_normal_save_from_the_head(self) -> None:
         """Restore commits the old content as head + 1 through the CAS - one
         version, never a rewrite of history."""

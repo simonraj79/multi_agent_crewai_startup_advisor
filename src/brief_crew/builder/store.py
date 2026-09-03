@@ -79,20 +79,42 @@ class BuilderStoreError(RuntimeError):
 
 
 class DocumentNotFound(BuilderStoreError, LookupError):
-    """No document with this id is visible to this caller.
+    """No document with this id is visible to this caller - or no such VERSION.
 
     Deliberately one exception for "no such row" and "not yours": the transport
     answers 404 for both, and a caller who can tell them apart has the oracle
     that distinction exists to remove.
+
+    `version` is set in exactly one case - the document IS visible to this
+    caller and the version they asked for is not stored - and that is what
+    the transport reads to choose its sentence (round 2, D-15-8). A caller who
+    can see the document and asked for v99 of a v2 is told so, with the head
+    named; a caller who cannot see it hears the constant, whatever they asked
+    for. Raising with `version` from a visibility failure would leak nothing,
+    but it would send the wrong sentence to the one caller entitled to a right
+    one.
     """
 
-    def __init__(self, document_id: str, version: int | None = None) -> None:
-        detail = f"document {document_id}" + (
-            f" version {version}" if version is not None else ""
-        )
-        super().__init__(f"{detail} was not found")
+    def __init__(
+        self,
+        document_id: str,
+        version: int | None = None,
+        *,
+        head_version: int | None = None,
+    ) -> None:
+        if version is None:
+            detail = f"document {document_id} was not found"
+        elif head_version is None:
+            detail = f"document {document_id} has no version {version}"
+        else:
+            detail = (
+                f"document {document_id} has no version {version}; "
+                f"the newest is v{head_version}"
+            )
+        super().__init__(detail)
         self.document_id = document_id
         self.version = version
+        self.head_version = head_version
 
 
 class DocumentReadOnly(BuilderStoreError):
@@ -302,7 +324,9 @@ class BuilderDocumentStore:
                 select(builder_documents).where(builder_documents.c.id == document_id)
             ).mappings().one_or_none()
             if head is None or not _visible_to(head["user_id"], user_id):
-                raise DocumentNotFound(document_id, version)
+                # No version here, on purpose: the caller may not see the
+                # document, so the sentence they get is the constant.
+                raise DocumentNotFound(document_id)
             if writable and not _writable_by(head["user_id"], user_id):
                 raise DocumentReadOnly(document_id)
             wanted = int(head["version"]) if version is None else int(version)
@@ -313,7 +337,8 @@ class BuilderDocumentStore:
                 )
             ).mappings().one_or_none()
         if row is None:
-            raise DocumentNotFound(document_id, wanted)
+            # The document is visible and the version is not stored: name both.
+            raise DocumentNotFound(document_id, wanted, head_version=int(head["version"]))
         return StoredDocument(
             document=_parse(document_id, row["document"]),
             status=str(head["status"]),

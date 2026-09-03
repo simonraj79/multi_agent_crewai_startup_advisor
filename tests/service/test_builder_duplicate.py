@@ -98,9 +98,18 @@ class OwnDocument(DuplicateCase):
         # Either way the copy starts its own history at 1.
         self.assertEqual(first_copy["version"], 1)
 
-    def test_a_version_that_does_not_exist_is_a_404(self) -> None:
+    def test_a_version_that_does_not_exist_is_a_404_naming_the_version(self) -> None:
+        """D-15-8: the caller can see the document, so the sentence names the
+        version they asked for and the newest one - never "document not found"."""
+
         source = self.create_as(ADA_TOKEN)
-        self.assertEqual(self.duplicate_as(ADA_TOKEN, source["id"], version=9).status_code, 404)
+        refused = self.duplicate_as(ADA_TOKEN, source["id"], version=9)
+        self.assertEqual(refused.status_code, 404)
+        detail = refused.json()["detail"]
+        self.assertNotEqual(detail, "document not found")
+        self.assertIn(source["id"], detail)
+        self.assertIn("version 9", detail)
+        self.assertIn("newest is v1", detail)
         self.assertEqual(len(self.list_ids_as(ADA_TOKEN)), 1)
 
     def test_a_name_at_the_bound_still_gets_its_suffix(self) -> None:

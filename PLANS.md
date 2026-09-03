@@ -23,7 +23,7 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 | # | Plan | Owner | Gates on | Criteria | Ticked | Round | Open defects | Status | Updated |
 | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | 00 | [Architecture](.agent/plans/00-architecture.md) | S1 / S9 | — | 7 | 0 | — | 0 | In build | 2026-09-02 |
-| 01 | [Auth and workspaces](.agent/plans/01-auth-and-workspaces.md) | S1 | 00 | 13 | 13 | 1 | 4 | In build (round 2) | 2026-09-03 |
+| 01 | [Auth and workspaces](.agent/plans/01-auth-and-workspaces.md) | S1 | 00 | 13 | 13 | 1 | 4 | In judge (round 2) | 2026-09-03 |
 | 02 | [Canvas](.agent/plans/02-canvas.md) | S2 | 00 | 14 | 0 | — | 0 | Planned | 2026-09-02 |
 | 03 | [Node library](.agent/plans/03-node-library.md) | S2 | 00 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
 | 04 | [Inspector and params](.agent/plans/04-inspector-and-params.md) | S3 | 03, 05 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
@@ -37,7 +37,7 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 | 12 | [Error handling](.agent/plans/12-error-handling.md) | S7 | 10 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
 | 13 | [Flow testing](.agent/plans/13-flow-testing.md) | S7 | 10 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
 | 14 | [Templates](.agent/plans/14-templates.md) | S8 | 09 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
-| 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 11 | 1 | 12 | In build (round 2) | 2026-09-03 |
+| 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 11 | 1 | 12 | In judge (round 2) | 2026-09-03 |
 | | **Total** | | | **179** | **24** | | **16** | | |
 
 Build order: S1 (00, 01, 15) → S2 / S3 / S4 in parallel → S5 (09, 10) →

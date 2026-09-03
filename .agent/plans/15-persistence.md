@@ -490,3 +490,13 @@ Captures for the six visual rows are under `docs/comparison/ours/round2/`
 holds; the wrap and the reachable last row of D-15-4 are measured in
 `e2e/builder-layout.spec.ts`, and every visual row is for the critic to
 re-capture at 1440x900 dark.
+
+**In judge · round 2 scored 2026-09-03** (`benchmarks/rounds/15-2.md`, persona
+staff frontend engineer): dim 4 = **7** against Flowise 3.1.4 at 4 (blind),
+dim 11 = **10**, dim 12 = **6**, dim 14 = **10**, dim 16 = **7**; gate 8 not
+met. A row verifier re-ran all twelve round-1 rows and found every defect
+absent as written (two partly). Five rows closed (D-15-1, -3, -5, -6, -7),
+two stay open landed again with a new sentence (D-15-2, -4), five stay open
+held by a dimension under its reference (D-15-8 … -12), and ten new rows
+opened (D-15-13 … D-15-22): **17 open**, the round-3 build list, read top
+to bottom. Round 3's critic is the CrewAI power user.

@@ -338,3 +338,12 @@ will meet it:
 **6**, dim 16 = **7**, gate 8 not met; 4 located defects open in
 `benchmarks/DEFECTS.md` as D-01-1 … D-01-4, in the critic's order, which is
 the round-2 build list. The critic re-ran every suite itself.
+
+**In judge · round 2 scored 2026-09-03** (`benchmarks/rounds/01-2.md`, persona
+staff frontend engineer): dim 14 = **9**, dim 16 = **10**; gate 8 met on
+score, not on rows. A row verifier re-ran all four round-1 rows and found
+every defect absent. Two rows closed (D-01-3, D-01-4), two stay open held
+by dimension 14 under its reference (D-01-1, D-01-2), and one new row
+opened (D-01-5, a sign-out that leaves the previous user's draft and run
+pointer in browser storage): **3 open**, the round-3 build list. Round 3's
+critic is the CrewAI power user.

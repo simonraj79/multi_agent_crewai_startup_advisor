@@ -37,7 +37,7 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 | 12 | [Error handling](.agent/plans/12-error-handling.md) | S7 | 10 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
 | 13 | [Flow testing](.agent/plans/13-flow-testing.md) | S7 | 10 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
 | 14 | [Templates](.agent/plans/14-templates.md) | S8 | 09 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
-| 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 11 | 1 | 12 | In judge (round 1 pending) | 2026-09-03 |
+| 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 11 | 1 | 12 | In build (round 2) | 2026-09-03 |
 | | **Total** | | | **179** | **24** | | **16** | | |
 
 Build order: S1 (00, 01, 15) → S2 / S3 / S4 in parallel → S5 (09, 10) →

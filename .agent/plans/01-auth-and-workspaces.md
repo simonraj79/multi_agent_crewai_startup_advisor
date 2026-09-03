@@ -315,3 +315,8 @@ will meet it:
   its 201 disagreed by a `Z`; normalised in the summary.
 - The two open decisions: (a) `e2b` — the row can exist, nothing constructs
   from it, tied to decision 3; (b) unowned launchable — built per decision 26.
+
+**In judge · round 1 scored 2026-09-03** (`benchmarks/rounds/01-1.md`): dim 14 =
+**6**, dim 16 = **7**, gate 8 not met; 4 located defects open in
+`benchmarks/DEFECTS.md` as D-01-1 … D-01-4, in the critic's order, which is
+the round-2 build list. The critic re-ran every suite itself.

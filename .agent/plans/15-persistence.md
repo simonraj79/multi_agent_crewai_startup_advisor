@@ -384,3 +384,9 @@ What the build found that the plan did not know:
   version both as `published`; the client never sorts, the server answers
   newest first.
 - Decisions 23–25 are built on their recommendation and stay open.
+
+**In judge · round 1 scored 2026-09-03** (`benchmarks/rounds/15-1.md`): dim 4 =
+**7** against Flowise 3.1.4 at 3 (blind); the engineering critic's scores for
+dims 11, 12, 14 and 16 are in the round file; gate 8 not met; 12 located
+defects open in `benchmarks/DEFECTS.md` as D-15-1 … D-15-12 (visual first,
+then engineering), which is the round-2 build list.

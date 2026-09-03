@@ -105,7 +105,8 @@ onMounted(() => {
 })
 
 /**
- * Re-fit while the canvas is still settling into its final height.
+ * Re-fit while the canvas is still settling into its final height - and again
+ * whenever the layout takes height AWAY from it later.
  *
  * `fit-view-on-init` and the shell's own post-load fit both compute against
  * whatever this element measures AT THAT INSTANT, and at that instant it is
@@ -117,33 +118,64 @@ onMounted(() => {
  * two nodes under the dock, on a canvas that reported itself fitted.
  *
  * An observer rather than a longer wait, because "long enough" is a guess about
- * someone else's layout and this is the actual signal. It stops at the author's
- * first gesture: after that the viewport is THEIRS, and a late re-fit that
- * throws away a pan the author just made would be a worse bug than the one this
- * fixes.
+ * someone else's layout and this is the actual signal.
+ *
+ * WHAT THE AUTHOR'S FIRST GESTURE ENDS is the settling phase, not the
+ * observer (round 2, D-15-2). It used to disconnect outright, so that a late
+ * settling re-fit could never throw away a pan the author had just made - and
+ * the same rule then left the canvas blind to every layout change afterwards.
+ * Round 1 measured what that cost: the version browser docking 125px above
+ * the graph hid 2 of 5 nodes below the canvas bottom, and the delete confirm
+ * docked beneath it hid 3 of 5 - an operator confirming a delete could not see
+ * most of the graph they were deleting. The rule now has two halves:
+ *
+ * - before the first gesture, any change re-fits, as before;
+ * - after it, a change re-fits only when the box SHRANK. A dock opening, the
+ *   problems panel expanding, a window getting shorter: content the author was
+ *   looking at is now under something, and the fit is owed. A box GROWING back
+ *   hides nothing, so the author's viewport is left exactly where they put it.
+ *
+ * And never mid-gesture: a re-fit that lands while a pointer is down is a
+ * canvas running away from a drag, which is the worse bug this observer was
+ * first written not to cause. It waits for the pointer to lift.
  */
-let settling: ResizeObserver | null = null
+let layoutObserver: ResizeObserver | null = null
+/** The author has panned, zoomed or pressed on the canvas; the viewport is theirs. */
+let settled = false
+let pointerHeld = false
+/** A shrink arrived while the pointer was down; owed on release. */
+let refitOwed = false
 
-function stopSettling(): void {
-  settling?.disconnect()
-  settling = null
+function noteGesture(): void {
+  settled = true
+}
+
+function refit(): void {
+  if (pointerHeld) {
+    refitOwed = true
+    return
+  }
+  refitOwed = false
+  flow.fitView({ padding: 0.14 })
 }
 
 onMounted(() => {
   if (typeof ResizeObserver === 'undefined' || !frame.value) return
   let last = 0
-  settling = new ResizeObserver((entries) => {
+  layoutObserver = new ResizeObserver((entries) => {
     const height = entries[0]?.contentRect.height ?? 0
     // Only a real change, and never the collapse to zero that unmounting shows.
     if (height <= 0 || Math.abs(height - last) < 1) return
+    const shrank = last > 0 && height < last
     last = height
-    flow.fitView({ padding: 0.14 })
+    if (!settled || shrank) refit()
   })
-  settling.observe(frame.value)
+  layoutObserver.observe(frame.value)
 })
 
 onBeforeUnmount(() => {
-  stopSettling()
+  layoutObserver?.disconnect()
+  layoutObserver = null
   props.canvas.detachViewport()
 })
 
@@ -178,13 +210,20 @@ function onNodeLeave(): void {
 /* --- pointer bookkeeping -------------------------------------------------- */
 
 function onPointerDown(event: PointerEvent): void {
-  // The viewport is the author's from here. See `stopSettling`.
-  stopSettling()
+  // The viewport is the author's from here. See `noteGesture`.
+  noteGesture()
+  pointerHeld = true
   props.canvas.notePointerDown(event)
 }
 
 function onPointerMove(event: PointerEvent): void {
   props.canvas.notePointerMove(event)
+}
+
+/** The gesture ended; a re-fit the layout owed during it lands now. */
+function onPointerUp(): void {
+  pointerHeld = false
+  if (refitOwed) refit()
 }
 
 function onNodeClick({ event, node }: NodeMouseEvent): void {
@@ -524,7 +563,9 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
     tabindex="0"
     :aria-label="label ? `Flow builder canvas for ${label}` : 'Flow builder canvas'"
     @pointerdown="onPointerDown"
-    @wheel="stopSettling"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerUp"
+    @wheel="noteGesture"
     @pointermove="onPointerMove"
     @drop="onDrop"
     @dragover="onDragOver"

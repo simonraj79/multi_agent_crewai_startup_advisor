@@ -1065,6 +1065,83 @@ describe('the mounted canvas hands the library the settings the spec names', () 
     wrapper.unmount()
   })
 
+  it('re-fits when the layout takes height away, even after the author has gestured (D-15-2)', async () => {
+    /*
+     * Round 1 measured the defect this pins: the version browser docking 125px
+     * above the graph hid 2 of 5 nodes and no re-fit followed, because the
+     * settling observer disconnected at the author's first gesture. The rule
+     * now: before a gesture every change re-fits; after one, only a SHRINK
+     * does; never while a pointer is down. A stand-in observer whose callback
+     * the test drives is the only way jsdom can say any of this.
+     */
+    interface Driven {
+      callback: ResizeObserverCallback
+      targets: Element[]
+      disconnected: boolean
+    }
+    const instances: Driven[] = []
+    // `disconnect` is honoured, so the code this test was written against -
+    // which disconnected at the first gesture - fails here for the reason it
+    // was wrong, not for a stub that kept calling a dead observer.
+    class DrivenResizeObserver {
+      private readonly entry: Driven
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [], disconnected: false }
+        instances.push(this.entry)
+      }
+      observe(target: Element): void {
+        this.entry.targets.push(target)
+      }
+      unobserve(): void {}
+      disconnect(): void {
+        this.entry.disconnected = true
+      }
+    }
+    vi.stubGlobal('ResizeObserver', DrivenResizeObserver)
+    const { wrapper } = mountCanvas()
+    const flow = useVueFlow('builder-flow')
+    const fitView = vi.spyOn(flow, 'fitView').mockImplementation(async () => true)
+    const frame = wrapper.element as HTMLElement
+    // Vue Flow builds observers of its own; ours is the one watching the frame.
+    const canvasObserver = instances.find((entry) => entry.targets.includes(frame))
+    expect(canvasObserver).toBeDefined()
+    const resize = (height: number) => {
+      if (canvasObserver!.disconnected) return
+      canvasObserver!.callback(
+        [{ contentRect: { height } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+    }
+
+    // Settling: every change fits.
+    resize(700)
+    resize(640)
+    expect(fitView).toHaveBeenCalledTimes(2)
+
+    // The author gestures; the viewport is theirs. Growing back changes nothing.
+    await wrapper.trigger('pointerdown')
+    await wrapper.trigger('pointerup')
+    resize(700)
+    expect(fitView).toHaveBeenCalledTimes(2)
+
+    // A dock opens: the box SHRINKS, and the fit is owed.
+    resize(575)
+    expect(fitView).toHaveBeenCalledTimes(3)
+
+    // Not mid-drag. It lands when the pointer lifts.
+    await wrapper.trigger('pointerdown')
+    resize(470)
+    expect(fitView).toHaveBeenCalledTimes(3)
+    await wrapper.trigger('pointerup')
+    expect(fitView).toHaveBeenCalledTimes(4)
+
+    // Below a pixel of movement, and the collapse to zero on unmount: nothing.
+    resize(470.4)
+    resize(0)
+    expect(fitView).toHaveBeenCalledTimes(4)
+    wrapper.unmount()
+  })
+
   it('attaches a viewport on mount and lets go of it on unmount', () => {
     const { wrapper, canvas, store } = mountCanvas()
 

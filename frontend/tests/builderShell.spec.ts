@@ -474,12 +474,20 @@ describe('the gallery is the empty state and the way back into saved work', () =
     expect(form.text()).toContain('cannot be deleted; unpublish it first, then delete it')
     expect(form.text()).not.toContain('unregisters it')
 
-    await form.find('input').setValue('Clinic scheduler')
-    await form.trigger('submit')
-    await flush()
-    expect(form.find('.delete-problem').text()).toBe(sentence)
+    /*
+     * D-15-16: refused BEFORE the confirm. The row's own status is the fact
+     * that decides it, so the strip opens with the remedy and no name box,
+     * and nothing is sent for an answer already known. The row's `remove`
+     * still fails with the server's 409 if it is ever reached, which is the
+     * case `documentLifecycle.spec.ts` covers from the other side.
+     */
+    expect(form.find('.delete-problem').text()).toContain(
+      'cannot be deleted; unpublish it first, then delete it',
+    )
+    expect(form.find('.delete-problem').text()).toContain('Clinic scheduler')
     expect(form.find('[data-testid="gallery-unpublish"]').exists()).toBe(true)
     expect(form.find('input').exists()).toBe(false)
+    expect(api.removeCalls).toHaveLength(0)
 
     /*
      * D-15-18: ONE LAYOUT, and the sentence said once. The gallery used to
@@ -500,11 +508,11 @@ describe('the gallery is the empty state and the way back into saved work', () =
     await flush()
     expect(unpublished).toEqual([id])
     expect(wrapper.find('.status-pill').text()).toBe('draft')
-    // Back to asking, with the name kept; one more submit deletes.
-    expect((form.find('input').element as HTMLInputElement).value).toBe('Clinic scheduler')
+    // Now the real confirm: the answer is no longer known, so it asks.
+    await form.find('input').setValue('Clinic scheduler')
     await form.trigger('submit')
     await flush()
-    expect(api.removeCalls).toHaveLength(2)
+    expect(api.removeCalls).toHaveLength(1)
     expect(wrapper.findAll('.library-row')).toHaveLength(0)
   })
 })

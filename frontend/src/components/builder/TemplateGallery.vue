@@ -155,9 +155,26 @@ async function loadLibrary(): Promise<void> {
   }
 }
 
+/**
+ * Ask to delete a row - or say why not, before the work (D-15-16).
+ *
+ * The row already carries the one fact that decides it: `status`. A published
+ * row opens the confirm in its refused state, with the remedy rather than a
+ * name box, so the author is not asked to type a name into a form whose
+ * answer is known. The server is still the authority - `confirmDelete`
+ * handles the 409 exactly as before, for the row this list saw as a draft
+ * because somebody published it in another tab.
+ */
 function askToDelete(id: string): void {
   deleting.value = id
   typedName.value = ''
+  const row = library.value.find((entry) => entry.id === id)
+  if (row?.status === 'published') {
+    deleteRefused.value = true
+    deleteProblem.value =
+      `“${row.name}” is live and cannot be deleted; unpublish it first, then delete it`
+    return
+  }
   deleteProblem.value = ''
   deleteRefused.value = false
 }
@@ -381,9 +398,12 @@ function when(iso: string): string {
             <!-- The server's rule in the server's words (D-15-10); see the
                  docked confirm in `BuilderView` for why the clause is shared. -->
             <label :for="`confirm-${entry.id}`">
+              <!-- Derived from the row's own status (D-15-16): a published row
+                   never reaches this branch, so the warning about publishing
+                   is not shown over a draft it cannot apply to. -->
               <template v-if="!deleteRefused">
-                A published graph cannot be deleted; unpublish it first, then delete it.
-                Type <strong>{{ entry.name }}</strong> to confirm.
+                Delete <strong>{{ entry.name }}</strong> and every stored version of it? This
+                cannot be undone. Type <strong>{{ entry.name }}</strong> to confirm.
               </template>
               <!--
                 Nothing here when refused (D-15-18). This read "Not deleted —

@@ -830,10 +830,51 @@ async function duplicateDocument(): Promise<void> {
   }
 }
 
+/**
+ * What the store says about this graph's life, for the delete strip's copy
+ * (D-15-16).
+ *
+ * Three states, and the strip said the same thing in all of them: on a plain
+ * DRAFT it warned "A published graph cannot be deleted; unpublish it first",
+ * a sentence that cannot apply to what is on screen, and on a published head
+ * it said nothing until the author had typed the name and pressed Delete -
+ * so the one case the warning was written for was the one case it arrived
+ * too late for.
+ *
+ * `publishedVersion` is knowledge rather than a field (see
+ * `useBuilderPersistence`): a load or a publish proves a version is live, and
+ * a `status` of `published` with no number proves only that SOME version was.
+ * Both mean a delete will be refused, so both count as live here; the number
+ * is used when there is one and the wording stays true when there is not.
+ */
+const deleteLiveVersion = computed<number | null>(() =>
+  persistence.publishedVersion.value ?? null,
+)
+const deleteWillBeRefused = computed(
+  () => deleteLiveVersion.value !== null || persistence.status.value === 'published',
+)
+
+/**
+ * Ask to delete - or say why not, before the work rather than after it.
+ *
+ * A delete the server is going to refuse opens the strip already in its
+ * refused state, with the remedy (Unpublish) rather than a name box. The
+ * server is still the authority: `confirmDelete` handles the 409 exactly as
+ * before, and this only stops the author typing a name into a form whose
+ * answer is already known.
+ */
 function askDelete(): void {
   if (persistence.documentId.value === null) return
   deleteAsk.value = true
   deleteTyped.value = ''
+  if (deleteWillBeRefused.value) {
+    deleteRefused.value = true
+    deleteProblem.value = deleteLiveVersion.value === null
+      ? `“${doc.value.name}” is live and cannot be deleted; unpublish it first, then delete it`
+      : `“${doc.value.name}” is live as v${deleteLiveVersion.value} and cannot be deleted; `
+        + 'unpublish it first, then delete it'
+    return
+  }
   deleteProblem.value = ''
   deleteRefused.value = false
 }
@@ -1672,10 +1713,19 @@ watch(
                 honour. `documentLifecycle.spec.ts` pins the shared clause.
               -->
               <label for="builder-delete-name" class="builder-delete-copy">
+                <!--
+                  DERIVED FROM THIS DOCUMENT'S STATE (D-15-16). This used to
+                  warn "A published graph cannot be deleted; unpublish it
+                  first" on every confirm, including a plain draft where the
+                  sentence cannot apply - and it was the only warning, so on a
+                  graph that really was published the author learnt the truth
+                  only after typing the name. A graph that will be refused
+                  never reaches this branch now: `askDelete` opens the strip
+                  in its refused state with the remedy.
+                -->
                 <template v-if="!deleteRefused">
-                  Delete <strong>{{ doc.name }}</strong> and every stored version of it? A published
-                  graph cannot be deleted; unpublish it first, then delete it. Type
-                  <strong>{{ doc.name }}</strong> to confirm.
+                  Delete <strong>{{ doc.name }}</strong> and every stored version of it? This
+                  cannot be undone. Type <strong>{{ doc.name }}</strong> to confirm.
                 </template>
                 <!--
                   Nothing here when refused (D-15-18). This read "Not deleted

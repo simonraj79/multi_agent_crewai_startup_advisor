@@ -283,10 +283,17 @@ describe('Delete', () => {
     expect(wrapper.get('[data-testid="builder-dock"]').find('[data-testid="delete-confirm"]').exists()).toBe(true)
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     expect(confirm.text()).toContain('Delete Stored and every stored version')
-    // D-15-10: the rule is the server's, in the server's words. The 409 from
-    // `delete_document` ends with exactly this clause.
-    expect(confirm.text()).toContain('cannot be deleted; unpublish it first, then delete it')
     expect(confirm.text()).not.toContain('unregisters it')
+    /*
+     * D-15-16: this document is a DRAFT, so the strip says nothing about
+     * publishing. It used to carry "A published graph cannot be deleted;
+     * unpublish it first" on every confirm - a sentence that cannot apply to
+     * what is on screen here, and the only warning there was, so on a graph
+     * that really was published the author learnt the truth after typing the
+     * name. The publish rule is still the server's own words; it is now said
+     * where it is true, which is the refused branch below.
+     */
+    expect(confirm.text()).not.toContain('unpublish it first')
     expect(confirm.get('[data-testid="delete-submit"]').attributes('disabled')).toBeDefined()
 
     // The wrong name keeps it disabled; the right one, trimmed and
@@ -363,36 +370,77 @@ describe('Delete', () => {
     wrapper.unmount()
   })
 
-  it('Unpublish in the refusal POSTs the remedy, keeps the typed name, and the delete then goes through', async () => {
-    const sentence = `document ${DOC} is published - v1 is registered as a launchable workflow - and cannot be deleted; unpublish it first, then delete it`
+  it('refuses a published graph BEFORE the confirm, then Unpublish opens the real one (D-15-16)', async () => {
+    /*
+     * The refusal used to arrive after the work: the strip asked for the
+     * name, the author typed it, pressed Delete, and only then met the 409.
+     * The state that decides it is on screen the whole time, so the strip
+     * now opens in its refused state with the remedy and no name box, and
+     * NO DELETE IS SENT. The server is still the authority - see the test
+     * below, where the client believes it is a draft and the server says
+     * otherwise.
+     */
     const server = stubServer({
-      deleteAnswer: { status: 409, detail: sentence },
+      deleteAnswer: undefined,
       deleteAnswerAfterUnpublish: undefined,
       status: 'published',
     })
     const wrapper = await mountStored()
     await choose(wrapper, 'menu-delete')
-    await wrapper.get('[data-testid="delete-name"]').setValue('Stored')
-    await wrapper.get('[data-testid="delete-confirm"]').trigger('submit')
-    await settled()
-    expect(server.deletes).toHaveLength(1)
+
+    const refused = wrapper.get('[data-testid="delete-confirm"]')
+    expect(refused.find('[data-testid="delete-name"]').exists()).toBe(false)
+    expect(refused.get('[data-testid="delete-problem"]').text()).toContain(
+      'cannot be deleted; unpublish it first, then delete it',
+    )
+    // Named, not identified by row id (D-15-18's rule, applied client-side).
+    expect(refused.get('[data-testid="delete-problem"]').text()).toContain('Stored')
+    expect(refused.get('[data-testid="delete-problem"]').text()).not.toContain(DOC)
+    expect(server.deletes, 'nothing was sent for an answer already known').toHaveLength(0)
 
     await wrapper.get('[data-testid="delete-unpublish"]').trigger('click')
     await settled()
 
     expect(server.unpublishes).toEqual([`/api/builder/workflows/${DOC}/unpublish`])
     const confirm = wrapper.get('[data-testid="delete-confirm"]')
-    // Back to the asking state, name kept, nothing destructive pressed for the author.
+    // The real confirm, now that the answer is no longer known: a name box
+    // and nothing destructive pressed for the author.
     expect(confirm.find('[data-testid="delete-problem"]').exists()).toBe(false)
-    expect((confirm.get('[data-testid="delete-name"]').element as HTMLInputElement).value).toBe('Stored')
-    expect(confirm.get('[data-testid="delete-submit"]').attributes('disabled')).toBeUndefined()
-    expect(server.deletes).toHaveLength(1)
+    expect(confirm.find('[data-testid="delete-name"]').exists()).toBe(true)
+    expect(server.deletes).toHaveLength(0)
 
+    await confirm.get('[data-testid="delete-name"]').setValue('Stored')
     await confirm.trigger('submit')
     await settled()
-    expect(server.deletes).toHaveLength(2)
+    expect(server.deletes).toHaveLength(1)
     expect(wrapper.find('[data-testid="delete-confirm"]').exists()).toBe(false)
     expect(wrapper.emitted('closeDocument')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('still lets the server have the last word when the client thought it was a draft', async () => {
+    /*
+     * The client-side refusal is an early answer, never the answer. A graph
+     * published from another tab reads as a draft in this one, so the strip
+     * asks properly, the DELETE goes, and the 409 is handled exactly as it
+     * was before D-15-16 - which is what keeps that fix a convenience rather
+     * than a second source of truth.
+     */
+    const sentence = '“Stored” is live as v1 and cannot be deleted; unpublish it first, then delete it'
+    const server = stubServer({ deleteAnswer: { status: 409, detail: sentence } })
+    const wrapper = await mountStored()
+
+    await choose(wrapper, 'menu-delete')
+    const confirm = wrapper.get('[data-testid="delete-confirm"]')
+    // It asked, because as far as this tab knows there is nothing to refuse.
+    expect(confirm.find('[data-testid="delete-name"]').exists()).toBe(true)
+    await confirm.get('[data-testid="delete-name"]').setValue('Stored')
+    await confirm.trigger('submit')
+    await settled()
+
+    expect(server.deletes).toHaveLength(1)
+    expect(confirm.get('[data-testid="delete-problem"]').text()).toBe(sentence)
+    expect(confirm.find('[data-testid="delete-unpublish"]').exists()).toBe(true)
     wrapper.unmount()
   })
 

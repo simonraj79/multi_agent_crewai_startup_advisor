@@ -263,7 +263,7 @@ measured on the integrated tree, not copied from a branch report.
 
 | # | State | Where |
 | ---: | --- | --- |
-| 1 | done | `tests/service/test_workflow_ownership.py` (14) — the 404 fires before any admission counter moves and beats the `gates: auto` 403; ownership survives a restart |
+| 1 | done; **amended 2026-09-03 (round 2, D-01-1 / D-01-4)** | `tests/service/test_workflow_ownership.py` (14 → 23) — the 404 fires before any admission counter moves and beats the `gates: auto` 403; ownership survives a restart. **The round-1 tick rested on clean bodies only**: a body carrying one of the graph's own state names (`__builder__`, `out__<node>`) answered 422 from the request schema before the rate limiter and before the ownership 404, which is an oracle for which ids exist (D-01-1). Fixed in `config.declared_reserved_run_input_keys`; the proof is `StateKeyProbeTests`, `StateKeyProbeIsChargedTests` and `AnonymousStateKeyProbeTests` there, plus `LaunchRoute` in `tests/service/test_isolation_matrix.py` — Bob and nobody, both bodies, foreign id indistinguishable from an invented one |
 | 2 | done | `tests/service/test_credentials.py` (19) |
 | 3 | done | `tests/service/test_credential_crypto.py` (24) — plus a real row re-labelled by SQL `UPDATE` failing to decrypt |
 | 4 | done | `tests/service/test_boot_checks.py` (8) |

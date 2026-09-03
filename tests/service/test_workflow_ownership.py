@@ -21,14 +21,14 @@ Two properties carry the weight:
 Nothing here spends anything: the app is `synthetic=True`, so a launch that is
 admitted runs the real compiled definition over `SyntheticCrewFactories`.
 
-**Round 2 (D-01-1).** The first version of this file sent only clean
+**Round 2 (D-01-1, D-01-4).** The first version of this file sent only clean
 `{"idea": ...}` bodies, and the criterion it ticked - "the 404 fires before any
 admission counter moves" - was false for any body carrying one of the graph's
 own state names: `CreateRunRequest.inputs`'s validator read the published
 graph's registered keys and answered 422 BEFORE the rate limiter and before
 the ownership 404, so a stranger could tell Alice's id from an invented one,
 enumerate her node names, and never be throttled for it. The state-key classes
-below send the bodies the first version did not, as Bob.
+below send the bodies the first version did not, as Bob and as nobody.
 """
 
 from __future__ import annotations
@@ -264,6 +264,19 @@ class StateKeyProbeTests(AuthenticatedTwoUserCase):
                 self.assertEqual(response.status_code, 422, response.text)
                 self.assertIn("no_gates", response.text)
 
+    def test_nobody_gets_the_same_answer_for_a_foreign_and_an_unknown_id(self) -> None:
+        """With authentication on, the anonymous answer is the 401 - for both."""
+
+        for key in self.probe_keys():
+            with self.subTest(key=key):
+                foreign = self.client.post(RUNS, json=launch_with(self.workflow_id, key))
+                unknown = self.client.post(RUNS, json=launch_with(UNKNOWN_ID, key))
+                self.assertEqual(foreign.status_code, 401, foreign.text)
+                self.assertEqual(
+                    (foreign.status_code, foreign.json()), (unknown.status_code, unknown.json())
+                )
+                self.assertNotIn(key, foreign.text)
+
 
 @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
 class StateKeyProbeIsChargedTests(AuthenticatedTwoUserCase):
@@ -297,6 +310,89 @@ class StateKeyProbeIsChargedTests(AuthenticatedTwoUserCase):
         owner = self.client.post(RUNS, json=launch(workflow_id), headers=self.as_alice())
         self.assertEqual(owner.status_code, 202, owner.text)
         self.app.state.run_registry.wait(owner.json()["run_id"], timeout=30)
+
+
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class AnonymousStateKeyProbeTests(BuilderRegistrationCleanup):
+    """D-01-4's "sent by nobody", on the app the critic probed.
+
+    Authentication OFF and `SYNTHETIC=1`, so the owner is named by the
+    synthetic header and an anonymous caller is genuinely nobody rather than a
+    401. This is the configuration in which the critic's anonymous
+    `out__scoper` probe answered 422; it must now answer the same 404 as an
+    unknown id.
+    """
+
+    def setUp(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from brief_crew.service.app import create_app
+
+        super().setUp()
+        for item in (
+            patch.object(config, "AUTH_BASE_URL", ""),
+            patch.object(config, "VALIDATOR_REQUIRE_AUTH", False),
+        ):
+            item.start()
+            self.addCleanup(item.stop)
+        self.app = create_app(synthetic=True)
+        self.client = TestClient(self.app)
+        self.addCleanup(self.client.close)
+
+        alice = {SYNTHETIC_USER_HEADER: "alice"}
+        created = self.client.post(
+            "/api/builder/workflows", json={"document": wire(straight_line())}, headers=alice
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        document_id = created.json()["document"]["id"]
+        published = self.client.post(
+            f"/api/builder/workflows/{document_id}/publish", headers=alice
+        )
+        self.assertEqual(published.status_code, 200, published.text)
+        self.workflow_id = published.json()["workflow_id"]
+        self.track(self.workflow_id)
+        self.assertEqual(BUILDER_WORKFLOWS[self.workflow_id].user_id, "alice")
+        self.state_keys = graph_state_keys(self.workflow_id)
+
+    def probe_keys(self) -> list[str]:
+        declared_out = next(key for key in self.state_keys if key.startswith("out__"))
+        return ["__builder__", declared_out, UNDECLARED_STATE_KEY]
+
+    def test_nobodys_state_key_probe_is_the_same_404_as_an_unknown_id(self) -> None:
+        before = self.app.state.run_registry.admission_status()
+        for key in self.probe_keys():
+            with self.subTest(key=key):
+                foreign = self.client.post(RUNS, json=launch_with(self.workflow_id, key))
+                unknown = self.client.post(RUNS, json=launch_with(UNKNOWN_ID, key))
+                self.assertEqual(foreign.status_code, 404, foreign.text)
+                self.assertEqual(foreign.json(), {"detail": "workflow not found"})
+                self.assertEqual(
+                    (foreign.status_code, foreign.json()), (unknown.status_code, unknown.json())
+                )
+        self.assertEqual(self.app.state.run_registry.admission_status(), before)
+
+    def test_a_signed_in_strangers_state_key_probe_is_the_same_404_too(self) -> None:
+        bob = {SYNTHETIC_USER_HEADER: "bob"}
+        for key in self.probe_keys():
+            with self.subTest(key=key):
+                foreign = self.client.post(
+                    RUNS, json=launch_with(self.workflow_id, key), headers=bob
+                )
+                unknown = self.client.post(RUNS, json=launch_with(UNKNOWN_ID, key), headers=bob)
+                self.assertEqual(
+                    (foreign.status_code, foreign.json()),
+                    (unknown.status_code, unknown.json()),
+                )
+                self.assertEqual(foreign.status_code, 404, foreign.text)
+
+    def test_the_owner_is_still_refused_the_key_with_a_422(self) -> None:
+        response = self.client.post(
+            RUNS,
+            json=launch_with(self.workflow_id, "__builder__"),
+            headers={SYNTHETIC_USER_HEADER: "alice"},
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn("__builder__", response.json()["detail"])
 
 
 @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")

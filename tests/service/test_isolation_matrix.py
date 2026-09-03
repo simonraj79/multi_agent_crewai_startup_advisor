@@ -11,6 +11,7 @@ with authentication on:
 | save / delete / duplicate | 200 / 204 / 201 | 404  | 401       |
 | import                    | 201, owner A    | 201, owner B, no reference to A's id | 401 |
 | test inputs               | 200             | 404  | 401       |
+| launch (published)        | 202             | 404, clean body OR a body carrying A's state names | 401, either body |
 
 The "test inputs" row has no route in Stage 1 - plan 13 owns the panel - so it
 is covered here at the level the table can be: `builder_test_inputs.user_id`
@@ -27,6 +28,14 @@ caller even with authentication off.
 
 404 and not 403 everywhere B is refused, because a 403 confirms the document
 exists; the assertion is on the status AND on the body carrying nothing of A's.
+
+The launch row is plan 01's, added in round 2 (D-01-4): `POST /runs` was in
+the matrix only implicitly, through `test_workflow_ownership.py`, and that file
+sent clean bodies alone. A body carrying one of A's own state names
+(`__builder__`, `out__<node>`) used to answer 422 from the request schema
+before the rate limiter and before the ownership 404 - an oracle for which ids
+exist and what their nodes are called (D-01-1). Here B and the anonymous caller
+send both bodies and must be unable to tell A's id from an invented one.
 """
 
 from __future__ import annotations
@@ -39,6 +48,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select
 from sqlalchemy.exc import IntegrityError
 
+from brief_crew import config
 from brief_crew.builder.store import BuilderDocumentStore
 from brief_crew.config import BUILDER_DOCUMENT_ID_PATTERN
 from brief_crew.service.app import create_app
@@ -48,6 +58,7 @@ from brief_crew.service.persistence import (
     utcnow,
 )
 from tests.builder.test_compiler import straight_line
+from tests.service.builder_registration import forget_builder_workflow
 from tests.service.builder_auth import (
     ADA,
     ADA_TOKEN,
@@ -197,6 +208,76 @@ class WriteRoutes(MatrixCase):
 
         self.assertEqual(self.import_as(ANON, envelope).status_code, 401)
         self.assertEqual(len(self.list_ids_as(GRACE_TOKEN)), 1)
+
+
+class LaunchRoute(MatrixCase):
+    """`POST /api/sessions/{s}/runs` against A's PUBLISHED document (plan 01 D1).
+
+    Two bodies per caller: the clean one, and one carrying a state name the
+    publish registered for this graph. The second is the D-01-4 proof - the
+    answer must not depend on the body for anyone but the owner.
+    """
+
+    RUNS = "/api/sessions/session-matrix/runs"
+    UNKNOWN = "ug_00000000"
+
+    def setUp(self) -> None:
+        super().setUp()
+        published = self.request(ADA_TOKEN, "post", f"/api/builder/workflows/{self.owned}/publish")
+        self.assertEqual(published.status_code, 200, published.text)
+        self.workflow_id = published.json()["workflow_id"]
+        self.addCleanup(forget_builder_workflow, self.workflow_id)
+        registered = config.reserved_run_input_keys(self.workflow_id) - config.GLOBAL_RESERVED_RUN_INPUT_KEYS
+        self.state_keys = ["__builder__", next(k for k in sorted(registered) if k.startswith("out__"))]
+        for key in self.state_keys:
+            self.assertIn(key, registered)
+
+    def bodies(self, workflow_id: str) -> dict[str, dict[str, Any]]:
+        clean = {"workflow_id": workflow_id, "inputs": {"idea": "a scheduling assistant for clinics"}}
+        out: dict[str, dict[str, Any]] = {"clean": clean}
+        for key in self.state_keys:
+            out[key] = {**clean, "inputs": {**clean["inputs"], key: "x"}}
+        return out
+
+    def test_a_launches_her_own_graph(self) -> None:
+        response = self.request(ADA_TOKEN, "post", self.RUNS, json=self.bodies(self.workflow_id)["clean"])
+        self.assertEqual(response.status_code, 202, response.text)
+        self.app.state.run_registry.wait(response.json()["run_id"], timeout=30)
+
+    def test_a_is_refused_her_own_state_names_with_a_422_naming_them(self) -> None:
+        for key, body in self.bodies(self.workflow_id).items():
+            if key == "clean":
+                continue
+            with self.subTest(key=key):
+                response = self.request(ADA_TOKEN, "post", self.RUNS, json=body)
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn(key, response.json()["detail"])
+
+    def test_b_cannot_tell_a_s_graph_from_an_invented_one_with_either_body(self) -> None:
+        before = self.app.state.run_registry.admission_status()
+        foreign, unknown = self.bodies(self.workflow_id), self.bodies(self.UNKNOWN)
+        for key in foreign:
+            with self.subTest(body=key):
+                refused = self.request(GRACE_TOKEN, "post", self.RUNS, json=foreign[key])
+                control = self.request(GRACE_TOKEN, "post", self.RUNS, json=unknown[key])
+                self.assertEqual(refused.status_code, 404, refused.text)
+                self.assertEqual(refused.json(), {"detail": "workflow not found"})
+                self.assertEqual((refused.status_code, refused.json()), (control.status_code, control.json()))
+                self.assert_nothing_of_a_leaks(refused)
+                self.assertNotIn(key, refused.text)
+        self.assertEqual(self.app.state.run_registry.admission_status(), before)
+        self.assertEqual(self.request(GRACE_TOKEN, "get", "/api/runs").json()["runs"], [])
+
+    def test_anonymous_is_401_with_either_body_and_for_either_id(self) -> None:
+        foreign, unknown = self.bodies(self.workflow_id), self.bodies(self.UNKNOWN)
+        for key in foreign:
+            with self.subTest(body=key):
+                refused = self.request(ANON, "post", self.RUNS, json=foreign[key])
+                control = self.request(ANON, "post", self.RUNS, json=unknown[key])
+                self.assertEqual(refused.status_code, 401, refused.text)
+                self.assertEqual((refused.status_code, refused.json()), (control.status_code, control.json()))
+                self.assert_nothing_of_a_leaks(refused)
+                self.assertNotIn(key, refused.text)
 
 
 class TestInputsTable(MatrixCase):

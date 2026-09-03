@@ -1902,12 +1902,34 @@ watch(
    ellipsis so a document's name survives, an action when there is one, and a
    dismiss. Every value is a token; the three kinds are the three semantic
    colours the rest of the builder already uses. */
+/*
+ * OUT OF THE FLOW (D-15-14).
+ *
+ * The notice used to be an ordinary child of `.header-context`, which is the
+ * right-hand item of a `space-between` header - so every notice widened that
+ * group and pushed its own left-hand siblings LEFT. Measured by the critic:
+ * the Build/Run toggle moved 314px after a duplicate, 322 after a restore and
+ * 455 after an import, on every success. A persistent mode control that jumps
+ * whenever something goes well is a control an author stops trusting the
+ * position of, and it moves under the pointer they were about to click with.
+ *
+ * Absolute, centred in the header (which is already `position: relative`), so
+ * it occupies no space in either group and the toggle's x is a property of the
+ * toggle alone. The width is bounded well inside the gap between the brand
+ * lockup and the context group so a long sentence truncates - which
+ * `.builder-notice-text` already does - rather than colliding with either.
+ */
 .builder-notice {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
   display: inline-flex;
   gap: 8px;
   align-items: center;
   min-width: 0;
-  max-width: min(64ch, 42vw);
+  max-width: min(56ch, 34vw);
   padding: 4px 4px 4px 10px;
   color: var(--text-body);
   font-size: var(--fs-12);

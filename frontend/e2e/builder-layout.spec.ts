@@ -180,7 +180,89 @@ async function worstNodeOverflow(page: Page): Promise<number> {
   })
 }
 
+/** The Build/Run toggle's left edge, which must not depend on anything else. */
+async function toggleX(page: Page): Promise<number> {
+  const box = await page.locator('.workspace-switch').boundingBox()
+  expect(box, 'the Build/Run toggle should have a box').not.toBeNull()
+  return Math.round(box!.x)
+}
+
+/**
+ * A `.builder.json` the importer accepts, as a file on disk would arrive.
+ *
+ * The import is the critic's own biggest displacement case (-455px) and the
+ * only notice reachable from the gallery in one gesture, which is why it is
+ * the one this file drives.
+ */
+function importableFile(name: string): { name: string; mimeType: string; buffer: Buffer } {
+  const envelope = {
+    export: 'builder.flow/v1',
+    exported_at: new Date().toISOString(),
+    name,
+    source_version: 1,
+    needs_credentials: [],
+    document: {
+      schema: 'builder.flow/v1',
+      name,
+      version: 1,
+      input_field: 'idea',
+      nodes: [
+        {
+          id: 'idea',
+          kind: 'input',
+          label: 'Idea',
+          position: { x: 0, y: 0 },
+          config: { field: 'idea', label: null, max_chars: 2000, required: true },
+        },
+      ],
+      edges: [],
+      joins: {},
+    },
+  }
+  return {
+    name: `${name}.builder.json`,
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(envelope), 'utf-8'),
+  }
+}
+
 test.describe('Flow builder layout', () => {
+  test('does not move the Build/Run toggle when a notice appears (D-15-14)', async ({ page }) => {
+    /*
+     * The toast sat in the header's flow, inside the right-hand group of a
+     * `space-between` header, so every notice widened that group and pushed
+     * its own left-hand siblings LEFT: the critic measured the Build/Run
+     * toggle moving 314px after a duplicate, 322 after a restore and 455
+     * after an import. A persistent mode control that jumps whenever
+     * something goes well moves under the pointer about to click it.
+     *
+     * Asserted as an EQUALITY, not a tolerance. The toggle's x is now a
+     * property of the toggle alone, and any drift at all means the notice is
+     * back in the flow.
+     */
+    const watch = watchConsole(page)
+    await page.goto('/#/build')
+    await expect(page.locator('.workspace-switch')).toBeVisible()
+    await expect(page.locator('.builder-notice')).toHaveCount(0)
+    const before = await toggleX(page)
+
+    await page
+      .locator('[data-testid="gallery-import-file"]')
+      .setInputFiles(importableFile(`layout probe ${Date.now().toString(36)}`))
+
+    // The notice is on screen, and it is a wide one - the import's sentence
+    // carries the file name and the new document's name.
+    const notice = page.locator('.builder-notice')
+    await expect(notice).toBeVisible()
+    const noticeBox = await notice.boundingBox()
+    expect(noticeBox!.width, 'the probe needs a notice wide enough to have displaced it').
+      toBeGreaterThan(200)
+
+    expect(await toggleX(page), 'the Build/Run toggle moved when a notice appeared').toBe(before)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
   test('gives the empty gallery the page, not the 236px palette column', async ({ page }) => {
     const watch = watchConsole(page)
     await page.setViewportSize(WIDE)

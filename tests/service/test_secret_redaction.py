@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import io
 import json
+import pathlib
+import re
 import unittest
 import zipfile
 from typing import Any
@@ -81,6 +83,34 @@ class ListTests(unittest.TestCase):
 
         self.assertFalse(is_secret_key("fields"))
         self.assertNotIn("fields", SECRET_KEYS)
+
+    def test_the_plan_records_the_fields_exclusion_beside_the_pin(self) -> None:
+        """D-01-3: the deviation above is written INTO criterion 6, dated, naming this pin.
+
+        Round 1 found criterion 6 ticked `done` while its text - "every D6 key
+        name" - was contradicted by the test above, with the reason living only
+        in a Status row. A deviation the plan does not carry is a tick that a
+        one-line probe breaks. This test holds the criterion's own text to the
+        exclusion, so the note and the pin cannot part company silently: delete
+        either and the other fails.
+        """
+
+        plan = pathlib.Path(__file__).resolve().parents[2] / ".agent" / "plans" / "01-auth-and-workspaces.md"
+        self.assertTrue(plan.is_file(), plan)
+        text = plan.read_text(encoding="utf-8")
+        # Criterion 6 is the numbered item that names this file; the note is
+        # the indented paragraph under it, before item 7.
+        match = re.search(
+            r"^6\. `tests/service/test_secret_redaction\.py`:(?P<body>.*?)(?=^7\. )",
+            text,
+            re.M | re.S,
+        )
+        self.assertIsNotNone(match, "criterion 6 not found in the plan")
+        body = match.group("body")
+        self.assertIn("Amended 2026-09-03", body)
+        self.assertIn("`fields`", body)
+        self.assertIn("test_fields_is_deliberately_not_on_the_list", body)
+        self.assertIn(self.test_the_plan_records_the_fields_exclusion_beside_the_pin.__name__, body)
 
     def test_ordinary_keys_are_left_alone(self) -> None:
         for key in ("total_tokens", "tokens", "status", "result", "inputs", "idea", "node_id"):

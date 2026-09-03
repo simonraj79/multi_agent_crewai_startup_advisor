@@ -230,6 +230,24 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
 4. `tests/service/test_boot_checks.py`: `AUTH_BASE_URL` set + no `CREDENTIALS_MASTER_KEY` → `create_app` raises with a sentence naming the knob; auth off + no key → credential routes answer 503.
 5. `tests/builder/test_credential_resolution.py`: a compiled definition for a document with three credential references contains the three ids and no field value (string search over the YAML); `resolve_credential` inside the entrypoint returns the fields for the owner and raises `CredentialNotYours` for anyone else; `last_used_at` moves.
 6. `tests/service/test_secret_redaction.py`: a frame whose `details` carries every D6 key name round-trips as `***` through the serializer and the persistence sanitiser; a run log export (`/logs?format=ndjson`) contains none of the plaintext fixtures.
+
+   **Amended 2026-09-03 (round 2, D-01-3; ratified by the owner).** `fields`
+   is excluded from "every D6 key name". It is the gate form's own key -
+   `pending_gate.fields` is the editable half of every gate payload
+   (`registry.py`, `persistence.py`, `RunStatusResponse`) - and redacting it
+   by name turned every gate form into the string `***` and failed
+   `RunStatusResponse` validation on the first synthetic run. The vault's
+   plaintext object of the same name never reaches a frame: it lives in
+   `ResolvedCredential`, whose `repr` hides it, and is handed to one
+   constructor. Every other D6 name round-trips as `***` exactly as the
+   sentence above says. The exclusion is pinned by
+   `tests/service/test_secret_redaction.py::ListTests::test_fields_is_deliberately_not_on_the_list`,
+   and this note is pinned beside it by
+   `ListTests::test_the_plan_records_the_fields_exclusion_beside_the_pin`.
+   Recorded as a dated amendment rather than an edit to the sentence,
+   because round 1 ticked this criterion with its text unchanged and the
+   deviation living only in a Status row - which is the process failure the
+   critic's dimension 16 exists to catch.
 7. `tests/service/test_synthetic_identity.py`: the header is honoured only under `SYNTHETIC=1` with `AUTH_BASE_URL` unset; with `AUTH_BASE_URL` set it is ignored and the bearer path wins; with neither, the caller is anonymous.
 8. `tests/service/test_validate_identity.py`: `validate` with a user emits `credential-missing` for a foreign id; without a user it emits nothing and returns `identity_checked: false`.
 9. `frontend/tests/builderAccountChip.spec.ts`: `BuilderView` renders the chip from the `user` prop and calls sign-out; with `authenticated: false` and auth configured, the builder shows the sign-in panel, not the gallery.
@@ -268,7 +286,7 @@ measured on the integrated tree, not copied from a branch report.
 | 3 | done | `tests/service/test_credential_crypto.py` (24) — plus a real row re-labelled by SQL `UPDATE` failing to decrypt |
 | 4 | done | `tests/service/test_boot_checks.py` (8) |
 | 5 | done | `tests/builder/test_credential_resolution.py` (15) — a registry run fails with a frame carrying `error_class: credential-not-yours` |
-| 6 | done, one deviation | `tests/service/test_secret_redaction.py` (13). **`fields` is NOT on the redaction list**: it is the gate form's own key, and redacting it turned every gate into `***`. Pinned by a test |
+| 6 | done; **criterion amended 2026-09-03 (D-01-3)** | `tests/service/test_secret_redaction.py` (13 → 14). **`fields` is NOT on the redaction list**: it is the gate form's own key, and redacting it turned every gate into `***`. Pinned by `test_fields_is_deliberately_not_on_the_list`; the criterion's own text now carries the dated exclusion, and `test_the_plan_records_the_fields_exclusion_beside_the_pin` fails if that note and the pin ever part company |
 | 7 | done | `tests/service/test_synthetic_identity.py` (14) — also honoured on the `/ws` handshake (4404 for others, 4400 malformed), which D8 did not say |
 | 8 | done | `tests/service/test_validate_identity.py` (18); `credential-missing` is problem code 31, fixtures regenerated, both mirrors agree |
 | 9 | done | `frontend/tests/builderAccountChip.spec.ts` (12) |

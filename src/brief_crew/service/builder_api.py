@@ -941,15 +941,24 @@ def create_builder_router(
         store = require_store()
         # `writable=True` BEFORE `_unregister`: a refusal must leave the graph
         # exactly as registered as it was (D-15-7).
-        _guarded(lambda: store.load(document_id, user_id=owner_of(user), writable=True))
+        stored = _guarded(
+            lambda: store.load(document_id, user_id=owner_of(user), writable=True)
+        )
         live = registered_workflow(document_id)
         if live is not None:
+            # NAMED, ONCE (round 3, D-15-18). The sentence said
+            # "document ug_309cd317 is published - v1 is registered as a
+            # launchable workflow - and cannot be deleted", which put the
+            # internal id in front of a person who has never seen one and said
+            # published twice in different words. The server is the only layer
+            # that holds the name and the live version together, so it is the
+            # only layer that can say this once and say it well; the id stays
+            # in the request that carries it and in the log.
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"document {document_id} is published - v{live.document.version} "
-                    "is registered as a launchable workflow - and cannot be "
-                    "deleted; unpublish it first, then delete it"
+                    f"“{stored.document.name}” is live as v{live.document.version} "
+                    "and cannot be deleted; unpublish it first, then delete it"
                 ),
             )
         _unregister(registry, document_id)

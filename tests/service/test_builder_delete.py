@@ -86,6 +86,13 @@ class DeleteCase(BuilderAuthCase):
             ).scalar_one()
         return int(heads), int(versions), int(inputs)
 
+    def stored_name(self, document_id: str) -> str:
+        """The document's own name, which is what the 409 says (D-15-18)."""
+
+        response = self.get_as(ADA_TOKEN, document_id)
+        self.assertEqual(response.status_code, 200, response.text)
+        return str(response.json()["document"]["name"])
+
     def seed_test_input(self, document_id: str, *, user_id: str = "user_ada") -> None:
         """A plan-13 row keyed by this document, written the way its route will."""
 
@@ -160,12 +167,17 @@ class PublishedDeletion(DeleteCase):
 
         self.assertEqual(response.status_code, 409, response.text)
         detail = response.json()["detail"]
-        self.assertIn("published", detail)
         # D-15-10: the remedy is one the server honours, in the docked
         # confirm's own words.
         self.assertIn("cannot be deleted; unpublish it first, then delete it", detail)
         self.assertNotIn("save a new version", detail)
-        self.assertIn(created["id"], detail)
+        # D-15-18: NAMED, ONCE. The sentence used to open with the internal id
+        # in front of a person who has never seen one, and said "published"
+        # twice in two vocabularies. It now names the graph and says live once,
+        # and the id stays in the request that carries it.
+        self.assertIn(self.stored_name(created["id"]), detail)
+        self.assertNotIn(created["id"], detail)
+        self.assertEqual(detail.lower().count("publish"), 1, detail)
         # Still there, still launchable, still published.
         self.assertEqual(self.counts(created["id"]), (1, 1, 0))
         self.assertIsNotNone(builder_workflow(published["workflow_id"]))
@@ -198,7 +210,9 @@ class PublishedDeletion(DeleteCase):
         response = self.delete_as(ADA_TOKEN, created["id"])
 
         self.assertEqual(response.status_code, 409, response.text)
-        self.assertIn("v1 is registered", response.json()["detail"])
+        # The LIVE version, which is v1 while the head is v2 - the whole point
+        # of the guard being the registration rather than the head's status.
+        self.assertIn("is live as v1", response.json()["detail"])
         self.assertIn("unpublish it first, then delete it", response.json()["detail"])
         self.assertEqual(self.counts(created["id"]), (1, 2, 0))
         self.assertIsNotNone(builder_workflow(published["workflow_id"]))

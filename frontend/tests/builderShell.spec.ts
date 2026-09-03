@@ -481,6 +481,21 @@ describe('the gallery is the empty state and the way back into saved work', () =
     expect(form.find('[data-testid="gallery-unpublish"]').exists()).toBe(true)
     expect(form.find('input').exists()).toBe(false)
 
+    /*
+     * D-15-18: ONE LAYOUT, and the sentence said once. The gallery used to
+     * put the server's sentence BELOW the buttons while the docked confirm
+     * put it above, and both printed "Not deleted — it is still published."
+     * directly beside it - so the refusal read twice, in two vocabularies,
+     * in two places, and neither of them named the graph.
+     */
+    const children = Array.from(form.element.children).map((child) => child.className)
+    const problemAt = children.findIndex((name) => name.includes('delete-problem'))
+    const actionsAt = children.findIndex((name) => name.includes('delete-actions'))
+    expect(problemAt).toBeGreaterThanOrEqual(0)
+    expect(problemAt, 'the sentence must sit above the buttons, as it does when docked')
+      .toBeLessThan(actionsAt)
+    expect(form.text()).not.toContain('still published')
+
     await form.find('[data-testid="gallery-unpublish"]').trigger('click')
     await flush()
     expect(unpublished).toEqual([id])

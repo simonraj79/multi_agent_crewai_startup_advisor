@@ -385,8 +385,23 @@ function when(iso: string): string {
                 A published graph cannot be deleted; unpublish it first, then delete it.
                 Type <strong>{{ entry.name }}</strong> to confirm.
               </template>
-              <template v-else>Not deleted — it is still published.</template>
+              <!--
+                Nothing here when refused (D-15-18). This read "Not deleted —
+                it is still published." directly above the server's own
+                sentence, which since round 3 names the graph and says live
+                once - so the pair said published twice in two vocabularies,
+                and neither of them named which graph.
+              -->
             </label>
+            <!--
+              ABOVE the buttons, which is where the docked confirm puts it.
+              The same refusal was laid out two ways - text above the buttons
+              when docked, below them here - so an author who met it in both
+              places had to find it twice (D-15-18).
+            -->
+            <p v-if="deleteProblem" :id="`confirm-problem-${entry.id}`" class="delete-problem" role="alert">
+              {{ deleteProblem }}
+            </p>
             <div class="delete-actions" :class="{ 'is-refused': deleteRefused }">
               <input
                 v-if="!deleteRefused"
@@ -419,9 +434,6 @@ function when(iso: string): string {
                 {{ deleteInFlight ? 'Deleting…' : 'Delete' }}
               </button>
             </div>
-            <p v-if="deleteProblem" :id="`confirm-problem-${entry.id}`" class="delete-problem" role="alert">
-              {{ deleteProblem }}
-            </p>
           </form>
         </li>
       </ul>

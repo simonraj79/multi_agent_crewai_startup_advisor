@@ -1677,7 +1677,13 @@ watch(
                   graph cannot be deleted; unpublish it first, then delete it. Type
                   <strong>{{ doc.name }}</strong> to confirm.
                 </template>
-                <template v-else>Not deleted — it is still published.</template>
+                <!--
+                  Nothing here when refused (D-15-18). This read "Not deleted
+                  — it is still published." directly above the server's own
+                  sentence, which since round 3 names the graph and says live
+                  once - so the pair said published twice in two vocabularies
+                  and neither of them named which graph.
+                -->
               </label>
               <p
                 v-if="deleteProblem"

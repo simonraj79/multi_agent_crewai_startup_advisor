@@ -336,6 +336,10 @@ describe('Delete', () => {
     const confirm = wrapper.get('[data-testid="delete-confirm"]')
     expect(confirm.get('[data-testid="delete-problem"]').text()).toBe(sentence)
     expect(confirm.get('[data-testid="delete-problem"]').attributes('role')).toBe('alert')
+    // D-15-18: the server's sentence, once. The "Not deleted — it is still
+    // published." line that used to sit above it said the same thing in
+    // different words and named no graph.
+    expect(confirm.text()).not.toContain('still published')
     // The Delete button and the box are GONE, not disabled: resending cannot
     // lift a 409. What is offered is the one thing that can (D-15-10).
     expect(confirm.find('[data-testid="delete-submit"]').exists()).toBe(false)

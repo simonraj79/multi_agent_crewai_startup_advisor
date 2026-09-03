@@ -2405,6 +2405,12 @@ SYNTHETIC_USER_PATTERN = r"^[a-z0-9_-]{1,64}$"
 #: rather than the suffix dropped, because a copy that cannot be told from its
 #: source in the sidebar is the one thing a duplicate must not be.
 COPY_SUFFIX = " copy"
+#: What an import is called when the caller already has a document by the
+#: file's name (round 2, D-15-4). Applied only on a collision: a colleague's
+#: file imported into an empty library keeps its own name, and the author's
+#: own export imported back reads "<name> imported" - then "<name> imported 2"
+#: - rather than a second row identical to the first down to the letter.
+IMPORT_SUFFIX = " imported"
 #: How many `needs_credentials` entries an import envelope may name. A node id
 #: per graph node is the most a strip can produce; anything beyond that is a
 #: file that was not written by an export. The server re-derives the list

@@ -738,13 +738,16 @@
    problem, and this is the warning that is supposed to precede one. */
 .builder-tile-count.is-at-bound { color: var(--warn-text); }
 
-.builder-library { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
+/* The list scrolls on its own inside the palette (D-15-4): a library of
+   many rows must never push the palette past the viewport with nothing to
+   grab, and `min-height: 0` is what lets a flex child shrink to be clipped. */
+.builder-library { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-height: 0; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
 .builder-library-row {
   display: grid;
   width: 100%;
   grid-template-columns: 13px minmax(0, 1fr) auto auto;
   gap: 7px;
-  align-items: center;
+  align-items: start;
   padding: 7px 8px;
   color: var(--text-body);
   text-align: left;
@@ -758,7 +761,19 @@
 .builder-library-row:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
 .builder-library-row.is-open { background: var(--surface-well); border-color: var(--accent-cyan); }
 .builder-library-icon { color: var(--text-40); }
-.builder-library-name { overflow: hidden; font-size: var(--fs-12); white-space: nowrap; text-overflow: ellipsis; }
+/* Two lines, then an ellipsis - never one line that eats the last word. A
+   duplicate's "copy" and an import's "imported" sit at the END of the name,
+   which is exactly what a single nowrap line drops first (D-15-4). */
+.builder-library-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: var(--fs-12);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .builder-library-version { color: var(--text-40); font: 600 9px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
 .builder-library-status { padding: 2px 6px; font: 700 9px/1 var(--font-mono); border: 1px solid var(--border-default); border-radius: var(--r-pill); text-transform: uppercase; }
 .builder-library-status.is-draft { color: var(--text-40); }

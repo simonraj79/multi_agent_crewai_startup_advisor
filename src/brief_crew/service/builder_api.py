@@ -30,7 +30,7 @@ with the same admission control, the same rate limit and the same ownership.
 # annotations would therefore fail to resolve those names, silently fall back
 # to `Any`, and turn a 204 into an assertion about response bodies.
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 import json
 from typing import Any, Callable, Literal
@@ -96,6 +96,7 @@ FIRST_VERSION = 1
 #: source in the sidebar is the one thing a duplicate must not be.
 #: Owned by config.py (S1 ruling 3); re-exported under the same name.
 COPY_SUFFIX = project_config.COPY_SUFFIX
+IMPORT_SUFFIX = project_config.IMPORT_SUFFIX
 
 #: How many `needs_credentials` entries an import envelope may name. A node id
 #: per graph node is the most a strip can produce; anything beyond that is a
@@ -688,6 +689,11 @@ def create_builder_router(
         raw, stripped_nodes = strip_for_export(upgrade_document(request.document))
         if not raw.get("name") and request.name:
             raw["name"] = request.name
+        # Distinct in the caller's own library (D-15-4). The file's name is kept
+        # when nothing of theirs already carries it; otherwise it gets the
+        # import suffix, then a number, so two rows never read identically.
+        if isinstance(raw.get("name"), str):
+            raw["name"] = import_name(raw["name"], _names_of(store, owner))
         document = parse(raw, document_id=new_document_id(), version=FIRST_VERSION)
         stored = _guarded(lambda: store.create(document, user_id=owner, source="imported"))
         response.headers["Location"] = f"{BUILDER_API_PREFIX}/workflows/{stored.id}"
@@ -841,7 +847,10 @@ def create_builder_router(
             lambda: store.load(document_id, version=version, user_id=owner_of(user))
         )
         payload = source.document.model_dump(mode="json", by_alias=True)
-        payload["name"] = copy_name(source.document.name)
+        # `<name> copy`, and `<name> copy 2` for the second copy of the same
+        # source (D-15-4): a duplicate that reads exactly like the last
+        # duplicate is the one thing a duplicate must not be.
+        payload["name"] = distinct_name(source.document.name, COPY_SUFFIX, _names_of(store, owner))
         payload.pop("budget", None)
         document = parse(payload, document_id=new_document_id(), version=FIRST_VERSION)
         stored = _guarded(lambda: store.create(document, user_id=owner, source="duplicated"))
@@ -1120,20 +1129,67 @@ def _import_envelope(raw: bytes) -> "BuilderImportRequest":
         raise HTTPException(status_code=422, detail=_first_schema_error(exc)) from exc
 
 
-def copy_name(name: str) -> str:
-    """`"<name> copy"`, trimmed from the front so the suffix always survives.
+def _with_tail(base: str, tail: str) -> str:
+    """`base + tail`, the base trimmed from the front so the tail survives.
 
     `BUILDER_MAX_NAME_CHARS` bounds the schema, and a name already at the bound
     would otherwise fail `parse` on the duplicate of a perfectly valid document
-    - a 422 the author cannot act on, about a field they did not type.
+    - a 422 the author cannot act on, about a field they did not type. The
+    tail is the distinguishing word, so it is the part that must not go.
     """
 
     limit = project_config.BUILDER_MAX_NAME_CHARS
-    base = str(name)
-    room = limit - len(COPY_SUFFIX)
+    room = limit - len(tail)
     if len(base) > room:
         base = base[:room].rstrip()
-    return f"{base}{COPY_SUFFIX}"
+    return f"{base}{tail}"
+
+
+def copy_name(name: str) -> str:
+    """`"<name> copy"`, trimmed from the front so the suffix always survives."""
+
+    return _with_tail(str(name), COPY_SUFFIX)
+
+
+def distinct_name(base: str, suffix: str, taken: Iterable[str]) -> str:
+    """`base + suffix`, or `base + suffix + " 2"`, `" 3"`, ... - the first not in `taken`.
+
+    Round 2, D-15-4. The library is a flat list with no folder and no id on
+    show, so a name is the only thing an author picks a row by, and two rows
+    that read the same are two rows nobody can tell apart at the moment they
+    are choosing which to delete. The base is what gets trimmed for the bound;
+    the suffix and the number are the distinguishing words and always survive
+    - `_with_tail` is applied to the whole tail, never to a candidate that
+    already carries it, or `imported` would come back as `importe 2`.
+    """
+
+    used = set(taken)
+    candidate = _with_tail(base, suffix)
+    if candidate not in used:
+        return candidate
+    number = 2
+    while True:
+        attempt = _with_tail(base, f"{suffix} {number}")
+        if attempt not in used:
+            return attempt
+        number += 1
+
+
+def import_name(name: str, taken: Iterable[str]) -> str:
+    """The file's own name, unless the caller already has one; then `<name> imported`, numbered."""
+
+    used = set(taken)
+    if name not in used:
+        return name
+    return distinct_name(name, IMPORT_SUFFIX, used)
+
+
+def _names_of(store: BuilderDocumentStore, owner: str | None) -> list[str]:
+    """Every name in the caller's library, for `distinct_name` to avoid."""
+
+    from brief_crew.builder.store import MAX_LIST_LIMIT
+
+    return [row.name for row in store.list(user_id=owner, limit=MAX_LIST_LIMIT)]
 
 
 def _version_source(request: BuilderDocumentRequest) -> str:

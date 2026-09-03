@@ -366,6 +366,15 @@ describe('the gallery is the empty state and the way back into saved work', () =
     expect(wrapper.emitted('open')?.[0]).toEqual([id])
   })
 
+  it('carries the whole name in the row title, so a clipped tail is one hover away (D-15-4)', async () => {
+    const api = new FakeBuilderApi()
+    const name = 'Minimal gated agent with a name long enough to wrap twice and then some copy'
+    api.seed({ ...IDEA_VALIDATOR.document, name }, 1)
+    const { wrapper } = await gallery(api)
+    expect(wrapper.get('.library-name').attributes('title')).toBe(name)
+    expect(wrapper.get('.library-name').text()).toBe(name)
+  })
+
   it('says so when there are no saved graphs yet', async () => {
     const { wrapper } = await gallery()
     expect(wrapper.find('.gallery-empty').text()).toContain('No saved graphs yet')

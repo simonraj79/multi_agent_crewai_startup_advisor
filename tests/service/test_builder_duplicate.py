@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from brief_crew.config import BUILDER_DOCUMENT_ID_PATTERN, BUILDER_MAX_NAME_CHARS
 from brief_crew.service.builder_api import COPY_SUFFIX, copy_name
+from tests.builder.test_compiler import straight_line
 from tests.service.builder_auth import (
     ADA_TOKEN,
     GRACE_TOKEN,
@@ -123,6 +124,29 @@ class OwnDocument(DuplicateCase):
         name = response.json()["document"]["name"]
         self.assertEqual(len(name), BUILDER_MAX_NAME_CHARS)
         self.assertTrue(name.endswith(COPY_SUFFIX))
+
+    def test_a_second_copy_of_the_same_source_is_numbered(self) -> None:
+        """D-15-4: two duplicates of one source used to be two rows reading
+        "<name> copy" letter for letter. The second is "<name> copy 2"."""
+
+        source = self.create_as(ADA_TOKEN)
+        first = self.duplicate_as(ADA_TOKEN, source["id"]).json()
+        second = self.duplicate_as(ADA_TOKEN, source["id"]).json()
+        third = self.duplicate_as(ADA_TOKEN, source["id"]).json()
+        self.assertEqual(first["document"]["name"], "Test graph copy")
+        self.assertEqual(second["document"]["name"], "Test graph copy 2")
+        self.assertEqual(third["document"]["name"], "Test graph copy 3")
+        names = [row["name"] for row in self.client.get("/api/builder/workflows", headers=self.auth(ADA_TOKEN)).json()]
+        self.assertEqual(len(names), len(set(names)))
+
+    def test_the_number_is_the_caller_s_own_library_not_the_world_s(self) -> None:
+        """B's "copy" of the same unowned source does not push A's to "copy 2"."""
+
+        unowned = self.store().create(straight_line()).id
+        as_a = self.duplicate_as(ADA_TOKEN, unowned).json()
+        as_b = self.duplicate_as(GRACE_TOKEN, unowned).json()
+        self.assertEqual(as_a["document"]["name"], "Test graph copy")
+        self.assertEqual(as_b["document"]["name"], "Test graph copy")
 
     def test_a_copy_of_a_copy_is_named_twice(self) -> None:
         source = self.create_as(ADA_TOKEN)

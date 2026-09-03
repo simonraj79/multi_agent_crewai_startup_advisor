@@ -544,6 +544,21 @@ describe('read-only on the palette and on the card', () => {
     wrapper.unmount()
   })
 
+  it("carries each library row's whole name in its title (D-15-4)", async () => {
+    vocabularyServer()
+    const name = 'Minimal gated agent copy'
+    const wrapper = mount(NodePalette, {
+      props: {
+        library: [
+          { id: 'ug_00000001', name, version: 1, status: 'draft', created_at: '2026-09-02T00:00:00Z', updated_at: '2026-09-02T00:00:00Z' },
+        ],
+      },
+    })
+    await flush(6)
+    expect(wrapper.get('.builder-library-name').attributes('title')).toBe(name)
+    wrapper.unmount()
+  })
+
   it('is an ordinary palette when nothing is being viewed', async () => {
     vocabularyServer()
     const wrapper = mount(NodePalette)

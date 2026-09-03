@@ -351,7 +351,8 @@ function when(iso: string): string {
         <li v-for="entry in library" :key="entry.id">
           <div class="library-row">
             <button class="library-open" type="button" @click="emit('open', entry.id)">
-              <span class="library-name">{{ entry.name }}</span>
+              <!-- Two lines before it clips, whole name in the title (D-15-4). -->
+              <span class="library-name" :title="entry.name">{{ entry.name }}</span>
               <span class="library-meta">
                 <span class="status-pill" :class="`is-${entry.status}`">{{ entry.status }}</span>
                 <span class="library-version">v{{ entry.version }}</span>
@@ -574,7 +575,18 @@ function when(iso: string): string {
 }
 
 .library-open:hover { background: var(--surface-raised); }
-.library-name { overflow: hidden; color: var(--text-title); font-size: var(--fs-13); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.library-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-title);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .library-meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; color: var(--text-40); font: 500 10px/1 var(--font-mono); }
 .library-when { display: inline-flex; gap: 4px; align-items: center; }
 

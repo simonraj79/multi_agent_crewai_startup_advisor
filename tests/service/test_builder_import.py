@@ -216,6 +216,42 @@ class NeedsCredentials(ImportRouteCase):
             self.assertEqual(self.list_ids_as(GRACE_TOKEN), [])
 
 
+class ImportedNamesStayDistinct(ImportRouteCase):
+    """D-15-4: the import kept the file's exact name, so A's own export imported
+    back was a second row reading "Minimal gated agent" letter for letter."""
+
+    def test_your_own_export_imported_back_is_named_as_an_import(self) -> None:
+        source_id, envelope = self.exported_by_ada()
+        first = self.import_as(ADA_TOKEN, envelope)
+        second = self.import_as(ADA_TOKEN, envelope)
+        self.assertEqual(first.status_code, 201, first.text)
+        self.assertEqual(first.json()["document"]["name"], "Test graph imported")
+        self.assertEqual(second.json()["document"]["name"], "Test graph imported 2")
+        self.assertEqual(self.get_as(ADA_TOKEN, source_id).json()["document"]["name"], "Test graph")
+
+    def test_a_colleague_s_file_keeps_its_name_in_a_library_without_one(self) -> None:
+        _, envelope = self.exported_by_ada()
+        as_b = self.import_as(GRACE_TOKEN, envelope)
+        self.assertEqual(as_b.status_code, 201, as_b.text)
+        self.assertEqual(as_b.json()["document"]["name"], "Test graph")
+        again = self.import_as(GRACE_TOKEN, envelope)
+        self.assertEqual(again.json()["document"]["name"], "Test graph imported")
+
+    def test_a_name_at_the_bound_still_gets_its_suffix_and_its_number(self) -> None:
+        from brief_crew.config import BUILDER_MAX_NAME_CHARS
+
+        long_name = "n" * BUILDER_MAX_NAME_CHARS
+        created = self.create_as(ADA_TOKEN, document_payload(name=long_name))
+        envelope = self.export_as(ADA_TOKEN, created["id"]).json()
+        first = self.import_as(ADA_TOKEN, envelope).json()["document"]["name"]
+        second = self.import_as(ADA_TOKEN, envelope).json()["document"]["name"]
+        self.assertTrue(first.endswith(" imported"))
+        self.assertTrue(second.endswith(" imported 2"))
+        self.assertLessEqual(len(first), BUILDER_MAX_NAME_CHARS)
+        self.assertLessEqual(len(second), BUILDER_MAX_NAME_CHARS)
+        self.assertNotEqual(first, second)
+
+
 class EnvelopeRefusals(ImportRouteCase):
     def test_an_export_string_this_service_does_not_know_is_refused_naming_both(self) -> None:
         _, envelope = self.exported_by_ada()

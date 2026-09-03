@@ -281,7 +281,10 @@ function place(kind: NodeKind): void {
           @click="emit('open', entry.id)"
         >
           <FileStack class="builder-library-icon" :size="13" :stroke-width="1.9" aria-hidden="true" />
-          <span class="builder-library-name">{{ entry.name }}</span>
+          <!-- Two lines before it clips, and the whole name in the title
+               (D-15-4): "Minimal gated age…" lost the one word - copy - that
+               told the row from its source. -->
+          <span class="builder-library-name" :title="entry.name">{{ entry.name }}</span>
           <span class="builder-library-version">v{{ entry.version }}</span>
           <span class="builder-library-status" :class="`is-${entry.status}`">{{ entry.status }}</span>
         </button>

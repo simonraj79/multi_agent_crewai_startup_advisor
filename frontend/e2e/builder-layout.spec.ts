@@ -116,6 +116,34 @@ function gallery(page: Page): Locator {
   return page.locator('.template-gallery')
 }
 
+/** A document straight into the store, so the library has rows to lay out. */
+async function seedDocument(page: Page, name: string): Promise<string> {
+  const listed = await page.request.get('/api/builder/vocabulary')
+  expect(listed.ok()).toBe(true)
+  const document = {
+    schema: 'builder.flow/v1',
+    name,
+    version: 1,
+    input_field: 'idea',
+    nodes: [
+      {
+        id: 'idea',
+        kind: 'input',
+        label: 'Idea',
+        position: { x: 0, y: 0 },
+        config: { field: 'idea', label: null, max_chars: 2000, required: true },
+      },
+    ],
+    edges: [],
+    joins: {},
+  }
+  const created = await page.request.post('/api/builder/workflows', {
+    data: { document, expected_version: null },
+  })
+  expect(created.status()).toBe(201)
+  return ((await created.json()) as { id: string }).id
+}
+
 async function openValidatorTemplate(page: Page): Promise<void> {
   await page.goto('/#/build')
   await page.locator('.template-card', { hasText: 'Idea validator' }).click()
@@ -283,6 +311,70 @@ test.describe('Flow builder layout', () => {
     // whose columns are declared but whose children are missing does NOT do.
     const total = columns.palette + columns.workspace + columns.inspector
     expect(Math.abs(total - columns.main)).toBeLessThanOrEqual(2)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})
+
+test.describe('the saved-graphs library (D-15-4)', () => {
+  /*
+   * Round 1: the palette's library row truncated "Minimal gated agent copy" to
+   * "Minimal gated age…" - losing the one word that told the copy from its
+   * source - and a third row sat clipped at y≈895 with no scrollbar. Both are
+   * measurements only a browser can make: how wide a name ended up, and
+   * whether the last row is reachable at all.
+   */
+  const NAMES = [
+    'Minimal gated agent copy',
+    'Minimal gated agent imported',
+    'Minimal gated agent',
+    'A fourth graph so the list has to earn its height',
+    'A fifth graph, for the same reason',
+    'A sixth graph, because the capture showed three and clipped the third',
+  ]
+  const created: string[] = []
+
+  test.beforeEach(async ({ page }) => {
+    for (const name of NAMES) created.push(await seedDocument(page, name))
+  })
+
+  test.afterEach(async ({ page }) => {
+    for (const id of created.splice(0)) await page.request.delete(`/api/builder/workflows/${id}`)
+  })
+
+  test('shows every distinguishing word and keeps every row reachable', async ({ page }) => {
+    const watch = watchConsole(page)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/#/build')
+    await page.getByRole('button', { name: /minimal gated agent/i }).first().click()
+    const palette = page.locator('.builder-palette')
+    await expect(palette).toBeVisible()
+    const rows = palette.locator('.builder-library-row')
+    await expect(rows).toHaveCount(NAMES.length)
+
+    // No name is cut horizontally: the distinguishing word is on screen, on a
+    // second line if it must be, never behind an ellipsis in the first.
+    for (const name of ['Minimal gated agent copy', 'Minimal gated agent imported']) {
+      const label = palette.locator('.builder-library-name', { hasText: name }).first()
+      await expect(label).toBeVisible()
+      const box = await label.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }))
+      expect(box.scrollWidth).toBeLessThanOrEqual(box.clientWidth + 1)
+      expect(box.scrollHeight).toBeLessThanOrEqual(box.clientHeight + 1)
+    }
+
+    // The palette ends inside the viewport, and the last row can be reached.
+    const paletteBox = (await palette.boundingBox())!
+    expect(paletteBox.y + paletteBox.height).toBeLessThanOrEqual(900 + 1)
+    const last = rows.last()
+    await last.scrollIntoViewIfNeeded()
+    const lastBox = (await last.boundingBox())!
+    expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(paletteBox.y + paletteBox.height + 1)
+    expect(lastBox.y).toBeGreaterThanOrEqual(paletteBox.y - 1)
 
     expect(watch.unexpected).toEqual([])
   })

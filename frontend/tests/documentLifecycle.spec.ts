@@ -427,6 +427,13 @@ describe('the overflow menu', () => {
     await flush(2)
     const menu = wrapper.get('[data-testid="document-menu"]')
     expect(menu.attributes('role')).toBe('menu')
+    // D-15-6: Delete is set apart by a rule and wears the error colour's class
+    // at rest; it is the last item and the only one after the separator.
+    const separator = menu.get('[data-testid="menu-separator"]')
+    expect(separator.attributes('role')).toBe('separator')
+    expect(separator.element.nextElementSibling?.getAttribute('data-testid')).toBe('menu-delete')
+    expect(menu.get('[data-testid="menu-delete"]').classes()).toContain('is-danger')
+    expect(menu.findAll('[data-testid="menu-separator"]')).toHaveLength(1)
     expect(menu.findAll('[role="menuitem"]').map((item) => item.attributes('data-testid'))).toEqual([
       'menu-versions',
       'menu-export',

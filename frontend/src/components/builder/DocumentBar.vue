@@ -430,6 +430,14 @@ function cancelRename(): void {
             <Unplug :size="14" aria-hidden="true" />
             Unpublish
           </button>
+          <!--
+            Round 2, D-15-6: Delete sat 34px under Duplicate in the same colour
+            and weight as every safe item. A separator and the error colour at
+            rest, so the one destructive row reads as one before the pointer
+            reaches it - the type-to-confirm behind it catches a slip; this is
+            so the slip is rarer.
+          -->
+          <hr class="document-menu-separator" role="separator" aria-orientation="horizontal" data-testid="menu-separator" />
           <button
             class="document-menu-item is-danger"
             type="button"
@@ -581,7 +589,12 @@ function cancelRename(): void {
 .document-menu-item:hover:not(:disabled),
 .document-menu-item:focus-visible { background: var(--surface-raised); color: var(--text-title); outline: 0; }
 .document-menu-item:disabled { cursor: not-allowed; opacity: 0.42; }
-.document-menu-item.is-danger:hover:not(:disabled) { color: var(--err-text); background: var(--err-bg); }
+/* Destructive at rest, not only on hover: the row is the error colour before
+   the pointer reaches it, and a rule sets it apart from the safe items above. */
+.document-menu-item.is-danger { color: var(--err-text); }
+.document-menu-item.is-danger:hover:not(:disabled),
+.document-menu-item.is-danger:focus-visible { color: var(--err-text); background: var(--err-bg); }
+.document-menu-separator { height: 0; margin: 4px 4px; border: 0; border-top: 1px solid var(--border-default); }
 
 .document-file-picker {
   position: absolute;

@@ -34,6 +34,19 @@ ids only (C5), so the only path from an id to a key runs through the run's
 OWNER, and an unowned run resolves nothing at all. Absent and foreign are one
 exception, `CredentialNotYours`, for the reason every 404 in this service
 gives: a distinguishable refusal is an oracle for other people's ids.
+
+**The postgres probe dials public hosts only, and decides that before it
+dials.** `POST /{id}/test` on a `postgres` row used to run `SELECT 1` against
+whatever DSN a signed-in user had stored - and a signed-in user is not a
+trusted one. "Whatever DSN" includes `127.0.0.1:5432` (this service's own
+database), `10.x` (anything on the deployment's private network),
+`169.254.169.254` (the cloud metadata endpoint) and any hostname that resolves
+to one of those: server-side request forgery with a five-second timeout and a
+friendly sentence back, one credential at a time. `postgres_probe_target`
+parses the DSN with libpq's own rules, classifies every host it names as
+loopback, link-local, private or otherwise non-public, refuses on the first
+hit, and pins `hostaddr` to the addresses it vetted so libpq dials exactly
+what was checked rather than resolving the name a second time.
 """
 
 from __future__ import annotations
@@ -45,9 +58,11 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import ipaddress
 import json
 import re
 import secrets
+import socket
 from types import MappingProxyType
 from typing import Any
 
@@ -66,7 +81,8 @@ from brief_crew.service.persistence import (
 )
 
 __all__ = [
-    "CURRENT_KEY_VERSION",
+    "associated_data",
+    "credential_scope",
     "CredentialInvalid",
     "CredentialLabelTaken",
     "CredentialNotYours",
@@ -74,23 +90,25 @@ __all__ = [
     "CredentialSummary",
     "CredentialTooLarge",
     "CredentialUndecryptable",
-    "EncryptedFields",
-    "MasterKey",
-    "MasterKeyInvalid",
-    "ProbeResult",
-    "ResolvedCredential",
-    "VaultError",
-    "VaultUnavailable",
-    "associated_data",
-    "credential_scope",
+    "CURRENT_KEY_VERSION",
     "current_run_user",
     "decrypt_fields",
     "encrypt_fields",
+    "EncryptedFields",
+    "HostResolver",
     "load_master_key",
+    "MasterKey",
+    "MasterKeyInvalid",
     "normalize_fields",
     "parse_master_key",
+    "POSTGRES_PROBE_REFUSAL",
+    "postgres_probe_target",
     "probe_credential",
+    "ProbeResult",
     "resolve_credential",
+    "ResolvedCredential",
+    "VaultError",
+    "VaultUnavailable",
 ]
 
 #: AES-GCM's standard nonce. 96 bits, random per write: at 2^32 writes under one
@@ -699,6 +717,13 @@ class ProbeResult:
 HttpGet = Callable[[str, Mapping[str, str], float], tuple[int, str]]
 #: `(dsn, timeout_seconds) -> None`, raising on failure.
 SqlPing = Callable[[str, float], None]
+#: `(host) -> [address, ...]`: what a name resolves to. Injectable so a test
+#: never touches DNS; the default is `socket.getaddrinfo`.
+HostResolver = Callable[[str], list[str]]
+
+#: The first clause of every refusal the postgres probe writes. The second
+#: clause names the host and its class, never the DSN.
+POSTGRES_PROBE_REFUSAL = "the postgres probe dials public database hosts only"
 
 
 def _default_http_get(url: str, headers: Mapping[str, str], timeout: float) -> tuple[int, str]:
@@ -714,6 +739,121 @@ def _default_sql_ping(dsn: str, timeout: float) -> None:
     # `connect_timeout` is libpq's own parameter, forwarded through **kwargs.
     with psycopg.connect(dsn, connect_timeout=max(1, int(timeout))) as connection:
         connection.execute("SELECT 1")
+
+
+def _default_resolve_host(host: str) -> list[str]:
+    infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    # `%scope` on a link-local IPv6 answer is not part of the address.
+    return sorted({str(info[4][0]).split("%", 1)[0] for info in infos})
+
+
+def _address_class(address: str) -> str | None:
+    """None for a public address; else the class named in the refusal.
+
+    Order matters, because `ipaddress` overlaps its predicates: `127.0.0.1`
+    and `169.254.169.254` are both `is_private` in Python 3.13, and `0.0.0.0`
+    is both unspecified and private. The more specific word wins so the
+    sentence an author reads says what the address actually is. An
+    IPv4-mapped IPv6 address (`::ffff:10.0.0.5`) is classified as the IPv4
+    address it carries.
+    """
+
+    ip = ipaddress.ip_address(address)
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    if ip.is_loopback:
+        return "loopback"
+    if ip.is_link_local:
+        return "link-local"
+    if ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+        return "non-public"
+    if ip.is_private:
+        return "private"
+    if not ip.is_global:
+        return "non-public"
+    return None
+
+
+def _refuse(host: str, why: str) -> str:
+    return f"{POSTGRES_PROBE_REFUSAL}; {host[:80]!r} {why}"
+
+
+def postgres_probe_target(dsn: str, resolve: HostResolver) -> tuple[str | None, str]:
+    """Vet every host a DSN names BEFORE anything dials it.
+
+    Returns `(refusal, target)`. `refusal` is a sentence when any host is
+    loopback, link-local, private or otherwise non-public - or when the DSN
+    names no host at all (libpq would then dial a local socket), names a Unix
+    socket path, cannot be parsed, or names something DNS cannot resolve -
+    and None when every host is public. `target` is then the DSN with
+    `hostaddr` pinned to the addresses that were vetted, one per host in
+    libpq's positional pairing, so the dial cannot land somewhere the check
+    did not look (a name that answered one address here and another to libpq
+    a moment later). A DSN that already carries `hostaddr` is vetted on those
+    literals and dialled unchanged.
+
+    Never raises for a malformed DSN: this runs on a request path, and an
+    author's typo is a refusal, not a 500. The sentence names the host the
+    author typed and its class; it never carries the DSN, so the password in
+    it stays where it was.
+    """
+
+    try:
+        from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+        params = conninfo_to_dict(dsn)
+    except Exception:  # noqa: BLE001 - psycopg's own ProgrammingError, or an import failure
+        return f"{POSTGRES_PROBE_REFUSAL}; this DSN could not be parsed", dsn
+
+    hostaddr = str(params.get("hostaddr") or "")
+    if hostaddr:
+        for literal in hostaddr.split(","):
+            literal = literal.strip()
+            try:
+                cls = _address_class(literal)
+            except ValueError:
+                return _refuse(literal, "is not an IP address"), dsn
+            if cls is not None:
+                return _refuse(literal, f"is a {cls} address"), dsn
+        return None, dsn
+
+    hosts = [host.strip() for host in str(params.get("host") or "").split(",")]
+    if not any(hosts):
+        return (
+            f"{POSTGRES_PROBE_REFUSAL}; this DSN names no host, so libpq would dial a local socket",
+            dsn,
+        )
+    pinned: list[str] = []
+    for host in hosts:
+        if not host:
+            return f"{POSTGRES_PROBE_REFUSAL}; one of the hosts in this DSN is empty", dsn
+        if host.startswith("/") or host.startswith("@"):
+            return _refuse(host, "is a Unix socket path"), dsn
+        lowered = host.lower().rstrip(".")
+        if lowered == "localhost" or lowered.endswith(".localhost"):
+            return _refuse(host, "is loopback"), dsn
+        try:
+            addresses = [str(ipaddress.ip_address(host))]
+            literal = True
+        except ValueError:
+            literal = False
+            try:
+                addresses = list(resolve(host))
+            except (OSError, ValueError):
+                addresses = []
+            if not addresses:
+                return _refuse(host, "could not be resolved"), dsn
+        for address in addresses:
+            try:
+                cls = _address_class(address)
+            except ValueError:
+                return _refuse(host, "resolved to something that is not an IP address"), dsn
+            if cls is not None:
+                verb = "is" if literal else "resolves to"
+                return _refuse(host, f"{verb} a {cls} address"), dsn
+        pinned.append(addresses[0])
+    return None, make_conninfo(dsn, hostaddr=",".join(pinned))
 
 
 def _scrub(text: str, fields: Mapping[str, str]) -> str:
@@ -782,6 +922,7 @@ def probe_credential(
     *,
     http_get: HttpGet | None = None,
     sql_ping: SqlPing | None = None,
+    resolve_host: HostResolver | None = None,
 ) -> ProbeResult:
     """Ask the provider whether this credential works, where a free call exists.
 
@@ -818,12 +959,18 @@ def probe_credential(
             "token",
         )
     if kind == "postgres":
+        # Vetted BEFORE the dial, whatever `ping` is: an injected ping is a
+        # test's, and the refusal must hold for it too.
+        refusal, target = postgres_probe_target(
+            fields["dsn"], resolve_host or _default_resolve_host
+        )
+        if refusal is not None:
+            return ProbeResult(False, refusal)
         try:
-            ping(fields["dsn"], CREDENTIAL_PROBE_TIMEOUT_SECONDS)
+            ping(target, CREDENTIAL_PROBE_TIMEOUT_SECONDS)
         except Exception as exc:  # noqa: BLE001
-            return ProbeResult(
-                False, f"SELECT 1 failed: {_scrub(str(exc), fields) or type(exc).__name__}"
-            )
+            scrubbed = _scrub(str(exc), {**fields, "target": target})
+            return ProbeResult(False, f"SELECT 1 failed: {scrubbed or type(exc).__name__}")
         return ProbeResult(True, "SELECT 1 succeeded")
     if kind == "firecrawl":
         return _format_only(

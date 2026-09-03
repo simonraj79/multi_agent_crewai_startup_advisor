@@ -430,6 +430,32 @@ describe('VersionBrowser', () => {
     expect(head.text()).not.toEqual(older.text())
   })
 
+  it('reads the real clock by default, and a naive stamp as UTC (D-15-3)', () => {
+    /*
+     * Round 2's capture showed every row in the dated form: the default
+     * `clock` returned a function, and a SQLite stamp with no zone parsed as
+     * local time. Both are what a real backend hands this component.
+     */
+    const twelveSecondsAgo = new Date(Date.now() - 12_000).toISOString()
+    const live = mount(VersionBrowser, {
+      props: {
+        versions: [{ ...ROWS[0], created_at: twelveSecondsAgo }],
+        version: 7,
+        headVersion: 7,
+        loading: false,
+        problem: '',
+        restoring: false,
+        documentId: DOC_ID,
+      },
+    })
+    expect(live.get('[data-testid="version-when"]').text()).toMatch(/^1[0-9] s ago$/)
+
+    // No zone on the stamp - what SQLite hands back - and it still means UTC.
+    const naive = browser({ versions: [{ ...ROWS[0], created_at: '2026-09-02T10:14:48' }] })
+    expect(naive.get('[data-testid="version-when"]').text()).toBe('12 s ago')
+    expect(naive.get('time').attributes('datetime')).toBe('2026-09-02T10:14:48')
+  })
+
   it('scales the relative time and falls back to the dated form', () => {
     const wrapper = browser()
     const whens = wrapper.findAll('[data-testid="version-when"]').map((w) => w.text())

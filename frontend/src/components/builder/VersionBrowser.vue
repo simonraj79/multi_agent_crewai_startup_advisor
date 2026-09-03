@@ -54,7 +54,13 @@ const props = withDefaults(
     /** The clock the relative times read. Injected so a spec can hold it still. */
     clock?: () => number
   }>(),
-  { blocked: '', clock: () => () => Date.now() },
+  // A Function-typed prop's default IS the value, not a factory - Vue calls a
+  // default as a factory only for Object and Array props. The first cut wrote
+  // `() => () => Date.now()`, so `props.clock()` answered a FUNCTION, every
+  // subtraction was NaN, and every row fell through to the dated form; the
+  // specs passed because each handed in a stilled clock. Round 2's capture
+  // caught it.
+  { blocked: '', clock: () => Date.now() },
 )
 
 const emit = defineEmits<{
@@ -93,9 +99,25 @@ onMounted(() => {
 })
 onBeforeUnmount(() => window.clearInterval(ticker))
 
+/**
+ * A stored stamp as milliseconds, with a naive one read as UTC.
+ *
+ * `created_at` is written with `utcnow()` into a `DateTime(timezone=True)`
+ * column. PostgreSQL hands the offset back and the string ends in `Z`;
+ * SQLite - every local and synthetic backend - drops the tzinfo, and the
+ * string arrives as `2026-09-03T04:38:12` with no zone. `Date.parse` reads
+ * that form as LOCAL time, which put every row eight hours out on this
+ * machine and made a version saved seconds ago read "8 h ago". The server's
+ * time is UTC either way, so a stamp with no zone is given one.
+ */
+function parseStamp(iso: string): number {
+  const zoned = /(?:[zZ]|[+-]\d\d:?\d\d)$/.test(iso) ? iso : `${iso}Z`
+  return Date.parse(zoned)
+}
+
 /** `2026-09-02T10:14:00Z` -> `2 Sep, 10:14`. Undated rows show the raw value. */
 function when(iso: string): string {
-  const at = Date.parse(iso)
+  const at = parseStamp(iso)
   if (!Number.isFinite(at)) return iso
   return new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
@@ -107,7 +129,7 @@ function when(iso: string): string {
 
 /** The full stamp, seconds included, for the title: `2 Sep 2026, 10:14:32`. */
 function stamp(iso: string): string {
-  const at = Date.parse(iso)
+  const at = parseStamp(iso)
   if (!Number.isFinite(at)) return iso
   return new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
@@ -126,7 +148,7 @@ function stamp(iso: string): string {
  * server's) reads `just now` rather than a negative number.
  */
 function ago(iso: string): string {
-  const at = Date.parse(iso)
+  const at = parseStamp(iso)
   if (!Number.isFinite(at)) return iso
   const seconds = Math.round((now.value - at) / 1000)
   if (seconds < 5) return 'just now'

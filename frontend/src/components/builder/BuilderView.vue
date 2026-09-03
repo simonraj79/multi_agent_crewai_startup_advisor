@@ -333,6 +333,17 @@ const versionsBlocked = computed(() => {
  * `credential-missing` is the one `validate` emits - so it lives beside the
  * restore bar rather than in `ProblemsPanel`.
  */
+/**
+ * The stored version on screen, or null while head is being edited.
+ *
+ * `persistence.viewingVersion` is a BOOLEAN - "this is not head" - and the
+ * problems dock needs the number, so it can say the document bar's own words
+ * rather than a paraphrase of them (D-15-17).
+ */
+const readOnlyVersion = computed(() =>
+  persistence.viewingVersion.value ? persistence.version.value : null,
+)
+
 /** The inspector, for `focusField` - the notice's "Choose a key" (D-15-19). */
 const inspectorRef = ref<{ focusField: (field: string) => Promise<boolean> } | null>(null)
 const importNotice = shallowRef<{ documentId: DocumentId; nodeIds: readonly string[] } | null>(null)
@@ -1761,6 +1772,7 @@ watch(
             :reason="validation.unreachableReason.value"
             :publish-problems="publishProblems"
             :labels="anchorLabels"
+            :viewing-version="readOnlyVersion"
             @focus="onEdgeSelectFromPanel"
           />
         </template>

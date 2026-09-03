@@ -426,6 +426,8 @@ function mountPanel(props: {
   phase?: 'idle' | 'checking' | 'stale' | 'fresh' | 'unreachable'
   publishProblems?: BuilderProblem[]
   labels?: Record<string, string>
+  /** The stored version on screen, or null while head is being edited (D-15-17). */
+  viewingVersion?: number | null
 }) {
   return mount(ProblemsPanel, {
     props: { phase: 'fresh' as const, publishProblems: [], labels: {}, ...props },
@@ -501,6 +503,44 @@ describe('the panel shows every problem at once, worst first', () => {
 
     expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('Ready to publish')
     expect(wrapper.text()).toContain('Warnings never block; errors always do.')
+  })
+
+  describe('a stored version is never "ready to publish" (D-15-17)', () => {
+    it('says the document bar\'s own words instead, with a lock', () => {
+      const wrapper = mountPanel({ problems: [], viewingVersion: 1 })
+
+      const headline = wrapper.get('[data-testid="problems-headline"]')
+      expect(headline.text()).toBe('viewing v1 · read-only')
+      // Not the clean tick: `Ready to publish` is a claim about what the
+      // author can DO next, and on a stored version that is nothing.
+      expect(headline.classes()).not.toContain('is-clean')
+      expect(wrapper.get('[data-testid="problems-read-only"]').text()).toContain(
+        'publishing and editing act on head',
+      )
+      expect(wrapper.text()).not.toContain('Ready to publish')
+    })
+
+    it('does not read as blocking either, when the stored version has errors', () => {
+      /*
+       * The list is still shown - it is a true verdict about the document on
+       * screen - but the RED headline would tell an author to go and fix
+       * something they cannot edit.
+       */
+      const wrapper = mountPanel({
+        problems: [problem('node-count'), problem('node-count')],
+        viewingVersion: 3,
+      })
+
+      const headline = wrapper.get('[data-testid="problems-headline"]')
+      expect(headline.text()).toBe('viewing v3 · read-only')
+      expect(headline.classes()).not.toContain('is-blocking')
+    })
+
+    it('is unaffected while head is on screen', () => {
+      const wrapper = mountPanel({ problems: [], viewingVersion: null })
+      expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('Ready to publish')
+      expect(wrapper.find('[data-testid="problems-read-only"]').exists()).toBe(false)
+    })
   })
 })
 

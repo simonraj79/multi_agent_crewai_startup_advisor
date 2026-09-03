@@ -34,7 +34,7 @@ import { computed, ref } from 'vue'
 // A severity DOT, not an icon per row. Section 5.2's row anatomy is dot + code
 // chip + sentence + anchor, and an icon in front of every message competes with
 // the sentence for the eye at exactly the moment the sentence is the point.
-import { Check, ChevronDown, ChevronUp } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, Lock } from 'lucide-vue-next'
 import type { BuilderProblem } from '../../types/builder'
 import type { ValidationPhase } from '../../composables/useBuilderValidation'
 
@@ -54,8 +54,28 @@ const props = withDefaults(
     labels?: Readonly<Record<string, string>>
     /** Why validation is unreachable, as a sentence. Rendered only in that phase. */
     reason?: string
+    /**
+     * The older version on screen, or null while head is being edited
+     * (D-15-17).
+     *
+     * The dock read `✓ Ready to publish` while the document bar two rows up
+     * read `viewing v1 of v2 · read-only` and Publish sat disabled beside it -
+     * three surfaces, two answers. "Ready to publish" is a claim about what
+     * the author can DO next, and on a stored version the answer is nothing:
+     * publishing it is refused, and the list below is a verdict on a document
+     * that is not the one a publish would take.
+     *
+     * A number rather than a boolean so this panel says the same words as the
+     * bar rather than a paraphrase of them.
+     */
+    viewingVersion?: number | null
   }>(),
-  { publishProblems: () => [], labels: () => ({}), reason: '' },
+  {
+    publishProblems: () => [],
+    labels: () => ({}),
+    reason: '',
+    viewingVersion: null,
+  },
 )
 
 const emit = defineEmits<{ focus: [problem: BuilderProblem] }>()
@@ -149,10 +169,22 @@ const stale = computed(() => props.phase === 'stale')
 const unchecked = computed(() => props.phase === 'idle')
 const unreachable = computed(() => props.phase === 'unreachable')
 
-/** True only when an empty list MEANS an empty list. */
-const clean = computed(() => !merged.value.length && !unchecked.value && !unreachable.value)
+/** An older version is on screen, so nothing here is publishable (D-15-17). */
+const readOnly = computed(() => props.viewingVersion !== null)
+
+/**
+ * True only when an empty list MEANS an empty list - and means it about a
+ * document the author could actually publish. A stored version is neither.
+ */
+const clean = computed(
+  () => !merged.value.length && !unchecked.value && !unreachable.value && !readOnly.value,
+)
 
 const headline = computed(() => {
+  // Before every other case: read-only outranks the verdict, because it is a
+  // fact about what can be done rather than about what was found. The words
+  // are the document bar's own, so the two surfaces read as one.
+  if (readOnly.value) return `viewing v${props.viewingVersion} · read-only`
   if (!merged.value.length && unchecked.value) return 'Not checked yet'
   if (!merged.value.length && unreachable.value) return 'Validation unavailable'
   if (!merged.value.length) return 'Ready to publish'
@@ -215,12 +247,13 @@ defineExpose({ next, previous })
         class="problems-headline"
         :class="{
           'is-clean': clean,
-          'is-unchecked': unchecked && !merged.length,
-          'is-blocking': errorCount > 0,
+          'is-unchecked': (unchecked && !merged.length) || readOnly,
+          'is-blocking': errorCount > 0 && !readOnly,
         }"
         data-testid="problems-headline"
       >
-        <Check v-if="clean" :size="13" aria-hidden="true" />
+        <Lock v-if="readOnly" :size="13" aria-hidden="true" />
+        <Check v-else-if="clean" :size="13" aria-hidden="true" />
         {{ headline }}
       </span>
 
@@ -237,7 +270,14 @@ defineExpose({ next, previous })
       aria-live="polite"
       aria-label="Validation problems"
     >
-      <p v-if="!merged.length && unchecked" class="problems-empty" data-testid="problems-unchecked">
+      <p v-if="readOnly" class="problems-empty" data-testid="problems-read-only">
+        <span class="problems-dot is-unchecked" aria-hidden="true" />
+        <span>
+          Read-only. <em>This is v{{ viewingVersion }}; publishing and editing act on head.</em>
+        </span>
+      </p>
+
+      <p v-else-if="!merged.length && unchecked" class="problems-empty" data-testid="problems-unchecked">
         <span class="problems-dot is-unchecked" aria-hidden="true" />
         <span>
           Not checked yet. Nothing has been asked of the compiler, so nothing here is a verdict.

@@ -1,3 +1,6 @@
+import { scopedKey } from './identityStorage'
+import type { StorageIdentity } from './identityStorage'
+
 /**
  * The one fact the builder hands the run console: which published graph to run,
  * and what its request input is called.
@@ -26,9 +29,16 @@
  * navigation. A published graph is not a preference, and finding the console
  * pointed at a graph published on another machine last week would be a
  * mystery with no visible cause.
+ *
+ * AND IT IS THE SIGNED-IN USER'S (D-01-5). Written by one person and read by
+ * the next on the same browser, it pointed a stranger's console at the previous
+ * user's graph under "Running your published graph". Every function here takes
+ * the identity and keys the record to it (`identityStorage.ts`); `null` is
+ * nobody, which is the auth-off backend and the unit suite, and keeps the
+ * anonymous key shape.
  */
 
-const KEY = 'builder-run-handoff'
+export const HANDOFF_KEY = 'builder-run-handoff'
 
 export interface BuilderRunHandoff {
   /** The published document id, which is also the workflow id. */
@@ -40,9 +50,9 @@ export interface BuilderRunHandoff {
 }
 
 /** The handoff, or null. Never throws: storage can be blocked outright. */
-export function readRunHandoff(): BuilderRunHandoff | null {
+export function readRunHandoff(userId: StorageIdentity = null): BuilderRunHandoff | null {
   try {
-    const raw = window.sessionStorage.getItem(KEY)
+    const raw = window.sessionStorage.getItem(scopedKey(HANDOFF_KEY, userId))
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<BuilderRunHandoff>
     // Every field checked, because a value that survived a build change is
@@ -55,9 +65,9 @@ export function readRunHandoff(): BuilderRunHandoff | null {
   }
 }
 
-export function writeRunHandoff(handoff: BuilderRunHandoff): void {
+export function writeRunHandoff(handoff: BuilderRunHandoff, userId: StorageIdentity = null): void {
   try {
-    window.sessionStorage.setItem(KEY, JSON.stringify(handoff))
+    window.sessionStorage.setItem(scopedKey(HANDOFF_KEY, userId), JSON.stringify(handoff))
   } catch {
     /* A browser refusing storage must not stop the navigation. The console then
      * opens on the built-in validator and says so, which is wrong but visible -
@@ -65,9 +75,9 @@ export function writeRunHandoff(handoff: BuilderRunHandoff): void {
   }
 }
 
-export function clearRunHandoff(): void {
+export function clearRunHandoff(userId: StorageIdentity = null): void {
   try {
-    window.sessionStorage.removeItem(KEY)
+    window.sessionStorage.removeItem(scopedKey(HANDOFF_KEY, userId))
   } catch {
     /* Same reasoning as the write. */
   }

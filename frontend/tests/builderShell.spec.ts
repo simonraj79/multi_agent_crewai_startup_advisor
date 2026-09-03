@@ -83,7 +83,10 @@ const SHELL_STUBS = {
 beforeEach(() => {
   flowIds.length = 0
   window.location.hash = '#/'
-  clearRunHandoff()
+  // Both shapes of the handoff key - the anonymous one and the signed-in user's
+  // `u:<id>:` one (D-01-5) - so a record one test wrote as `u1` cannot point
+  // the next test's console at a graph it never asked for.
+  window.sessionStorage.clear()
   resetVocabulary()
   window.matchMedia = ((query: string) => ({
     matches: false,
@@ -108,7 +111,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  clearRunHandoff()
+  // Both shapes of the handoff key - the anonymous one and the signed-in user's
+  // `u:<id>:` one (D-01-5) - so a record one test wrote as `u1` cannot point
+  // the next test's console at a graph it never asked for.
+  window.sessionStorage.clear()
   resetVocabulary()
   vi.unstubAllGlobals()
 })
@@ -475,7 +481,9 @@ describe('the builder hands the run console one workflow, visibly', () => {
   })
 
   it('names the graph on screen while the console is pointed at it', async () => {
-    writeRunHandoff({ workflowId: 'ug_e9afa950', inputField: 'brief', name: 'Clinic scheduler' })
+    // Written by the same person who then opens the console: the handoff is
+    // keyed to the signed-in user (D-01-5), and `u1` is who the props say.
+    writeRunHandoff({ workflowId: 'ug_e9afa950', inputField: 'brief', name: 'Clinic scheduler' }, 'u1')
     const wrapper = mount(StudioView, {
       props: { user: { id: 'u1', name: 'Ada', email: 'a@b.c', image: null }, authenticated: false },
       global: { stubs: SHELL_STUBS },

@@ -7,6 +7,7 @@ import {
   signOut,
   useSession,
 } from '../services/authClient'
+import { forgetIdentity } from '../data/identityStorage'
 
 /**
  * Whether the console should be showing the studio, a sign-in screen, or
@@ -95,10 +96,25 @@ export function useAuthGate() {
   }
 
   async function endSession(): Promise<void> {
+    // Read before anything else: the session data - and `user` with it - is
+    // gone the moment the server confirms the sign-out.
+    const identity = user.value?.id ?? null
     // Order matters. Drop the cached bearer token FIRST: `signOut` revokes the
     // session server-side, and a token minted from it would otherwise sit in
     // memory looking valid by its own `exp` until it expired on its own.
     clearAccessToken()
+    /*
+     * Then everything this identity wrote to the browser (D-01-5): the builder
+     * draft, which holds `config.credential_id`; the run handoff; the run
+     * pointer and its session id. Until 2026-09-03 a sign-out ended the token
+     * and nothing else, and the next person on the same profile inherited all
+     * three in plaintext. Before the cookie goes, for the same reason as the
+     * token - the intent is that the person signing out takes their unsaved
+     * work with them, not that a slow sign-out request leaves it behind.
+     * `identityStorage.ts` says what the sweep covers and why the keys carry
+     * the id in the first place.
+     */
+    forgetIdentity(identity)
     await signOut()
   }
 

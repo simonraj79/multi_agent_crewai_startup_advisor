@@ -1,6 +1,8 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import type { Edge, Node } from '@vue-flow/core'
 import { MOCK_GRAPH } from '../data/mockGraph'
+import { scopedKey } from '../data/identityStorage'
+import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
 import type {
   RunResult,
@@ -94,8 +96,14 @@ const initialUsage = (): UsageMetrics => ({
 const DEFAULT_WORKFLOW_ID = 'idea-validator'
 /** What both built-in workflows call their request input. `BUILTIN_WORKFLOW_INPUT_FIELDS`. */
 const DEFAULT_INPUT_FIELD = 'idea'
-const SESSION_STORAGE_KEY = 'validator-session-id'
-const ACTIVE_RUN_STORAGE_KEY = 'validator-active-run'
+/**
+ * The refresh-recovery pointer and the session id it was launched under. Both
+ * are keyed to the signed-in user when there is one (`u:<id>:` in front;
+ * `identityStorage.ts`, D-01-5). Exported so `tests/identityStorage.spec.ts`
+ * can pin the sign-out sweep's legacy list against them.
+ */
+export const SESSION_STORAGE_KEY = 'validator-session-id'
+export const ACTIVE_RUN_STORAGE_KEY = 'validator-active-run'
 
 /**
  * Mirrors `QUARANTINE_NODE_ID` in `src/brief_crew/events/registry.py`. Frames the
@@ -160,8 +168,8 @@ function removeStorage(key: string): void {
   }
 }
 
-function readStoredRun(): StoredRunContext | null {
-  const value = readStorage(ACTIVE_RUN_STORAGE_KEY)
+function readStoredRun(userId: StorageIdentity): StoredRunContext | null {
+  const value = readStorage(scopedKey(ACTIVE_RUN_STORAGE_KEY, userId))
   if (!value) return null
   try {
     const parsed = JSON.parse(value) as Partial<StoredRunContext>
@@ -172,13 +180,13 @@ function readStoredRun(): StoredRunContext | null {
   }
 }
 
-function persistRun(context: StoredRunContext): void {
-  writeStorage(ACTIVE_RUN_STORAGE_KEY, JSON.stringify(context))
-  writeStorage(SESSION_STORAGE_KEY, context.sessionId)
+function persistRun(context: StoredRunContext, userId: StorageIdentity): void {
+  writeStorage(scopedKey(ACTIVE_RUN_STORAGE_KEY, userId), JSON.stringify(context))
+  writeStorage(scopedKey(SESSION_STORAGE_KEY, userId), context.sessionId)
 }
 
-function clearStoredRun(): void {
-  removeStorage(ACTIVE_RUN_STORAGE_KEY)
+function clearStoredRun(userId: StorageIdentity): void {
+  removeStorage(scopedKey(ACTIVE_RUN_STORAGE_KEY, userId))
 }
 
 /**
@@ -214,15 +222,29 @@ export interface ValidatorRunOptions {
    * builder graph's own `input_field`. Defaults to `idea`.
    */
   inputField?: string
+  /**
+   * Whose browser this is (D-01-5). The run pointer and the session id are
+   * keyed to the signed-in user's id, so a different person on the same
+   * profile never restores this user's run and a sign-out can remove the
+   * pointer. A getter so it is never stale; `null`, or no getter at all, is
+   * nobody and keeps the anonymous key shape the auth-off backend and the
+   * unit suite rely on.
+   */
+  userId?: () => StorageIdentity
 }
 
 export function useValidatorRun(
   api: StudioApiLike = studioApi,
   options: ValidatorRunOptions = {},
 ) {
-  const storedAtLoad = readStoredRun()
-  const sessionId = storedAtLoad?.sessionId ?? readStorage(SESSION_STORAGE_KEY) ?? newSessionId()
-  writeStorage(SESSION_STORAGE_KEY, sessionId)
+  /** Whose storage the pointer lives in. Read at every access, never cached. */
+  const identity = (): StorageIdentity => options.userId?.() ?? null
+  const storedAtLoad = readStoredRun(identity())
+  const sessionId =
+    storedAtLoad?.sessionId
+    ?? readStorage(scopedKey(SESSION_STORAGE_KEY, identity()))
+    ?? newSessionId()
+  writeStorage(scopedKey(SESSION_STORAGE_KEY, identity()), sessionId)
 
   const descriptor = ref<GraphDescriptor>(structuredClone(MOCK_GRAPH))
   const workflowId = ref(storedAtLoad?.workflowId ?? options.workflowId ?? DEFAULT_WORKFLOW_ID)
@@ -414,7 +436,10 @@ export function useValidatorRun(
   const primaryLabel = computed(() =>
     launching.value
       ? 'Launching…'
-      : status.value === 'completed' || status.value === 'cancelled' || status.value === 'error'
+      // "Relaunch" names a run that exists. A terminal status with no run id
+      // is an attempt that never produced one - a refused restore, a refused
+      // launch - and the next click launches, it does not re-launch (D-01-5).
+      : TERMINAL_STATUSES.includes(status.value) && runId.value
       ? 'Relaunch'
       : status.value === 'running' || status.value === 'waiting'
         ? 'Send'
@@ -430,7 +455,7 @@ export function useValidatorRun(
     const wasTerminal = TERMINAL_STATUSES.includes(status.value)
     status.value = next
     if (!TERMINAL_STATUSES.includes(next)) return
-    clearStoredRun()
+    clearStoredRun(identity())
     // Nothing further will stream, so no traversal should still be marching.
     clearEdgeAnimations()
     // The frame's copy of the report is clipped at 4096 characters; the
@@ -441,7 +466,7 @@ export function useValidatorRun(
   async function initialize(): Promise<void> {
     transportMode.value = await api.initialize()
     transportProblem.value = api.probeFailure ?? ''
-    const storedRun = readStoredRun()
+    const storedRun = readStoredRun(identity())
     if (storedRun) {
       // Both together or neither. Taking the workflow id from the stored run
       // while leaving `inputField` at whatever the caller asked for would
@@ -505,13 +530,16 @@ export function useValidatorRun(
       resetRun()
       runId.value = response.run_id
       setStatus(response.status)
-      persistRun({
-        version: 1,
-        runId: response.run_id,
-        sessionId,
-        workflowId: workflowId.value,
-        inputField: inputField.value,
-      })
+      persistRun(
+        {
+          version: 1,
+          runId: response.run_id,
+          sessionId,
+          workflowId: workflowId.value,
+          inputField: inputField.value,
+        },
+        identity(),
+      )
       connectStream()
     } catch (error) {
       setStatus(runId.value ? previousStatus : 'error')
@@ -534,7 +562,7 @@ export function useValidatorRun(
         // The report is the exception. It is what the operator came back for,
         // and the already-cleared pointer bounds how long it can linger - this
         // shows the conclusion once, not forever.
-        clearStoredRun()
+        clearStoredRun(identity())
         resetRun()
         runId.value = context.runId
         // Replay the frames, do not merely take the result.
@@ -584,9 +612,14 @@ export function useValidatorRun(
     } catch (error) {
       // The saved run is unreachable (expired, purged, or a different server).
       // Keeping the pointer would reproduce this error on every future load.
-      clearStoredRun()
+      clearStoredRun(identity())
       setStatus('error')
       lastError.value = error instanceof Error ? error.message : 'The saved run could not be restored.'
+      // `runId` was set before the fetch so a replay could attribute frames;
+      // the fetch failed, so there is no run on screen to name. Left set, the
+      // status panel printed the old id under "Relaunch" for a run this server
+      // had just refused (D-01-5).
+      runId.value = ''
     }
   }
 

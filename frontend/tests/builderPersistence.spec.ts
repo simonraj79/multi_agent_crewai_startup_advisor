@@ -761,3 +761,87 @@ describe('ConflictDialog', () => {
     expect(panel.attributes('aria-labelledby')).toBe('conflict-title')
   })
 })
+
+/* --- the draft belongs to the signed-in user (D-01-5) ---------------------- */
+
+/*
+ * The draft holds the whole document - nodes, prompt inputs and
+ * `config.credential_id` - and it is written on every successful load, not
+ * only for unsaved work. Under a key with no identity in it, the next person
+ * on the same browser could read it, and a sign-out did not remove it. The key
+ * now carries the user's id, so a different signed-in user never finds it even
+ * when the previous person just closed the tab.
+ */
+describe('the draft belongs to the signed-in user (D-01-5)', () => {
+  /** A session as somebody, in the same scope discipline as `session()`. */
+  function sessionAs(userId: string | null, initial = sample()) {
+    const api = new FakeBuilderApi()
+    const [pair, stop] = withScope(() => {
+      const document = useBuilderDocument(initial)
+      return {
+        document,
+        persistence: useBuilderPersistence(document, api, { userId: () => userId }),
+      }
+    })
+    openScopes.push(stop)
+    return { api, ...pair, stop }
+  }
+
+  it("is written under the user's own key and never under the anonymous one", async () => {
+    serveBounds()
+    const alice = sessionAs('alice')
+    alice.persistence.adopt(model(sample(), 4))
+    alice.document.setName('Edited by Alice')
+    await nextTick()
+
+    const raw = window.localStorage.getItem(`u:alice:builder-draft:${DOC_ID}`)
+    expect(raw).not.toBeNull()
+    const draft = JSON.parse(raw as string) as { baseVersion: number; document: { name: string } }
+    expect(draft.baseVersion).toBe(4)
+    expect(draft.document.name).toBe('Edited by Alice')
+    expect(window.localStorage.getItem(`builder-draft:${DOC_ID}`)).toBeNull()
+  })
+
+  it('is never offered to a different user on the same browser, even without a sign-out', async () => {
+    serveBounds()
+    const alice = sessionAs('alice')
+    alice.persistence.adopt(model(sample(), 4))
+    alice.document.setName('Work in progress')
+    await nextTick()
+    alice.stop()
+    // Alice closed the tab. Her draft is still there, and its base is head.
+    expect(window.localStorage.getItem(`u:alice:builder-draft:${DOC_ID}`)).not.toBeNull()
+
+    const bob = sessionAs('bob')
+    await bob.persistence.open(DOC_ID as DocumentId)
+    expect(bob.persistence.restoreOffer.value).toBeNull()
+    expect(bob.document.doc.value.name).toBe('Sample')
+    // Bob's own load writes Bob's own draft; Alice's is untouched.
+    await nextTick()
+    expect(window.localStorage.getItem(`u:bob:builder-draft:${DOC_ID}`)).not.toBeNull()
+    const kept = window.localStorage.getItem(`u:alice:builder-draft:${DOC_ID}`)
+    expect(JSON.parse(kept as string).document.name).toBe('Work in progress')
+  })
+
+  it('is offered back to the same user, exactly as before', async () => {
+    serveBounds()
+    const first = sessionAs('alice')
+    first.persistence.adopt(model(sample(), 4))
+    first.document.setName('Work in progress')
+    await nextTick()
+    first.stop()
+
+    const again = sessionAs('alice')
+    await again.persistence.open(DOC_ID as DocumentId)
+    expect(again.persistence.restoreOffer.value?.baseVersion).toBe(4)
+  })
+
+  it('keeps the anonymous shape when nobody is signed in', async () => {
+    serveBounds()
+    const nobody = sessionAs(null)
+    nobody.persistence.adopt(model(sample(), 4))
+    nobody.document.setName('Edited')
+    await nextTick()
+    expect(window.localStorage.getItem(`builder-draft:${DOC_ID}`)).not.toBeNull()
+  })
+})

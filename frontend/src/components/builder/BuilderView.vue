@@ -159,6 +159,9 @@ const store = useBuilderDocument(documentFromTemplate(BLANK))
  * successful write, from inside the composable, so autosave reaches it too.
  */
 const persistence = useBuilderPersistence(store, builderApi, {
+  // The draft is this person's (D-01-5): keyed to the signed-in user so the
+  // next person on the same browser never reads it, and swept on sign-out.
+  userId: () => props.user?.id ?? null,
   onSaved: () => {
     void refreshLibrary()
     if (versionsOpen.value) void loadVersions()
@@ -960,7 +963,7 @@ async function onPublished(result: BuilderPublish): Promise<void> {
  * control that clears it, so nothing about which workflow is loaded is hidden.
  */
 function runPublished(workflowId: string, inputField: string): void {
-  writeRunHandoff({ workflowId, inputField, name: doc.value.name })
+  writeRunHandoff({ workflowId, inputField, name: doc.value.name }, props.user?.id ?? null)
   publishOpen.value = false
   emit('runWorkspace')
 }

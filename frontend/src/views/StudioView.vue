@@ -48,7 +48,7 @@ const emit = defineEmits<{
  * as a construction option, so changing it mid-session would mean rebuilding
  * the composable underneath a live run. Clearing it navigates, which remounts.
  */
-const handoff = ref(readRunHandoff())
+const handoff = ref(readRunHandoff(props.user?.id ?? null))
 
 /**
  * Names for `<Controls>`'s three unnamed buttons.
@@ -122,6 +122,10 @@ const {
 } = useValidatorRun(undefined, {
   workflowId: handoff.value?.workflowId,
   inputField: handoff.value?.inputField,
+  // The run pointer is this person's (D-01-5): keyed to the signed-in user so
+  // the next person on the same browser never restores it, and swept on
+  // sign-out. The handoff above is read the same way.
+  userId: () => props.user?.id ?? null,
 })
 
 /**
@@ -215,7 +219,7 @@ watch(
  * over another's frames.
  */
 function backToValidator(): void {
-  clearRunHandoff()
+  clearRunHandoff(props.user?.id ?? null)
   handoff.value = null
   window.location.reload()
 }

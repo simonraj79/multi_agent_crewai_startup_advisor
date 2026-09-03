@@ -15,6 +15,8 @@ import { BuilderConflictError, builderApi } from '../services/builderApi'
 import type { BuilderApiLike } from '../services/builderApi'
 import { fingerprint, toWire, wireBytes } from '../utils/builderSerialize'
 import { vocabulary } from '../data/builderVocabulary'
+import { scopedKey } from '../data/identityStorage'
+import type { StorageIdentity } from '../data/identityStorage'
 import type { BuilderDocumentStore } from './useBuilderDocument'
 
 /**
@@ -47,8 +49,14 @@ import type { BuilderDocumentStore } from './useBuilderDocument'
 /** Spec §2 WP-B. Long enough that a sentence being typed is one save, short enough to be a safety net. */
 const AUTOSAVE_IDLE_MS = 2500
 
-/** `builder-draft:<id>`. One key per document, so two tabs on two graphs do not fight. */
-const DRAFT_PREFIX = 'builder-draft:'
+/**
+ * `builder-draft:<id>`. One key per document, so two tabs on two graphs do not
+ * fight - and, signed in, one key per PERSON per document (`u:<id>:` in front;
+ * `identityStorage.ts`, D-01-5), so two people on one browser do not share.
+ * Exported so `tests/identityStorage.spec.ts` can pin the sign-out sweep's
+ * legacy list against it.
+ */
+export const DRAFT_PREFIX = 'builder-draft:'
 
 /** The stored-draft envelope. Versioned, because a shape change must discard rather than misread. */
 interface StoredDraft {
@@ -115,6 +123,14 @@ export function useBuilderPersistence(
      * `save()` from inside this composable where no wrapper in the caller could.
      */
     onSaved?: () => void
+    /**
+     * Whose browser this is (D-01-5). The draft is keyed to the signed-in
+     * user's id, so a different person on the same profile never reads it and
+     * a sign-out can remove it. A getter rather than a value so it is never
+     * stale; `null`, or no getter at all, is nobody and keeps the anonymous
+     * key shape the auth-off backend and the unit suite rely on.
+     */
+    userId?: () => StorageIdentity
   } = {},
 ) {
   /** Server-assigned, so null until a create comes back. `builder-draft:<id>` keys off it. */
@@ -217,7 +233,7 @@ export function useBuilderPersistence(
   /* --- the local draft --------------------------------------------------- */
 
   function draftKey(id: DocumentId): string {
-    return `${DRAFT_PREFIX}${id}`
+    return scopedKey(`${DRAFT_PREFIX}${id}`, options.userId?.())
   }
 
   /**

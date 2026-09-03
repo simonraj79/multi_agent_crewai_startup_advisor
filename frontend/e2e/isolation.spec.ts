@@ -7,7 +7,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
-import { SYNTHETIC_USER_COOKIE } from './syntheticUser'
+import { SYNTHETIC_USER_COOKIE, storageKeyFor } from './syntheticUser'
 
 /**
  * Per-user isolation, end to end, at no cost (plan 01 criterion 11, rubric 14).
@@ -117,6 +117,13 @@ const inspector = (page: Page): Locator => page.locator('[data-testid="inspector
 const headline = (page: Page): Locator => page.locator('[data-testid="problems-headline"]')
 const saveChip = (page: Page): Locator => page.locator('[data-testid="save-chip"]')
 const accountChip = (page: Page): Locator => page.locator('[data-testid="account-chip"]')
+/**
+ * The same chip on the RUN console, which renders its own markup rather than
+ * mounting `AccountChip` - so it carries the class and not the test id. Both
+ * render `user.name || user.email`, and the stub names a synthetic account by
+ * its own id, which is what makes either one proof of who this context is.
+ */
+const consoleChip = (page: Page): Locator => page.locator('.studio-shell .account-chip, header .account-chip')
 const templateCard = (page: Page): Locator =>
   page.locator('.template-card').filter({ hasText: 'Minimal gated agent' })
 const credentialRow = (page: Page): Locator => inspector(page).locator('[data-field="credential_id"]')
@@ -180,6 +187,54 @@ async function ids(api: APIRequestContext, path: string): Promise<string[]> {
 
 function launchBody(workflowId: string): Record<string, unknown> {
   return { workflow_id: workflowId, inputs: { idea: 'A scheduling assistant for clinics' }, gates: 'human' }
+}
+
+/**
+ * Change WHO a context is without changing anything else about it - the
+ * round-2 critic's probe for D-01-5. localStorage, sessionStorage and every
+ * open tab stay exactly as the previous person left them; only the cookie the
+ * stub auth origin and the proxies read moves. That is the shape of the next
+ * person sitting down at a shared browser after the first one closed the tab
+ * without signing out.
+ */
+async function becomeInPlace(person: Person, id: string): Promise<void> {
+  const { baseURL } = test.info().project.use
+  await person.context.clearCookies()
+  await person.context.addCookies([{ name: SYNTHETIC_USER_COOKIE, value: id, url: baseURL! }])
+}
+
+interface StorageSnapshot {
+  local: Record<string, string>
+  session: Record<string, string>
+}
+
+/** Every key and value in both storages, as the page can read them. */
+async function storageSnapshot(page: Page): Promise<StorageSnapshot> {
+  return page.evaluate(() => {
+    const dump = (storage: Storage): Record<string, string> => {
+      const out: Record<string, string> = {}
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index)
+        if (key !== null) out[key] = storage.getItem(key) ?? ''
+      }
+      return out
+    }
+    return { local: dump(window.localStorage), session: dump(window.sessionStorage) }
+  })
+}
+
+/** The keys a build before 2026-09-03 wrote with no identity in them. */
+function unscopedResidue(key: string): boolean {
+  return (
+    key.startsWith('builder-draft:')
+    || key === 'validator-active-run'
+    || key === 'validator-session-id'
+    || key === 'builder-run-handoff'
+  )
+}
+
+function keysOf(snapshot: StorageSnapshot): string[] {
+  return [...Object.keys(snapshot.local), ...Object.keys(snapshot.session)]
 }
 
 test.describe('Per-user isolation', () => {
@@ -372,14 +427,13 @@ test.describe('Per-user isolation', () => {
        * "Alice sent Bob her workflow id", and `StudioView` reads it at setup.
        */
       await page.goto('/#/build')
+      // Under Bob's own key: the record is keyed to whoever is signed in
+      // (D-01-5), and this is the shape of Bob having been handed her id.
       await page.evaluate(
-        ({ workflowId, name }) => {
-          window.sessionStorage.setItem(
-            'builder-run-handoff',
-            JSON.stringify({ workflowId, inputField: 'idea', name }),
-          )
+        ({ key, workflowId, name }) => {
+          window.sessionStorage.setItem(key, JSON.stringify({ workflowId, inputField: 'idea', name }))
         },
-        { workflowId: aliceDocumentId, name: ALICE_GRAPH_NAME },
+        { key: storageKeyFor(BOB, 'builder-run-handoff'), workflowId: aliceDocumentId, name: ALICE_GRAPH_NAME },
       )
       await page.goto('/#/')
       await page.reload()
@@ -419,7 +473,9 @@ test.describe('Per-user isolation', () => {
       await expect(refusal).toContainText('workflow not found')
       await expect(page.locator('.status-panel .run-id')).toHaveCount(0)
       await expect(page.locator('.gate-card')).toHaveCount(0)
-      expect(await page.evaluate(() => window.localStorage.getItem('validator-active-run'))).toBeNull()
+      expect(
+        await page.evaluate((key) => window.localStorage.getItem(key), storageKeyFor(BOB, 'validator-active-run')),
+      ).toBeNull()
 
       // As Bob, the API refuses the launch itself with the same sentence, and
       // his history stays empty.
@@ -443,6 +499,126 @@ test.describe('Per-user isolation', () => {
       const run = (await aliceLaunch.json()) as { run_id: string }
       expect(run.run_id).toBeTruthy()
       await alice.api.post(`/api/runs/${run.run_id}/cancel`)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+
+  test(
+    "the next person on the same browser inherits nothing of Alice's, and her sign-out clears what she wrote",
+    { tag: '@launch' },
+    async () => {
+      const { page, api } = alice
+      const watch = watchConsole(page)
+
+      /*
+       * D-01-5. The round-2 critic swapped the harness's synthetic-user cookie
+       * under a live page - a real Google sign-out cannot run here - and the
+       * console then printed Alice's run id, "Running your published graph",
+       * "run not found", and a draft holding her credential id, all read back
+       * from browser storage under keys with no identity in them. The same
+       * probe, repeated: Alice leaves a draft, a handoff and a run at a gate
+       * behind WITHOUT signing out, which is the common case; the cookie
+       * becomes Bob's; the page is reloaded. Then Alice comes back and signs
+       * out, and everything she wrote goes with her.
+       */
+
+      // ---- Alice leaves residue: a draft, a handoff, and a run at a gate ----
+      await page.goto('/#/')
+      await expect(consoleChip(page)).toContainText(ALICE)
+      await expect(page.locator('.live-status')).not.toHaveText(/connecting/i)
+      const review = page.getByRole('button', { name: 'Review', exact: true })
+      if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
+      await expect(review).toHaveAttribute('aria-pressed', 'true')
+      await page.locator('textarea#idea').fill('A rota planner for community pharmacy locums')
+      await expect(launchButton(page)).toBeEnabled()
+      await launchButton(page).click()
+      await expect(page.locator('.gate-card h2')).toHaveText('Confirm scope', { timeout: 60_000 })
+      const aliceRunOnScreen = (await page.locator('.status-panel .run-id').textContent())?.trim()
+      expect(aliceRunOnScreen).toBeTruthy()
+      // The handoff, under her own key, the way her publish dialog writes it.
+      await page.evaluate(
+        ({ key, workflowId, name }) => {
+          window.sessionStorage.setItem(key, JSON.stringify({ workflowId, inputField: 'idea', name }))
+        },
+        { key: storageKeyFor(ALICE, 'builder-run-handoff'), workflowId: aliceDocumentId, name: ALICE_GRAPH_NAME },
+      )
+
+      const alicePointerKey = storageKeyFor(ALICE, 'validator-active-run')
+      const aliceDraftKey = storageKeyFor(ALICE, `builder-draft:${aliceDocumentId}`)
+      const aliceHandoffKey = storageKeyFor(ALICE, 'builder-run-handoff')
+      const before = await storageSnapshot(page)
+      expect(before.local[alicePointerKey]).toContain(aliceRunOnScreen as string)
+      const aliceRunId = (JSON.parse(before.local[alicePointerKey]) as { runId: string }).runId
+      // The draft is what the critic found: the whole document, credential id
+      // included. It has to exist, under her key, for this test to test anything.
+      expect(before.local[aliceDraftKey]).toContain(aliceCredentialId)
+      // And nothing was written under a key with no identity in it.
+      expect(keysOf(before).filter(unscopedResidue)).toEqual([])
+
+      // ---- the cookie becomes Bob's; nothing else about the browser changes --
+      await becomeInPlace(alice, BOB)
+      try {
+        await page.reload()
+        await expect(consoleChip(page)).toContainText(BOB)
+        await expect(page.locator('.live-status')).not.toHaveText(/connecting/i)
+
+        // An empty console: no run id, no "Running your published graph", no
+        // "run not found", no gate, and Launch rather than Relaunch.
+        await expect(page.locator('.status-panel .run-id')).toHaveCount(0)
+        await expect(page.locator('.handoff-banner')).toHaveCount(0)
+        await expect(errorBanner(page)).toHaveCount(0)
+        await expect(page.locator('.gate-card')).toHaveCount(0)
+        await expect(page.locator('.status-panel .status-badge')).not.toHaveText(/waiting|running|error/i)
+        await expect(launchButton(page)).toHaveText('Launch')
+
+        const asBob = await storageSnapshot(page)
+        // Bob's console minted its own session id and nothing else is his.
+        expect(keysOf(asBob).filter((key) => key.startsWith('u:bob:'))).toEqual([
+          storageKeyFor(BOB, 'validator-session-id'),
+        ])
+        expect(keysOf(asBob).filter(unscopedResidue)).toEqual([])
+        // What Bob's page can read names neither her run nor her credential.
+        const readableByBob = keysOf(asBob)
+          .filter((key) => !key.startsWith('u:alice:'))
+          .map((key) => asBob.local[key] ?? asBob.session[key] ?? '')
+          .join('\n')
+        expect(readableByBob).not.toContain(aliceRunId)
+        expect(readableByBob).not.toContain(aliceCredentialId)
+        // THE CONTROL: Alice's residue is all still there, under her prefix,
+        // which is what proves the swap happened on one browser profile.
+        expect(asBob.local[alicePointerKey]).toBe(before.local[alicePointerKey])
+        expect(asBob.local[aliceDraftKey]).toBe(before.local[aliceDraftKey])
+        expect(asBob.session[aliceHandoffKey]).toBe(before.session[aliceHandoffKey])
+
+        // And an empty builder: no draft of hers offered, none readable as him.
+        await page.goto('/#/build')
+        await expect(accountChip(page)).toContainText(BOB)
+        await expect(templateCard(page)).toBeVisible()
+        await expect(page.locator('[data-testid="restore-bar"]')).toHaveCount(0)
+        expect(
+          await page.evaluate((key) => window.localStorage.getItem(key), storageKeyFor(BOB, `builder-draft:${aliceDocumentId}`)),
+        ).toBeNull()
+      } finally {
+        await becomeInPlace(alice, ALICE)
+      }
+
+      // ---- Alice returns and signs out; her sign-out takes her things with it --
+      // The run first, so nothing durable stays open behind this test.
+      await api.post(`/api/runs/${aliceRunId}/cancel`)
+      // Through `about:blank`, because a `goto` to the hash already in the
+      // address bar is a same-document navigation: the session would not be
+      // re-read and the chip would still say Bob.
+      await page.goto('about:blank')
+      await page.goto('/#/build')
+      await expect(accountChip(page)).toContainText(ALICE)
+      expect(keysOf(await storageSnapshot(page)).filter((key) => key.startsWith('u:alice:'))).not.toEqual([])
+
+      await accountChip(page).locator('button.account-signout').click()
+      await expect
+        .poll(async () => keysOf(await storageSnapshot(page)).filter((key) => key.startsWith('u:alice:')))
+        .toEqual([])
+      expect(keysOf(await storageSnapshot(page)).filter(unscopedResidue)).toEqual([])
 
       expect(watch.unexpected).toEqual([])
     },

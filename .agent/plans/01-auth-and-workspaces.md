@@ -251,6 +251,41 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
 7. `tests/service/test_synthetic_identity.py`: the header is honoured only under `SYNTHETIC=1` with `AUTH_BASE_URL` unset; with `AUTH_BASE_URL` set it is ignored and the bearer path wins; with neither, the caller is anonymous.
 8. `tests/service/test_validate_identity.py`: `validate` with a user emits `credential-missing` for a foreign id; without a user it emits nothing and returns `identity_checked: false`.
 9. `frontend/tests/builderAccountChip.spec.ts`: `BuilderView` renders the chip from the `user` prop and calls sign-out; with `authenticated: false` and auth configured, the builder shows the sign-in panel, not the gallery.
+
+   **Amended 2026-09-03 (round 3, D-01-5).** What sign-out CLEARS is now part
+   of this criterion, because the sentence above described only what the chip
+   renders and the round-2 critic landed on what it leaves behind: `endSession`
+   ended the token and nothing else, so the next person on the same browser
+   inherited the previous user's draft - the whole document, `credential_id`
+   included - their run handoff and their run pointer, in plaintext.
+
+   Two rules now hold, and the first is the one doing the work:
+
+   - **The residue is keyed to the identity, not merely cleared on sign-out.**
+     A draft, a handoff record and a run pointer written while somebody is
+     signed in are stored under `u:<user id>:<base>`
+     (`src/data/identityStorage.ts`), so a different signed-in user on the same
+     browser never reads them **even when the previous person closed the tab
+     without signing out** - which is the common case, not the rare one. With
+     no identity the key is the bare base, so the auth-off backend, the
+     `SYNTHETIC` harness and the unit suite are unchanged.
+   - **A sign-out clears what that identity wrote**, from `localStorage` and
+     `sessionStorage` alike, plus the four unscoped keys a build before today
+     left behind; and **a restore the server refused leaves no run id on
+     screen**, where `runId` was set before the fetch and survived its failure,
+     printing the previous user's id under a "Relaunch" button. The user loses
+     unsaved work when they sign out, and that is the intent: the draft holds a
+     credential id.
+
+   Pinned by `frontend/tests/authGate.spec.ts` (5),
+   `frontend/tests/identityStorage.spec.ts` (9),
+   `frontend/tests/builderRunHandoff.spec.ts` (3), the D-01-5 blocks in
+   `builderPersistence.spec.ts` (4) and `runRecovery.spec.ts` (4), and end to
+   end by `e2e/isolation.spec.ts`'s fifth test, which swaps the synthetic-user
+   cookie under a live page exactly as the round-2 critic's probe did - a real
+   Google sign-out cannot run here - and asserts an empty console and an empty
+   draft for the second person, with Alice's own residue still in place as the
+   control that proves it was one browser profile.
 10. `frontend/tests/credentialPicker.spec.ts`: the picker lists `{kind, label}` rows filtered by the field's kind, offers "create new", and never renders a field value even when the fake API returns one.
 11. E2E `e2e/isolation.spec.ts` (synthetic backend, two browser contexts via `X-Synthetic-User`): Alice creates a document, a credential and publishes; Bob's gallery lists neither; deep-linking Bob to `#/build/<alice-id>` lands on the empty builder; Bob's launch of Alice's workflow shows the console's 404 sentence and no run starts. **Rubric 14.**
 12. `docs/tech-stack.md` §6's scan reports the new knob (`CREDENTIALS_MASTER_KEY`) and the count in that file is regenerated, not edited.

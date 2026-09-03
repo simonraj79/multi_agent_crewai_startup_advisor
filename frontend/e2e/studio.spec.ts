@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
 
 /**
  * End-to-end coverage of the Validator Studio console.
@@ -443,8 +444,12 @@ test.describe('Validator Studio', () => {
       expect(runIdBefore).toBeTruthy()
 
       // The pointer the recovery reads is a localStorage record, not a cookie
-      // and not server-side session state.
-      const stored = await page.evaluate(() => window.localStorage.getItem('validator-active-run'))
+      // and not server-side session state - keyed to the signed-in user
+      // (D-01-5), who for a cookieless context is the E2E Operator.
+      const stored = await page.evaluate(
+        (key) => window.localStorage.getItem(key),
+        storageKeyFor(DEFAULT_SYNTHETIC_USER, 'validator-active-run'),
+      )
       expect(stored).toBeTruthy()
       const parsed = JSON.parse(stored as string) as {
         version: number

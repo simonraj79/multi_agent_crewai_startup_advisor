@@ -43,6 +43,19 @@ export const DEFAULT_SYNTHETIC_USER = 'e2e-user'
 export const SYNTHETIC_USER_PATTERN = /^[a-z0-9_-]{1,64}$/
 
 /**
+ * Where the SPA keeps a signed-in user's draft, handoff record and run
+ * pointer: under `u:<id>:<base>` (`src/data/identityStorage.ts`, D-01-5).
+ *
+ * Restated here rather than imported - the e2e directory is its own TypeScript
+ * program - and `tests/identityStorage.spec.ts` pins the same literal on the
+ * other side. A drift between the two fails loudly, as a missing handoff
+ * banner or a null pointer, never silently.
+ */
+export function storageKeyFor(id: string, base: string): string {
+  return `u:${encodeURIComponent(id)}:${base}`
+}
+
+/**
  * The synthetic user named by a request's `Cookie` header, or null.
  *
  * A value that does not match the server's pattern is treated as absent rather

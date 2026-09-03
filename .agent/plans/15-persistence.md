@@ -365,6 +365,13 @@ with 08 / 07).
    second additive column, `builder_document_versions.source`; the count of
    tables is unchanged.)
 8. The knob scan in CLAUDE.md answers forty after `VALIDATOR_RUN_RETENTION_DAYS` lands, and `docs/tech-stack.md` §6 is regenerated in the same commit. Rubric 16.
+   *Amended 2026-09-03 (D-15-12):* the scan answers **41**, and
+   `docs/tech-stack.md` §6 says forty-one (`52bdc2e`). "Forty" assumed one
+   new knob over thirty-nine; Stage 1 landed the six config knobs of S1
+   ruling 3 before the count was regenerated, and the criterion was ticked
+   against the prose rather than the scan. Re-run on 2026-09-03 while
+   building round 2, with no knob added or removed by it: **41**. The
+   command is the contract; the earlier wording stands above.
 9. `tests/pg/test_two_writers.py` passes against PostgreSQL 18 for all five paths, and CI gains a `services: postgres:18` job that sets `TEST_DATABASE_URL`. Rubric 11, 14.
 10. `tests/service/test_isolation_matrix.py` passes with the table in D9 exactly. Rubric 14.
     *Amended 2026-09-03 (D-15-12):* "the table in D9" means the table **and
@@ -458,3 +465,16 @@ What the build found that the plan did not know:
 dims 11, 12, 14 and 16 are in the round file; gate 8 not met; 12 located
 defects open in `benchmarks/DEFECTS.md` as D-15-1 … D-15-12 (visual first,
 then engineering), which is the round-2 build list.
+
+**In build (round 2) · 2026-09-03.** Every row has a fixing commit on
+`gauntlet/plans` and every row stays **open**: closing one is the critic's,
+after it re-runs each command itself. One commit per id, in build order:
+D-15-7 `95dfd70` (the store's write gate; D9 amended, criterion 10 note),
+D-15-8 `a324aa0`, D-15-9 `c44deaf`, D-15-10 `9e85e9f` (decision 24 built:
+unpublish route, delete guard on the registration), D-15-1 `e27a1f4`,
+D-15-2 `569198f`, D-15-3 `57246b8` (a second additive column, C10),
+D-15-4 `6b25a5b`, D-15-5 `9555fb6`, D-15-6 `4a1f328`, D-15-11 `c6d4038`,
+D-15-12 this commit. The visual rows each carry a jsdom assertion where one
+holds; the wrap and the reachable last row of D-15-4 are measured in
+`e2e/builder-layout.spec.ts`, and every visual row is for the critic to
+re-capture at 1440x900 dark.

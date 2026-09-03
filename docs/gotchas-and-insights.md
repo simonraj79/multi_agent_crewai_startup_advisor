@@ -825,3 +825,116 @@ builds the old shape.
 reason over the restatement — why the order is load-bearing, why the default is
 derived, what was tried and rejected. Every entry above started life as a comment
 that was not there.
+
+## Six traps a green suite could not see — plan 15, round 2 (2026-09-03)
+
+Recorded together because they share a shape with 31-35: every one was
+invisible to 1,157 green frontend tests and 1,642 green Python ones, and two
+of them were found only by LOOKING at a 1440x900 capture of the running app.
+The captures are in `docs/comparison/ours/round2/` (ignored); the commits
+they forced are `b249d89` and `d9672a0`.
+
+### 37. `withDefaults` uses a Function-typed prop's default as the value, not as a factory
+
+**Symptom.** Every version row rendered the dated form ("3 Sept, 04:38")
+and never "12 s ago", in the real app only. `versionBrowser.spec.ts` was
+green, 31 tests.
+
+**Cause.** Vue calls a prop's default as a factory only for `Object` and
+`Array` props; for a `Function` prop the default IS the function. The prop
+was declared `clock?: () => number` with the default written as a factory,
+`clock: () => () => Date.now()`, so `props.clock()` answered a *function*,
+`now - at` was `NaN`, every comparison was false and every row fell through
+to the dated form. The spec passed because every test handed in a stilled
+clock and never exercised the default.
+
+**Do this.** For a Function prop, write the function itself as the default:
+`clock: () => Date.now()`. And give every prop default a test that does NOT
+override it - the one test that would have caught this cost four lines.
+
+### 38. A template ref is `null` at a child's `onMounted`
+
+**Symptom.** The canvas was handed the shell's dock row as a prop and
+observed it in `onMounted`; the jsdom test passed; the capture showed two
+strips docked over a graph that had not moved.
+
+**Cause.** Vue assigns template refs in a post-render effect after the whole
+tree is mounted, and a child's `onMounted` runs before its parent's - so
+when the child looked, `props.dock` was still `null` and `observe` was
+skipped. The test passed because it handed the element in from the first
+render. And the obvious repair - `watch(() => props.dock, …, { immediate:
+true, flush: 'post' })` - fails the other way: an immediate post-flush
+callback is queued from setup, *ahead* of the mounted hook, and runs before
+the observer it needs exists.
+
+**Do this.** Observe whatever is there at mount, and add a non-immediate
+post-flush watch for the element arriving, changing or going. Test both
+orders: the element present from the start, and the element set after mount.
+
+### 39. A top-level injected ref is unwrapped in the template
+
+**Symptom.** `inject(BUILDER_READ_ONLY, null)` in `<script setup>`, then
+`v-if="readOnly?.value"` in the template; the lock never rendered.
+
+**Cause.** Top-level refs in `<script setup>` are auto-unwrapped in the
+template, so `readOnly` is already the boolean and `true.value` is
+`undefined`. Reading `.value` in the template is exactly wrong for a
+top-level ref and exactly right for a nested one, which is why it reads as
+plausible.
+
+**Do this.** `v-if="readOnly"`. A null default from `inject` is falsy, so the
+same expression covers "outside a canvas".
+
+### 40. SQLite drops the timezone, and `Date.parse` reads a naive stamp as local time
+
+**Symptom.** A version saved seconds ago read "8 h ago" on a machine at
+UTC+8, against a SQLite backend; the same code against PostgreSQL was right.
+
+**Cause.** `created_at` is written with `utcnow()` into
+`DateTime(timezone=True)`. PostgreSQL hands the offset back and the API
+serialises `…Z`; SQLite - every local and synthetic backend - drops the
+tzinfo, the API serialises `2026-09-03T04:38:12` with no zone, and the
+ECMAScript spec reads a date-time with no offset as LOCAL time.
+
+**Do this.** On the client, treat a stamp with no zone as UTC before parsing
+(`/(?:Z|[+-]\d\d:?\d\d)$/` or append `Z`). On the server the honest fix is
+to emit the offset regardless of dialect; until then, every `Date.parse` of
+an API timestamp needs the guard.
+
+### 41. A re-fit that fires on any shrink fights the author, and the E2E drag test measures it
+
+**Symptom.** After the first cut of D-15-2 - "re-fit whenever the canvas
+frame shrinks after the author's first gesture" - `e2e/builder.spec.ts`'s
+router-branch test failed 2 runs in 6, and 0 in 6 without it.
+
+**Cause.** The problems panel is under the canvas frame too, and it grows
+about 400ms after a node is placed, as the validate answer lands. The
+re-fit then moved every node under the author's next drag, which is the
+same jolt a human gets on every edit that changes the problem count. The
+strip the critic asked about - the version browser, the delete confirm -
+lives in a different row, the dock, which changes only when the author
+opens something.
+
+**Do this.** Observe the specific element whose change is the author's own
+action (the dock row) rather than the frame it shrinks, and defer any
+re-fit while a pointer is down. When a rule is about timing, measure it
+with the timing-sensitive test, six runs each way, before and after; a
+single green run of a flaky test is not evidence in either direction
+(CLAUDE.md remaining-work item 44 has the base rates).
+
+### 42. `git checkout <rev> -- <path>` wipes the uncommitted edits under that path
+
+**Symptom.** After measuring a flake rate against the frontend source at
+the base commit - `git checkout a952c74 -- src` then `git checkout HEAD --
+src` - the palette-row edit made ten minutes earlier was gone.
+
+**Cause.** A path checkout writes the named revision's files over the
+working tree and then `HEAD --` writes HEAD's over that; anything not
+committed under the path is overwritten both times, silently, and
+`git status` afterwards looks clean because the tree matches HEAD.
+
+**Do this.** Commit or `git stash push -- <path>` before checking an old
+revision into a path, and prefer a second worktree (`git worktree add`) for
+any measurement against an older tree. The repair here was re-applying the
+edit script; a hand edit would have been re-typed from memory.
+

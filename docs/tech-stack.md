@@ -632,6 +632,11 @@ chased is a caveat nobody reads.
   references come from. No browser was launched and no backend was started, so
   the `SYNTHETIC_BRANCH_DELAY_SECONDS` failure mode in quirk 6 is transcribed
   from the spec's assertion message and docblock — **not reproduced here**.
+  *Superseded 2026-09-03 on `gauntlet/plans`:* run, not listed — **34 tests
+  in 5 files**, 34 green on the final run against a fresh `SYNTHETIC=1`
+  backend on :8099 with the delay knob and `CREDENTIALS_MASTER_KEY` set,
+  1.9m, zero console errors; two builder tests are timing-flaky at rates
+  measured in CLAUDE.md remaining-work item 44. `main` is unchanged at 28.
 - **The Docker image has never been built on this machine** (`Dockerfile:11-12`
   says so itself), so the two-stage `uv sync` sequence is unproven.
 - **The keyless run was not repeated.** Moving `.env` aside is the one hazardous

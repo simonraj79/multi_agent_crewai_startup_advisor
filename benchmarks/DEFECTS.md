@@ -35,6 +35,33 @@ missed the gate. Each row's number is the critic's ranking within its
 plan and dimension group, so the build list for round 2 is the table read
 top to bottom.
 
+**Round 2 was BUILT for plan 15 on 2026-09-03** on `gauntlet/plans`,
+`a952c74` → `90699e9`, one commit per id, and every D-15 row above stays
+`open`: closing is the critic's, after it re-runs each command itself. The
+fixing commits, for the `closed by` column when a row does close; where an
+id has more than one, the **last** is the one to name (the earlier ones
+record the measurement that corrected them):
+
+| id | fixing commit(s) | red-then-green |
+| --- | --- | --- |
+| D-15-1 | `e27a1f4` | `frontend/tests/versionBrowser.spec.ts` — the shell test pins the chip, bar, lock, disabled name and Publish; palette and card tests standalone |
+| D-15-2 | `569198f`, `fa6829f`, `b249d89` | `frontend/tests/builderCanvas.spec.ts` — a driven `ResizeObserver` honouring `disconnect`; the dock arriving after mount |
+| D-15-3 | `57246b8`, `d9672a0` | `tests/service/test_additive_migration.py::VersionSourceColumnTests`, `test_builder_versions.py::WhatARowSays`; `versionBrowser.spec.ts` same-minute rows, save origins, the real clock |
+| D-15-4 | `6b25a5b`, `7cf3326` | `test_builder_duplicate.py` (+2), `test_builder_import.py::ImportedNamesStayDistinct`; title assertions in `builderShell` and `versionBrowser`; `e2e/builder-layout.spec.ts` measures the wrap and the reachable last row |
+| D-15-5 | `9555fb6` | `frontend/tests/builderImport.spec.ts` — full name, success class, icon, dismiss; `versionBrowser.spec.ts` — the "Back to v2" action |
+| D-15-6 | `4a1f328` | `frontend/tests/documentLifecycle.spec.ts` — separator precedes Delete, destructive class at rest |
+| D-15-7 | `95dfd70` | `tests/service/test_isolation_matrix.py` 16 → 31 — a row per verb for the unowned case |
+| D-15-8 | `a324aa0` | the version-404 tests in `test_builder_duplicate.py` and `test_builder_export_route.py` assert the sentence; `test_builder_versions.py` covers the four routes; the matrix keeps B's constant |
+| D-15-9 | `c44deaf` | `tests/service/test_builder_import.py::MalformedFilesEchoNothing` and the three refusal cases asserting a string |
+| D-15-10 | `9e85e9f` | `tests/service/test_builder_unpublish.py` (12), `test_builder_delete.py`'s flipped save test; `documentLifecycle.spec.ts`, `builderShell.spec.ts`, the route mirror at 13 |
+| D-15-11 | `c6d4038` | docs — a dated note under criterion 7 |
+| D-15-12 | `3e988b4` | docs — dated notes under criteria 8 and 10 (the D9 amendment is in `95dfd70`) |
+
+Captures for the six visual rows, 1440x900 dark, are under
+`docs/comparison/ours/round2/` (ignored by the `*.png` rule), taken by the
+untracked `frontend/e2e/_round2_capture.spec.ts`. Two of the later commits
+above exist only because those captures were looked at.
+
 ## Conventions
 
 - `id` is `D-<plan>-<n>`, monotonically increasing per plan; never reused.

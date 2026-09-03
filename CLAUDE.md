@@ -37,8 +37,8 @@ neither should ever be restated here.**
 > arrangement that has ever stopped this drifting.)*
 
 > **[`docs/gotchas-and-insights.md`](docs/gotchas-and-insights.md) — the
-> mistakes, and how not to repeat them.** **35** numbered entries as of
-> 2026-09-02 — count it, never copy it:
+> mistakes, and how not to repeat them.** **42** numbered entries as of
+> 2026-09-03 — count it, never copy it:
 > `grep -cE '^### [0-9]+\.|^## [0-9]+\.' docs/gotchas-and-insights.md`. It said
 > 30 in two places in this file until today; the grep answered 30 when this
 > reconciliation started and 35 by the time it reached these two lines, because
@@ -83,34 +83,36 @@ rests on committed history it says so.
 
 ## Verified Baseline
 
-Re-measured on **2026-09-03** against `gauntlet/plans` = `18a7944`, in the
-integration worktree (`D:\MultiAgentSystem-wt\integration`), on Windows.
-**Every row below was run by the pass that wrote it** - the Python suite,
-the frontend suite, the type-check, the E2E suite in a real browser, and the
-two-writer test against a real PostgreSQL 18 - which is the first time this
-block has been able to say that. One thing was not: `npm run build` (the
-three-step production build) was not re-run; `vue-tsc -b --force` was.
+Re-measured on **2026-09-03** against `gauntlet/plans` = `90699e9` (plan 15
+round 2 built), in the integration worktree
+(`D:\MultiAgentSystem-wt\integration`), on Windows. **Every row below was
+run by the pass that wrote it**, `npm run build` included this time.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:  1548 run, 0 failures, 0 errors, 6 skipped - 67.5s
+Python tests:  1642 run, 0 failures, 0 errors, 6 skipped - 116.3s
                (5 of the 6 skips are tests/pg/ with no TEST_DATABASE_URL)
-PostgreSQL 18.6: tests/pg/test_two_writers.py - 5 run, OK - 28.0s
+PostgreSQL 18.6: tests/pg/test_two_writers.py - 5 run, OK - 37.5s
                (all five compare-and-set paths, two processes each)
-Frontend unit: 1131 run, 0 failures, 61 files (Vitest + jsdom) - ~11s
-Frontend build: `vue-tsc -b --force` exit 0; `npm run build` NOT re-run
-Playwright E2E:  33 tests in 5 files, ALL GREEN, ZERO console errors - 1.8m
-                 (16 builder + 4 isolation + 3 builder-layout + 7 studio
-                  + 3 node-card visual) - RUN, against the recipe below with
-                 CREDENTIALS_MASTER_KEY set; 8 of the 33 are @launch
+Frontend unit: 1157 run, 0 failures, 62 files (Vitest + jsdom) - 13.4s
+Frontend build: `vue-tsc -b --force` exit 0; `npm run build` GREEN, vite 803ms
+Playwright E2E:  34 tests in 5 files, 34 GREEN on the final run, ZERO console
+                 errors - 1.9m (16 builder + 4 isolation + 4 builder-layout
+                 + 7 studio + 3 node-card visual), against the recipe below
+                 with CREDENTIALS_MASTER_KEY set; 8 of the 34 are @launch.
+                 Two builder tests are timing-flaky - MEASURED, item 44 -
+                 and the untracked round-2 capture spec makes it 35 if left
+                 in e2e/.
 ```
 
 > **These are `gauntlet/plans` figures, not `main`'s.** `main` is still
-> `25634c0`, where the previous block's 1228 / 1024 / 28 stand. The 320
-> Python and 107 frontend tests added are Stage 1 of the gauntlet (section
-> 15). The three visual specs need the gitignored PNG baselines copied from
-> the main tree into a fresh worktree, or they fail with "a snapshot doesn't
-> exist" - an environment gap, not a regression, and it cost one run here.
+> `25634c0`, where the previous block's 1228 / 1024 / 28 stand. Stage 1 of
+> the gauntlet (section 15) took the suites to 1548 / 1131 / 33; plan 15's
+> round 2 (`a952c74` → `90699e9`, `benchmarks/DEFECTS.md`) added 94 Python
+> and 26 frontend tests and one E2E layout test. The three visual specs need
+> the gitignored PNG baselines copied from the main tree into a fresh
+> worktree, or they fail with "a snapshot doesn't exist" - an environment
+> gap, not a regression, and it cost one run here.
 
 > **Superseded 2026-09-03**: the note below explains why the *previous*
 > baseline's E2E row had to say it was inherited. This pass ran the suite.
@@ -161,8 +163,8 @@ Playwright E2E:  33 tests in 5 files, ALL GREEN, ZERO console errors - 1.8m
 
 ⚠️ These counts move, and they move fast. The Python suite has gone
 65 → 295 → 341 → 378 → 415 → 459 → 522 → 537 → 660 → 679 → 698 → 713 → 772 →
-1228 → **1548** (on `gauntlet/plans`) and the frontend
-103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → 1024 → **1131**. Re-run before
+1228 → 1548 → **1642** (on `gauntlet/plans`) and the frontend
+103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → 1024 → 1131 → **1157**. Re-run before
 quoting a number; the command is the contract, not the figure. The last step in
 each series is one commit.
 
@@ -270,7 +272,9 @@ $env:CREDENTIALS_MASTER_KEY = "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
 
 # second shell
 Push-Location frontend
-npx playwright test                          # all 33
+npx playwright test                          # all 34 (35 with the untracked
+                                             # round-2 capture spec; exclude it
+                                             # with --grep-invert "round 2 captures")
 npx playwright test --grep-invert @launch    # the ones that never press Launch
 Pop-Location
 ```
@@ -393,9 +397,9 @@ recreate the problem this move solves.
 | 7 | `onrender.com` is on the Public Suffix List |
 | 8 | A free Render web service sleeps, and that decides your architecture |
 
-That file carries **35 numbered entries** plus a set of reusable design
-insights — measured 2026-09-02 with the `grep -cE` above, while another agent
-was still adding to it, so regenerate rather than quote this. It covers the toolchain (`tsc -b` skipping an unreferenced config,
+That file carries **42 numbered entries** plus a set of reusable design
+insights — measured 2026-09-03 with the `grep -cE` above, after plan 15's
+round-2 build added six, so regenerate rather than quote this. It covers the toolchain (`tsc -b` skipping an unreferenced config,
 Node's literal import resolution, Vite proxy ordering), the runtime
 (`create_all` never altering a shipped table, `value or DEFAULT` eating a
 legitimate zero, `Authorization` not being CORS-safelisted), an entire section
@@ -1427,6 +1431,7 @@ GET    /api/builder/workflows/{id}/export?version=       # plan 15, 2026-09-03
 POST   /api/builder/workflows/import
 POST   /api/builder/workflows/{id}/duplicate?version=
 GET    /api/builder/workflows/{id}/versions
+POST   /api/builder/workflows/{id}/unpublish             # plan 15 round 2, 2026-09-03
 
 GET    /api/builder/credentials                          # plan 01, 2026-09-03
 POST   /api/builder/credentials
@@ -1437,7 +1442,25 @@ POST   /api/builder/credentials/{id}/test
 The eight below the gap landed with Stage 1 of the gauntlet (section 15);
 their shapes are in `.agent/plans/15-persistence.md` D1/D3 and
 `.agent/plans/01-auth-and-workspaces.md` C4, each plan's Status section
-naming where the build diverged from the text.
+naming where the build diverged from the text. `unpublish` landed with plan
+15's round 2 (`9e85e9f`): decision 24 is now BUILT rather than assumed -
+`DELETE` refuses **409** while *any* version is registered, not only a
+published head, and the sentence names this route as the remedy in the same
+words the docked confirm uses. Round 1 had found the guard one save deep:
+its own remedy ("save a new version") returned the head to draft while the
+older version stayed registered, so the next delete unregistered a live
+graph.
+
+Two visibility rules on this router since round 2 (`95dfd70`). A document
+with an **owner** is invisible to everybody else, 404. A document with **no
+owner** - pre-auth history, or anything written on a deployment without
+identity - is readable and launchable by everyone and **writable by nobody
+who has an identity**: save, publish, delete and unpublish answer **403**
+naming Duplicate, which is safe only because the row is visible to everyone
+already. The anonymous caller on an auth-off backend keeps write, being that
+deployment's only author, and an auth-configured backend refuses to mint an
+unowned row at all (401 on create, import and duplicate for nobody). The
+isolation matrix carries a row per verb for it.
 
 A save is a **compare-and-set on the head version**, in the same
 `UPDATE ... WHERE ...; rowcount` shape `answer_gate` and `reopen_gate` already
@@ -1743,10 +1766,28 @@ work was done and not what it does:
   `builder.spec.ts` step. These are the builders' own counts; the suite
   totals in the Verified Baseline are the measurement.
 - **Still open from Stage 1**: the `postgres` CI job has never run; decisions
-  23-26 are built on their recommendation and unanswered. Item 43 (the
-  console's mock-mode fallback on a foreign 404) was CLOSED on 2026-09-03 in
-  plan 01's round-2 build (ledger row D-01-2); judge round 1 scored both
-  plans on 2026-09-03 and neither met the gate (`benchmarks/rounds/`).
+  23, 25 and 26 are built on their recommendation and unanswered, and 24 is
+  now BUILT (unpublish exists, delete refuses while any version is
+  registered) but still unratified. Item 43 (the console's mock-mode
+  fallback on a foreign 404) was CLOSED on 2026-09-03 in plan 01's round-2
+  build (ledger row D-01-2); judge round 1 scored both plans on 2026-09-03
+  and neither met the gate (`benchmarks/rounds/`).
+- **Plan 15 round 2 was built on 2026-09-03** (`a952c74` → `90699e9`, one
+  commit per ledger id, every D-15 row left `open` for the critic;
+  `benchmarks/DEFECTS.md` names the fixing commit per row). What it
+  changed outside the six visual rows: the store's write gate (above), an
+  unknown version of your own document answers "has no version 99; the
+  newest is v2" rather than "document not found", a malformed import file is
+  one sentence and never echoed, the unpublish route and the widened delete
+  guard, and a **second additive column** -
+  `builder_document_versions.source`, VARCHAR(64), NULL reads `stored` -
+  recorded against C10 in `00-architecture.md` and asserted against the
+  shipped DDL in `test_additive_migration.py::VersionSourceColumnTests`.
+  New module `test_builder_unpublish` (12); the isolation matrix went
+  16 → 31. Two of the fixing commits (`b249d89`, `d9672a0`) exist only
+  because the 1440x900 captures were LOOKED at: a Function-typed prop's
+  `withDefaults` default is the value, not a factory, and a template ref is
+  null at a child's `onMounted` - gotchas 37-42 are that session's traps.
 
 ## No-Cost Integration Coverage
 
@@ -2638,8 +2679,25 @@ true.
     over, and the original diagnosis stands: a 404 or 403 can only come from a
     real server.
 
+44. **[Low] The E2E suite is not self-cleaning, and two of its drag tests
+    are timing-flaky.** Measured 2026-09-03 during plan 15's round-2 build,
+    on a fresh `SYNTHETIC=1` backend. `clearLibrary` in `e2e/builder.spec.ts`
+    deletes every document before each test and cannot delete a published
+    one - 409 by design, decision 24 - so every full run leaves one published
+    "Minimal gated agent" behind, and a long-lived backend accumulates them
+    (five after five runs here). Now that `POST …/unpublish` exists the
+    helper can unpublish first; a fresh synthetic backend is in-memory and
+    starts clean, which is why a critic's first run does not see this. And
+    two tests fail on timing alone: "deletes a router branch and its edge
+    together" failed **1 in 8** with `frontend/src` at `a952c74` and 2 in 8
+    at HEAD, with two different failure shapes (the drag wired nothing; the
+    drag wired the wrong port); "ends the keyboard connect gesture it starts"
+    failed once in a full run and 4/4 alone. The `dragTo` helper's
+    hover-hover-release sequence is the moving part. Neither is a plan-15
+    defect; both are a green suite that is green by a margin.
+
 Item 34 below is **resolved** (see item 35 in the closed ledger) and is kept
-only because its diagnosis is the valuable part. It appears after 36-42 because
+only because its diagnosis is the valuable part. It appears after 36-44 because
 those are the open ones; the numbering is chronological, not a priority order.
 
 34. **A latent CrewAI defect in `or_()`, under investigation by another agent —

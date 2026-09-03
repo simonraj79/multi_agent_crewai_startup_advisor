@@ -286,7 +286,7 @@ measured on the integrated tree, not copied from a branch report.
 | 3 | done | `tests/service/test_credential_crypto.py` (24) — plus a real row re-labelled by SQL `UPDATE` failing to decrypt |
 | 4 | done | `tests/service/test_boot_checks.py` (8) |
 | 5 | done | `tests/builder/test_credential_resolution.py` (15) — a registry run fails with a frame carrying `error_class: credential-not-yours` |
-| 6 | done; **criterion amended 2026-09-03 (D-01-3)** | `tests/service/test_secret_redaction.py` (13 → 14). **`fields` is NOT on the redaction list**: it is the gate form's own key, and redacting it turned every gate into `***`. Pinned by `test_fields_is_deliberately_not_on_the_list`; the criterion's own text now carries the dated exclusion, and `test_the_plan_records_the_fields_exclusion_beside_the_pin` fails if that note and the pin ever part company |
+| 6 | done; **criterion amended 2026-09-03 (D-01-3)** | `tests/service/test_secret_redaction.py` (13 → 23, measured after the suffix-rule tests landed in the same file). **`fields` is NOT on the redaction list**: it is the gate form's own key, and redacting it turned every gate into `***`. Pinned by `test_fields_is_deliberately_not_on_the_list`; the criterion's own text now carries the dated exclusion, and `test_the_plan_records_the_fields_exclusion_beside_the_pin` fails if that note and the pin ever part company |
 | 7 | done | `tests/service/test_synthetic_identity.py` (14) — also honoured on the `/ws` handshake (4404 for others, 4400 malformed), which D8 did not say |
 | 8 | done | `tests/service/test_validate_identity.py` (18); `credential-missing` is problem code 31, fixtures regenerated, both mirrors agree |
 | 9 | done | `frontend/tests/builderAccountChip.spec.ts` (12) |

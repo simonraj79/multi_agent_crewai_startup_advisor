@@ -1065,14 +1065,16 @@ describe('the mounted canvas hands the library the settings the spec names', () 
     wrapper.unmount()
   })
 
-  it('re-fits when the layout takes height away, even after the author has gestured (D-15-2)', async () => {
+  it('re-fits when a docked strip opens, even after the author has gestured (D-15-2)', async () => {
     /*
      * Round 1 measured the defect this pins: the version browser docking 125px
      * above the graph hid 2 of 5 nodes and no re-fit followed, because the
      * settling observer disconnected at the author's first gesture. The rule
-     * now: before a gesture every change re-fits; after one, only a SHRINK
-     * does; never while a pointer is down. A stand-in observer whose callback
-     * the test drives is the only way jsdom can say any of this.
+     * now: before a gesture every change to the frame re-fits; after one, only
+     * the DOCK growing does - the problems panel growing under the frame does
+     * not, because that re-fit moved the canvas under the next drag (2 of 6
+     * E2E runs) - and never while a pointer is down. A stand-in observer whose
+     * callback the test drives is the only way jsdom can say any of this.
      */
     interface Driven {
       callback: ResizeObserverCallback
@@ -1098,46 +1100,62 @@ describe('the mounted canvas hands the library the settings the spec names', () 
       }
     }
     vi.stubGlobal('ResizeObserver', DrivenResizeObserver)
-    const { wrapper } = mountCanvas()
+    const dock = window.document.createElement('div')
+    const store = new RecordingStore()
+    store.doc.value = document([agentNode('a', 0, 0), agentNode('b', 300, 0)], [edge('e1', 'a', 'b')])
+    const canvasComposable = useBuilderCanvas({ document: store })
+    const wrapper = mount(BuilderCanvas, {
+      props: { canvas: canvasComposable, label: 'under test', dock },
+      slots: { node: '<div class="stub-node" />', edge: '<g class="stub-edge" />' },
+      attachTo: window.document.body,
+    })
     const flow = useVueFlow('builder-flow')
     const fitView = vi.spyOn(flow, 'fitView').mockImplementation(async () => true)
     const frame = wrapper.element as HTMLElement
-    // Vue Flow builds observers of its own; ours is the one watching the frame.
+    // Vue Flow builds observers of its own; ours is the one watching the frame
+    // AND the dock.
     const canvasObserver = instances.find((entry) => entry.targets.includes(frame))
     expect(canvasObserver).toBeDefined()
-    const resize = (height: number) => {
+    expect(canvasObserver!.targets).toContain(dock)
+    const resize = (target: Element, height: number) => {
       if (canvasObserver!.disconnected) return
       canvasObserver!.callback(
-        [{ contentRect: { height } } as unknown as ResizeObserverEntry],
+        [{ target, contentRect: { height } } as unknown as ResizeObserverEntry],
         {} as ResizeObserver,
       )
     }
 
-    // Settling: every change fits.
-    resize(700)
-    resize(640)
+    // Settling: every change to the frame fits.
+    resize(frame, 700)
+    resize(frame, 640)
     expect(fitView).toHaveBeenCalledTimes(2)
 
-    // The author gestures; the viewport is theirs. Growing back changes nothing.
+    // The author gestures; the viewport is theirs. The frame shrinking under
+    // them - the problems panel growing after a validate - changes nothing.
     await wrapper.trigger('pointerdown')
     await wrapper.trigger('pointerup')
-    resize(700)
+    resize(frame, 540)
+    resize(frame, 700)
     expect(fitView).toHaveBeenCalledTimes(2)
 
-    // A dock opens: the box SHRINKS, and the fit is owed.
-    resize(575)
+    // A strip docks above the graph: the dock GROWS, and the fit is owed.
+    resize(dock, 125)
+    expect(fitView).toHaveBeenCalledTimes(3)
+
+    // It closes again: the dock shrinks back, nothing is hidden, nothing moves.
+    resize(dock, 0)
     expect(fitView).toHaveBeenCalledTimes(3)
 
     // Not mid-drag. It lands when the pointer lifts.
     await wrapper.trigger('pointerdown')
-    resize(470)
+    resize(dock, 230)
     expect(fitView).toHaveBeenCalledTimes(3)
     await wrapper.trigger('pointerup')
     expect(fitView).toHaveBeenCalledTimes(4)
 
-    // Below a pixel of movement, and the collapse to zero on unmount: nothing.
-    resize(470.4)
-    resize(0)
+    // Below a pixel of movement, and the frame's collapse to zero on unmount: nothing.
+    resize(dock, 230.4)
+    resize(frame, 0)
     expect(fitView).toHaveBeenCalledTimes(4)
     wrapper.unmount()
   })

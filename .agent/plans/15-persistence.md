@@ -472,7 +472,10 @@ after it re-runs each command itself. One commit per id, in build order:
 D-15-7 `95dfd70` (the store's write gate; D9 amended, criterion 10 note),
 D-15-8 `a324aa0`, D-15-9 `c44deaf`, D-15-10 `9e85e9f` (decision 24 built:
 unpublish route, delete guard on the registration), D-15-1 `e27a1f4`,
-D-15-2 `569198f`, D-15-3 `57246b8` (a second additive column, C10),
+D-15-2 `569198f` then its refinement (the re-fit follows the dock row the
+author opens, not any shrink; the first cut re-fitted under the problems
+panel and moved the canvas under a drag, 2 of 6 E2E runs), D-15-3 `57246b8`
+(a second additive column, C10),
 D-15-4 `6b25a5b`, D-15-5 `9555fb6`, D-15-6 `4a1f328`, D-15-11 `c6d4038`,
 D-15-12 this commit. The visual rows each carry a jsdom assertion where one
 holds; the wrap and the reachable last row of D-15-4 are measured in

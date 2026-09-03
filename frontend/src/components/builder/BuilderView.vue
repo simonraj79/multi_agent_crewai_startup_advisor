@@ -337,6 +337,9 @@ const importNoticeShown = computed(
     importNotice.value.documentId === persistence.documentId.value,
 )
 
+/** The dock row's element, handed to the canvas so a strip opening re-fits the graph (D-15-2). */
+const dockEl = ref<HTMLElement | null>(null)
+
 /** The docked delete confirm (plan 15 D3, R15: no dialog). */
 const deleteAsk = ref(false)
 const deleteTyped = ref('')
@@ -1459,7 +1462,7 @@ watch(
             moment the restore bar appeared. R15: nothing here covers the graph
             it is about.
           -->
-          <div class="builder-dock" data-testid="builder-dock">
+          <div ref="dockEl" class="builder-dock" data-testid="builder-dock">
             <VersionBrowser
               v-if="versionsOpen"
               :versions="versions"
@@ -1659,7 +1662,7 @@ watch(
             :stale="validation.phase.value === 'stale'"
           />
 
-          <BuilderCanvas :canvas="canvas" :label="doc.name" :read-only="persistence.viewingVersion.value">
+          <BuilderCanvas :canvas="canvas" :label="doc.name" :read-only="persistence.viewingVersion.value" :dock="dockEl">
             <template #node="nodeProps">
               <BuilderNode
                 v-bind="nodeProps"

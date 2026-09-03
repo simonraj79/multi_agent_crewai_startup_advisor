@@ -73,6 +73,14 @@ const props = defineProps<{
    * point of opening it.
    */
   readOnly?: boolean
+  /**
+   * The shell's dock row - the strips that sit above this canvas in the layout
+   * (round 2, D-15-2). Observed beside the frame so a strip OPENING re-fits the
+   * graph it just shrank, and nothing else after the author's first gesture
+   * does. An element rather than a height, because the observer is the one
+   * thing here that measures.
+   */
+  dock?: HTMLElement | null
 }>()
 
 const flow = useVueFlow('builder-flow')
@@ -129,11 +137,22 @@ onMounted(() => {
  * docked beneath it hid 3 of 5 - an operator confirming a delete could not see
  * most of the graph they were deleting. The rule now has two halves:
  *
- * - before the first gesture, any change re-fits, as before;
- * - after it, a change re-fits only when the box SHRANK. A dock opening, the
- *   problems panel expanding, a window getting shorter: content the author was
- *   looking at is now under something, and the fit is owed. A box GROWING back
- *   hides nothing, so the author's viewport is left exactly where they put it.
+ * - before the first gesture, any change to THIS frame re-fits, as before;
+ * - after it, only the DOCK re-fits, and only when it GROWS - a strip the
+ *   author asked for (versions, the delete confirm, the restore bar, the
+ *   import notice) has just taken height from the graph, and the fit is owed.
+ *   A dock closing hides nothing, so the viewport stays where they put it.
+ *
+ * Why the dock and not "any shrink". The first cut of this rule re-fitted on
+ * every shrink of the frame, and the problems panel is under the frame too:
+ * it grows 400ms after a node is placed, as the validate answer lands, and the
+ * re-fit moved the canvas under the author's next drag. Measured on
+ * `e2e/builder.spec.ts`'s router-branch test, six runs each: 2 of 6 failed
+ * with that rule, 0 of 6 without it - the drag that should have wired the
+ * router's `match` port started where the port had been a frame earlier.
+ * A human would meet the same jolt on every edit that changed the problem
+ * count. The dock changes only when the author opens something, which is the
+ * one moment a re-fit is what they want.
  *
  * And never mid-gesture: a re-fit that lands while a pointer is down is a
  * canvas running away from a drag, which is the worse bug this observer was
@@ -161,16 +180,30 @@ function refit(): void {
 
 onMounted(() => {
   if (typeof ResizeObserver === 'undefined' || !frame.value) return
-  let last = 0
+  let lastFrame = 0
+  let lastDock = 0
   layoutObserver = new ResizeObserver((entries) => {
-    const height = entries[0]?.contentRect.height ?? 0
-    // Only a real change, and never the collapse to zero that unmounting shows.
-    if (height <= 0 || Math.abs(height - last) < 1) return
-    const shrank = last > 0 && height < last
-    last = height
-    if (!settled || shrank) refit()
+    let owed = false
+    for (const entry of entries) {
+      const height = entry.contentRect.height
+      if (entry.target === frame.value) {
+        // Only a real change, and never the collapse to zero that unmounting shows.
+        if (height <= 0 || Math.abs(height - lastFrame) < 1) continue
+        lastFrame = height
+        if (!settled) owed = true
+      } else {
+        // The dock. Zero is its resting state, so a change to zero is a strip
+        // closing and a change from it a strip opening.
+        if (Math.abs(height - lastDock) < 1) continue
+        const grew = height > lastDock
+        lastDock = height
+        if (settled && grew) owed = true
+      }
+    }
+    if (owed) refit()
   })
   layoutObserver.observe(frame.value)
+  if (props.dock) layoutObserver.observe(props.dock)
 })
 
 onBeforeUnmount(() => {

@@ -1008,6 +1008,35 @@ function openFromGallery(id: string): void {
   emit('openDocument', id as DocumentId)
 }
 
+/**
+ * A library row's Versions / Duplicate / Export (D-15-15).
+ *
+ * The row used to offer a trash icon and nothing else, so every other action
+ * cost an open first - and the one thing reachable in a single click from the
+ * list was the destructive one.
+ *
+ * Each of these OPENS the graph and then does the thing, rather than acting on
+ * a document nobody is looking at. That is not a limitation of the plumbing:
+ * duplicate and export both refuse a canvas that is ahead of the store
+ * (`storedIsCurrent`), and a version rail belongs beside the canvas it
+ * describes. Acting on an unopened row would also make "Duplicate" the only
+ * control in the product that changes something off screen.
+ */
+async function actOnLibraryRow(id: string, action: 'versions' | 'duplicate' | 'export'): Promise<void> {
+  await openDocument(id as DocumentId)
+  emit('adoptDocument', id as DocumentId)
+  if (persistence.documentId.value !== (id as DocumentId)) return
+  if (action === 'versions') {
+    if (!versionsOpen.value) toggleVersions()
+    return
+  }
+  if (action === 'duplicate') {
+    await duplicateDocument()
+    return
+  }
+  await exportDocument()
+}
+
 /* ── the one write path ────────────────────────────────────────────────── */
 
 /** Every inspector patch, and the only place one becomes a commit (§2 WP-F). */
@@ -1839,7 +1868,15 @@ watch(
           grid. Not a separate page, so picking a template loses nothing and
           going back costs nothing.
         -->
-        <TemplateGallery v-else @start="startTemplate" @open="openFromGallery" @import="importFile" />
+        <TemplateGallery
+          v-else
+          @start="startTemplate"
+          @open="openFromGallery"
+          @import="importFile"
+          @versions="(id: string) => void actOnLibraryRow(id, 'versions')"
+          @duplicate="(id: string) => void actOnLibraryRow(id, 'duplicate')"
+          @export="(id: string) => void actOnLibraryRow(id, 'export')"
+        />
       </section>
 
       <InspectorRail

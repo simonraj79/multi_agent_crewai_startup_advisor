@@ -12,6 +12,7 @@ import { HOTKEY_BINDINGS } from '../src/composables/useBuilderHotkeys'
 import { clearRunHandoff, readRunHandoff, writeRunHandoff } from '../src/data/builderRunHandoff'
 import { resetVocabulary } from '../src/data/builderVocabulary'
 import { BuilderConflictError } from '../src/services/builderApi'
+import { documentId } from '../src/types/builder'
 import vocabularyPayload from './fixtures/builderValidatorTemplate.json'
 import { FakeBuilderApi, flush, zeroBudget } from './helpers'
 
@@ -424,6 +425,72 @@ describe('the gallery is the empty state and the way back into saved work', () =
   it('says so when there are no saved graphs yet', async () => {
     const { wrapper } = await gallery()
     expect(wrapper.find('.gallery-empty').text()).toContain('No saved graphs yet')
+  })
+
+  describe("the author's own graphs come first, in an order they can read (D-15-15)", () => {
+    /** Three rows a minute apart - the spacing the critic's three rows had. */
+    async function threeRows() {
+      const api = new FakeBuilderApi()
+      const base = Date.parse('2026-09-03T07:47:00Z')
+      const oldest = api.seed({ ...IDEA_VALIDATOR.document, id: documentId('ug_aaaaaaaa'), name: 'Oldest' }, 1,
+        'draft', new Date(base).toISOString())
+      const middle = api.seed({ ...IDEA_VALIDATOR.document, id: documentId('ug_bbbbbbbb'), name: 'Middle' }, 1,
+        'draft', new Date(base + 60_000).toISOString())
+      const newest = api.seed({ ...IDEA_VALIDATOR.document, id: documentId('ug_cccccccc'), name: 'Newest' }, 1,
+        'draft', new Date(base + 120_000).toISOString())
+      const { wrapper } = await gallery(api)
+      return { wrapper, api, ids: { oldest, middle, newest } }
+    }
+
+    it('puts the library section above the templates in the DOM, not just on screen', async () => {
+      /*
+       * Four template cards occupied y147-595, so "Saved here" began at y659
+       * and showed two and a half rows of the thing the author came back for.
+       * Asserted in the DOM rather than by CSS `order`, because `order`
+       * reorders the picture and leaves reading order alone - a screen reader
+       * and a Tab press would still meet four templates first.
+       */
+      const { wrapper } = await threeRows()
+      const html = wrapper.html()
+      expect(html.indexOf('gallery-library-title')).toBeLessThan(html.indexOf('gallery-templates-title'))
+    })
+
+    it('orders rows newest first', async () => {
+      const { wrapper } = await threeRows()
+      const names = wrapper.findAll('.library-name').map((row) => row.text())
+      expect(names).toEqual(['Newest', 'Middle', 'Oldest'])
+    })
+
+    it('tells two rows apart, by the order and by an exact stamp on hover', async () => {
+      /*
+       * All three read "3 Sept, 07:47" before this - minute resolution over
+       * rows a minute apart - so the list could not be ordered by eye.
+       *
+       * Two things fix that and the test asserts both, because either alone
+       * has a gap. The relative form is readable at a glance but loses
+       * resolution with distance: two rows four hours old both read "4 h
+       * ago". The ORDER above is what makes those two unambiguous, and the
+       * title is what makes them precise. `VersionBrowser` makes the same
+       * pair for the same reason.
+       */
+      const { wrapper } = await threeRows()
+      const titles = wrapper.findAll('.library-when').map((row) => row.attributes('title'))
+      expect(new Set(titles).size, 'the exact stamps must differ').toBe(3)
+      for (const title of titles) expect(title).toMatch(/:\d\d:\d\d/)
+      // And the visible text is the relative form, not a clipped clock.
+      expect(wrapper.findAll('.library-when')[0].text()).toMatch(/ago|just now|yesterday|\d/)
+    })
+
+    it('offers what the document bar offers, not only the destructive one', async () => {
+      const { wrapper, ids } = await threeRows()
+      const row = wrapper.findAll('.library-row')[0]
+      for (const action of ['versions', 'duplicate', 'export'] as const) {
+        await row.get(`[data-testid="library-${action}"]`).trigger('click')
+        expect(wrapper.emitted(action)?.at(-1)).toEqual([ids.newest])
+      }
+      // And the trash icon is still there, still last.
+      expect(row.find('.library-delete').exists()).toBe(true)
+    })
   })
 
   it('refuses a delete until the graph name is typed back', async () => {

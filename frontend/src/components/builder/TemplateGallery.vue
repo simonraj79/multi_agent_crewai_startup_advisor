@@ -1,12 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { Clock3, FilePlus2, Loader, Trash2, TriangleAlert, Unplug, Upload } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import {
+  Clock3,
+  Copy,
+  Download,
+  FilePlus2,
+  History,
+  Loader,
+  Trash2,
+  TriangleAlert,
+  Unplug,
+  Upload,
+} from 'lucide-vue-next'
 import GraphThumbnail from './GraphThumbnail.vue'
 import { BUILDER_TEMPLATES } from '../../data/builderTemplates'
 import { BuilderConflictError, builderApi } from '../../services/builderApi'
 import type { BuilderApiLike } from '../../services/builderApi'
 import type { BuilderTemplate } from '../../data/builderTemplates'
 import type { BuilderDocumentSummary } from '../../types/builder'
+import { agoFrom, parseStamp } from '../../utils/storedTime'
 
 /**
  * The builder's empty state, and the one screen a first-time author reads.
@@ -47,6 +59,18 @@ const emit = defineEmits<{
   start: [template: BuilderTemplate]
   /** Load a stored document by id. */
   open: [documentId: string]
+  /**
+   * The three actions the document bar's menu offers, from the row (D-15-15).
+   *
+   * Each carries a document id and `BuilderView` opens it on the way, so the
+   * author acts on a graph they can see. Performed there rather than here
+   * because that is where duplicate, export and the version rail already
+   * live, and two implementations of "duplicate this graph" would be two
+   * things to keep in step.
+   */
+  duplicate: [documentId: string]
+  export: [documentId: string]
+  versions: [documentId: string]
   /**
    * A `.builder.json` the author picked (plan 15 D2). The gallery only hands
    * the file up: reading it, posting it and opening the result is one code
@@ -91,10 +115,23 @@ function onFilePicked(event: Event): void {
   if (file) emit('import', file)
 }
 
+/**
+ * One clock for the whole list, ticking, so "2 min ago" becomes "3 min ago"
+ * without a reload. Thirty seconds is the resolution the relative form has
+ * above a minute, so a faster tick would redraw for nothing.
+ */
+const now = ref(Date.now())
+let ticker = 0
+
 onMounted(() => {
   void priceTemplates()
   void loadLibrary()
+  ticker = window.setInterval(() => {
+    now.value = Date.now()
+  }, 30_000)
 })
+
+onBeforeUnmount(() => window.clearInterval(ticker))
 
 /**
  * Price all four templates at once.
@@ -241,20 +278,235 @@ async function confirmDelete(): Promise<void> {
 }
 
 /** `2026-09-02T10:14:00Z` -> `2 Sep, 10:14`. Undated rows show the raw value. */
+/**
+ * A relative time, not a clipped clock (D-15-15).
+ *
+ * Three rows all read "3 Sept, 07:47" and could not be ordered by eye, which
+ * is the same defect the version rows had (D-15-3) and is fixed the same way:
+ * `agoFrom` keeps seconds under a minute, which is the resolution two rows
+ * saved in one minute actually need, and falls back to the dated form once
+ * relative stops being useful. It also reads a naive SQLite stamp as UTC,
+ * which `Date.parse` here did not - every row was eight hours out on the
+ * machine that found it.
+ */
 function when(iso: string): string {
-  const at = Date.parse(iso)
+  return agoFrom(iso, now.value)
+}
+
+/** The full stamp, seconds included, for the row's title. */
+function exactly(iso: string): string {
+  const at = parseStamp(iso)
   if (!Number.isFinite(at)) return iso
   return new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
     month: 'short',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
   }).format(at)
 }
+
+/**
+ * Newest first (D-15-15).
+ *
+ * The server returns the library in its own order; the author's question is
+ * "where is the one I was just working on", and that is the top of this list.
+ * An unreadable stamp sorts last rather than throwing the order away.
+ */
+const orderedLibrary = computed(() =>
+  [...library.value].sort((left, right) => {
+    const at = parseStamp(right.updated_at)
+    const other = parseStamp(left.updated_at)
+    return (Number.isFinite(at) ? at : -Infinity) - (Number.isFinite(other) ? other : -Infinity)
+  }),
+)
 </script>
 
 <template>
+  <!--
+    THE AUTHOR'S OWN GRAPHS FIRST (D-15-15). Four template cards occupied
+    y147-595, so "Saved here" began at y659 and showed two and a half rows of
+    the thing the author came back for. This is the first screen of the
+    product and the templates are for the first visit only.
+
+    A real DOM move rather than a CSS `order`, because `order` reorders the
+    picture and leaves the reading order alone - a screen reader and a Tab
+    press would still meet four templates before the author's own work.
+
+    The empty case reads correctly in this order too: one line saying there is
+    nothing saved yet, immediately above the shapes that fix that, which is
+    why its copy now says "below".
+  -->
   <div class="template-gallery">
+    <section class="gallery-library" aria-labelledby="gallery-library-title">
+      <header class="gallery-heading">
+        <div>
+          <span class="gallery-kicker">YOUR GRAPHS</span>
+          <h2 id="gallery-library-title">Saved here</h2>
+        </div>
+      </header>
+
+      <p v-if="libraryLoading" class="gallery-empty" role="status">
+        <Loader :size="14" aria-hidden="true" /> Reading your saved graphs…
+      </p>
+      <p v-else-if="libraryProblem" class="gallery-empty is-problem" role="alert">
+        <TriangleAlert :size="14" aria-hidden="true" /> {{ libraryProblem }}
+      </p>
+      <p v-else-if="library.length === 0" class="gallery-empty">
+        <FilePlus2 :size="14" aria-hidden="true" />
+        No saved graphs yet. Pick a shape below and it is yours the moment you save it.
+      </p>
+
+      <ul v-else class="library-list">
+        <li v-for="entry in orderedLibrary" :key="entry.id">
+          <div class="library-row">
+            <button class="library-open" type="button" @click="emit('open', entry.id)">
+              <!-- Two lines before it clips, whole name in the title (D-15-4). -->
+              <span class="library-name" :title="entry.name">{{ entry.name }}</span>
+              <span class="library-meta">
+                <span class="status-pill" :class="`is-${entry.status}`">{{ entry.status }}</span>
+                <span class="library-version">v{{ entry.version }}</span>
+                <!--
+                  Relative text, exact stamp on hover (D-15-15). The relative
+                  form is what makes the list readable at a glance, and the
+                  ORDER is what makes it unambiguous - but two rows four hours
+                  old both read "4 h ago", so the precise stamp has to be
+                  reachable. `VersionBrowser` makes the same pair.
+                -->
+                <span class="library-when" :title="exactly(entry.updated_at)">
+                  <Clock3 :size="12" aria-hidden="true" />{{ when(entry.updated_at) }}
+                </span>
+              </span>
+            </button>
+            <!--
+              WHAT THE DOCUMENT BAR'S MENU OFFERS (D-15-15). The row used to
+              expose a trash icon and nothing else, so duplicate, export and
+              versions each cost an open first - and the only thing reachable
+              in one click from the list was the destructive one.
+
+              These four are emitted rather than performed: `BuilderView`
+              already owns duplicate, export and the version rail for the OPEN
+              document, and a second implementation here would be a second
+              thing to keep in step. Each one opens the document on its way,
+              which is also what makes them safe - they act on a graph the
+              author is then looking at.
+            -->
+            <div class="library-actions">
+              <button
+                class="icon-button"
+                type="button"
+                :aria-label="`Versions of ${entry.name}`"
+                title="Versions"
+                data-testid="library-versions"
+                @click="emit('versions', entry.id)"
+              >
+                <History :size="15" aria-hidden="true" />
+              </button>
+              <button
+                class="icon-button"
+                type="button"
+                :aria-label="`Duplicate ${entry.name}`"
+                title="Duplicate"
+                data-testid="library-duplicate"
+                @click="emit('duplicate', entry.id)"
+              >
+                <Copy :size="15" aria-hidden="true" />
+              </button>
+              <button
+                class="icon-button"
+                type="button"
+                :aria-label="`Export ${entry.name}`"
+                title="Export"
+                data-testid="library-export"
+                @click="emit('export', entry.id)"
+              >
+                <Download :size="15" aria-hidden="true" />
+              </button>
+              <button
+                class="icon-button library-delete"
+                type="button"
+                :aria-label="`Delete ${entry.name}`"
+                title="Delete"
+                @click="askToDelete(entry.id)"
+              >
+                <Trash2 :size="15" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+
+          <!--
+            An in-app confirmation, never `window.confirm`. Two reasons and both
+            are practical: the browser dialog blocks the whole tab so the graph
+            you are about to delete is hidden at the exact moment you are asked
+            about it, and it cannot say WHICH graph in a way that survives a
+            misread - typing the name is what proves the right row was read.
+          -->
+          <form v-if="deleting === entry.id" class="delete-confirm" @submit.prevent="confirmDelete">
+            <!-- The server's rule in the server's words (D-15-10); see the
+                 docked confirm in `BuilderView` for why the clause is shared. -->
+            <label :for="`confirm-${entry.id}`">
+              <!-- Derived from the row's own status (D-15-16): a published row
+                   never reaches this branch, so the warning about publishing
+                   is not shown over a draft it cannot apply to. -->
+              <template v-if="!deleteRefused">
+                Delete <strong>{{ entry.name }}</strong> and every stored version of it? This
+                cannot be undone. Type <strong>{{ entry.name }}</strong> to confirm.
+              </template>
+              <!--
+                Nothing here when refused (D-15-18). This read "Not deleted —
+                it is still published." directly above the server's own
+                sentence, which since round 3 names the graph and says live
+                once - so the pair said published twice in two vocabularies,
+                and neither of them named which graph.
+              -->
+            </label>
+            <!--
+              ABOVE the buttons, which is where the docked confirm puts it.
+              The same refusal was laid out two ways - text above the buttons
+              when docked, below them here - so an author who met it in both
+              places had to find it twice (D-15-18).
+            -->
+            <p v-if="deleteProblem" :id="`confirm-problem-${entry.id}`" class="delete-problem" role="alert">
+              {{ deleteProblem }}
+            </p>
+            <div class="delete-actions" :class="{ 'is-refused': deleteRefused }">
+              <input
+                v-if="!deleteRefused"
+                :id="`confirm-${entry.id}`"
+                v-model="typedName"
+                type="text"
+                autocomplete="off"
+                :aria-describedby="deleteProblem ? `confirm-problem-${entry.id}` : undefined"
+              />
+              <button
+                v-if="deleteRefused"
+                class="button button-primary"
+                type="button"
+                :disabled="unpublishing"
+                data-testid="gallery-unpublish"
+                @click="unpublishRefused"
+              >
+                <Unplug :size="14" aria-hidden="true" />
+                {{ unpublishing ? 'Unpublishing…' : 'Unpublish' }}
+              </button>
+              <button class="button button-quiet" type="button" @click="cancelDelete">
+                {{ deleteRefused ? 'Keep it published' : 'Keep it' }}
+              </button>
+              <button
+                v-if="!deleteRefused"
+                class="button button-danger"
+                type="submit"
+                :disabled="!confirmed || deleteInFlight"
+              >
+                {{ deleteInFlight ? 'Deleting…' : 'Delete' }}
+              </button>
+            </div>
+          </form>
+        </li>
+      </ul>
+    </section>
+
     <section aria-labelledby="gallery-templates-title">
       <header class="gallery-heading">
         <div>
@@ -341,120 +593,6 @@ function when(iso: string): string {
               </div>
             </dl>
           </button>
-        </li>
-      </ul>
-    </section>
-
-    <section class="gallery-library" aria-labelledby="gallery-library-title">
-      <header class="gallery-heading">
-        <div>
-          <span class="gallery-kicker">YOUR GRAPHS</span>
-          <h2 id="gallery-library-title">Saved here</h2>
-        </div>
-      </header>
-
-      <p v-if="libraryLoading" class="gallery-empty" role="status">
-        <Loader :size="14" aria-hidden="true" /> Reading your saved graphs…
-      </p>
-      <p v-else-if="libraryProblem" class="gallery-empty is-problem" role="alert">
-        <TriangleAlert :size="14" aria-hidden="true" /> {{ libraryProblem }}
-      </p>
-      <p v-else-if="library.length === 0" class="gallery-empty">
-        <FilePlus2 :size="14" aria-hidden="true" />
-        No saved graphs yet. Pick a shape above and it is yours the moment you save it.
-      </p>
-
-      <ul v-else class="library-list">
-        <li v-for="entry in library" :key="entry.id">
-          <div class="library-row">
-            <button class="library-open" type="button" @click="emit('open', entry.id)">
-              <!-- Two lines before it clips, whole name in the title (D-15-4). -->
-              <span class="library-name" :title="entry.name">{{ entry.name }}</span>
-              <span class="library-meta">
-                <span class="status-pill" :class="`is-${entry.status}`">{{ entry.status }}</span>
-                <span class="library-version">v{{ entry.version }}</span>
-                <span class="library-when"><Clock3 :size="12" aria-hidden="true" />{{ when(entry.updated_at) }}</span>
-              </span>
-            </button>
-            <button
-              class="icon-button library-delete"
-              type="button"
-              :aria-label="`Delete ${entry.name}`"
-              title="Delete"
-              @click="askToDelete(entry.id)"
-            >
-              <Trash2 :size="15" aria-hidden="true" />
-            </button>
-          </div>
-
-          <!--
-            An in-app confirmation, never `window.confirm`. Two reasons and both
-            are practical: the browser dialog blocks the whole tab so the graph
-            you are about to delete is hidden at the exact moment you are asked
-            about it, and it cannot say WHICH graph in a way that survives a
-            misread - typing the name is what proves the right row was read.
-          -->
-          <form v-if="deleting === entry.id" class="delete-confirm" @submit.prevent="confirmDelete">
-            <!-- The server's rule in the server's words (D-15-10); see the
-                 docked confirm in `BuilderView` for why the clause is shared. -->
-            <label :for="`confirm-${entry.id}`">
-              <!-- Derived from the row's own status (D-15-16): a published row
-                   never reaches this branch, so the warning about publishing
-                   is not shown over a draft it cannot apply to. -->
-              <template v-if="!deleteRefused">
-                Delete <strong>{{ entry.name }}</strong> and every stored version of it? This
-                cannot be undone. Type <strong>{{ entry.name }}</strong> to confirm.
-              </template>
-              <!--
-                Nothing here when refused (D-15-18). This read "Not deleted —
-                it is still published." directly above the server's own
-                sentence, which since round 3 names the graph and says live
-                once - so the pair said published twice in two vocabularies,
-                and neither of them named which graph.
-              -->
-            </label>
-            <!--
-              ABOVE the buttons, which is where the docked confirm puts it.
-              The same refusal was laid out two ways - text above the buttons
-              when docked, below them here - so an author who met it in both
-              places had to find it twice (D-15-18).
-            -->
-            <p v-if="deleteProblem" :id="`confirm-problem-${entry.id}`" class="delete-problem" role="alert">
-              {{ deleteProblem }}
-            </p>
-            <div class="delete-actions" :class="{ 'is-refused': deleteRefused }">
-              <input
-                v-if="!deleteRefused"
-                :id="`confirm-${entry.id}`"
-                v-model="typedName"
-                type="text"
-                autocomplete="off"
-                :aria-describedby="deleteProblem ? `confirm-problem-${entry.id}` : undefined"
-              />
-              <button
-                v-if="deleteRefused"
-                class="button button-primary"
-                type="button"
-                :disabled="unpublishing"
-                data-testid="gallery-unpublish"
-                @click="unpublishRefused"
-              >
-                <Unplug :size="14" aria-hidden="true" />
-                {{ unpublishing ? 'Unpublishing…' : 'Unpublish' }}
-              </button>
-              <button class="button button-quiet" type="button" @click="cancelDelete">
-                {{ deleteRefused ? 'Keep it published' : 'Keep it' }}
-              </button>
-              <button
-                v-if="!deleteRefused"
-                class="button button-danger"
-                type="submit"
-                :disabled="!confirmed || deleteInFlight"
-              >
-                {{ deleteInFlight ? 'Deleting…' : 'Delete' }}
-              </button>
-            </div>
-          </form>
         </li>
       </ul>
     </section>
@@ -626,6 +764,9 @@ function when(iso: string): string {
 .status-pill.is-draft { color: var(--text-muted); background: var(--surface-raised); }
 .status-pill.is-published { color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
 
+/* The row's four actions (D-15-15). `auto` in the row's own grid, so the name
+   keeps every pixel the actions do not need. */
+.library-actions { display: inline-flex; gap: 2px; align-items: center; }
 .library-delete:hover { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
 
 .delete-confirm {

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArchiveRestore, Clock3, CornerUpLeft, Eye, Loader, Lock, TriangleAlert, X } from 'lucide-vue-next'
 import type { BuilderVersionRow } from '../../types/builder'
+import { agoFrom, parseStamp } from '../../utils/storedTime'
 
 /**
  * Every stored version of the open graph, and the two things an author can do
@@ -99,33 +100,13 @@ onMounted(() => {
 })
 onBeforeUnmount(() => window.clearInterval(ticker))
 
-/**
- * A stored stamp as milliseconds, with a naive one read as UTC.
- *
- * `created_at` is written with `utcnow()` into a `DateTime(timezone=True)`
- * column. PostgreSQL hands the offset back and the string ends in `Z`;
- * SQLite - every local and synthetic backend - drops the tzinfo, and the
- * string arrives as `2026-09-03T04:38:12` with no zone. `Date.parse` reads
- * that form as LOCAL time, which put every row eight hours out on this
- * machine and made a version saved seconds ago read "8 h ago". The server's
- * time is UTC either way, so a stamp with no zone is given one.
+/*
+ * `parseStamp`, `when` and the body of `ago` moved to `utils/storedTime.ts` in
+ * round 3 (D-15-15), because the saved-graphs library needs the same answers
+ * and a second copy of the naive-UTC rule is a second thing to get wrong. The
+ * reasoning behind each lives there now; `agoFrom` falls back to
+ * `formatStamp`, which is what `when` used to be.
  */
-function parseStamp(iso: string): number {
-  const zoned = /(?:[zZ]|[+-]\d\d:?\d\d)$/.test(iso) ? iso : `${iso}Z`
-  return Date.parse(zoned)
-}
-
-/** `2026-09-02T10:14:00Z` -> `2 Sep, 10:14`. Undated rows show the raw value. */
-function when(iso: string): string {
-  const at = parseStamp(iso)
-  if (!Number.isFinite(at)) return iso
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(at)
-}
 
 /** The full stamp, seconds included, for the title: `2 Sep 2026, 10:14:32`. */
 function stamp(iso: string): string {
@@ -141,24 +122,9 @@ function stamp(iso: string): string {
   }).format(at)
 }
 
-/**
- * `12 s ago`, `3 min ago`, `2 h ago`, `yesterday`, else the dated form.
- * Seconds are kept under a minute because that is the resolution two versions
- * from one minute need; a row from the future (a clock skewed against the
- * server's) reads `just now` rather than a negative number.
- */
+/** The shared rule, against this panel's own ticking clock. */
 function ago(iso: string): string {
-  const at = parseStamp(iso)
-  if (!Number.isFinite(at)) return iso
-  const seconds = Math.round((now.value - at) / 1000)
-  if (seconds < 5) return 'just now'
-  if (seconds < 60) return `${seconds} s ago`
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes} min ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 22) return `${hours} h ago`
-  if (hours < 36) return 'yesterday'
-  return when(iso)
+  return agoFrom(iso, now.value)
 }
 
 /** `Minimal gated agent · 5 nodes`; a nameless row still shows its count. */

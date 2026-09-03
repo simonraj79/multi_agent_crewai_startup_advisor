@@ -530,11 +530,18 @@ export class FakeBuilderApi implements BuilderApiLike {
     return this.deferred.length
   }
 
-  /** Put a document in the store at a version, as though it had been saved. */
+  /**
+   * Put a document in the store at a version, as though it had been saved.
+   *
+   * `updatedAt` is a parameter because the saved-graphs library orders by it
+   * (D-15-15) and every row otherwise carries the same fixed stamp, which
+   * would make an ordering assertion true by accident.
+   */
   seed(
     doc: BuilderDocument,
     version = 1,
     status: BuilderDocumentModel['status'] = 'draft',
+    updatedAt?: string,
   ): DocumentId {
     const stamp = new Date(1_750_000_000_000).toISOString()
     this.store.set(doc.id, {
@@ -542,7 +549,7 @@ export class FakeBuilderApi implements BuilderApiLike {
       status,
       version,
       createdAt: stamp,
-      updatedAt: stamp,
+      updatedAt: updatedAt ?? stamp,
       published: status === 'published',
     })
     return doc.id

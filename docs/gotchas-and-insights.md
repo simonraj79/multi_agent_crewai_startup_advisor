@@ -543,6 +543,47 @@ exists, so create it first and hardcode second.
 
 ---
 
+### 36. `crewai`'s lock file is an NTFS alternate data stream, and nothing ever removes one
+
+**Symptom.** Seventeen persistence tests fail at once with
+`OSError: [Errno 22] Invalid argument:
+'C:\Users\<you>\AppData\Local\Temp\crewai:9e4096…ab.lock'`, on a tree that
+was green an hour ago and on code that does not touch that path. Every failing
+test is one that runs a real CrewAI `Flow` with persistence; nothing else
+notices, and the same modules pass on a colleague's machine.
+
+**Cause.** `crewai_core/lock_store.py:97-108` names its cross-process lock
+`crewai:<md5 of the lock name>` — a Redis channel name — and, when Redis is
+absent, reuses that string verbatim as a file name under
+`tempfile.gettempdir()` and hands it to `portalocker`. On NTFS a colon in a
+file name is stream syntax: `Temp\crewai:9e40….lock` is not a file called
+`crewai:9e40….lock`, it is a named stream `9e40….lock` on a zero-byte *file*
+called `crewai`. `portalocker` creates it without complaint. Every distinct
+lock name adds another stream to that one file, and **nothing removes a
+stream** — not the lock's release, not a test's teardown, not any cleanup this
+repository runs, because none of them knows the file exists. NTFS caps how
+many attributes one file can carry; measured 2026-09-03, the file (created
+2026-08-29) held **2,520** `.lock` streams plus its own `:$DATA`, and the next
+new lock name failed with `EINVAL`. The tests that fail are simply the ones
+whose lock name has not been seen before, which is why the set looks arbitrary
+and why a *new* test module fails first.
+
+**Do this.** Delete the file — it is a file, so `-Recurse` is beside the
+point:
+
+```powershell
+Remove-Item -LiteralPath "$env:TEMP\crewai" -Force
+```
+
+The streams go with it and the next run recreates it with one. To see it
+coming: `@(Get-Item "$env:TEMP\crewai" -Stream *).Count`. Do not "fix" it by
+pointing the tests at another temp directory — `gettempdir()` is CrewAI's
+choice, not this repository's, and the count climbs again wherever it points.
+The first time this presented, the path was not read literally and it cost
+most of a session; the second time (six `test_builder_runner` errors during the
+round-2 build) it cost one `Get-Item -Stream` and one `Remove-Item`, which is
+the whole argument for this entry.
+
 ## Checks that were satisfied by the wrong thing
 
 Five entries from the flow-builder work, kept together because they share a

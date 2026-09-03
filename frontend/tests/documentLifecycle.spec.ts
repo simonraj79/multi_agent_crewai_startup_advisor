@@ -486,6 +486,10 @@ describe('the overflow menu', () => {
     expect(menu.get('[data-testid="menu-delete"]').classes()).toContain('is-danger')
     expect(menu.findAll('[data-testid="menu-separator"]')).toHaveLength(1)
     expect(menu.findAll('[role="menuitem"]').map((item) => item.attributes('data-testid'))).toEqual([
+      // Save leads (D-15-13): the bar's icon covers the common case, and an
+      // author who opened the menu looking for it should not find every
+      // action except that one.
+      'menu-save',
       'menu-versions',
       'menu-export',
       'menu-import',

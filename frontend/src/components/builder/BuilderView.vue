@@ -1494,6 +1494,7 @@ watch(
             :read-only="persistence.viewingVersion.value"
             :head-version="persistence.headVersion.value"
             @rename="store.setName"
+            @save="() => void persistence.save()"
             @undo="undo"
             @redo="store.redo"
             @publish="publishOpen = true"

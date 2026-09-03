@@ -253,6 +253,46 @@ describe('the document bar says what happened to the work', () => {
     expect(undo.attributes('title')).toBe('Undo: delete node')
   })
 
+  describe('Save is a control, not only a chord (D-15-13)', () => {
+    it('is pressable while the document is dirty, and says the chord too', async () => {
+      const wrapper = bar({ saveState: 'dirty' })
+      const save = wrapper.get('[data-testid="document-save"]')
+
+      expect(save.attributes('disabled')).toBeUndefined()
+      expect(save.attributes('title')).toBe('Save (Ctrl+S)')
+      await save.trigger('click')
+      expect(wrapper.emitted('save')).toHaveLength(1)
+    })
+
+    it('is disabled rather than hidden with nothing to save, and says why', () => {
+      // Hidden would make the control appear and vanish under the pointer,
+      // and the tooltip is also the answer to "did that save?".
+      const save = bar({ saveState: 'clean' }).get('[data-testid="document-save"]')
+      expect(save.attributes('disabled')).toBeDefined()
+      expect(save.attributes('title')).toBe('No unsaved changes (Ctrl+S)')
+    })
+
+    it('is disabled on a stored version, like the name button', () => {
+      const save = bar({ saveState: 'dirty', readOnly: true }).get('[data-testid="document-save"]')
+      expect(save.attributes('disabled')).toBeDefined()
+      expect(save.attributes('title')).toContain('Read-only')
+    })
+
+    it('says a conflict rather than pretending it can be saved away', () => {
+      const save = bar({ saveState: 'conflict' }).get('[data-testid="document-save"]')
+      expect(save.attributes('title')).toContain('Somebody else saved first')
+    })
+
+    it('is in the kebab as well, which is where a never-saved document is reached', async () => {
+      const wrapper = bar({ saveState: 'dirty', documentId: null })
+      await wrapper.get('[data-testid="document-menu-button"]').trigger('click')
+      const item = wrapper.get('[data-testid="menu-save"]')
+      expect(item.attributes('disabled')).toBeUndefined()
+      await item.trigger('click')
+      expect(wrapper.emitted('save')).toHaveLength(1)
+    })
+  })
+
   it('says so rather than going quiet when there is nothing to undo', () => {
     const undo = bar({ canUndo: false }).find('button[aria-label="Undo"]')
     expect(undo.attributes('title')).toBe('Nothing to undo')

@@ -9,6 +9,7 @@ import {
   Lock,
   Redo2,
   Rocket,
+  Save,
   Trash2,
   Undo2,
   Unplug,
@@ -97,6 +98,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   rename: [name: string]
+  /** Store the document now - the bar's own Save, and the kebab's (D-15-13). */
+  save: []
   undo: []
   redo: []
   publish: []
@@ -234,6 +237,22 @@ const liveNote = computed(() => {
   return `v${props.publishedVersion} is live · you are on v${props.version}`
 })
 
+/**
+ * What Save says about itself (D-15-13).
+ *
+ * Every state has a sentence, because a disabled control with no tooltip is
+ * the thing an author blames when they cannot tell "nothing to do" from
+ * "broken". The chord stays named in all of them - the control is an
+ * addition, not a replacement.
+ */
+const saveTitle = computed(() => {
+  if (props.readOnly) return 'Read-only — go back to head to save'
+  if (props.saveState === 'saving') return 'Saving…'
+  if (props.saveState === 'clean') return 'No unsaved changes (Ctrl+S)'
+  if (props.saveState === 'conflict') return 'Somebody else saved first — resolve the conflict below'
+  return 'Save (Ctrl+S)'
+})
+
 const liveIsCurrent = computed(
   () => props.publishedHere && props.publishedVersion === props.version,
 )
@@ -312,6 +331,30 @@ function cancelRename(): void {
       -->
       <span class="undo-announcement" role="status" aria-live="polite">{{ announcement }}</span>
 
+      <!--
+        SAVE, AS A CONTROL (D-15-13). The bar said "unsaved changes · Ctrl+S"
+        and offered nothing to press; the kebab had no Save either, so the
+        only way to store a graph was a chord an author had to be told about.
+        The reference saves in one click.
+
+        Disabled, not hidden, when there is nothing to save: hiding it would
+        make the control appear and disappear under the pointer, and a
+        disabled Save with "no unsaved changes" on it is also the answer to
+        "did that save?". Read-only disables it for the same reason the name
+        button is disabled - a stored version has nothing to write to.
+      -->
+      <button
+        class="icon-button document-save"
+        type="button"
+        :disabled="readOnly || saveState === 'clean' || saveState === 'saving'"
+        :title="saveTitle"
+        aria-label="Save"
+        data-testid="document-save"
+        @click="emit('save')"
+      >
+        <Save :size="15" aria-hidden="true" />
+      </button>
+
       <button
         class="icon-button"
         type="button"
@@ -371,6 +414,24 @@ function cancelRename(): void {
           aria-label="Document actions"
           data-testid="document-menu"
         >
+          <!--
+            Save is here too (D-15-13), and this is the copy that reaches a
+            NEVER-SAVED document: the bar's icon covers the common case, and
+            an author who went looking in the menu should not find every
+            action except the one they came for.
+          -->
+          <button
+            class="document-menu-item"
+            type="button"
+            role="menuitem"
+            :disabled="readOnly || saveState === 'clean' || saveState === 'saving'"
+            :title="saveTitle"
+            data-testid="menu-save"
+            @click="choose(() => emit('save'))"
+          >
+            <Save :size="14" aria-hidden="true" />
+            Save
+          </button>
           <button
             class="document-menu-item"
             type="button"

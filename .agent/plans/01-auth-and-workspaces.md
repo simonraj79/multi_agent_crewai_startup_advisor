@@ -382,3 +382,66 @@ by dimension 14 under its reference (D-01-1, D-01-2), and one new row
 opened (D-01-5, a sign-out that leaves the previous user's draft and run
 pointer in browser storage): **3 open**, the round-3 build list. Round 3's
 critic is the CrewAI power user.
+
+**Round 3 was BUILT on 2026-09-03** on `gauntlet/plans`, `f2a3bb8` →
+`e22a32f`, one commit per ledger id. **D-01-5 stays `open`** in
+`benchmarks/DEFECTS.md` with `closed by` empty: closing is the critic's,
+after it re-runs each command itself.
+
+| id | round | fixing commit(s) | red-then-green |
+| --- | ---: | --- | --- |
+| D-01-1 | 2 | `0fe472f` | `test_workflow_ownership.py` 14 → 23; `test_isolation_matrix.py::LaunchRoute` |
+| D-01-2 | 2 | `413c4dd` | `frontend/tests/*` on the refused graph; `e2e/isolation.spec.ts` asserts the canvas *before* the launch |
+| D-01-3 | 2 | `dbe803d` | docs - criterion 6's dated `fields` exclusion, pinned by `test_the_plan_records_the_fields_exclusion_beside_the_pin` |
+| D-01-4 | 2 | `fd7c74f` | `StateKeyProbeTests`, `StateKeyProbeIsChargedTests`, `AnonymousStateKeyProbeTests` |
+| — | 3 | `20d51a4` | none - the OWNER'S RULING, docs only: D-01-1 and D-01-2 set to `closed` on the round-2 verifier's output, `closed by` naming the two commits above, PLANS.md's open count 3 → 1 |
+| D-01-5 | 3 | `e22a32f` | `identityStorage.spec.ts` (9), `authGate.spec.ts` (5), `builderRunHandoff.spec.ts` (3), the D-01-5 blocks in `builderPersistence.spec.ts` (4) and `runRecovery.spec.ts` (4); `e2e/isolation.spec.ts`'s fifth test |
+
+**Round 2's four commits are listed here for the first time**, and that is
+the point of the table rather than an afterthought: this Status never named
+them, so the round-2 row verifier had to recover the mapping from commit
+subjects before it could check anything. A ledger row names its fixing
+commit; a plan's Status should not make somebody grep for it.
+
+The owner's ruling is a row of its own with no id, because it fixes no
+defect. Both rows had been verified absent and were held open only by the
+round-2 judge prompt's clause tying a row's closing to its dimension scoring
+at or above the reference - which `benchmarks/README.md` ties to the gate,
+not to a row. It is a separate commit with "owner's ruling" in its subject
+so that nobody reading the log mistakes it for a builder closing its own
+work.
+
+**Measured at `e22a32f`**, on Windows, in this worktree with
+`PYTHONPATH=D:\MultiAgentSystem-wt\integration\src`:
+
+```text
+Python:        1642 run, 6 skipped, OK - 84.2s   (unchanged from f2a3bb8)
+Frontend unit: 1180 in 65 files                  (1157 in 62 at f2a3bb8)
+vue-tsc -b --force: exit 0
+Playwright:    35 tests in 5 files, 9 @launch    (34 / 8 at f2a3bb8)
+               isolation.spec.ts 5/5; the full suite 35/35 in 1.7m, then
+               34/35 on a later run, against a SYNTHETIC=1
+               SYNTHETIC_BRANCH_DELAY_SECONDS=5 backend on :8099
+```
+
+**That second E2E run is recorded rather than dropped**, because a Status
+claiming an unqualified green over a run that was not one is the process
+failure dimension 16 exists to catch. The failure was
+`builder.spec.ts:440` - "deletes a router branch and its edge together" -
+timing out on `locator.hover` because the problems panel intercepted the
+pointer, which is the pre-existing flake this plan's handoff describes at
+roughly one run in eight. It passed alone immediately afterwards (`1 passed`,
+3.0s) and had passed in the earlier full run at byte-identical content, and
+its subject - a hover over a router's target port - shares no surface with
+this row. **Not verified at the base this session**: reproducing a
+one-in-eight flake at `f2a3bb8` needs several runs, and none was made, so
+"pre-existing" here rests on the handoff's own measurement and on the two
+green runs at this HEAD, not on a base run of mine.
+
+The E2E red was taken by reverting the six product files to `f2a3bb8` and
+deleting `identityStorage.ts` with the specs left in place: the suite fails
+at the FOURTH test, because the handoff the spec writes under Bob's own key
+is invisible to a `readRunHandoff()` that reads the unscoped one, and the
+fifth is then skipped by the file's serial mode. So the per-behaviour red is
+the 11 unit assertions listed above; the E2E red proves the spec is coupled
+to the fix rather than passing either way.

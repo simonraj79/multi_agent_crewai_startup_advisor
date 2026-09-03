@@ -37,6 +37,7 @@ from brief_crew.events.redaction import (
     REDACTED,
     SECRET_KEYS,
     SECRET_KEY_SUFFIXES,
+    STRUCTURAL_KEY_NAMES,
     is_secret_key,
     redact_mapping,
 )
@@ -194,6 +195,24 @@ class ListTests(unittest.TestCase):
         for word in ("token", "secret", "password", "dsn"):
             self.assertTrue(is_secret_key(word), word)
 
+    def test_a_name_that_names_a_key_is_not_one(self) -> None:
+        """`body_key` is an output node's config field: the NAME of a slot, never a credential.
+
+        Builder document rows go through the persistence walk, so redacting
+        it turned every stored document with an output node into one the
+        service "no longer parses" - 107 assertions in eleven modules, found
+        by the full suite and not by this file. The store round trip below is
+        the pin this file lacked.
+        """
+
+        self.assertEqual(STRUCTURAL_KEY_NAMES, frozenset({"bodykey"}))
+        for spelling in ("body_key", "bodyKey", "BODY_KEY"):
+            with self.subTest(spelling=spelling):
+                self.assertFalse(is_secret_key(spelling))
+        # The list is exact-match on the normalised name: a real key that
+        # merely contains the word is still a key.
+        self.assertTrue(is_secret_key("body_api_key"))
+
     def test_a_builder_state_slot_is_never_redacted_for_its_node_id(self) -> None:
         """`out__<node>` carries a node's output; the node id is the author's word."""
 
@@ -258,6 +277,30 @@ class PersistenceWalkTests(unittest.TestCase):
             self.assertEqual(loaded[key], REDACTED, key)
         self.assertEqual(loaded["kept"], 1)
         assert_nothing_leaked(self, json.dumps(loaded))
+
+    def test_a_builder_document_with_an_output_node_survives_the_store(self) -> None:
+        """The round trip the suffix rule broke: `body_key` in, `body_key` out."""
+
+        from brief_crew.builder.store import BuilderDocumentStore
+        from tests.builder.test_compiler import straight_line
+
+        store = BuilderDocumentStore(self.store)
+        document = straight_line()
+        self.assertTrue(
+            any(getattr(node.config, "body_key", None) for node in document.nodes),
+            "the fixture graph carries no output node; the test would prove nothing",
+        )
+        created = store.create(document, user_id="user_redaction")
+        loaded = store.load(created.id, user_id="user_redaction")
+        body_keys = sorted(
+            node.config.body_key for node in loaded.document.nodes if hasattr(node.config, "body_key")
+        )
+        self.assertTrue(body_keys)
+        self.assertNotIn(REDACTED, body_keys)
+        self.assertEqual(
+            body_keys,
+            sorted(node.config.body_key for node in document.nodes if hasattr(node.config, "body_key")),
+        )
 
     def test_a_state_carrying_env_key_names_is_stored_redacted_and_a_slot_is_not(self) -> None:
         """The row walk asks the same predicate as the ring walk, suffixes included."""

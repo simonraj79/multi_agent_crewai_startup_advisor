@@ -31,6 +31,16 @@ with two carve-outs, each pinned by a test:
   carries credential ids only (C5). Redacting `out__token` would have
   replaced that node's output with `***` in the persisted state and broken
   the resume that reads it.
+* A name that ends in `key` because it NAMES a key rather than holding one is
+  listed in `STRUCTURAL_KEY_NAMES` and is not secret. `body_key` is the one so
+  far: an output node's config field, the name of the slot the node's body is
+  written under. Builder document rows pass through `persistence._sanitize_json`
+  on the way to the table, so the first cut of the suffix rule redacted it on
+  the way in and every stored document with an output node came back as
+  "stored in a shape this service no longer parses: unknown result body key
+  '***'" - **107 assertions across eleven modules, and the E2E's first
+  publish**, on a change whose own tests were green. `key` is the one suffix
+  with two meanings in code; the other four have not needed this list.
 
 Over-redaction is the accepted cost: a `donkey` or `hockey` key in somebody's
 frame reads `***`, which hides a value, where the previous rule leaked one.
@@ -62,6 +72,7 @@ __all__ = [
     "REDACTED",
     "SECRET_KEYS",
     "SECRET_KEY_SUFFIXES",
+    "STRUCTURAL_KEY_NAMES",
     "is_secret_key",
     "normalize_secret_key",
 ]
@@ -101,6 +112,11 @@ SECRET_KEY_SUFFIXES: tuple[str, ...] = ("key", "token", "secret", "password", "d
 #: writes `out__<node id>`); the suffix rule does not apply to them.
 BUILDER_STATE_SLOT_PREFIX = "out__"
 
+#: Normalised names that end in `key` because they NAME a key and never hold
+#: one. Checked before the suffix rule. The module docstring carries the
+#: measured cost of leaving `body_key` off this list.
+STRUCTURAL_KEY_NAMES: frozenset[str] = frozenset({"bodykey"})
+
 
 def normalize_secret_key(key: Any) -> str:
     return "".join(character for character in str(key).lower() if character.isalnum())
@@ -111,7 +127,7 @@ def is_secret_key(key: Any) -> bool:
     normalized = normalize_secret_key(raw)
     if normalized in SECRET_KEYS:
         return True
-    if raw.startswith(BUILDER_STATE_SLOT_PREFIX):
+    if normalized in STRUCTURAL_KEY_NAMES or raw.startswith(BUILDER_STATE_SLOT_PREFIX):
         return False
     return any(
         normalized.endswith(suffix) and len(normalized) > len(suffix)

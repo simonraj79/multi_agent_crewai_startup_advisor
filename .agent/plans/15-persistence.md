@@ -472,15 +472,21 @@ after it re-runs each command itself. One commit per id, in build order:
 D-15-7 `95dfd70` (the store's write gate; D9 amended, criterion 10 note),
 D-15-8 `a324aa0`, D-15-9 `c44deaf`, D-15-10 `9e85e9f` (decision 24 built:
 unpublish route, delete guard on the registration), D-15-1 `e27a1f4`,
-D-15-2 `569198f` then `fa6829f` (the re-fit follows the dock row the
-author opens, not any shrink; the first cut re-fitted under the problems
-panel and moved the canvas under a drag, 2 of 6 E2E runs), D-15-3 `57246b8`
-(a second additive column, C10), D-15-4 `6b25a5b` then `7cf3326` (the
-palette name takes the row's width; the browser measurement said two lines
-beside the meta were not enough), D-15-5 `9555fb6`, D-15-6 `4a1f328`,
-D-15-11 `c6d4038`, D-15-12 `3e988b4`. Where an id has two commits the second
-is the one a "closed by" should name; the first is kept because its message
-records the measurement that corrected it. The visual rows each carry a jsdom assertion where one
+D-15-2 `569198f`, `fa6829f`, then `b249d89` (the re-fit follows the dock
+row the author opens, not any shrink - the first cut re-fitted under the
+problems panel and moved the canvas under a drag, 2 of 6 E2E runs - and the
+dock is observed when its template ref arrives, which the round-2 capture
+showed the second cut did not), D-15-3 `57246b8` then `d9672a0` (a second
+additive column, C10; then the relative time reads a real clock and a naive
+SQLite stamp as UTC, both found by the capture), D-15-4 `6b25a5b` then
+`7cf3326` (the palette name takes the row's width; the browser measurement
+said two lines beside the meta were not enough), D-15-5 `9555fb6`, D-15-6
+`4a1f328`, D-15-11 `c6d4038`, D-15-12 `3e988b4`. Where an id has more than
+one commit the LAST is the one a "closed by" should name; the earlier ones
+are kept because their messages record the measurement that corrected them.
+Captures for the six visual rows are under `docs/comparison/ours/round2/`
+(ignored by the `*.png` rule), taken by the untracked
+`frontend/e2e/_round2_capture.spec.ts` at 1440x900 dark. The visual rows each carry a jsdom assertion where one
 holds; the wrap and the reachable last row of D-15-4 are measured in
 `e2e/builder-layout.spec.ts`, and every visual row is for the critic to
 re-capture at 1440x900 dark.

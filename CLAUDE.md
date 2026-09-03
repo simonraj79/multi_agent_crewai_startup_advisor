@@ -1742,10 +1742,11 @@ work was done and not what it does:
   `builderDraftCanonical` 3; E2E `isolation.spec.ts` 4 and one new
   `builder.spec.ts` step. These are the builders' own counts; the suite
   totals in the Verified Baseline are the measurement.
-- **Still open from Stage 1**: item 43 (the console's mock-mode fallback on a
-  foreign 404); the `postgres` CI job has never run; decisions 23-26 are
-  built on their recommendation and unanswered; and no judge round has
-  scored either plan.
+- **Still open from Stage 1**: the `postgres` CI job has never run; decisions
+  23-26 are built on their recommendation and unanswered. Item 43 (the
+  console's mock-mode fallback on a foreign 404) was CLOSED on 2026-09-03 in
+  plan 01's round-2 build (ledger row D-01-2); judge round 1 scored both
+  plans on 2026-09-03 and neither met the gate (`benchmarks/rounds/`).
 
 ## No-Cost Integration Coverage
 
@@ -2610,18 +2611,32 @@ true.
 
 #### New with Stage 1 of the gauntlet
 
-43. **[Medium] A foreign workflow's 404 reads as demonstration mode.** Found
-    2026-09-03 by plan 01's isolation E2E. When Bob deep-links to Alice's
-    published workflow, `GET /api/workflows/{id}/graph` correctly answers
-    **404** - and the console's transport probe in `studioApi.ts` treats every
-    non-401 failure as "no backend", drops into **mock mode**, and draws the
-    demonstration graph under a banner naming Alice's graph. The launch then
-    fails honestly only because `startRun` re-probes live; the E2E asserts that
-    sentence and dismisses the load-time error. It is the 401-to-mock bug of
-    closed item 31 one status code over: a 404 or 403 can only come from a real
-    server, so the answer is `mode = 'live'` plus the server's sentence, never
-    a fabricated run. Not fixed at integration because `useValidatorRun.ts` is
-    open in another agent's uncommitted main-tree work.
+43. ~~**[Medium] A foreign workflow's 404 reads as demonstration mode.**~~
+    **FIXED 2026-09-03, plan 01 round 2, ledger row D-01-2.** Found
+    2026-09-03 by plan 01's isolation E2E and then, independently, by the
+    round-1 critic from a handoff record and a browser: Bob's console pointed
+    at Alice's workflow drew the kicker PUBLISHED GRAPH / her graph's name over
+    a 14-node fabricated topology (`mock-of-…`) with an enabled green Launch,
+    and only a 12px "Mock Mode" chip to say otherwise.
+
+    Two layers were wrong, and the E2E had been asserting past both. The
+    transport probe in `studioApi.ts` filed every non-401 refusal under "no
+    backend"; it now reads any 4xx as a live server (a 401 already was) and
+    keeps the sentence in `probeRefusal`, with 5xx still "no backend" because
+    Render's edge answers 502 for a service that is not there. And
+    `useValidatorRun.initialize` answered a refused graph read by flipping to
+    mock and drawing `MOCK_GRAPH`; it now stays live, draws an EMPTY graph
+    (`version: 'unavailable'`, so the canvas meta cannot read `mock-`), records
+    the server's sentence in `graphProblem`, and `canLaunch` is false while it
+    is set. `StatusPanel.vue` renders that sentence in a non-dismissible
+    `.graph-banner` because the disabled Launch needs a reason the operator
+    cannot wave away. Pinned by `frontend/tests/studioApi.spec.ts` (the 403 /
+    404 / 502 probe cases), `frontend/tests/foreignWorkflow.spec.ts` (6), and
+    the isolation E2E's launch test, which now asserts what the canvas shows
+    BEFORE anything is pressed: not mock, zero nodes, the sentence, Launch
+    disabled. It is the 401-to-mock bug of closed item 31 one status code
+    over, and the original diagnosis stands: a 404 or 403 can only come from a
+    real server.
 
 Item 34 below is **resolved** (see item 35 in the closed ledger) and is kept
 only because its diagnosis is the valuable part. It appears after 36-42 because

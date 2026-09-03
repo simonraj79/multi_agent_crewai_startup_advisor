@@ -1,5 +1,6 @@
 import { buildMockSegments, type MockScriptStep } from '../data/mockFrames'
 import { MOCK_GRAPH } from '../data/mockGraph'
+import { readErrorDetail } from '../data/serverLimits'
 import { getAccessToken } from './authClient'
 import { API_BASE_URL, authedFetch, fetchJson } from './httpCore'
 import { saveBlob } from '../utils/saveBlob'
@@ -137,6 +138,19 @@ export class StudioApi {
    * operator tried the button that cannot work.
    */
   probeFailure: string | null = null
+  /**
+   * The server's own sentence when the probe reached a REAL server that
+   * refused the request, or null. Distinct from `probeFailure`, which means no
+   * live backend answered at all.
+   *
+   * D-01-2: a 403 or 404 from the probe is proof of a backend, exactly as the
+   * 401 above is, and until 2026-09-03 both were filed under "no backend" and
+   * dropped the console into the scripted mock - a 14-node fabricated topology
+   * drawn under the name of a workflow the server had just refused, with an
+   * enabled Launch. The sentence is kept so the console can show what the
+   * server said instead of what a demonstration would have looked like.
+   */
+  probeRefusal: string | null = null
   /*
    * Kept as a field rather than reaching for `API_BASE_URL` at each use, so
    * `initialize`'s misconfiguration sentence and `subscribe`'s socket URL go on
@@ -152,6 +166,7 @@ export class StudioApi {
     if (!force && this.mode !== 'probing') return this.mode
 
     this.probeFailure = null
+    this.probeRefusal = null
     /*
      * The token is minted BEFORE the clock starts. `authedFetch` opens with
      * `await getAccessToken(...)`, which is itself a network request to the
@@ -224,6 +239,20 @@ export class StudioApi {
           `The validator API is misconfigured: ${this.baseUrl || window.location.origin}` +
           `/api/workflows answered ${response.status} ${contentType || 'with no content type'}` +
           ' instead of JSON. This usually means VITE_API_URL was not set when the site was built.'
+      } else if (response.status >= 400 && response.status < 500) {
+        /*
+         * Any other 4xx is the 401 case again (D-01-2). A 403 or a 404 can
+         * only come from a real server that parsed the request and refused
+         * it, so there is nothing to fall back TO - and falling back was the
+         * defect: the console drew the demonstration graph under the refused
+         * workflow's own name with a live-looking Launch. The mode is live,
+         * and the server's sentence is kept for the console to show. A 5xx
+         * stays below: Render's edge answers 502 for a service that is not
+         * there, and that IS "no backend".
+         */
+        this.mode = 'live'
+        const body = await response.text().catch(() => '')
+        this.probeRefusal = readErrorDetail(body, response.status)
       } else {
         this.mode = 'mock'
         this.probeFailure =
@@ -723,6 +752,7 @@ export type StudioApiLike = Pick<
   StudioApi,
   | 'mode'
   | 'probeFailure'
+  | 'probeRefusal'
   | 'initialize'
   | 'getGraph'
   | 'startRun'

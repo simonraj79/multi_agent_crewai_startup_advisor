@@ -99,6 +99,7 @@ const {
   downloadMessage,
   lastError,
   transportProblem,
+  graphProblem,
   report,
   verdictSummary,
   lastSequence,
@@ -434,6 +435,7 @@ function backToValidator(): void {
             v-model:gates-mode="gatesMode"
             :error="lastError"
             :transport-problem="transportProblem"
+            :graph-problem="graphProblem"
             :download-status="downloadStatus"
             :download-message="downloadMessage"
             :workflow-name="handoff ? handoff.name : undefined"

@@ -122,7 +122,6 @@ const templateCard = (page: Page): Locator =>
 const credentialRow = (page: Page): Locator => inspector(page).locator('[data-field="credential_id"]')
 const launchButton = (page: Page): Locator =>
   page.locator('.status-panel .control-actions button.button-primary')
-const statusBadge = (page: Page): Locator => page.locator('.status-panel .status-badge')
 const errorBanner = (page: Page): Locator => page.locator('.status-panel .error-banner')
 
 async function firstOfKind(page: Page, kind: string): Promise<{ id: string; card: Locator }> {
@@ -359,7 +358,7 @@ test.describe('Per-user isolation', () => {
   })
 
   test(
-    "Bob's launch of Alice's workflow is refused with the console's own sentence, and no run starts",
+    "Bob's console pointed at Alice's workflow stays live, shows the server's sentence, and cannot launch",
     { tag: '@launch' },
     async () => {
       const { page, api } = bob
@@ -389,39 +388,41 @@ test.describe('Per-user isolation', () => {
       await expect(page.locator('.live-status')).not.toHaveText(/connecting/i)
 
       /*
-       * The graph read on load is refused too (D1 collapses the graph route),
-       * and the console reports that refusal in the same banner the launch
-       * will use. Clear it first, so the sentence asserted below is the
-       * LAUNCH's answer and not a leftover from the page load.
+       * D-01-2. The graph read on load is refused - D1 collapses the graph
+       * route to the same 404 as the launch - and a 404 can only come from a
+       * real server. Round 1 found the console answering it by dropping into
+       * MOCK mode: a 14-node fabricated topology drawn under Alice's graph
+       * name, a 12px "Mock Mode" chip, and an enabled green Launch. The first
+       * version of this test asserted only the launch's 404 sentence and never
+       * what the canvas showed before it. Now: live, empty, the server's own
+       * words in a banner that cannot be dismissed, and no Launch.
        */
-      if ((await errorBanner(page).count()) > 0) {
-        await errorBanner(page).getByRole('button', { name: 'Dismiss error' }).click()
-      }
-      await expect(errorBanner(page)).toHaveCount(0)
+      await expect(page.locator('.live-status')).not.toHaveText(/mock/i)
+      await expect(page.locator('.canvas-meta code')).not.toHaveText(/^mock-/)
+      await expect(page.locator('.vue-flow__node')).toHaveCount(0)
+      await expect(page.locator('.status-panel .transport-banner')).toHaveCount(0)
+      const refusal = page.locator('.status-panel .graph-banner')
+      await expect(refusal).toContainText('workflow not found')
 
-      // Human gates, declared, so a 403 for unattended mode cannot pre-empt
-      // the 404 this test is about (see `launchRun` in studio.spec.ts).
+      // Human gates and a valid idea are the only other things Launch waits
+      // for. It stays disabled because the graph was refused, not because the
+      // form is incomplete - and it stays disabled after the dismissible
+      // error banner, if any, is gone.
       const review = page.getByRole('button', { name: 'Review', exact: true })
       if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
       await expect(review).toHaveAttribute('aria-pressed', 'true')
       await page.locator('textarea#idea').fill('A scheduling assistant for small veterinary clinics')
-      await expect(launchButton(page)).toBeEnabled()
-
-      const refused = page.waitForResponse(
-        (response) => response.url().includes('/runs') && response.request().method() === 'POST',
-      )
-      await launchButton(page).click()
-      expect((await refused).status()).toBe(404)
-
-      // The console's own sentence: `readErrorDetail` unwraps the server's
-      // `{"detail": "workflow not found"}` and the banner renders it verbatim.
-      await expect(errorBanner(page)).toContainText('workflow not found')
-      await expect(statusBadge(page)).toHaveText(/error/i)
+      if ((await errorBanner(page).count()) > 0) {
+        await errorBanner(page).getByRole('button', { name: 'Dismiss error' }).click()
+      }
+      await expect(launchButton(page)).toBeDisabled()
+      await expect(refusal).toContainText('workflow not found')
       await expect(page.locator('.status-panel .run-id')).toHaveCount(0)
       await expect(page.locator('.gate-card')).toHaveCount(0)
       expect(await page.evaluate(() => window.localStorage.getItem('validator-active-run'))).toBeNull()
 
-      // As Bob, the API says the same, and his history stays empty.
+      // As Bob, the API refuses the launch itself with the same sentence, and
+      // his history stays empty.
       const bobLaunch = await api.post('/api/sessions/e2e-isolation-bob/runs', {
         data: launchBody(aliceDocumentId),
       })

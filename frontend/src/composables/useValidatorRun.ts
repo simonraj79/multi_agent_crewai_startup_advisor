@@ -181,6 +181,15 @@ function clearStoredRun(): void {
   removeStorage(ACTIVE_RUN_STORAGE_KEY)
 }
 
+/**
+ * What the canvas draws for a graph the server refused: nothing, under the id
+ * that was asked for. `version` is a word rather than a hash so the canvas
+ * meta cannot be mistaken for a served graph, and cannot read `mock-` either.
+ */
+function emptyGraph(id: string): GraphDescriptor {
+  return { id, name: '', version: 'unavailable', start_nodes: [], nodes: [], edges: [] }
+}
+
 function newSessionId(): string {
   return (
     globalThis.crypto?.randomUUID?.()
@@ -262,6 +271,22 @@ export function useValidatorRun(
    * next probe.
    */
   const transportProblem = ref('')
+  /**
+   * The server's own sentence when it REFUSED the graph this console is
+   * pointed at, or '' when the graph loaded.
+   *
+   * D-01-2. A 404 on `GET /api/workflows/{id}/graph` - which is what a
+   * stranger gets for somebody else's published graph, by design - used to
+   * be treated exactly like "no backend": the transport flipped to mock, the
+   * canvas drew the 14-node demonstration graph under the refused workflow's
+   * own name, and Launch went green. But a 404 can only come from a real
+   * server. So the transport stays live, the canvas stays EMPTY, this carries
+   * the sentence, and `canLaunch` is false while it is set. Not routed through
+   * `lastError` for the same reason `transportProblem` is not: `launch()`
+   * clears that, and a dismissible banner is how an operator ends up pressing
+   * a button the server has already said no to.
+   */
+  const graphProblem = ref('')
   /**
    * The finished validation report. The backend has always delivered this -
    * `GET /api/runs/{id}` returns it as `result` and the terminal frame carries
@@ -378,7 +403,14 @@ export function useValidatorRun(
 
   const quarantinedFrames = computed(() => nodeFrames[QUARANTINE_NODE_ID] ?? 0)
   const isActive = computed(() => ['queued', 'running', 'waiting', 'stopping'].includes(status.value))
-  const canLaunch = computed(() => idea.value.trim().length >= 12 && !isActive.value && !launching.value)
+  const canLaunch = computed(
+    () =>
+      idea.value.trim().length >= 12
+      && !isActive.value
+      && !launching.value
+      // The server refused this graph: there is nothing to launch (D-01-2).
+      && !graphProblem.value,
+  )
   const primaryLabel = computed(() =>
     launching.value
       ? 'Launching…'
@@ -418,14 +450,25 @@ export function useValidatorRun(
       workflowId.value = storedRun.workflowId
       inputField.value = storedRun.inputField ?? DEFAULT_INPUT_FIELD
     }
+    graphProblem.value = ''
     try {
       descriptor.value = await api.getGraph(workflowId.value)
       resetNodes()
     } catch (error) {
-      transportMode.value = 'mock'
-      descriptor.value = structuredClone(MOCK_GRAPH)
+      /*
+       * Only reachable with a LIVE transport: in mock mode `getGraph` hands
+       * back the demonstration graph without asking anybody. So this is a
+       * real server refusing this graph - a stranger's 404 on somebody else's
+       * published workflow, most often - and the answer is an empty canvas
+       * carrying the server's sentence, never the mock graph and never an
+       * enabled Launch (D-01-2). `probeRefusal` is the fallback sentence for
+       * the case where the probe itself was refused and the graph read then
+       * failed without one of its own.
+       */
+      const sentence = error instanceof Error ? error.message : ''
+      descriptor.value = emptyGraph(workflowId.value)
       resetNodes()
-      lastError.value = error instanceof Error ? error.message : 'Graph could not be loaded.'
+      graphProblem.value = sentence || api.probeRefusal || 'The graph could not be loaded.'
     }
 
     if (!storedRun) return
@@ -1127,6 +1170,7 @@ export function useValidatorRun(
     downloadMessage,
     lastError,
     transportProblem,
+    graphProblem,
     report,
     verdictSummary,
     lastSequence,

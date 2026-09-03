@@ -236,10 +236,16 @@ test.describe('Flow builder layout', () => {
      * after an import. A persistent mode control that jumps whenever
      * something goes well moves under the pointer about to click it.
      *
-     * Asserted as an EQUALITY, not a tolerance. The toggle's x is now a
-     * property of the toggle alone, and any drift at all means the notice is
-     * back in the flow.
+     * A few pixels of tolerance, and the number is chosen so it cannot hide
+     * the defect. Measured with the fix reverted, this same test reads
+     * `Expected: 1154 / Received: 755` - a 399px jump, inside the range the
+     * critic reported. What DOES move by a pixel or two is the shell around
+     * the header: the import opens the document, the editor replaces the
+     * gallery, and a scrollbar gutter comes or goes. An exact equality passed
+     * on one run and failed the next at 1156 against 1154, which is a test
+     * measuring the wrong thing rather than a control that moved.
      */
+    const DRIFT_PX = 4
     const watch = watchConsole(page)
     await page.goto('/#/build')
     await expect(page.locator('.workspace-switch')).toBeVisible()
@@ -258,7 +264,11 @@ test.describe('Flow builder layout', () => {
     expect(noticeBox!.width, 'the probe needs a notice wide enough to have displaced it').
       toBeGreaterThan(200)
 
-    expect(await toggleX(page), 'the Build/Run toggle moved when a notice appeared').toBe(before)
+    const after = await toggleX(page)
+    expect(
+      Math.abs(after - before),
+      `the Build/Run toggle moved from x${before} to x${after} when a notice appeared`,
+    ).toBeLessThanOrEqual(DRIFT_PX)
 
     expect(watch.unexpected).toEqual([])
   })
@@ -651,10 +661,18 @@ test.describe('the saved-graphs library (D-15-4)', () => {
     expect(countBox.y + countBox.height, 'the count is above the fold').toBeLessThanOrEqual(900)
     // And the list really is longer than what is on screen, or the affordance
     // would be answering a question nobody has.
-    const listOverflow = await palette
+    const list = await palette
       .locator('.builder-library')
-      .evaluate((el) => el.scrollHeight - el.clientHeight)
-    expect(listOverflow, 'the premise: the list has more than it shows').toBeGreaterThan(0)
+      .evaluate((el) => ({ overflow: el.scrollHeight - el.clientHeight, height: el.clientHeight }))
+    expect(list.overflow, 'the premise: the list has more than it shows').toBeGreaterThan(0)
+    /*
+     * And it is a LIST, not a peephole. Measured at 74px before the
+     * `min-height` - one row visible above seven, under a badge saying
+     * eight - which a reviewer handed the capture cold read as the badge
+     * contradicting the render. Three rows is the floor; below it the
+     * palette scrolls instead, which is the right thing to give up.
+     */
+    expect(list.height, 'the library shows fewer than three rows').toBeGreaterThanOrEqual(150)
 
     // The palette ends inside the viewport, and the last seeded row can be
     // reached - the sixth, whose name says why it exists.

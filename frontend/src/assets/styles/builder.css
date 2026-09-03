@@ -766,7 +766,16 @@
   flex: 1 1 auto;
   flex-direction: column;
   gap: 3px;
-  min-height: 0;
+  /*
+   * Room for three rows, not one (D-15-4, second pass).
+   * Measured: with `min-height: 0` the list resolved to a 74px window onto
+   * 441px of rows - one row visible, seven below it, and a count badge saying
+   * eight. Honest and useless: a reviewer handed the capture cold read the
+   * badge as contradicting the render. `flex: 1 1 auto` still lets it take
+   * more when the rail has more; this is the floor, and below it the PALETTE
+   * scrolls, which is the right thing to give up.
+   */
+  min-height: 168px;
   margin: 0;
   padding: 0;
   overflow-y: auto;

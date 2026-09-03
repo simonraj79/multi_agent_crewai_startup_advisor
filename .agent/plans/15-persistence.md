@@ -443,16 +443,16 @@ measured on the integrated tree.
 | # | State | Where |
 | ---: | --- | --- |
 | 1 | done | `tests/builder/test_export.py` (38) — plus `tests/service/test_builder_export_route.py` (13) for the route and the two `Content-Disposition` forms |
-| 2 | done | server `tests/service/test_builder_import.py` (21); client `frontend/tests/builderImport.spec.ts` (9). `needs_credentials` is **re-derived**; the envelope's list is accepted and ignored |
-| 3 | done | `tests/service/test_builder_duplicate.py` (16) |
-| 4 | done, run | `frontend/tests/versionBrowser.spec.ts` (23) and the `e2e/builder.spec.ts` step, green in the 33-test run of 2026-09-03 |
-| 5 | done | server `tests/service/test_builder_delete.py` (11); client `frontend/tests/documentLifecycle.spec.ts` (10). Delete cascades `builder_test_inputs` explicitly, because SQLite honours no FK pragma |
+| 2 | done | server `tests/service/test_builder_import.py` (31); client `frontend/tests/builderImport.spec.ts` (11). **Amended round 3 (D-15-19/D-15-20):** `needs_credentials` is the INTERSECTION of the envelope's list and the nodes whose credential key is empty in the file, union what this server's own strip removed. "Re-derived, the envelope ignored" was this row's wording and it was the defect: the export nulls each key, so re-deriving found nothing and the list was always empty for the file this criterion is about |
+| 3 | done | `tests/service/test_builder_duplicate.py` (18) |
+| 4 | done, run | `frontend/tests/versionBrowser.spec.ts` (31) and the `e2e/builder.spec.ts` step, green in the 33-test run of 2026-09-03 |
+| 5 | done | server `tests/service/test_builder_delete.py` (12); client `frontend/tests/documentLifecycle.spec.ts` (15). Delete cascades `builder_test_inputs` explicitly, because SQLite honours no FK pragma |
 | 6 | done | `tests/builder/test_upgrade.py` (12) — the Stage 1 hook, per S1 ruling 5 |
-| 7 | done, one correction | `tests/service/test_additive_migration.py` (19). The criterion says **six** new tables; the DDL and S1 ruling 2 have **five** plus `runs.mode`. The test is right |
+| 7 | done, one correction | `tests/service/test_additive_migration.py` (24). The criterion said **six** new tables; the DDL and S1 ruling 2 have **five** plus `runs.mode`. The test is right |
 | 8 | done | `docs/tech-stack.md` §6 regenerated at 41 (`52bdc2e`) |
 | 9 | done, **run against PostgreSQL 18.6, 5/5** | `tests/pg/test_two_writers.py`, one throwaway database per test; skips cleanly without `TEST_DATABASE_URL`; CI job `postgres` on `main` only (decision 25) |
-| 10 | done, one scope note | `tests/service/test_isolation_matrix.py` (16). The **test-inputs row is covered at the table level** — `user_id NOT NULL`, owner-scoped SELECT, cascade on delete — because Stage 1 has no route; plan 13 owns it |
-| 11 | done | `frontend/tests/builderPersistence.spec.ts` unchanged, 33/33 |
+| 10 | done, one scope note | `tests/service/test_isolation_matrix.py` (32). The **test-inputs row is covered at the table level** — `user_id NOT NULL`, owner-scoped SELECT, cascade on delete — because Stage 1 has no route; plan 13 owns it |
+| 11 | done | `frontend/tests/builderPersistence.spec.ts` 37/37 |
 | D7 | done | `tests/service/test_run_retention.py` (24) — same tick as orphan recovery, after it; never a `waiting` run, never a terminal run with an unanswered gate, never a document |
 
 What the build found that the plan did not know:
@@ -529,3 +529,89 @@ two stay open landed again with a new sentence (D-15-2, -4), five stay open
 held by a dimension under its reference (D-15-8 … -12), and ten new rows
 opened (D-15-13 … D-15-22): **17 open**, the round-3 build list, read top
 to bottom. Round 3's critic is the CrewAI power user.
+
+**Round 3 was BUILT on 2026-09-03** on `gauntlet/plans`, `f2a3bb8` ->
+`849fd48` (after plan 01's round 3, which shares the branch and is a
+separate session's work). **Every D-15 row below stays `open` with
+`closed by` empty**: closing is the critic's, after it re-runs each command
+itself. Two docs commits come first and fix no defect.
+
+| id | fixing commit(s) | red-then-green |
+| --- | --- | --- |
+| - | `8231966` | none - a MOVE. The judge appended the ten new rows under the round-2 build table, so ten eleven-cell rows sat inside a three-column one; the diff is ten deletions and ten identical insertions |
+| - | `ca3d4f8` | none - the OWNER'S RULING. D-15-8 `a324aa0`, D-15-9 `c44deaf`, D-15-10 `9e85e9f`, D-15-11 `c6d4038`, D-15-12 `3e988b4` set to `closed`; PLANS.md's open count 17 -> 12. It also strikes the wrong figure inline in criteria 7 and 8 - see below |
+| D-15-21 | `2a19f0a` | `tests/service/test_request_reflection.py` (11). Red measured by disabling the handler: create answered **200159 bytes** echoing the marker |
+| D-15-19, D-15-20 | `d458639` | `test_builder_import.py` (31) - the export/import round trip as its own test, and the intersection asserted in both directions; `builderImport.spec.ts` (11) |
+| D-15-22 | `36d3478` | `documentLifecycle.spec.ts` (15) - a spy that RECORDS `setTimeout` rather than replacing it |
+| D-15-17 | `236a02f` | `builderProblems.spec.ts` (39) - the clean case, the errored case, head unaffected |
+| D-15-13 | `0902bc4` | `builderShell.spec.ts` (43) - five states, each with its own sentence |
+| D-15-14 | `9b65607` | `e2e/builder-layout.spec.ts`. Red measured: the toggle at `Expected: 1154 / Received: 755`, a 399px jump |
+| D-15-18 | `0376987` | `test_builder_delete.py` (12) - the name present, the id ABSENT, "publish" occurring exactly once |
+| D-15-16 | `3cec3f7` | `documentLifecycle.spec.ts` - and one test asserting the SERVER still has the last word when the client thought it was a draft |
+| D-15-15 | `f6ed348` | `builderShell.spec.ts` - DOM order, the sort, distinct stamps, three new actions |
+| D-15-4 | `d822150` | `e2e/builder-layout.spec.ts`. Red measured: `toBeVisible() failed ... element(s) not found` |
+| D-15-2 | `849fd48` | `e2e/builder-layout.spec.ts`. Red measured: the node title at **9.56px** against an 11px floor |
+
+D-15-19 and D-15-20 share ONE commit because they are one defect the critic
+scored twice - the behaviour on dimension 12 and the criterion its falsity
+breaks on dimension 16. A "closed by" for either names `d458639`.
+
+**Two things a reader should know before the next round, because both are
+departures.**
+
+*The intersection has a third case the ruling does not name.* D-15-19's
+ruling is "the intersection of the envelope's list and the nodes whose
+credential key is null in the file", and both directions are built and
+tested. Applied literally it ALSO drops a hand-typed, non-empty
+`credential_id` in a foreign file - the inbound strip removes it, so the
+node really did lose a credential here and nobody would be told, which is
+the harm the row is about. It is also not a file's claim at all:
+`stripped_nodes` is this server's own report of a value it removed. And
+`test_a_hand_typed_credential_id_never_becomes_a_reference` predates this
+row, asserts that case, and was not on the list of tests to change; the bare
+intersection turns it red. So the answer is the intersection OR the strip's
+own report, and both of the ruling's stated reasons still hold exactly - a
+name alone buys nothing, an empty key alone buys nothing. For the owner to
+confirm.
+
+*One existing assertion was amended, not added to.* `e2e/builder-layout`'s
+`lands every node of the validator template inside the canvas pane` asserted
+zero overflow, which D-15-2's legibility floor makes impossible for a
+16-node graph in a 1440x900 pane - the two properties genuinely cannot both
+hold at that size, and the row's ruling resolves it in favour of legible
+plus reachable. It now asserts the disjunction that keeps its original guard
+sharp: every node inside, OR the fit sitting exactly on the floor. A stale
+fit - the defect it exists to catch - satisfies neither.
+
+**Measured at `849fd48`**, on Windows, in this worktree with
+`PYTHONPATH=D:\MultiAgentSystem-wt\integration\src`:
+
+```text
+Python:        1655 run, 6 skipped, OK - 86.3s   (1642 at f2a3bb8)
+PostgreSQL 18: tests.pg.test_two_writers 5, OK - 25.2s
+Frontend unit: 1195 in 65 files                  (1157 in 62 at f2a3bb8)
+vue-tsc -b --force: exit 0        npm run build: exit 0
+Playwright:    37 tests in 5 files, 9 @launch    (34 / 8 at f2a3bb8; plan
+               01's round 3 added the 35th, this round the other two)
+```
+
+The per-module counts in the criteria table above were regenerated by
+running each module alone, not carried forward: the round-2 verifier found
+`test_isolation_matrix` at **32** where the table said 16 and
+`test_additive_migration` at **24** where it said 19, and six other rows had
+moved too.
+
+Captures for the visual rows are under `docs/comparison/ours/round3/`
+(ignored by the `*.png` rule), taken by a throwaway capture spec that is
+NOT committed - while it sits in `frontend/e2e/` the suite lists one test
+more than it has.
+
+**AND THE KEEP-THE-EARLIER-WORDING CONVENTION IS RETIRED.** Criteria 7 and 8
+now strike the wrong figure inline - "all ~~six~~ five new tables", "answers
+~~forty~~ 41" - with the dated amendment kept beneath. The convention was
+written for a good reason, that a correction should not hide what it
+corrected, and a strike-through serves that reason exactly as well while the
+first sentence a reader meets stops being false. The critic has scored a
+ticked criterion whose opening sentence is false three times (D-15-11,
+D-15-12, D-15-20 on criterion 2), and a convention that guarantees a fourth
+is the wrong convention.

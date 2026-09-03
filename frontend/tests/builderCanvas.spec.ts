@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useVueFlow } from '@vue-flow/core'
 import type { NodeDragEvent } from '@vue-flow/core'
 import BuilderCanvas from '../src/components/builder/BuilderCanvas.vue'
+import { flush } from './helpers'
 import BuilderMinimap from '../src/components/builder/BuilderMinimap.vue'
 import type { MinimapNode } from '../src/components/builder/BuilderMinimap.vue'
 import {
@@ -1157,6 +1158,60 @@ describe('the mounted canvas hands the library the settings the spec names', () 
     resize(dock, 230.4)
     resize(frame, 0)
     expect(fitView).toHaveBeenCalledTimes(4)
+    wrapper.unmount()
+  })
+
+  it('observes a dock that arrives after mount, the way a template ref does (D-15-2)', async () => {
+    /*
+     * The shell's dock is a template ref, assigned in a post-render effect
+     * after the whole tree mounts - so when this component mounted, the prop
+     * was still null and the first cut observed nothing. Round 2's capture of
+     * the delete confirm showed the graph unmoved under two docked strips.
+     */
+    interface Driven {
+      callback: ResizeObserverCallback
+      targets: Element[]
+    }
+    const instances: Driven[] = []
+    class DrivenResizeObserver {
+      private readonly entry: Driven
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [] }
+        instances.push(this.entry)
+      }
+      observe(target: Element): void {
+        this.entry.targets.push(target)
+      }
+      unobserve(target: Element): void {
+        this.entry.targets = this.entry.targets.filter((t) => t !== target)
+      }
+      disconnect(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', DrivenResizeObserver)
+    const { wrapper } = mountCanvas()
+    const flow = useVueFlow('builder-flow')
+    const fitView = vi.spyOn(flow, 'fitView').mockImplementation(async () => true)
+    const frame = wrapper.element as HTMLElement
+    const canvasObserver = instances.find((entry) => entry.targets.includes(frame))!
+    expect(canvasObserver).toBeDefined()
+
+    const dock = window.document.createElement('div')
+    expect(canvasObserver.targets).not.toContain(dock)
+    await wrapper.setProps({ dock })
+    await flush(2)
+    expect(canvasObserver.targets).toContain(dock)
+
+    await wrapper.trigger('pointerdown')
+    await wrapper.trigger('pointerup')
+    canvasObserver.callback(
+      [{ target: dock, contentRect: { height: 125 } } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver,
+    )
+    expect(fitView).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ dock: null })
+    await flush(2)
+    expect(canvasObserver.targets).not.toContain(dock)
     wrapper.unmount()
   })
 

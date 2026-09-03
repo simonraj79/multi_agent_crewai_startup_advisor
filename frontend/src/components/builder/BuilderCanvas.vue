@@ -206,6 +206,26 @@ onMounted(() => {
   if (props.dock) layoutObserver.observe(props.dock)
 })
 
+/*
+ * The dock usually arrives AFTER this component has mounted. It is a template
+ * ref in the shell, and Vue assigns template refs in a post-render effect once
+ * the whole tree is up - so at this component's own `onMounted` the prop is
+ * still null, and an `observe` there alone observed nothing. Round 2's first
+ * capture of the delete confirm showed exactly that: two strips docked, five
+ * nodes, and the canvas sitting where it was. So the mount observes whatever
+ * is there, and this watches for the element arriving, changing or going.
+ * Not `immediate`: an immediate post-flush callback is queued from setup,
+ * ahead of the mounted hook, and would run before the observer exists.
+ */
+watch(
+  () => props.dock,
+  (dock, previous) => {
+    if (previous) layoutObserver?.unobserve(previous)
+    if (dock) layoutObserver?.observe(dock)
+  },
+  { flush: 'post' },
+)
+
 onBeforeUnmount(() => {
   layoutObserver?.disconnect()
   layoutObserver = null

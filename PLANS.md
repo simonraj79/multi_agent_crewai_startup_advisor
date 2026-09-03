@@ -23,7 +23,7 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 | # | Plan | Owner | Gates on | Criteria | Ticked | Round | Open defects | Status | Updated |
 | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | 00 | [Architecture](.agent/plans/00-architecture.md) | S1 / S9 | — | 7 | 0 | — | 0 | In build | 2026-09-02 |
-| 01 | [Auth and workspaces](.agent/plans/01-auth-and-workspaces.md) | S1 | 00 | 13 | 13 | 2 | 3 | In build (round 3) | 2026-09-03 |
+| 01 | [Auth and workspaces](.agent/plans/01-auth-and-workspaces.md) | S1 | 00 | 13 | 13 | 2 | 1 | In build (round 3) | 2026-09-03 |
 | 02 | [Canvas](.agent/plans/02-canvas.md) | S2 | 00 | 14 | 0 | — | 0 | Planned | 2026-09-02 |
 | 03 | [Node library](.agent/plans/03-node-library.md) | S2 | 00 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
 | 04 | [Inspector and params](.agent/plans/04-inspector-and-params.md) | S3 | 03, 05 | 11 | 0 | — | 0 | Planned | 2026-09-02 |

@@ -158,6 +158,46 @@ onMounted(() => {
  * canvas running away from a drag, which is the worse bug this observer was
  * first written not to cause. It waits for the pointer to lift.
  */
+/**
+ * The zoom below which a node's title stops being readable (round 3, D-15-2).
+ *
+ * Round 2 fixed the round-1 half of this row - a docked strip pushed nodes off
+ * the bottom without re-fitting - and the fix traded hidden for unreadable:
+ * the re-fit now honoured every dock, so at 1440x900 the cards went 186px, then
+ * 136 with the Versions panel, 116 with the read-only banner added and 100 with
+ * the delete strip beneath, and the titles with them, down to about 7px. The
+ * row's subject is that the operator cannot see the graph they are about to
+ * delete, and a graph rendered at 7px is not seen.
+ *
+ * `.builder-title` is 15px CSS and the fit scales it, so the rendered size is
+ * `15 * zoom` and an 11px floor is `11 / 15`. Eleven is the smallest size this
+ * repo already treats as legible - it is `--fs-11`, what the eyebrow and every
+ * meta row use.
+ *
+ * WHAT THIS TRADES, deliberately. Below the floor the fit no longer shows
+ * every node, and the ones it cannot keep are reachable by a pan - which is
+ * the trade the row's ruling names. A graph too big to be both whole and
+ * legible has to give up one of them, and "whole" is the one the author can
+ * recover with a drag.
+ *
+ * Not applied to the FIT button. That is the author asking to see everything
+ * at once, and answering "no, here is part of it larger" would be refusing the
+ * one request the control exists to serve.
+ */
+const MIN_LEGIBLE_ZOOM = 11 / 15
+
+/**
+ * The initial fit's options. `minZoom` for the same reason `refit` carries it:
+ * a fit on init is one nobody asked for, so it keeps the title legible and
+ * leaves the rest to a pan.
+ *
+ * A constant rather than an inline object literal in the template, because the
+ * comment explaining it cannot live inside a tag's attribute list - an HTML
+ * comment there is a Vue compile error, `Duplicate attribute`, which presents
+ * as the whole gallery failing to render.
+ */
+const initialFitOptions = { padding: 0.16, maxZoom: 1, minZoom: MIN_LEGIBLE_ZOOM }
+
 let layoutObserver: ResizeObserver | null = null
 /** The author has panned, zoomed or pressed on the canvas; the viewport is theirs. */
 let settled = false
@@ -175,7 +215,7 @@ function refit(): void {
     return
   }
   refitOwed = false
-  flow.fitView({ padding: 0.14 })
+  flow.fitView({ padding: 0.14, minZoom: MIN_LEGIBLE_ZOOM })
 }
 
 onMounted(() => {
@@ -646,7 +686,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       :max-zoom="1.4"
       :default-viewport="{ x: 0, y: 0, zoom: 0.8 }"
       :fit-view-on-init="true"
-      :fit-view-options="{ padding: 0.16, maxZoom: 1 }"
+      :fit-view-options="initialFitOptions"
       :zoom-on-double-click="false"
       @connect-start="canvas.onConnectStart"
       @click-connect-start="canvas.onConnectStart"

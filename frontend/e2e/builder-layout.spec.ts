@@ -333,12 +333,37 @@ test.describe('Flow builder layout', () => {
      * code never reaches zero at all, the poll's timeout IS the failure: it
      * spends its budget watching a number that does not move.
      */
+    /*
+     * AMENDED 2026-09-03 (round 3, D-15-2). This asserted `toBe(0)` - every
+     * node inside the pane - and the defect it guards is a fit computed
+     * against a box that stopped existing a frame later. Round 3 added a
+     * legibility floor to the automatic fits, because honouring every dock
+     * had taken the 16-node validator template's titles down to about 7px,
+     * and a graph rendered at 7px is not seen either.
+     *
+     * The two cannot both hold for a graph this size in a pane this size, and
+     * D-15-2's ruling resolves it: legible, with anything the fit cannot keep
+     * reachable by a pan. So the assertion is now the DISJUNCTION that keeps
+     * the original guard sharp - either every node is inside, or the fit is
+     * sitting exactly on the floor, which is the only other reason a node can
+     * be outside. A stale fit satisfies neither: it lands at some arbitrary
+     * zoom above the floor with nodes below the pane, which is precisely what
+     * was measured at 0.544 and 0.524 against a settled 0.466.
+     */
     await expect
-      .poll(() => worstNodeOverflow(page), {
-        timeout: 10_000,
-        message: 'every node must settle inside the pane the fit was computed against',
-      })
-      .toBe(0)
+      .poll(
+        async () => {
+          const state = await legibility(page)
+          const overflow = await worstNodeOverflow(page)
+          return overflow === 0 || state.zoom <= 11 / 15 + 0.001
+        },
+        {
+          timeout: 10_000,
+          message:
+            'every node must be inside the pane the fit was computed against, unless the fit is held at the legibility floor',
+        },
+      )
+      .toBe(true)
 
     // The mechanism, stated separately from its symptom: the pane stops where
     // the problems dock starts. A fit computed against a taller box is exactly
@@ -393,6 +418,157 @@ test.describe('Flow builder layout', () => {
     // whose columns are declared but whose children are missing does NOT do.
     const total = columns.palette + columns.workspace + columns.inspector
     expect(Math.abs(total - columns.main)).toBeLessThanOrEqual(2)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})
+
+/**
+ * Every node's rendered title size and the worst excursion outside the pane,
+ * plus the id of the node that is furthest BELOW it.
+ *
+ * `offsetWidth` is unaffected by a CSS transform and the bounding rect is not,
+ * so their ratio is the viewport's zoom - which is what scales the 15px title.
+ * Read this way rather than off the transform matrix because
+ * `getComputedStyle(...).transform` on the viewport element answered `none`
+ * here, and a zoom of 1 that is really 0.66 is the exact kind of confident
+ * wrong number this file exists to catch.
+ */
+async function legibility(page: Page): Promise<{
+  zoom: number
+  titlePx: number
+  worstBelow: number
+  worstBelowId: string | null
+}> {
+  return page.evaluate(() => {
+    const frame = document.querySelector('.builder-canvas')!.getBoundingClientRect()
+    const any = document.querySelector('.vue-flow__node') as HTMLElement | null
+    const zoom = any && any.offsetWidth ? any.getBoundingClientRect().width / any.offsetWidth : 0
+    const title = document.querySelector('.workflow-node .builder-title') as HTMLElement | null
+    const titlePx = title ? parseFloat(getComputedStyle(title).fontSize) * zoom : 0
+    let worstBelow = 0
+    let worstBelowId: string | null = null
+    for (const node of document.querySelectorAll('.vue-flow__node')) {
+      const below = node.getBoundingClientRect().bottom - frame.bottom
+      if (below > worstBelow) {
+        worstBelow = below
+        worstBelowId = node.getAttribute('data-id')
+      }
+    }
+    return {
+      zoom: Number(zoom.toFixed(3)),
+      titlePx: Number(titlePx.toFixed(2)),
+      worstBelow: Math.round(worstBelow),
+      worstBelowId,
+    }
+  })
+}
+
+/**
+ * Pan the canvas by `dy`, the way an author does.
+ *
+ * SPACE HELD, not a bare left drag: `pan-on-drag` is `[1, 2]` unless the space
+ * bar is down (`BuilderCanvas`, §1.48), so a plain left drag draws a selection
+ * box and pans nothing. The first version of this helper did exactly that and
+ * reported "a pan did not reach it" for a canvas that pans perfectly well.
+ */
+async function panBy(page: Page, dy: number): Promise<void> {
+  const frame = (await page.locator('.builder-canvas').boundingBox())!
+  const x = frame.x + frame.width / 2
+  const y = frame.y + frame.height / 2
+  await page.keyboard.down('Space')
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x, y + dy, { steps: 10 })
+  await page.mouse.up()
+  await page.keyboard.up('Space')
+}
+
+test.describe('a docked strip never makes the graph unreadable (D-15-2)', () => {
+  /*
+   * Round 1 of this row: a docked strip pushed nodes off the bottom and
+   * nothing re-fitted, so the operator confirming a delete could not see most
+   * of the graph they were deleting. Round 2 fixed that and traded hidden for
+   * UNREADABLE - the re-fit honoured every dock, so at 1440x900 the cards went
+   * 186px, then 136 with the Versions panel, 116 with the read-only banner and
+   * 100 with the delete strip beneath, titles at about 7px.
+   *
+   * The row's subject needs BOTH properties, so both are asserted here in the
+   * three states the critic captured: a title stays at or above 11px CSS, and
+   * any node the fit could not keep is reachable by a pan.
+   */
+  const MIN_TITLE_PX = 11
+
+  test('keeps titles legible with Versions, the banner and the delete strip docked', async ({
+    page,
+  }) => {
+    const watch = watchConsole(page)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await stubEmptyLibrary(page)
+    await page.goto('/#/build')
+    await page.locator('.template-card', { hasText: 'Minimal gated agent' }).click()
+    await expect(page.locator('.vue-flow__node').first()).toBeVisible()
+
+    // Stored, so the version rail has something to list.
+    await page.locator('.builder-flow').click({ position: { x: 30, y: 30 } })
+    await page.keyboard.press('Control+s')
+    await expect(page.locator('[data-testid="save-chip"]')).toContainText(/saved/i)
+
+    const states: Array<{ label: string; open: () => Promise<void> }> = [
+      {
+        label: 'versions docked',
+        open: async () => {
+          await page.locator('[data-testid="document-menu-button"]').click()
+          await page.locator('[data-testid="menu-versions"]').click()
+          await expect(page.locator('.version-browser, [data-testid="version-browser"]')).toBeVisible()
+        },
+      },
+      {
+        label: 'versions plus the read-only banner',
+        open: async () => {
+          const row = page.locator('[data-testid="version-row-1"]')
+          if (await row.count()) await row.click()
+        },
+      },
+      {
+        label: 'versions plus the delete strip',
+        open: async () => {
+          await page.locator('[data-testid="document-menu-button"]').click()
+          await page.locator('[data-testid="menu-delete"]').click()
+          await expect(page.locator('[data-testid="delete-confirm"]')).toBeVisible()
+        },
+      },
+    ]
+
+    for (const state of states) {
+      await state.open()
+      // The re-fit is the settling observer's, so it lands a frame or two
+      // after the strip does.
+      await expect
+        .poll(async () => (await legibility(page)).titlePx, { timeout: 8_000 })
+        .toBeGreaterThanOrEqual(MIN_TITLE_PX)
+
+      const measured = await legibility(page)
+      expect
+        .soft(measured.titlePx, `${state.label}: the node title is ${measured.titlePx}px`)
+        .toBeGreaterThanOrEqual(MIN_TITLE_PX)
+
+      // And what the floor costs is REACHABLE. Only asserted when the floor
+      // actually bit - with a small graph the fit still shows everything, and
+      // panning to find a node that is already on screen proves nothing.
+      if (measured.worstBelow > 0 && measured.worstBelowId) {
+        const id = measured.worstBelowId
+        await panBy(page, -(measured.worstBelow + 40))
+        const after = await page.evaluate((nodeId) => {
+          const frame = document.querySelector('.builder-canvas')!.getBoundingClientRect()
+          const node = document.querySelector(`.vue-flow__node[data-id="${nodeId}"]`)!.getBoundingClientRect()
+          return Math.round(node.bottom - frame.bottom)
+        }, id)
+        expect
+          .soft(after, `${state.label}: ${id} was ${measured.worstBelow}px below and a pan did not reach it`)
+          .toBeLessThanOrEqual(0)
+      }
+    }
 
     expect(watch.unexpected).toEqual([])
   })

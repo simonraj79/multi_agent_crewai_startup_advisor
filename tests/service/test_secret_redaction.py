@@ -31,8 +31,15 @@ import unittest
 import zipfile
 from typing import Any
 
+from brief_crew.config import CREDENTIAL_FIELDS
 from brief_crew.events import FrameKind, FrameLevel, UIEventType
-from brief_crew.events.redaction import REDACTED, SECRET_KEYS, is_secret_key, redact_mapping
+from brief_crew.events.redaction import (
+    REDACTED,
+    SECRET_KEYS,
+    SECRET_KEY_SUFFIXES,
+    is_secret_key,
+    redact_mapping,
+)
 from brief_crew.events.serializer import FieldBoundedSerializer
 from brief_crew.service.persistence import PostgresFlowPersistence
 from brief_crew.service.runner import RunExecution
@@ -59,7 +66,37 @@ D6_FIXTURES: dict[str, Any] = {
 #: The four this repository redacted before D6, and the spellings that must
 #: normalise onto the list.
 SPELLINGS = ("apiKey", "API-Key", "x-api-key", "Authorization", "accessToken", "refresh_token", "clientSecret", "Set-Cookie", "privateKey", "nonce")
-LEAKS = ("LEAK-A", "LEAK-B", "LEAK-C", "LEAK-D", "LEAK-E", "LEAK-F", "LEAK-G", "LEAK-H", "LEAK-N")
+#: The seven key names in this repository's own `.env` (CLAUDE.md: "it holds
+#: seven live keys"), none of which the exact-match list caught, plus the two
+#: session-library spellings the round-1 critic named. Matched on suffix now.
+ENV_KEY_NAMES = (
+    "OPENROUTER_API_KEY",
+    "FIRECRAWL_API_KEY",
+    "PINECONE_API_KEY",
+    "COHERE_API_KEY",
+    "RENDER_API_KEY",
+    "GITHUB_TOKEN",
+    "OPENROUTER_MANAGEMENT_KEY",
+)
+SUFFIX_FIXTURES: dict[str, Any] = {
+    **{name: f"LEAK-ENV-{index}" for index, name in enumerate(ENV_KEY_NAMES)},
+    "auth_token": "LEAK-S1",
+    "session_token": "LEAK-S2",
+    "credentials_master_key": "LEAK-S3",
+    "db_password": "LEAK-S4",
+    "webhook.secret": "LEAK-S5",
+    "SQL_DSN": "LEAK-S6",
+}
+#: The vault's `http_header` / `mcp_header` field pair: the header's NAME is
+#: not a secret, and its VALUE reaches a frame only under `headers`, which is
+#: redacted whole. Both are ordinary words everywhere else - `name` is on
+#: every graph node and `value` on every gate `derived` entry - so pinning
+#: them as NOT secret is the pin.
+HEADER_PAIR = frozenset({"name", "value"})
+LEAKS = (
+    "LEAK-A", "LEAK-B", "LEAK-C", "LEAK-D", "LEAK-E", "LEAK-F", "LEAK-G", "LEAK-H", "LEAK-N",
+    *SUFFIX_FIXTURES.values(),
+)
 
 
 def assert_nothing_leaked(test: unittest.TestCase, rendered: str) -> None:
@@ -113,9 +150,59 @@ class ListTests(unittest.TestCase):
         self.assertIn(self.test_the_plan_records_the_fields_exclusion_beside_the_pin.__name__, body)
 
     def test_ordinary_keys_are_left_alone(self) -> None:
-        for key in ("total_tokens", "tokens", "status", "result", "inputs", "idea", "node_id"):
+        for key in (
+            "total_tokens", "prompt_tokens", "completion_tokens", "tokens", "status", "result",
+            "inputs", "idea", "node_id", "graph_version", "reserved_input_keys", "keys",
+        ):
             with self.subTest(key=key):
                 self.assertFalse(is_secret_key(key))
+
+    def test_the_seven_env_key_names_are_secret(self) -> None:
+        """Every name `.env` actually uses, none of which exact matching caught."""
+
+        for name in ENV_KEY_NAMES:
+            with self.subTest(name=name):
+                self.assertTrue(is_secret_key(name))
+
+    def test_names_are_matched_on_a_normalised_suffix(self) -> None:
+        self.assertEqual(SECRET_KEY_SUFFIXES, ("key", "token", "secret", "password", "dsn"))
+        for name in ("auth_token", "session_token", "authToken", "MasterKey", "db-password", "SQL_DSN", "webhook.secret", "CREDENTIALS_MASTER_KEY"):
+            with self.subTest(name=name):
+                self.assertTrue(is_secret_key(name))
+
+    def test_every_vault_field_name_is_pinned(self) -> None:
+        """Derived from `config.CREDENTIAL_FIELDS`, so a new kind's field is pinned the day it exists.
+
+        A field that is neither on the list nor in `HEADER_PAIR` fails here,
+        which is the decision it deserves: is its value a secret or a name?
+        """
+
+        for kind, fields in CREDENTIAL_FIELDS.items():
+            for field in fields:
+                with self.subTest(kind=kind, field=field):
+                    self.assertEqual(is_secret_key(field), field not in HEADER_PAIR)
+
+    def test_the_bare_word_key_names_a_field_and_is_not_redacted(self) -> None:
+        """`{"key": name, "value": ..., "kind": ...}` is every gate `derived` entry."""
+
+        self.assertFalse(is_secret_key("key"))
+        self.assertEqual(
+            redact_mapping({"key": "score", "value": "7.2", "kind": "number"}),
+            {"key": "score", "value": "7.2", "kind": "number"},
+        )
+        # The other four bare words are exact entries and stay redacted.
+        for word in ("token", "secret", "password", "dsn"):
+            self.assertTrue(is_secret_key(word), word)
+
+    def test_a_builder_state_slot_is_never_redacted_for_its_node_id(self) -> None:
+        """`out__<node>` carries a node's output; the node id is the author's word."""
+
+        for slot in ("out__token", "out__api_key", "out__password", "out__secret", "out__dsn"):
+            with self.subTest(slot=slot):
+                self.assertFalse(is_secret_key(slot))
+        # The exemption is on the raw prefix, not on anything that merely
+        # contains it.
+        self.assertTrue(is_secret_key("timeout__token"))
 
     def test_redact_mapping_is_the_same_rule_shallowly(self) -> None:
         redacted = redact_mapping({"api_key": "x", "idea": "kept"})
@@ -146,6 +233,16 @@ class SerializerWalkTests(unittest.TestCase):
         clipped = FieldBoundedSerializer().clip({"fields": {"segment": "clinics", "notes": ""}})
         self.assertEqual(clipped["fields"], {"segment": "clinics", "notes": ""})
 
+    def test_env_key_names_round_trip_as_the_marker_at_any_depth(self) -> None:
+        clipped = FieldBoundedSerializer().clip(
+            {**SUFFIX_FIXTURES, "nested": {"deeper": SUFFIX_FIXTURES}, "out__token": "kept"}
+        )
+        for key in SUFFIX_FIXTURES:
+            self.assertEqual(clipped[key], REDACTED, key)
+            self.assertEqual(clipped["nested"]["deeper"][key], REDACTED, key)
+        self.assertEqual(clipped["out__token"], "kept")
+        assert_nothing_leaked(self, json.dumps(clipped))
+
 
 class PersistenceWalkTests(unittest.TestCase):
     """The row: `_sanitize_json` on states and on frames."""
@@ -160,6 +257,18 @@ class PersistenceWalkTests(unittest.TestCase):
         for key in D6_FIXTURES:
             self.assertEqual(loaded[key], REDACTED, key)
         self.assertEqual(loaded["kept"], 1)
+        assert_nothing_leaked(self, json.dumps(loaded))
+
+    def test_a_state_carrying_env_key_names_is_stored_redacted_and_a_slot_is_not(self) -> None:
+        """The row walk asks the same predicate as the ring walk, suffixes included."""
+
+        self.store.save_state(
+            "flow-env", "method", {"id": "flow-env", **SUFFIX_FIXTURES, "out__token": "kept"}
+        )
+        loaded = self.store.load_state("flow-env")
+        for key in SUFFIX_FIXTURES:
+            self.assertEqual(loaded[key], REDACTED, key)
+        self.assertEqual(loaded["out__token"], "kept")
         assert_nothing_leaked(self, json.dumps(loaded))
 
     def test_a_frame_row_carrying_every_d6_key_is_stored_redacted(self) -> None:
@@ -205,7 +314,11 @@ class LeakingRunner:
             event_type=UIEventType.NODE_START,
             node_id="retrieve_cached",
             message="retrieve_cached started",
-            details={**D6_FIXTURES, "nested": {"headers": {"Authorization": "Bearer LEAK-C"}}},
+            details={
+                **D6_FIXTURES,
+                **SUFFIX_FIXTURES,
+                "nested": {"headers": {"Authorization": "Bearer LEAK-C"}},
+            },
         )
         execution.capture.emit(
             kind=FrameKind.NODE_STATE,

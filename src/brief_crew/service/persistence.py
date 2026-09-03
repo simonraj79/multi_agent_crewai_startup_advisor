@@ -49,6 +49,7 @@ from brief_crew.events import FrameData
 from brief_crew.events.redaction import (
     REDACTED,
     SECRET_KEYS,
+    is_secret_key,
     normalize_secret_key as _normalize_secret_key,
 )
 
@@ -78,7 +79,10 @@ _LIVE_RUN_STATUSES = ("queued", "running", "cancelling")
 _GATE_WATCH_STATUSES = frozenset({"expired", "alerted"})
 # One list, shared with the frame serializer - `events/redaction.py` says why
 # it left this module. The old name is kept because tests and the docstring
-# above `_sanitize_json` refer to it.
+# above `_sanitize_json` refer to it. The WALK below asks `is_secret_key`, not
+# this set: until 2026-09-03 it tested membership itself, so the suffix rule
+# added to `redaction.py` would have reached the ring and not the row - the
+# exact two-walks-two-answers drift that module exists to end.
 _SECRET_KEYS = SECRET_KEYS
 _URL_CREDENTIALS = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s:]+:[^/@\s]+@", re.I)
 
@@ -468,7 +472,7 @@ def _sanitize_json(value: Any, *, label: str, depth: int = 0) -> Any:
             normalized_key = str(key)
             if len(normalized_key) > 255:
                 raise PersistenceValueError(f"{label} contains an oversized key")
-            if _normalize_secret_key(normalized_key) in _SECRET_KEYS:
+            if is_secret_key(normalized_key):
                 sanitized[normalized_key] = REDACTED
             else:
                 sanitized[normalized_key] = _sanitize_json(

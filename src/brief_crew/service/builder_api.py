@@ -35,7 +35,7 @@ from datetime import datetime
 import json
 from typing import Any, Callable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from brief_crew import config as project_config
 from brief_crew.builder import BudgetEstimate, Problem, estimate_budget
@@ -422,7 +422,7 @@ def create_builder_router(
     swap the store without rebuilding the app.
     """
 
-    from fastapi import APIRouter, Depends, HTTPException, Query, Response
+    from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
     router = APIRouter(prefix=BUILDER_API_PREFIX, tags=["builder"])
 
@@ -604,13 +604,35 @@ def create_builder_router(
         "/workflows/import",
         response_model=BuilderImportedDocumentModel,
         status_code=201,
+        # The body is read by hand below, so the schema is declared here for
+        # the docs rather than inferred from a typed parameter.
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": BuilderImportRequest.model_json_schema()
+                    }
+                },
+            }
+        },
     )
     async def import_document(
-        request: BuilderImportRequest,
+        http_request: Request,
         response: Response,
         user: Any = Depends(current_user),
     ) -> BuilderDocumentModel:
         """A `.builder.json` becomes a NEW draft owned by the caller. Always new.
+
+        The envelope is parsed HERE, by `_import_envelope`, and not by FastAPI
+        (round 2, D-15-9). A typed `BuilderImportRequest` parameter handed a
+        malformed file to FastAPI's default 422, which is pydantic's full
+        error list with the offending `input` echoed back - the whole document
+        for a file with no envelope, all five hundred entries for an oversized
+        `needs_credentials`. An uploaded file can carry anything, including
+        somebody else's secrets, and the module's own docstring already
+        refused that reflection for `document`; the envelope now gets the
+        same treatment: one sentence naming the first problem, never the body.
 
         Never an overwrite (D2): the file carries no id worth honouring - the
         export dropped it, and a hand-edited one is somebody else's row - so
@@ -631,6 +653,7 @@ def create_builder_router(
         every one.
         """
 
+        request = _import_envelope(await http_request.body())
         if request.export not in KNOWN_SCHEMAS:
             raise HTTPException(
                 status_code=422,
@@ -977,7 +1000,62 @@ def _first_schema_error(exc: Exception) -> str:
         return "document failed validation"
     first = reported[0]
     location = ".".join(str(part) for part in first.get("loc", ())) or "document"
-    return f"{location}: {str(first.get('msg', 'is invalid'))[:200]}"
+    # The location can name a key the CLIENT chose (`extra_forbidden` reports
+    # the extra key), so it is bounded like the message is.
+    return f"{location[:120]}: {str(first.get('msg', 'is invalid'))[:200]}"
+
+
+def _import_envelope(raw: bytes) -> "BuilderImportRequest":
+    """The D1 envelope out of an uploaded file, or a 422 that echoes none of it.
+
+    Three refusals, each one sentence (D-15-9):
+
+    * over `MAX_BUILDER_DOCUMENT_BYTES` - **413**, the same figure `parse`
+      quotes, measured on the bytes rather than on the declared length so a
+      chunked upload meets the same ceiling;
+    * not JSON, or JSON that is not an object - **422** naming what it is;
+    * an object the envelope schema refuses - **422** with
+      `_first_schema_error`'s one location and one message.
+
+    `json.loads` is called on the bytes here rather than letting FastAPI do it
+    for a typed parameter, because FastAPI's refusal is pydantic's whole error
+    list with the offending `input` reflected back, and the input is a file
+    somebody uploaded.
+    """
+
+    from fastapi import HTTPException
+
+    limit = project_config.MAX_BUILDER_DOCUMENT_BYTES
+    if len(raw) > limit:
+        raise HTTPException(
+            status_code=413,
+            detail=f"a builder document is limited to {limit} bytes; this file is {len(raw)}",
+        )
+    try:
+        payload = json.loads(raw)
+    except ValueError as exc:
+        # `JSONDecodeError.msg` is the decoder's own phrase ("Expecting value")
+        # and the position; neither quotes the file.
+        where = (
+            f" ({exc.msg} at line {exc.lineno} column {exc.colno})"
+            if isinstance(exc, json.JSONDecodeError)
+            else ""
+        )
+        raise HTTPException(
+            status_code=422, detail=f"the file is not JSON{where}"
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "an import is a JSON object carrying `export` and `document`; "
+                f"this file is a JSON {type(payload).__name__}"
+            ),
+        )
+    try:
+        return BuilderImportRequest.model_validate(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=_first_schema_error(exc)) from exc
 
 
 def copy_name(name: str) -> str:

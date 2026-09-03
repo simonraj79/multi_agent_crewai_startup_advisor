@@ -243,18 +243,95 @@ class EnvelopeRefusals(ImportRouteCase):
     def test_the_document_is_the_one_part_that_is_not_optional(self) -> None:
         response = self.import_as(ADA_TOKEN, {"export": BUILDER_DOCUMENT_SCHEMA})
         self.assertEqual(response.status_code, 422)
+        self.assert_one_sentence(response, names="document")
 
     def test_a_key_the_envelope_does_not_have_is_refused(self) -> None:
         _, envelope = self.exported_by_ada()
         envelope["owner"] = "user_ada"
-        self.assertEqual(self.import_as(ADA_TOKEN, envelope).status_code, 422)
+        response = self.import_as(ADA_TOKEN, envelope)
+        self.assertEqual(response.status_code, 422)
+        self.assert_one_sentence(response, names="owner")
+        # The refusal names the KEY and never its value.
+        self.assertNotIn("user_ada", response.text)
 
     def test_more_needs_credentials_than_a_graph_can_have_is_refused(self) -> None:
         _, envelope = self.exported_by_ada()
         envelope["needs_credentials"] = [
             f"n{index}" for index in range(builder_api.MAX_IMPORT_NEEDS_CREDENTIALS + 1)
         ]
-        self.assertEqual(self.import_as(ADA_TOKEN, envelope).status_code, 422)
+        response = self.import_as(ADA_TOKEN, envelope)
+        self.assertEqual(response.status_code, 422)
+        self.assert_one_sentence(response, names="needs_credentials")
+        # D-15-9: not one of the entries comes back.
+        self.assertNotIn("n0", response.text)
+        self.assertNotIn(f"n{builder_api.MAX_IMPORT_NEEDS_CREDENTIALS}", response.text)
+
+    def assert_one_sentence(self, response, *, names: str) -> None:
+        """D-15-9: a string, not pydantic's list, and it names the first problem."""
+
+        detail = response.json()["detail"]
+        self.assertIsInstance(detail, str, response.text)
+        self.assertIn(names, detail)
+        self.assertNotIn('"input"', response.text)
+        self.assertNotIn('"loc"', response.text)
+
+
+class MalformedFilesEchoNothing(ImportRouteCase):
+    """D-15-9. A malformed or foreign file is refused with one sentence naming
+    the first problem, and the body is never reflected back: an uploaded file
+    can carry anything, including somebody else's secrets."""
+
+    def post_raw(self, body: bytes, content_type: str = "application/json"):
+        return self.client.post(
+            "/api/builder/workflows/import",
+            content=body,
+            headers={**self.auth(ADA_TOKEN), "Content-Type": content_type},
+        )
+
+    def test_a_raw_document_with_no_envelope_names_export_and_echoes_no_node(self) -> None:
+        document = document_payload(name="A secret-shaped name")
+        document["nodes"][0]["label"] = "sk-live-do-not-echo"
+        response = self.import_as(ADA_TOKEN, document)
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()["detail"]
+        self.assertIsInstance(detail, str)
+        self.assertIn("export", detail)
+        self.assertNotIn("sk-live-do-not-echo", response.text)
+        self.assertNotIn("A secret-shaped name", response.text)
+        self.assertNotIn(document["nodes"][0]["id"], response.text)
+
+    def test_an_unrelated_object_names_the_first_missing_field_only(self) -> None:
+        response = self.import_as(ADA_TOKEN, {"foo": 1})
+        self.assertEqual(response.status_code, 422)
+        detail = response.json()["detail"]
+        self.assertIsInstance(detail, str)
+        self.assertEqual(detail.count(":"), 1, detail)
+        self.assertIn("export", detail)
+        self.assertNotIn("foo", response.text)
+
+    def test_a_json_list_is_named_as_a_list(self) -> None:
+        response = self.post_raw(b'["not", "an", "envelope"]')
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()["detail"]
+        self.assertIsInstance(detail, str)
+        self.assertIn("JSON list", detail)
+        self.assertNotIn("envelope", detail.replace("`export` and `document`", ""))
+
+    def test_a_file_that_is_not_json_is_named_without_being_quoted(self) -> None:
+        response = self.post_raw(b"password=hunter2\nnot json at all")
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()["detail"]
+        self.assertIsInstance(detail, str)
+        self.assertIn("not JSON", detail)
+        self.assertNotIn("hunter2", response.text)
+
+    def test_the_document_size_bound_holds_on_the_raw_bytes(self) -> None:
+        from brief_crew.config import MAX_BUILDER_DOCUMENT_BYTES
+
+        padding = "x" * (MAX_BUILDER_DOCUMENT_BYTES + 1)
+        response = self.post_raw(('{"export": "' + padding + '"}').encode())
+        self.assertEqual(response.status_code, 413, response.text[:200])
+        self.assertNotIn(padding[:64], response.json()["detail"])
 
     def test_a_document_the_schema_refuses_is_a_422_naming_the_node(self) -> None:
         _, envelope = self.exported_by_ada()

@@ -426,6 +426,24 @@ function say(
   noticeKind.value = options.kind ?? 'info'
   noticeAction.value = options.action ?? null
   if (!message) return
+  /*
+   * A REFUSAL DOES NOT RETIRE ITSELF (D-15-22).
+   *
+   * Every refusal on the import, duplicate, export, restore and open-version
+   * paths used to clear after four seconds, leaving no surface anywhere to
+   * re-read the server's sentence - while delete (its docked confirm) and a
+   * save conflict (`ConflictDialog`) both kept theirs. An operator who looked
+   * away lost the one thing that told them what to do, and the sentence is
+   * the server's own words, which is the whole reason round 2 made these
+   * paths carry it (D-15-10).
+   *
+   * "Until dismissed or until their next action" is exactly what this gives:
+   * `dismissNotice` clears it, and the next `say()` - which every action
+   * makes - replaces it. Only an error stays; a success is a receipt and
+   * still leaves on its own, because a console that accumulates green
+   * confirmations teaches an operator to stop reading the bar.
+   */
+  if (noticeKind.value === 'error') return
   // Longer when there is something to press: a notice that offers a way
   // back and then leaves in four seconds is a door that closes on its own.
   noticeTimer = window.setTimeout(() => {
@@ -628,7 +646,10 @@ async function viewVersion(version: number): Promise<void> {
     publishProblems.value = []
     validation.validateNow()
   } catch (error) {
-    say(messageOf(error, `v${version} could not be opened.`))
+    // `kind: 'error'` was missing here and nowhere else on this path, so a
+    // refused open rendered in the INFO colour with an info icon - the one
+    // refusal on the version rail that did not look like one (D-15-22).
+    say(messageOf(error, `v${version} could not be opened.`), { kind: 'error' })
   }
 }
 
@@ -667,12 +688,21 @@ async function restoreVersion(): Promise<void> {
  * missing their last edit with nothing on screen saying so.
  */
 function storedIsCurrent(verb: string): boolean {
+  // Both are REFUSALS with something for the author to do, so both carry
+  // `kind: 'error'` and both persist (D-15-22). They rendered in the info
+  // colour with an info icon, which is the same mismatch the row calls out at
+  // the version-open site - found here by the test for that rule rather than
+  // by the critic, because a refusal that does not look like one is exactly
+  // what "no persistent surface to re-read it" hides.
   if (persistence.documentId.value === null) {
-    say(`save this graph first — ${verb} works on the stored version.`)
+    say(`save this graph first — ${verb} works on the stored version.`, { kind: 'error' })
     return false
   }
   if (persistence.saveState.value !== 'clean') {
-    say(`save your changes first — ${verb} works on the stored version, and the canvas is ahead of it.`)
+    say(
+      `save your changes first — ${verb} works on the stored version, and the canvas is ahead of it.`,
+      { kind: 'error' },
+    )
     return false
   }
   return true

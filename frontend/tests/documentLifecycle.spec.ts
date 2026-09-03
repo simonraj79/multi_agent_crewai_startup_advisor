@@ -211,6 +211,49 @@ describe('Duplicate', () => {
     wrapper.unmount()
   })
 
+  it('keeps a refusal on screen and lets a success retire itself (D-15-22)', async () => {
+    /*
+     * Every refusal on the import, duplicate, export, restore and
+     * open-version paths cleared after four seconds and left no surface
+     * anywhere to re-read the server's sentence, while delete's docked
+     * confirm and a save conflict both kept theirs. An operator who looked
+     * away lost the one thing telling them what to do.
+     *
+     * Fake timers rather than a wait: what is asserted is the RULE, and 4000
+     * and 8000 are the two figures `say()` uses.
+     */
+    const server = stubServer()
+    const wrapper = await mountStored()
+    await makeDirty(wrapper)
+
+    /*
+     * A spy that RECORDS rather than replaces: `vi.spyOn` keeps the original,
+     * so Vue's own scheduling is untouched. Fake timers were tried first and
+     * are the wrong instrument here - `mountStored` awaits real work, and
+     * installing them around it hung eleven tests in this file.
+     *
+     * `say()`'s two retirement delays are 4000 and 8000. Arming neither is
+     * the whole property.
+     */
+    const timers = vi.spyOn(window, 'setTimeout')
+    await choose(wrapper, 'menu-duplicate')
+
+    expect(server.duplicates).toEqual([])
+    const refusal = wrapper.get('.builder-notice')
+    expect(refusal.text()).toContain('save your changes first')
+    expect(refusal.classes()).toContain('is-error')
+    const retirements = timers.mock.calls.filter(([, ms]) => ms === 4000 || ms === 8000)
+    expect(retirements).toEqual([])
+    timers.mockRestore()
+
+    // It goes when the operator says so, which is the other half of
+    // "until dismissed or until their next action".
+    await wrapper.get('[data-testid="notice-dismiss"]').trigger('click')
+    await flush(2)
+    expect(wrapper.find('.builder-notice').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('is disabled for a draft nothing has stored', async () => {
     stubServer()
     const wrapper = mount(BuilderView, { props: { documentId: null }, global: { stubs: STUBS } })
@@ -354,11 +397,19 @@ describe('Delete', () => {
     const wrapper = await mountStored()
     expect(wrapper.text()).toContain('is live')
 
+    const timers = vi.spyOn(window, 'setTimeout')
     await choose(wrapper, 'menu-unpublish')
+    // A success DOES arm its retirement (D-15-22's other half).
+    expect(timers.mock.calls.some(([, ms]) => ms === 4000 || ms === 8000)).toBe(true)
+    timers.mockRestore()
 
     expect(server.unpublishes).toEqual([`/api/builder/workflows/${DOC}/unpublish`])
     expect(wrapper.text()).not.toContain('is live')
     expect(wrapper.find('.builder-notice').text()).toContain('unpublished')
+    // A SUCCESS still retires itself (D-15-22): only refusals persist, or a
+    // console that accumulates green receipts teaches an operator to stop
+    // reading the bar.
+    expect(wrapper.get('.builder-notice').classes()).toContain('is-success')
     // The document, its history and its address are untouched.
     expect(wrapper.find('.builder-canvas').exists()).toBe(true)
     expect(wrapper.emitted('closeDocument')).toBeUndefined()

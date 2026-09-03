@@ -404,9 +404,11 @@ test.describe('Per-user isolation', () => {
     await expect(inspector(page)).toHaveCount(0)
     await expect(page.locator('.library-name', { hasText: ALICE_GRAPH_NAME })).toHaveCount(0)
     // The server's sentence, verbatim, where the shell reports a graph it could
-    // not open. Asserted right after the refusal because the notice retires
-    // itself after four seconds.
+    // not open. It no longer has to be asserted immediately: since D-15-22 a
+    // refusal stays until it is dismissed or the operator's next action
+    // replaces it, and only a success retires itself.
     await expect(page.locator('.builder-notice')).toContainText(/not found/i)
+    await expect(page.locator('.builder-notice')).toHaveClass(/is-error/)
     expect(new URL(page.url()).hash).toBe(`#/build/${aliceDocumentId}`)
 
     expect(watch.unexpected).toEqual([])

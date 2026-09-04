@@ -32,13 +32,13 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 | 07 | [MCP client](.agent/plans/07-mcp-client.md) | S4 | 01, 03 | 10 | 7 | — | 0 | In build | 2026-09-04 |
 | 08 | [Skills](.agent/plans/08-skills.md) | S4 | 01, 03 | 10 | 7 | — | 0 | In build | 2026-09-04 |
 | 09 | [Compiler](.agent/plans/09-compiler.md) | S5 | 03, 05, 06, 07, 08 | 12 | 12 | — | 0 | In build | 2026-09-04 |
-| 10 | [Runtime](.agent/plans/10-runtime.md) | S5 | 09 | 12 | 0 | — | 0 | Planned | 2026-09-02 |
+| 10 | [Runtime](.agent/plans/10-runtime.md) | S5 | 09 | 12 | 12 | — | 0 | In build | 2026-09-04 |
 | 11 | [Run visualizer](.agent/plans/11-run-visualizer.md) | S6 | 10 | 15 | 0 | — | 0 | Planned | 2026-09-02 |
 | 12 | [Error handling](.agent/plans/12-error-handling.md) | S7 | 10 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
 | 13 | [Flow testing](.agent/plans/13-flow-testing.md) | S7 | 10 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
 | 14 | [Templates](.agent/plans/14-templates.md) | S8 | 09 | 10 | 9 | — | 0 | In build | 2026-09-04 |
 | 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 11 | 3 | 13 | In judge (round 3) | 2026-09-04 |
-| | **Total** | | | **179** | **111** | | **18** | | |
+| | **Total** | | | **179** | **123** | | **18** | | |
 
 Build order: S1 (00, 01, 15) → S2 / S3 / S4 in parallel → S5 (09, 10) →
 S6 / S7 / S8 in parallel → S9 integrates, runs the E2E and the final

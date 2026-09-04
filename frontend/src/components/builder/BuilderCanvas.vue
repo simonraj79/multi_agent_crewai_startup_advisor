@@ -571,6 +571,31 @@ const minimapNodes = computed<MinimapNode[]>(() =>
   }),
 )
 
+/**
+ * The live zoom, published to CSS as `--canvas-zoom` (critic P-06).
+ *
+ * An SVG `stroke-width` is in USER space, so the viewport transform multiplies
+ * it: the 1.5px flow edge rendered at **1.10 px** on the validator template's
+ * own opening fit (0.733), **0.65 px** after `Fit` (0.436) and **0.56 px** with
+ * the Versions panel open (0.376) - measured by the critic, at zooms the
+ * product chooses for itself rather than any the author asked for. At 0.75
+ * opacity that is a grey suggestion where 22 wires should be.
+ *
+ * Publishing the zoom lets `builder.css` floor the DEVICE-pixel width without
+ * touching a token: `max(<design width>, calc(<floor> / zoom))` is the design
+ * width whenever it is already thick enough and exactly the floor when it is
+ * not. `vector-effect: non-scaling-stroke` was the other candidate and is
+ * worse in one specific way - it pins the stroke at every zoom, so zooming IN
+ * would thin the wires relative to the cards they connect.
+ *
+ * Guarded against 0: a zoom of zero would make the division infinite, and Vue
+ * Flow reports 0 for one frame before the pane is measured.
+ */
+const zoomLevel = computed(() => {
+  const zoom = flow.viewport.value.zoom
+  return Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+})
+
 const minimapViewport = computed(() => flow.viewport.value)
 const minimapPane = computed(() => ({
   width: flow.dimensions.value.width,
@@ -742,6 +767,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
     ref="frame"
     class="builder-canvas"
     :class="{ 'is-connecting': isConnecting, 'is-hovering': isHovering, 'is-read-only': readOnly }"
+    :style="{ '--canvas-zoom': String(zoomLevel) }"
     :[BUILDER_CANVAS_ATTR]="''"
     :data-mode="mode ?? 'design'"
     role="application"

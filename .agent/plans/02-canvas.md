@@ -369,3 +369,66 @@ time: putting an unprovable table in the provable file is how a mirror stops
 being a mirror. Delete it when the vocabulary carries the real one.
 
 Open decision for the owner: none.
+
+### Critic round product-1 fixes — 2026-09-04
+
+**P-06 — flow edges went sub-pixel at the zooms the product chooses for
+itself.** An SVG `stroke-width` is in USER space and the viewport multiplies it
+by the zoom, so `--edge-width-flow: 1.5px` rendered at **1.10 px** on the
+validator template's own opening fit (0.733), **0.65 px** after `Fit` (0.436)
+and **0.56 px** with the Versions panel open (0.376). At `opacity: 0.75` that
+is a grey suggestion where 22 wires should be. None of those zooms is one an
+author asked for. Flowise v2's worst case is 1.0 px, because it draws 2 px and
+refuses to zoom below 0.5.
+
+`BuilderCanvas.vue` publishes the live zoom as `--canvas-zoom`, and every
+`stroke-width` in the edge block became
+`max(<its design width>, calc(--edge-width-flow / --canvas-zoom))`. **No token
+moved**, and nothing changes at zoom 1 or above.
+
+`vector-effect: non-scaling-stroke` was the other candidate and is worse in one
+specific way: it pins the stroke at *every* zoom, so zooming IN would thin the
+wires relative to the cards they connect. The trade this does make is named in
+the CSS: below about 0.66 an attach edge (1 px) reaches the same floor as a
+flow edge (1.5 px) and the two weights converge. That is the smaller loss — D4
+already says the dash rhythms are what tell them apart at 50% zoom, and 0.376
+device px is not a thin edge, it is an absent one.
+
+**P-07 — the minimap covered the node you had just placed.** 186x158 at
+`z-index: var(--z-control)`, bottom-right, open by default, with only a close
+button: it covered **30.2%** of a node dropped there, including its model pill
+and its meta line, and on the validator template it lands on
+`Validation report`. It now yields — a whisper at `opacity: 0.12` and
+`pointer-events: none`, so the node underneath is both visible and *clickable*
+— and comes back the instant the pointer reaches its toggle, which keeps its
+pointer events throughout precisely so there is always something to aim at.
+
+Two decisions inside that are measurements rather than taste:
+
+- **Coverage, not intersection.** A bare overlap test faded the map when the
+  one-node capture's card clipped the panel's corner by about 11x3 px — 0.14%
+  of a 240x96 card — which changed a committed visual baseline for something no
+  author would ever see. The threshold is a tenth of the node: two orders of
+  magnitude above the nick, comfortably below the 30.2% being fixed.
+- **Not an automatic collapse.** `collapsed` is remembered per browser, so
+  collapsing would either write over the author's own choice or flap against it.
+
+The geometry is `offsetLeft/Top/Width/Height` against `flow x zoom + pan`: the
+panel is absolutely positioned inside `.builder-canvas`, which is
+`position: relative` and which `.builder-flow` fills exactly, so both boxes are
+already in one coordinate system. No `getBoundingClientRect`, no second origin,
+nothing that moves under a device-pixel ratio.
+
+**Both were invisible to the unit suite and both are now measured in a real
+browser** — `e2e/builder-layout.spec.ts`, the file whose header already says
+why. Proved by breaking it: with the fix reverted, the P-06 guard reports
+`an edge rendered at 1.10 device px at zoom 0.7333333333333333`, which is the
+critic's first row to two decimal places, and the P-07 guard finds
+`data-yielding` empty. The P-06 guard reads its zoom from a **node's painted
+width over its laid-out width** rather than from the `--canvas-zoom` the fix
+publishes, because reading the fix's own variable would make it unfalsifiable —
+against the pre-fix build it would default to 1 and fail on its own premise
+instead of on the stroke.
+
+Unit cover: `frontend/tests/builderCanvas.spec.ts` gains **4** minimap tests,
+including the corner nick.

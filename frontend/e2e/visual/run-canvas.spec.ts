@@ -69,23 +69,24 @@ function canvas(page: Page): Locator {
 }
 
 /**
- * The handoff tokens, masked for the same reason the clock is.
+ * Wait until no handoff token is walking, then capture.
  *
- * A token's position is rewritten every animation frame while it walks its
- * edge, so two consecutive captures of the running canvas never agree - and
- * `toHaveScreenshot` retries until they do, burning its whole 15s budget and
- * then photographing a canvas whose fan-out has meanwhile finished. Measured:
- * the count assertion above the screenshot passed and the animation assertions
- * twenty lines below it timed out on a card that had simply completed.
+ * MASKING A MOVING ELEMENT DOES NOT WORK, and the measurement is the reason
+ * this is a wait rather than a third entry in the mask list. Playwright
+ * computes a mask's box per attempt, so a token that has moved between two
+ * comparison captures is covered by two different boxes and the residual is
+ * their difference - measured here at 11,220 pixels on one attempt and 9 on
+ * another, converging but never to zero, which is a flake rather than a gate.
  *
- * Masking is the established answer here, not a new one - the elapsed clock has
- * been masked since this file was written, for the same "never twice the same
- * picture" reason. What is lost is the token's pixels, which
- * `e2e/visual/choreography.spec.ts` measures directly and a still could not
- * have shown moving anyway.
+ * A token lives at most 4s (`clamp(pathLength x 0.02, 2000, 4000)`) and a
+ * synthetic branch runs for 5s, so there is always a token-free window inside
+ * the branch this test photographs. Waiting for it costs a second and buys an
+ * EXACT comparison, which is what this file is for. The token's own pixels are
+ * `e2e/visual/choreography.spec.ts`'s subject, and a still could not have shown
+ * one moving anyway.
  */
-function handoffTokens(page: Page): Locator {
-  return page.locator('[data-testid="handoff-token"]')
+async function tokensSettle(page: Page): Promise<void> {
+  await expect(page.locator('[data-testid="handoff-token"]')).toHaveCount(0, { timeout: 6_000 })
 }
 
 /** One computed property off one element, as the browser finally resolved it. */
@@ -151,7 +152,7 @@ test.describe('the run canvas survives the node-card extraction', () => {
     await openStudio(page)
 
     await expect(canvas(page)).toHaveScreenshot('run-canvas-idle.png', {
-      mask: [elapsedClock(page), handoffTokens(page)],
+      mask: [elapsedClock(page)],
     })
 
     // --- the double-clip -------------------------------------------------
@@ -273,8 +274,9 @@ test.describe('the run canvas survives the node-card extraction', () => {
       expect(await animationsOn(running.locator('.node-active-dot')))
         .toEqual(['node-active-pulse'])
 
+      await tokensSettle(page)
       await expect(canvas(page)).toHaveScreenshot('run-canvas-running.png', {
-        mask: [elapsedClock(page), handoffTokens(page)],
+        mask: [elapsedClock(page)],
       })
 
       // The card's own reduced-motion block, which lives in the same extracted
@@ -313,8 +315,9 @@ test.describe('the run canvas survives the node-card extraction', () => {
       await expect(waiting).toHaveCount(1)
       await expect(completed).toHaveCount(1)
 
+      await tokensSettle(page)
       await expect(canvas(page)).toHaveScreenshot('run-canvas-gate-waiting.png', {
-        mask: [elapsedClock(page), handoffTokens(page)],
+        mask: [elapsedClock(page)],
       })
 
       // The three state tenancies of `--node-gradient` that the extraction must

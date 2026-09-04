@@ -168,20 +168,10 @@ test.describe('a dropped socket loses nothing', () => {
         window.dispatchEvent(new Event('offline'))
       })
 
-      // GUARDED: `data-testid="stream-reconnecting"` is plan 11's strip, built
-      // by another agent in this same wave and absent from this worktree. The
-      // Integrator removes this guard at integration. Everything below it
-      // passes for real today.
+      // Plan 11's strip (StatusPanel.vue). Guarded while the two plans were
+      // built on separate branches; un-guarded by the Integrator on the merge.
       await test.step('the reconnecting strip (plan 11)', async () => {
         const strip = page.locator('[data-testid="stream-reconnecting"]')
-        if ((await strip.count()) === 0) {
-          test.info().annotations.push({
-            type: 'guarded',
-            description:
-              'stream-reconnecting is plan 11 (StatusPanel.vue) and absent here; un-guard at integration',
-          })
-          return
-        }
         await expect(strip).toContainText(/reconnecting/i)
         await expect(strip).toContainText(new RegExp(`${sequenceBefore}\\s+steps kept`, 'i'))
       })

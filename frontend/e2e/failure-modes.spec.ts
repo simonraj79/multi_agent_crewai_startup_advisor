@@ -374,36 +374,19 @@ test.describe('the failure reaches the screen', () => {
     // it was ever painted.
     await expect(failing.locator('.workflow-node.is-error')).toBeVisible({ timeout: 90_000 })
 
-    // GUARDED: `data-testid="node-error-message"` is plan 11's, built by another
-    // agent in this same wave and absent from this worktree. The Integrator
-    // removes the guard once plan 11 merges; everything above passes for real
-    // today.
+    // Plan 11's card (WorkflowNode.vue). Guarded while the two plans were built
+    // on separate branches; un-guarded by the Integrator on the merge.
     await test.step('the inline message on the card (plan 11)', async () => {
       const message = failing.locator('[data-testid="node-error-message"]')
-      if ((await message.count()) === 0) {
-        test.info().annotations.push({
-          type: 'guarded',
-          description:
-            'node-error-message is plan 11 (WorkflowNode.vue) and absent here; un-guard at integration',
-        })
-        return
-      }
       await expect(message).toBeVisible()
       expect((await message.innerText()).length).toBeLessThanOrEqual(120)
     })
 
-    // GUARDED for the same reason. What the button posts - `resume_from` - is
-    // proved for real by the five tests above.
+    // Plan 11's button. What it posts - `resume_from` - is proved for real by
+    // the five tests above; this proves the click reaches it.
     await test.step('Re-run from here (plan 11)', async () => {
       const button = page.locator('[data-testid="rerun-from-here"]')
-      if ((await button.count()) === 0) {
-        test.info().annotations.push({
-          type: 'guarded',
-          description:
-            'rerun-from-here is plan 11 (WorkflowNode.vue) and absent here; un-guard at integration',
-        })
-        return
-      }
+      await expect(button).toBeVisible()
       await button.click()
       await expect(failing.locator('.workflow-node.is-completed')).toBeVisible({
         timeout: 120_000,

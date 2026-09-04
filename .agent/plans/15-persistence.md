@@ -368,7 +368,23 @@ with 08 / 07).
 3. `POST …/duplicate` on another user's document answers 404; on one's own answers 201 with version 1 and `draft` — `tests/service/test_builder_duplicate.py`. Rubric 14.
 4. The version browser opens a prior version read-only and Restore creates head + 1 through the CAS — `frontend/tests/versionBrowser.spec.ts` plus an `e2e/builder.spec.ts` step. Rubric 4.
 5. Delete from the UI removes the row and its versions (`ON DELETE CASCADE`, `persistence.py:263-275`) and refuses 409 while published-and-registered. Rubric 12.
-6. `tests/builder/test_upgrade.py`: every committed v1 fixture upgrades to a clean v2 document; upgrade is idempotent. Rubric 11.
+6. `tests/builder/test_upgrade.py`: every committed v1 fixture upgrades ~~to a clean v2 document~~ **cleanly, and would upgrade cleanly to v2 with `BUILDER_DOCUMENT_SCHEMA` moved**; upgrade is idempotent. Rubric 11.
+   *Amended 2026-09-04 (round 3, D-15-33):* the shipped path does not perform
+   a v2 upgrade and cannot, because `BUILDER_DOCUMENT_SCHEMA` is still
+   `SCHEMA_V1`: `upgrade.py:117`'s `while schema != BUILDER_DOCUMENT_SCHEMA`
+   loop has nothing to do, and
+   `test_v1_passes_through_while_the_service_still_compiles_v1` asserts
+   exactly that - `BUILDER_DOCUMENT_SCHEMA == SCHEMA_V1` and every fixture
+   coming back unchanged. The v2 claim needs `mock.patch.object`, and the
+   critic is right that the sentence promised something the tick could not
+   mean.
+
+   The substance is fine and was measured: all four committed fixtures are
+   clean under the patch, `problems=0 errors=[]` each, and
+   `test_upgrade.py` now asserts that for **all four** rather than for one -
+   which is the other half of the row, and the half a rewritten sentence
+   alone would have left standing. The wording above is the module's own
+   honest note, promoted into the criterion.
 7. `tests/service/test_additive_migration.py` covers `runs.mode`; `create_all` on a database that already has `runs` yields all ~~six~~ **five** new tables with their indexes — asserted with the inspector. Rubric 16.
    *Amended 2026-09-03 (D-15-11):* **five** new tables plus `runs.mode`,
    not six. D6 declares five — `user_credentials`, `user_skills`,

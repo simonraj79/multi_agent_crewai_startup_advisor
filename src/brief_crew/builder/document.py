@@ -619,6 +619,27 @@ class ToolConfig(BuilderModel):
         return _checked_with_mapping(value, where="params")
 
 
+class ServerHint(BuilderModel):
+    """What survives an export when the server reference itself cannot.
+
+    `export.py` strips `server_id` deliberately: it names a row in the EXPORTING
+    author's own MCP server list, and a different author importing that file
+    must not end up pointing at it. What it leaves instead is this hint - the
+    label, the transport and a MASKED url - so the importer can say which server
+    the graph wants without handing over a reference to somebody else's.
+
+    Every field is optional because the export nulls whatever it could not
+    safely carry, and a hint with nothing in it is still a truthful hint.
+    """
+
+    label: Label | None = None
+    transport: str | None = None
+    #: Masked by `export.mask_url` before it is written. A real MCP url can
+    #: carry `user:password@` and `?token=`, which is why the raw one never
+    #: leaves.
+    url: str | None = None
+
+
 class McpConfig(BuilderModel):
     """`mcp` - one MCP server, and WHICH of its tools this node exposes.
 
@@ -632,7 +653,24 @@ class McpConfig(BuilderModel):
     may reach at all.
     """
 
-    server_id: NodeId
+    # OPTIONAL, and this cost a production defect to learn (D-15-28).
+    #
+    # `export.py` nulls this key on the way out, because it names a row in the
+    # exporting author's own server list. So a document that has been through an
+    # export is a document with no `server_id` - and while this field was
+    # REQUIRED, such a file exported 200 and then could not be imported by
+    # anybody, its own author included: `nodes.N.server_id - Input should be a
+    # valid string`. The author could produce a graph nobody could open.
+    #
+    # The honesty is not lost by relaxing it. The envelope's `needs_credentials`
+    # names every node that lost a reference, and the importer renders that as a
+    # problem group, so the file still opens flagged rather than green.
+    server_id: NodeId | None = None
+    #: What the export leaves in `server_id`'s place. Accepted here because the
+    #: export WRITES it, and `BuilderModel` is `extra="forbid"` - so without
+    #: this field the round trip fails a second way, on `server_hint - Extra
+    #: inputs are not permitted`.
+    server_hint: ServerHint | None = None
     tool_names: tuple[str, ...] = ()
     credential_id: CredentialId | None = None
 
@@ -653,7 +691,21 @@ class SkillConfig(BuilderModel):
     owns storage and the progressive-disclosure mechanism.
     """
 
-    skill_id: NodeId
+    # Optional for the same reason as `McpConfig.server_id`, and with the same
+    # defect behind it. `export.py` strips this key and its docstring says why:
+    # "A node that lost only a `skill_id` is not in `needs_credentials`:
+    # `skill_name` survives and is what the importer's own library resolves by."
+    #
+    # That sentence described a field this class did not have. The export
+    # stripped `skill_id`, found no `skill_name` to leave behind, and wrote
+    # `config: {}` - a skill node with nothing in it at all, which then failed
+    # import on the missing id AND could not have been resolved even if it had
+    # parsed. Both halves are fixed here: the id may be absent, and the name it
+    # was supposed to leave behind now exists to be left.
+    skill_id: NodeId | None = None
+    #: The human name, which survives an export where the id cannot. This is
+    #: what an importing author's own skill library resolves against.
+    skill_name: Label | None = None
 
 
 class GateConfig(BuilderModel):

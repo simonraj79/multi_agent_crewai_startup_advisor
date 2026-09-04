@@ -296,6 +296,26 @@
     ],
     [
       "draft",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "draft",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "draft",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "draft",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "draft",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],
@@ -328,6 +348,26 @@
       "guess",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "guess",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "guess",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "guess",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "guess",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
     ],
     [
       "guess",

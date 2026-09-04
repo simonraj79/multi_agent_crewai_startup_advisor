@@ -308,6 +308,14 @@ their absence does not look like a missing knob:
 - Start the backend **from the worktree root**, or set `SKILLS_ROOT` to the
   absolute `data/skills` — relative, it resolves nowhere and the four
   built-in packs are silently absent.
+- **`RUN_RATE_LIMIT_MAX_RUNS=100` on the E2E backend.** The default is 10
+  launches per client per minute, which is the right production answer and
+  the wrong one for a serial suite that now presses Launch or Run about
+  twenty times in nine minutes: `failure-modes.spec.ts` spends eleven, and
+  `published-run.spec.ts` or `builder-skills.spec.ts` then reads a `429` as
+  "no phase lane" or "no skill body". Alone, each file is green - which is
+  the tell. The limiter itself is proved by `tests/service/test_run_admission.py`
+  and does not need the browser to prove it again.
 
 ### The suites
 

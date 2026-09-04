@@ -1,0 +1,51 @@
+{
+  "measuredAt": "2026-09-04T05:24:17.969Z",
+  "budget": {
+    "meanMs": 16.7,
+    "p95Ms": 20,
+    "vsyncFloorMs": 16.666666666666668
+  },
+  "note": "requestAnimationFrame deltas over 3s of scripted wheel zoom and 3s of Space+drag pan, Chromium at 1440x900 against a local SYNTHETIC=1 backend. One machine, one browser build - a floor under \"obviously broken\", not a comparison against another product. `idle48` is the same canvas doing NOTHING for the same six seconds, and is the control the busy cases are read against. `instrumentCheck` blocks the main thread on purpose, and is what makes a green run mean anything.",
+  "cases": {
+    "instrumentCheck": {
+      "frames": 27,
+      "meanMs": 27.15555555555556,
+      "p95Ms": 16.799999999999955,
+      "maxMs": 300,
+      "seconds": 0.7332000000000001,
+      "nodes": 48
+    },
+    "idle48": {
+      "frames": 361,
+      "meanMs": 16.665927977839374,
+      "p95Ms": 16.700000000000728,
+      "maxMs": 16.800000000000182,
+      "seconds": 6.016400000000014,
+      "nodes": 48
+    },
+    "fixture48": {
+      "frames": 375,
+      "meanMs": 16.710245333333365,
+      "p95Ms": 16.799999999999955,
+      "maxMs": 33.19999999999982,
+      "seconds": 6.266342000000012,
+      "nodes": 48
+    },
+    "client60": {
+      "frames": 372,
+      "meanMs": 16.755645161290364,
+      "p95Ms": 16.799999999999272,
+      "maxMs": 33.30000000000018,
+      "seconds": 6.2331000000000145,
+      "nodes": 60
+    },
+    "gesture1": {
+      "frames": 367,
+      "meanMs": 16.75694822888285,
+      "p95Ms": 16.799999999999727,
+      "maxMs": 33.400000000000546,
+      "seconds": 6.149800000000006,
+      "nodes": 1
+    }
+  }
+}

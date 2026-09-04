@@ -246,8 +246,29 @@ watch(
 
 /* ── shell state ───────────────────────────────────────────────────────── */
 
-const paletteCollapsed = ref(false)
-const inspectorCollapsed = ref(false)
+/**
+ * Below this width both rails start CLOSED (02-canvas.md D9).
+ *
+ * 640 is `studio.css`'s own narrow breakpoint, named once here so the state and
+ * the stylesheet cannot disagree about where a rail becomes an overlay. Above
+ * it the two rails are columns and closing them would take the author's tools
+ * away for no reason; at 390 they are a bottom sheet and a full-width panel,
+ * and OPEN BY DEFAULT means the first thing a reader sees is the inspector
+ * covering the entire graph. Measured before this landed: the inspector at
+ * 390x792 over a canvas nobody could see, and a Playwright click on a card
+ * timing out as "not stable" because the card was underneath it.
+ *
+ * Read once, at setup, rather than watched. A viewport that crosses 640px
+ * mid-session is a window being resized on a desktop, and re-closing somebody's
+ * rails while they drag a window edge is worse than leaving them where they put
+ * them - the CSS follows the width either way.
+ */
+const NARROW_VIEWPORT_PX = 640
+const startsNarrow =
+  typeof window !== 'undefined' && window.innerWidth <= NARROW_VIEWPORT_PX
+
+const paletteCollapsed = ref(startsNarrow)
+const inspectorCollapsed = ref(startsNarrow)
 const publishOpen = ref(false)
 const shortcutsOpen = ref(false)
 const library = shallowRef<readonly BuilderDocumentSummary[]>([])

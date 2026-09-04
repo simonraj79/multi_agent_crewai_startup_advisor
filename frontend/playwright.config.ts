@@ -71,6 +71,16 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      /*
+       * Everything EXCEPT the phone spec. `mobile.spec.ts` asserts about a
+       * bottom sheet and a full-width overlay, both of which exist only under
+       * the 640px breakpoint - so at 1440 it fails on the viewport rather than
+       * on the product, which is a red that means nothing. The visual spec is
+       * deliberately not excluded: it is the one file that SHOULD run under
+       * both, and that is how criterion 9's sixteen baselines are eight and
+       * eight.
+       */
+      testIgnore: [/mobile\.spec\.ts/],
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
     /*

@@ -53,6 +53,29 @@
   --err-bg: rgba(255, 82, 82, 0.12);
   --err-border: rgba(255, 82, 82, 0.4);
   --err-text: #ffcccc;
+  /* THE APPLICATION CHROME, which was four literals until 2026-09-04.
+
+     `.studio-shell`, `.app-header`, the two canvas-heading fades and Vue Flow's
+     controls bar each carried their own `rgba(1x, 1x, 1x, .x)`, and the light
+     theme found all four at once: the cards went white, the text went dark, and
+     every one of those four surfaces stayed black - so the palette rendered
+     dark grey text on a dark grey tile. They are tokens now because the rule is
+     that a value is a token or it does not exist, and a theme is the thing that
+     enforces it.
+
+     The FADE is two stops of one colour and is written as two tokens rather
+     than as a gradient, because `DocumentBar` and `.canvas-heading` use the
+     same fade at different lower alphas and a single gradient token could not
+     express both without one of them restating it. */
+  --shell-bg: rgba(18, 18, 18, 0.7);
+  --header-bg: rgba(22, 22, 22, 0.88);
+  --fade-strong: rgba(26, 26, 26, 0.96);
+  --fade-soft: rgba(26, 26, 26, 0.72);
+  --fade-mid: rgba(26, 26, 26, 0.78);
+  --controls-bg: rgba(26, 26, 26, 0.92);
+  /* The page's own faint 32px grid, behind everything. A wash of white over a
+     dark ground; a wash of ink over a light one. */
+  --page-grid: rgba(255, 255, 255, 0.016);
   --canvas-bg: var(--surface-panel);
   --dot-color: #777;
   --dot-gap: 20px;
@@ -165,4 +188,39 @@
   --err-bg: rgba(190, 40, 40, 0.1);
   --err-border: rgba(190, 40, 40, 0.45);
   --err-text: #a32020;
+  /* The chrome, inverted. The alphas are close to the dark theme's because the
+     job is the same job - "this bar sits above the page" - and only the ink
+     changes. */
+  --shell-bg: rgba(242, 245, 248, 0.7);
+  --header-bg: rgba(250, 251, 252, 0.9);
+  --fade-strong: rgba(240, 243, 246, 0.96);
+  --fade-soft: rgba(240, 243, 246, 0.72);
+  --fade-mid: rgba(240, 243, 246, 0.78);
+  --controls-bg: rgba(250, 251, 252, 0.94);
+  --page-grid: rgba(15, 20, 25, 0.03);
+  /* `--link-cyan` moves with the status tints and NOT with the accents, and the
+     line between the two is what it is FOR rather than what it looks like. The
+     accents are identity - the squircle fill, the minimap dot, the gradient rim
+     - and a kind whose colour changes with the lights is a kind an author
+     learns twice. This one is a LINK: a router branch label, the `otherwise`
+     port's word, the loop rim. It is read, so it has to be readable. */
+  --link-cyan: #1d6fb8;
 }
+
+/* ---------------------------------------------------------------------------
+   THE ONE THING THE LIGHT THEME DOES NOT FIX, recorded rather than hidden.
+
+   D6 rules that accents and kind gradients are SHARED, and the block above
+   obeys it. The accents were chosen against a #1a1a1a ground and are pale
+   pastels, so everywhere one is used as SMALL TEXT on a light surface -
+   `.canvas-kicker`, the palette's `PALETTE` heading, `Ready to publish`, the
+   inspector's `GRAPH` kicker - it is low contrast. Nothing is unreadable and
+   nothing moves; it is thin.
+
+   Fixing it properly means a second token per accent - the identity colour and
+   the on-surface text colour - and swapping the text sites over. Measured
+   2026-09-04: `color: var(--accent-cyan|mint|blue)` and `--link-cyan` appear at
+   109 sites across 32 files, most of them owned by other plans. That is a
+   change to make deliberately and in one pass, not as a side effect of a canvas
+   plan, so it is a follow-up rather than a silent widening of this one.
+   --------------------------------------------------------------------------- */

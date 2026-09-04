@@ -1,0 +1,1120 @@
+{
+  "schema": "builder.flow/v1",
+  "id": "ug_00abcdef",
+  "name": "Perf 48",
+  "version": 1,
+  "input_field": "idea",
+  "nodes": [
+    {
+      "id": "idea",
+      "label": "Idea",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "kind": "input",
+      "config": {
+        "field": "idea",
+        "label": null,
+        "max_chars": 2000,
+        "required": true
+      }
+    },
+    {
+      "id": "gate_a",
+      "label": "Confirm scope",
+      "position": {
+        "x": 0,
+        "y": 220
+      },
+      "kind": "gate",
+      "config": {
+        "message": "Review this step before the run continues.",
+        "editable_fields": [],
+        "max_turns": 1,
+        "expiry_seconds": 1800
+      }
+    },
+    {
+      "id": "agent_1",
+      "label": "Analyst 1",
+      "position": {
+        "x": -320,
+        "y": 440
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_2",
+      "label": "Analyst 2",
+      "position": {
+        "x": 0,
+        "y": 440
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_3",
+      "label": "Analyst 3",
+      "position": {
+        "x": 320,
+        "y": 440
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_4",
+      "label": "Analyst 4",
+      "position": {
+        "x": 640,
+        "y": 440
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "merge_1",
+      "label": "Merge one",
+      "position": {
+        "x": 0,
+        "y": 660
+      },
+      "kind": "transform",
+      "config": {
+        "op": "pick",
+        "args": {}
+      }
+    },
+    {
+      "id": "gate_b",
+      "label": "Confirm findings",
+      "position": {
+        "x": 0,
+        "y": 880
+      },
+      "kind": "gate",
+      "config": {
+        "message": "Review this step before the run continues.",
+        "editable_fields": [],
+        "max_turns": 1,
+        "expiry_seconds": 1800
+      }
+    },
+    {
+      "id": "agent_5",
+      "label": "Writer 1",
+      "position": {
+        "x": -320,
+        "y": 1100
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_6",
+      "label": "Writer 2",
+      "position": {
+        "x": 0,
+        "y": 1100
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_7",
+      "label": "Writer 3",
+      "position": {
+        "x": 320,
+        "y": 1100
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_8",
+      "label": "Writer 4",
+      "position": {
+        "x": 640,
+        "y": 1100
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "route",
+      "label": "Route",
+      "position": {
+        "x": 0,
+        "y": 1320
+      },
+      "kind": "router",
+      "config": {
+        "branches": [
+          {
+            "label": "hot",
+            "op": "eq",
+            "key": "decision",
+            "value": "hot"
+          },
+          {
+            "label": "cold",
+            "op": "eq",
+            "key": "decision",
+            "value": "cold"
+          },
+          {
+            "label": "otherwise",
+            "op": "otherwise",
+            "key": null,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "agent_9",
+      "label": "Reviewer 1",
+      "position": {
+        "x": -320,
+        "y": 1540
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_10",
+      "label": "Reviewer 2",
+      "position": {
+        "x": 0,
+        "y": 1540
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_11",
+      "label": "Reviewer 3",
+      "position": {
+        "x": 320,
+        "y": 1540
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "agent_12",
+      "label": "Reviewer 4",
+      "position": {
+        "x": 640,
+        "y": 1540
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "merge_2",
+      "label": "Merge two",
+      "position": {
+        "x": 0,
+        "y": 1760
+      },
+      "kind": "transform",
+      "config": {
+        "op": "pick",
+        "args": {}
+      }
+    },
+    {
+      "id": "agent_13",
+      "label": "Editor",
+      "position": {
+        "x": 0,
+        "y": 1980
+      },
+      "kind": "agent",
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "agent_id": "scoper",
+        "tools": [],
+        "credential_id": null
+      }
+    },
+    {
+      "id": "shape_1",
+      "label": "Shape one",
+      "position": {
+        "x": -320,
+        "y": 2200
+      },
+      "kind": "transform",
+      "config": {
+        "op": "pick",
+        "args": {}
+      }
+    },
+    {
+      "id": "shape_2",
+      "label": "Shape two",
+      "position": {
+        "x": 0,
+        "y": 2200
+      },
+      "kind": "transform",
+      "config": {
+        "op": "pick",
+        "args": {}
+      }
+    },
+    {
+      "id": "shape_3",
+      "label": "Shape three",
+      "position": {
+        "x": 320,
+        "y": 2200
+      },
+      "kind": "transform",
+      "config": {
+        "op": "pick",
+        "args": {}
+      }
+    },
+    {
+      "id": "gate_c",
+      "label": "Confirm result",
+      "position": {
+        "x": 0,
+        "y": 2420
+      },
+      "kind": "gate",
+      "config": {
+        "message": "Review this step before the run continues.",
+        "editable_fields": [],
+        "max_turns": 1,
+        "expiry_seconds": 1800
+      }
+    },
+    {
+      "id": "result",
+      "label": "Result",
+      "position": {
+        "x": 0,
+        "y": 2640
+      },
+      "kind": "output",
+      "config": {
+        "body_key": "markdown_body",
+        "source": null
+      }
+    },
+    {
+      "id": "tool_1",
+      "label": "Tool 1",
+      "position": {
+        "x": -520,
+        "y": 440
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_1",
+      "label": "Skill 1",
+      "position": {
+        "x": -520,
+        "y": 500
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_2",
+      "label": "Tool 2",
+      "position": {
+        "x": -200,
+        "y": 440
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_2",
+      "label": "Skill 2",
+      "position": {
+        "x": -200,
+        "y": 500
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_3",
+      "label": "Tool 3",
+      "position": {
+        "x": 120,
+        "y": 440
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_3",
+      "label": "Skill 3",
+      "position": {
+        "x": 120,
+        "y": 500
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_4",
+      "label": "Tool 4",
+      "position": {
+        "x": 440,
+        "y": 440
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_4",
+      "label": "Skill 4",
+      "position": {
+        "x": 440,
+        "y": 500
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_5",
+      "label": "Tool 5",
+      "position": {
+        "x": -520,
+        "y": 1100
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_5",
+      "label": "Skill 5",
+      "position": {
+        "x": -520,
+        "y": 1160
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_6",
+      "label": "Tool 6",
+      "position": {
+        "x": -200,
+        "y": 1100
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_6",
+      "label": "Skill 6",
+      "position": {
+        "x": -200,
+        "y": 1160
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_7",
+      "label": "Tool 7",
+      "position": {
+        "x": 120,
+        "y": 1100
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_7",
+      "label": "Skill 7",
+      "position": {
+        "x": 120,
+        "y": 1160
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_8",
+      "label": "Tool 8",
+      "position": {
+        "x": 440,
+        "y": 1100
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_8",
+      "label": "Skill 8",
+      "position": {
+        "x": 440,
+        "y": 1160
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_9",
+      "label": "Tool 9",
+      "position": {
+        "x": -520,
+        "y": 1540
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_9",
+      "label": "Skill 9",
+      "position": {
+        "x": -520,
+        "y": 1600
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_10",
+      "label": "Tool 10",
+      "position": {
+        "x": -200,
+        "y": 1540
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_10",
+      "label": "Skill 10",
+      "position": {
+        "x": -200,
+        "y": 1600
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_11",
+      "label": "Tool 11",
+      "position": {
+        "x": 120,
+        "y": 1540
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_11",
+      "label": "Skill 11",
+      "position": {
+        "x": 120,
+        "y": 1600
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    },
+    {
+      "id": "tool_12",
+      "label": "Tool 12",
+      "position": {
+        "x": 440,
+        "y": 1540
+      },
+      "kind": "tool",
+      "config": {
+        "tool_id": "tool",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "skill_12",
+      "label": "Skill 12",
+      "position": {
+        "x": 440,
+        "y": 1600
+      },
+      "kind": "skill",
+      "config": {
+        "skill_id": "skill"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "idea",
+      "source_port": "out",
+      "target": "gate_a",
+      "target_port": "in"
+    },
+    {
+      "id": "e2",
+      "source": "gate_a",
+      "source_port": "approve",
+      "target": "agent_1",
+      "target_port": "in"
+    },
+    {
+      "id": "e3",
+      "source": "gate_a",
+      "source_port": "approve",
+      "target": "agent_2",
+      "target_port": "in"
+    },
+    {
+      "id": "e4",
+      "source": "gate_a",
+      "source_port": "approve",
+      "target": "agent_3",
+      "target_port": "in"
+    },
+    {
+      "id": "e5",
+      "source": "gate_a",
+      "source_port": "approve",
+      "target": "agent_4",
+      "target_port": "in"
+    },
+    {
+      "id": "e6",
+      "source": "agent_1",
+      "source_port": "out",
+      "target": "merge_1",
+      "target_port": "in"
+    },
+    {
+      "id": "e7",
+      "source": "agent_2",
+      "source_port": "out",
+      "target": "merge_1",
+      "target_port": "in"
+    },
+    {
+      "id": "e8",
+      "source": "agent_3",
+      "source_port": "out",
+      "target": "merge_1",
+      "target_port": "in"
+    },
+    {
+      "id": "e9",
+      "source": "agent_4",
+      "source_port": "out",
+      "target": "merge_1",
+      "target_port": "in"
+    },
+    {
+      "id": "e10",
+      "source": "merge_1",
+      "source_port": "out",
+      "target": "gate_b",
+      "target_port": "in"
+    },
+    {
+      "id": "e11",
+      "source": "gate_b",
+      "source_port": "approve",
+      "target": "agent_5",
+      "target_port": "in"
+    },
+    {
+      "id": "e12",
+      "source": "gate_b",
+      "source_port": "approve",
+      "target": "agent_6",
+      "target_port": "in"
+    },
+    {
+      "id": "e13",
+      "source": "gate_b",
+      "source_port": "approve",
+      "target": "agent_7",
+      "target_port": "in"
+    },
+    {
+      "id": "e14",
+      "source": "gate_b",
+      "source_port": "approve",
+      "target": "agent_8",
+      "target_port": "in"
+    },
+    {
+      "id": "e15",
+      "source": "agent_5",
+      "source_port": "out",
+      "target": "route",
+      "target_port": "in"
+    },
+    {
+      "id": "e16",
+      "source": "agent_6",
+      "source_port": "out",
+      "target": "route",
+      "target_port": "in"
+    },
+    {
+      "id": "e17",
+      "source": "agent_7",
+      "source_port": "out",
+      "target": "route",
+      "target_port": "in"
+    },
+    {
+      "id": "e18",
+      "source": "agent_8",
+      "source_port": "out",
+      "target": "route",
+      "target_port": "in"
+    },
+    {
+      "id": "e19",
+      "source": "route",
+      "source_port": "hot",
+      "target": "agent_9",
+      "target_port": "in"
+    },
+    {
+      "id": "e20",
+      "source": "route",
+      "source_port": "hot",
+      "target": "agent_10",
+      "target_port": "in"
+    },
+    {
+      "id": "e21",
+      "source": "route",
+      "source_port": "cold",
+      "target": "agent_11",
+      "target_port": "in"
+    },
+    {
+      "id": "e22",
+      "source": "agent_11",
+      "source_port": "out",
+      "target": "agent_12",
+      "target_port": "in"
+    },
+    {
+      "id": "e23",
+      "source": "agent_9",
+      "source_port": "out",
+      "target": "merge_2",
+      "target_port": "in"
+    },
+    {
+      "id": "e24",
+      "source": "agent_10",
+      "source_port": "out",
+      "target": "merge_2",
+      "target_port": "in"
+    },
+    {
+      "id": "e25",
+      "source": "agent_12",
+      "source_port": "out",
+      "target": "merge_2",
+      "target_port": "in"
+    },
+    {
+      "id": "e26",
+      "source": "route",
+      "source_port": "otherwise",
+      "target": "merge_2",
+      "target_port": "in"
+    },
+    {
+      "id": "e27",
+      "source": "merge_2",
+      "source_port": "out",
+      "target": "agent_13",
+      "target_port": "in"
+    },
+    {
+      "id": "e28",
+      "source": "agent_13",
+      "source_port": "out",
+      "target": "shape_1",
+      "target_port": "in"
+    },
+    {
+      "id": "e29",
+      "source": "shape_1",
+      "source_port": "out",
+      "target": "shape_2",
+      "target_port": "in"
+    },
+    {
+      "id": "e30",
+      "source": "shape_2",
+      "source_port": "out",
+      "target": "shape_3",
+      "target_port": "in"
+    },
+    {
+      "id": "e31",
+      "source": "shape_3",
+      "source_port": "out",
+      "target": "gate_c",
+      "target_port": "in"
+    },
+    {
+      "id": "e32",
+      "source": "gate_c",
+      "source_port": "approve",
+      "target": "result",
+      "target_port": "in"
+    },
+    {
+      "id": "e33",
+      "source": "tool_1",
+      "source_port": "attach",
+      "target": "agent_1",
+      "target_port": "attach"
+    },
+    {
+      "id": "e34",
+      "source": "skill_1",
+      "source_port": "attach",
+      "target": "agent_1",
+      "target_port": "attach"
+    },
+    {
+      "id": "e35",
+      "source": "tool_2",
+      "source_port": "attach",
+      "target": "agent_2",
+      "target_port": "attach"
+    },
+    {
+      "id": "e36",
+      "source": "skill_2",
+      "source_port": "attach",
+      "target": "agent_2",
+      "target_port": "attach"
+    },
+    {
+      "id": "e37",
+      "source": "tool_3",
+      "source_port": "attach",
+      "target": "agent_3",
+      "target_port": "attach"
+    },
+    {
+      "id": "e38",
+      "source": "skill_3",
+      "source_port": "attach",
+      "target": "agent_3",
+      "target_port": "attach"
+    },
+    {
+      "id": "e39",
+      "source": "tool_4",
+      "source_port": "attach",
+      "target": "agent_4",
+      "target_port": "attach"
+    },
+    {
+      "id": "e40",
+      "source": "skill_4",
+      "source_port": "attach",
+      "target": "agent_4",
+      "target_port": "attach"
+    },
+    {
+      "id": "e41",
+      "source": "tool_5",
+      "source_port": "attach",
+      "target": "agent_5",
+      "target_port": "attach"
+    },
+    {
+      "id": "e42",
+      "source": "skill_5",
+      "source_port": "attach",
+      "target": "agent_5",
+      "target_port": "attach"
+    },
+    {
+      "id": "e43",
+      "source": "tool_6",
+      "source_port": "attach",
+      "target": "agent_6",
+      "target_port": "attach"
+    },
+    {
+      "id": "e44",
+      "source": "skill_6",
+      "source_port": "attach",
+      "target": "agent_6",
+      "target_port": "attach"
+    },
+    {
+      "id": "e45",
+      "source": "tool_7",
+      "source_port": "attach",
+      "target": "agent_7",
+      "target_port": "attach"
+    },
+    {
+      "id": "e46",
+      "source": "skill_7",
+      "source_port": "attach",
+      "target": "agent_7",
+      "target_port": "attach"
+    },
+    {
+      "id": "e47",
+      "source": "tool_8",
+      "source_port": "attach",
+      "target": "agent_8",
+      "target_port": "attach"
+    },
+    {
+      "id": "e48",
+      "source": "skill_8",
+      "source_port": "attach",
+      "target": "agent_8",
+      "target_port": "attach"
+    },
+    {
+      "id": "e49",
+      "source": "tool_9",
+      "source_port": "attach",
+      "target": "agent_9",
+      "target_port": "attach"
+    },
+    {
+      "id": "e50",
+      "source": "skill_9",
+      "source_port": "attach",
+      "target": "agent_9",
+      "target_port": "attach"
+    },
+    {
+      "id": "e51",
+      "source": "tool_10",
+      "source_port": "attach",
+      "target": "agent_10",
+      "target_port": "attach"
+    },
+    {
+      "id": "e52",
+      "source": "skill_10",
+      "source_port": "attach",
+      "target": "agent_10",
+      "target_port": "attach"
+    },
+    {
+      "id": "e53",
+      "source": "tool_11",
+      "source_port": "attach",
+      "target": "agent_11",
+      "target_port": "attach"
+    },
+    {
+      "id": "e54",
+      "source": "skill_11",
+      "source_port": "attach",
+      "target": "agent_11",
+      "target_port": "attach"
+    },
+    {
+      "id": "e55",
+      "source": "tool_12",
+      "source_port": "attach",
+      "target": "agent_12",
+      "target_port": "attach"
+    },
+    {
+      "id": "e56",
+      "source": "skill_12",
+      "source_port": "attach",
+      "target": "agent_12",
+      "target_port": "attach"
+    }
+  ],
+  "joins": {},
+  "budget": null
+}

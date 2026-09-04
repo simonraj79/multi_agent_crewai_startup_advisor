@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 /**
@@ -78,6 +80,17 @@ function watchConsole(page: Page): ConsoleWatch {
 
 /** `IDEA_VALIDATOR` in `src/data/builderTemplates.ts`. The count is the point. */
 const VALIDATOR_TEMPLATE_NODES = 16
+
+/**
+ * The bound-maximum graph: 24 flow nodes and 24 attachments.
+ *
+ * Read from the committed fixture rather than built here, so the perf spec and
+ * the fit test are provably about ONE document - and so a later session can
+ * change the shape in one place and see both answers move.
+ */
+const PERF48 = JSON.parse(
+  readFileSync(path.resolve(process.cwd(), 'tests/fixtures/perf48.json'), 'utf8'),
+) as Record<string, unknown>
 
 /**
  * A wide viewport for the gallery test, because the defect was a RATIO.
@@ -391,6 +404,64 @@ test.describe('Flow builder layout', () => {
     expect(geometry.paneHeight).toBeGreaterThan(100)
     expect(Math.round(geometry.paneBottom)).toBeLessThanOrEqual(Math.round(geometry.dockTop!) + 1)
 
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('lands every node of the 48-node perf fixture inside the canvas pane', async ({ page }) => {
+    /*
+     * 02-canvas.md criterion 7, second half. The 16-node validator template is
+     * the case above; this is the one at the BOUND - 24 flow nodes and 24
+     * attachments, `MAX_GRAPH_NODES` and `MAX_ATTACHMENT_NODES` exactly - which
+     * is the largest graph the server will size without complaint and therefore
+     * the hardest thing `fit-view` is ever asked to do.
+     *
+     * It is also what the `min-zoom` floor is FOR. The plan's reasoning is that
+     * the validator template settles at 0.466, so a 48-node document needs
+     * roughly 0.3 and the floor at 0.2 has to be under it. A floor set too high
+     * does not report anything; it silently clamps the fit and leaves nodes
+     * outside the pane, which is exactly what this asserts cannot happen.
+     *
+     * The same DISJUNCTION as the validator case, and for the same reason
+     * (round 3, D-15-2): either every node is inside the pane, or the fit is
+     * held at the legibility floor with the rest reachable by a pan. A stale
+     * fit satisfies neither - it lands at an arbitrary zoom above the floor
+     * with nodes below the pane.
+     */
+    const watch = watchConsole(page)
+    await stubEmptyLibrary(page)
+
+    const created = await page.request.post('/api/builder/workflows', {
+      data: { document: PERF48, expected_version: null },
+    })
+    expect(created.status(), await created.text()).toBe(201)
+    const id = ((await created.json()) as { id: string }).id
+
+    await page.goto(`/#/build/${id}`)
+    await expect(page.locator('.vue-flow__node')).toHaveCount(48)
+
+    await expect
+      .poll(
+        async () => {
+          const state = await legibility(page)
+          const overflow = await worstNodeOverflow(page)
+          return overflow === 0 || state.zoom <= 11 / 15 + 0.001
+        },
+        {
+          timeout: 15_000,
+          message:
+            'every node of the 48-node fixture must be inside the pane the fit was computed against, unless the fit is held at the legibility floor',
+        },
+      )
+      .toBe(true)
+
+    // And the fit is INSIDE the declared limits rather than clamped against
+    // one: a graph that could only be fitted by going below `min-zoom` would
+    // report as fitted and be unreadable.
+    const settled = await legibility(page)
+    expect(settled.zoom, `fit settled at ${settled.zoom}`).toBeGreaterThanOrEqual(0.2)
+    expect(settled.zoom).toBeLessThanOrEqual(2)
+
+    await page.request.delete(`/api/builder/workflows/${id}`)
     expect(watch.unexpected).toEqual([])
   })
 

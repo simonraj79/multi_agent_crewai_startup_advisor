@@ -598,7 +598,7 @@ function cancelRename(): void {
      there: the rail collapse toggles are absolutely positioned into this strip
      from either side and outrank it on z-index. */
   padding: 0 40px;
-  background: linear-gradient(to bottom, rgba(26, 26, 26, 0.96), rgba(26, 26, 26, 0.78), transparent);
+  background: linear-gradient(to bottom, var(--fade-strong), var(--fade-mid), transparent);
 }
 
 .document-identity { display: flex; min-width: 0; align-items: center; gap: 12px; }

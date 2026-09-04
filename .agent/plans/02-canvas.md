@@ -203,9 +203,163 @@ Owned:
 
 ## Status
 
-Planned · 2026-09-02.
+Built · 2026-09-04, on `gauntlet/plans`. Twelve of the fourteen criteria are
+met, one is partial and one is met with a stated reading. Every figure below was
+run in this worktree on the day; nothing is inherited.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 1 | 24px hit target, 12px disc | **met** | `tests/builderPorts.spec.ts` (38), `e2e/builder.spec.ts` |
+| 2 | connects at 50 / 100 / 150 %, 10 of 10 | **met** | `e2e/builder.spec.ts` — 30 drags, every one first time |
+| 3 | green / red handles; a refused drop commits nothing | **met** | `tests/builderPorts.spec.ts`, `e2e/builder.spec.ts` |
+| 4 | the dangling line previews class and label | **met** | `e2e/builder.spec.ts` |
+| 5 | exactly one `is-class-*`, per the D4 table | **met** | `tests/builderEdge.spec.ts` (25) |
+| 6 | flow edges gradient source → target accent | **met** | `tests/builderEdge.spec.ts` |
+| 7 | zoom 0.2 … 2, the 48-node fixture fits | **met** | `e2e/builder.spec.ts`, `e2e/builder-layout.spec.ts` |
+| 8 | frame budget on 48 and 60 nodes | **partial** | `e2e/builder-perf.spec.ts`, `benchmarks/perf/canvas.json` |
+| 9 | `[data-theme="light"]`, 16 baselines | **met** | `tests/studioTheme.spec.ts` (13), `e2e/visual/builder-canvas.spec.ts` |
+| 10 | a new document opens clean | **met, one reading** | `tests/builderTemplates.spec.ts` (10), `e2e/builder.spec.ts` |
+| 11 | attach by drop, one undo step | **met** | `tests/builderCanvas.spec.ts` (76) |
+| 12 | every binding declared as data | **met** | `tests/shortcutSheet.spec.ts` (9) |
+| 13 | `--project=mobile` green | **met** | `e2e/mobile.spec.ts` (4) |
+| 14 | `vitest` and `vue-tsc` exit 0 | **met** | 1318 passed in 70 files; `vue-tsc -b --force` exit 0 |
+
+### Criterion 8 is a measurement, and the budget is missed
+
+Measured on this machine, 2026-09-04, written by the spec itself to
+[`benchmarks/perf/canvas.json`](../../benchmarks/perf/canvas.json). Four cases,
+two of which are controls:
+
+| case | mean | p95 | max | frames |
+| --- | ---: | ---: | ---: | ---: |
+| `idle48` — 48 nodes, no gesture | 16.85 | 16.70 | 83.30 | 358 |
+| `gesture1` — ONE node, same gesture | 16.76 | 16.80 | 33.40 | 366 |
+| `fixture48` — 48 nodes, the gesture | **16.85** | **16.80** | 33.40 | 373 |
+| `client60` — 60 nodes, the gesture | **16.71** | **16.80** | 33.30 | 368 |
+| budget | ≤ 16.70 | ≤ 20 | | |
+
+**p95 is met on both cases with 3.2ms of headroom. The mean is missed, by
+0.01ms to 0.15ms depending on the run**, and the budget is NOT widened and the
+test is NOT tuned: both mean assertions are red.
+
+Where the time goes, which is the part worth having. A 60Hz display makes the
+floor 1000/60 = **16.667ms**, so a 16.7 budget allows 0.033ms per frame — over
+370 frames that is less than one late frame. The measured miss is two or three
+frames per 370 taking two vsync intervals (max 33.3-33.4ms, exactly double).
+
+`gesture1` is what identifies them. It is the identical scripted gesture at the
+identical cadence over a canvas with ONE node — the same number of CDP round
+trips, roughly a fiftieth of the canvas work — and it is just as late as the
+48-node case. The late frames belong to the harness driving the input, not to
+the graph. The canvas's own cost at 48 and at 60 nodes is not measurable above
+that floor on this machine.
+
+`instrumentCheck` is what makes any of this mean anything: a deliberate 300ms
+block on the main thread reports as a single ~350ms frame against a 16.8ms
+maximum everywhere else. An instrument that read the same number whatever
+happened would make every other row here furniture.
+
+### Two readings, stated
+
+**Criterion 10, "one `input` node AND zero problems".** Only one shape satisfies
+both. Measured against this build's own `/api/builder/validate`:
+
+```text
+one input alone           -> 1 problem, `no-output-node` (warning)
+input + output + the edge -> 0 problems
+```
+
+So "one input node" is read as *exactly one node of kind `input`* — true of both
+shapes — and the zero is taken literally. `BLANK` seeds the run's two ends,
+wired, at (100, 100) and (100, 300). `no-output-node` is the server saying a
+completed run hands back no body, and seeding the output invents no more of a
+decision than seeding the input did: `document.py` gives `input` no target port
+and `output` no source port precisely because they are the two ends every
+compiled graph has.
+
+**Criterion 5's fourth class.** `types/builder.ts` says `target_port` decides an
+edge's class *alone*, and D4's own table marks `error` as the exception —
+`(source port `error`)`. `edgeClassOf` reads both fields OF THE EDGE and never
+looks up what kind the source node was, which is what the settled contract is
+protecting. Four classes, mutually exclusive by construction.
+
+### What was changed outside this plan's own files, and why
+
+- `data/builderTemplates.ts` — D7's seed. Named by criterion 10.
+- `composables/useBuilderDocument.ts` — `EdgeEnds.target_port` is optional, and
+  `edgeOptionsFor` moved here out of `BuilderView`'s setup so criterion 11 can
+  drive the real store through the real adapter. An adapter that exists only
+  inside a component is an adapter no test can exercise.
+- `composables/useBuilderHotkeys.ts` — the `theme` binding, which criterion 12
+  names.
+- `components/builder/DocumentBar.vue` — D6's toggle.
+- `components/builder/BuilderView.vue` — the theme wiring, the edge-delete
+  handler, and `NARROW_VIEWPORT_PX`: below 640px both rails start CLOSED,
+  because open-by-default at 390 means the first thing a reader sees is the
+  inspector covering the whole graph (measured at 390x792 over an invisible
+  canvas).
+- `src/studio.css` — D9's 640px block, and four literals that became tokens.
+- `benchmarks/perf/canvas.json` — criterion 8 names the path.
+- `frontend/tests/fixtures/perf48.json` — criterion 8 names the path.
+
+### Three defects a browser found that no unit test could
+
+1. **Playwright's default colour scheme is `light`.** The moment D6 landed the
+   whole suite silently began asserting against the light palette. Found by an
+   assertion reading `rgb(138, 90, 0)` where it expected `rgb(255, 224, 130)` -
+   the same token, the other palette. `colorScheme: 'dark'` is now stated in
+   `playwright.config.ts`.
+2. **`.graph-workspace` leaves its single column implicit, and an implicit
+   column is `auto`** - which resolves to its content's MIN-CONTENT width. At
+   390px the canvas rendered **802px** inside a 390px workspace, clipped rather
+   than scrolled, so nothing said so and every fit was computed against a box
+   twice the width of the phone. This is `.studio-main`'s own `min-height: 0`
+   lesson, one axis over.
+3. **The application chrome was four hardcoded darks** - `.studio-shell`,
+   `.app-header`, the two canvas-heading fades and Vue Flow's controls bar. The
+   light theme found all four at once: cards went white, text went dark, and
+   those four surfaces stayed black, so the palette rendered dark text on a dark
+   tile. All four are tokens now.
+
+### Known limitation, recorded rather than hidden
+
+D6 rules that accents and kind gradients are SHARED between themes, and
+`tokens.css` obeys it. The accents were chosen against a `#1a1a1a` ground and
+are pale pastels, so wherever one is used as SMALL TEXT on a light surface —
+`.canvas-kicker`, the palette's `PALETTE` heading, `Ready to publish`, the
+inspector's `GRAPH` kicker — it is thin. Nothing is unreadable and nothing
+moves.
+
+Fixing it properly means a second token per accent (identity, and on-surface
+text) and swapping the text sites over. Measured 2026-09-04:
+`color: var(--accent-cyan|mint|blue)` and `--link-cyan` appear at **109 sites
+across 32 files**, most owned by other plans. That is a change to make
+deliberately in one pass, not as a side effect of a canvas plan.
+
+`--link-cyan` itself DID move, and the line is what a token is for rather than
+what it looks like: it is a link colour in the same family as `--warn-text` and
+`--err-text`, which also moved. It is read, so it has to be readable.
+
+### Not done
+
+- **D4's `!` chip at an error edge's midpoint.** The class, the stroke and the
+  arrowhead are all there and pinned; the chip is not. No criterion names it.
+- **D9's "drop is disabled at 390px".** HTML5 drag-and-drop does not fire from a
+  touch drag anyway, so the gesture is already unavailable rather than
+  explicitly refused. Criterion 13 does not name it.
 
 CONTRACT REQUEST for 12 / 00 C8: warning code `attachment-unattached` (an
-attachment node with no attach edge). Proceeding as if granted.
+attachment node with no attach edge). Proceeding as if granted — a drop that
+misses every card creates an unattached node deliberately, because an author may
+be laying out before wiring, and a sentence they can read beats a refused drop.
+
+CONTRACT REQUEST for 03 / 00 C2: `vocabulary.target_ports`. Until it is served,
+`useBuilderCanvas.TARGET_PORTS_BY_KIND` is a client-side mirror of a server
+table that does not exist - `document.py` has `TARGET_PORTS`, the three legal
+strings, and does not say which kind offers which. It is written beside
+`isValidConnection`, the one function that consumes it, rather than in
+`nodeKinds.ts`, whose mirror `nodeKinds.spec.ts` proves against the Python at run
+time: putting an unprovable table in the provable file is how a mirror stops
+being a mirror. Delete it when the vocabulary carries the real one.
 
 Open decision for the owner: none.

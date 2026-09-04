@@ -76,6 +76,7 @@ FIXTURES = REPO / "frontend" / "tests" / "fixtures"
 BACK_EDGES_PATH = FIXTURES / "builderBackEdges.json"
 PROBLEM_CODES_PATH = FIXTURES / "builderProblemCodes.json"
 MODELS_PATH = FIXTURES / "models.json"
+COMPILED_PREVIEW_PATH = FIXTURES / "builderCompiledPreview.json"
 TEMPLATES_DIR = FIXTURES / "templates"
 #: What `scripts/dump-templates.mjs` writes: every gallery template in the
 #: `forValidate` shape a browser posts. INPUT to this script, never output -
@@ -276,6 +277,7 @@ def authored_agent_node(
     tier: str = "escalation",
     response_format: str | None = None,
     reasoning_effort: str | None = None,
+    credential_id: str | None = None,
 ) -> dict[str, Any]:
     """An agent the AUTHOR wrote, which is the only arm that NAMES a model.
 
@@ -305,6 +307,9 @@ def authored_agent_node(
                 "expected_output": "Three competitors with URLs",
             },
             "llm": llm,
+            # Only when named, so every scenario written before this parameter
+            # existed serialises byte-identical to what it did then.
+            **({"credential_id": credential_id} if credential_id else {}),
         },
     )
 
@@ -1807,6 +1812,80 @@ def build_templates() -> tuple[tuple[pathlib.Path, bytes], ...]:
     )
 
 
+
+#: The credential the preview fixture's agent names, and the label it renders
+#: as. A LABEL and an id, never a key: `render_preview` is handed a labelling
+#: function and no vault, which is the whole of the containment - see
+#: `builder_api.py::_credential_label`.
+PREVIEW_CREDENTIAL_ID = "cr_0a1b2c3d"
+PREVIEW_CREDENTIAL_LABEL = "Alice's OpenRouter key"
+
+#: Pinned so the fixture is a fact about the CODE and not about the clock.
+#: `render_preview` takes `generated_at` as a parameter for exactly this reason,
+#: and normalising the field away afterwards would be a field the test stopped
+#: checking.
+PREVIEW_GENERATED_AT = "2026-01-01T00:00:00+00:00"
+
+
+def build_compiled_preview() -> dict[str, Any]:
+    """`GET /workflows/{id}/compiled`, rendered by the real Python renderer.
+
+    Plan 13 criterion 5. The Code tab renders `yaml` and `python` verbatim - it
+    generates neither - so the thing worth pinning is that the strings the panel
+    is tested against are the strings this build produces. A hand-written
+    fixture would drift the first time `_render_python` changed a line, and the
+    tab's test would go on passing over a rendering nobody ships.
+
+    The graph carries a `credential_id` on purpose: `<credential: ...>` is the
+    one substitution in the whole preview, and a fixture without one would leave
+    the tab's only security-relevant assertion vacuous.
+    """
+
+    from datetime import datetime
+
+    from brief_crew.builder.compiler import compile_document
+    from brief_crew.builder.preview import render_preview
+
+    wire = document(
+        "Preview sample",
+        [
+            input_node(),
+            authored_agent_node("draft", credential_id=PREVIEW_CREDENTIAL_ID),
+            tool_node("search"),
+            output_node("report"),
+        ],
+        [
+            edge("e1", "idea", "draft"),
+            edge("e2", "draft", "report"),
+            attach_edge("a1", "search", "draft"),
+        ],
+    )
+    parsed = BuilderDocument.model_validate(wire)
+    compiled = compile_document(parsed)
+    preview = render_preview(
+        compiled,
+        document_version=parsed.version,
+        credential_label=lambda credential_id: (
+            PREVIEW_CREDENTIAL_LABEL
+            if credential_id == PREVIEW_CREDENTIAL_ID
+            else credential_id
+        ),
+        generated_at=datetime.fromisoformat(PREVIEW_GENERATED_AT),
+    )
+    return {
+        "document_id": parsed.id,
+        "version": preview.document_version,
+        "generated_at": PREVIEW_GENERATED_AT,
+        "yaml": preview.yaml,
+        "python": preview.python,
+        "definition": preview.definition,
+        "credential": {
+            "id": PREVIEW_CREDENTIAL_ID,
+            "label": PREVIEW_CREDENTIAL_LABEL,
+        },
+    }
+
+
 def targets() -> tuple[tuple[pathlib.Path, bytes], ...]:
     return (
         (BACK_EDGES_PATH, render(build_back_edges())),
@@ -1816,6 +1895,9 @@ def targets() -> tuple[tuple[pathlib.Path, bytes], ...]:
         # `build_tool_catalogue`'s own docstring for why the distinction is
         # cut-list item 17 rather than a naming choice.
         (TOOL_CATALOGUE_PATH, render(build_tool_catalogue())),
+        # Plan 13 criterion 5. The compiled preview the Code tab renders,
+        # produced by the renderer the route uses.
+        (COMPILED_PREVIEW_PATH, render(build_compiled_preview())),
         # Plan 14 criterion 2. Last, because they are the only target that READS
         # a committed file rather than deriving one.
         *build_templates(),

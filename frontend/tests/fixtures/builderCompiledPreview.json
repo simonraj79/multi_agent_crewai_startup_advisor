@@ -1,0 +1,128 @@
+{
+  "document_id": "ug_0a1b2c3d",
+  "version": 1,
+  "generated_at": "2026-01-01T00:00:00+00:00",
+  "yaml": "config:\n  max_method_calls: 4\ndescription: Preview sample\nmethods:\n  n0_idea:\n    description: idea\n    do:\n      call: code\n      ref: brief_crew.builder.runtime:seed_input\n      with:\n        field: idea\n        max_chars: 2000\n        node_id: idea\n        required: true\n    start: true\n  n1_draft:\n    description: draft\n    do:\n      call: code\n      ref: brief_crew.builder.runtime:run_agent\n      with:\n        advanced:\n          allow_delegation: false\n          cache: true\n          max_execution_time: null\n          max_rpm: null\n          memory: false\n          respect_context_window: true\n        backstory: You have priced twenty categories and been wrong about three.\n        credential_id: cr_0a1b2c3d\n        expert:\n          planning: false\n          planning_config: null\n          prompt_template: null\n          response_template: null\n          system_template: null\n        goal: Find who already sells this\n        guardrail_max_retries: 2\n        llm:\n          frequency_penalty: null\n          max_tokens: null\n          model: google/gemini-3.8-flash\n          presence_penalty: null\n          reasoning_effort: null\n          response_format: null\n          seed: null\n          stop: []\n          temperature: null\n          timeout: null\n          top_p: null\n        max_iter: 2\n        mcps: []\n        node_id: draft\n        prompt_inputs: {}\n        role: Market analyst\n        skills: []\n        task:\n          async_execution: false\n          description: Research the market for ${state.idea}\n          expected_output: Three competitors with URLs\n          markdown: false\n          output_schema: null\n        tier: escalation\n        tools:\n        - node_id: search\n          params: {}\n          tool_id: firecrawl_scrape\n    listen: n0_idea\n  n2_report:\n    description: report\n    do:\n      call: code\n      ref: brief_crew.builder.runtime:emit_output\n      with:\n        body_key: markdown_body\n        node_id: report\n        source: ${state.out__draft}\n    listen: n1_draft\nname: builder_ug_0a1b2c3d_v1\nschema: crewai.flow/v1\nstate:\n  default:\n    __builder__:\n      document:\n        id: ug_0a1b2c3d\n        input_field: idea\n        version: 1\n      gates: {}\n    idea: ''\n    out__draft: null\n    out__idea: null\n    out__report: null\n  type: dict\n",
+  "python": "\"\"\"Preview sample\"\"\"\n\nfrom crewai import LLM, Agent, Crew, Process, Task\n\n# flow: builder_ug_0a1b2c3d_v1\n# max_method_calls: 4\n\n# --- n0_idea: idea\n#     runs first\n# seed_input(node_id='idea', field='idea', max_chars=2000, required=True)\n\n# --- n1_draft: draft\n#     listens: \"n0_idea\"\ndraft_llm = LLM(model='google/gemini-3.8-flash', api_key=\"<credential: Alice's OpenRouter key>\")\ndraft = Agent(\n    role='Market analyst',\n    goal='Find who already sells this',\n    backstory='You have priced twenty categories and been wrong about three.',\n    llm=draft_llm,\n    tools=[tool('firecrawl_scrape', **{})],\n    max_iter=2,\n    max_rpm=None,\n    max_execution_time=None,\n    allow_delegation=False,\n    memory=False,\n    cache=True,\n    respect_context_window=True,\n    planning=False,\n)\ndraft_task = Task(\n    description='Research the market for ${state.idea}',\n    expected_output='Three competitors with URLs',\n    agent=draft,\n    markdown=False,\n    async_execution=False,\n    guardrail_max_retries=2,\n)\ndraft_crew = Crew(\n    agents=[draft],\n    tasks=[draft_task],\n    process=Process.sequential,\n    memory=False,\n    cache=True,\n)\n\n# --- n2_report: report\n#     listens: \"n1_draft\"\n# emit_output(node_id='report', body_key='markdown_body', source='${state.out__draft}')\n\n# This file is a reading aid, not the program that runs. The graph runs from the\n# YAML above, through the compiler-owned entrypoints in brief_crew.builder.runtime.\n# Every <credential: ...> is a reference the server resolves for the run's owner;\n# no key appears here, and pasting this into a script means supplying your own.\n",
+  "definition": {
+    "schema": "crewai.flow/v1",
+    "name": "builder_ug_0a1b2c3d_v1",
+    "description": "Preview sample",
+    "state": {
+      "type": "dict",
+      "default": {
+        "out__idea": null,
+        "idea": "",
+        "out__draft": null,
+        "out__report": null,
+        "__builder__": {
+          "document": {
+            "id": "ug_0a1b2c3d",
+            "version": 1,
+            "input_field": "idea"
+          },
+          "gates": {}
+        }
+      }
+    },
+    "config": {
+      "max_method_calls": 4
+    },
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "start": true,
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:seed_input",
+          "with": {
+            "node_id": "idea",
+            "field": "idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        }
+      },
+      "n1_draft": {
+        "description": "draft",
+        "listen": "n0_idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "node_id": "draft",
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+              "description": "Research the market for ${state.idea}",
+              "expected_output": "Three competitors with URLs",
+              "output_schema": null,
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "advanced": {
+              "max_rpm": null,
+              "max_execution_time": null,
+              "allow_delegation": false,
+              "memory": false,
+              "cache": true,
+              "respect_context_window": true
+            },
+            "expert": {
+              "system_template": null,
+              "prompt_template": null,
+              "response_template": null,
+              "planning": false,
+              "planning_config": null
+            },
+            "tools": [
+              {
+                "node_id": "search",
+                "tool_id": "firecrawl_scrape",
+                "params": {}
+              }
+            ],
+            "mcps": [],
+            "skills": [],
+            "prompt_inputs": {},
+            "credential_id": "cr_0a1b2c3d"
+          }
+        }
+      },
+      "n2_report": {
+        "description": "report",
+        "listen": "n1_draft",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "node_id": "report",
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      }
+    }
+  },
+  "credential": {
+    "id": "cr_0a1b2c3d",
+    "label": "Alice's OpenRouter key"
+  }
+}

@@ -336,7 +336,12 @@ export function useFlowTest(options: FlowTestOptions) {
     problem.value = ''
     transport.runMode = mode
     transport.nodeId = mode === 'node_test' ? nodeUnderTest.value : null
-    transport.testInputId = mode === 'node_test' ? selectedInputId.value : null
+    // Sent for BOTH modes. `node_test` needs it - it has nothing to replay into
+    // the ancestors without one - and a plain `test` sends it because the row
+    // is what the author chose: the server ignores it there today, and a run
+    // that recorded which saved input produced it is the difference between a
+    // findable test and a run nobody can reproduce. Decision 17's own argument.
+    transport.testInputId = selectedInputId.value
     run.workflowId.value = workflowId
     run.inputField.value = inputField.value
     run.idea.value = inputValue.value

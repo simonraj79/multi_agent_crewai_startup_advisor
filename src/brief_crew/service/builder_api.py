@@ -1911,8 +1911,9 @@ def create_builder_router(
     def _mcp_credentials(owner: str, record: Any) -> tuple[Any, Any]:
         """Resolve the header and env credentials, or None for each.
 
-        An `mcp_header` credential's two fields ARE the header's name and its
-        value, so there is no `header_name` column and none is missing. A
+        An `mcp_header` credential's two fields ARE the header's `name` and
+        its `header_value`, so there is no `header_name` column and none is
+        missing. A
         credential that is gone resolves to nothing rather than failing the
         discovery: the row's own `last_error` is a better place for that than a
         500, and `credential-missing` reports it on the canvas.
@@ -1933,9 +1934,13 @@ def create_builder_router(
         header_fields = fields(record.header_credential_id)
         env_fields = fields(record.env_credential_id)
         header = (
-            {header_fields["name"]: header_fields["value"]} if header_fields else None
+            {header_fields["name"]: header_fields["header_value"]}
+            if header_fields
+            else None
         )
-        env = {env_fields["name"]: env_fields["value"]} if env_fields else None
+        env = (
+            {env_fields["name"]: env_fields["header_value"]} if env_fields else None
+        )
         return header, env
 
     def _mcp_body(record: Any) -> dict[str, Any]:

@@ -173,7 +173,7 @@ class RunTests(unittest.TestCase):
         spec = parse_custom_tool(payload, tool_id="ut_0123456789ab")
         return build_custom_tool(
             spec,
-            credential={"name": "Authorization", "value": "sekrit-token"},
+            credential={"name": "Authorization", "header_value": "sekrit-token"},
             resolve=resolver(addresses),
             transport=send,
         )

@@ -2910,11 +2910,46 @@ CREDENTIAL_FIELDS: dict[str, tuple[str, ...]] = {
     "brave": ("api_key",),
     "github": ("token",),
     "postgres": ("dsn",),
-    "http_header": ("name", "value"),
-    "mcp_header": ("name", "value"),
+    # `header_value`, not `value` (D-01-6, 2026-09-04). This pair is the one
+    # place in the vault where the SECRET field was called something the
+    # redaction list passes through: `events/redaction.py` matches key NAMES,
+    # and `value` is a name it cannot take. Measured, by putting `value` on
+    # that list and running the suite: six tests red across four modules,
+    # three of them the GATE surface, because every gate `derived` entry is
+    # `{"key": name, "value": ..., "kind": ...}` and the read-only panel went
+    # to `***`. `value` is also the router branch's compare operand, the
+    # transform's `args.value` and the output node's body - a global entry for
+    # it redacts a compiled graph's own logic in the persisted state.
+    #
+    # So the FIELD moved instead of the list: `header_value` normalises to
+    # `headervalue`, which is an exact entry in `SECRET_KEYS`, and the header's
+    # `name` stays readable because a header name is not a secret.
+    "http_header": ("name", "header_value"),
+    "mcp_header": ("name", "header_value"),
     "e2b": ("api_key",),
 }
 CREDENTIAL_KINDS: frozenset[str] = frozenset(CREDENTIAL_FIELDS)
+
+#: The vault field names that are LABELS rather than credentials, declared
+#: here so the redaction pin can be derived instead of restated.
+#:
+#: `tests/service/test_secret_redaction.py` asserts that every name in
+#: `CREDENTIAL_FIELDS` is secret unless it is here, which makes a new kind's
+#: secret field a failing test the day the kind exists. Until 2026-09-04 that
+#: exclusion lived in a `HEADER_PAIR` constant inside the test file itself -
+#: a test asserting the opposite of the criterion it belongs to, with nothing
+#: in the product saying so (D-01-10). A field is public because the product
+#: says it is public, and this is where the product says it.
+CREDENTIAL_PUBLIC_FIELDS: frozenset[str] = frozenset({"name"})
+_unknown_public = CREDENTIAL_PUBLIC_FIELDS.difference(
+    field for fields in CREDENTIAL_FIELDS.values() for field in fields
+)
+if _unknown_public:
+    raise RuntimeError(
+        "CREDENTIAL_PUBLIC_FIELDS names fields no credential kind has: "
+        f"{sorted(_unknown_public)}"
+    )
+del _unknown_public
 
 # The vault's route-level constants (01 D3, D4), moved here at Stage 1
 # integration from service/credentials.py under S1 ruling 3. That module

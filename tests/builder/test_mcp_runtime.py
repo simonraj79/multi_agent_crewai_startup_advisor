@@ -80,7 +80,7 @@ def run_as(record: McpServerRecord | None = RECORD, *, kind: str = "mcp_header")
         return (Store(), "user_alice") if name == "McpServerStore" else (None, None)
 
     def fake_resolve(_credential_id: str) -> Resolved:
-        return Resolved(kind, {"name": "Authorization", "value": HEADER_SECRET})
+        return Resolved(kind, {"name": "Authorization", "header_value": HEADER_SECRET})
 
     with patch.object(runtime_module, "_attachment_store", fake_store), patch(
         "brief_crew.service.credentials.resolve_credential", fake_resolve

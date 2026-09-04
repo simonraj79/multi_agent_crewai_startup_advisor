@@ -31,7 +31,7 @@ import unittest
 import zipfile
 from typing import Any
 
-from brief_crew.config import CREDENTIAL_FIELDS
+from brief_crew.config import CREDENTIAL_FIELDS, CREDENTIAL_PUBLIC_FIELDS
 from brief_crew.events import FrameKind, FrameLevel, UIEventType
 from brief_crew.events.redaction import (
     REDACTED,
@@ -88,12 +88,13 @@ SUFFIX_FIXTURES: dict[str, Any] = {
     "webhook.secret": "LEAK-S5",
     "SQL_DSN": "LEAK-S6",
 }
-#: The vault's `http_header` / `mcp_header` field pair: the header's NAME is
-#: not a secret, and its VALUE reaches a frame only under `headers`, which is
-#: redacted whole. Both are ordinary words everywhere else - `name` is on
-#: every graph node and `value` on every gate `derived` entry - so pinning
-#: them as NOT secret is the pin.
-HEADER_PAIR = frozenset({"name", "value"})
+#: The vault's `http_header` / `mcp_header` pair used to be `("name", "value")`
+#: and this file carried its own `HEADER_PAIR = {"name", "value"}` pinning BOTH
+#: halves as not-secret - a test asserting the opposite of the criterion it
+#: belongs to, for the field that actually holds the header secret (D-01-6,
+#: D-01-10). The secret half is `header_value` now, which the list covers by
+#: name, and the one genuinely public field is declared by the PRODUCT in
+#: `config.CREDENTIAL_PUBLIC_FIELDS` rather than by a constant in here.
 LEAKS = (
     "LEAK-A", "LEAK-B", "LEAK-C", "LEAK-D", "LEAK-E", "LEAK-F", "LEAK-G", "LEAK-H", "LEAK-N",
     *SUFFIX_FIXTURES.values(),
@@ -174,14 +175,68 @@ class ListTests(unittest.TestCase):
     def test_every_vault_field_name_is_pinned(self) -> None:
         """Derived from `config.CREDENTIAL_FIELDS`, so a new kind's field is pinned the day it exists.
 
-        A field that is neither on the list nor in `HEADER_PAIR` fails here,
-        which is the decision it deserves: is its value a secret or a name?
+        A field that is neither on the redaction list nor declared public in
+        `config.CREDENTIAL_PUBLIC_FIELDS` fails here, which is the decision it
+        deserves: is its value a secret or a name? Both halves of the answer
+        now live in the product - the list and the public set - so this test
+        checks them against each other instead of asserting a third opinion.
         """
 
         for kind, fields in CREDENTIAL_FIELDS.items():
             for field in fields:
                 with self.subTest(kind=kind, field=field):
-                    self.assertEqual(is_secret_key(field), field not in HEADER_PAIR)
+                    self.assertEqual(
+                        is_secret_key(field),
+                        field not in CREDENTIAL_PUBLIC_FIELDS,
+                    )
+
+    def test_the_header_pair_secret_half_is_covered_and_the_name_half_is_not(self) -> None:
+        """D-01-6: the field holding an `Authorization` header value is secret.
+
+        The alternative the row proposed - putting the bare word `value` on
+        the list - was tried and measured: six tests red across four modules,
+        three of them the gate surface, because a gate `derived` entry is
+        `{"key": name, "value": display, "kind": kind}` and its read-only
+        panel went to `***`. `value` is also a router branch's compare
+        operand, a transform's `args.value` and an output node's body slot, so
+        the entry would have redacted a compiled graph's own logic in the
+        persisted state. The FIELD moved instead.
+        """
+
+        self.assertEqual(CREDENTIAL_FIELDS["http_header"], ("name", "header_value"))
+        self.assertEqual(CREDENTIAL_FIELDS["mcp_header"], ("name", "header_value"))
+        self.assertTrue(is_secret_key("header_value"))
+        self.assertTrue(is_secret_key("headerValue"))
+        self.assertTrue(is_secret_key("Header-Value"))
+        self.assertFalse(is_secret_key("name"))
+        self.assertEqual(
+            redact_mapping({"name": "Authorization", "header_value": "Bearer LEAK-P"}),
+            {"name": "Authorization", "header_value": REDACTED},
+        )
+
+    def test_no_vault_field_is_excluded_by_a_constant_in_this_file(self) -> None:
+        """D-01-10: the only exclusion left is the product's own, and it is one word.
+
+        Criterion 6's `fields` exclusion is a dated amendment in the plan.
+        Its second exclusion was neither: it lived here, in a test constant,
+        and covered the header secret. There is no such constant now, and the
+        set that replaces it is small enough to assert whole.
+        """
+
+        self.assertEqual(CREDENTIAL_PUBLIC_FIELDS, frozenset({"name"}))
+        secret_fields = {
+            field
+            for fields in CREDENTIAL_FIELDS.values()
+            for field in fields
+            if field not in CREDENTIAL_PUBLIC_FIELDS
+        }
+        self.assertEqual(
+            secret_fields,
+            {"api_key", "token", "dsn", "header_value"},
+        )
+        for field in secret_fields:
+            with self.subTest(field=field):
+                self.assertTrue(is_secret_key(field))
 
     def test_the_bare_word_key_names_a_field_and_is_not_redacted(self) -> None:
         """`{"key": name, "value": ..., "kind": ...}` is every gate `derived` entry."""

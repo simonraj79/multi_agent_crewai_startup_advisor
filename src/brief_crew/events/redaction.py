@@ -57,9 +57,12 @@ it by name turned every gate form into the string `***` and failed
 `RunStatusResponse` validation on the first synthetic run. The vault's own
 plaintext object is called `fields` too, but it never reaches a frame: it
 lives in `ResolvedCredential`, whose `repr` hides it, and is handed to one
-constructor. The plan's intent is met by the per-field names below
-(`api_key`, `token`, `dsn`, `value` is deliberately not one - see the note on
-`http_header` in `service/credentials.py`).
+constructor. The plan's intent is met by the per-field names below - `api_key`, `token`,
+`dsn` and, since 2026-09-04, `headervalue`. There is no second exclusion:
+every name in `config.CREDENTIAL_FIELDS` is on this list except the ones
+`config.CREDENTIAL_PUBLIC_FIELDS` declares to be labels, and
+`tests/service/test_secret_redaction.py` derives its pin from that constant
+rather than carrying one of its own.
 """
 
 from __future__ import annotations
@@ -105,6 +108,16 @@ SECRET_KEYS: frozenset[str] = frozenset(
         # because the rule reads the OUTER key. `headers` is here for the
         # same reason one line down.
         "env",
+        # The `http_header` / `mcp_header` vault pair's SECRET half
+        # (`config.CREDENTIAL_FIELDS`). It was spelled `value` until
+        # 2026-09-04 and was therefore on no list and matched no suffix -
+        # pinned as not-secret by the very test file that owns criterion 6
+        # (D-01-6). The field was renamed rather than `value` added here,
+        # because `value` is the gate `derived` entry's display slot, a
+        # router branch's compare operand and a transform's argument: the
+        # measurement is six red tests across four modules, three of them
+        # gates. See the note beside `CREDENTIAL_FIELDS`.
+        "headervalue",
         "headers",
         "nonce",
         "password",

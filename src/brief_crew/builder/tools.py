@@ -483,7 +483,9 @@ def _http_request(
 ) -> Any:
     import crewai_tools
 
-    headers = {credential["name"]: credential["value"]} if credential else None
+    headers = (
+        {credential["name"]: credential["header_value"]} if credential else None
+    )
     return crewai_tools.URLReadTool(
         timeout=int(params.get("timeout", 15)),
         max_bytes=int(params.get("max_bytes", 1048576)),
@@ -1295,7 +1297,7 @@ def build_custom_tool(
         def replace(match: re.Match[str]) -> str:
             key = match.group(1)
             if key == "credential":
-                return secret.get("value", "")
+                return secret.get("header_value", "")
             raw = values.get(key)
             text = "" if raw is None else str(raw)
             return urllib.parse.quote(text, safe="") if quote else text

@@ -1220,8 +1220,10 @@ def bind_attachments(
                 mcp_module.server_config(
                     record,
                     tool_names=tuple(attachment.get("tool_names") or ()),
-                    header={header["name"]: header["value"]} if header else None,
-                    env={env["name"]: env["value"]} if env else None,
+                    header=(
+                        {header["name"]: header["header_value"]} if header else None
+                    ),
+                    env={env["name"]: env["header_value"]} if env else None,
                 )
             )
         elif kind == "skill":

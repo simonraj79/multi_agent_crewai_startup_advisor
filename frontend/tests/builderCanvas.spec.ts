@@ -1482,4 +1482,65 @@ describe('the minimap is coloured by problems before anything else', () => {
     expect(wrapper.find('[data-testid="minimap-surface"]').exists()).toBe(false)
     expect(wrapper.find('.minimap-toggle').attributes('aria-expanded')).toBe('false')
   })
+
+  /*
+   * D-15-2, three rounds on one surface. Docking the version browser or the
+   * delete strip takes height out of the canvas and the fit that follows has to
+   * choose between legible and complete: round 1 hid nodes below the bottom,
+   * round 2 shrank the cards to 100px, round 3 kept them legible with 15 of a
+   * 16-node template outside the pane. The row's ruling is that a fourth turn
+   * of that dial is the wrong answer and what is wanted is an indicator of what
+   * is off-pane. The fit is untouched by everything below.
+   */
+  describe('says what is off-pane rather than re-tuning the fit (D-15-2)', () => {
+    // The collapse is remembered in localStorage, and the test above leaves it
+    // collapsed for every mount that follows - which is exactly the kind of
+    // shared state a per-file suite should not carry between blocks.
+    beforeEach(() => {
+      window.localStorage.removeItem('builder-minimap-collapsed')
+    })
+
+    it('says nothing at all when every node is on screen', () => {
+      const wrapper = mountMap([base, { ...base, id: 'b', x: 300 }])
+      expect(wrapper.find('[data-testid="minimap-offpane"]').exists()).toBe(false)
+    })
+
+    it('counts the nodes with no pixels on screen, and names the whole graph', () => {
+      const wrapper = mountMap([
+        base,
+        { ...base, id: 'far', x: 40000 },
+        { ...base, id: 'above', y: -9000 },
+      ])
+      const strip = wrapper.get('[data-testid="minimap-offpane"]')
+      expect(strip.text()).toContain('2')
+      expect(strip.attributes('title')).toContain('2 of 3 off-pane')
+    })
+
+    it('does not cry wolf over a node the pane merely clips', () => {
+      /* The pane is 800 wide; a 240px card at x=700 hangs over the edge and is
+         one the author can see and reach. Counting it would make the strip
+         permanent on every graph wider than the pane. */
+      const wrapper = mountMap([base, { ...base, id: 'edge', x: 700 }])
+      expect(wrapper.find('[data-testid="minimap-offpane"]').exists()).toBe(false)
+    })
+
+    it('is a real button, because the map itself is aria-hidden and pointer-only', async () => {
+      const wrapper = mountMap([base, { ...base, id: 'far', x: 40000 }])
+      const strip = wrapper.get('[data-testid="minimap-offpane"]')
+      expect(strip.element.tagName).toBe('BUTTON')
+      await strip.trigger('click')
+      expect(wrapper.emitted('fit')).toHaveLength(1)
+    })
+
+    it('keeps the fact reachable when the map is collapsed', async () => {
+      /* Collapsed is remembered per browser, so an author who hid the map once
+         would otherwise never be told again. */
+      const wrapper = mountMap([base, { ...base, id: 'far', x: 40000 }])
+      await wrapper.find('.minimap-toggle').trigger('click')
+      expect(wrapper.find('[data-testid="minimap-offpane"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="minimap-offpane-badge"]').attributes('title')).toBe(
+        '1 of 2 off-pane',
+      )
+    })
+  })
 })

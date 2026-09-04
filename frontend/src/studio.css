@@ -197,14 +197,48 @@ h3 {
   position: relative;
   z-index: var(--z-base);
   display: grid;
-  grid-template-rows: 64px auto minmax(0, 1fr);
+  /*
+   * Five rows, and every one of the four that carry something is `auto` or
+   * `minmax(0, 1fr)` rather than a fixed height, because three of them come and
+   * go: the reconnect strip only exists while the socket is re-making itself,
+   * the crew strip only while there is a voyage to narrate, and the dialogue
+   * rail's list is capped rather than free-growing.
+   *
+   * `minmax(0, 1fr)` on the canvas and not `1fr`, for the reason recorded on
+   * `.studio-main`: a grid item's automatic minimum size is its CONTENT, so a
+   * plain `1fr` row re-inflates to whatever Vue Flow's internals want and the
+   * rails below it get pushed off the page. That defect shipped once here
+   * already, at 1894px inside an 848px container.
+   */
+  grid-template-rows: 64px auto auto minmax(0, 1fr) auto;
   min-width: 0;
   overflow: hidden;
   background: var(--canvas-bg);
 }
 
-.graph-workspace > .crew-progress { grid-row: 2; }
-.graph-workspace > .validator-flow { grid-row: 3; }
+.graph-workspace > .stream-reconnecting { grid-row: 2; }
+.graph-workspace > .crew-progress { grid-row: 3; }
+.graph-workspace > .validator-flow { grid-row: 4; }
+.graph-workspace > .dialogue-rail { grid-row: 5; }
+
+/*
+ * The socket is re-making itself, said where the graph is.
+ *
+ * Amber rather than red: nothing is lost and nothing is broken - the client
+ * replays from its own cursor and the sentence says how much it is holding. A
+ * red strip over a run that is about to carry on would teach an operator to
+ * cancel at the one moment cancelling is worst.
+ */
+.stream-reconnecting {
+  z-index: 9;
+  margin: 0 40px 4px;
+  padding: 6px 14px;
+  color: var(--warn-text);
+  font: 600 var(--fs-11)/1.4 var(--font-mono);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-pill);
+}
 
 .canvas-heading {
   position: absolute;

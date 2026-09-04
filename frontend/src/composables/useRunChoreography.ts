@@ -54,6 +54,19 @@ export const MAX_PENDING_REVEALS = 2
  */
 export const RECEIPT_MS = 200
 
+/**
+ * Milliseconds of NEGATIVE animation delay per node index, for the landing
+ * settle (D6.2).
+ *
+ * Negative, which is the whole trick: a negative delay starts an animation
+ * already part-way through, so a sixteen-node graph reads as already in motion
+ * on the first paint rather than popping in one card at a time. It is the
+ * reference's own landing-page technique (`HomeView.vue:11-22`, eighty cubes at
+ * `-0…60s`) applied ONCE rather than forever - a canvas that staggered on every
+ * repaint would be the ChatDev disco the spec rules out.
+ */
+export const LANDING_STAGGER_MS = 40
+
 /** Entries older than the last this many collapse to a one-line header. */
 export const EXPANDED_ENTRIES = 3
 

@@ -4,7 +4,7 @@ import { MOCK_GRAPH } from '../data/mockGraph'
 import { scopedKey } from '../data/identityStorage'
 import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
-import { useRunChoreography, type Handoff } from './useRunChoreography'
+import { LANDING_STAGGER_MS, useRunChoreography, type Handoff } from './useRunChoreography'
 import type {
   RunResult,
   CallChip,
@@ -476,6 +476,16 @@ export function useValidatorRun(
       id: node.id,
       type: 'workflow',
       position: node.position,
+      /*
+       * The landing settle, on Vue Flow's OWN node wrapper rather than on the
+       * card. Two reasons and either decides it: `.workflow-node.is-running`
+       * sets the `animation` shorthand, so a landing class on the card at equal
+       * specificity would replace the whole list and cancel a running node's
+       * glow; and Vue Flow positions a node by writing `transform` onto this
+       * wrapper, so the keyframe is opacity-only.
+       */
+      class: choreography.landed.value ? 'is-landing' : undefined,
+      style: { animationDelay: `-${index * LANDING_STAGGER_MS}ms` },
       draggable: false,
       selectable: false,
       connectable: false,

@@ -84,6 +84,7 @@ describe('the receipt', () => {
 
   function traversal(from: string, to: string): FrameData {
     return {
+      v: 1,
       run_id: 'run-1',
       seq: 1,
       ts: new Date().toISOString(),

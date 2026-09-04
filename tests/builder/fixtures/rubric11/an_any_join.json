@@ -229,6 +229,11 @@
     ],
     [
       "fork",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "fork",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -244,6 +249,11 @@
     ],
     [
       "a",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "a",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -251,6 +261,11 @@
       "a",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "report",

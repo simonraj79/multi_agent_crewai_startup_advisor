@@ -206,6 +206,11 @@
     ],
     [
       "team",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "team",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -213,6 +218,11 @@
       "team",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "report",

@@ -185,6 +185,11 @@
     ],
     [
       "confirm",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "confirm",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],

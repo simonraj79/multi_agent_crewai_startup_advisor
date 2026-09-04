@@ -134,6 +134,11 @@
     ],
     [
       "draft",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "draft",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -141,6 +146,11 @@
       "draft",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "report",

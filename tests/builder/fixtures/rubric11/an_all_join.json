@@ -212,6 +212,11 @@
     ],
     [
       "a",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "a",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -222,6 +227,11 @@
     ],
     [
       "b",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "b",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -232,6 +242,11 @@
     ],
     [
       "merge",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "merge",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -239,6 +254,11 @@
       "merge",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "report",

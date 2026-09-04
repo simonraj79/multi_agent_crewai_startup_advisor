@@ -139,7 +139,27 @@
     ],
     [
       "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
       "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "one",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "one",
+      "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
     [
@@ -153,6 +173,21 @@
       "FrameKind.NODE_STATE"
     ],
     [
+      "one",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "two",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "two",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
       "two",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
@@ -161,6 +196,16 @@
       "two",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "two",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "three",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "three",

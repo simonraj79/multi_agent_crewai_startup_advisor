@@ -1203,6 +1203,32 @@ def openrouter_escalation_params(effort: str | None) -> dict[str, object]:
     return {"extra_body": body} if body else {}
 
 
+def openrouter_authored_params(effort: str | None) -> dict[str, object]:
+    """The `extra_body` an AUTHORED node's `LLM` carries - 10 D1.
+
+    Two things travel together for the same reason ``openrouter_escalation_params``
+    assembles its two: JSON has no merge, so one ``provider`` object is written
+    once here rather than by two callers of whom the second silently wins.
+
+    What is DELIBERATELY absent is ``provider.sort``. The escalation preset
+    routes on throughput because three research analysts run behind a human
+    waiting at a gate; an authored node's model is the author's own choice out
+    of the registry, and imposing a routing preference on it would be this
+    module choosing an endpoint the author did not.
+
+    The price ceiling is NOT optional and is not a property of the tier. §6a's
+    ruling is measured against the max ENDPOINT price, and an authored node can
+    name any roster model, so without this an author's own slug could route to
+    a priority endpoint over the ceiling exactly as the escalation preset could
+    before ``max_price`` was added.
+    """
+
+    body: dict[str, object] = {"provider": {"max_price": openrouter_price_ceiling_params()}}
+    if effort is not None:
+        body["reasoning"] = {"effort": effort}
+    return {"extra_body": body}
+
+
 def openrouter_reasoning_params(effort: str | None) -> dict[str, object]:
     """`LLM(additional_params=...)` that puts a reasoning effort on the wire.
 
@@ -1491,6 +1517,33 @@ MAX_RUN_COST_USD = _env_non_negative_float("MAX_RUN_COST_USD", 10.0)
 #     row: ~4,000 completed runs to fill the disk at the ceiling, ~20,000 at a
 #     realistic 12 KB.
 MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
+
+# --------------------------------------------------------------------------
+# C6's three frame ceilings - .agent/plans/10-runtime.md D6
+#
+# Separate constants rather than one, because each bounds a different thing and
+# the contract fixes each number independently. They are all far under
+# `SerializerLimits.max_string` on purpose: the ring holds 2,000 frames and a
+# subscriber queue 512, and a run whose narration evicts its own history is a
+# run that cannot be replayed - which is the failure the ring is bounded to
+# prevent in the first place.
+# --------------------------------------------------------------------------
+#: A completed model response, on the `utterance` frame. The whole point of the
+#: frame is that a run view can show what the agent SAID, so this is the one
+#: that has to be generous; `truncated: true` says when it was not enough.
+MAX_UTTERANCE_CHARS = 4096
+#: A tool's arguments, a tool's result, and a node's output, on the
+#: `input_preview` / `output_preview` keys. A preview, not the value: the value
+#: is in the run result and in `flow_states`.
+MAX_FRAME_PREVIEW_CHARS = 2048
+#: One failure's sentence on a `node_error` frame. Shorter than the other two
+#: because a traceback-shaped message is a thing to point at, not to read in a
+#: stream.
+MAX_NODE_ERROR_CHARS = 1024
+#: How long stream chunks for one `call_id` are gathered before one frame is
+#: emitted for them (decision 15, owner, 2026-09-04). The alternative was a
+#: bigger ring, which trades a known bound for an unknown one.
+STREAM_CHUNK_COALESCE_MS = 250
 
 # The result keys that ARE the deliverable, and so earn the bound above.
 # Everything else in a flow result stays on the frame limit, because the

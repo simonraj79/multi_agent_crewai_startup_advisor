@@ -57,9 +57,13 @@ from brief_crew.config import (
     BUILDER_TRANSFORM_OPS,
     CHEAP_MODEL,
     ESCALATION_MODEL,
+    GRAPH_BUDGET_CALL_COMPLETION_TOKENS,
+    MAX_FRAME_PREVIEW_CHARS,
+    MAX_NODE_ERROR_CHARS,
     MAX_RUN_RESULT_BODY_CHARS,
     OPENROUTER_MODEL_PREFIX,
     VALIDATOR_BRANCH_MAX_ITER,
+    openrouter_authored_params,
 )
 
 __all__ = [
@@ -77,6 +81,7 @@ __all__ = [
     "missing_prompt_inputs",
     "rejoin",
     "render_gate",
+    "ReplayMissingOutput",
     "replay_output",
     "route_branch",
     "route_gate",
@@ -114,6 +119,17 @@ class BuilderRuntimeError(RuntimeError):
     agent id, a prompt the YAML task needs and the document never supplied, a
     routing table a request input has overwritten.
     """
+
+
+class ReplayMissingOutput(BuilderRuntimeError):
+    """A derived plan replayed a node whose saved output is not in the source.
+
+    Its own class only so it can carry C6's `error_class`: the operator's next
+    move is different from every other runtime refusal - they picked a resume
+    point the source run never reached.
+    """
+
+    error_class = "replay-missing-output"
 
 
 # --------------------------------------------------------------------------
@@ -602,6 +618,11 @@ class DefaultCrewFactories:
             process=Process.sequential,
             memory=bool(advanced.get("memory", False)),
             cache=bool(advanced.get("cache", True)),
+            # 10 D7, and it is the Crew half of the same switch `_authored_llm`
+            # sets on the model: without both, `LLMStreamChunkEvent` is never
+            # raised and the dialogue rail has nothing to render until the call
+            # completes.
+            stream=True,
             verbose=False,
         )
 
@@ -687,6 +708,7 @@ class DefaultCrewFactories:
             memory=spec.memory,
             cache=spec.cache,
             planning=spec.planning,
+            stream=True,
             verbose=spec.verbose,
             **({"max_rpm": spec.max_rpm} if spec.max_rpm else {}),
             **extra,
@@ -768,15 +790,41 @@ def _authored_llm(
         frequency_penalty=fields.get("frequency_penalty"),
         presence_penalty=fields.get("presence_penalty"),
         seed=fields.get("seed"),
-        reasoning_effort=fields.get("reasoning_effort"),
     )
+    # `max_tokens` is ALWAYS set, and it is the number the budget already
+    # priced with (10 D1). Until this line the estimate and the call disagreed
+    # in one direction only: `budget.py` prices every call at
+    # GRAPH_BUDGET_CALL_COMPLETION_TOKENS completion tokens and NOTHING capped
+    # a completion, so the one bound the $10 ceiling was computed against did
+    # not exist at run time. An author who names their own value wins - it is
+    # their model and their money - and the default is the figure the ceiling
+    # was measured from.
+    optional.setdefault("max_tokens", GRAPH_BUDGET_CALL_COMPLETION_TOKENS)
     stop = tuple(fields.get("stop") or ())
     if stop:
         optional["stop"] = list(stop)
     key = fields.get("credential_id") or credential_id
     if key:
         optional["api_key"] = _agent_api_key(node_id, str(key))
-    return LLM(model=model, **optional)
+    # `reasoning_effort` is NOT an `LLM` kwarg here, and that is the whole
+    # point: CrewAI drops the field for every non-o1 model (config.py's own
+    # note), so naming it on the constructor is a control an author sets and
+    # nothing sends. `openrouter_authored_params` puts it in `extra_body`,
+    # where it reaches OpenRouter - and carries the §6a price ceiling in the
+    # same one `provider` object, because two writers of that key means the
+    # second wins silently.
+    effort = fields.get("reasoning_effort")
+    return LLM(
+        model=model,
+        # 10 D7: streaming is on for authored nodes, so the dialogue rail has
+        # per-token frames to render rather than one block of text at the end.
+        # The chunks are coalesced in the serializer, not here.
+        stream=True,
+        additional_params=openrouter_authored_params(
+            str(effort) if effort else None
+        ),
+        **optional,
+    )
 
 
 def _authored_task(spec: "AuthoredAgentSpec", agent: Any) -> Any:
@@ -1234,6 +1282,181 @@ def _is_control_flow(exc: BaseException) -> bool:
     return isinstance(exc, (HookAborted, HumanFeedbackPending))
 
 
+# --------------------------------------------------------------------------
+# What is worth trying again - 10 D3's closed list
+# --------------------------------------------------------------------------
+#: The exception NAMES a retry is willing to spend a second call on. Names, not
+#: classes, because importing litellm, httpx and the MCP client here to write
+#: five `isinstance` checks would pull three HTTP stacks into a module that is
+#: also imported to PRICE a document. The whole `__mro__` is checked, so a
+#: provider subclass of `RateLimitError` matches its base.
+#:
+#: The list is CLOSED, and what it leaves out is the point. A guardrail
+#: rejection, a malformed structured output and a model REFUSAL are failures
+#: of judgement, not of transport: CrewAI already loops guardrails with the
+#: agent's own llm (`guardrail_max_retries`), and decision 16 rules that a
+#: refusal is a decision rather than an error - retrying one with a fallback
+#: model is asking a second judge until one agrees. `BuilderRuntimeError` is
+#: excluded for the same reason in a different key: every one of them is a
+#: document, wiring or credential fault, and the second attempt fails
+#: identically having told nobody anything new.
+_RETRYABLE_ERROR_NAMES: frozenset[str] = frozenset(
+    {
+        # crewai
+        "ToolExecutionFailedError",
+        "LLMCallFailedError",
+        # litellm / the OpenAI SDK shapes CrewAI raises through
+        "RateLimitError",
+        "APIConnectionError",
+        "APITimeoutError",
+        "APIStatusError",
+        "InternalServerError",
+        "ServiceUnavailableError",
+        "Timeout",
+        # httpx / stdlib transport
+        "TimeoutError",
+        "ConnectionError",
+        "ConnectTimeout",
+        "ReadTimeout",
+        "RemoteProtocolError",
+        # MCP transport (plan 07)
+        "McpError",
+        "ClosedResourceError",
+        "BrokenResourceError",
+    }
+)
+
+#: HTTP statuses a tool or a provider may report that mean "again, later".
+#: Read off `status_code` or `status`, because a wrapped provider error often
+#: carries the number and a name this list has never heard of.
+_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Is this failure one 10 D3 will spend another attempt on?"""
+
+    if isinstance(exc, BuilderRuntimeError):
+        return False
+    if any(base.__name__ in _RETRYABLE_ERROR_NAMES for base in type(exc).__mro__):
+        return True
+    for attribute in ("status_code", "status", "code"):
+        value = getattr(exc, attribute, None)
+        if isinstance(value, int) and value in _RETRYABLE_STATUS_CODES:
+            return True
+    return False
+
+
+def _error_class(exc: BaseException) -> str:
+    """The C6 discriminator for one failure.
+
+    Read off an `error_class` attribute first - the same attribute
+    `events/serializer.py::error_class_of` reads, so the two never disagree
+    about a `credential-not-yours` - and falls back to the exception's own type
+    name, which is at least a stable string a client can switch on.
+    """
+
+    declared = getattr(exc, "error_class", None)
+    if isinstance(declared, str) and declared:
+        return declared[:64]
+    return type(exc).__name__[:64]
+
+
+def _emit_frame(
+    kind: Any,
+    event_type: Any,
+    *,
+    node_id: str,
+    message: str,
+    details: Mapping[str, Any],
+    level: Any = None,
+) -> None:
+    """One C6 frame from inside an entrypoint, or nothing at all.
+
+    The runtime raises frames the SERIALIZER cannot: a retry, a routed failure
+    and a replayed node are decisions this module makes, and CrewAI has no
+    event for any of them. `current_capture` is the run's own adapter, set by
+    `capture_events` and copied into every worker thread CrewAI starts, so a
+    parallel branch's frames land on the same ring in the same order as its
+    model frames.
+
+    Emitting is BEST EFFORT and never raises. A node that failed to narrate
+    itself must still run: the adapter already counts an emit error, and a run
+    that died because its telemetry did would be the worst possible trade.
+    """
+
+    try:
+        from brief_crew.events.context import current_capture
+
+        context = current_capture.get()
+        if context is None:
+            return
+        from brief_crew.events.models import FrameLevel
+
+        context.adapter.emit(
+            kind=kind,
+            event_type=event_type,
+            node_id=node_id,
+            message=message,
+            details=dict(details),
+            level=level or FrameLevel.INFO,
+        )
+    except Exception:  # noqa: BLE001 - telemetry must never fail a run
+        LOGGER.debug("could not emit a builder frame for %s", node_id, exc_info=True)
+
+
+def _node_error_frame(
+    node_id: str,
+    exc: BaseException,
+    *,
+    attempt: int,
+    will_retry: bool,
+    fallback_model: str | None,
+    routed: bool,
+) -> None:
+    """C6 `node_error`: this attempt failed, and what happens next."""
+
+    from brief_crew.events.models import FrameKind, FrameLevel, UIEventType
+
+    _emit_frame(
+        FrameKind.ERROR,
+        UIEventType.NODE_END,
+        node_id=node_id,
+        message=f"{node_id} failed on attempt {attempt}",
+        details={
+            "stage": "error",
+            "error_class": _error_class(exc),
+            "message": f"{type(exc).__name__}: {exc}"[:MAX_NODE_ERROR_CHARS],
+            "attempt": attempt,
+            "will_retry": will_retry,
+            "fallback_model": fallback_model,
+            "routed": routed,
+        },
+        level=FrameLevel.ERROR,
+    )
+
+
+def _retry_frame(
+    node_id: str, *, attempt: int, of: int, backoff_ms: int, model: str | None
+) -> None:
+    """C6 `retry`: attempt N of M is about to start, after this long."""
+
+    from brief_crew.events.models import FrameKind, UIEventType
+
+    _emit_frame(
+        FrameKind.NODE_STATE,
+        UIEventType.NODE_START,
+        node_id=node_id,
+        message=f"{node_id} retrying, attempt {attempt} of {of}",
+        details={
+            "stage": "retry",
+            "attempt": attempt,
+            "of": of,
+            "backoff_ms": backoff_ms,
+            "model": model,
+        },
+    )
+
+
 def _attempted(
     flow: Any,
     *,
@@ -1267,22 +1490,69 @@ def _attempted(
     fallback = spec.get("fallback_model") or None
     failure: BaseException | None = None
 
+    def model_for(index: int) -> str | None:
+        """The fallback model attempt `index` runs on, or None for the author's.
+
+        Offered to the LAST attempt only, and only when there was an earlier
+        one - a fallback on a node that never retried would silently move the
+        whole graph onto a model the author did not choose.
+        """
+
+        return str(fallback) if fallback and index == attempts - 1 and index else None
+
     for attempt in range(attempts):
         last_attempt = attempt == attempts - 1
+        # Per ATTEMPT, not per node (10 D3). `checkpoint` is where a Cancel and
+        # the run's own `MAX_RUN_COST_USD` ceiling both land, and a node with
+        # three attempts that checked once could spend two more calls after
+        # either had already said stop.
+        checkpoint(node_id)
         try:
-            return work(str(fallback) if fallback and last_attempt and attempt else None)
+            return work(model_for(attempt))
         except BaseException as exc:  # noqa: BLE001 - re-raised below unless routed
             if _is_control_flow(exc):
                 raise
             failure = exc
+            retryable = _is_retryable(exc)
+            will_retry = bool(not last_attempt and retryable)
+            _node_error_frame(
+                node_id,
+                exc,
+                attempt=attempt + 1,
+                will_retry=will_retry,
+                fallback_model=model_for(attempt),
+                routed=bool(on_error == "route" and not will_retry),
+            )
             LOGGER.warning(
                 "builder node %s failed on attempt %s of %s", node_id, attempt + 1, attempts
             )
-            if not last_attempt and backoff:
-                time.sleep(backoff)
+            if not will_retry:
+                # A failure this list does not recognise stops HERE rather than
+                # burning the author's remaining attempts on a verdict that
+                # cannot change - see `_RETRYABLE_ERROR_NAMES` for what the list
+                # deliberately leaves out.
+                break
+            delay = backoff * (2 ** attempt)
+            _retry_frame(
+                node_id,
+                attempt=attempt + 2,
+                of=attempts,
+                backoff_ms=int(delay * 1000),
+                model=model_for(attempt + 1),
+            )
+            if delay:
+                time.sleep(delay)
 
     assert failure is not None  # pragma: no cover - the loop runs at least once
     if on_error == "route":
+        # A STRING and not D4's `{error_class, message}` mapping, deliberately.
+        # `${state.err__<node>}` is how an author's recovery node reads this,
+        # and this module's own docstring records that a flat key is the only
+        # reference shape ever measured resolving - nested access into a
+        # sub-dict was not. A mapping here would be a value the error port's
+        # successor cannot read, which is the one thing the key exists for. The
+        # discriminator is not lost: the string is `ClassName: sentence`, and
+        # the machine-readable `error_class` is on the `node_error` frame above.
         _state(flow)[f"{BUILDER_STATE_ERROR_PREFIX}{node_id}"] = (
             f"{type(failure).__name__}: {failure}"
         )
@@ -1666,12 +1936,40 @@ def replay_output(
         )
     values = current_replay_values.get() or {}
     if node_id not in values:
-        raise BuilderRuntimeError(
+        raise ReplayMissingOutput(
             f"the replay plan has no saved output for {node_id!r}. Every node upstream "
             "of the replay point needs one, or the node downstream would be handed a "
             "blank with nothing saying why"
         )
-    return _record(flow, node_id, _as_text(values[node_id]))
+    # 10 D5: the frames say `replayed`, so a console can draw the node dimmed
+    # rather than pretending it ran. They are emitted HERE and not by the
+    # serializer because CrewAI raises its own `MethodExecutionStarted/Finished`
+    # for this method too - those are honest about a method running, and these
+    # are the only statement anywhere that no model was called.
+    from brief_crew.events.models import FrameKind, UIEventType
+
+    value = _as_text(values[node_id])
+    _emit_frame(
+        FrameKind.NODE_STATE,
+        UIEventType.NODE_START,
+        node_id=node_id,
+        message=f"{node_id} replayed from a saved {source}",
+        details={"stage": "before", "replayed": True, "source": source},
+    )
+    recorded = _record(flow, node_id, value)
+    _emit_frame(
+        FrameKind.NODE_STATE,
+        UIEventType.NODE_END,
+        node_id=node_id,
+        message=f"{node_id} replayed",
+        details={
+            "stage": "after",
+            "replayed": True,
+            "source": source,
+            "output_preview": value[:MAX_FRAME_PREVIEW_CHARS],
+        },
+    )
+    return recorded
 
 
 def render_gate(

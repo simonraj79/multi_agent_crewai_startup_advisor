@@ -94,6 +94,11 @@
     ],
     [
       "scope_crew",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "scope_crew",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -101,6 +106,11 @@
       "scope_crew",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "report",

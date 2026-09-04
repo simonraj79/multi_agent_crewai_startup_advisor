@@ -98,6 +98,11 @@
     ],
     [
       "scoper",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "scoper",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -105,6 +110,11 @@
       "scoper",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "report",

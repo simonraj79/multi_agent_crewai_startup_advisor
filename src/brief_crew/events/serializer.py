@@ -64,7 +64,11 @@ from brief_crew.events.verdict import (
     verdict_frame_message,
     verdict_frame_node,
 )
-from brief_crew.config import compute_cost_usd
+from brief_crew.config import (
+    MAX_FRAME_PREVIEW_CHARS,
+    MAX_UTTERANCE_CHARS,
+    compute_cost_usd,
+)
 from brief_crew.schemas.validator import Verdict
 
 
@@ -437,7 +441,12 @@ class FieldBoundedSerializer:
         if isinstance(event, MethodExecutionStartedEvent):
             return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_START, node_id, f"{event.method_name} started", {"stage": "before", "params": self.clip(event.params)}),)
         if isinstance(event, MethodExecutionFinishedEvent):
-            frames = [self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} completed", {"stage": "after", "result": self.clip(event.result)})]
+            # `output_preview` is C6's, and it is NOT a second copy of `result`:
+            # `result` goes through `clip`, which bounds a whole structure and
+            # says nothing about what a person would read, while the preview is
+            # the node's own text - `out__<node>` is exactly this method's
+            # return value - bounded to one screenful.
+            frames = [self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} completed", {"stage": "after", "result": self.clip(event.result), "output_preview": self._preview(event.result)})]
             if registry.is_router(event.method_name) and event.result is not None:
                 route = str(event.result)
                 frames.append(self._draft(timestamp, FrameKind.EDGE_TAKEN, UIEventType.EDGE_PROCESS, node_id, f"{event.method_name} routed to {route}", {"from": node_id, "to": registry.resolve_route(event.method_name, route), "route": self.clip(route)}))
@@ -451,7 +460,7 @@ class FieldBoundedSerializer:
             return (self._draft(timestamp, FrameKind.GATE_CLOSED, UIEventType.HUMAN_INTERACTION, node_id, f"Feedback received for {event.method_name}", {"stage": "after", "gate_id": event.request_id, "feedback": self.clip(event.feedback), "outcome": self.clip(event.outcome)}),)
 
         if isinstance(event, ToolUsageStartedEvent):
-            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} started", {"stage": "before", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "args": self.clip(event.tool_args)}),)
+            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} started", {"stage": "before", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "args": self.clip(event.tool_args), "input_preview": self._preview(event.tool_args)}),)
         if isinstance(event, ToolUsageFinishedEvent):
             duration_ms = max(0, int((event.finished_at - event.started_at).total_seconds() * 1000))
             level = FrameLevel.WARNING if event.failure is not None else FrameLevel.INFO
@@ -459,7 +468,13 @@ class FieldBoundedSerializer:
             # The query the *tool* reports is the one it actually ran, so it
             # wins over the arguments it was handed.
             query = envelope.pop("query", None) or self.tool_query(event.tool_args)
-            details = {"stage": "after", "tool": event.tool_name, "query": query, "from_cache": event.from_cache, "failure": self.clip(event.failure)}
+            # C6's `output_preview` reads the ENVELOPE and never the raw output.
+            # A single market envelope carries ten scraped page bodies and the
+            # ring holds two thousand frames - `tool_envelope`'s whole job is
+            # that the results never reach a frame, and previewing `event.output`
+            # here would have walked straight past it. `envelope["output"]` is
+            # the already-clipped fallback for a tool that returned prose.
+            details = {"stage": "after", "tool": event.tool_name, "query": query, "from_cache": event.from_cache, "failure": self.clip(event.failure), "input_preview": self._preview(event.tool_args), "output_preview": self._preview(envelope.get("output", envelope))}
             details.update(envelope)
             return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} completed", details, level, duration_ms),)
         if isinstance(event, ToolUsageErrorEvent):
@@ -490,8 +505,17 @@ class FieldBoundedSerializer:
             # `None` means the model is not in the price table. It is NOT 0.0:
             # see `config.compute_cost_usd`.
             usage["cost_usd"] = cost_usd
+            # C6 `utterance`. Until this frame existed the completed response
+            # was DROPPED here - the frame carried `finish_reason` and
+            # `response_id` and nothing the agent had actually said - so a run
+            # view could show that a model had been called and never what came
+            # back. `stage: "utterance"` on the existing `llm` kind, not a new
+            # `FrameKind`: the ring, the replay cursor, `run_frames.kind` and
+            # the client's kind switch all stay as they are.
+            text = self._utterance_text(event)
             return (
                 self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call completed", {"stage": "after", "call_id": event.call_id, "model": event.model, "finish_reason": event.finish_reason, "response_id": event.response_id}),
+                self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} said", {"stage": "utterance", "call_id": event.call_id, "text": text[:MAX_UTTERANCE_CHARS], "truncated": len(text) > MAX_UTTERANCE_CHARS, "prompt_tokens": usage["prompt_tokens"], "completion_tokens": usage["completion_tokens"], "model": event.model}),
                 self._draft(timestamp, FrameKind.TOKEN, UIEventType.MODEL_CALL, node_id, "Token usage recorded", {"call_id": event.call_id, "model": model, "usage": usage, "cost_usd": cost_usd}),
             )
         if isinstance(event, LLMCallFailedEvent):
@@ -572,6 +596,57 @@ class FieldBoundedSerializer:
     def _guardrail_name(event: Any) -> str:
         name = getattr(event, "guardrail_name", None) or getattr(event, "guardrail", None)
         return str(name or "Guardrail").strip()[:MAX_IDENTIFIER_LENGTH]
+
+    def _preview(self, value: Any) -> str:
+        """One value as the ≤2,048 characters a person would read (C6).
+
+        A STRING, always, and never a structure. `clip` already carries the
+        structure under the serializer's own limits and a client that wanted to
+        walk it can; this is the one field a rail renders directly, so a shape
+        that is sometimes a dict and sometimes a string would be a rendering
+        decision pushed onto every consumer.
+        """
+
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value[:MAX_FRAME_PREVIEW_CHARS]
+        # TOTAL, and that is not defensiveness. This runs inside a capture
+        # callback: `_safe_repr` exists because a tool result whose `__repr__`
+        # raises has already reached this module once, and a preview that let
+        # that through would turn a bad frame into a lost one and an emit-error
+        # counter tick.
+        try:
+            text = json.dumps(value, default=str, sort_keys=True)
+        except Exception:  # noqa: BLE001 - see above
+            text = self._safe_repr(value)
+        return text[:MAX_FRAME_PREVIEW_CHARS]
+
+    def _utterance_text(self, event: Any) -> str:
+        """What the model actually said, out of a `response` typed `Any`.
+
+        `LLMCallCompletedEvent.response` is `Any` (`crewai/events/types/
+        llm_events.py`), and in practice it is a string for a plain completion
+        and a provider object for a structured one - so this reduces both to
+        text rather than assuming the easy case and emitting `None` for the
+        other. It is NOT clipped here: the caller needs the true length to set
+        `truncated`, which is the field that says the frame is not the whole
+        answer.
+        """
+
+        response = getattr(event, "response", None)
+        if isinstance(response, str):
+            return response
+        if response is None:
+            return ""
+        for attribute in ("content", "text", "output", "raw"):
+            value = getattr(response, attribute, None)
+            if isinstance(value, str) and value:
+                return value
+        try:
+            return json.dumps(response, default=str, sort_keys=True)
+        except (TypeError, ValueError):
+            return self._safe_repr(response)
 
     def _formatted_answer(self, event: Any) -> str:
         """The agent's own reasoning line, reduced to one printable string."""

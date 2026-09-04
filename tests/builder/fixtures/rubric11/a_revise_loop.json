@@ -302,6 +302,11 @@
     ],
     [
       "seed",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "seed",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -309,6 +314,11 @@
       "seed",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "fork",
@@ -327,6 +337,11 @@
     ],
     [
       "left",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "left",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -337,6 +352,11 @@
     ],
     [
       "merge",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "merge",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -344,6 +364,11 @@
       "merge",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "decide",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "decide",
@@ -362,6 +387,11 @@
     ],
     [
       "seed",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "seed",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -369,6 +399,11 @@
       "seed",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
     ],
     [
       "fork",
@@ -387,6 +422,11 @@
     ],
     [
       "right",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "right",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -397,6 +437,11 @@
     ],
     [
       "merge",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "merge",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -407,6 +452,11 @@
     ],
     [
       "decide",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "decide",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
     ],
@@ -417,6 +467,11 @@
     ],
     [
       "decide",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "report",
       "UIEventType.EDGE_PROCESS",
       "FrameKind.EDGE_TAKEN"
     ],

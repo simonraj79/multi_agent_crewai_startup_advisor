@@ -1106,6 +1106,14 @@ async function onPublished(result: BuilderPublish): Promise<void> {
   persistence.notePublished(result.version)
   publishProblems.value = []
   await refreshLibrary()
+  // D-15-23: and the VERSION ROWS, which carried the publish's own contradiction.
+  // A version has no status column - `_version_status` derives it from which
+  // version is registered - so every row in an OPEN browser still says `draft`
+  // after a publish, including the one that is now live. The critic's capture
+  // is all three surfaces at once: the header saying `v3 is live`, the library
+  // row saying `v3 PUBLISHED`, and the v3 version row saying `HEAD DRAFT`.
+  // `unpublishDocument` had always reloaded here; publish had not.
+  if (versionsOpen.value) await loadVersions()
 }
 
 /**

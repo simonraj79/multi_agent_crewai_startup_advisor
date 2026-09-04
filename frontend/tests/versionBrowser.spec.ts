@@ -856,6 +856,61 @@ async function mountOpen() {
 }
 
 describe('the shell', () => {
+  /*
+   * D-15-23. A version has no status column: `_version_status` derives it from
+   * which version is REGISTERED, so an open browser's rows are computed before
+   * the publish and say `draft` afterwards - including the row for the version
+   * that is now live. The critic caught all three surfaces disagreeing at once:
+   * header `v3 is live`, library row `v3 PUBLISHED`, version row `HEAD DRAFT`.
+   *
+   * `unpublishDocument` had always reloaded the list. `onPublished` had not.
+   */
+  it('re-reads the version rows after a publish, because their status is derived (D-15-23)', async () => {
+    const { wrapper, state } = await mountOpen()
+    expect(state.versionsCalls).toBe(1)
+
+    await wrapper.get('[data-testid="document-publish"]').trigger('click')
+    await settled()
+    const dialog = wrapper.findComponent(PublishDialog)
+    expect(dialog.exists()).toBe(true)
+    dialog.vm.$emit('published', {
+      workflow_id: 'ug_1234abcd',
+      version: 2,
+      input_field: 'idea',
+      name: 'Second',
+    } as unknown as BuilderPublish)
+    await settled()
+
+    expect(state.versionsCalls).toBe(2)
+    wrapper.unmount()
+  })
+
+  it('does not re-read them when the browser is closed, because nothing is on screen', async () => {
+    /* The reload is for the rows an author is LOOKING at; fetching a list
+       nobody has open is a request that buys nothing. `toggleVersions` reads
+       fresh on open, which is the other half of the same rule. */
+    const server = stubServer()
+    const wrapper = mount(BuilderView, {
+      props: { documentId: SHELL_ID as never },
+      global: { stubs: STUBS },
+    })
+    await settled()
+    expect(server.state.versionsCalls).toBe(0)
+
+    await wrapper.get('[data-testid="document-publish"]').trigger('click')
+    await settled()
+    wrapper.findComponent(PublishDialog).vm.$emit('published', {
+      workflow_id: 'ug_1234abcd',
+      version: 2,
+      input_field: 'idea',
+      name: 'Second',
+    } as unknown as BuilderPublish)
+    await settled()
+
+    expect(server.state.versionsCalls).toBe(0)
+    wrapper.unmount()
+  })
+
   it('lists the stored versions from the menu, newest first as the server answers', async () => {
     const { wrapper, state } = await mountOpen()
 

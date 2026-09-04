@@ -78,6 +78,43 @@ Personas rotate by round so one blind spot cannot survive four rounds:
 | 4 | first-time user who has never seen a node graph |
 | 5+ | repeat from 1 |
 
+### A standing limitation: the blind leg is not actually blind here
+
+**Recorded 2026-09-04, after round 3's row-4 critic disclosed it unprompted.**
+Renaming the captures `A` and `B` makes sure a critic is never *told* which set
+is ours. It does not make sure the critic *cannot know*, and the second is what
+the method is for.
+
+Every subagent spawned in this repository auto-loads two files into its context
+before it reads a word of its brief:
+
+| file | what it leaks |
+| --- | --- |
+| `D:\MultiAgentSystem\CLAUDE.md` | the main tree's project file. Its flow-builder section states the `$10.00` run ceiling and the 13-billable / 8-escalation bounds — figures that are printed on our own canvas's cost meter, in the capture |
+| the user's `MEMORY.md` | the gauntlet, the plan set, the judge rounds, and defect ids in exactly the `D-15-13` / `D-01-5` form, with one line each on what fixed them |
+
+So a critic can identify which capture set is the product under test from the
+numbers on it, and can in principle be steered towards or away from a defect by
+a memory line. Round 3's visual critic reported precisely this, named the one
+moment where `MEMORY.md` offered it a ready-made cause for a defect it was
+writing, and set it aside — but a method that depends on a critic volunteering
+that is not a method.
+
+**The contamination is structural, not accidental.** The `Agent` tool takes no
+working directory; auto-loading follows the *session's* cwd; and no brief, no
+prohibition and no scratch directory can prevent it. Spawning a second critic
+buys nothing, because the second arrives contaminated in exactly the same way —
+and this file retires a critic that passes an artefact twice, so critics are not
+free to spend.
+
+**What a round must do until this is closed:** say in its round file, where the
+flip is recorded *and* beside the affected score, that the leg was not blind,
+and report the score as a **critique** rather than as a blind comparison.
+
+**What would actually close it:** an evaluator that does not auto-load this
+repository's own documentation — a fresh session started outside the project
+directory, or a person. Nothing in this harness provides one today.
+
 ### What a defect must look like
 
 A defect is **specific, located, actionable**, or it is rejected and the

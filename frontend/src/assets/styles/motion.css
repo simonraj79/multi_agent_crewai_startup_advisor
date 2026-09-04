@@ -1,0 +1,241 @@
+/* ---------------------------------------------------------------------------
+   Run-time choreography: the tokens and the keyframes.
+
+   Plan 11 D8. Everything the run console animates that is NOT the node card's
+   own shell lives here - the card's glow, pulse and crew stayed in
+   `node-card.css` because the builder's design-time card reads that same file
+   and the two must not diverge.
+
+   Three token families, and each is a token rather than a literal because the
+   rule is that a colour, a spacing or a duration is a token or it does not
+   exist (`docs/design.md`).
+
+     --character-1 … --character-12   one agent, one colour, everywhere
+     --recede-opacity / --recede-saturate   the idle card's step back
+     --handoff-*                      the token that walks the edge
+
+   THE TWELVE CHARACTER COLOURS are the one genuinely new palette this plan
+   adds, and they are new because nothing existing answers the question. The
+   three accents say what KIND a node is; these say WHICH node it is, and a
+   twelve-node graph whose cards are three colours has three characters in it.
+   They are a twelve-step sweep at one lightness and one saturation, so no
+   entry is more prominent than another - a character palette in which one
+   agent shouts is a palette that has picked a protagonist.
+
+   Light values sit beside dark, in the same `[data-theme='light']` block shape
+   `tokens.css` uses, and they are DARKER rather than inverted: these colours
+   are read as a small filled medallion on a surface, so on paper they have to
+   carry the ink rather than the light.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --character-1: #99eaf9;
+  --character-2: #aaffcd;
+  --character-3: #a0c4ff;
+  --character-4: #c3a6ff;
+  --character-5: #ffd97a;
+  --character-6: #ffb3c1;
+  --character-7: #8fe3c8;
+  --character-8: #b8d4ff;
+  --character-9: #e0b3ff;
+  --character-10: #ffc9a0;
+  --character-11: #9ad7e8;
+  --character-12: #d4e8a0;
+
+  /* How far a card that is not the speaker steps back. Not `display: none` and
+     not a blur: the graph's whole claim is that you can see the shape of the
+     run, and a receded card still has to be readable if you look at it. */
+  --recede-opacity: 0.55;
+  --recede-saturate: 0.6;
+
+  /* The travelling token. Its size is the node icon's own 34px halved and
+     rounded, so it reads as the same object at half scale rather than as a
+     different mark. */
+  --handoff-size: 24px;
+  --handoff-trail: 4px;
+  --handoff-ring: rgba(255, 255, 255, 0.24);
+}
+
+:root[data-theme='light'] {
+  --character-1: #1b7f96;
+  --character-2: #1d7a4d;
+  --character-3: #2f5fa8;
+  --character-4: #6b46b8;
+  --character-5: #8a5a00;
+  --character-6: #a8365a;
+  --character-7: #16755f;
+  --character-8: #3a5f9e;
+  --character-9: #7b3fa8;
+  --character-10: #a35a1e;
+  --character-11: #1a6b80;
+  --character-12: #5f7a1e;
+
+  --recede-opacity: 0.5;
+  --recede-saturate: 0.65;
+  --handoff-ring: rgba(15, 20, 25, 0.2);
+}
+
+/* ===========================================================================
+   D2 - the idle recede
+   ===========================================================================
+
+   The second of the two reference defects this plan fixes rather than copies.
+   ChatDev emphasises the active node and does nothing to the other fifteen, so
+   in a sixteen-node run the speaker is one glow among sixteen identical cards -
+   emphasis with no recession is not emphasis. Here every card that is not
+   running, waiting or errored steps back while the run is live, and steps
+   forward again on the terminal frame, so a finished run is a settled record
+   rather than a page with fifteen dimmed cards on it.
+
+   A STATIC STYLE and not an animation, which is why the reduced-motion block
+   below leaves it alone: legibility is not motion. The TRANSITION is motion and
+   is silenced there, so a reduced-motion reader gets the recede without the
+   fade. */
+.workflow-node.is-receded {
+  opacity: var(--recede-opacity);
+  filter: saturate(var(--recede-saturate));
+  transition:
+    opacity var(--motion-medium) var(--ease-out),
+    filter var(--motion-medium) var(--ease-out);
+}
+
+/* Completion still reads on a receded card. A node that finished and a node
+   that never ran are the same shape at 55% otherwise, and "what has already
+   happened" is half of what the canvas is for. */
+.workflow-node.is-receded.is-completed .node-state { opacity: 1; }
+
+/* An errored card never recedes and never glows - a pulsing error is noise -
+   so `is-error` is excluded at the source (`isReceded`) rather than fought
+   with here. What it does take is a static ring, declared beside the danger
+   gradient so the two cannot be applied apart. */
+.workflow-node.is-error {
+  box-shadow: 0 0 0 2px var(--err-border), 0 14px 34px rgba(0, 0, 0, 0.35);
+  animation: none;
+}
+
+/* ===========================================================================
+   D1 - the character medallion
+   ===========================================================================
+
+   A node's identity, drawn at a size the graph's own default fit does not
+   destroy. It is the card's per-kind lucide icon in a 34px disc filled from
+   the character palette, and the SAME index colours this, the node's avatar in
+   the dialogue rail, and its handoff token - so one agent is one colour
+   everywhere.
+
+   The reference gets this wrong in a way worth naming: it assigns characters
+   randomly without replacement, and its chat avatars never match the graph
+   because the chat path omits the node id. Ours is a pure function of the id,
+   so the two cannot disagree. */
+.node-character {
+  position: absolute;
+  top: -17px;
+  left: 13px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--bg-node);
+  background: var(--character-color, var(--accent-cyan));
+  border: 2px solid var(--bg-node);
+  border-radius: var(--r-full);
+  box-shadow: 0 0 0 1px var(--handoff-ring), 0 4px 12px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* The receipt pulse: a single 120ms bump when a handoff token arrives here.
+   One shot, not a loop - it marks an EVENT, and an event that repeats forever
+   stops being one. */
+.node-character.is-receiving { animation: character-receipt 120ms var(--ease-out) 1; }
+
+@keyframes character-receipt {
+  50% { transform: scale(1.15); }
+}
+
+/* ===========================================================================
+   D3 - the handoff token
+   ===========================================================================
+
+   Positioned by script (`HandoffToken.vue` walks the edge's own path with
+   `getPointAtLength`), so nothing here places it. What CSS owns is what it
+   looks like and the trailing dash that gives it a direction at 50% zoom. */
+.handoff-token { pointer-events: none; }
+.handoff-token-disc { stroke: var(--bg-node); stroke-width: 2; }
+.handoff-token-trail {
+  fill: none;
+  stroke-width: var(--handoff-trail);
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+
+/* ===========================================================================
+   D6 - the launch sequence
+   ===========================================================================
+
+   Both lifted from the reference verbatim, because it is the one motion
+   vocabulary in the product and inventing a second glow for the same meaning
+   is how a design stops reading as one system. `gradientShift` moves the
+   button's own brand gradient; `glowPulse` is the ring around it. */
+.is-armed {
+  background-size: 200% 200%;
+  animation:
+    gradientShift 6s ease-in-out infinite,
+    glowPulse 3s ease-in-out infinite;
+}
+
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(153, 234, 249, 0.5); }
+  50% { box-shadow: 0 0 0 7px rgba(153, 234, 249, 0); }
+}
+
+/* The gate's textarea, while it is the thing the run is waiting on. Same
+   vocabulary, applied to the one control that is holding everybody up. */
+.is-awaiting-you { animation: borderPulse 4s ease-in-out infinite alternate; }
+
+@keyframes borderPulse {
+  from { border-color: var(--warn-border); }
+  to { border-color: var(--accent-cyan); }
+}
+
+/* The landing settle. A NEGATIVE per-card delay, so a sixteen-node graph reads
+   as already in motion on the first paint rather than popping in one card at a
+   time - the reference's own landing-page technique, applied once rather than
+   forever. The delay is written inline by the view, because it is per index. */
+.workflow-node.is-landing { animation: run-node-land 480ms var(--ease-out) 1; }
+
+@keyframes run-node-land {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===========================================================================
+   D8 - reduced motion
+   ===========================================================================
+
+   Every keyframe declared above is named here, the way `node-card.css:268` and
+   `builder.css:871-880` already name theirs. `studio.css`'s blanket rule would
+   finish them inside 0.01ms anyway; naming them is what makes this file's own
+   contract legible rather than dependent on a sledgehammer three files away.
+
+   WHAT SURVIVES, and each is a decision rather than an oversight:
+   - the recede itself, because it is a static style and legibility is not
+     motion. Only its transition is dropped.
+   - the medallion, the token's final position and the trail, because they are
+     marks rather than movement. `HandoffToken.vue` reads the same media query
+     and places the token at the target within one frame instead of walking it.
+   - the landing card's final state, because `animation: none` on a keyframe
+     that fades IN would otherwise be indistinguishable from a card that never
+     arrived. */
+@media (prefers-reduced-motion: reduce) {
+  .workflow-node.is-receded { transition: none; }
+  .node-character.is-receiving,
+  .workflow-node.is-landing,
+  .is-armed,
+  .is-awaiting-you { animation: none; }
+  .is-armed { background-position: 0% 50%; }
+}

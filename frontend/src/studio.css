@@ -19,6 +19,16 @@
    is the only thing that decides which wins. Swap these two imports and every
    builder card loses its kind colour. */
 @import './assets/styles/builder.css';
+/* The run console's choreography: the twelve character colours, the idle
+   recede, the medallion, the handoff token and the launch sequence (plan 11).
+
+   LAST of the four, and the order is the same kind of load-bearing as the pair
+   above it. `.is-receded` and `.is-error` here set `opacity`, `filter` and
+   `box-shadow` on the same element as `node-card.css`'s state rules and at the
+   same specificity, so a card that is both errored and mid-run resolves by
+   source order alone. Import this before `node-card.css` and an errored card
+   goes back to glowing. */
+@import './assets/styles/motion.css';
 
 *,
 *::before,

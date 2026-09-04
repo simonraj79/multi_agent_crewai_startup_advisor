@@ -20,7 +20,11 @@ import { defineConfig, devices } from '@playwright/test'
  *
  *   SYNTHETIC=1 PORT=8099 ./.venv/Scripts/serve.exe
  */
-const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5273'
+// `E2E_UI_PORT` moves the Vite server (`e2e/vite.e2e.config.ts`); the default
+// baseURL must follow it, or two suites on one machine share :5273 and one
+// of them asserts against the other's build.
+const uiPort = process.env.E2E_UI_PORT ?? '5273'
+const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${uiPort}`
 const usesLocalServer = !process.env.E2E_BASE_URL
 
 export default defineConfig({

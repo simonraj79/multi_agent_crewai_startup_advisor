@@ -954,7 +954,35 @@ class _Plan:
                 {
                     "node_id": node.id,
                     "body_key": config.body_key,
-                    "source": config.source,
+                    # THE EDGE THE AUTHOR DREW IS THE ANSWER, and an unset
+                    # `source` used to mean nothing at all.
+                    #
+                    # Found by the first paid run of an authored graph, 2026-09-04.
+                    # `input -> agent -> output`, drawn on the canvas, validating
+                    # with ZERO problems, publishing, launching, spending money on
+                    # a real model that produced 896 completion tokens - and
+                    # handing back `markdown_body: ""`. `config.source` defaulted
+                    # to None, `emit_output` did `_as_text(None)`, and the run
+                    # completed successfully with nothing in it.
+                    #
+                    # That is the drag-and-drop case, not an edge case. An author
+                    # who connects an agent to an output has already said where
+                    # the body comes from; making them ALSO hand-type
+                    # `${state.out__writer}` is the redundancy a visual builder
+                    # exists to remove, and getting it wrong is silent.
+                    #
+                    # `_inbound_source` is the same function the gate and the
+                    # router use, so all three read a graph's edges one way: one
+                    # predecessor gives one reference, several give an ordered
+                    # list the runtime resolves last-with-a-value, and back edges
+                    # sort after normal ones so a revise loop shows the revision.
+                    # An explicit `source` still wins - an author who names one
+                    # means it.
+                    "source": (
+                        config.source
+                        if config.source is not None
+                        else self._inbound_source(node)
+                    ),
                 },
             )
         else:  # pragma: no cover - the seven flow kinds are exhaustive

@@ -27,7 +27,7 @@ sources - the model registry (C3, plan 05) and the tool catalogue (06) - do not
 exist yet, and C2's own rule is that both are served verbatim from those
 sources. Serving `[]` would say "this deployment has no models", which is false;
 the absence is what `types/builder.ts` already reads as "the server has not got
-there yet". `test_the_two_keys_this_build_cannot_serve_are_absent_not_empty`
+there yet". `test_the_one_key_this_build_cannot_serve_is_absent_not_empty`
 pins that as a decision so it reads as one.
 
 No cost: this builds a synthetic app over an in-memory SQLite and does one GET.
@@ -89,6 +89,11 @@ class VocabularyShapeTests(unittest.TestCase):
                     "router_comparisons",
                     "router_otherwise",
                     "result_body_keys",
+                    # Plan 06 D1's catalogue. Added 2026-09-04 beside
+                    # `research_tools` rather than replacing it: 06's Status
+                    # asks for the older key to go away, and removing a key the
+                    # client already reads is a C2 change the Integrator owns.
+                    "tools",
                     "problem_codes",
                     "warning_codes",
                     "bounds",
@@ -96,17 +101,56 @@ class VocabularyShapeTests(unittest.TestCase):
             ),
         )
 
-    def test_the_two_keys_this_build_cannot_serve_are_absent_not_empty(self) -> None:
-        """A DECISION: `models` is 05's and `tools` is 06's, verbatim or not at all.
+    def test_the_one_key_this_build_cannot_serve_is_absent_not_empty(self) -> None:
+        """A DECISION: `models` is 05's, verbatim or not at all.
 
-        An empty list would say this deployment has no models and no tools,
-        which is false. `types/builder.ts` already reads the absence as "the
-        server has not got there yet" and renders no sub-list, which is cut-list
-        item 17 applied honestly.
+        An empty list would say this deployment has no models, which is false.
+        `types/builder.ts` reads the absence as "the server has not got there
+        yet" and renders no sub-list, which is cut-list item 17 applied
+        honestly.
+
+        **`tools` is no longer in this list.** It was absent for the same reason
+        until plan 06 landed the catalogue; the assertion below is now the
+        positive one, and it checks the shape rather than the count so a new
+        entry does not have to be counted in two places.
         """
 
         self.assertNotIn("models", self.payload)
-        self.assertNotIn("tools", self.payload)
+        self.assertIn("tools", self.payload)
+
+    def test_the_tool_catalogue_is_served_whole_and_carries_no_class_ref(self) -> None:
+        """Plan 06 criterion 1, from the outside.
+
+        `class_ref` is the key the plan says must never be serialised, and the
+        assertion is over EVERY key of every entry rather than that one name:
+        the failure this guards against is a factory reaching the wire, and a
+        test naming only `class_ref` would pass while `factory` did.
+        """
+
+        from brief_crew.builder.tools import catalogue
+
+        served = self.payload["tools"]
+        self.assertEqual([entry["id"] for entry in served], [e.id for e in catalogue()])
+        allowed = {
+            "id",
+            "label",
+            "category",
+            "credential_kind",
+            "credential_kind_by_param",
+            "credential_optional",
+            "param_schema",
+            "description",
+            "docs_url",
+            "owner",
+            "available",
+            "requires_packages",
+            "packages_param",
+        }
+        for entry in served:
+            with self.subTest(tool=entry["id"]):
+                self.assertEqual(set(entry), allowed)
+                self.assertEqual(entry["owner"], "builtin")
+                self.assertIn(entry["category"], project_config.BUILDER_TOOL_CATEGORIES)
 
     def test_the_schema_id_is_the_one_this_service_actually_compiles(self) -> None:
         """Derived, never a literal: the client refuses a mismatch outright."""
@@ -169,7 +213,7 @@ class VocabularyShapeTests(unittest.TestCase):
             self.payload["router_otherwise"], project_config.BUILDER_ROUTER_OTHERWISE
         )
 
-    def test_problem_codes_equal_the_three_declaring_modules_exactly(self) -> None:
+    def test_problem_codes_equal_the_four_declaring_modules_exactly(self) -> None:
         """The same set `test_problem_code_declarations.py` holds the client to.
 
         Read here by the frontend's own grep - the shape a code must be written
@@ -184,7 +228,24 @@ class VocabularyShapeTests(unittest.TestCase):
         pattern = re.compile(r'^([A-Z][A-Z0-9_]*) = "([a-z]+(?:-[a-z]+)+)"$', re.MULTILINE)
         builder = pathlib.Path(__file__).resolve().parents[2] / "src" / "brief_crew" / "builder"
         declared: set[str] = set()
-        for name in ("bounds.py", "budget.py", "compiler.py"):
+        # FOUR since 2026-09-04: `registry.py` joined with plan 05's three
+        # model codes. This list and `_problem_code_union`'s are the same claim
+        # made two ways, which is the only arrangement that catches a module
+        # added to one and forgotten in the other.
+        # SEVEN since 2026-09-04: `registry.py` joined with plan 05's model
+        # codes, and `tools.py`, `mcp.py` and `skills.py` with plans 06, 07 and
+        # 08's. This list and `_problem_code_union`'s are the same claim made
+        # two ways, which is the only arrangement that catches a module added to
+        # one and forgotten in the other.
+        for name in (
+            "bounds.py",
+            "budget.py",
+            "compiler.py",
+            "registry.py",
+            "tools.py",
+            "mcp.py",
+            "skills.py",
+        ):
             declared |= {
                 match.group(2)
                 for match in pattern.finditer((builder / name).read_text(encoding="utf-8"))
@@ -195,8 +256,17 @@ class VocabularyShapeTests(unittest.TestCase):
         for code in self.payload["warning_codes"]:
             self.assertIn(code, self.payload["problem_codes"])
 
-    def test_the_warnings_are_the_four_sites_that_write_severity_warning(self) -> None:
+    def test_the_warnings_are_the_five_sites_that_write_severity_warning(self) -> None:
+        """FIVE since 2026-09-04: plan 07's suspicious MCP tool description.
+
+        A warning rather than an error because the thirteen injection patterns
+        have false positives by design - "act as" is ordinary English - and
+        PLANS.md decision 8 rules that a suspicious tool stays selectable with
+        the warning shown.
+        """
+
         from brief_crew.builder import bounds as bounds_module
+        from brief_crew.builder import mcp as mcp_module
 
         self.assertEqual(
             self.payload["warning_codes"],
@@ -206,6 +276,7 @@ class VocabularyShapeTests(unittest.TestCase):
                     bounds_module.NO_OUTPUT_NODE,
                     bounds_module.JOIN_SINGLE_PREDECESSOR,
                     bounds_module.ATTACHMENT_UNATTACHED,
+                    mcp_module.MCP_TOOL_DESCRIPTION_SUSPICIOUS,
                 ]
             ),
         )

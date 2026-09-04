@@ -40,7 +40,7 @@ from typing import Any, Callable, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from brief_crew import config as project_config
-from brief_crew.builder import BudgetEstimate, Problem, estimate_budget
+from brief_crew.builder import BudgetEstimate, Problem, estimate_budget, registry_document
 # `document_problems` and never `validate_document`: the second answers about
 # structure and price only, and an author who names a crew this deployment
 # cannot construct has to be told here rather than at the moment Publish
@@ -59,6 +59,30 @@ from brief_crew.builder.document import (
     Tier,
     _TARGET_PORTS_BY_KIND as TARGET_PORTS_BY_KIND,
 )
+# Plans 06, 07 and 08. Imported by module-qualified alias where a bare name
+# would collide with something already in this file (`catalogue`, `discover`,
+# `mask_url`), because a rename inside a route body is the kind of edit that
+# reads as correct and binds the wrong function.
+from brief_crew.builder.mcp import (
+    MCP_TRANSPORT_DISALLOWED,
+    discover as mcp_discover,
+    mask_url as mask_mcp_url,
+    mcp_problems,
+    transport_refusal,
+)
+from brief_crew.builder.skills import (
+    SkillError,
+    load_builtins as builtin_skill_packs,
+    read_pack_zip,
+    skill_problems,
+)
+from brief_crew.builder.tools import (
+    CustomToolError,
+    build_custom_tool,
+    catalogue as tool_catalogue,
+    parse_custom_tool,
+    tool_problems,
+)
 from brief_crew.builder.export import (
     export_content_disposition,
     export_envelope,
@@ -66,6 +90,14 @@ from brief_crew.builder.export import (
     strip_for_export,
 )
 from brief_crew.builder.runtime import BUILDABLE_BUILDER_CREW_IDS, BUILDER_AGENT_LIBRARY
+from brief_crew.service.attachments import (
+    AttachmentNotYours,
+    CustomToolStore,
+    McpServerStore,
+    NameTaken,
+    SkillStore,
+    TooManyRows,
+)
 from brief_crew.builder.store import (
     BuilderDocumentStore,
     BuilderStoreError,
@@ -406,6 +438,13 @@ class BuilderVocabularyModel(BaseModel):
     agent_ids: list[str]
     crew_ids: list[str]
     research_tools: list[str]
+    #: Plan 06 D1's catalogue, served so the palette and the inspector never
+    #: hold a copy (cut-list 17). `research_tools` above stays exactly as it
+    #: was: it is the three repo tools an `agent` node's own checklist binds,
+    #: and the attachment model is additive to it rather than a replacement.
+    #: Plan 06's Status asks for that field to GO AWAY; that is a C2 change, and
+    #: removing a key the client already reads is the Integrator's call.
+    tools: list[dict[str, Any]]
     transform_ops: list[str]
     router_comparisons: list[str]
     router_otherwise: str
@@ -420,8 +459,66 @@ class BuilderVocabularyModel(BaseModel):
     bounds: dict[str, float]
 
 
+class BuilderRegistryModel(BaseModel):
+    """One roster row, C3 verbatim - plan 05.
+
+    Every field is a catalogue fact measured by `scripts/refresh_models.py`, and
+    the two price columns are both here on purpose. `cost_in` is what a run is
+    PRICED at. `cost_in_max_endpoint` is the dearest endpoint serving the same
+    slug, and it is the figure that says how much exposure `provider.max_price`
+    is filtering away - `google/gemini-3.8-flash` bills $0.75 on its headline
+    and $1.35 on its two `priority` endpoints. Reporting one column without the
+    other is what let a `:batch` price be read as a headline once already.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    provider: str
+    context_window: int
+    supports_tools: bool
+    supports_vision: bool
+    supports_json_mode: bool
+    supports_reasoning: bool
+    cost_in: float
+    cost_out: float
+    cost_in_max_endpoint: float
+    speed_tier: str
+    recommended_for: list[str]
+
+
+class BuilderModelsModel(BaseModel):
+    """`GET /api/builder/models` - the roster, its ceiling and its two presets.
+
+    `generated_at` and `source` are served with the rows because they are what a
+    stale client is diagnosed FROM. A browser holding a session-cached roster can
+    say when the copy it has was measured; comparing prices would only ever tell
+    it that two numbers differ, never which one is old.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_id: str = Field(alias="schema")
+    generated_at: str
+    source: str
+    ceiling_usd_per_m_input: float
+    #: Tier name to the model id that tier resolves to, WITH its routing variant
+    #: - `google/gemini-3.5-flash-lite:nitro`. The variant is part of how the
+    #: cheap preset is billed (nitro routes on speed, so its published rate is a
+    #: floor), so stripping it here would hide the one fact the picker needs to
+    #: explain why the cheap preset's enforced price is above its headline.
+    presets: dict[str, str]
+    models: list[BuilderRegistryModel]
+
+
 def _problem_code_union() -> tuple[list[str], list[str]]:
     """Every problem code and every warning code, from their owning modules.
+
+    FOUR modules since 2026-09-04: `registry.py` joined with plan 05's three
+    model codes. A module missing here is a code the runtime never advertises,
+    which is how a canvas ends up rendering nothing for a refusal the server
+    keeps sending.
 
     Imported rather than grepped. `test_problem_code_declarations.py` already
     guarantees the two agree - it parses the same modules with the frontend's
@@ -433,9 +530,19 @@ def _problem_code_union() -> tuple[list[str], list[str]]:
     from brief_crew.builder import bounds as bounds_module
     from brief_crew.builder import budget as budget_module
     from brief_crew.builder import compiler as compiler_module
+    from brief_crew.builder import registry as registry_module
+
+    from brief_crew.builder import mcp as mcp_module
+    from brief_crew.builder import skills as skills_module
+    from brief_crew.builder import tools as tools_module
 
     codes: set[str] = set()
-    for module in (bounds_module, budget_module, compiler_module):
+    # Plans 06, 07 and 08 declare their own codes in their own modules, in the
+    # module-level shape the client's grep looks for. Every declaring file is
+    # named in `test_problem_code_declarations.py`, `builderTypes.spec.ts` and
+    # `scripts/emit_builder_fixtures.py`; they all move together, or the canvas
+    # renders a code it has never heard of.
+    for module in (bounds_module, budget_module, compiler_module, registry_module, tools_module, mcp_module, skills_module):
         for name, value in vars(module).items():
             if name.isupper() and isinstance(value, str) and _PROBLEM_CODE.match(value):
                 codes.add(value)
@@ -444,8 +551,33 @@ def _problem_code_union() -> tuple[list[str], list[str]]:
         bounds_module.NO_OUTPUT_NODE,
         bounds_module.JOIN_SINGLE_PREDECESSOR,
         bounds_module.ATTACHMENT_UNATTACHED,
+        # The fifth: a discovered MCP tool description that matched one of the
+        # thirteen injection patterns. A warning and not an error because the
+        # list has false positives by design - "act as" is ordinary English -
+        # and PLANS.md decision 8 rules that the author decides with eyes open.
+        mcp_module.MCP_TOOL_DESCRIPTION_SUSPICIOUS,
     }
     return sorted(codes), sorted(warnings)
+
+
+def _models_etag() -> str:
+    """A strong ETag for the roster: the SHA-256 of `data/models.json`.
+
+    Of the FILE, not of the response body. The file is the thing
+    `refresh_models.py` rewrites and the thing a commit shows a diff of, so a
+    tag taken from it moves exactly when the roster moves - where a hash of the
+    serialised response would also move if a key order changed, inventing a
+    cache miss out of a refactor.
+
+    Read per request rather than computed once at import, because both Render
+    services carry `autoDeploy: yes` and a process can outlive the file it
+    started with. It is a few kilobytes off the page cache.
+    """
+
+    import hashlib
+
+    digest = hashlib.sha256(project_config.MODEL_REGISTRY_PATH.read_bytes()).hexdigest()
+    return f'"{digest}"'
 
 
 #: A problem code, by the shape the frontend's own grep looks for. The
@@ -497,6 +629,10 @@ def _vocabulary() -> BuilderVocabularyModel:
         # picker would be advertising a document that cannot publish.
         crew_ids=sorted(BUILDABLE_BUILDER_CREW_IDS),
         research_tools=sorted(project_config.BUILDER_RESEARCH_TOOLS),
+        # Declaration order, not sorted: the palette groups by `category` and
+        # renders each group in arrival order, so the catalogue's own ordering
+        # is a decision and alphabetising it would silently discard one.
+        tools=[entry.serialisable() for entry in tool_catalogue()],
         transform_ops=sorted(project_config.BUILDER_TRANSFORM_OPS),
         router_comparisons=sorted(project_config.BUILDER_ROUTER_COMPARISONS),
         router_otherwise=project_config.BUILDER_ROUTER_OTHERWISE,
@@ -566,7 +702,7 @@ def create_builder_router(
     swap the store without rebuilding the app.
     """
 
-    from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+    from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 
     router = APIRouter(prefix=BUILDER_API_PREFIX, tags=["builder"])
 
@@ -627,6 +763,48 @@ def create_builder_router(
         if vault is None:
             return None
         return lambda credential_id: bool(vault.exists(owner, credential_id))
+
+    def attachment_problems(document: BuilderDocument, user: Any) -> list[Problem]:
+        """Tool, MCP and skill problems for THIS caller - plans 06, 07 and 08.
+
+        Each check takes a lookup scoped to the caller, and `None` where there
+        is nobody to ask. `None` is not "clean": a builtin tool id and a
+        built-in skill are still checked, because neither depends on an
+        identity, and only the per-user references are left alone. That is the
+        same distinction `credential_check_for` draws, and for the same reason -
+        a check that could not run must never be reported as one that passed.
+        """
+
+        owner = owner_of(user)
+        tools = custom_tool_store()
+        servers = mcp_server_store()
+        skills = skill_store()
+        return (
+            tool_problems(
+                document,
+                custom_tools=(
+                    (lambda tool_id: tools.exists(owner, tool_id))
+                    if owner is not None and tools is not None
+                    else None
+                ),
+            )
+            + mcp_problems(
+                document,
+                servers=(
+                    servers.lookup(owner)
+                    if owner is not None and servers is not None
+                    else None
+                ),
+            )
+            + skill_problems(
+                document,
+                skills=(
+                    skills.lookup(owner)
+                    if owner is not None and skills is not None
+                    else None
+                ),
+            )
+        )
 
     def parse(payload: Mapping[str, Any], *, document_id: str, version: int) -> BuilderDocument:
         """Parse an author's JSON into a document, or 422 with the reason.
@@ -697,6 +875,45 @@ def create_builder_router(
         a description of this build, not of anybody's data."""
 
         return _vocabulary()
+
+    @router.get(
+        "/models",
+        response_model=BuilderModelsModel,
+        response_model_by_alias=True,
+        responses={304: {}},
+    )
+    async def get_models(
+        response: Response,
+        if_none_match: str = Header(default="", alias="If-None-Match"),
+    ) -> Any:
+        """The model roster, with a conditional GET that is actually conditional.
+
+        NO AUTH, for the same reason `/vocabulary` has none: this is a
+        description of THIS BUILD, not of anybody's data, and it has to resolve
+        before the three-phase auth gate does or the inspector's model picker
+        would be empty for the whole of a sign-in.
+
+        The `ETag` is the SHA-256 of `data/models.json` itself rather than a hash
+        of the serialised response, and the difference is worth a sentence: the
+        file is what `refresh_models.py` rewrites, so a tag derived from it moves
+        exactly when the roster does and never when a serialiser changes its
+        key order. The comparison is RFC 9110 WEAK, shared with `get_graph` -
+        a proxy is entitled to weaken a tag in transit, and refusing the match
+        then would silently turn every 304 back into a 200 with nothing in the
+        logs to say why.
+        """
+
+        # Imported here rather than at module scope: `service/app.py` imports
+        # this module, so a top-level import of it would close the cycle.
+        from brief_crew.service.app import _etag_matches
+
+        etag = _models_etag()
+        if if_none_match and _etag_matches(if_none_match, etag):
+            # 304 carries no body, and RFC 9110 requires the tag be repeated so
+            # a cache can refresh its own freshness record from the response.
+            return Response(status_code=304, headers={"ETag": etag})
+        response.headers["ETag"] = etag
+        return registry_document()
 
     @router.get("/workflows", response_model=list[BuilderDocumentSummaryModel])
     async def list_documents(
@@ -1139,6 +1356,12 @@ def create_builder_router(
         )
         credential_check = credential_check_for(user)
         problems = document_problems(document, credential_check=credential_check)
+        # The three attachment checks, after the structural ones and in the
+        # same list. They are separate functions rather than part of
+        # `document_problems` because each one needs a STORE, and the compiler
+        # is deliberately importable without the service package - the shape
+        # `credential_problems` already established with its injected predicate.
+        problems = problems + attachment_problems(document, user)
         return BuilderValidationModel(
             valid=not any(problem.severity == "error" for problem in problems),
             problems=[BuilderProblemModel.of(problem) for problem in problems],
@@ -1229,6 +1452,528 @@ def create_builder_router(
             gated_before_spend=workflow.gated_before_spend,
             reserved_input_keys=sorted(workflow.reserved_input_keys),
         )
+
+
+    # ----------------------------------------------------------------------
+    # Attachments: tools, MCP servers and skills - plans 06, 07 and 08
+    #
+    # Appended rather than woven in. Every route below is authenticated the way
+    # `/credentials` is, answers 404 and never 403 for somebody else's row, and
+    # reaches its table through `service/attachments.py`, which holds the SQL
+    # and no decisions. Nothing above this comment changed except `_vocabulary`
+    # gaining a derived `tools` list and the two validation paths gaining the
+    # three attachment checks.
+    # ----------------------------------------------------------------------
+    def _persistence() -> Any:
+        return getattr(registry, "persistence", None)
+
+    def custom_tool_store() -> Any:
+        persistence = _persistence()
+        return None if persistence is None else CustomToolStore(persistence)
+
+    def mcp_server_store() -> Any:
+        persistence = _persistence()
+        return None if persistence is None else McpServerStore(persistence)
+
+    def skill_store() -> Any:
+        persistence = _persistence()
+        return None if persistence is None else SkillStore(persistence)
+
+    def require_owner(user: Any) -> str:
+        """An identity, or 401. Every attachment row has an owner.
+
+        Unlike a document - which may be unowned, and is then readable by
+        everybody so a local checkout works - a tool, a server and a skill are
+        per-user by construction (15 C10 makes `user_id` NOT NULL on all three).
+        The one thing an anonymous caller may do is READ the built-in skills and
+        the built-in tool catalogue, and those two routes say so themselves.
+        """
+
+        owner = owner_of(user)
+        if owner is None:
+            raise HTTPException(
+                status_code=401,
+                detail="sign in first; tools, MCP servers and skills belong to somebody",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return owner
+
+    def _attachment(action: Callable[[], Any]) -> Any:
+        """Translate the three store exceptions into the statuses they mean."""
+
+        try:
+            return action()
+        except AttachmentNotYours as exc:
+            raise HTTPException(status_code=404, detail=str(exc) or "no such row") from exc
+        except NameTaken as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except TooManyRows as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (CustomToolError, SkillError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    def _no_store() -> HTTPException:
+        return HTTPException(
+            status_code=503,
+            detail="this build has nowhere to keep tools, servers or skills",
+        )
+
+    # ------------------------------------------------------------ 06: tools
+    @router.get("/tools")
+    async def list_tools(user: Any = Depends(current_user)) -> dict[str, Any]:
+        """The catalogue: this deployment's builtins, then the caller's own.
+
+        No auth for the builtins - it is a description of this build, like the
+        vocabulary - and a signed-in caller additionally sees their custom
+        tools. `class_ref` is not a key of the wire shape and never has been:
+        `ToolCatalogueEntry.serialisable()` builds the dictionary field by
+        field, so a factory cannot leak into it by being added to the dataclass.
+        """
+
+        entries = [entry.serialisable() for entry in tool_catalogue()]
+        owner = owner_of(user)
+        store = custom_tool_store()
+        if owner is not None and store is not None:
+            for spec in store.list(owner):
+                entries.append(spec.as_entry().serialisable())
+        return {"tools": entries}
+
+    @router.post("/tools/custom", status_code=201)
+    async def create_custom_tool(
+        request: Request, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        """A schema grid and an HTTPS request template. Never a function.
+
+        Flowise's `ToolDialog` is the reference and its `func` field is the one
+        thing deliberately not copied: a JavaScript function stored per user is
+        an evaluation surface, and the six closed `BUILDER_TRANSFORM_OPS` are
+        this repository's standing answer to that trade.
+        """
+
+        owner = require_owner(user)
+        store = custom_tool_store()
+        if store is None:
+            raise _no_store()
+        payload = await _json_body(request)
+        spec = _attachment(lambda: parse_custom_tool(payload))
+        created = _attachment(lambda: store.create(owner, spec))
+        return _custom_tool_body(created)
+
+    @router.put("/tools/custom/{tool_id}")
+    async def update_custom_tool(
+        tool_id: str, request: Request, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        owner = require_owner(user)
+        store = custom_tool_store()
+        if store is None:
+            raise _no_store()
+        payload = await _json_body(request)
+        spec = _attachment(lambda: parse_custom_tool(payload, tool_id=tool_id))
+        updated = _attachment(lambda: store.update(owner, tool_id, spec))
+        return _custom_tool_body(updated)
+
+    @router.delete("/tools/custom/{tool_id}", status_code=204)
+    async def delete_custom_tool(
+        tool_id: str, user: Any = Depends(current_user)
+    ) -> Response:
+        """Gone. A document that still names it validates `tool-unknown`.
+
+        Deliberately not refused for a document that references it, unlike a
+        published graph (decision 24): a tool is an attachment, a graph without
+        one is a graph with a problem the author can see and repair, and
+        refusing the delete would make an unused tool undeletable because some
+        old draft still mentions it.
+        """
+
+        owner = require_owner(user)
+        store = custom_tool_store()
+        if store is None:
+            raise _no_store()
+        _attachment(lambda: store.delete(owner, tool_id))
+        return Response(status_code=204)
+
+    @router.post("/tools/custom/{tool_id}/test")
+    async def test_custom_tool(
+        tool_id: str, request: Request, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        """Run the call once and hand back the envelope, billed to nobody.
+
+        The author needs to see the shape their agent will see, and the only
+        honest way to show it is to make the call. It goes through the same
+        `_run` the agent's tool would, so the SSRF refusal, the redirect
+        refusal and the response cap are the real ones rather than a preview
+        of them.
+        """
+
+        owner = require_owner(user)
+        store = custom_tool_store()
+        if store is None:
+            raise _no_store()
+        spec = _attachment(lambda: store.get(owner, tool_id))
+        payload = await _json_body(request)
+        arguments = payload.get("args") if isinstance(payload, Mapping) else None
+        credential = None
+        if spec.credential_id:
+            vault = credential_store_factory() if credential_store_factory else None
+            if vault is None:
+                raise HTTPException(
+                    status_code=503, detail="credential vault is not configured"
+                )
+            try:
+                credential = dict(vault.resolve(owner, spec.credential_id).fields)
+            except Exception as exc:  # the vault's own refusal, by id only
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+        tool = build_custom_tool(spec, credential=credential)
+        return {"envelope": json.loads(tool._run(**dict(arguments or {})))}
+
+    def _custom_tool_body(spec: Any) -> dict[str, Any]:
+        """The wire shape of one custom tool. The credential travels as an ID."""
+
+        return {
+            "id": spec.id,
+            "name": spec.name,
+            "description": spec.description,
+            "properties": [
+                {
+                    "name": prop.name,
+                    "type": prop.type,
+                    "description": prop.description,
+                    "required": prop.required,
+                }
+                for prop in spec.properties
+            ],
+            "request": {
+                "method": spec.request.method,
+                "url": spec.request.url,
+                "header_name": spec.request.header_name,
+                "header_template": spec.request.header_template,
+                "body_template": spec.request.body_template,
+                "timeout_seconds": spec.request.timeout_seconds,
+                "max_response_bytes": spec.request.max_response_bytes,
+            },
+            "credential_id": spec.credential_id,
+            "entry": spec.as_entry().serialisable(),
+        }
+
+    # -------------------------------------------------------------- 07: MCP
+    @router.get("/mcp/servers")
+    async def list_mcp_servers(user: Any = Depends(current_user)) -> dict[str, Any]:
+        owner = require_owner(user)
+        store = mcp_server_store()
+        if store is None:
+            raise _no_store()
+        return {"servers": [_mcp_body(record) for record in store.list(owner)]}
+
+    @router.post("/mcp/servers", status_code=201)
+    async def create_mcp_server(
+        request: Request, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        """Add a server. A transport this deployment will not dial is a 422.
+
+        Refused at create AND at validate, because the stdio flag can be turned
+        off after a row exists and a stored row whose transport is no longer
+        permitted has to say so on the canvas rather than at the first run.
+        """
+
+        owner = require_owner(user)
+        store = mcp_server_store()
+        if store is None:
+            raise _no_store()
+        payload = await _json_body(request)
+        fields = _mcp_fields(payload)
+        refusal = transport_refusal(
+            transport=fields["transport"],
+            url=fields["url"],
+            command=fields["command"],
+            args=fields["args"],
+        )
+        if refusal is not None:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": MCP_TRANSPORT_DISALLOWED, "message": refusal},
+            )
+        record = _attachment(lambda: store.create(owner, **fields))
+        return _mcp_body(record)
+
+    @router.put("/mcp/servers/{server_id}")
+    async def update_mcp_server(
+        server_id: str, request: Request, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        owner = require_owner(user)
+        store = mcp_server_store()
+        if store is None:
+            raise _no_store()
+        payload = await _json_body(request)
+        fields = _mcp_fields(payload)
+        refusal = transport_refusal(
+            transport=fields["transport"],
+            url=fields["url"],
+            command=fields["command"],
+            args=fields["args"],
+        )
+        if refusal is not None:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": MCP_TRANSPORT_DISALLOWED, "message": refusal},
+            )
+        record = _attachment(lambda: store.update(owner, server_id, **fields))
+        return _mcp_body(record)
+
+    @router.delete("/mcp/servers/{server_id}", status_code=204)
+    async def delete_mcp_server(
+        server_id: str, user: Any = Depends(current_user)
+    ) -> Response:
+        owner = require_owner(user)
+        store = mcp_server_store()
+        if store is None:
+            raise _no_store()
+        _attachment(lambda: store.delete(owner, server_id))
+        return Response(status_code=204)
+
+    @router.post("/mcp/servers/{server_id}/discover")
+    def discover_mcp_server(
+        server_id: str, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        """Connect, list the tools, sanitise them, store them. 200 either way.
+
+        A `def` rather than an `async def` deliberately: the resolver blocks on
+        a socket, and FastAPI runs a sync route in its threadpool - the same
+        shape `current_user` uses to absorb a JWKS fetch. An `async def` here
+        would park the event loop for up to
+        `MCP_DISCOVERY_TIMEOUT_SECONDS` and stall every other request.
+
+        A failure is 200 with `status: error` and one sentence. The author
+        needs the sentence in the panel; a 502 would put a stack trace in a
+        toast and tell them nothing they can act on.
+        """
+
+        owner = require_owner(user)
+        store = mcp_server_store()
+        if store is None:
+            raise _no_store()
+        record = _attachment(lambda: store.get(owner, server_id))
+        header, env = _mcp_credentials(owner, record)
+        result = mcp_discover(record, header=header, env=env)
+        stored = _attachment(lambda: store.record_discovery(owner, server_id, result))
+        return {
+            "status": stored.status,
+            "tools": [tool.as_dict() for tool in stored.discovered_tools],
+            "discovered_at": (
+                stored.discovered_at.isoformat() if stored.discovered_at else None
+            ),
+            "error": stored.last_error,
+        }
+
+    def _mcp_credentials(owner: str, record: Any) -> tuple[Any, Any]:
+        """Resolve the header and env credentials, or None for each.
+
+        An `mcp_header` credential's two fields ARE the header's name and its
+        value, so there is no `header_name` column and none is missing. A
+        credential that is gone resolves to nothing rather than failing the
+        discovery: the row's own `last_error` is a better place for that than a
+        500, and `credential-missing` reports it on the canvas.
+        """
+
+        vault = credential_store_factory() if credential_store_factory else None
+        if vault is None:
+            return None, None
+
+        def fields(credential_id: Any) -> dict[str, str] | None:
+            if not credential_id:
+                return None
+            try:
+                return dict(vault.resolve(owner, str(credential_id)).fields)
+            except Exception:
+                return None
+
+        header_fields = fields(record.header_credential_id)
+        env_fields = fields(record.env_credential_id)
+        header = (
+            {header_fields["name"]: header_fields["value"]} if header_fields else None
+        )
+        env = {env_fields["name"]: env_fields["value"]} if env_fields else None
+        return header, env
+
+    def _mcp_body(record: Any) -> dict[str, Any]:
+        """The list shape: the URL MASKED, and no credential id echoed back.
+
+        Flowise masks a custom server's URL in its list for the reason that
+        applies here too - plenty of hosted MCP servers put a token in the path,
+        so a panel showing the whole URL publishes a credential to anyone who
+        can see the screen.
+        """
+
+        return {
+            "id": record.id,
+            "label": record.label,
+            "transport": record.transport,
+            "url": mask_mcp_url(record.url),
+            "command": record.command,
+            "args": list(record.args),
+            "has_header_credential": bool(record.header_credential_id),
+            "has_env_credential": bool(record.env_credential_id),
+            "status": record.status,
+            "stale": record.stale(),
+            "tools": [tool.as_dict() for tool in record.discovered_tools],
+            "discovered_at": (
+                record.discovered_at.isoformat() if record.discovered_at else None
+            ),
+            "last_error": record.last_error,
+        }
+
+    def _mcp_fields(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, Mapping):
+            raise HTTPException(status_code=422, detail="expected an object")
+        label = str(payload.get("label", "")).strip()
+        if not 1 <= len(label) <= 80:
+            raise HTTPException(
+                status_code=422, detail="a server needs a label of 1 to 80 characters"
+            )
+        transport = str(payload.get("transport", "")).strip()
+        args = payload.get("args") or []
+        if not isinstance(args, (list, tuple)) or any(
+            not isinstance(item, str) for item in args
+        ):
+            raise HTTPException(status_code=422, detail="args is a list of strings")
+        return {
+            "label": label,
+            "transport": transport,
+            "url": (str(payload["url"]).strip() if payload.get("url") else None),
+            "command": (
+                str(payload["command"]).strip() if payload.get("command") else None
+            ),
+            "args": [str(item) for item in args],
+            "header_credential_id": payload.get("header_credential_id") or None,
+            "env_credential_id": payload.get("env_credential_id") or None,
+        }
+
+    # ----------------------------------------------------------- 08: skills
+    @router.get("/skills")
+    async def list_skills(user: Any = Depends(current_user)) -> dict[str, Any]:
+        """The four built-ins for everybody, plus this caller's own packs.
+
+        Anonymous is allowed here, and only here among the attachment routes:
+        the built-ins are committed files describing how to use this product,
+        and a `SYNTHETIC=1` instance or a bare checkout has to be able to draw
+        the palette. A signed-in caller additionally sees their own.
+        """
+
+        store = skill_store()
+        owner = owner_of(user)
+        if store is None:
+            return {"skills": [pack.summary() for pack in builtin_skill_packs()]}
+        return {"skills": [pack.summary() for pack in store.list(owner)]}
+
+    @router.get("/skills/{skill_id}")
+    async def get_skill(
+        skill_id: str, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        store = skill_store()
+        if store is None:
+            for pack in builtin_skill_packs():
+                if pack.id == skill_id:
+                    return pack.detail()
+            raise _no_store()
+        return _attachment(lambda: store.get(owner_of(user), skill_id)).detail()
+
+    @router.post("/skills", status_code=201)
+    async def create_skill(
+        request: Request, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        """Parse with CrewAI's own parser and refuse with CrewAI's own sentence.
+
+        There is no second validator here on purpose: `SkillFrontmatter` owns
+        the name pattern and the description ceiling, so a pack this service
+        accepts is exactly a pack the package will load, and there is no
+        wording of ours to drift away from theirs.
+        """
+
+        owner = require_owner(user)
+        store = skill_store()
+        if store is None:
+            raise _no_store()
+        payload = await _json_body(request)
+        body = payload.get("body") if isinstance(payload, Mapping) else None
+        if not isinstance(body, str) or not body.strip():
+            raise HTTPException(
+                status_code=422, detail="post the SKILL.md text as `body`"
+            )
+        return _attachment(lambda: store.create(owner, body)).detail()
+
+    @router.put("/skills/{skill_id}")
+    async def update_skill(
+        skill_id: str, request: Request, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        owner = require_owner(user)
+        store = skill_store()
+        if store is None:
+            raise _no_store()
+        payload = await _json_body(request)
+        body = payload.get("body") if isinstance(payload, Mapping) else None
+        if not isinstance(body, str) or not body.strip():
+            raise HTTPException(
+                status_code=422, detail="post the SKILL.md text as `body`"
+            )
+        return _attachment(lambda: store.update(owner, skill_id, body)).detail()
+
+    @router.delete("/skills/{skill_id}", status_code=204)
+    async def delete_skill(skill_id: str, user: Any = Depends(current_user)) -> Response:
+        owner = require_owner(user)
+        store = skill_store()
+        if store is None:
+            raise _no_store()
+        _attachment(lambda: store.delete(owner, skill_id))
+        return Response(status_code=204)
+
+    @router.post("/skills/import", status_code=201)
+    async def import_skill(
+        request: Request, user: Any = Depends(current_user)
+    ) -> dict[str, Any]:
+        """A zip holding one `SKILL.md`, and no `scripts/` directory.
+
+        The archive is refused on its COMPRESSED size before anything is
+        expanded, because a zip bomb is small until it is read. A `scripts/`
+        entry is refused by name: a skill is knowledge, `AGENTS.md:67` stands,
+        and nothing a user uploads executes here - so a pack that ships a script
+        is a pack whose author expects something this product will not do, and
+        importing it silently minus the scripts would be worse than refusing it.
+        """
+
+        owner = require_owner(user)
+        store = skill_store()
+        if store is None:
+            raise _no_store()
+        raw = await _archive_bytes(request)
+        body = _attachment(lambda: read_pack_zip(raw))
+        return _attachment(lambda: store.create(owner, body)).detail()
+
+    async def _archive_bytes(request: Request) -> bytes:
+        """The zip, whether it arrived multipart or as a raw body.
+
+        Both, because the plan says multipart and a raw `application/zip` POST
+        is what every command-line client will send; accepting one and refusing
+        the other would be a route that works only from the browser we happened
+        to write.
+        """
+
+        content_type = request.headers.get("content-type", "")
+        if content_type.startswith("multipart/form-data"):
+            form = await request.form()
+            for value in form.values():
+                read = getattr(value, "read", None)
+                if read is not None:
+                    return await read()
+            raise HTTPException(status_code=422, detail="attach the zip as a file")
+        return await request.body()
+
+    async def _json_body(request: Request) -> Mapping[str, Any]:
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="expected a JSON object") from exc
+        if not isinstance(payload, Mapping):
+            raise HTTPException(status_code=422, detail="expected a JSON object")
+        return payload
 
     return router
 

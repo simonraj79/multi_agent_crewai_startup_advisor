@@ -450,26 +450,43 @@ they are read in TypeScript rather than in `config.py`: `BETTER_AUTH_URL`,
 
 ### The scan reads exactly two files, and that is now the hole
 
-`config.py` and `service/app.py`. **Five more environment variables are read
+`config.py` and `service/app.py`. **SEVEN more environment variables are read
 elsewhere in `src/`, and not one of them is in the forty-nine.** Re-measured
-2026-09-04 at `bc12642` by widening the same pattern over `src/**/*.py` — waves
-A and B added `builder/mcp.py`, `builder/tools.py`, `builder/skills.py` and
-`service/credentials.py` and the answer is **still exactly these five**, which
-is the first time this list has been regenerated and not moved:
+2026-09-04 at `6a1176e` by widening the same pattern over `src/**/*.py` — the
+list moved for the first time, by two, and both are plan 12's:
 
 ```text
 src/brief_crew/embeddings.py                OPENROUTER_API_KEY
+src/brief_crew/service/builder_runner.py    SYNTHETIC_FAILURE
+src/brief_crew/service/builder_runner.py    SYNTHETIC_FAILURE_NODE
 src/brief_crew/service/runner.py            SYNTHETIC_BRANCH_DELAY_SECONDS
 src/brief_crew/tools/github_feasibility.py  GITHUB_TOKEN
 src/brief_crew/tools/market_research.py     FIRECRAWL_API_KEY
 src/brief_crew/validator_cache.py           VALIDATOR_CACHE_NAMESPACE
 ```
 
-Three are credentials and belong in `.env`, not in a knob list. Two are not.
-`VALIDATOR_CACHE_NAMESPACE` and `SYNTHETIC_BRANCH_DELAY_SECONDS` are behavioural
-switches this section has never listed, and the second is the sharper case:
-**the Playwright suite does not pass without it** (§7, quirk 6). The canonical
-scan is blind to a knob the test instructions require.
+Regenerate it, never copy it:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);two={'src/brief_crew/config.py','src/brief_crew/service/app.py'};[print(f'{p.as_posix():<44}{n}') for p in sorted(pathlib.Path('src').rglob('*.py')) if p.as_posix() not in two for n in sorted(set(pat.findall(p.read_text(encoding='utf-8'))))]"
+```
+
+Three are credentials and belong in `.env`, not in a knob list. **Four are not**,
+and all four are behavioural switches this section has never listed. Two of
+them are why the list moved:
+
+| knob | default | what it does |
+| --- | --- | --- |
+| `SYNTHETIC_FAILURE` | `""` | 12 D8's trigger. `[node:]reason[:times]`, comma separated, `reason` one of `bad_key` / `tool_timeout` / `refusal` / `malformed_output` / `rate_limit` — the five of the six failure modes that RUN. There is deliberately no `cyclic_graph` reason: `bounds.py` refuses that document at validate and again at publish, so it has no run to fail. Read PER INSTANCE by `SyntheticCrewFactories`, so a browser session triggers all five without restarting the backend. Unreadable input is NO failure rather than a startup refusal. |
+| `SYNTHETIC_FAILURE_NODE` | `""` | Which node an entry that names none applies to. Without it a bare `refusal` fails every billable node, which makes a six-node template unreadable at exactly the moment a critic is reading it; an entry carrying its own `node:` prefix still wins. |
+
+Neither does anything in production: nothing reads them off a paid path, and a
+run that is not `SYNTHETIC=1` never builds the factory that consults them.
+
+The sharper case is still `SYNTHETIC_BRANCH_DELAY_SECONDS`: **the Playwright
+suite does not pass without it** (§7, quirk 6). The canonical scan is blind to a
+knob the test instructions require, and now to two more that a rubric criterion
+requires by name.
 
 Widening the scan's file list is the obvious fix and it is **deliberately not
 applied here.** The two-file scope is quoted verbatim in §1, in CLAUDE.md and in

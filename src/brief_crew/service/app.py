@@ -1261,30 +1261,87 @@ def create_app(
                     "a state to replay"
                 ),
             )
+        values, errors = _saved_slices(source)
+        undecided = _gate_without_a_decision(
+            request.workflow_id, request.resume_from.node_id, values
+        )
+        if undecided is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"run {source.run_id} recorded no decision at the gate "
+                    f"{undecided!r}, so there is nothing to replay there. A resume "
+                    "re-takes the branch an operator already chose; answer that gate "
+                    "on the source run, or resume from a node above it"
+                ),
+            )
         return {
             "node_id": request.resume_from.node_id,
             "mode": "resume_from",
             "source": "run",
             "source_run_id": source.run_id,
-            "values": _saved_outputs(source),
+            "values": values,
+            "errors": errors,
         }
 
-    def _saved_outputs(source: RunRecord) -> dict[str, Any]:
-        """A finished run's `out__<node>` slots, keyed by the author's node id.
+    def _saved_slices(source: RunRecord) -> tuple[dict[str, Any], dict[str, Any]]:
+        """A finished run's `out__<node>` and `err__<node>` slots, by node id.
 
         Read off the last `flow_states` row rather than off the run's result:
-        the result is one node's output and a replay needs every node's.
+        the result is one node's output and a replay needs every node's. Both
+        prefixes in one pass, because they are one row and an `on_error: route`
+        node is only replayable if its paired router sees the same pair the
+        source run left - the output AND whether it exploded.
         """
 
         if registry.persistence is None or not source.flow_id:
-            return {}
+            return {}, {}
         state = registry.persistence.load_state(source.flow_id) or {}
-        prefix = project_config.BUILDER_STATE_OUTPUT_PREFIX
-        return {
-            key[len(prefix):]: value
-            for key, value in state.items()
-            if isinstance(key, str) and key.startswith(prefix)
-        }
+        outputs = project_config.BUILDER_STATE_OUTPUT_PREFIX
+        failures = project_config.BUILDER_STATE_ERROR_PREFIX
+        return (
+            {
+                key[len(outputs):]: value
+                for key, value in state.items()
+                if isinstance(key, str) and key.startswith(outputs)
+            },
+            {
+                key[len(failures):]: value
+                for key, value in state.items()
+                if isinstance(key, str) and key.startswith(failures) and value is not None
+            },
+        )
+
+    def _gate_without_a_decision(
+        workflow_id: str, node_id: str, values: Mapping[str, Any]
+    ) -> str | None:
+        """The first gate this replay would cross whose answer was never recorded.
+
+        Refused HERE, at the door, rather than left to fail inside the run. The
+        alternative is not a silent wrong answer - `route_gate` raises
+        `ReplayGateUndecided` rather than approving on the operator's behalf -
+        but it is a queue slot, a `runs` row and a failed run to say a thing the
+        caller could have been told for nothing.
+
+        A gate's recorded value is the MAPPING `route_gate` wrote. A run that
+        paused and stopped leaves the rendered payload there instead, which is a
+        string, so the two are told apart by shape rather than by a flag.
+        """
+
+        builder = BUILDER_WORKFLOWS.get(workflow_id)
+        if builder is None:
+            return None
+        from brief_crew.builder.compiler import replay_ancestors
+
+        nodes = builder.document.nodes_by_id()
+        for ancestor in sorted(replay_ancestors(builder.document, node_id)):
+            node = nodes.get(ancestor)
+            if node is None or node.kind != "gate":
+                continue
+            recorded = values.get(ancestor)
+            if not isinstance(recorded, Mapping) or "decision" not in recorded:
+                return ancestor
+        return None
 
     def _test_input_values(test_input_id: str, user: AuthenticatedUser | None) -> dict[str, Any]:
         """One saved test input's per-node mocked outputs, for the caller only."""

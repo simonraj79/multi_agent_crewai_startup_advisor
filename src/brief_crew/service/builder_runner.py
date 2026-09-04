@@ -129,7 +129,7 @@ class BuilderFlowRunner:
                 # kickoff and nothing else. An ordinary run enters this with an
                 # empty mapping, which is what makes `replay_output` fail loudly
                 # rather than quietly if a plain plan ever compiled one.
-                with replay_source(derived.get("values")):
+                with replay_source(derived.get("values"), derived.get("errors")):
                     with builder_state_sink(self._state_sink(execution)):
                         with use_crew_factories(self._factories()):
                             return flow.kickoff(inputs=inputs)

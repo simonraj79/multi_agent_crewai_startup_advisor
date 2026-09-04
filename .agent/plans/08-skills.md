@@ -353,3 +353,66 @@ the test fails and names the decision that has become answerable.
 - **C6 (10):** call `skill_frame_details` from the serializer's event ladder.
   Written and tested here; nothing emits it.
 - **v2, C11:** multi-file packs (`references/`, `assets/`). Unchanged.
+
+### Wave A/B closers — 2026-09-04
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 7 | an AGENT frame carries `skill` and `disclosure` | **met, with one clause read differently** | `tests/events/test_skill_frames.py` (9, new — the file the criterion names) |
+
+**The stated boundary is gone.** This Status recorded criterion 7 as `partial`
+because *"registering it on the event bus is `events/serializer.py`, which is
+C6 and plan 10's, so no frame is emitted yet"*. Plan 10 landed C6. The
+registration is one additive branch in `_event_drafts` calling
+`skill_frame_details` — the mapping written here and left with no caller, which
+was the right call: *"a mapping with no caller is a smaller debt than a mapping
+written twice."*
+
+**What it replaced was a counter.** Before the branch,
+`SkillActivatedEvent` reached `record_unhandled`, which tallies the type name
+and emits nothing. Every test asserts the frame **and** that the tally stopped
+moving, because a branch that drafts a frame and falls through anyway would
+satisfy the first claim alone.
+
+**The criterion's own values, off a frame a run really produced.** A real
+`Agent` is built with the real `hn-signal-reading` pack off disk, a scripted
+`BaseLLM` calls CrewAI's own `load_skill` tool, and the frame that comes out of
+the real sink carries `skill = "hn-signal-reading"` and
+`disclosure = "instructions"` — the promotion to INSTRUCTIONS *is* what the
+criterion's word "activation" means, and it is CrewAI's, not this repository's.
+It also carries `agent_role`, because a console saying "a skill was activated"
+with no agent beside it is the attribution defect this repository has already
+fixed once.
+
+`activated` and `used` arrive as **two** frames and are asserted as two: CrewAI
+raises both and they mean different things — the pack was promoted, and its
+instructions were rendered into a prompt. Collapsing them would report one event
+as two or two as one.
+
+**One clause read differently, and it is a fact about the mode rather than a
+gap.** The criterion says *"the synthetic runner emits the frame"*.
+`SYNTHETIC=1` swaps the crew factories, so **no `Agent` is built, no skill is
+loaded and CrewAI raises nothing** — a synthetic run cannot produce this frame,
+and making it do so means teaching `service/builder_runner.py` to fabricate one.
+That file belongs to another wave, so what is proved instead is the stronger
+half: the **real** path, end to end, in a flow, through the real sink. See
+"Contract needs" below.
+
+**`SkillLoadFailedEvent` is an ERROR frame, not an AGENT one.** The rule is this
+plan's own, stated beside `SKILL_LOAD_ERROR_CLASS`: a missing skill **degrades**
+an agent where a missing tool removes a capability it was told it had, so it
+must be visible without failing the step — which means it must not look like the
+agent's own progress. It carries no `disclosure`, because a pack that failed to
+parse never had a level and inventing one would be inventing a fact about the
+file.
+
+#### Contract needs / another wave's file
+
+- **`service/builder_runner.py` (not this wave's).** To satisfy criterion 7's
+  parenthetical literally, `SyntheticCrewFactories` would have to emit an AGENT
+  frame per attached skill when it builds a node's stand-in crew — `stage:
+  "skill"`, `skill_event: "activated"`, `skill` from the spec's attachment list
+  and `disclosure: "instructions"`. It is worth doing for the run console's own
+  sake, since the free path is the only one most people will ever watch, but it
+  is a **fabricated** frame rather than an observed one and should say so where
+  it is written.

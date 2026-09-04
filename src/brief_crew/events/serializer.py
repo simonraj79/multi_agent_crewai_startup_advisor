@@ -43,6 +43,13 @@ from crewai.events.types.llm_guardrail_events import (
     LLMGuardrailStartedEvent,
 )
 from crewai.events.types.logging_events import AgentLogsExecutionEvent
+from crewai.events.types.mcp_events import MCPConnectionFailedEvent
+from crewai.events.types.skill_events import (
+    SkillActivatedEvent,
+    SkillLoadedEvent,
+    SkillLoadFailedEvent,
+    SkillUsedEvent,
+)
 from crewai.events.types.tool_usage_events import (
     ToolExecutionErrorEvent,
     ToolSelectionErrorEvent,
@@ -66,6 +73,7 @@ from brief_crew.events.verdict import (
 )
 from brief_crew.config import (
     MAX_FRAME_PREVIEW_CHARS,
+    MAX_NODE_ERROR_CHARS,
     MAX_UTTERANCE_CHARS,
     compute_cost_usd,
 )
@@ -585,6 +593,57 @@ class FieldBoundedSerializer:
             }[type(event)]
             return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{tool_name} {reason}", {"stage": "error", "tool": tool_name, "query": self.tool_query(getattr(event, "tool_args", None)), "error": self.clip(getattr(event, "error", None))}, FrameLevel.ERROR),)
 
+        # --- MCP (07 D7, C6) ---------------------------------------------
+        #
+        # A server the run cannot reach. CrewAI raises `MCPConnectionError` out
+        # of `_resolve_native` as well, so the STEP already fails, retries and
+        # routes through `_attempted` - `on_error: route` reaches the error
+        # edge's target with no help from here. What was missing is the frame
+        # that says WHICH server and WHY: without it the console shows a node
+        # failing with an exception name and an author with three MCP servers
+        # attached cannot tell which one is down.
+        #
+        # `FrameKind.ERROR` with `stage: "error"` is C6's `node_error` shape,
+        # the same one `runtime._node_error_frame` writes, and `error_class` is
+        # the discriminator a client routes on. `attempt`, `will_retry` and
+        # `routed` are deliberately absent: they are facts about a node's
+        # retry loop, and this frame is about a connection. The node-level
+        # frame that follows when the failure propagates carries all three.
+        if isinstance(event, MCPConnectionFailedEvent):
+            # Imported inside the branch, as the skill mapping below is: `events/`
+            # is on the capture path of every run and must not pull the builder
+            # package in to draft a frame most runs never produce.
+            from brief_crew.builder.mcp import MCP_CONNECTION_ERROR_CLASS
+
+            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.NODE_END, node_id, f"{event.server_name or 'MCP server'} could not be reached", {"stage": "error", "error_class": MCP_CONNECTION_ERROR_CLASS, "message": str(getattr(event, "error", "") or "")[:MAX_NODE_ERROR_CHARS], "server": str(event.server_name or "")[:MAX_IDENTIFIER_LENGTH], "transport": self.clip(getattr(event, "transport_type", None)), "status_code": getattr(event, "status_code", None), "error_type": self.clip(getattr(event, "error_type", None))}, FrameLevel.ERROR),)
+
+        # --- Skills (08 D6, C6) -------------------------------------------
+        #
+        # `skill_frame_details` is plan 08's mapping, written and tested there
+        # against real event objects and left with no caller because the sink
+        # is C6's. This is the caller. Imported inside the branch: `events/` is
+        # imported by the capture path on every run and must not pull the
+        # builder package in to draft a frame that most runs never produce.
+        #
+        # The three informational events are AGENT frames, because a skill is
+        # something an agent HAS - it is rendered on the agent's card at the one
+        # moment it is visibly doing something. `SkillLoadFailedEvent` is an
+        # ERROR frame in the `node_error` shape instead, for the reason
+        # `builder/skills.py` states beside `SKILL_LOAD_ERROR_CLASS`: a missing
+        # skill DEGRADES an agent rather than removing a capability it was told
+        # it had, so it must be visible without failing the step.
+        if isinstance(event, (SkillActivatedEvent, SkillLoadedEvent, SkillUsedEvent)):
+            from brief_crew.builder.skills import skill_frame_details
+
+            verb = {SkillLoadedEvent: "loaded", SkillActivatedEvent: "activated", SkillUsedEvent: "used"}[type(event)]
+            details = skill_frame_details(event)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{verb} skill {details.get('skill') or 'unnamed'}", {"stage": "skill", "skill_event": verb, **details}),)
+        if isinstance(event, SkillLoadFailedEvent):
+            from brief_crew.builder.skills import skill_frame_details
+
+            details = skill_frame_details(event)
+            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.AGENT_CALL, node_id, f"skill {details.get('skill') or 'unnamed'} could not be loaded", {"stage": "error", "skill_event": "load_failed", **details}, FrameLevel.ERROR),)
+
         # Nothing matched. The sink receives *every* CrewAI event, so this is a
         # real and previously silent discard: ~150 event classes exist and this
         # ladder handles about 30. Recording the type name is what turns "the UI
@@ -605,6 +664,21 @@ class FieldBoundedSerializer:
         walk it can; this is the one field a rail renders directly, so a shape
         that is sometimes a dict and sometimes a string would be a rendering
         decision pushed onto every consumer.
+
+        **It goes through `clip` first, and until 2026-09-04 it did not.** That
+        was a real leak with a measured shape: a builder agent's Firecrawl tool
+        holds its key as a pydantic FIELD (`FirecrawlSearchTool.api_key`), so a
+        tool-usage event carrying the tool's own dump put the plaintext in
+        `details.input_preview` on the TOOL frame while `details.args` beside it
+        read `***` - one walk redacting and one not, in the same frame, on the
+        live socket and in both exports. Found by plan 06 criterion 3's run
+        rather than by review.
+
+        `clip` rather than a second redaction walk of its own: two walks over
+        one list is exactly how `persistence` and this module came to disagree
+        in the first place, which is the reason `events/redaction.py` exists.
+        The bounds it also applies cannot change a preview that fits: 64 items
+        and depth 4 are both far beyond what 2,048 characters can hold.
         """
 
         if value is None:
@@ -617,7 +691,7 @@ class FieldBoundedSerializer:
         # that through would turn a bad frame into a lost one and an emit-error
         # counter tick.
         try:
-            text = json.dumps(value, default=str, sort_keys=True)
+            text = json.dumps(self.clip(value), default=str, sort_keys=True)
         except Exception:  # noqa: BLE001 - see above
             text = self._safe_repr(value)
         return text[:MAX_FRAME_PREVIEW_CHARS]

@@ -452,3 +452,123 @@ it, because a per-user daily counter is a table and a table is C10, which is
 plan 15's - so enabling the flag today would spend the owner's money with a
 documented cap and no enforcement. That is the gap to close before the owner
 says yes.
+
+### Wave A/B closers — 2026-09-04
+
+Row **3** moves, and it found a real leak on the way.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 3 | no credential substring in a tool frame | **met** | `tests/builder/test_tool_credentials.py` (11, 6 new) · `tests/events/test_preview_redaction.py` (7, new) |
+
+**The stated blocker is gone.** This row was `partial` because the compiler did
+not fold `tool` attachments into a definition, so *"a tool frame captured during
+a synthetic run with a Firecrawl credential attached"* named a run that could not
+exist. Plan 09 landed that fold (C5,
+`test_compiler.py::AttachmentFoldTests`), so the run exists and
+`FirecrawlRunTests` is it: a `firecrawl` credential in the real vault, an
+authored agent with a `firecrawl_search` node attached, published and launched
+through the real service on the free factories.
+
+Three legs, and each is worthless without the others:
+
+- **The control.** `ToolBuildingFactories` builds the REAL `Agent` — and so runs
+  `bind_attachments`, and so asks the vault — then kicks off synthetically.
+  `FirecrawlSearchTool.api_key` is asserted to hold the canary. Without this the
+  sweep below would pass on a run that never resolved a credential at all. It is
+  also the first proof that a **tool** credential travels the vault path;
+  `test_credentials_runtime.py` covers the agent's LLM key and nothing else.
+- **The sweep.** Every frame from `GET /api/runs/{id}/frames` (with an
+  anti-vacuity assertion that the run emitted any), the NDJSON export, every
+  entry of the ZIP, and the run snapshot.
+- **The tool frame itself.** A synthetic run calls no model, so CrewAI raises no
+  tool-usage event and the run's own frames contain **no TOOL frame at all** —
+  which would have made the criterion's noun true of an empty set. The three real
+  CrewAI tool-usage events are pushed through the real `StreamSinkAdapter` into a
+  real `FrameBuffer` — the path `/frames`, the socket and both exports read —
+  carrying the constructed tool's own `model_dump()`.
+
+**And that last leg found a leak, in the code rather than in the list.**
+`FieldBoundedSerializer` has two ways of putting a value on a frame:
+`clip`, which redacts, and `_preview`, which `json.dumps`ed the same value with
+no redaction at all. Both ran on the same `tool_args`, so one frame carried
+`details.args → api_key: "***"` and `details.input_preview` with the plaintext
+**beside it**. Not contrived: a builder agent's Firecrawl tool holds its key as a
+pydantic FIELD, so anything putting the tool's own dump into a tool-usage event
+put a live credential on the live socket and into both exports. Three previews
+were affected — `input_preview` and `output_preview` on TOOL frames, and
+`output_preview` on NODE_END, which is the one a builder node's **own output**
+goes through.
+
+The repair is one line: `_preview` now dumps `self.clip(value)`. `clip` rather
+than a second redaction walk of its own, because two walks over one list is
+exactly how `persistence` and the serializer came to disagree in the first place
+and is the reason `events/redaction.py` exists. The bounds `clip` also applies
+cannot change a preview that fits — 64 items and depth 4 are both far beyond
+what 2,048 characters hold — and `tests/events/**` is green at **77** (7 new,
+70 unchanged).
+
+**Verified by breaking it**, not by assuming: reverting that one line turns
+5 of the 7 new tests red, including
+`test_the_two_walks_on_one_frame_now_AGREE`, whose failure message names both
+fields.
+
+**The pre-existing asymmetry this file already recorded is unchanged and still
+open.** A DSN's password *inside a free-text string* is stripped by
+`persistence._redact_text` on the way to a row and is not stripped by the
+serializer on the way to the ring. That is about a value with no key name in
+front of it, so no key-based walk can see it; it is outside this plan's surfaces
+and is a follow-up rather than a fix here.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 8 | `tool_failure_policy: raise` reaches the error edge | **met** | `tests/builder/test_failure_modes.py::ToolFailurePolicyRoutingTests` (4, new file) |
+
+**The half that was "a wave away" has landed.** This row was `partial` because
+*"the error edge, the paired router and the `node_error` frame are plan 12's"* —
+plan 09 shipped the error router and plan 10 shipped `on_error: route` reaching
+`completed` with `err__<node>`, so the target the policy has to reach now
+exists. `tests/builder/test_failure_modes.py` is written, with **one** case in
+it: the one criterion 8 names. The file is plan 12's under the ownership map and
+its other failure modes — a guardrail, a cancel, a cost ceiling — are not here.
+
+The criterion is three claims in a row, and each can hold while the next fails,
+so each has its own test:
+
+1. **The word travels.** `tool_failure_policy: raise` on the document reaches
+   `AuthoredAgentSpec`, the `Agent` and the bound tool.
+   `FailurePolicyTests` proved the last hop from a `resolved_tool` call;
+   what it could not prove is that the word on the *document* is the word the
+   *run* used. `ThrowingToolFactories` records the spec's own value and asserts
+   it against `Agent.tool_failure_policy` and the tool's.
+2. **The package honours it — measured, not described.** `raise` turns a tool's
+   `RuntimeError` into a `ToolExecutionFailedError` out of `Crew.kickoff`;
+   `warn` swallows it and the agent reaches its own final answer. That is
+   CrewAI's behaviour rather than this repository's, so it runs against the real
+   `Agent`, `Task` and `Crew`.
+3. **The graph routes it.** With `on_error: route` the run returns the
+   **apology node's** output — which is the load-bearing assertion, because a run
+   that merely survived would return the report built from `out__draft` and a run
+   that died would return nothing. The `node_error` frame carries `routed: true`,
+   `will_retry: false` and the tool's own sentence.
+
+`raise` + `on_error: fail` is the control: same failure, same frame,
+`routed: false`, and the runner raises. Without it the routing arm could be
+passing on a policy that never propagated at all.
+
+**How it costs $0.00.** The LLM is a scripted `BaseLLM` emitting one ReAct tool
+call and then a final answer — the shape
+`tests/events/test_tool_frame_attribution.py` already uses for its live CrewAI
+probes — and the tool raises before it can dial anything. The agent is built by
+the **real** `DefaultCrewFactories._authored_agent` from the real document, and
+only its `llm` and its tool *body* are swapped; the throwing body inherits the
+policy the real factory computed for the real `scrape_website` tool, so the
+policy under test cannot be one the test chose.
+
+**For plan 12 / the Integrator:** `tests/builder/test_failure_modes.py` now
+exists with one class in it. Plan 12 should add its cases beside
+`ToolFailurePolicyRoutingTests` rather than recreating the file; the harness
+(`ThrowingToolFactories`, `ScriptedLLM`, `tool_graph`) is written to be reused
+and takes the failing node id as a constructor argument. Plan 07's criterion 8
+(`test_mcp_unreachable`) deliberately did **not** go in here — see plan 07's
+own closer for where it went and why.

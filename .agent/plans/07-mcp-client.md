@@ -363,3 +363,131 @@ argument against it is in the code: the thirteen patterns have false positives
 by design, `act as` is ordinary English, and
 `test_the_list_has_false_positives_and_that_is_why_it_only_WARNS` is the case
 that would have to be deleted.
+
+### Wave A/B closers — 2026-09-04
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 1 | discovery stores its result; a second read is served from the row | **met** | `tests/service/test_mcp_live_discovery.py` (7, new) + `tests/service/mcp_fixture_server.py` |
+
+**The missing half was a live server, and standing one up found that discovery
+had never worked at all.** Every other test in this plan injects a `Resolver` —
+the right seam for policy, sanitising, truncation and the stale window, and this
+Status said so. What it also meant is that **nothing in this repository had ever
+constructed the real `MCPToolResolver`.** The first thing that did got:
+
+```text
+status: error   could not connect: MCPToolResolver.__init__() missing 2
+                required positional arguments: 'agent' and 'logger'
+```
+
+`_default_resolver` called it with none. So `POST …/discover` against any real
+server, in any deployment, answered `status: error` with a sentence about a
+Python constructor in the place where an author expects to read why their server
+would not connect — and it would have survived review indefinitely, because it
+*looks* like a connection failure to anybody not reading the string.
+
+The repair is `MCPToolResolver(agent=None, logger=Logger(verbose=False))`, and
+`agent=None` is correct rather than a stand-in: the resolver reads `self._agent`
+in exactly one place, building a `ToolFilterContext` for a **callable**
+`tool_filter`, and discovery passes no filter at all — the filter belongs to the
+run, where `server_config` builds it from the author's checked names. Reverting
+the one line turns **5 of the 7** new tests red.
+
+**Both transports the criterion names are exercised.** An HTTP `FastMCP` over
+loopback in a daemon thread (`MCP_ALLOW_INSECURE_LOCAL`, the flag whose own
+docstring names this fixture), and a **stdio server that is really spawned** —
+this interpreter on the fixture file, with `MCP_STDIO_ENABLED` and
+`MCP_ALLOWED_COMMANDS` both patched on. That is the only place in the suite
+where those two gates are lifted together, and the same record with the flag off
+is asserted refused beside it so the arm cannot be vacuous.
+
+**"Served from the row" is proved OFFLINE, which is the only way to prove it.**
+After discovery the server's URL is repointed at a dead port; the row still
+answers with both tools, the same `discovered_at` and `stale: false`. A read
+that dialled anything could not do that. Asking it to *re-discover* then errors,
+which is the control.
+
+**Three facts measured against the real package, none of which any plan knew:**
+
+1. **CrewAI namespaces a discovered tool name with the SERVER.** `search` on the
+   loopback fixture arrives as `127_0_0_1_54253_mcp_search`, and on the stdio
+   fixture as the whole sanitised command line. `MCPNativeTool` derives its name
+   from the server; `sanitise_tool` only normalises what it is handed.
+   Consequence worth knowing before an author meets it: **an HTTP server's
+   discovered names contain its port**, so re-discovering the same server on a
+   different port renames every tool and a stored `tool_names` selection stops
+   matching. A hosted server has a stable address and does not have this;
+   a loopback fixture on an ephemeral port always does.
+2. **A stdio command's own path must be spelled with forward slashes.**
+   `_SHELL_METACHARACTERS` includes the backslash, so a Windows path passed as an
+   *argument* is refused — correctly, and the fixture passes one the way a caller
+   would have to.
+3. **The schemas really do arrive.** `input_schema` is a JSON Schema object with
+   both of `search`'s parameters in `properties`, which is what the inspector's
+   read-only parameter preview renders and the reason discovery stores more than
+   a list of names.
+
+**The fixture's `fetch` carries an injection phrase on purpose**, word for word
+from `MCP_INJECTION_PATTERNS`. A fixture whose descriptions were all innocuous
+could not tell decision 8's rule working apart from the sanitiser never having
+run; here the tool comes back `suspicious` with its pattern named **and still
+selectable**, from a description a real server actually sent.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 8 | `MCPConnectionFailedEvent` becomes a `node_error` frame | **met** | `tests/events/test_mcp_frames.py` (6, new) · `tests/builder/test_failure_modes.py::McpUnreachableTests` (3) |
+
+**Both of the "honestly two things" are here.** This Status recorded the
+criterion as not reached and split it: the frame mapping, which it called
+this plan's and *"cut for time rather than for a reason"*, and the error edge,
+which was plan 12's. Plan 10 landed C6 and plan 09 the error router, so both are
+reachable now.
+
+*The mapping* is one additive branch in `_event_drafts`. Before it,
+`MCPConnectionFailedEvent` reached `record_unhandled` — **counted and
+invisible**, which is the failure that counter exists to make findable rather
+than to excuse. Every test asserts the frame **and** that the tally stopped
+moving, because a branch that drafts a frame and falls through anyway would
+satisfy every assertion about the frame alone.
+
+*The edge* is `test_mcp_unreachable`, in `tests/builder/test_failure_modes.py` —
+the file criterion 8 names. **CrewAI raises the event itself**: `MCPClient`
+emits `MCPConnectionFailedEvent` from its own failure path and then raises
+`MCPConnectionError`, so pointing the real `_default_resolver` at a port nothing
+is listening on produces both halves for real — the event that becomes the
+frame, and the exception that reaches `_attempted` and its error port. Nothing
+is hand-raised.
+
+**Two decisions in the frame's shape, both asserted:**
+
+- **`attempt`, `will_retry` and `routed` are deliberately absent.** They are
+  facts about a node's retry loop; this frame is about a connection. The
+  node-level `node_error` frame the runtime writes when the failure propagates
+  carries all three, and both frames appear in the same run — the second says
+  *what happened to the step*, the first says **which server** and why, which
+  the second structurally cannot because by then the failure is just an
+  exception. An author with three servers attached needs the first.
+- **`server_url` is not copied onto the frame.** A hosted MCP server can carry a
+  token in its path — `mask_url` exists for exactly that — so putting the raw
+  URL on a frame would publish a credential to everyone who can see the run
+  console. The server's `name`, `transport`, `error_type` and `status_code`
+  travel; the address does not. Pinned by a test that greps the details for the
+  path.
+
+**One departure: the error class is spelled `mcp_connection_failed`, with
+underscores.** `MCP_CONNECTION_ERROR_CLASS` lives in `builder/mcp.py` beside the
+subsystem it names, and three greps sweep every module-level
+`NAME = "kebab-case"` under `brief_crew/builder/` into the canvas problem-code
+union (`test_problem_code_declarations.py`). A kebab spelling would have
+appeared in the client's `PROBLEM_CODES` mirror as a problem an author can
+repair on a node, which it is not. `skills.SKILL_LOAD_ERROR_CLASS` is spelled
+the same way for the same reason, so the two frame discriminators agree with
+each other. **They do not agree with `credential-not-yours`**, which is kebab —
+a pre-existing inconsistency in `error_class` spellings across the three, and a
+follow-up rather than something to change under this criterion.
+
+**"Under `raise`" is read as the node's `on_error`, not `tool_failure_policy`.**
+An MCP connection failure is raised while an agent's clients are being resolved,
+before any tool runs, so no tool policy is in the path. Both `route` and `fail`
+are asserted, which is what that clause distinguishes.

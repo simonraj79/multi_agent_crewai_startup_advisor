@@ -327,3 +327,68 @@ rather than restating a constant, per R6. That list is now four rather than six.
 from `_vocabulary()` at head — it was recorded on 2026-09-02 and was six bounds
 behind, which made the client refuse it outright once `readBounds` required one
 of the two.
+
+### Wave A/B closers — 2026-09-04
+
+Only row **6** moves. Everything else in the table above is untouched.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 6 | the per-node cost line changes within 500 ms of a model change | **met** | `tests/builder/test_per_node_cost.py` (7) · `frontend/tests/authoredInspector.spec.ts` → *"the per-node cost line, through the real validation loop"* (2), file total 28 |
+
+**What was missing was never the reader.** The three tests under *"the
+per-node cost line"* have proved since 2026-09-04 that a budget on
+`BUILDER_BUDGET` renders the right figure and re-renders when the ref moves.
+Two things were open, and they are different questions:
+
+1. **Does the ROUTE serve `per_node`?** Plan 09 landed C5 on `BudgetEstimate`
+   and `test_budget.py::PerNodeCostTests` proves the arithmetic, but
+   `BuilderBudgetModel` is `extra="forbid"` and assembled field by field, so a
+   breakdown dropped, renamed or re-keyed on the way out would look exactly like
+   the *"not served yet"* state this row recorded — and no test would be red.
+   `tests/builder/test_per_node_cost.py` asks it over the wire on
+   `POST /api/builder/validate`: the key exists, it is keyed on **the author's
+   own canvas node id** (`draft`, not a compiled `n2_draft`), each entry carries
+   `calls` / `usd` / `model_id`, the served figures are the estimator's own
+   rather than a second arithmetic, they still sum to `static_cost_usd`, and a
+   library-agent graph is priced too so the line is not authored-only.
+
+2. **Does pressing a chip get a new budget onto that ref inside 500 ms?** The
+   chain has seven links — chip → commit → document → `fingerprint` watch →
+   400 ms debounce → `validate` → `budget` → line — and a spec that provides a
+   `ref` by hand jumps over all of them. The new describe block wires the
+   **real** `useBuilderValidation` at its **real** default debounce on a **real**
+   clock (no fake timers — MISSION.md trap 9 hangs a mount, and the criterion's
+   number is a wall-clock one), with the server played by a double typed off
+   `ValidateApi` whose per-node dollars are a function of the document's own
+   model word. Measured: the line moves from `$0.12` to `$0.31` in **under
+   500 ms** of the click, and exactly **two** requests are dispatched — so the
+   debounce is doing its job and the second one asked about the model the author
+   actually chose.
+
+**The second test is what stops the first passing for the wrong reason.** A
+client that recomputed the price beside the picker would move the line in nought
+milliseconds and satisfy "within 500 ms" with an arithmetic nobody enforces the
+ceiling with. Holding the validate response holds the line at the old figure
+while the *model pill* has already moved — which is R6 rendered rather than
+asserted in a comment.
+
+**Two facts measured on the way, both recorded rather than smoothed over.**
+
+- **`per_node[].model_id` carries the `openrouter/` prefix; the document's
+  `llm.model` does not.** They are deliberately different strings for one model
+  — one is the key `PRICES` is looked up on, the other is the registry id the
+  author picked — and a reader expecting them to match would conclude the wrong
+  node was priced. Asserted in both spellings.
+- **A `:nitro` preset costs MORE than the dearer headline model.** Swapping the
+  escalation model for the *cheaper* flash-lite `:nitro` preset takes the
+  fixture's node from `$0.157` to `$0.182`, because `static_cost_usd` is the
+  ENFORCED figure and applies `NITRO_PRICE_FACTOR` (1.8) to a variant that
+  routes on speed. The cost line therefore reports the number the ceiling is
+  enforced against, not a headline price — which is the whole reason D6 asks the
+  server for it instead of computing it beside the picker.
+  `test_a_nitro_variant_costs_MORE_than_the_dearer_headline` pins it.
+
+**No source file changed to close this row** beyond one stale docblock in
+`inspectors/LlmFields.vue`, which said the key was "not served yet". The reader
+was right; nothing had asked the server.

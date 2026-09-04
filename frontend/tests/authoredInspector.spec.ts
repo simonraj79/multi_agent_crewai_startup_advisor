@@ -13,15 +13,18 @@ import {
   ESSENTIAL_FIELDS,
   EXPERT_FIELDS,
 } from '../src/components/builder/inspectors/authoredFields'
-import { BUILDER_BUDGET } from '../src/composables/useBuilderValidation'
+import { BUILDER_BUDGET, useBuilderValidation } from '../src/composables/useBuilderValidation'
+import type { ValidateApi } from '../src/composables/useBuilderValidation'
 import { resetModels, roster } from '../src/data/models'
 import { FIELD_CODES, PROBLEM_CODES, isAuthoredAgent, nodeId } from '../src/types/builder'
 import type {
   AuthoredAgentConfig,
   BuilderBudget,
+  BuilderDocument,
   BuilderEdge,
   BuilderNode,
   BuilderProblem,
+  BuilderValidation,
   RegistryModel,
 } from '../src/types/builder'
 import type { InspectorCommit } from '../src/components/builder/commit'
@@ -36,6 +39,7 @@ import {
   problemsProvide,
   vocabularyFixture,
 } from './builderInspectorFixtures'
+import { withSetup } from './helpers'
 
 /**
  * The authored arm: 04 D1's three regions, D2's field table, D3's capability
@@ -541,9 +545,12 @@ describe('the per-node cost line', () => {
   })
 
   it('says nothing at all when the server serves no breakdown', async () => {
-    // Today's state: `per_node` is C5's, owned by plan 09, and not served yet.
-    // Computing the figure here instead would be a second estimator quietly
-    // disagreeing with the one that enforces the ceiling.
+    // No longer today's state - plan 09 landed C5 and the route serves the key
+    // (`tests/builder/test_per_node_cost.py`). It stays asserted because the
+    // three silent states are still real: nothing validated yet, the last
+    // attempt failed, or an older server. Computing the figure here instead
+    // would be a second estimator quietly disagreeing with the one that
+    // enforces the ceiling.
     const { wrapper } = mountRail(authoredAgentNode(), {
       budget: { ...budget, per_node: undefined },
     })
@@ -571,6 +578,221 @@ describe('the per-node cost line', () => {
     live.value = { ...budget, per_node: { scoper: { calls: 12, usd: 0.31 } } }
     await nextTick()
     expect(wrapper.get('[data-testid="node-cost"]').text()).toContain('$0.31')
+  })
+})
+
+describe('the per-node cost line, through the real validation loop', () => {
+  /**
+   * 04 criterion 6: **the line changes within 500 ms of a model change.**
+   *
+   * The three tests above prove the READER - given a budget, the line renders
+   * the right figure and re-renders when the ref moves. What none of them asks
+   * is whether pressing a chip actually gets a new budget onto that ref, which
+   * is the whole criterion: the chain is chip -> commit -> document ->
+   * `fingerprint` watch -> 400 ms debounce -> `validate` -> `budget` ->
+   * `BUILDER_BUDGET` -> line, and it has seven links that a spec providing a
+   * `ref` by hand jumps straight over.
+   *
+   * So this one wires the REAL `useBuilderValidation` with the REAL default
+   * debounce and a REAL clock. The double is the server and only the server,
+   * typed off `ValidateApi` so it cannot drift from the client it stands in
+   * for, and its per-node dollars are a function of the document's own model
+   * word - which is what makes "the figure moved" a statement about the round
+   * trip rather than about a number this test set twice.
+   *
+   * `tests/builder/test_per_node_cost.py` is the other half: that the route
+   * really does answer with `per_node`, keyed on the author's own node id, and
+   * that the dollars really do move when the model word does.
+   *
+   * NO FAKE TIMERS. `vi.useFakeTimers()` hangs a component mount in this
+   * harness (MISSION.md trap 9), and the assertion is a wall-clock budget
+   * anyway - faking the clock would make the one number the criterion names
+   * unmeasurable.
+   */
+
+  /** What the server charges for each model word, so the fake is a function. */
+  const PRICE: Record<string, { calls: number; usd: number }> = {
+    'google/gemini-3.5-flash-lite': { calls: 6, usd: 0.12 },
+    'google/gemini-3.8-flash': { calls: 6, usd: 0.31 },
+  }
+
+  function serverAnswer(document: BuilderDocument): BuilderValidation {
+    const config = authoredOf(document.nodes[0])
+    const entry = PRICE[config.llm.model] ?? { calls: 0, usd: 0 }
+    return {
+      valid: true,
+      problems: [],
+      budget: {
+        static_cost_usd: 1.51,
+        floor_cost_usd: 1.2,
+        modelled_calls: 60,
+        billable_nodes: 3,
+        escalation_nodes: 1,
+        cycles: 0,
+        unpriced_models: [],
+        over_ceiling: false,
+        ceiling_usd: 10,
+        per_node: { [document.nodes[0].id]: entry },
+      },
+    }
+  }
+
+  /** The rendered line, or the empty string while it is absent. */
+  function costText(wrapper: { find: (selector: string) => { exists: () => boolean; text: () => string } }): string {
+    const line = wrapper.find('[data-testid="node-cost"]')
+    return line.exists() ? line.text() : ''
+  }
+
+  /** Poll the rendered line until it says something, or give up. */
+  async function until(check: () => boolean, budgetMs: number): Promise<number> {
+    const started = Date.now()
+    while (Date.now() - started < budgetMs) {
+      await nextTick()
+      if (check()) return Date.now() - started
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    await nextTick()
+    return check() ? Date.now() - started : Number.POSITIVE_INFINITY
+  }
+
+  it('renders a new figure within 500 ms of pressing a tier chip', async () => {
+    const node = authoredAgentNode()
+    const doc = ref<BuilderDocument>(documentFixture([node]))
+    const requests: string[] = []
+
+    const api: ValidateApi = {
+      validate: async (document: BuilderDocument) => {
+        requests.push(authoredOf(document.nodes[0]).llm.model)
+        return serverAnswer(document)
+      },
+    }
+
+    // A real component instance, so the composable's scope and its timer
+    // teardown are the ones production gets.
+    const [validation, host] = withSetup(() => useBuilderValidation(doc, { api }))
+
+    const wrapper = mount(InspectorRail, {
+      props: {
+        doc: doc.value,
+        vocabulary: vocabularyFixture(),
+        selectedNodeIds: [node.id],
+        selectedEdgeIds: [],
+        onCommit: (change: InspectorCommit) => {
+          // What `BuilderView` does with a commit: the document on screen and
+          // the document under validation are the same object.
+          doc.value = change.next
+          void wrapper.setProps({ doc: change.next })
+        },
+      },
+      global: {
+        provide: {
+          ...problemsProvide([]),
+          [BUILDER_BUDGET as symbol]: validation.budget,
+        },
+      },
+    })
+
+    // The opening check the canvas kicks when a document is shown.
+    validation.validateNow()
+    const first = await until(
+      () => costText(wrapper).includes('$0.12'),
+      1_000,
+    )
+    expect(first, 'the opening estimate never reached the line').toBeLessThan(1_000)
+
+    // The gesture the criterion names, and the clock starts on the click.
+    const started = Date.now()
+    const chips = wrapper.get('[data-field="llm.model"]').findAll('.preset-chips button')
+    await chips[1].trigger('click')
+
+    const elapsed = await until(
+      () => costText(wrapper).includes('$0.31'),
+      2_000,
+    )
+    const total = Date.now() - started
+
+    expect(
+      wrapper.get('[data-testid="node-cost"]').text(),
+      'the line still reads the old price after a model change',
+    ).toContain('$0.31')
+    expect(elapsed).toBeLessThan(500)
+    expect(total).toBeLessThan(500)
+
+    // Two requests and not five: the debounce is doing its job, and the second
+    // one asked about the model the author actually chose.
+    expect(requests).toEqual(['google/gemini-3.5-flash-lite', 'google/gemini-3.8-flash'])
+
+    host.unmount()
+    wrapper.unmount()
+  })
+
+  it('leaves the line reading the old figure until the server answers', async () => {
+    /*
+     * The failure this rules out is the one that would make the test above
+     * pass for the wrong reason: a client that recomputed the price beside the
+     * picker would move the line on the click, in nought milliseconds, and
+     * "within 500 ms" would be satisfied by an arithmetic nobody enforces the
+     * ceiling with. R6 says the client never computes a problem or a price, so
+     * a held response must hold the line.
+     */
+    const node = authoredAgentNode()
+    const doc = ref<BuilderDocument>(documentFixture([node]))
+    // An ARRAY rather than a nullable let: TypeScript narrows a `let` to
+    // `null` because it cannot see the assignment inside the promise
+    // executor, and `release?.()` is then `never`.
+    const held: Array<() => void> = []
+
+    const api: ValidateApi = {
+      validate: async (document: BuilderDocument) => {
+        const answer = serverAnswer(document)
+        if (authoredOf(document.nodes[0]).llm.model === 'google/gemini-3.8-flash') {
+          await new Promise<void>((resolve) => {
+            held.push(resolve)
+          })
+        }
+        return answer
+      },
+    }
+
+    const [validation, host] = withSetup(() => useBuilderValidation(doc, { api }))
+    const wrapper = mount(InspectorRail, {
+      props: {
+        doc: doc.value,
+        vocabulary: vocabularyFixture(),
+        selectedNodeIds: [node.id],
+        selectedEdgeIds: [],
+        onCommit: (change: InspectorCommit) => {
+          doc.value = change.next
+          void wrapper.setProps({ doc: change.next })
+        },
+      },
+      global: {
+        provide: { ...problemsProvide([]), [BUILDER_BUDGET as symbol]: validation.budget },
+      },
+    })
+
+    validation.validateNow()
+    await until(() => costText(wrapper).includes('$0.12'), 1_000)
+
+    const chips = wrapper.get('[data-field="llm.model"]').findAll('.preset-chips button')
+    await chips[1].trigger('click')
+    await until(() => held.length > 0, 1_000)
+    await nextTick()
+
+    // The model on the card has already moved; the PRICE has not, because
+    // nobody has priced it yet.
+    expect(wrapper.get('[data-testid="node-cost"]').text()).toContain('$0.12')
+    expect(wrapper.get('[data-testid="node-cost"]').text()).not.toContain('$0.31')
+
+    held[0]()
+    const after = await until(
+      () => costText(wrapper).includes('$0.31'),
+      1_000,
+    )
+    expect(after).toBeLessThan(1_000)
+
+    host.unmount()
+    wrapper.unmount()
   })
 })
 

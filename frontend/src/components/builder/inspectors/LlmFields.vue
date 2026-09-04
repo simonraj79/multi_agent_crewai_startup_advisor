@@ -157,10 +157,11 @@ const budget = inject(BUILDER_BUDGET, null)
  * `this node ≈ $0.12 of $1.51 (static)`, or nothing.
  *
  * NOTHING is the honest answer in three different states and they are not the
- * same: no validation has run, the run failed, or the server does not serve a
- * `per_node` breakdown yet - which is today's state, because C5 assigns that
- * key to plan 09. The line appears the moment the key does, and no arithmetic
- * here changes in between.
+ * same: no validation has run, the last attempt failed, or the server serves no
+ * `per_node` breakdown. The third was the state until plan 09 landed C5; the
+ * route now answers with the key (`tests/builder/test_per_node_cost.py`) and it
+ * is kept as a rendered state because an older server is still a real answer.
+ * No arithmetic here changed on the way, which is the point of R6.
  *
  * It recomputes on the same 400 ms validation debounce as everything else, so
  * changing the model reprices within half a second without leaving the field.

@@ -1005,6 +1005,31 @@
    is `auto`, so the canvas takes the difference. */
 .builder-dock { display: grid; min-width: 0; }
 
+/* D-15-25, third round: the dock steps out from under the open `⋮` menu.
+
+   The menu is `position: absolute` inside `DocumentBar` and this row is
+   directly beneath it, so an open menu hung over the very rows it operates on.
+   Round 1 shrank the overlap and round 2 left-aligned the menu, which moved it
+   off the version rows' identity columns onto their time and size columns and
+   said so honestly: removing the overlap means DISPLACING this row rather than
+   covering it.
+
+   PADDING, not `margin-top` or a grid gap: padding grows the row itself, so
+   `.graph-workspace`'s `auto` row grows with it and the canvas gives up exactly
+   that many pixels - which is what `dockEl`'s ResizeObserver then re-fits the
+   graph against. A margin would collapse against the bar and change nothing.
+
+   The value is the bar's own measurement of its open menu (`menu-extent`),
+   applied only while the dock has something in it - an empty dock is 0px tall
+   and pushing it down would move the graph for no reason at all.
+
+   NOT TRANSITIONED, deliberately. Every other strip in this row appears and
+   disappears instantly, and a 260ms slide here would put the version rows in
+   motion at the exact moment the author is reading them to choose a menu item.
+   It would also make the intersection measurable only after a settle, which is
+   a guard that can pass because it waited. */
+.builder-dock.is-displaced { padding-top: var(--dock-displacement, 0); }
+
 /* Plan 15 D2's import notice (ruling S1-7): a notice, not a problem row. */
 .builder-import-notice {
   display: flex;

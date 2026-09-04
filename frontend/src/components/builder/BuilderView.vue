@@ -427,6 +427,45 @@ const importNoticeShown = computed(
 /** The dock row's element, handed to the canvas so a strip opening re-fits the graph (D-15-2). */
 const dockEl = ref<HTMLElement | null>(null)
 
+/**
+ * How far the open `⋮` menu reaches below the bar, as the bar measured it.
+ *
+ * D-15-25, third and last round. The menu is absolutely positioned inside the
+ * bar and the dock is the grid row directly beneath it, so an open menu hung
+ * over the very rows it operates on - the critic measured it covering
+ * `restored from v1`. Round 1 shrank the overlap; round 2 left-aligned the menu
+ * and moved it off the identity columns onto the time and size ones, and said
+ * in its own comment that removing it needs DISPLACING the dock rather than
+ * covering it. This is that displacement.
+ */
+const menuExtent = ref(0)
+
+function onMenuExtent(px: number): void {
+  menuExtent.value = px
+}
+
+/**
+ * Whether the dock has anything in it, by the same four conditions its own
+ * `v-if`s use.
+ *
+ * The dock is 0px tall when empty and the canvas takes the difference, so
+ * displacing it unconditionally would shove the graph down every time an author
+ * opened the menu over a canvas with nothing docked - trading a real occlusion
+ * for a gratuitous reflow. Derived from the conditions rather than measured off
+ * `dockEl`, because a height read in a computed is not reactive and would be a
+ * frame behind the strip that changed it.
+ */
+const dockOccupied = computed(
+  () =>
+    versionsOpen.value ||
+    deleteAsk.value ||
+    importNoticeShown.value ||
+    persistence.restoreOffer.value !== null,
+)
+
+/** The padding the dock takes while the menu is open over something. */
+const dockDisplacement = computed(() => (dockOccupied.value ? menuExtent.value : 0))
+
 /** The docked delete confirm (plan 15 D3, R15: no dialog). */
 const deleteAsk = ref(false)
 const deleteTyped = ref('')
@@ -1719,6 +1758,7 @@ watch(
             @duplicate="duplicateDocument"
             @unpublish="unpublishDocument"
             @delete="askDelete"
+            @menu-extent="onMenuExtent"
           >
             <template #save-chip>
               <SaveChip
@@ -1742,7 +1782,13 @@ watch(
             moment the restore bar appeared. R15: nothing here covers the graph
             it is about.
           -->
-          <div ref="dockEl" class="builder-dock" data-testid="builder-dock">
+          <div
+            ref="dockEl"
+            class="builder-dock"
+            :class="{ 'is-displaced': dockDisplacement > 0 }"
+            :style="{ '--dock-displacement': `${dockDisplacement}px` }"
+            data-testid="builder-dock"
+          >
             <VersionBrowser
               v-if="versionsOpen"
               :versions="versions"

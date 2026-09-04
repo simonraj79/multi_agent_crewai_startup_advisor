@@ -131,6 +131,23 @@ const emit = defineEmits<{
   unpublish: []
   /** Ask to delete. The confirm is DOCKED under the bar, never a dialog (R15). */
   delete: []
+  /**
+   * How far below the bar the open menu reaches, and 0 when it is shut.
+   *
+   * D-15-25, third round. The menu is `position: absolute` inside the bar, so
+   * it hangs over the grid row beneath - which holds the version browser, the
+   * restore bar, the import notice and the delete confirm. Round 2 left-aligned
+   * it, which moved the overlap off the version rows' identity columns and onto
+   * their time and size columns; the row's own words are that removing it means
+   * DISPLACING the dock rather than covering it.
+   *
+   * MEASURED and emitted rather than declared as a constant, because the menu
+   * is between five and eight items depending on whether the document is stored
+   * and whether it is published, and a constant would be right for one of those
+   * shapes. The parent decides what to do with it: the dock is 0px tall when
+   * empty, and pushing an empty row down would move the canvas for nothing.
+   */
+  'menu-extent': [px: number]
 }>()
 
 /**
@@ -158,7 +175,15 @@ const themeActionLabel = computed(() =>
 const menuOpen = ref(false)
 const menuButton = ref<HTMLButtonElement | null>(null)
 const menuRoot = ref<HTMLElement | null>(null)
+const menuEl = ref<HTMLElement | null>(null)
 const filePicker = ref<HTMLInputElement | null>(null)
+
+/**
+ * The gap between the bar's bottom edge and the menu's top - `top: calc(100% +
+ * 6px)` below, restated once so the two cannot disagree by a pixel nobody
+ * notices until a critic measures the intersection.
+ */
+const MENU_OFFSET_PX = 6
 
 /** What `title` says on a stored-document action while nothing is stored. */
 const NOT_STORED = 'Save this graph first - this acts on the stored version'
@@ -205,6 +230,26 @@ watch(menuOpen, (open) => {
   if (open) document.addEventListener('pointerdown', onPointerDownOutside, true)
   else document.removeEventListener('pointerdown', onPointerDownOutside, true)
 })
+
+/**
+ * Tell the parent how far the menu reaches, so the dock can step out of its way.
+ *
+ * AFTER a tick, because on the opening edge the element does not exist yet -
+ * `v-if` renders it in the same flush this watcher runs in, and a measurement
+ * taken now would be 0 for the one state that matters. `offsetHeight` rather
+ * than a bounding rect: no transform is applied here, and an integer is what
+ * the CSS below consumes.
+ */
+watch(menuOpen, async (open) => {
+  if (!open) {
+    emit('menu-extent', 0)
+    return
+  }
+  await nextTick()
+  emit('menu-extent', (menuEl.value?.offsetHeight ?? 0) + MENU_OFFSET_PX)
+})
+
+onBeforeUnmount(() => emit('menu-extent', 0))
 
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownOutside, true))
 
@@ -451,6 +496,7 @@ function cancelRename(): void {
 
         <div
           v-if="menuOpen"
+          ref="menuEl"
           id="document-menu"
           class="document-menu"
           role="menu"

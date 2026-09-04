@@ -264,6 +264,32 @@ test.describe('Validator Studio', () => {
       // on a visible quarantine node rather than dropped silently.
       await expect(page.locator('[data-testid="quarantine-count"]')).toHaveText('0')
 
+      /*
+       * The SPEND surface, on a run that has finished (critic round product-1,
+       * P-08). This panel read `ELAPSED 00:00 · CALLS 0 · TOKENS 0 · $0.0000`
+       * on a completed run whose dialogue rail beside it showed `640 in · 78
+       * out` and whose server record held two timestamps 15.019 s apart. It is
+       * what an operator watches while a graph somebody else drew spends
+       * against `MAX_RUN_COST_USD`, and until the synthetic runner emitted
+       * TOKEN frames it was the one surface no free path could exercise at all.
+       *
+       * Asserted here rather than in a test of its own because the run is
+       * already finished at this point: a second `@launch` test would spend
+       * money against a paid origin to learn the same thing.
+       */
+      const metric = async (name: string): Promise<string> =>
+        (
+          await page
+            .locator('.status-panel .metrics-grid div', { hasText: new RegExp(`^${name}`) })
+            .locator('dd')
+            .innerText()
+        ).trim()
+
+      expect(await metric('Elapsed'), 'ELAPSED on a completed run').not.toBe('00:00')
+      expect(Number(await metric('Calls')), 'CALLS on a completed run').toBeGreaterThan(0)
+      expect(await metric('Tokens'), 'TOKENS on a completed run').not.toBe('0')
+      expect(await metric('Cost'), 'COST on a completed run').not.toBe('$0.0000')
+
       await expect(page.locator('.workflow-node[aria-label="Reporter, Completed"]')).toHaveCount(1)
       await expect(page.locator('.workflow-node[aria-label="Validation brief, Completed"]')).toHaveCount(1)
       await expect(page.locator('.error-banner')).toHaveCount(0)

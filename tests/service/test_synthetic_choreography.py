@@ -237,3 +237,121 @@ class SyntheticCrewUtteranceTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TokenAndCostTests(unittest.TestCase):
+    """Critic round product-1, P-08: the console's SPEND surface, on the free path.
+
+    The runner emitted an `utterance` carrying `prompt_tokens` - which the
+    dialogue rail reads and rendered as `640 in · 78 out` - and **no TOKEN
+    frame at all**. `useValidatorRun.applyTokenUsage` fires on
+    `kind === 'token'` and on nothing else, so the status panel reported
+    `CALLS 0 · TOKENS 0 · $0.0000` beside a rail showing real numbers, on a
+    completed run. The panel is what an operator watches while a graph somebody
+    else drew spends against `MAX_RUN_COST_USD`, and it was the one surface no
+    free path could exercise.
+
+    Emitting TOKEN also restores CALLS and ELAPSED through the PRODUCTION path
+    rather than a second one written for the double: `RunRecord._on_frames`
+    routes a TOKEN frame into `_record_usage`, which marks the run's usage dirty
+    and is what `metrics_frame` snapshots; and `_track_llm_timing` keys its
+    per-call clock off the `before`/`after` LLM stages, which is why those are
+    emitted too.
+
+    Fifth recording of one defect: a double that cannot produce the thing under
+    test certifies nothing.
+    """
+
+    def setUp(self) -> None:
+        self.execution = _unattended()
+
+    def spoke(self) -> set[str]:
+        return {frame["node_id"] for frame in self.execution.capture.staged("utterance")}
+
+    def test_every_utterance_is_followed_by_a_token_frame(self) -> None:
+        tokens = self.execution.capture.of_kind("token")
+        self.assertEqual({frame["node_id"] for frame in tokens}, self.spoke())
+        self.assertEqual(len(tokens), len(self.spoke()))
+
+    def test_the_details_mirror_the_serializer(self) -> None:
+        """`events/serializer.py:527` - `{call_id, model, usage, cost_usd}`."""
+
+        frame = self.execution.capture.of_kind("token")[0]
+        details = dict(frame["details"])
+        self.assertEqual(set(details), {"call_id", "model", "usage", "cost_usd"})
+        usage = dict(details["usage"])
+        self.assertEqual(
+            set(usage),
+            {
+                "successful_requests",
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "call_count",
+                "cost_usd",
+            },
+        )
+        self.assertEqual(usage["total_tokens"], usage["prompt_tokens"] + usage["completion_tokens"])
+        self.assertGreater(usage["prompt_tokens"], 0)
+        self.assertGreater(usage["completion_tokens"], 0)
+
+    def test_the_cost_is_nested_inside_usage_as_well_as_beside_it(self) -> None:
+        """CLAUDE.md section 8's second `cost_usd` bug, from the double's side.
+
+        The client narrows to `details.usage` the moment that key is an object
+        and never looks at the level above, so a cost written only beside it
+        totals `$0.0000` with every token frame present.
+        """
+
+        frame = self.execution.capture.of_kind("token")[0]
+        details = dict(frame["details"])
+        self.assertEqual(dict(details["usage"])["cost_usd"], details["cost_usd"])
+
+    def test_the_cost_is_computed_from_PRICES_rather_than_written_in(self) -> None:
+        from brief_crew.config import CHEAP_MODEL, compute_cost_usd
+
+        frame = self.execution.capture.of_kind("token")[0]
+        details = dict(frame["details"])
+        usage = dict(details["usage"])
+        self.assertEqual(details["model"], CHEAP_MODEL.split("/", 1)[-1])
+        self.assertEqual(
+            details["cost_usd"],
+            compute_cost_usd(
+                str(details["model"]),
+                int(usage["prompt_tokens"]),
+                int(usage["completion_tokens"]),
+            ),
+        )
+        self.assertIsNotNone(details["cost_usd"])
+        self.assertGreater(float(details["cost_usd"]), 0.0)
+
+    def test_each_call_is_bracketed_so_the_registry_can_time_it(self) -> None:
+        """`before` and `after`, which `_track_llm_timing` keys `elapsed_ms` off."""
+
+        before = {frame["details"]["call_id"] for frame in self.execution.capture.staged("before")
+                  if str(getattr(frame["kind"], "value", frame["kind"])) == "llm"}
+        after = {frame["details"]["call_id"] for frame in self.execution.capture.staged("after")
+                 if str(getattr(frame["kind"], "value", frame["kind"])) == "llm"}
+        tokens = {dict(frame["details"])["call_id"] for frame in self.execution.capture.of_kind("token")}
+        self.assertEqual(before, tokens)
+        self.assertEqual(after, tokens)
+
+    def test_the_frames_are_ordered_before_utterance_after_token(self) -> None:
+        """Order matters: `after` must follow `before`, and TOKEN must follow both,
+        because the registry pops the timing when the TOKEN frame arrives."""
+
+        node = sorted(self.spoke())[0]
+        stages = [
+            dict(frame.get("details") or {}).get("stage")
+            if str(getattr(frame["kind"], "value", frame["kind"])) == "llm"
+            else "token"
+            for frame in self.execution.capture.frames
+            if frame.get("node_id") == node
+            and str(getattr(frame["kind"], "value", frame["kind"])) in {"llm", "token"}
+        ]
+        # The serializer returns `after`, `utterance`, `token` as one tuple
+        # (`events/serializer.py:525-527`), so the double emits them in that
+        # order too - a double whose ordering differs teaches a client a
+        # sequence production will never produce.
+        self.assertEqual(stages[0], "before")
+        self.assertEqual(stages[-3:], ["after", "utterance", "token"])

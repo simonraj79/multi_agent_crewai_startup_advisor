@@ -400,6 +400,12 @@ export function useValidatorRun(
   const activeEdgeIds = ref(new Set<string>())
   const chatEntries = ref<ChatEntry[]>([])
   const usage = reactive<UsageMetrics>(initialUsage())
+  /**
+   * The first and last frame timestamps this run has produced - the run's own
+   * clock, and the answer to `ELAPSED` when nothing else supplies one.
+   * Plain rather than reactive: only `usage.elapsedMs` is read, and that is.
+   */
+  const runClock = { firstMs: 0, lastMs: 0 }
   const nodeStates = reactive<Record<string, NodeRunState>>({})
   const nodeUsage = reactive<Record<string, UsageMetrics>>({})
   const nodeFrames = reactive<Record<string, number>>({})
@@ -724,6 +730,9 @@ export function useValidatorRun(
       pendingGate.value = snapshot.pending_gate
       droppedFrames.value = snapshot.frames.dropped
       Object.assign(usage, snapshot.usage)
+      // After, not before: the frames above already established the run's own
+      // clock, and a snapshot carrying `elapsed_ms: 0` would otherwise erase it.
+      syncElapsed()
       captureResult(snapshot.result)
       frames.filter((frame) => frame.seq > snapshotSequence).forEach(applyPostSnapshotFrame)
       if (['queued', 'running', 'waiting', 'stopping'].includes(status.value)) connectStream()
@@ -765,6 +774,7 @@ export function useValidatorRun(
       setStatus('error')
       lastError.value = frame.message
     }
+    noteFrameClock(frame)
   }
 
   function queueFrame(frame: FrameData): void {
@@ -814,6 +824,7 @@ export function useValidatorRun(
       setStatus('error')
       lastError.value = frame.message
     }
+    noteFrameClock(frame)
     if (!['token', 'metrics'].includes(frame.kind)) appendChat(frame)
     // Last, and after every state write above: the choreography's recede and
     // its animation bound both read `nodeStates`, so ingesting first would
@@ -1133,8 +1144,39 @@ export function useValidatorRun(
 
   function applyMetrics(frame: FrameData): void {
     const metrics = usageFromDetails(frame.details, 0)
-    usage.elapsedMs = metrics.elapsedMs || usage.elapsedMs
+    usage.elapsedMs = Math.max(usage.elapsedMs, metrics.elapsedMs)
     usage.callCount = Math.max(usage.callCount, metrics.callCount)
+  }
+
+  /**
+   * Elapsed from the RUN'S OWN CLOCK, when nothing else has supplied it
+   * (critic round product-1, P-08).
+   *
+   * The panel read `ELAPSED 00:00` on a completed run whose server record held
+   * `created_at` and `completed_at` 15.019 s apart. `usage.elapsedMs` is
+   * summed from per-call timings that only exist once a METRICS frame has been
+   * emitted, so a run that called no priced model - or one whose runner emits
+   * no token frames - reported that it took no time at all. Nothing about
+   * elapsed depends on model usage, and pretending it does is what made a
+   * measurable fact read as a zero.
+   *
+   * Frames carry `ts`, so the span between the first and the last is the run's
+   * own clock, replayed identically after a reload. `Math.max` rather than an
+   * assignment for both directions of disagreement: a real METRICS elapsed
+   * (which includes queue time this cannot see) still wins, and a snapshot
+   * carrying `elapsed_ms: 0` can no longer erase what the frames already said.
+   */
+  function noteFrameClock(frame: FrameData): void {
+    const at = Date.parse(frame.ts)
+    if (!Number.isFinite(at)) return
+    if (!runClock.firstMs || at < runClock.firstMs) runClock.firstMs = at
+    if (at > runClock.lastMs) runClock.lastMs = at
+    syncElapsed()
+  }
+
+  function syncElapsed(): void {
+    if (!runClock.firstMs || runClock.lastMs <= runClock.firstMs) return
+    usage.elapsedMs = Math.max(usage.elapsedMs, runClock.lastMs - runClock.firstMs)
   }
 
   function appendChat(frame: FrameData): void {
@@ -1356,6 +1398,8 @@ export function useValidatorRun(
     choreography.reset()
     resetNodes()
     Object.assign(usage, initialUsage())
+    runClock.firstMs = 0
+    runClock.lastMs = 0
     status.value = 'idle'
     connection.value = 'offline'
     runId.value = ''

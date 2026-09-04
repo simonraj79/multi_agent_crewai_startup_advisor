@@ -227,3 +227,108 @@ describe('frame handling', () => {
     expect(run.nodeUsage.scope_idea.totalTokens).toBe(140)
   })
 })
+
+/**
+ * Critic round product-1, P-08: the panel read `ELAPSED 00:00 · CALLS 0 ·
+ * TOKENS 0 · $0.0000` on a COMPLETED run whose dialogue rail beside it showed
+ * `640 in · 78 out` and whose server record held two timestamps 15.019 s apart.
+ *
+ * Two independent halves, and only one of them was synthetic. The tokens came
+ * from the runner emitting an `utterance` (which the rail reads) and no TOKEN
+ * frame (which is the only thing `applyTokenUsage` fires on). The elapsed did
+ * not: nothing about elapsed depends on model usage, and the run's own frames
+ * carry the clock that answers it.
+ */
+describe('the spend surface reports what it was actually told', () => {
+  let api: FakeStudioApi
+  let run: ValidatorRun
+  let app: App
+  let build: ReturnType<typeof frameFactory>
+
+  beforeEach(async () => {
+    localStorage.clear()
+    api = new FakeStudioApi()
+    build = frameFactory()
+    ;[run, app] = withSetup(() => useValidatorRun(api))
+    await run.initialize()
+    await run.launch()
+  })
+
+  afterEach(() => {
+    app.unmount()
+  })
+
+  function tokenFrame(nodeId: string, prompt: number, completion: number, cost: number) {
+    return build('token', {
+      event_type: 'MODEL_CALL',
+      node_id: nodeId,
+      message: 'Token usage recorded',
+      details: {
+        call_id: `${RUN_ID}:${nodeId}`,
+        model: 'google/gemini-3.5-flash-lite:nitro',
+        usage: {
+          successful_requests: 1,
+          prompt_tokens: prompt,
+          completion_tokens: completion,
+          total_tokens: prompt + completion,
+          call_count: 1,
+          cost_usd: cost,
+        },
+        cost_usd: cost,
+      },
+    })
+  }
+
+  it('totals every token frame into the panel, cost included', async () => {
+    api.emit(tokenFrame('scope_idea', 640, 78, 0.000387))
+    api.emit(tokenFrame('market_research', 640, 68, 0.000362))
+    await flush()
+
+    expect(run.usage.totalTokens).toBe(1426)
+    expect(run.usage.promptTokens).toBe(1280)
+    expect(run.usage.callCount).toBe(2)
+    expect(run.usage.costUsd).toBeCloseTo(0.000749, 6)
+  })
+
+  /**
+   * The half that is NOT a synthetic artefact. `frameFactory` advances `ts` by
+   * one second per frame, so four frames span three seconds - and the panel is
+   * entitled to say so whether or not a model was ever called.
+   */
+  it('reports elapsed from the run own clock when no metrics frame says otherwise', async () => {
+    api.emit(build('run_state', { event_type: 'WORKFLOW_START', details: { status: 'running' } }))
+    api.emit(build('node_state', { event_type: 'METHOD_EXECUTION', node_id: 'scope_idea' }))
+    api.emit(build('node_state', { event_type: 'METHOD_EXECUTION', node_id: 'confirm_scope' }))
+    api.emit(build('run_state', { event_type: 'WORKFLOW_END', details: { status: 'completed' } }))
+    await flush(40)
+
+    expect(run.status.value).toBe('completed')
+    expect(run.usage.elapsedMs).toBe(3000)
+  })
+
+  it('lets a metrics frame that knows more win, and never lets one that knows less erase it', async () => {
+    api.emit(build('run_state', { event_type: 'WORKFLOW_START', details: { status: 'running' } }))
+    api.emit(build('node_state', { event_type: 'METHOD_EXECUTION', node_id: 'scope_idea' }))
+    await flush()
+    expect(run.usage.elapsedMs).toBe(1000)
+
+    // Larger: the server counts queue time the frames cannot see.
+    api.emit(build('metrics', {
+      event_type: 'METRICS_UPDATED',
+      details: { usage: { elapsed_ms: 15_019, call_count: 11 } },
+    }))
+    await flush()
+    expect(run.usage.elapsedMs).toBe(15_019)
+    expect(run.usage.callCount).toBe(11)
+
+    // Smaller, or zero: a later snapshot must not walk it back to `00:00`,
+    // which is precisely the reading the defect produced.
+    api.emit(build('metrics', {
+      event_type: 'METRICS_UPDATED',
+      details: { usage: { elapsed_ms: 0, call_count: 0 } },
+    }))
+    await flush()
+    expect(run.usage.elapsedMs).toBe(15_019)
+    expect(run.usage.callCount).toBe(11)
+  })
+})

@@ -301,29 +301,24 @@ await capture(page, 'no-key-chip-cleared')
 })
 
 /*
- * The one thing criterion 9 asks for that this build cannot do, recorded rather
- * than quietly dropped.
+ * Criterion 9's other end, CLOSED by the integration closer of 2026-09-04.
  *
- * `NodePalette.onToolDragStart` writes BOTH mime entries -
- * `application/x-builder-kind` and `application/x-builder-tool-id` - and
- * `frontend/tests/nodePalette.spec.ts` pins that. Nothing reads the second one:
- * `BuilderCanvas.onDrop` reads only `BUILDER_DND_MIME` and calls
- * `canvas.dropKind(kind, point)`, so a tool dragged out of the sub-list lands
- * as a node on `nodeKinds`' placeholder `tool_id`, exactly as the generic tile
- * does. The two gestures are meant to be distinguishable - the tile is "a tool
- * node", the row is "that tool" - and today they are not.
+ * `NodePalette.onToolDragStart` had always written BOTH mime entries -
+ * `application/x-builder-kind` and `application/x-builder-tool-id`, pinned by
+ * `frontend/tests/nodePalette.spec.ts` - and nothing read the second one.
+ * `BuilderCanvas.onDrop` read only the kind, so a tool dragged out of the
+ * sub-list landed on `nodeKinds`' placeholder `tool_id`, exactly as the generic
+ * tile does: the two gestures are meant to be distinguishable - the tile is "a
+ * tool node", the row is "that tool" - and they were not.
  *
- * THE CHANGE is three lines and none of them is in this package:
- *
- *   // BuilderCanvas.vue, in `onDrop`
- *   const toolId = event.dataTransfer?.getData(BUILDER_TOOL_ID_MIME) || null
- *   props.canvas.dropKind(raw as NodeKind, { x: event.clientX, y: event.clientY }, null, toolId)
- *
- * with `dropKind` -> `createAt` / `attachTo` passing it to `newNode`, which
- * already builds the config. `BuilderCanvas.vue` is another package's file this
- * wave, so this is a `fixme` and a report rather than an edit.
+ * `onDrop` now reads the second entry and hands it to `dropKind`, which
+ * validates it against the SERVED catalogue before applying it (`asNamedTool`
+ * in `useBuilderCanvas.ts`) - `dataTransfer` is a public channel, and a
+ * `tool_id` the compiler has never heard of is a node that publishes and then
+ * fails. The unit half is `frontend/tests/builderCanvas.spec.ts`, *"lands THAT
+ * tool, not a placeholder"*; this is the half that needs a real drag.
  */
-test.fixme('drags a NAMED tool out of the sub-list and lands that tool', async ({ page }) => {
+test('drags a NAMED tool out of the sub-list and lands that tool', async ({ page }) => {
   await startFromMinimalTemplate(page)
   await page.locator('.builder-subtoggle').click()
   await page

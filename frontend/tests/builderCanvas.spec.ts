@@ -146,6 +146,20 @@ function vocabularyFixture(): BuilderVocabulary {
     router_comparisons: ['contains', 'eq', 'gt', 'gte', 'lt', 'lte', 'ne'],
     router_otherwise: 'otherwise',
     result_body_keys: ['markdown_body'],
+    // 06 criterion 9's other end. `dropKind` reads the SERVED catalogue to turn
+    // a tool-id off the drag into a real `tool_id` and label, so the fixture
+    // has to carry one or the named-drop tests would be asserting the fallback.
+    tools: [
+      {
+        tool_id: 'web_search',
+        label: 'Web search',
+        category: 'research',
+        description: 'One search over the open web.',
+        credential_kind: null,
+        attaches_to: ['agent', 'crew'],
+        params: [],
+      },
+    ],
     bounds: {
       max_graph_nodes: 24,
       max_billable_nodes: 8,
@@ -390,6 +404,66 @@ describe('dropping an attachment inside a card is one commit carrying its wire',
     expect(attached?.attachedTo).toBe('scoper')
     expect(loose?.attachedTo).toBeNull()
     expect(attached?.nodeId).not.toBe(loose?.nodeId)
+  })
+
+  /* --- the NAMED tool drop (06 criterion 9) -------------------------------
+   *
+   * `NodePalette` has always written the tool id on its own MIME entry and
+   * nothing read it, so dragging the row that says "Web search" produced a node
+   * indistinguishable from the one the generic tile makes - the placeholder
+   * `tool_id: 'tool'`, labelled "Tool 1". The four tests below are the two
+   * halves of the fix plus the two refusals that keep it honest.
+   */
+
+  it('lands THAT tool, not a placeholder, when the drag names one', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('tool', { x: 460, y: 340 }, null, 'web_search')
+
+    const pill = store.doc.value.nodes[1]
+    expect(pill.kind).toBe('tool')
+    expect(pill.config).toMatchObject({ tool_id: 'web_search' })
+    // The label moves with the id. A card reading "Tool 1" after the author
+    // dragged "Web search" is the drop reporting the wrong thing about itself,
+    // and the label is the only part of a node the canvas shows.
+    expect(pill.label).toBe('Web search')
+    // Still one commit carrying its wire - naming the tool changed nothing
+    // about the gesture.
+    expect(store.depth.value).toBe(1)
+    expect(store.doc.value.edges).toHaveLength(1)
+  })
+
+  it('names the tool on an UNATTACHED drop too', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('tool', { x: 40, y: 40 }, null, 'web_search')
+
+    expect(store.doc.value.nodes[1].config).toMatchObject({ tool_id: 'web_search' })
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('ignores a tool id the served catalogue does not carry', () => {
+    // `dataTransfer` is a public channel, so the id is validated rather than
+    // trusted: a `tool_id` the compiler has never heard of is a node that
+    // publishes and then fails. The placeholder is the state the inspector is
+    // already built to repair.
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('tool', { x: 460, y: 340 }, null, 'not_a_tool')
+
+    expect(store.doc.value.nodes[1].config).toMatchObject({ tool_id: 'tool' })
+    expect(store.doc.value.nodes[1].label).toBe('Tool 1')
+  })
+
+  it('never applies a tool id to a kind that is not a tool', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('skill', { x: 460, y: 340 }, null, 'web_search')
+
+    const pill = store.doc.value.nodes[1]
+    expect(pill.kind).toBe('skill')
+    expect(pill.label).toBe('Skill 1')
+    expect(pill.config).not.toHaveProperty('tool_id')
   })
 })
 

@@ -13,6 +13,7 @@ import { NODE_KINDS, NODE_KIND_ORDER } from '../../data/nodeKinds'
 import {
   BUILDER_CANVAS_ATTR,
   BUILDER_DND_MIME,
+  BUILDER_TOOL_ID_MIME,
   BUILDER_HOVERED_NODE,
   BUILDER_READ_ONLY,
   BUILDER_SELECTED_IDS,
@@ -382,7 +383,23 @@ function onDrop(event: DragEvent): void {
   const raw =
     event.dataTransfer?.getData(BUILDER_DND_MIME) || event.dataTransfer?.getData('text/plain') || ''
   if (!KINDS.has(raw)) return
-  props.canvas.dropKind(raw as NodeKind, { x: event.clientX, y: event.clientY })
+  /*
+   * The SECOND mime entry, and the reason the palette has always written it.
+   *
+   * `NodePalette.onToolDragStart` sets `BUILDER_TOOL_ID_MIME` beside the kind,
+   * so a row dragged out of the tool sub-list carries WHICH tool. Reading only
+   * the kind made the two gestures indistinguishable: the row landed on the
+   * placeholder `tool_id` exactly as the generic tile does, and an author who
+   * dragged "Web search" got a node that said "Tool 1" and meant nothing.
+   *
+   * `dropKind` validates the id against the served catalogue rather than
+   * trusting it - see `asNamedTool`. The `text/plain` fallback is deliberately
+   * NOT consulted here: for a tool row it carries the tool id, but for a plain
+   * tile it carries the word `tool`, and reading it would set `tool_id: 'tool'`
+   * on purpose instead of by accident.
+   */
+  const toolId = event.dataTransfer?.getData(BUILDER_TOOL_ID_MIME) || null
+  props.canvas.dropKind(raw as NodeKind, { x: event.clientX, y: event.clientY }, null, toolId)
   // The drag started on a palette tile, so that is where focus still is - and
   // the arrow keys are gated on the canvas having it. Taking focus here is what
   // makes "drop a node, then nudge it into place" work without a click nobody

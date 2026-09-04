@@ -2,6 +2,7 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import type { InjectionKey, Ref } from 'vue'
 import type { Edge, Node, NodeDragEvent, XYPosition } from '@vue-flow/core'
 import { newNode } from '../data/builderDefaults'
+import { vocabulary } from '../data/builderVocabulary'
 import { NODE_KINDS, outPortsOf } from '../data/nodeKinds'
 import { ancestorsOf, backEdges, topoOrder } from '../utils/builderGraph'
 import type {
@@ -88,6 +89,22 @@ export const DEFAULT_NODE_HEIGHT = 96
  * no type it recognises; the canvas prefers this one and falls back.
  */
 export const BUILDER_DND_MIME = 'application/x-builder-kind'
+
+/**
+ * The SECOND `dataTransfer` type, carrying which tool a sub-list row means.
+ *
+ * Declared here rather than in `NodePalette` - which is where it started, and
+ * which now re-exports this - because a MIME type is a contract between a
+ * writer and a reader, and until 2026-09-04 it had only a writer. One binding,
+ * so the two ends cannot drift; `BUILDER_KIND_MIME` above is the cautionary
+ * example, declared twice with the same string and no test that they agree.
+ *
+ * Two keys rather than one compound value: a drop handler that had to parse
+ * `tool:firecrawl` is a drop handler that can get the split wrong, and a canvas
+ * that has never heard of the sub-list still makes the right KIND of node from
+ * the same drop by reading only the first key.
+ */
+export const BUILDER_TOOL_ID_MIME = 'application/x-builder-tool-id'
 
 /**
  * The attribute `BuilderCanvas` stamps on itself, and the whole of the
@@ -1252,6 +1269,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     kind: NodeKind,
     at: XYPosition,
     connectFrom: EdgeOrigin | null = null,
+    toolId: string | null = null,
   ): DropResult | null {
     if (!bridge) return null
     const point = bridge.screenToFlowCoordinate(at)
@@ -1270,11 +1288,42 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
      */
     if (NODE_KINDS[kind].family === 'attachment') {
       const host = hitTestNode(point, ATTACH_HOST_KINDS)
-      if (host) return attachTo(kind, host)
+      if (host) return attachTo(kind, host, toolId)
     }
 
-    const node = createAt(kind, point, connectFrom)
+    const node = createAt(kind, point, connectFrom, toolId)
     return { nodeId: node.id, attachedTo: null }
+  }
+
+  /**
+   * The NAMED half of a tool drop: which tool, not merely "a tool node".
+   *
+   * The palette has two gestures and they mean different things - the tile is
+   * "a tool node", the row in the sub-list is "*that* tool" - and until this
+   * existed the second landed as the first, on `nodeKinds`' placeholder
+   * `tool_id`. `NodePalette.onToolDragStart` has always written the tool id on
+   * its own MIME entry; nothing read it.
+   *
+   * The id is taken from the SERVED CATALOGUE rather than trusted, for the same
+   * reason `BuilderCanvas.onDrop` validates the kind: `dataTransfer` is a
+   * public channel, and a `tool_id` the compiler has never heard of is a node
+   * that publishes and then fails. An unknown id therefore leaves the
+   * placeholder in place, which is the state the inspector is already built to
+   * repair.
+   *
+   * The LABEL moves with it. A card reading "Tool 1" after the author dragged
+   * the row that says "Web search" is the drop reporting the wrong thing about
+   * itself, and the label is the only part of the node the canvas shows.
+   */
+  function asNamedTool(node: BuilderNode, toolId: string | null): BuilderNode {
+    if (!toolId || node.kind !== 'tool') return node
+    const entry = vocabulary.value?.tools?.find((candidate) => candidate.tool_id === toolId)
+    if (!entry) return node
+    return {
+      ...node,
+      label: entry.label.slice(0, vocabulary.value?.bounds.max_label_chars ?? entry.label.length),
+      config: { ...node.config, tool_id: toolId as NodeId },
+    }
   }
 
   /**
@@ -1315,20 +1364,23 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
    * three pills in one place. It is a starting position and nothing more: the
    * author drags it wherever they like and that is an ordinary move.
    */
-  function attachTo(kind: NodeKind, host: NodeId): DropResult {
+  function attachTo(kind: NodeKind, host: NodeId, toolId: string | null = null): DropResult {
     const document = doc()
     const target = document.nodes.find((node) => node.id === host)
     if (!target) return { nodeId: host, attachedTo: null }
     const already = document.edges.filter(
       (edge) => edge.target === host && edge.target_port === 'attach',
     ).length
-    const node = newNode(
-      kind,
-      {
-        x: snapToGrid(target.position.x - ATTACHMENT_NODE_WIDTH - ATTACH_GAP),
-        y: snapToGrid(target.position.y + already * ATTACH_ROW_STEP),
-      },
-      document.nodes.map((existing) => existing.id),
+    const node = asNamedTool(
+      newNode(
+        kind,
+        {
+          x: snapToGrid(target.position.x - ATTACHMENT_NODE_WIDTH - ATTACH_GAP),
+          y: snapToGrid(target.position.y + already * ATTACH_ROW_STEP),
+        },
+        document.nodes.map((existing) => existing.id),
+      ),
+      toolId,
     )
     store.addNode(node, null, { target: host, target_port: 'attach' })
     setSelection([node.id], [])
@@ -1348,12 +1400,16 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     kind: NodeKind,
     position: NodePosition,
     connectFrom: EdgeOrigin | null = null,
+    toolId: string | null = null,
   ): BuilderNode {
     const document = doc()
-    const node = newNode(
-      kind,
-      { x: snapToGrid(position.x), y: snapToGrid(position.y) },
-      document.nodes.map((existing) => existing.id),
+    const node = asNamedTool(
+      newNode(
+        kind,
+        { x: snapToGrid(position.x), y: snapToGrid(position.y) },
+        document.nodes.map((existing) => existing.id),
+      ),
+      toolId,
     )
     store.addNode(node, connectFrom)
     setSelection([node.id], [])

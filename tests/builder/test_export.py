@@ -12,6 +12,18 @@ Over raw dicts on purpose. No committed document carries these keys today
 (`AgentConfig.credential_id` lands with plan 01 on another branch), and a test
 that waited for the schema would be a test written the day it was already too
 late to be wrong about.
+
+**And that is why `raw_document()` must not be the only fixture** (D-15-30).
+It is deliberately ahead of the schema, so it does not parse - seven validation
+errors against `BuilderDocument` at the time of writing - which means every
+assertion here is about what the strip REMOVES and none of them is about
+whether what it leaves can be read back. The whole of D-15-28 lived in that
+gap: `mcp` and `skill` nodes exported 200 and could then be imported by
+nobody, and this file's only test of the skill path asserted over a
+`skill_name` sitting on an *agent* config, a field the schema did not have.
+`RoundTripEveryKindTests` at the bottom closes it, over a document
+`BuilderDocument` accepts, covering every kind in `NodeKind` and failing the
+day an eleventh is added.
 """
 
 from __future__ import annotations
@@ -61,6 +73,14 @@ SECRETS = (
 
 
 def raw_document() -> dict:
+    """The forward-coverage fixture. It does NOT parse, and that is the point.
+
+    It carries key shapes the schema has not learned yet, at depths a v2 node
+    might put them, so the strip is pinned before the day it is too late to be
+    wrong. Read `RoundTripEveryKindTests` beside it for the complementary
+    claim - that what the strip LEAVES is a document that can be read back.
+    """
+
     return {
         "schema": BUILDER_DOCUMENT_SCHEMA,
         "id": DOCUMENT_ID,
@@ -269,6 +289,158 @@ class StripTests(unittest.TestCase):
             document["nodes"][2]["config"]["server_hint"],
             {"label": "From the table", "transport": "http", "url": f"http://h:9/{MASKED_PATH}"},
         )
+
+
+class RoundTripEveryKindTests(unittest.TestCase):
+    """D-15-30: what the strip leaves parses, for every kind there is.
+
+    `raw_document()` above is ahead of the schema by design and therefore
+    cannot answer this; the round trip is a different property from the strip
+    and needs a document `BuilderDocument` accepts. The exhaustiveness
+    assertion is the load-bearing half: D-15-28 was two node kinds that did not
+    exist when the export was written, and the only defence against a third is
+    a test that fails when one is added.
+    """
+
+    @staticmethod
+    def _document() -> dict:
+        """One node of every `NodeKind`, in `NodeKind`'s own order.
+
+        Configs are minimal - each kind's required fields and the references
+        the export exists to strip. `bounds.py` would have plenty to say about
+        this graph and that is fine: parsing is not the layer that decides a
+        graph is finished, which is the same distinction `McpConfig.tool_names`
+        already rests on.
+        """
+
+        return {
+            "schema": BUILDER_DOCUMENT_SCHEMA,
+            "id": DOCUMENT_ID,
+            "version": 3,
+            "name": "one of everything",
+            "input_field": "idea",
+            "nodes": [
+                {"id": "n_input", "kind": "input", "label": "Idea",
+                 "config": {"field": "idea"},
+                 "position": {"x": 0, "y": 0}},
+                {"id": "n_agent", "kind": "agent", "label": "Worker",
+                 "config": {"tier": "cheap", "agent_id": "scoper",
+                            "credential_id": CRED_TOP},
+                 "position": {"x": 0, "y": 120}},
+                {"id": "n_crew", "kind": "crew", "label": "Team",
+                 "config": {"tier": "cheap", "process": "sequential"},
+                 "position": {"x": 0, "y": 240}},
+                {"id": "n_gate", "kind": "gate", "label": "Confirm",
+                 "config": {"message": "Does this look right?"},
+                 "position": {"x": 0, "y": 360}},
+                {"id": "n_router", "kind": "router", "label": "Decide",
+                 "config": {},
+                 "position": {"x": 0, "y": 480}},
+                {"id": "n_transform", "kind": "transform", "label": "Default",
+                 "config": {"op": "default",
+                            "args": {"value": "${state.out__n_agent}",
+                                     "default": "nothing"}},
+                 "position": {"x": 0, "y": 600}},
+                {"id": "n_output", "kind": "output", "label": "Report",
+                 "config": {"body_key": "markdown_body"},
+                 "position": {"x": 0, "y": 720}},
+                {"id": "n_tool", "kind": "tool", "label": "Search",
+                 "config": {"tool_id": "serper_search",
+                            "credential_id": CRED_TOOL},
+                 "position": {"x": 300, "y": 120}},
+                {"id": "n_mcp", "kind": "mcp", "label": "Docs",
+                 "config": {"server_id": SERVER, "tool_names": ["alpha"],
+                            "credential_id": CRED_HEADER},
+                 "position": {"x": 300, "y": 240}},
+                {"id": "n_skill", "kind": "skill", "label": "House style",
+                 "config": {"skill_id": SKILL, "skill_name": "House style"},
+                 "position": {"x": 300, "y": 360}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "n_input", "target": "n_agent"},
+                {"id": "e2", "source": "n_agent", "target": "n_crew"},
+                {"id": "e3", "source": "n_crew", "target": "n_gate"},
+                {"id": "e4", "source": "n_gate", "target": "n_router"},
+                {"id": "e5", "source": "n_router", "target": "n_transform"},
+                {"id": "e6", "source": "n_transform", "target": "n_output"},
+                {"id": "e7", "source": "n_tool", "source_port": "attach",
+                 "target": "n_agent", "target_port": "attach"},
+                {"id": "e8", "source": "n_mcp", "source_port": "attach",
+                 "target": "n_agent", "target_port": "attach"},
+                {"id": "e9", "source": "n_skill", "source_port": "attach",
+                 "target": "n_agent", "target_port": "attach"},
+            ],
+        }
+
+    @staticmethod
+    def _reimported(raw: dict) -> tuple[dict, list[str]]:
+        """Export, then restore the two keys the ENVELOPE carries, not the file.
+
+        `id` and `version` are the importer's to supply - a file does not
+        choose the id it lands under - so putting them back is what makes this
+        a test of the document shape rather than of the route's bookkeeping.
+        """
+
+        stripped, needs = strip_for_export(raw)
+        stripped["id"] = raw["id"]
+        stripped["version"] = raw["version"]
+        return stripped, needs
+
+    def test_the_fixture_covers_every_kind_and_fails_when_one_is_added(self) -> None:
+        from typing import get_args
+
+        from brief_crew.builder.document import NodeKind
+
+        kinds = [node["kind"] for node in self._document()["nodes"]]
+        self.assertEqual(len(kinds), len(set(kinds)), "one node per kind, no repeats")
+        self.assertEqual(
+            list(get_args(NodeKind)),
+            kinds,
+            "a kind was added to the schema and not to this fixture; D-15-28 is "
+            "what happens when the export never meets one",
+        )
+
+    def test_the_fixture_itself_parses_which_raw_document_deliberately_does_not(
+        self,
+    ) -> None:
+        from brief_crew.builder.document import BuilderDocument
+
+        document = BuilderDocument.model_validate(self._document())
+        self.assertEqual(10, len(document.nodes))
+
+    def test_the_stripped_document_re_parses_for_every_kind(self) -> None:
+        """The assertion that would have caught D-15-28, one round trip.
+
+        It failed for `mcp` (`server_id - Input should be a valid string`, then
+        `server_hint - Extra inputs are not permitted`) and for `skill`
+        (`skill_id - Field required`) until 2026-09-04.
+        """
+
+        from brief_crew.builder.document import BuilderDocument
+
+        stripped, _ = self._reimported(self._document())
+        document = BuilderDocument.model_validate(stripped)
+
+        self.assertEqual(
+            [node["kind"] for node in self._document()["nodes"]],
+            [node.kind for node in document.nodes],
+        )
+
+    def test_the_round_trip_still_carries_no_reference_and_says_who_lost_one(
+        self,
+    ) -> None:
+        """Stripping is the point; the round trip must not be bought by keeping one."""
+
+        # The FILE, before `id` and `version` are handed back by the envelope:
+        # what leaves the service is what must carry nothing.
+        stripped, needs = strip_for_export(self._document())
+        rendered = json.dumps(stripped)
+        for secret in (CRED_TOP, CRED_TOOL, CRED_HEADER, SERVER, SKILL, DOCUMENT_ID):
+            with self.subTest(secret=secret):
+                self.assertNotIn(secret, rendered)
+        # Every node that lost a credential or a server reference is named; the
+        # skill node is not, because `skill_name` survives and resolves it.
+        self.assertEqual(["n_agent", "n_tool", "n_mcp"], needs)
 
 
 class MaskUrlTests(unittest.TestCase):

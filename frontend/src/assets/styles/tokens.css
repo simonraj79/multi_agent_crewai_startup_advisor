@@ -99,3 +99,70 @@
   --z-control: 30;
   --z-toast: 50;
 }
+
+/* ===========================================================================
+   THE LIGHT PALETTE (02-canvas.md D6)
+   ===========================================================================
+
+   ONE block, under one attribute, and `useStudioTheme` is what makes that
+   possible: it resolves the reader's three-state preference - `system`,
+   `light`, `dark` - down to the two values this stylesheet understands and
+   always writes one of them. The obvious alternative is an attribute block plus
+   a `@media (prefers-color-scheme: light)` block, and it costs thirty
+   declarations written twice. Two copies of a palette is two palettes, and the
+   one that rots is always the one nobody looks at.
+
+   WHAT MOVES: surfaces, text, borders, the canvas ground, the edge greys, the
+   two glows, and the warning and error tints. WHAT DOES NOT: the accents and
+   the kind gradients, exactly as D6 rules. A node's identity is its accent -
+   the squircle fill, the minimap dot, the gradient rim, the edge gradient stops
+   - and a kind that is one colour in the dark and another in the light is a
+   kind an author has to learn twice.
+
+   HONEST LIMITATION, recorded rather than hidden: the shared accents are pale
+   pastels chosen against a #1a1a1a ground, so the handful of places that use an
+   accent as SMALL TEXT - a gate's `approve` port label, a router branch chip -
+   are low contrast on a light ground. D6 prescribes sharing them and this
+   follows D6; raising it is a follow-up, and the ground below is deliberately a
+   cool paper rather than pure white so those marks have something to sit on.
+   The warning and error tints are NOT in that category and are moved: they are
+   status colours a reader has to be able to read, not identity.
+
+   Every value below is a token. Nothing outside this block knows a theme
+   exists, which is the property that makes a new surface themed for free. */
+:root[data-theme='light'] {
+  --bg-app: #eceff2;
+  --bg-node: #ffffff;
+  /* The four translucent surfaces invert their tint rather than their alpha:
+     a wash of white over a light ground is invisible, so these become a wash of
+     ink. The alphas are near the dark theme's, because the job - "this panel is
+     slightly raised" - is the same job. */
+  --surface-panel: rgba(15, 20, 25, 0.035);
+  --surface-raised: rgba(15, 20, 25, 0.06);
+  --surface-overlay: rgba(248, 250, 252, 0.95);
+  --surface-well: rgba(15, 20, 25, 0.06);
+  --surface-strong: #f3f5f7;
+  --border-default: rgba(15, 20, 25, 0.14);
+  --border-avatar: rgba(15, 20, 25, 0.22);
+  --border-hover: rgba(15, 20, 25, 0.34);
+  --text-primary: #16191c;
+  --text-body: #24282d;
+  --text-title: #0b0d0f;
+  --text-muted: #566068;
+  --text-40: rgba(11, 13, 15, 0.55);
+  --dot-color: #a8b0b8;
+  --edge-stroke: #3b4148;
+  --edge-inactive: #8b9299;
+  --edge-label-bg: rgba(255, 255, 255, 0.94);
+  --edge-label-brd: rgba(15, 20, 25, 0.28);
+  /* A cyan glow that reads on white has to be darker than the accent it
+     echoes; the accent itself stays where D6 put it. */
+  --glow-input: 0 0 12px rgba(20, 130, 160, 0.28);
+  --glow-bubble: 0 0 10px rgba(20, 130, 160, 0.3);
+  --warn-bg: rgba(180, 120, 0, 0.14);
+  --warn-border: rgba(180, 120, 0, 0.5);
+  --warn-text: #8a5a00;
+  --err-bg: rgba(190, 40, 40, 0.1);
+  --err-border: rgba(190, 40, 40, 0.45);
+  --err-text: #a32020;
+}

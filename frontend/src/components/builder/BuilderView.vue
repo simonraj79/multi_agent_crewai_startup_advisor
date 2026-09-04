@@ -34,11 +34,12 @@ import TemplateGallery from './TemplateGallery.vue'
 import VersionBrowser from './VersionBrowser.vue'
 import { useBuilderCanvas, canvasHasFocus, snapToGrid } from '../../composables/useBuilderCanvas'
 import { useBuilderClipboard } from '../../composables/useBuilderClipboard'
-import { useBuilderDocument } from '../../composables/useBuilderDocument'
+import { edgeOptionsFor, useBuilderDocument } from '../../composables/useBuilderDocument'
 import { useBuilderHotkeys } from '../../composables/useBuilderHotkeys'
 import { useBuilderPersistence } from '../../composables/useBuilderPersistence'
 import { BUILDER_PROBLEMS, useBuilderProblems } from '../../composables/useBuilderProblems'
 import { useBuilderValidation } from '../../composables/useBuilderValidation'
+import { useStudioTheme } from '../../composables/useStudioTheme'
 import { BLANK, documentFromTemplate } from '../../data/builderTemplates'
 import { BuilderConflictError, builderApi } from '../../services/builderApi'
 import { ExportFileError, downloadExport, exportFilename, readExportFile } from '../../utils/builderExport'
@@ -52,20 +53,13 @@ import type {
   BuilderDocumentModel,
   BuilderDocumentSummary,
   BuilderExportEnvelope,
-  // The COMPONENT `BuilderNode` is imported above, so the node TYPE is aliased
-  // here rather than shadowing it. Same name, two different things, and the one
-  // a template reads has to win.
-  BuilderNode as BuilderDocumentNode,
   BuilderProblem,
   BuilderPublish,
   BuilderVersionRow,
   DocumentId,
   EdgeId,
   NodeId,
-  TargetPort,
 } from '../../types/builder'
-import type { EdgeOrigin } from '../../composables/useBuilderCanvas'
-import type { EdgeEnds } from '../../composables/useBuilderDocument'
 
 /**
  * The builder shell: the one place that knows every other builder package
@@ -198,6 +192,16 @@ const clipboard = useBuilderClipboard(store)
  */
 const gestureLive = ref(false)
 
+/**
+ * Light or dark (02-canvas.md D6).
+ *
+ * Constructed here and handed to two callers - `⇧L` below and `DocumentBar`'s
+ * button - because it is a preference and not a document: it never reaches
+ * `commit`, so `Ctrl+Z` cannot change the lights and a published graph carries
+ * nobody's idea of what colour a canvas should be.
+ */
+const theme = useStudioTheme()
+
 const validation = useBuilderValidation(store.doc, { api: builderApi, suppressed: gestureLive })
 const problems = useBuilderProblems(validation.problems)
 
@@ -210,47 +214,6 @@ const problems = useBuilderProblems(validation.problems)
  * both files honest: the canvas cannot reach a method it was not handed, and
  * the store is not reshaped to suit one caller.
  */
-/**
- * The one commit a node-creating gesture becomes, in either direction.
- *
- * Two shapes reach `addNode` and they are not symmetrical. A FLOW edge is drawn
- * from something that already exists TO the new node - the number keys'
- * auto-connect, `PortMenu`, a keyboard link - so the origin is the fixed end.
- * An ATTACH edge points the other way: the tool is the source and the agent it
- * hangs off is the target (03-node-library.md's `ATTACH_OUT`), which is what
- * makes an edge's class a pure function of its own `target_port`. Either way it
- * is one commit, because two would be two undo steps forever and the second
- * undo would leave something dangling that nobody asked for.
- */
-function edgeOptionsFor(
-  node: BuilderDocumentNode,
-  connectFrom: EdgeOrigin | null,
-  attachTo: { target: NodeId; target_port: TargetPort } | null,
-): { edge?: EdgeEnds; label?: string } | undefined {
-  if (attachTo) {
-    return {
-      edge: {
-        source: node.id,
-        source_port: 'attach',
-        target: attachTo.target,
-        target_port: attachTo.target_port,
-      },
-      label: `Attach ${node.kind}`,
-    }
-  }
-  if (connectFrom) {
-    return {
-      edge: {
-        source: connectFrom.source,
-        source_port: connectFrom.source_port,
-        target: node.id,
-      },
-      label: `Add ${node.label.toLowerCase()}`,
-    }
-  }
-  return undefined
-}
-
 const canvas = useBuilderCanvas({
   document: {
     doc: store.doc,
@@ -1187,6 +1150,7 @@ useBuilderHotkeys(
     toggleShortcuts: () => {
       shortcutsOpen.value = !shortcutsOpen.value
     },
+    toggleTheme: theme.toggleTheme,
   },
   { canvasHasFocus },
 )
@@ -1617,8 +1581,10 @@ watch(
             @save="() => void persistence.save()"
             @undo="undo"
             @redo="store.redo"
+            :theme="theme.resolved.value"
             @publish="publishOpen = true"
             @shortcuts="shortcutsOpen = true"
+            @theme="theme.toggleTheme"
             @versions="toggleVersions"
             @export="exportDocument"
             @import="importFile"

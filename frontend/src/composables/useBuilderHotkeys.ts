@@ -125,6 +125,15 @@ export interface HotkeyActions {
   focusFilter(): void
   walkProblems(step: 1 | -1): void
   toggleShortcuts(): void
+  /**
+   * Flip the studio between light and dark.
+   *
+   * In `HotkeyActions` and not called directly on the composable, for the same
+   * reason everything else here is: this file knows that a key means "toggle
+   * the theme" and nothing whatever about where the theme lives. `BuilderView`
+   * is the one place that knows both.
+   */
+  toggleTheme(): void
 }
 
 /** The grid step a bare arrow moves, matching `snapGrid` so a nudge lands on a dot. */
@@ -403,6 +412,27 @@ export const HOTKEY_BINDINGS: readonly HotkeyBinding[] = [
     chords: [{ key: 'F8', shift: true }],
     allowInTextEntry: false,
     run: (actions) => actions.walkProblems(-1),
+  },
+  {
+    id: 'theme',
+    group: 'navigate',
+    label: 'Switch between light and dark',
+    /*
+     * `⇧L` - L for light, and SHIFTED deliberately.
+     *
+     * A bare letter would be wrong here in a way it is not wrong for `f` or
+     * `r`: those act on the graph and are undone by the same key or by Ctrl+Z,
+     * while this repaints the entire application, and a key an author hits by
+     * accident while reaching for something else should not do that. `matches`
+     * compares the shift flag rather than ignoring it, so the bare `l` this
+     * does not claim stays free for a later binding.
+     *
+     * Not a letter the attachments took (decision 18 gave them `T`, `M`, `K`)
+     * and not a digit, because `1`-`7` select a kind on the same surface.
+     */
+    chords: [{ key: 'l', shift: true }],
+    allowInTextEntry: false,
+    run: (actions) => actions.toggleTheme(),
   },
   {
     id: 'shortcuts',

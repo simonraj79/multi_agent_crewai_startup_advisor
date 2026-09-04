@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { Background } from '@vue-flow/background'
 import { ControlButton, Controls } from '@vue-flow/controls'
-import { ConnectionMode, SelectionMode, VueFlow, useVueFlow } from '@vue-flow/core'
+import { ConnectionMode, SelectionMode, VueFlow, getBezierPath, useVueFlow } from '@vue-flow/core'
+import type { Position } from '@vue-flow/core'
 import type { EdgeMouseEvent, EdgeUpdateEvent, NodeDragEvent, NodeMouseEvent } from '@vue-flow/core'
 import { Maximize, Minus, Plus } from 'lucide-vue-next'
 import BuilderMinimap from './BuilderMinimap.vue'
@@ -641,6 +642,44 @@ const panOnDrag = computed<boolean | number[]>(() => (spaceHeld.value ? true : [
 /** §5.6: the empty document's one centred line, and only while it is empty. */
 const isEmptyDocument = computed(() => props.canvas.nodes.value.length === 0)
 
+/* --- the dangling connection line (D3) ----------------------------------- */
+
+/** How far above the cursor the port label rides, so the pointer never covers it. */
+const CONNECTION_LABEL_OFFSET_PX = 12
+
+/**
+ * The preview's classes: its edge class, and its port role when it has one.
+ *
+ * Both come from `useBuilderCanvas.connectPreview`, which reads the same
+ * `outPortsOf` and `portRoleFor` the card and the committed edge read - so the
+ * colour of the line an author is dragging is provably the colour of the edge
+ * they are about to make.
+ */
+const connectionLineClasses = computed(() => {
+  const preview = props.canvas.connectPreview.value
+  if (!preview) return []
+  return [`is-class-${preview.edgeClass}`, preview.role ? `is-${preview.role}` : '']
+})
+
+/** The same bezier the committed edge will draw, so the preview does not lie. */
+function connectionPath(line: {
+  sourceX: number
+  sourceY: number
+  sourcePosition: Position
+  targetX: number
+  targetY: number
+  targetPosition: Position
+}): string {
+  return getBezierPath({
+    sourceX: line.sourceX,
+    sourceY: line.sourceY,
+    sourcePosition: line.sourcePosition,
+    targetX: line.targetX,
+    targetY: line.targetY,
+    targetPosition: line.targetPosition,
+  })[0]
+}
+
 const isConnecting = computed(() => props.canvas.connectDrag.value !== null)
 const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
 </script>
@@ -683,7 +722,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       :is-valid-connection="canvas.isValidConnection"
       :delete-key-code="null"
       :min-zoom="0.2"
-      :max-zoom="1.4"
+      :max-zoom="2"
       :default-viewport="{ x: 0, y: 0, zoom: 0.8 }"
       :fit-view-on-init="true"
       :fit-view-options="initialFitOptions"
@@ -711,6 +750,36 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       </template>
       <template #edge-builder="edgeProps">
         <slot name="edge" v-bind="edgeProps" />
+      </template>
+
+      <!--
+        D3's dangling line: tinted by the source port's class, and carrying the
+        port's own name when the source has more than one way out.
+
+        Flowise does this (`ConnectionLine.jsx`) and its notes say why it
+        matters - a drag from a two-branch node never lands on the wrong branch.
+        Here it matters more, because a router can have four ports and they are
+        four identical discs along one edge; without the label the author finds
+        out which one they grabbed by releasing.
+
+        `getBezierPath` rather than Vue Flow's default straight line, so the
+        preview has the shape the committed edge will have. The label is an SVG
+        `<text>` and not an HTML overlay: `EdgeLabelRenderer` is for mounted
+        edges and this line does not exist as one yet.
+      -->
+      <template #connection-line="line">
+        <g class="builder-connection-line" :class="connectionLineClasses">
+          <path :d="connectionPath(line)" class="builder-connection-path" />
+          <text
+            v-if="canvas.connectPreview.value?.label"
+            class="builder-connection-label"
+            :x="line.targetX"
+            :y="line.targetY - CONNECTION_LABEL_OFFSET_PX"
+            text-anchor="middle"
+          >
+            {{ canvas.connectPreview.value?.label }}
+          </text>
+        </g>
       </template>
 
       <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />

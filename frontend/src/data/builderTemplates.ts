@@ -238,26 +238,66 @@ export interface BuilderTemplate {
 }
 
 /**
- * Nothing drawn, and deliberately not valid.
+ * One input node at (100, 100), and ZERO problems (02-canvas.md D7).
  *
- * A blank document carries `no-input-node` and `input-field-undeclared` from the
- * moment it opens, and that is correct rather than unfortunate: a draft need not
- * be valid - the server says so and `builderApi.create` documents it - and the
- * two problems name the first two things an author has to do. Seeding a phantom
- * input node instead would be inventing a decision, and `input_field` still has
- * to say something, so the problem would only move.
+ * It opened with nothing drawn and two errors against it until 2026-09-04 -
+ * `no-input-node` and `input-field-undeclared` - on the argument that a draft
+ * need not be valid and that the two problems name the first two things an
+ * author has to do. That argument is wrong in one specific way, and the way is
+ * the whole of rubric 1: the FIRST thing a new author sees is a red problems
+ * dock about a graph they have not touched. It reads as "you have already made
+ * a mistake", and it is the one screen where nothing has happened yet.
+ *
+ * The counter-argument that seeding an input node "invents a decision" does not
+ * survive contact with what the node actually says. Every flow this product can
+ * compile starts at an input - `document.py` gives `input` no target port at
+ * all, because it is where the run begins - so the node is not a guess about
+ * the author's graph, it is the one thing every graph has. Flowise v2 reached
+ * the same conclusion and seeds a Start node at the same `{x:100, y:100}`
+ * (`Canvas.jsx:656-677`).
+ *
+ * `input_field` names the node's own `field`, so the pair is consistent on
+ * arrival rather than consistent once somebody presses a button. A SECOND input
+ * node is still perfectly legal and is still flagged `input-field-ambiguous`,
+ * which is the problem that means something: two candidates and no statement of
+ * which one the run reads.
+ *
+ * Landing to first node placed is now ONE click - the template card.
  */
+const BLANK_INPUT_FIELD = nodeId('idea')
+
 export const BLANK: BuilderTemplate = {
   id: 'blank',
   title: 'Blank canvas',
-  blurb: 'An empty grid. Drag a kind from the palette, or press 1–7.',
+  blurb: 'One input node, ready to build on. Drag a kind from the palette, or press 1–7.',
   document: {
     schema: BUILDER_SCHEMA_ID,
     id: UNSAVED,
     name: 'Untitled graph',
     version: 1,
-    input_field: nodeId('idea'),
-    nodes: [],
+    input_field: BLANK_INPUT_FIELD,
+    nodes: [
+      {
+        id: nodeId('idea'),
+        label: 'Idea',
+        // Flowise's own seed position, and it is a sensible one for the reason
+        // it is sensible there: far enough from the origin that a fit-view has
+        // something to centre, close enough that the first node an author adds
+        // below it is still on screen.
+        position: { x: 100, y: 100 },
+        kind: 'input',
+        config: {
+          field: BLANK_INPUT_FIELD,
+          // Null rather than the label, exactly as `nodeKinds.ts` argues: a node
+          // called "Idea" may reasonably ask the operator for something longer,
+          // and inventing the prompt from the canvas label puts words in the
+          // author's mouth that an operator then reads.
+          label: null,
+          max_chars: 2000,
+          required: true,
+        },
+      },
+    ],
     edges: [],
     joins: {},
     budget: null,

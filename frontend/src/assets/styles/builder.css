@@ -673,6 +673,46 @@
   cursor: pointer;
 }
 
+/* ─── the dangling connection line (D3) ───────────────────────────────────
+   Colour travels on `color` and everything under it reads `currentColor`, so
+   the path and the label can never disagree about which port is being dragged -
+   which is the exact failure a second rule per element would eventually
+   produce. Flowise previews branch colour and label the same way and its own
+   notes say why: a drag from a two-branch node then never lands on the wrong
+   branch. A router has up to four ports and they are four identical discs along
+   one edge, so here it is not a nicety. */
+.builder-connection-line { color: var(--accent-cyan); }
+.builder-connection-line.is-class-attach { color: var(--accent-attach); }
+.builder-connection-line.is-class-error { color: var(--err-text); }
+.builder-connection-line.is-approve { color: var(--accent-mint); }
+.builder-connection-line.is-revise { color: var(--warn-text); }
+.builder-connection-line.is-branch { color: var(--link-cyan); }
+.builder-connection-line.is-otherwise { color: var(--text-40); }
+
+.builder-connection-path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--edge-width-flow);
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.builder-connection-line.is-class-attach .builder-connection-path { stroke-dasharray: 2 3; }
+.builder-connection-line.is-otherwise .builder-connection-path { stroke-dasharray: 4 3; }
+
+/* `paint-order: stroke` puts a halo of the canvas behind the glyphs, so the
+   label stays readable while it travels over cards, wires and the dot grid -
+   an HTML chip would need a box, and a box under the cursor hides the thing the
+   author is aiming at. */
+.builder-connection-label {
+  fill: currentColor;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.02em;
+  paint-order: stroke;
+  stroke: var(--bg-app);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
 /* ─── the four edge CLASSES (D4) ──────────────────────────────────────────
    Exactly one of these is on every edge, and `edgeClassOf` in
    `useBuilderCanvas.ts` is the one function that decides which. It reads

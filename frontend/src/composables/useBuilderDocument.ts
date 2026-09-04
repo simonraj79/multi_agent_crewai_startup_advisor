@@ -189,6 +189,54 @@ function deepFreeze<T>(value: T): T {
  * answers to "what does an empty graph look like" - the shape this repo has
  * already been bitten by often enough to have a name for.
  */
+/**
+ * The `addNode` options a node-creating gesture becomes, in either direction.
+ *
+ * Two shapes reach `addNode` and they are not symmetrical. A FLOW edge is drawn
+ * from something that already exists TO the new node - the number keys'
+ * auto-connect, `PortMenu`, a keyboard link - so the origin is the fixed end.
+ * An ATTACH edge points the other way: the tool is the source and the agent it
+ * hangs off is the target (`document.py`'s `_OUT_PORTS_BY_KIND`), which is what
+ * makes an edge's class a pure function of its own `target_port`.
+ *
+ * Either way it is ONE commit, because two would be two undo steps forever and
+ * the second undo would leave something dangling that nobody asked for.
+ *
+ * Exported and living here rather than inside `BuilderView`'s setup, so that
+ * `builderCanvas.spec.ts` can drive the real store through the real adapter and
+ * assert what `undo()` actually removes. An adapter that only exists inside a
+ * component is an adapter no test can exercise, and this one is the whole of
+ * criterion 11.
+ */
+export function edgeOptionsFor(
+  node: BuilderNode,
+  connectFrom: { source: NodeId; source_port: string } | null,
+  attachTo: { target: NodeId; target_port: TargetPort } | null,
+): { edge?: EdgeEnds; label?: string } | undefined {
+  if (attachTo) {
+    return {
+      edge: {
+        source: node.id,
+        source_port: 'attach',
+        target: attachTo.target,
+        target_port: attachTo.target_port,
+      },
+      label: `Attach ${node.kind}`,
+    }
+  }
+  if (connectFrom) {
+    return {
+      edge: {
+        source: connectFrom.source,
+        source_port: connectFrom.source_port,
+        target: node.id,
+      },
+      label: `Add ${node.label.toLowerCase()}`,
+    }
+  }
+  return undefined
+}
+
 export function useBuilderDocument(initial: BuilderDocument) {
   const doc = shallowRef<BuilderDocument>(import.meta.env.DEV ? deepFreeze(initial) : initial)
   /**

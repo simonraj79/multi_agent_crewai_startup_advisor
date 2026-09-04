@@ -20,6 +20,7 @@ import type {
   EdgeOrigin,
   NodeMove,
 } from '../src/composables/useBuilderCanvas'
+import { edgeOptionsFor, useBuilderDocument } from '../src/composables/useBuilderDocument'
 import {
   HOTKEY_BINDINGS,
   bindingLabels,
@@ -251,6 +252,166 @@ beforeEach(() => {
 
 afterEach(() => {
   resetVocabulary()
+})
+
+/* --- attach by drop (criterion 11) ---------------------------------------- */
+
+/**
+ * The real store behind the real adapter, because the criterion is about undo.
+ *
+ * `RecordingStore` counts calls, which is the right instrument for "how many
+ * commits was that" and the wrong one for "what does one Ctrl+Z leave behind".
+ * `edgeOptionsFor` is the same function `BuilderView` hands `useBuilderCanvas`,
+ * exported so this can drive it rather than reimplement it - a double that has
+ * quietly diverged from its subject certifies nothing.
+ */
+function liveCanvas(doc: BuilderDocument) {
+  const store = useBuilderDocument(doc)
+  const canvas = useBuilderCanvas({
+    document: {
+      doc: store.doc,
+      addNode: (node, connectFrom, attachTo) =>
+        store.addNode(node, edgeOptionsFor(node, connectFrom ?? null, attachTo ?? null)),
+      addEdge: (origin, target) =>
+        store.addEdge({ source: origin.source, source_port: origin.source_port, target }),
+      moveNodes: (moves) => store.moveNodes(moves),
+      deleteSelection: (nodes, edges) => store.deleteSelection(nodes, edges),
+      setEdgePort: (edge, port) => store.setEdgePort(edge, port),
+      retargetEdge: () => undefined,
+      setJoin: (node, join) => store.setJoin(node, join === 'all'),
+    },
+  })
+  // The identity bridge, so a screen point IS a flow point and the hit test can
+  // be written in the coordinates the fixture declares its nodes in.
+  canvas.attachViewport(
+    fakeBridge({ screenToFlowCoordinate: (point) => ({ x: point.x, y: point.y }) }),
+  )
+  return { store, canvas }
+}
+
+describe('dropping an attachment inside a card is one commit carrying its wire', () => {
+  const hostAt = (x: number, y: number): BuilderDocument =>
+    document([{ ...agentNode('scoper'), position: { x, y } }])
+
+  it('creates the node and the attach edge together', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    // Inside the card: `fakeBridge` measures every card at 240x96.
+    canvas.dropKind('tool', { x: 460, y: 340 })
+
+    expect(store.doc.value.nodes).toHaveLength(2)
+    expect(store.doc.value.edges).toHaveLength(1)
+    const [edge] = store.doc.value.edges
+    expect(edge.target).toBe('scoper')
+    expect(edge.target_port).toBe('attach')
+    expect(edge.source_port).toBe('attach')
+    expect(store.doc.value.nodes[1].kind).toBe('tool')
+    expect(edge.source).toBe(store.doc.value.nodes[1].id)
+  })
+
+  it('is ONE undo step, and one undo removes both entries', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+    expect(store.depth.value).toBe(0)
+
+    canvas.dropKind('tool', { x: 460, y: 340 })
+    expect(store.depth.value).toBe(1)
+
+    store.undo()
+
+    expect(store.doc.value.nodes).toHaveLength(1)
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('labels the step after the gesture, not after the node', () => {
+    // The undo announcement reads this. "Attach tool" is what happened; "Add
+    // tool" would be true of a drop on empty canvas and false of this one.
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+    canvas.dropKind('tool', { x: 460, y: 340 })
+    expect(store.undoLabel.value).toBe('Attach tool')
+  })
+
+  it('parks the pill to the LEFT of its host, where the attach port is', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+    canvas.dropKind('tool', { x: 460, y: 340 })
+
+    const pill = store.doc.value.nodes[1]
+    // 160 wide plus two grid steps of gap, both snapped. Dropped ON the card,
+    // the pill would land under the thing it is attached to.
+    expect(pill.position.x).toBeLessThan(400)
+    expect(pill.position.x).toBe(200)
+    expect(pill.position.y).toBe(300)
+  })
+
+  it('staggers the second attachment on the same host', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+    canvas.dropKind('tool', { x: 460, y: 340 })
+    canvas.dropKind('skill', { x: 460, y: 340 })
+
+    const [, first, second] = store.doc.value.nodes
+    expect(second.position.y).toBeGreaterThan(first.position.y)
+    expect(store.doc.value.edges).toHaveLength(2)
+    expect(store.depth.value).toBe(2)
+  })
+
+  it('creates an UNATTACHED node when the drop misses every card', () => {
+    // Deliberately legal: an author may be laying out before wiring, and
+    // `attachment-unattached` is a sentence they can read where a refused drop
+    // is not.
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('tool', { x: 40, y: 40 })
+
+    expect(store.doc.value.nodes).toHaveLength(2)
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('never attaches a FLOW kind, however precisely it lands on a card', () => {
+    // A gate dropped on an agent is a gate dropped at that point. Only the
+    // three attachment kinds have anywhere to attach.
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('gate', { x: 460, y: 340 })
+
+    expect(store.doc.value.edges).toEqual([])
+    expect(store.doc.value.nodes[1].kind).toBe('gate')
+  })
+
+  it('reports which node it made and what it hung it off', () => {
+    const { canvas } = liveCanvas(hostAt(400, 300))
+
+    const attached = canvas.dropKind('tool', { x: 460, y: 340 })
+    const loose = canvas.dropKind('tool', { x: 40, y: 40 })
+
+    expect(attached?.attachedTo).toBe('scoper')
+    expect(loose?.attachedTo).toBeNull()
+    expect(attached?.nodeId).not.toBe(loose?.nodeId)
+  })
+})
+
+describe('the hit test answers in flow coordinates and prefers the top card', () => {
+  it('finds a card the point is inside and nothing when it is outside', () => {
+    const { canvas } = liveCanvas(
+      document([
+        { ...agentNode('scoper'), position: { x: 0, y: 0 } },
+        { ...agentNode('writer'), position: { x: 500, y: 500 } },
+      ]),
+    )
+
+    expect(canvas.hitTestNode({ x: 10, y: 10 })).toBe('scoper')
+    expect(canvas.hitTestNode({ x: 520, y: 520 })).toBe('writer')
+    expect(canvas.hitTestNode({ x: 300, y: 300 })).toBeNull()
+  })
+
+  it('gives the LAST card in document order the point, because that is paint order', () => {
+    const { canvas } = liveCanvas(
+      document([
+        { ...agentNode('under'), position: { x: 0, y: 0 } },
+        { ...agentNode('over'), position: { x: 20, y: 20 } },
+      ]),
+    )
+
+    expect(canvas.hitTestNode({ x: 30, y: 30 })).toBe('over')
+  })
 })
 
 /* --- creating ------------------------------------------------------------- */
@@ -787,6 +948,7 @@ function recordingActions(): { actions: HotkeyActions; log: string[] } {
       focusFilter: note('focusFilter'),
       walkProblems: note('walkProblems'),
       toggleShortcuts: note('toggleShortcuts'),
+      toggleTheme: note('toggleTheme'),
     },
   }
 }

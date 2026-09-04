@@ -487,6 +487,17 @@ const ATTACH_ROW_STEP = GRID * 3
 /** The two kinds that can HAVE an attachment, per `TARGET_PORTS_BY_KIND`. */
 const ATTACH_HOST_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['agent', 'crew'])
 
+/** What the dangling connection line renders while a drag is in flight (D3). */
+export interface ConnectPreview {
+  port: string
+  /** Null when the source has only one way out - the edge chip's own rule. */
+  label: string | null
+  role: 'approve' | 'revise' | 'branch' | 'otherwise' | null
+  /** A PREVIEW from the source port alone; the target is not known yet. */
+  edgeClass: EdgeClass
+  accent: string
+}
+
 /** What `dropKind` reports back: the node it made, and what it hung it off. */
 export interface DropResult {
   nodeId: NodeId
@@ -761,6 +772,49 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
       }
     })
   })
+
+  /**
+   * What the dangling connection line should say and be tinted by (D3).
+   *
+   * Flowise's `ConnectionLine.jsx` previews the branch label and the colour
+   * while you drag, and its own notes name that as the reason a drag from a
+   * human-input node never lands on the wrong branch. The equivalent here is
+   * sharper, because a gate has two ports and a router has up to four: without
+   * this the author is dragging an anonymous grey line out of a card with four
+   * identical discs on it and finding out which one they grabbed on release.
+   *
+   * The label follows the same rule as the edge chip - shown only when the
+   * source has more than one way out - because a line reading `out` on every
+   * drag in the graph is furniture, and furniture is what stops labels being
+   * read.
+   *
+   * `edgeClass` here is a PREVIEW and is derived from the source port alone,
+   * because the target port is not known until the pointer lands. `attach` and
+   * `error` are the two source ports that decide a class on their own; the
+   * `member` class cannot be previewed at all, and is deliberately shown as
+   * flow rather than guessed at.
+   */
+  const connectPreview = computed<ConnectPreview | null>(() => {
+    const drag = connectDrag.value ?? linkPreviewOrigin()
+    if (!drag) return null
+    const source = doc().nodes.find((node) => node.id === drag.source)
+    if (!source) return null
+    const ports = outPortsOf(source)
+    return {
+      port: drag.port,
+      label: ports.length > 1 ? drag.port : null,
+      role: portRoleFor(source, { source_port: drag.port }),
+      edgeClass:
+        drag.port === 'attach' ? 'attach' : drag.port === 'error' ? 'error' : 'flow',
+      accent: NODE_KINDS[source.kind].accent,
+    }
+  })
+
+  /** The keyboard link's origin, in the shape a pointer drag would have had. */
+  function linkPreviewOrigin(): { source: NodeId; port: string } | null {
+    const link = linkMode.value
+    return link ? { source: link.source, port: link.port } : null
+  }
 
   /* --- selection --------------------------------------------------------- */
 
@@ -1765,6 +1819,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     setSelection,
     dropKind,
     hitTestNode,
+    connectPreview,
     createAt,
     insertKind,
     onNodeDragStart,
@@ -1802,7 +1857,11 @@ function portLabelFor(source: BuilderNode | undefined, edge: BuilderEdge): strin
 
 function portRoleFor(
   source: BuilderNode | undefined,
-  edge: BuilderEdge,
+  // `Pick`, not the whole edge, because the dangling connection line has a
+  // source port and no edge at all - and the role of a port is a fact about the
+  // port. Widening the parameter is what lets the preview and the committed
+  // edge be provably the same answer rather than two implementations of it.
+  edge: Pick<BuilderEdge, 'source_port'>,
 ): BuilderEdgeData['portRole'] {
   if (!source) return null
   if (source.kind === 'gate') return edge.source_port === 'revise' ? 'revise' : 'approve'

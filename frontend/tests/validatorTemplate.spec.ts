@@ -205,7 +205,11 @@ describe('the gallery ships four templates and no half-drawn ones', () => {
       const first = template.document.edges.find((edge) => edge.source === 'idea')
       expect(first?.target, template.id).toBe('confirm')
     }
-    expect(BLANK.document.nodes).toEqual([])
+    // BLANK seeds ONE input node and nothing else (02-canvas.md D7). It has
+    // nothing to gate because it has nothing that bills: an input node is not a
+    // step, it is where the run's own request lands.
+    expect(BLANK.document.nodes.map((node) => node.kind)).toEqual(['input'])
+    expect(BLANK.document.edges).toEqual([])
   })
 
   it('hands out a fresh copy so two sessions cannot share one document', () => {
@@ -242,7 +246,11 @@ describe('the thumbnail is derived from the document it advertises', () => {
     // A one-column graph has a zero span on x, and dividing by it yields NaN
     // coordinates - which SVG renders as nothing at all, with no error
     // anywhere. Both are real documents an author can produce.
-    const empty = mount(GraphThumbnail, { props: { document: BLANK.document } })
+    // A genuinely node-less document, which BLANK stopped being on 2026-09-04:
+    // an author still reaches this by deleting the seeded input node, and the
+    // thumbnail has to survive it.
+    const nothing = { ...BLANK.document, nodes: [], edges: [] }
+    const empty = mount(GraphThumbnail, { props: { document: nothing } })
     expect(empty.findAll('rect.thumb-node')).toHaveLength(0)
 
     const column = mount(GraphThumbnail, { props: { document: MINIMAL_GATED_AGENT.document } })

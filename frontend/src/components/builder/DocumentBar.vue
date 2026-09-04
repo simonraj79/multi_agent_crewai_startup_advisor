@@ -6,10 +6,12 @@ import {
   EllipsisVertical,
   History,
   Keyboard,
+  Moon,
   Lock,
   Redo2,
   Rocket,
   Save,
+  Sun,
   Trash2,
   Undo2,
   Unplug,
@@ -54,6 +56,13 @@ const props = withDefaults(
   publishedHere: boolean
   canUndo: boolean
   canRedo: boolean
+  /**
+   * What is on SCREEN, already resolved - never the reader's `system`
+   * preference, because a button cannot draw a sun for "whatever the operating
+   * system says". Defaulted, so a spec that mounts this bar to test renaming is
+   * not obliged to have an opinion about the lights.
+   */
+  theme?: 'light' | 'dark'
   /** The label of the command `⌘Z` would undo, for the tooltip. */
   undoLabel: string
   redoLabel: string
@@ -93,7 +102,7 @@ const props = withDefaults(
   /** Head, for the Publish tooltip while `readOnly`. */
   headVersion?: number
   }>(),
-  { documentId: null, versionsOpen: false, readOnly: false, headVersion: 0 },
+  { documentId: null, versionsOpen: false, readOnly: false, headVersion: 0, theme: 'dark' },
 )
 
 const emit = defineEmits<{
@@ -104,6 +113,8 @@ const emit = defineEmits<{
   redo: []
   publish: []
   shortcuts: []
+  /** Flip light / dark. A reader's preference, never a document commit (D6). */
+  theme: []
   /** Show or hide the docked version browser (plan 15 D3). */
   versions: []
   /** Download the stored version as `<name>.builder.json` (plan 15 D1). */
@@ -133,6 +144,17 @@ const emit = defineEmits<{
  * The file picker is the browser's own, opened from the Import item, and its
  * `<input type="file">` lives here because the gesture starts here.
  */
+/**
+ * What the theme button's press will DO, not what the page currently is.
+ *
+ * A toggle button named after its state is a button every screen-reader user
+ * has to press once to learn which convention it follows; a button named after
+ * its action is unambiguous the first time it is read.
+ */
+const themeActionLabel = computed(() =>
+  props.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
+)
+
 const menuOpen = ref(false)
 const menuButton = ref<HTMLButtonElement | null>(null)
 const menuRoot = ref<HTMLElement | null>(null)
@@ -374,6 +396,27 @@ function cancelRename(): void {
         @click="emit('redo')"
       >
         <Redo2 :size="15" aria-hidden="true" />
+      </button>
+      <!--
+        Light / dark (02-canvas.md D6). NOT a document commit: the theme is a
+        property of the reader, so it never reaches `commit`, `Ctrl+Z` cannot
+        change the lights, and a published graph carries nobody's idea of what
+        colour a canvas should be.
+
+        The label names what the press WILL DO rather than what is currently on
+        screen ("Switch to light theme", not "Dark theme"), because a toggle
+        button whose name describes its state is a button every screen-reader
+        user has to press once to find out which convention it follows.
+      -->
+      <button
+        class="icon-button"
+        type="button"
+        :title="`${themeActionLabel} (Shift+L)`"
+        :aria-label="themeActionLabel"
+        @click="emit('theme')"
+      >
+        <Sun v-if="theme === 'dark'" :size="15" aria-hidden="true" />
+        <Moon v-else :size="15" aria-hidden="true" />
       </button>
       <button
         class="icon-button"

@@ -208,6 +208,11 @@ npm run build        2,068 modules · 676 ms
 E2E             80 passed in 12 files, 4.6 min, zero console errors tolerated
                 (`E2E_API_TARGET=http://127.0.0.1:8096`, `SYNTHETIC=1`,
                  `SYNTHETIC_BRANCH_DELAY_SECONDS=5`, `E2E_UI_PORT=5276`)
+                A repeat run at HEAD went 78 passed / 1 skipped / 1 failed:
+                `builder-perf.spec.ts`'s 48-node case at mean 17.209 ms against
+                a 17 ms ceiling, on a machine running six agents. Re-run alone,
+                that file is 5/5. A 1.2 % overshoot of a load-sensitive
+                threshold, and the 60-node sibling passed in the same run.
 E2E, no-launch  63 passed under `--grep-invert @launch`, and `GET /api/runs`
                 answered `{"runs":[]}` on the backend afterwards
 ```

@@ -563,6 +563,50 @@ export class StudioApi {
     }
   }
 
+  /**
+   * Start a run that REPLAYS another run up to `nodeId` and runs from there.
+   *
+   * C7's `resume_from`, and the reason it is a separate method rather than an
+   * argument to `startRun`: this is not a launch. It never re-probes the
+   * transport, it is refused outright in mock mode, and it carries the same
+   * `inputs` the source run carried rather than whatever is in the idea box -
+   * a resume that ran a different idea from the run it is resuming would be a
+   * new run wearing the old one's name.
+   *
+   * The server answers four ways and every one of them is a sentence worth
+   * showing: 404 for a run that is not the caller's (`require_own_run` answers
+   * 404 rather than 403 because a 403 confirms the run exists), 422 for a run
+   * still in flight, 422 for a workflow that is not a compiled graph, and
+   * `replay-missing-output` when the saved state has no value for a node
+   * upstream of the replay point. `fetchJson` unwraps `detail`, so the caller
+   * gets the sentence and not the envelope.
+   */
+  async resumeRun(
+    sessionId: string,
+    sourceRunId: string,
+    nodeId: string,
+    workflowId: string,
+    inputs: Record<string, unknown>,
+    gates: GatesMode = 'human',
+  ): Promise<StartRunResponse> {
+    if (this.mode !== 'live') {
+      throw new Error('Re-running from a node needs the live backend.')
+    }
+    return fetchJson<StartRunResponse>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/runs`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_id: workflowId,
+          inputs,
+          gates,
+          resume_from: { run_id: sourceRunId, node_id: nodeId },
+        }),
+      },
+    )
+  }
+
   async cancelRun(runIdValue: string): Promise<void> {
     if (this.mode === 'live') {
       await fetchJson(`/api/runs/${encodeURIComponent(runIdValue)}/cancel`, { method: 'POST' })
@@ -756,6 +800,7 @@ export type StudioApiLike = Pick<
   | 'initialize'
   | 'getGraph'
   | 'startRun'
+  | 'resumeRun'
   | 'getRun'
   | 'getFrames'
   | 'subscribe'

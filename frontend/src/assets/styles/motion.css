@@ -205,12 +205,25 @@
 /* The landing settle. A NEGATIVE per-card delay, so a sixteen-node graph reads
    as already in motion on the first paint rather than popping in one card at a
    time - the reference's own landing-page technique, applied once rather than
-   forever. The delay is written inline by the view, because it is per index. */
-.workflow-node.is-landing { animation: run-node-land 480ms var(--ease-out) 1; }
+   forever. The delay is written per node by the composable, because it is per
+   index.
+
+   ON THE VUE FLOW WRAPPER AND NOT ON THE CARD, for two reasons that each on
+   their own decide it:
+
+   1. `.workflow-node.is-running` sets the `animation` SHORTHAND, and a second
+      rule at equal specificity in a later-imported sheet replaces the whole
+      list. A landing class on the card would silently cancel the glow and the
+      pulse of any node that was running when it was applied.
+   2. Vue Flow positions a node by writing `transform: translate(x, y)` onto
+      that wrapper, so a keyframe that animated `transform` would drag every
+      card to the canvas origin and back. OPACITY only, for that reason - the
+      settle is a fade, never a slide. */
+.vue-flow__node.is-landing { animation: run-node-land 480ms var(--ease-out) 1; }
 
 @keyframes run-node-land {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ===========================================================================
@@ -234,7 +247,7 @@
 @media (prefers-reduced-motion: reduce) {
   .workflow-node.is-receded { transition: none; }
   .node-character.is-receiving,
-  .workflow-node.is-landing,
+  .vue-flow__node.is-landing,
   .is-armed,
   .is-awaiting-you { animation: none; }
   .is-armed { background-position: 0% 50%; }

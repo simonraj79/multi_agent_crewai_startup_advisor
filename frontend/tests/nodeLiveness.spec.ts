@@ -160,6 +160,14 @@ describe('node card liveness rendering', () => {
       frameCount: 0,
       visits: 1,
       activeCall: null,
+    character: 1,
+    receded: false,
+    errorMessage: '',
+    replayed: false,
+    index: 0,
+    landing: false,
+    nodeId: 'node',
+    rerunnable: false,
       ...overrides,
     }
   }

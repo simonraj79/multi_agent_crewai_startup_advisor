@@ -695,6 +695,44 @@ export class TestRunTransport implements StudioApiLike {
     })
   }
 
+  /**
+   * Re-run from a failed node, as a TEST run.
+   *
+   * Plan 11's `StudioApiLike.resumeRun` (Re-run from here) and plan 13's
+   * transport met on the merge, and the two disagree on one thing only: what a
+   * resumed run's `mode` is. Delegating to the console's method would post no
+   * mode, and the server's default is a REAL run - so a button pressed inside
+   * the test panel would silently create the one kind of run the panel exists
+   * not to. The body mirrors the console's exactly and adds `mode: 'test'`;
+   * `test` rather than `this.runMode` because a node test's replay set is the
+   * saved input's mocks, and a resume replays the failed run's own state (10
+   * D5) - the two are different plans, and only the first is what a re-run is.
+   */
+  async resumeRun(
+    sessionId: string,
+    sourceRunId: string,
+    nodeId: string,
+    workflowId: string,
+    inputs: Record<string, unknown>,
+    gates: GatesMode = 'human',
+  ): Promise<StartRunResponse> {
+    const transport = await this.inner.initialize(this.inner.mode === 'mock')
+    if (transport !== 'live') {
+      throw new Error('Re-running from a node needs the live backend.')
+    }
+    return fetchJson<StartRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        inputs,
+        gates,
+        resume_from: { run_id: sourceRunId, node_id: nodeId },
+        mode: 'test',
+      }),
+    })
+  }
+
   getRun(id: string): Promise<RunSnapshot> {
     return this.inner.getRun(id)
   }

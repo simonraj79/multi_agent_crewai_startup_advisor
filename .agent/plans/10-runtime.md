@@ -284,8 +284,9 @@ Python          2243 run · 0 failures · 6 skipped · 109.5 s   (this plan's ba
 Frontend unit   1468 passed in 74 files                        (baseline 1426 in 73)
 vue-tsc -b --force   exit 0
 npm run build        green
-E2E             73 passed, 2 failed - both in `e2e/visual/builder-canvas.spec.ts`
-                and neither this plan's; see "Not ours" below
+E2E             75 passed in 4.2 min, all files, zero console errors tolerated
+                (`E2E_API_TARGET=http://127.0.0.1:8101`, `SYNTHETIC=1`,
+                `SYNTHETIC_BRANCH_DELAY_SECONDS=5`)
 ```
 
 Part of both suite deltas is another agent's uncommitted template work in this
@@ -367,16 +368,19 @@ patches `_is_retryable` to say yes to everything and asserts the refusal is then
 tried three times, which is what makes the closed list a mechanism rather than a
 comment.
 
-### Not ours
+### One E2E failure that was NOT ours, and is now gone
 
-`e2e/visual/builder-canvas.spec.ts` fails two snapshots — `problem state — dark`
-and `problem state — light`. This plan touched **one** file under `frontend/`
-(`tests/builderApi.spec.ts`, to enumerate the new `compiled` route) and no
-frontend source at all. The failing capture presses `2` to add a node, whose
-card renders a default model out of `frontend/src/data/models.ts` — one of the
-files another agent has uncommitted in this worktree, along with
-`types/builder.ts` and `TemplateGallery.vue`. Their snapshots need regenerating
-with their change.
+Recorded because the diagnosis is the useful part. The first full E2E run of
+this session was **73 passed, 2 failed** — `problem state — dark` and
+`problem state — light` in `e2e/visual/builder-canvas.spec.ts`. This plan
+touched ONE file under `frontend/` (`tests/builderApi.spec.ts`, to enumerate the
+new `compiled` route) and no frontend source at all; the failing capture presses
+`2` to add a node, whose card renders a default model out of
+`frontend/src/data/models.ts`, which another agent had uncommitted in this
+shared worktree at the time. Their commit (`36d8b9a`, `86f1e85`) regenerated the
+snapshots and the re-run above is 75/75. **The lesson for the next session in a
+shared worktree is the diagnosis, not the failure**: check which files a red
+test's render actually depends on before assuming the red is yours.
 
 ### For the Integrator
 

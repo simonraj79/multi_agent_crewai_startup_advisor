@@ -31,6 +31,7 @@ from brief_crew import config as project_config
 from brief_crew.builder.compiler import CompiledFlow, compile_document
 from brief_crew.builder.document import (
     BILLABLE_KINDS,
+    FLOW_KINDS,
     ROUTING_KINDS,
     BuilderDocument,
     BuilderNode,
@@ -152,12 +153,39 @@ def builder_graph_descriptor(document: BuilderDocument) -> GraphDescriptor:
     """
 
     by_id = document.nodes_by_id()
+
+    # ATTACHMENT nodes are not steps and never appear in a descriptor.
+    #
+    # The descriptor drives the RUN console: it is the list of things that
+    # execute, in the order a frame can arrive for them. A tool, an MCP server
+    # or a skill is something an agent HAS, not something the flow does - it
+    # emits no frame, occupies no position in the order, and has no state to
+    # show. Drawing one here would put a card on the run canvas that can only
+    # ever sit idle, which is precisely the "design-time animation in a slot
+    # nothing writes" trap the sprite work already walked into.
+    #
+    # This is not a defensive skip. Before 03-node-library.md D1 grew the union
+    # to ten, `DESCRIPTOR_KINDS[node.kind]` below was a total lookup over seven
+    # keys; an attachment node reaching it raises KeyError and takes the whole
+    # descriptor with it. Filtering here is what keeps that lookup total, which
+    # is why it stays a subscript and not a `.get` with a fallback - a fallback
+    # would turn the next missing kind into a silently mislabelled card.
+    flow_nodes = [node for node in document.nodes if node.kind in FLOW_KINDS]
+
+    # `attach` and `member` edges are excluded for the same reason, and this is
+    # load-bearing rather than tidy: `incoming` decides `flow_method_type`
+    # (start versus listen), `condition_type` (AND versus OR) and
+    # `trigger_methods`. An agent holding three tools has three inbound edges
+    # and has not branched three ways, so counting them would report a join
+    # that the compiler never emits.
     incoming: dict[str, list[str]] = {}
     for edge in document.edges:
+        if edge.target_port != "in":
+            continue
         incoming.setdefault(edge.target, []).append(edge.source)
 
     nodes: list[GraphNode] = []
-    for index, node in enumerate(document.nodes):
+    for index, node in enumerate(flow_nodes):
         nodes.append(
             GraphNode(
                 id=node.id,

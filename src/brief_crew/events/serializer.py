@@ -44,6 +44,12 @@ from crewai.events.types.llm_guardrail_events import (
 )
 from crewai.events.types.logging_events import AgentLogsExecutionEvent
 from crewai.events.types.mcp_events import MCPConnectionFailedEvent
+from crewai.events.types.skill_events import (
+    SkillActivatedEvent,
+    SkillLoadedEvent,
+    SkillLoadFailedEvent,
+    SkillUsedEvent,
+)
 from crewai.events.types.tool_usage_events import (
     ToolExecutionErrorEvent,
     ToolSelectionErrorEvent,
@@ -610,6 +616,33 @@ class FieldBoundedSerializer:
             from brief_crew.builder.mcp import MCP_CONNECTION_ERROR_CLASS
 
             return (self._draft(timestamp, FrameKind.ERROR, UIEventType.NODE_END, node_id, f"{event.server_name or 'MCP server'} could not be reached", {"stage": "error", "error_class": MCP_CONNECTION_ERROR_CLASS, "message": str(getattr(event, "error", "") or "")[:MAX_NODE_ERROR_CHARS], "server": str(event.server_name or "")[:MAX_IDENTIFIER_LENGTH], "transport": self.clip(getattr(event, "transport_type", None)), "status_code": getattr(event, "status_code", None), "error_type": self.clip(getattr(event, "error_type", None))}, FrameLevel.ERROR),)
+
+        # --- Skills (08 D6, C6) -------------------------------------------
+        #
+        # `skill_frame_details` is plan 08's mapping, written and tested there
+        # against real event objects and left with no caller because the sink
+        # is C6's. This is the caller. Imported inside the branch: `events/` is
+        # imported by the capture path on every run and must not pull the
+        # builder package in to draft a frame that most runs never produce.
+        #
+        # The three informational events are AGENT frames, because a skill is
+        # something an agent HAS - it is rendered on the agent's card at the one
+        # moment it is visibly doing something. `SkillLoadFailedEvent` is an
+        # ERROR frame in the `node_error` shape instead, for the reason
+        # `builder/skills.py` states beside `SKILL_LOAD_ERROR_CLASS`: a missing
+        # skill DEGRADES an agent rather than removing a capability it was told
+        # it had, so it must be visible without failing the step.
+        if isinstance(event, (SkillActivatedEvent, SkillLoadedEvent, SkillUsedEvent)):
+            from brief_crew.builder.skills import skill_frame_details
+
+            verb = {SkillLoadedEvent: "loaded", SkillActivatedEvent: "activated", SkillUsedEvent: "used"}[type(event)]
+            details = skill_frame_details(event)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{verb} skill {details.get('skill') or 'unnamed'}", {"stage": "skill", "skill_event": verb, **details}),)
+        if isinstance(event, SkillLoadFailedEvent):
+            from brief_crew.builder.skills import skill_frame_details
+
+            details = skill_frame_details(event)
+            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.AGENT_CALL, node_id, f"skill {details.get('skill') or 'unnamed'} could not be loaded", {"stage": "error", "skill_event": "load_failed", **details}, FrameLevel.ERROR),)
 
         # Nothing matched. The sink receives *every* CrewAI event, so this is a
         # real and previously silent discard: ~150 event classes exist and this

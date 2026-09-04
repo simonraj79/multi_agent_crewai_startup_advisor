@@ -219,7 +219,7 @@ Literal['in','attach','member']`; `_OUT_PORTS_BY_KIND` gains `tool/mcp/skill
 8. `frontend/tests/builderNode.spec.ts`: an authored agent with three attachments renders a model pill and three avatars; five attachments render four plus `+1`; a hierarchical crew renders `hier` and the manager pill.
 9. Palette: ten tiles in server order; `T`, `M`, `K` insert attachment kinds; the tool sub-list filters within 250 ms (`frontend/tests/nodePalette.spec.ts`); dragging a specific tool sets both MIME entries.
 10. `e2e/builder.spec.ts` "attach a tool by dropping it on an agent": one undo step, the agent card shows one avatar, the pill shows the tool label; dropping on empty canvas yields `attachment-unattached` in the problems dock.
-11. `npx vue-tsc -b --force` fails if a kind is added to `NodeKind` without an inspector or a palette tile (existing totality checks, `InspectorRail.vue:67-75`, `NodePalette.vue:23`).
+11. `npx vue-tsc -b --force` fails if a kind is added to `NodeKind` without an inspector or a palette tile (existing totality checks, `InspectorRail.vue:67-75`, ~~`NodePalette.vue:23`~~ — **corrected 2026-09-04: that line is `BILLABLE_KINDS: Record<BillableKind, true>`, which only catches a new BILLABLE kind. The check that actually fails for a missing palette tile is `NODE_KINDS`'s mapped type in `nodeKinds.ts`.** Proved by breaking it: adding an eleventh kind reddens six sites — `InspectorRail.vue` twice, `nodeKinds.ts`, `BuilderNode.vue`, `builderDefaults.ts` and `PortMenu.vue`).
 
 ## References
 

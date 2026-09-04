@@ -328,6 +328,20 @@ PostgreSQL 18 runs in container `pg18-test` on **5433**, password `test`:
    exactly this and is the only check in the repository that instructions
    *arrive* rather than merely exist.
 
+0b. **A contract change is TWO suites, and running one is how this went red
+   without anybody seeing it.** `frontend/tests/nodeKinds.spec.ts` reads the
+   `NodeKind` literal and `_OUT_PORTS_BY_KIND` **out of `document.py` at run
+   time** — a deliberately good design, because it makes the client mirror
+   *provably* follow the server rather than merely resemble it. The cost is that
+   a Python-only edit breaks a TypeScript test.
+
+   On 2026-09-04 the ten-kind contract landed in `0794242` with the Python suite
+   green at 1655 and **the frontend suite left at 1194 passed / 4 failed** for
+   three commits, because only Python was run. "Green" was true and
+   insufficient. After a change to anything both sides read — `NodeKind`,
+   the port table, the problem codes, the vocabulary — run **both**, and the
+   E2E if a shape reached a route.
+
 1. **`PYTHONPATH`.** Without it you are testing the main tree's source. Silent.
 2. **`OSError: [Errno 22]` from `test_gates`, `test_builder_runner` or
    `test_credential_resolution`** means `%TEMP%\crewai` must be deleted and the
@@ -372,8 +386,8 @@ Measured on **2026-09-04** at `f19a2c6` in this worktree:
 <!-- BASELINE-START -->
 | Suite | Result | How |
 | --- | --- | --- |
-| Python | **1655 run · 0 failures · 6 skipped · 65.6 s** | `unittest discover -s tests -t .` with `PYTHONPATH` set |
-| Frontend unit | **1195 passed in 65 files** | `npm test` |
+| Python | **1660 run · 0 failures · 6 skipped · 72.7 s** | `unittest discover -s tests -t .` with `PYTHONPATH` set |
+| Frontend unit | **1233 passed in 66 files** | `npm test` |
 | Type check | **exit 0** | `npx vue-tsc -b --force` |
 | Production build | **1981 modules · 646 ms** | `npm run build` |
 | E2E | **37 passed in 1.7 min**, all 5 files, zero console errors tolerated | `npx playwright test` against `SYNTHETIC=1` on 8099 |

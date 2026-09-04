@@ -960,3 +960,31 @@ to". Only the second can carry a problem an author can click.
 fixed field needs no payload, and criterion 7's total partition over
 `PROBLEM_CODES` is what proves the fallback still covers everything the payload
 does not.
+
+
+### S9 ratification — `BuilderJoins` widened to `'all' | 'any'`, 2026-09-04
+
+Plan 14's build widened `types/builder.ts`'s `BuilderJoins` from
+`Record<string, 'all'>` to `Record<string, 'all' | 'any'>` and asked whether that
+reads as a mirror repair or a C1 change. **Mirror repair. Ratified.**
+
+The server has admitted both words since 03 D3, and it is not incidental —
+`document._validate_joins` refuses a third word *by name*, and the two it
+accepts compile to **two different shapes**: `"all"` is `{"and": [...]}` and
+`"any"` is the alternatives. The client type was simply a generation behind the
+schema it mirrors.
+
+Worth recording *why* `"any"` is safe, because somebody will want to re-tighten
+it. The measured `or_()` defect is real: a multi-event `or_()` listener is added
+to `_fired_or_listeners` the first time it fires and skipped forever after, so a
+second arrival ends the run silently. But that is a fact about a MULTI-EVENT
+condition, and it is not what `"any"` compiles to — `_listen_for` builds
+alternatives, each one a router label, only one fires per pass, and CrewAI
+re-arms an or-listener whose condition names the label a router just emitted.
+That is what "the first arrival wins" means, and it is what lets a router's
+mutually exclusive branches converge on one node instead of waiting forever for
+the branch nobody took.
+
+A mirror narrower than its source is the same class of defect as one wider: both
+mean the client is reasoning about a different contract than the server
+enforces. This one would have rejected a document the server accepts.

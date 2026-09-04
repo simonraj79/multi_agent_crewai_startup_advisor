@@ -36,9 +36,9 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 | 11 | [Run visualizer](.agent/plans/11-run-visualizer.md) | S6 | 10 | 15 | 0 | — | 0 | Planned | 2026-09-02 |
 | 12 | [Error handling](.agent/plans/12-error-handling.md) | S7 | 10 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
 | 13 | [Flow testing](.agent/plans/13-flow-testing.md) | S7 | 10 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
-| 14 | [Templates](.agent/plans/14-templates.md) | S8 | 09 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
+| 14 | [Templates](.agent/plans/14-templates.md) | S8 | 09 | 10 | 9 | — | 0 | In build | 2026-09-04 |
 | 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 11 | 3 | 13 | In judge (round 3) | 2026-09-04 |
-| | **Total** | | | **179** | **90** | | **18** | | |
+| | **Total** | | | **179** | **111** | | **18** | | |
 
 Build order: S1 (00, 01, 15) → S2 / S3 / S4 in parallel → S5 (09, 10) →
 S6 / S7 / S8 in parallel → S9 integrates, runs the E2E and the final

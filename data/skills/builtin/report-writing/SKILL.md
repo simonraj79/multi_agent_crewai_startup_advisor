@@ -1,6 +1,7 @@
 ---
 name: report-writing
 description: The exact Markdown subset the console renders, and how to structure a report so nothing is silently dropped. Use when writing a final report or any Markdown a person will read in the app.
+license: MIT
 metadata:
   version: "1"
 ---

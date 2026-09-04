@@ -1,6 +1,7 @@
 ---
 name: market-research-method
 description: How to search for market evidence and read a tool envelope, so a search returns a market rather than a phrasing. Use before running any market or web search tool.
+license: MIT
 metadata:
   version: "1"
 ---

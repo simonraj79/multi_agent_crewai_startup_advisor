@@ -1,6 +1,7 @@
 ---
 name: evidence-citation
 description: Every claim cites a URL a tool actually returned; an unknown is stated as unknown and never filled in. Use whenever writing findings from tool output.
+license: MIT
 metadata:
   version: "1"
 ---

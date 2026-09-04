@@ -1,6 +1,7 @@
 ---
 name: hn-signal-reading
 description: How to classify a discussion thread as PROBLEM, OPINION or OFF_TOPIC and count usable threads honestly. Use when reading Hacker News or any community discussion as demand evidence.
+license: MIT
 metadata:
   version: "1"
 ---

@@ -6,12 +6,14 @@ if the parser under test is CrewAI's, so every assertion here goes through
 `crewai.skills.parser.parse_skill_md` and `SkillFrontmatter` rather than through
 this repository's wrapper - and the files on disk are read, not a fixture.
 
-**The licence field is deliberately absent.** PLANS.md decision 11 asks which
-licence header these ship under and it is NOT ANSWERABLE: this repository has no
-`LICENSE` file, which for a public repo means all rights reserved (CLAUDE.md
-remaining-work item 17). Inventing one would be inventing provenance, which this
-repository has been bitten by before. `test_no_pack_claims_a_licence` pins the
-absence so the decision stays visible instead of being quietly filled in.
+**The licence field is `MIT`, and it is the repository's, not invented.** Until
+2026-09-04 this file pinned the field ABSENT: PLANS.md decision 11 asks which
+licence header these ship under, and with no `LICENSE` at the repo root that
+was not answerable - inventing one would be inventing provenance. The pin was
+written to fail the moment a `LICENSE` appeared, and it did, on the owner's MIT
+choice (`e7dfb86`). `test_every_pack_carries_the_repository_licence` now pins
+the answer the same way the old test pinned the question: the packs' header
+must match the file at the root, so neither can drift from the other.
 
 No cost: this reads four committed files.
 """
@@ -85,21 +87,23 @@ class BuiltinPackTests(unittest.TestCase):
             with self.subTest(name=pack.name):
                 self.assertLessEqual(pack.size_bytes, project_config.MAX_SKILL_BYTES)
 
-    def test_no_pack_claims_a_licence_because_decision_11_is_not_answerable(self) -> None:
-        """Recorded, not invented. See the module docstring."""
+    def test_every_pack_carries_the_repository_licence(self) -> None:
+        """PLANS.md decision 11, answered 2026-09-04. See the module docstring."""
 
         from crewai.skills.parser import parse_skill_md
 
+        repo = pathlib.Path(__file__).resolve().parents[2]
+        licence = repo / "LICENSE"
+        self.assertTrue(licence.is_file(), "the repository licence file is gone")
+        self.assertIn(
+            "MIT License",
+            licence.read_text(encoding="utf-8").splitlines()[0],
+            "LICENSE is no longer MIT; the four packs' `license:` field must move with it",
+        )
         for name in project_config.BUILTIN_SKILL_NAMES:
             with self.subTest(name=name):
                 frontmatter, _ = parse_skill_md(builtin_root() / name / "SKILL.md")
-                self.assertIsNone(frontmatter.license)
-        repo = pathlib.Path(__file__).resolve().parents[2]
-        self.assertFalse(
-            (repo / "LICENSE").exists(),
-            "a LICENSE now exists, so PLANS.md decision 11 has become answerable "
-            "and these four packs should carry the header it settles on",
-        )
+                self.assertEqual(frontmatter.license, "MIT")
 
     def test_the_ids_are_derived_and_therefore_stable_across_deployments(self) -> None:
         """A built-in has no row to remember an id, so a document naming one has

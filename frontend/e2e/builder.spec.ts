@@ -1549,6 +1549,63 @@ test.describe('attachments and the inspector', () => {
     expect(watch.unexpected).toEqual([])
   })
 
+  test('attaches a tool by DRAGGING its port onto the agent, not only by dropping', async ({
+    page,
+  }) => {
+    /*
+     * 13 follow-up 1, and the second of the two ways an attachment is made.
+     *
+     * Drop-on-card goes through `addNode`'s third argument. This gesture - drag
+     * the tool's own `attach` port onto the agent's - goes through `onConnect`
+     * -> `addEdge`, and that path wrote `target_port: 'in'` unconditionally:
+     * `EdgeEnds.target_port` was declared, documented, and then overwritten by
+     * a literal one line below its own spread.
+     *
+     * Every surface agreed with the wrong answer, which is why it needed a
+     * browser to see. `isValidConnection` reads `targetHandle`, so the drag
+     * painted GREEN (the test above measures that mint disc). The commit landed.
+     * The edge appeared. And it appeared as a FLOW edge, because `edgeClassOf`
+     * reads `target_port` - so the canvas drew a step in the pipeline where the
+     * author had drawn a possession, and the server answered
+     * `attach-target-not-agent` about a shape nobody had drawn.
+     *
+     * The three assertions are the three places that lie, in the order an
+     * author meets them: the edge's own class, the host card's avatar, and the
+     * dock.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    // A tool on empty canvas, so nothing is attached by the drop itself and the
+    // only thing that can attach it is the drag under test.
+    await canvas(page).click({ position: { x: 260, y: 430 } })
+    await page.keyboard.press('t')
+    const tool = await firstOfKind(page, 'tool')
+    const agent = await firstOfKind(page, 'agent')
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+    const edgesBefore = await edges(page).count()
+
+    await dragTo(page, port(page, tool.id, 'attach'), targetPort(page, agent.id, 'attach'))
+
+    await expect(edges(page)).toHaveCount(edgesBefore + 1)
+    // Drawn as an ATTACH edge. `is-class-attach` is `edgeClassOf`'s answer
+    // rendered, and `edgeClassOf` reads `target_port` - so this class is a
+    // direct reading of the field that was being overwritten.
+    await expect(page.locator('.vue-flow__edge .builder-edge.is-class-attach')).toHaveCount(1)
+    // And the host admits it, which drop-on-card already did and this did not.
+    await expect(avatars(page, agent.id)).toHaveCount(1)
+
+    // The server agrees, which is the whole point: the two problems this used
+    // to raise are the two an attach edge written as a flow edge produces.
+    await validationSettles(page)
+    await expect(problemRow(page, 'attach-target-not-agent')).toHaveCount(0)
+    await expect(problemRow(page, 'attachment-unattached')).toHaveCount(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
   test('leaves a tool dropped on empty canvas unattached, and says so', async ({ page }) => {
     /*
      * The other half of 03 criterion 10, and a decision rather than an

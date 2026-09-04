@@ -757,6 +757,110 @@ describe('a drop released over a card that refused it flashes and does not commi
   })
 })
 
+/* --- the port an edge LANDS on is the port it is written with (13 f/u 1) ----
+ *
+ * The defect this describe block pins is the sharpest kind there is: the
+ * gesture validated one edge and committed a different one, and every surface
+ * agreed with the wrong answer.
+ *
+ * `isValidConnection` has always read `targetHandle`, so dragging from a tool's
+ * `attach` port onto an agent's `attach` port went GREEN. `onConnect` then
+ * dropped the handle, and `useBuilderDocument.addEdge` wrote
+ * `target_port: 'in'` from a literal one line below its own spread of
+ * `EdgeEnds` - a field that was declared, documented and overwritten. So the
+ * author drew an attachment, the document recorded a flow edge, `edgeClassOf`
+ * drew it as a flow edge because it reads `target_port`, and the server came
+ * back with `attach-target-not-agent` about a shape nobody had drawn.
+ *
+ * Attach-by-DROP was never affected - it goes through `addNode`'s third
+ * argument - which is exactly why this survived a suite with attach coverage
+ * in it. So these tests go through the REAL store, the whole way down.
+ */
+
+describe('a connect gesture writes the target port it was validated against', () => {
+  function liveCanvasOver(doc: BuilderDocument) {
+    const store = useBuilderDocument(doc)
+    const canvas = useBuilderCanvas({
+      document: {
+        doc: store.doc,
+        addNode: (node, connectFrom) =>
+          store.addNode(node, connectFrom ? { edge: { ...connectFrom, target: node.id } } : undefined),
+        // The adapter `BuilderView` writes, verbatim: it CARRIES the port and
+        // defaults nothing, because a second spelling of the `'in'` default is
+        // how the two ends came apart to begin with.
+        addEdge: (origin, target, targetPort) =>
+          store.addEdge({ ...origin, target, target_port: targetPort }),
+        moveNodes: (moves) => store.moveNodes(moves),
+        deleteSelection: (nodes, edges) => store.deleteSelection(nodes, edges),
+        setEdgePort: (edge, port) => store.setEdgePort(edge, port),
+        retargetEdge: () => undefined,
+        setJoin: (node, join) => store.setJoin(node, join === 'all'),
+      },
+    })
+    return { store, canvas }
+  }
+
+  it('writes `attach` when the drag lands on an attach port', () => {
+    const { store, canvas } = liveCanvasOver(document([toolNode('search'), agentNode('scoper')]))
+
+    // The same connection object Vue Flow hands `@connect`, and the same one
+    // `isValidConnection` accepted a frame earlier.
+    const connection = {
+      source: 'search',
+      sourceHandle: 'attach',
+      target: 'scoper',
+      targetHandle: 'attach',
+    }
+    expect(canvas.isValidConnection(connection)).toBe(true)
+    canvas.onConnect(connection)
+
+    expect(store.doc.value.edges).toHaveLength(1)
+    expect(store.doc.value.edges[0].target_port).toBe('attach')
+  })
+
+  it('writes `member` when an agent is dragged onto a crew member port', () => {
+    const { store, canvas } = liveCanvasOver(document([agentNode('scoper'), crewNode('brief')]))
+
+    const connection = {
+      source: 'scoper',
+      sourceHandle: 'out',
+      target: 'brief',
+      targetHandle: 'member',
+    }
+    expect(canvas.isValidConnection(connection)).toBe(true)
+    canvas.onConnect(connection)
+
+    expect(store.doc.value.edges[0].target_port).toBe('member')
+  })
+
+  it('still writes `in` for an ordinary flow edge, and for a handle-less one', () => {
+    // The default has to stay exactly `isValidConnection`'s own, or the gesture
+    // validates one edge and commits another in the other direction.
+    const { store, canvas } = liveCanvasOver(document([agentNode('scoper'), outputNode('done')]))
+
+    canvas.onConnect({ source: 'scoper', sourceHandle: 'out', target: 'done', targetHandle: 'in' })
+    canvas.onConnect({ source: 'scoper', sourceHandle: 'error', target: 'done' })
+
+    expect(store.doc.value.edges.map((edge) => edge.target_port)).toEqual(['in', 'in'])
+  })
+
+  it('draws the committed edge as the CLASS its port makes it', () => {
+    // `edgeClassOf` reads `target_port`, so the write being wrong made the
+    // colour wrong too - an attachment painted as a step in the flow.
+    const { canvas } = liveCanvasOver(document([toolNode('search'), agentNode('scoper')]))
+
+    canvas.onConnect({
+      source: 'search',
+      sourceHandle: 'attach',
+      target: 'scoper',
+      targetHandle: 'attach',
+    })
+
+    const edge = canvas.edges.value.find((candidate) => candidate.source === 'search')
+    expect(edge?.data?.edgeClass).toBe('attach')
+  })
+})
+
 /* --- the pixels (criterion 1) ---------------------------------------------- */
 
 /**

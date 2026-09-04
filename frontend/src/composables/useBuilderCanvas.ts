@@ -266,7 +266,15 @@ export interface CanvasDocumentStore {
     connectFrom?: EdgeOrigin | null,
     attachTo?: { target: NodeId; target_port: TargetPort } | null,
   ): void
-  addEdge(origin: EdgeOrigin, target: NodeId): void
+  /**
+   * `targetPort` is the third argument for the reason `attachTo` is `addNode`'s
+   * third: an edge that arrives at `attach` or `member` is not a flow edge, and
+   * a signature that could not say so was how `useBuilderDocument.addEdge` came
+   * to hardcode `'in'` for every connect gesture (13 follow-up 1). Optional, and
+   * `'in'` when absent, because that is every flow edge and so almost every
+   * call site - which is the same argument `EdgeEnds.target_port` makes.
+   */
+  addEdge(origin: EdgeOrigin, target: NodeId, targetPort?: TargetPort): void
   moveNodes(moves: readonly NodeMove[], coalesceKey?: string): void
   deleteSelection(nodes: readonly NodeId[], edges: readonly EdgeId[]): void
   setEdgePort(edge: EdgeId, port: string): void
@@ -1157,15 +1165,33 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     }, REFUSED_FLASH_MS)
   }
 
+  /**
+   * The finished pointer gesture, as one commit - and it carries the port the
+   * edge actually LANDED on.
+   *
+   * `targetHandle` was read here for the paint and dropped for the write:
+   * `isValidConnection` has always taken it, so a drag from a tool's `attach`
+   * port onto an agent's `attach` port went green, and then
+   * `useBuilderDocument.addEdge` wrote `target_port: 'in'` regardless. The
+   * server answered `attach-target-not-agent` about an edge the author never
+   * drew, and the canvas went on drawing it as a flow edge - `edgeClassOf`
+   * reads `target_port`, so even the colour agreed with the wrong answer.
+   *
+   * `?? 'in'` matches `isValidConnection`'s own default exactly, so the port
+   * that was validated is the port that is written. Two spellings of that
+   * default would be a gesture that validates one edge and commits another.
+   */
   function onConnect(connection: {
     source: string
     target: string
     sourceHandle?: string | null
+    targetHandle?: string | null
   }): void {
     landedOnPort = true
     store.addEdge(
       { source: connection.source as NodeId, source_port: connection.sourceHandle ?? 'out' },
       connection.target as NodeId,
+      (connection.targetHandle ?? 'in') as TargetPort,
     )
   }
 

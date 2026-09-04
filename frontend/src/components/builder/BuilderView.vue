@@ -259,8 +259,17 @@ const canvas = useBuilderCanvas({
     doc: store.doc,
     addNode: (node, connectFrom, attachTo) =>
       store.addNode(node, edgeOptionsFor(node, connectFrom ?? null, attachTo ?? null)),
-    addEdge: (origin, target) =>
-      store.addEdge({ source: origin.source, source_port: origin.source_port, target }),
+    addEdge: (origin, target, targetPort) =>
+      store.addEdge({
+        source: origin.source,
+        source_port: origin.source_port,
+        target,
+        // Carried, not defaulted here: `useBuilderDocument.addEdge` owns the
+        // `'in'` fallback, and a second spelling of that default in the adapter
+        // is how the canvas's validated port and the document's written port
+        // came apart in the first place (13 follow-up 1).
+        target_port: targetPort,
+      }),
     moveNodes: (moves, coalesceKey) => store.moveNodes(moves, { coalesce: coalesceKey !== undefined }),
     deleteSelection: (nodes, edges) => store.deleteSelection(nodes, edges),
     setEdgePort: (edge, port) => store.setEdgePort(edge, port),

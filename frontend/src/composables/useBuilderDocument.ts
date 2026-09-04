@@ -574,9 +574,23 @@ export function useBuilderDocument(initial: BuilderDocument) {
   }
 
   /** One new edge, with its id minted here. Returns the id so a caller can select it. */
+  /**
+   * `target_port` is the CALLER's, defaulting to `'in'` - it used to be `'in'`
+   * unconditionally, which is 13 follow-up 1.
+   *
+   * `EdgeEnds.target_port` was declared, documented and then overwritten by the
+   * literal one line below its own spread, so every attach and member edge a
+   * connect gesture minted arrived as a flow edge. The gesture painted GREEN
+   * while it did it, because `isValidConnection` reads `targetHandle` correctly
+   * - so a drag from a tool's `attach` port to an agent looked accepted at the
+   * mouse and came back from the server as `attach-target-not-agent`, blaming
+   * a shape the author never drew. Attach-by-DROP was unaffected: it goes
+   * through `addNode`'s third argument, which is why the defect survived a
+   * suite with attach coverage in it.
+   */
   function addEdge(ends: EdgeEnds): EdgeId {
     const id = mintEdgeId(new Set(doc.value.edges.map((edge) => edge.id as string)))
-    const edge: BuilderEdge = { ...ends, id, target_port: 'in' }
+    const edge: BuilderEdge = { ...ends, id, target_port: ends.target_port ?? 'in' }
     commit('Connect nodes', { ...doc.value, edges: [...doc.value.edges, edge] })
     return id
   }

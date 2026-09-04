@@ -418,6 +418,16 @@ export class BuilderApi {
    * string, and for a compile refusal that fallback is the raw envelope - the
    * exact defect item 11 repaired for the run endpoint, reintroduced on the one
    * error that carries the most structure.
+   *
+   * A string `detail` is passed through UNMODIFIED, and that is the design
+   * rather than an omission: the server writes these sentences and this client
+   * must not paraphrase them. D-15-29 landed here because one of those
+   * sentences was `nodes.3.skill_id: Field required` - an array index for a
+   * node the canvas calls Skill - and it is fixed where the sentence is
+   * written, in `service/builder_api.py::_first_schema_error`, which has the
+   * document and can therefore name the mcp node by its label. Rewriting it here
+   * would mean re-deriving which node an index means from a file this client
+   * does not hold.
    */
   private async refusal(response: Response): Promise<Error> {
     const body = await response.text().catch(() => '')

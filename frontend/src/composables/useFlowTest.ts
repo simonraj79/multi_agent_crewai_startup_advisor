@@ -8,6 +8,8 @@ import {
   type BuilderTestApiLike,
 } from '../services/builderApi'
 import type { StudioApiLike } from '../services/studioApi'
+import { runPhaseProblems } from './useBuilderProblems'
+import type { NodeErrorFrameLike } from './useBuilderProblems'
 import { useValidatorRun } from './useValidatorRun'
 import { isAttachmentKind } from '../types/builder'
 import type {
@@ -106,7 +108,101 @@ export interface FlowTestOptions {
 export function useFlowTest(options: FlowTestOptions) {
   const api = options.api ?? builderApi
   const transport = new TestRunTransport(options.transport)
-  const run = useValidatorRun(transport, { userId: options.userId })
+
+  /**
+   * Every frame this panel's run has produced, kept for `runProblems` alone.
+   *
+   * 12 D2 asks that a failed node say so in three places at once - on the card,
+   * in the log, and in the problems dock - and the third had a renderer
+   * (`ProblemsPanel`'s `runProblems` group) and a builder
+   * (`runPhaseProblems`), both unit-proved, and nothing feeding either. This
+   * is the wire.
+   *
+   * WHY A TAP RATHER THAN A READ. `useValidatorRun` keeps no frame list: it
+   * applies each frame and keeps the derived state, and the one place a
+   * `node_error` survives is `useRunChoreography.nodeErrors`, which keeps the
+   * SENTENCE and drops `error_class`, `attempt` and `will_retry` - the three
+   * fields `runPhaseProblems` is built on. `attempt` is the load-bearing one:
+   * it is written only by `runtime.py::_node_error_frame`, and it is what tells
+   * a C6 frame from the four CrewAI raises about the same failure. Without it
+   * one failed node is five rows.
+   *
+   * So the frames are taken where they arrive, from the transport, which is
+   * this composable's own. Both doors are tapped because a run reaches this
+   * console two ways and only one of them is the socket: `subscribe` streams a
+   * live run, and `getFrames` replays one after a reload or a reconnect.
+   *
+   * BOUNDED, and by the same number the server's own ring uses. A run that
+   * emits more than this has already lost frames upstream; keeping every frame
+   * a long run produces would be a leak in a panel an author leaves open.
+   */
+  const MAX_TAPPED_FRAMES = 2000
+  const runFrames = ref<NodeErrorFrameLike[]>([])
+
+  function tapFrame(frame: NodeErrorFrameLike): void {
+    // Only the ones the builder can use. An `llm` chunk frame arrives dozens of
+    // times a second and would push every error out of a bounded list.
+    if (frame.details?.stage !== 'error') return
+    const next = [...runFrames.value, frame]
+    runFrames.value = next.length > MAX_TAPPED_FRAMES ? next.slice(-MAX_TAPPED_FRAMES) : next
+  }
+
+  /**
+   * `transport`, with `subscribe` and `getFrames` reporting what they carried.
+   *
+   * Explicit delegation rather than a `Proxy` or `Object.create`: this object
+   * is what `useValidatorRun` is handed, and a reader who wants to know what it
+   * can do should be able to read the answer rather than infer it from a
+   * prototype chain. `mode`, `probeFailure` and `probeRefusal` are GETTERS -
+   * they change as the transport probes - so a spread would have frozen the
+   * console's connection badge at whatever it said when this ran.
+   */
+  const tapped: StudioApiLike = {
+    get mode() {
+      return transport.mode
+    },
+    get probeFailure() {
+      return transport.probeFailure
+    },
+    get probeRefusal() {
+      return transport.probeRefusal
+    },
+    initialize: (force) => transport.initialize(force),
+    getGraph: (workflowId) => transport.getGraph(workflowId),
+    startRun: (sessionId, idea, workflowId, gates, inputField) =>
+      transport.startRun(sessionId, idea, workflowId, gates, inputField),
+    resumeRun: (sessionId, sourceRunId, nodeId, workflowId, inputs, gates) =>
+      transport.resumeRun(sessionId, sourceRunId, nodeId, workflowId, inputs, gates),
+    getRun: (id) => transport.getRun(id),
+    getFrames: async (id, after) => {
+      const frames = await transport.getFrames(id, after)
+      frames.forEach(tapFrame)
+      return frames
+    },
+    subscribe: (runId, sessionId, handlers) =>
+      transport.subscribe(runId, sessionId, {
+        ...handlers,
+        onFrame: (frame) => {
+          tapFrame(frame)
+          handlers.onFrame(frame)
+        },
+      }),
+    replyGate: (runId, gateId, reply) => transport.replyGate(runId, gateId, reply),
+    cancelRun: (runId) => transport.cancelRun(runId),
+    downloadLogs: (runId, format) => transport.downloadLogs(runId, format),
+    listRuns: (limit) => transport.listRuns(limit),
+  }
+
+  const run = useValidatorRun(tapped, { userId: options.userId })
+
+  /**
+   * The dock's run-phase group, live.
+   *
+   * A computed over the tapped frames rather than a list this composable
+   * appends to: `runPhaseProblems` already collapses a retried node to its last
+   * attempt, and doing that incrementally would mean keeping the same map twice.
+   */
+  const runProblems = computed(() => runPhaseProblems(runFrames.value))
 
   const open = ref(false)
   const tab = ref<TestTab>('run')
@@ -355,6 +451,10 @@ export function useFlowTest(options: FlowTestOptions) {
     const workflowId = options.documentId()
     if (!workflowId) return
     problem.value = ''
+    // The dock's run group is about the run ON SCREEN. Carrying the last run's
+    // failures into this one is the stale-verdict failure §6.2 names, in the one
+    // group whose whole claim is "this just happened".
+    runFrames.value = []
     transport.runMode = mode
     transport.nodeId = mode === 'node_test' ? nodeUnderTest.value : null
     // Sent for BOTH modes. `node_test` needs it - it has nothing to replay into
@@ -510,6 +610,8 @@ export function useFlowTest(options: FlowTestOptions) {
     // running
     run,
     transport,
+    /** 12 D2's third surface, for the builder's problems dock. */
+    runProblems,
     canRun,
     runBlockedReason,
     startRun,

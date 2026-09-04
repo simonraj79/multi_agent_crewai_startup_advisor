@@ -120,6 +120,84 @@ async function openTab(page: Page, tab: string): Promise<void> {
   await expect(panel(page)).toHaveAttribute('data-open', 'true')
 }
 
+/* --- a graph that fails on purpose (12 D2's third surface) -----------------
+ *
+ * The one document here that is not a gallery template, and it has to be:
+ * `SYNTHETIC_FAILURE` names the node it fails BY ID and the match is exact
+ * (`builder_runner.py::_FailurePlan.applies_to`), so the graph has to declare
+ * `fm_refusal` itself. `e2e/failure-modes.spec.ts` authors the same shape
+ * against the same backend line, and every id it names is one only these two
+ * files write - so one backend serves the whole suite and no other file's run
+ * fails.
+ *
+ * GATELESS, which needs `BUILDER_ALLOW_GATELESS_GRAPHS=1`, for failure-modes'
+ * own reason: a gate above the failure would park the run and this test would
+ * be about the gate.
+ */
+const AUTHORED_MODEL = 'google/gemini-3.8-flash'
+
+function refusingGraph() {
+  const agent = (id: string, source: string) => ({
+    id,
+    kind: 'agent',
+    label: id,
+    position: { x: 0, y: 0 },
+    config: {
+      role: `${id} specialist`,
+      goal: `do the ${id} work`,
+      backstory: 'years of it',
+      task: {
+        description: 'work from ${state.out__' + source + '}',
+        expected_output: 'a paragraph',
+      },
+      llm: { model: AUTHORED_MODEL },
+      tier: 'cheap',
+      on_error: 'fail',
+    },
+  })
+  const edge = (id: string, source: string, target: string) => ({
+    id,
+    source,
+    source_port: 'out',
+    target,
+    target_port: 'in',
+  })
+  return {
+    schema: 'builder.flow/v1',
+    name: 'a graph whose second agent refuses',
+    version: 1,
+    input_field: 'idea',
+    nodes: [
+      { id: 'idea', kind: 'input', label: 'idea', position: { x: 0, y: 0 }, config: { field: 'idea' } },
+      agent('safe', 'idea'),
+      agent('fm_refusal', 'safe'),
+      {
+        id: 'report',
+        kind: 'output',
+        label: 'report',
+        position: { x: 0, y: 0 },
+        config: { body_key: 'markdown_body', source: '${state.out__fm_refusal}' },
+      },
+    ],
+    edges: [
+      edge('e1', 'idea', 'safe'),
+      edge('e2', 'safe', 'fm_refusal'),
+      edge('e3', 'fm_refusal', 'report'),
+    ],
+    joins: {},
+  }
+}
+
+/** Create and publish a document the browser will then open by id. */
+async function publishDocument(request: APIRequestContext, document: unknown): Promise<string> {
+  const created = await request.post('/api/builder/workflows', { data: { document } })
+  expect(created.status(), await created.text()).toBe(201)
+  const id = ((await created.json()) as { document: { id: string } }).document.id
+  const published = await request.post(`/api/builder/workflows/${id}/publish`)
+  expect(published.status(), await published.text()).toBe(200)
+  return id
+}
+
 test.describe('The docked test panel', () => {
   test.describe.configure({ mode: 'serial' })
 
@@ -345,6 +423,99 @@ test.describe('The docked test panel', () => {
 
     expect(watch.unexpected).toEqual([])
   })
+
+  test(
+    'a failed test run puts the node in the problems dock, under its own heading',
+    { tag: '@launch' },
+    async ({ page, request }) => {
+      /*
+       * 12 D2's third surface, and the only place it has ever been true.
+       *
+       * D2 asks that a failed node say so in three places at once - on the
+       * card, in the log, and in the problems dock. The dock is the one that
+       * makes a failure SURVEYABLE: four red nodes on a sixteen-node canvas is
+       * four rows here and four hunts otherwise. `ProblemsPanel`'s run group
+       * and `runPhaseProblems` were both built and both unit-proved, and
+       * NOTHING FED EITHER until 2026-09-04 - so the group could be mounted in
+       * jsdom with hand-made props and could not be produced by a run.
+       *
+       * That is exactly the gap `e2e/failure-modes.spec.ts` had to guard: it
+       * looked for this heading on the RUN CONSOLE, which has no problems dock
+       * by design, and skipped when it found none. The dock lives in the
+       * BUILDER, beside the test panel, and this is where the assertion
+       * belongs. That guarded step is deleted, and the comment left in its
+       * place points here.
+       *
+       * The frames come off the socket into `useFlowTest`'s transport tap;
+       * `frontend/tests/testPanel.spec.ts` drives that tap directly, including
+       * the replay door and the four frames CrewAI raises about one failure.
+       * What only a browser can say is that the row was rendered, in the dock,
+       * while the canvas was in run tenancy.
+       */
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+
+      const id = await publishDocument(request, refusingGraph())
+      await page.goto(`/#/build/${id}`)
+      await expect(nodes(page)).toHaveCount(4)
+
+      await openTab(page, 'run')
+
+      // Not a gallery template, so nothing seeds the box - the author types.
+      const value = page.locator('[data-testid="test-input-value"]')
+      await value.fill('clinic scheduling software')
+      await page.locator('[data-testid="test-run"]').click()
+
+      /*
+       * SKIP RATHER THAN FAIL when the backend was started without the two
+       * knobs, saying so - the `SYNTHETIC_BRANCH_DELAY_SECONDS` lesson. A
+       * gateless launch answers 403 without `BUILDER_ALLOW_GATELESS_GRAPHS`,
+       * and without `SYNTHETIC_FAILURE` this graph simply completes; either way
+       * the dock stays empty and the failure would read like a product defect.
+       */
+      const status = page.locator('[data-testid="test-run-status"]')
+      await expect(status).not.toHaveText(/queued/i, { timeout: 60_000 })
+      const settled = await Promise.race([
+        page
+          .locator('[data-testid="problems-run-heading"]')
+          .waitFor({ state: 'visible', timeout: 180_000 })
+          .then(() => 'failed' as const),
+        status.filter({ hasText: /completed/i }).waitFor({ timeout: 180_000 }).then(() => 'clean' as const),
+      ]).catch(() => 'clean' as const)
+      test.skip(
+        settled !== 'failed',
+        'the backend was started without BUILDER_ALLOW_GATELESS_GRAPHS=1 and SYNTHETIC_FAILURE='
+          + '"fm_bad_key:bad_key:1,fm_tool_timeout:tool_timeout:1,fm_refusal:refusal:1,'
+          + 'fm_malformed:malformed_output:1,fm_rate_limit:rate_limit:1" - see '
+          + 'e2e/failure-modes.spec.ts\'s docstring.',
+      )
+
+      // The heading, which is what separates a run failure from a build
+      // problem: "this graph cannot run" and "this graph ran and one node
+      // failed" are different sentences and an author acts on them differently.
+      await expect(page.locator('[data-testid="problems-run-heading"]')).toBeVisible()
+      await expect(page.locator('ul[aria-label="Run problems"]')).toBeVisible()
+
+      // The class the server sent, prefixed - `run-refusal`. The suffix is the
+      // wire value verbatim and the prefix is the client's, so `refusal` does
+      // not sit in the code chip looking like a build-time code.
+      const row = page.locator('[data-testid="problem-run-refusal"]')
+      await expect(row).toBeVisible()
+      // Named by its LABEL, so the row is readable without knowing the id.
+      await expect(row).toContainText('fm_refusal')
+
+      // And the headline stops claiming the graph is fine. It read
+      // `Ready to publish` over a canvas with a red node on it until the group
+      // had something in it - true about a publish, and the wrong thing to be
+      // saying to somebody whose run just failed. It still counts BUILD-time
+      // problems for the verdict; what it will not do is claim there is nothing
+      // wrong while a failure is on screen.
+      await expect(headline(page)).toContainText(/1 node failed/i)
+      await expect(headline(page)).not.toContainText(/ready to publish/i)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
 
   test('the Code tab shows what a DRAFT compiled to, without publishing it', async ({ page }) => {
     /*

@@ -393,23 +393,11 @@ test.describe('the failure reaches the screen', () => {
       })
     })
 
-    // GUARDED: the builder's ProblemsPanel is not on the run console. Plan 13
-    // brings the inline test-run panel that shows the builder canvas in
-    // `[data-mode='run']`, and the run-phase group renders there. The group
-    // itself is proved by `frontend/tests/runProblems.spec.ts`.
-    await test.step('the run-phase group in the problems dock (plan 13)', async () => {
-      const heading = page.locator('[data-testid="problems-run-heading"]')
-      if ((await heading.count()) === 0) {
-        test.info().annotations.push({
-          type: 'guarded',
-          description:
-            'the problems dock is not on the run console until plan 13 lands its inline panel',
-        })
-        return
-      }
-      await expect(heading).toBeVisible()
-      await expect(page.locator('[data-testid="problem-run-refusal"]')).toBeVisible()
-    })
+    // The run-phase group in the problems dock is asserted in
+    // `e2e/test-panel.spec.ts` ("a failed test run puts the node in the problems
+    // dock"), not here: the run console has no problems dock BY DESIGN - the
+    // dock is a builder surface - so the guarded step that used to sit here was
+    // looking for it on the one page it can never be on.
 
     expect(watch.unexpected).toEqual([])
   })

@@ -2018,11 +2018,20 @@ watch(
 
           <TestPanel ref="testPanelRef" :test="flowTest" :labels="testNodeLabels" />
 
+          <!--
+            `run-problems` is 12 D2's third surface, finally wired: the
+            `node_error` frames of the run in the panel above, as rows under
+            their own heading. The renderer (`ProblemsPanel`'s run group) and the
+            builder (`runPhaseProblems`) were both unit-proved and NOTHING FED
+            EITHER, so a node that failed said so on its card and in the log and
+            not in the one place that makes four failures surveyable at once.
+          -->
           <ProblemsPanel
             :problems="validation.problems.value"
             :phase="validation.phase.value"
             :reason="validation.unreachableReason.value"
             :publish-problems="publishProblems"
+            :run-problems="flowTest.runProblems.value"
             :labels="anchorLabels"
             :viewing-version="readOnlyVersion"
             @focus="onEdgeSelectFromPanel"

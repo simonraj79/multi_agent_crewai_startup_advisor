@@ -275,10 +275,39 @@ which reads exactly like a CSS regression.
 
 Playwright starts its own second Vite server on **5273** which proxies to 8099.
 
-**Stopping it:** `Stop-Process -Name serve -Force`. Then confirm from the serve
-log *and* a refused `/healthz`. `pkill` reports success on Windows while doing
-nothing, and a stale process keeps answering from old code — this has cost two
-sessions, once presenting as a mysterious 401.
+**Stopping it — BY PID, NEVER BY NAME.** Several backends share this machine
+whenever more than one agent is working, and `Stop-Process -Name serve` kills
+every one of them: on 2026-09-04 at 21:04 it hard-killed the Integrator's
+E2E backend on 8099 nine minutes into a full run, and the seven mobile visual
+tests that ran after it failed on `502` from the proxy rather than on any
+pixel. Stop only your own, from your own port:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8099 -State Listen |
+  Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }
+```
+
+Then confirm from the serve log *and* a refused `/healthz`. `pkill` reports
+success on Windows while doing nothing, and a stale process keeps answering
+from old code — this has cost two sessions, once presenting as a mysterious
+401.
+
+**The full E2E needs two more things since plans 07 and 12 landed**, and
+their absence does not look like a missing knob:
+
+- `e2e/failure-modes.spec.ts` reads `SYNTHETIC_FAILURE` from the backend
+  PROCESS and skips (saying so) without it. Start the backend with
+  `BUILDER_ALLOW_GATELESS_GRAPHS=1` and the exact five-mode string in that
+  file's header. Every entry names an `fm_*` node only that file authors, so
+  one backend serves the whole suite.
+- `e2e/builder-mcp.spec.ts` discovers a REAL loopback MCP server and skips
+  without `E2E_MCP_URL`. Run `tests/service/mcp_fixture_server.py`'s
+  `build_server(port=8791).run(transport="streamable-http")` from the
+  worktree root, start the backend with `MCP_ALLOW_INSECURE_LOCAL=1`, and set
+  `E2E_MCP_URL=http://127.0.0.1:8791/mcp` for Playwright.
+- Start the backend **from the worktree root**, or set `SKILLS_ROOT` to the
+  absolute `data/skills` — relative, it resolves nowhere and the four
+  built-in packs are silently absent.
 
 ### The suites
 

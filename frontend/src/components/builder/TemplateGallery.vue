@@ -448,11 +448,19 @@ const orderedLibrary = computed(() =>
               >
                 <Download :size="15" aria-hidden="true" />
               </button>
+              <!--
+                18px and a hairline between the three reversible actions and
+                the one that is not (D-15-26). `aria-hidden`, because the
+                separation is a visual grouping and a screen reader already
+                hears "Delete <name>".
+              -->
+              <span class="library-actions-separator" aria-hidden="true"></span>
               <button
                 class="icon-button library-delete"
                 type="button"
                 :aria-label="`Delete ${entry.name}`"
                 title="Delete"
+                data-testid="library-delete"
                 @click="askToDelete(entry.id)"
               >
                 <Trash2 :size="15" aria-hidden="true" />
@@ -927,8 +935,23 @@ const orderedLibrary = computed(() =>
 .status-pill.is-published { color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
 
 /* The row's four actions (D-15-15). `auto` in the row's own grid, so the name
-   keeps every pixel the actions do not need. */
+   keeps every pixel the actions do not need.
+
+   D-15-26: four 28px glyphs in a 2px row, with Delete 34px from Export and
+   drawn in the same colour and weight as the three safe ones - so the
+   irreversible action was two pixels of icon away from the reversible one it
+   sits beside. The answer is `DocumentBar`'s own, from D-15-6, because this is
+   the same defect on a second surface and a second answer to it would be a
+   second thing to keep in step: a separator, a real gap, and the error colour
+   AT REST rather than only on hover. */
 .library-actions { display: inline-flex; gap: 2px; align-items: center; }
+.library-actions-separator {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 9px;
+  background: var(--border-default);
+}
+.library-delete { color: var(--err-text); }
 .library-delete:hover { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
 
 .delete-confirm {

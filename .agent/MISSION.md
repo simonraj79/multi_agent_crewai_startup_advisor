@@ -430,16 +430,16 @@ six times, never twice for the same reason, and every one of them was a figure
 copied from a neighbouring document rather than regenerated. The command is the
 contract; the number never is.
 
-Measured on **2026-09-04** at `f19a2c6` in this worktree:
+Measured on **2026-09-05** at `953ccbd` in this worktree, after the wave-D integration (the `f19a2c6` figures it replaces were 1660 / 1233 / 37):
 
 <!-- BASELINE-START -->
 | Suite | Result | How |
 | --- | --- | --- |
-| Python | **1660 run · 0 failures · 6 skipped · 72.7 s** | `unittest discover -s tests -t .` with `PYTHONPATH` set |
-| Frontend unit | **1233 passed in 66 files** | `npm test` |
+| Python | **2439 run · 0 failures · 6 skipped · 179.0 s** | `unittest discover -s tests -t .` with `PYTHONPATH` set |
+| Frontend unit | **1696 passed in 84 files** | `npm test` |
 | Type check | **exit 0** | `npx vue-tsc -b --force` |
-| Production build | **1981 modules · 646 ms** | `npm run build` |
-| E2E | **37 passed in 1.7 min**, all 5 files, zero console errors tolerated | `npx playwright test` against `SYNTHETIC=1` on 8099 |
+| Production build | **green, 720 ms** | `npm run build` |
+| E2E | **130 passed · 0 failed · 0 skipped · 8.1 min**, every file, both projects, zero console errors tolerated | `npx playwright test` against `SYNTHETIC=1` on 8099 with the §8 knobs, the MCP fixture on 8791 and `E2E_MCP_URL` set |
 <!-- BASELINE-END -->
 
 Every row above was **run in this worktree on 2026-09-04 at `f19a2c6`**, not

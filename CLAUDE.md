@@ -236,22 +236,13 @@ which on its own line rather than in a footnote.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:  2023 run, 0 failures, 0 errors, 6 skipped - 127.2s   GREEN
-               (5 of the 6 skips are tests/pg/ with no TEST_DATABASE_URL)
-PostgreSQL 18.6: tests/pg/test_two_writers.py - 5 run, OK - 23.3s   GREEN
-               (all five compare-and-set paths, two processes each, against
-                "PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2)" in pg18-test)
-Frontend unit: 1400 run, 37 FAILURES, 72 files (Vitest + jsdom)      RED
-               builderDefaults.spec.ts 33, builderImport.spec.ts 2,
-               versionBrowser.spec.ts 2 - all in the uncommitted surface
-Type check:    `npx vue-tsc -b --force` EXIT 2, 11 errors            RED
-               `npm run build` is `vue-tsc -b && vite build && tsc -p
-               tsconfig.server.json`, so it stops at step one - this row
-               alone fails the studio's Render build
-Playwright E2E:  69 tests in 8 files, 9 of them @launch              NOT RUN
-                 `npx playwright test --list` answers 69; the same with
-                 `--grep-invert @launch` answers 60. A LIST IS NOT A RUN and
-                 no browser was launched by this pass.
+Python tests:  2439 run, 0 failures, 0 errors, 6 skipped - 179.0s   GREEN
+Frontend unit: 1696 run, 0 failures, 84 files (Vitest + jsdom)      GREEN
+Frontend build: GREEN - `vue-tsc -b --force` exit 0, `npm run build` 720ms
+Playwright E2E:  130 passed, 0 failed, 0 skipped - 8.1m, 23 files    GREEN
+                 both projects, zero console errors tolerated, against
+                 SYNTHETIC=1 on :8099 with MISSION.md §8's knobs and the
+                 MCP fixture on :8791. Measured 2026-09-05 at 953ccbd.
 ```
 
 > **The previous block, for the record, and it was fully run:** 2026-09-03 at

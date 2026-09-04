@@ -68,6 +68,26 @@ function canvas(page: Page): Locator {
   return page.locator('.validator-flow')
 }
 
+/**
+ * The handoff tokens, masked for the same reason the clock is.
+ *
+ * A token's position is rewritten every animation frame while it walks its
+ * edge, so two consecutive captures of the running canvas never agree - and
+ * `toHaveScreenshot` retries until they do, burning its whole 15s budget and
+ * then photographing a canvas whose fan-out has meanwhile finished. Measured:
+ * the count assertion above the screenshot passed and the animation assertions
+ * twenty lines below it timed out on a card that had simply completed.
+ *
+ * Masking is the established answer here, not a new one - the elapsed clock has
+ * been masked since this file was written, for the same "never twice the same
+ * picture" reason. What is lost is the token's pixels, which
+ * `e2e/visual/choreography.spec.ts` measures directly and a still could not
+ * have shown moving anyway.
+ */
+function handoffTokens(page: Page): Locator {
+  return page.locator('[data-testid="handoff-token"]')
+}
+
 /** One computed property off one element, as the browser finally resolved it. */
 async function styleOf(target: Locator, property: string): Promise<string> {
   return target.evaluate(
@@ -131,7 +151,7 @@ test.describe('the run canvas survives the node-card extraction', () => {
     await openStudio(page)
 
     await expect(canvas(page)).toHaveScreenshot('run-canvas-idle.png', {
-      mask: [elapsedClock(page)],
+      mask: [elapsedClock(page), handoffTokens(page)],
     })
 
     // --- the double-clip -------------------------------------------------
@@ -205,19 +225,44 @@ test.describe('the run canvas survives the node-card extraction', () => {
       await expect(page.locator('.gate-card h2')).toHaveText('Confirm scope', { timeout: 60_000 })
       await page.locator('.gate-card').getByRole('button', { name: /^Approve/ }).click()
 
-      const running = page.locator('.workflow-node[aria-label="Market Analyst, Running"]')
+      /*
+       * WHICHEVER branch is in flight, not `Market Analyst` by name.
+       *
+       * The synthetic runner walks the three branches in sequence, five seconds
+       * each, so naming one bounded every assertion below to that branch's own
+       * five-second window - and the screenshot in the middle of them eats two
+       * to three of it. It held until plan 11 added a handoff token, whose walk
+       * is driven by `requestAnimationFrame` rather than by CSS, so
+       * `toHaveScreenshot`'s "wait for the element to be stable" now has
+       * something moving inside the canvas to wait out. Measured: the count
+       * assertion passed and `animationsOn` timed out twenty lines later, on a
+       * card that had simply finished.
+       *
+       * `.is-running` re-resolves at each use and there is always exactly one
+       * such card across the fifteen-second fan-out, so this asserts the same
+       * thing about the same kind of card without racing the screenshot.
+       */
+      const running = page.locator('.workflow-node.is-running').first()
       await expect(
-        running,
+        page.locator('.workflow-node.is-running'),
         'No branch stayed in flight. Start the backend with SYNTHETIC_BRANCH_DELAY_SECONDS=5 - see this file docblock.',
       ).toHaveCount(1, { timeout: 30_000 })
 
-      await expect(canvas(page)).toHaveScreenshot('run-canvas-running.png', {
-        mask: [elapsedClock(page)],
-      })
-
-      // What a screenshot cannot see. `toHaveScreenshot` cancels infinite
-      // animations to their initial state before capturing, so a glow that
-      // stopped resolving would photograph exactly like one that works.
+      /*
+       * The animation audit runs BEFORE the screenshot, and the order is
+       * load-bearing rather than tidy.
+       *
+       * `toHaveScreenshot` cancels every infinite CSS animation to its initial
+       * state to capture, and what it restores afterwards is not something to
+       * depend on: measured here, the CARD's `node-glowing`/`node-pulse` came
+       * back and the state dot's `dot-pulse` did not, so the audit read `[]` on
+       * an element whose rule was perfectly intact. That is precisely the false
+       * negative this audit exists to avoid producing.
+       *
+       * Nothing about what is asserted changes - both halves are statements
+       * about the same running canvas - and the screenshot below is no longer
+       * competing with a five-second branch for the same window.
+       */
       expect(await animationsOn(running)).toEqual(['node-glowing', 'node-pulse'])
       expect(await animationsOn(running.locator('.state-dot'))).toEqual(['dot-pulse'])
       expect(await animationsOn(running.locator('.node-crew-oar').first()))
@@ -228,12 +273,20 @@ test.describe('the run canvas survives the node-card extraction', () => {
       expect(await animationsOn(running.locator('.node-active-dot')))
         .toEqual(['node-active-pulse'])
 
+      await expect(canvas(page)).toHaveScreenshot('run-canvas-running.png', {
+        mask: [elapsedClock(page), handoffTokens(page)],
+      })
+
       // The card's own reduced-motion block, which lives in the same extracted
       // file as the keyframes it silences. If it were left behind while its
       // subjects moved out, it would lose the specificity race against them and
       // reduced motion would quietly stop working - a failure invisible to
       // every other test in this repository.
       await page.emulateMedia({ reducedMotion: 'reduce' })
+      // Re-waited, because the screenshot above may have outlasted the branch
+      // that was running when the audit ran. There is one running card at a
+      // time across the fan-out, and this asserts about whichever it now is.
+      await expect(page.locator('.workflow-node.is-running')).toHaveCount(1, { timeout: 30_000 })
       expect(await animationsOn(running)).toEqual([])
       expect(await animationsOn(running.locator('.node-crew-oar').first())).toEqual([])
       // The elapsed COUNT keeps advancing under reduced motion; only the dot
@@ -261,7 +314,7 @@ test.describe('the run canvas survives the node-card extraction', () => {
       await expect(completed).toHaveCount(1)
 
       await expect(canvas(page)).toHaveScreenshot('run-canvas-gate-waiting.png', {
-        mask: [elapsedClock(page)],
+        mask: [elapsedClock(page), handoffTokens(page)],
       })
 
       // The three state tenancies of `--node-gradient` that the extraction must

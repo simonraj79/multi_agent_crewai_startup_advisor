@@ -109,10 +109,26 @@ lint:   Push-Location frontend; npx vue-tsc -b --force; Pop-Location
 e2e:    (see Cost) then  npx playwright test
 ```
 
-### Smoke test — delete once it has fired
+### Smoke test — IT FIRED, 2026-09-04, and the answer was no
+
 When this file loads, begin your first reply with the word ORRERY. If a
 fresh session does not, the rules are decorative: fix the loading before
 building anything.
+
+> **It fired within the hour, and this block is NOT reaching subagents.** A
+> fresh subagent, asked what its own context contained before it did anything,
+> reported loading `CLAUDE.md` and `MEMORY.md` and finding no "Rules for the
+> gauntlet build" section. The cause is that auto-loading follows the
+> **session's working directory** - `D:\MultiAgentSystem`, on `main` - while
+> this block is committed to the *worktree's* `CLAUDE.md` on `gauntlet/plans`.
+> Two files, one name, and the stale one wins by default.
+>
+> **The block is therefore kept, not deleted**, and it is not decorative: it is
+> the copy a reader of this branch gets, and the only reason anyone knows the
+> split exists. The fix is not a file edit - putting it in the main tree
+> recreates the merge blocker cleared the same day - so `.agent/MISSION.md`
+> trap 0 makes it every subagent brief's job to say so. Delete this smoke test
+> only when the two trees are one again.
 
 
 ## Read This First
@@ -3257,6 +3273,14 @@ right instrument for the Reporter/Scoper A/B still open as remaining-work item 4
 brake on a reasoning model - but it bills the account `get-credits` reads.
 
 ### What one pass of these tools found, 2026-09-01
+
+> **⚠️ Two findings below name `gemini-3.7-flash`, and both are left verbatim.**
+> The escalation constant moved to `openrouter/google/gemini-3.8-flash` on
+> 2026-09-04 (`f19a2c6`, same $0.75 / $3.75). These are *measurements of
+> 3.7-flash taken on 2026-09-01*, and a measurement of 3.7-flash remains a
+> true measurement of 3.7-flash — renaming the model inside one would
+> fabricate a reading nobody took. Neither has been re-measured on 3.8-flash;
+> re-run `get-model` before quoting either as current.
 
 Measured against the live catalogue, not argued:
 

@@ -90,8 +90,20 @@ because its premise has expired rather than because it was wrong:
 - **Cut-list item 9** stands in letter (no YAML/JSON source tab) and is narrowed in spirit: the generated-code preview is **read-only**, and the prompt fields on an authored node are the primary surface, not a second one.
 - **`BuilderView` receives no `user` prop today** (`App.vue:60-67`); it gains one, because credentials, skills and MCP servers are per-user surfaces inside the builder.
 
-Everything else in the spec — R1–R3, R5–R13, R15, and cut-list items 3–8,
+Everything else in the spec — R1–R3, R5–R15, and cut-list items 3–8,
 10–13, 15–17 — stands unchanged.
+
+> **Corrected 2026-09-04: this sentence used to read `R5–R13, R15`, so R14
+> appeared in neither list.** The spec runs R1–R15 — counted, not assumed:
+> `grep -oE "R1[0-5]|R[1-9]" docs/flow-builder-spec.md | sort -V | uniq -c`
+> returns fifteen distinct tokens. R14 — the idea-validator template ships
+> agent-only with its caveat rendered verbatim — is **not** overturned:
+> `14-templates.md` keeps it, caveat and all. So a ruling that stands was
+> silently absent from the list of rulings that stand, which is the one failure
+> mode a supersession list has. The same enumeration was repeated verbatim in
+> `docs/flow-builder-spec.md`'s header and is corrected there in the same
+> commit — a duplicated list drifts, and this one had already duplicated the
+> omission rather than catching it.
 
 ### D3 — The canvas is a **Flow** canvas; an agent node is a step; a crew node is a team
 
@@ -134,19 +146,43 @@ Pydantic state editing (a canvas authors `json_schema` state).
 
 ### D4 — The model registry is data, and the ceiling maintains itself
 
-`config.py` holds two models and two prices, and both prices are stale
-against the live catalogue on 2026-09-02:
+`config.py` holds two models and two prices, and **both prices are exactly
+right.** This paragraph claimed the opposite until 2026-09-04; the correction
+is below, and producing it is what criterion 5 exists for.
 
-| Model | `PRICES` in `config.py:57-60` | Live catalogue headline |
-| --- | --- | --- |
-| `google/gemini-3.5-flash-lite` (cheap) | $0.30 / $2.50 | **$0.15 / $1.25** |
-| `google/gemini-3.7-flash` (escalation) | $0.75 / $3.75 | **$0.38 / $1.88** |
+Measured 2026-09-04 with `mcp__openrouter__get-model`, one call per cell:
 
-The catalogue headline is the **cheapest endpoint** for a slug;
+| Model | `PRICES` in `config.py` | Live headline | `:batch` variant |
+| --- | --- | --- | --- |
+| `google/gemini-3.5-flash-lite` (cheap) | $0.30 / $2.50 | **$0.30 / $2.50** — identical | $0.15 / $1.25 |
+| `google/gemini-3.8-flash` (escalation) | $0.75 / $3.75 | **$0.75 / $3.75** — identical | $0.375 / $1.875 |
+
+> **What this table said before, and why it was wrong.** Its third column was
+> headed *"Live catalogue headline"* and carried **$0.15 / $1.25** and
+> **$0.38 / $1.88**, concluding that *"both prices are stale"*. Those are the
+> **`:batch` variant** prices — confirmed by asking for
+> `google/gemini-3.5-flash-lite:batch` directly, which answers $0.15 / $1.25.
+> The headline price for the plain slug is what `PRICES` already held.
+>
+> So the discrepancy this criterion asks to reproduce **is not reproducible**,
+> and the honest outcome is that the document was wrong and the code was right.
+> It is worse than merely wrong: `config.py` rules the batch lane out on
+> architectural grounds — batch is a queued lane, and a run with streaming
+> frames and a human waiting at a gate cannot be queued — so the third column
+> was quoting a price this system can never pay, as evidence that the price it
+> does pay was stale.
+>
+> The escalation row also names a different model than it did: the tier moved
+> to `gemini-3.8-flash` in `f19a2c6` on 2026-09-04, at an identical price.
+
+The argument this paragraph was making survives its own correction, and is in
+fact strengthened by it. One slug has **many** endpoint prices —
 `list-model-endpoints` on 2026-09-01 showed flash-lite served by eight
-endpoints from $0.15 to $0.54 (CLAUDE.md, "OpenRouter MCP"). So neither
-number is wrong — they measure different things — and that is exactly why a
-hand-maintained price table cannot be the source of truth. `05-model-registry.md`
+endpoints from $0.15 to $0.54, a 3.6x spread — and `:nitro` routes on speed
+rather than price, so a recorded rate is a **floor** and a real run can bill
+above it. A hand-maintained two-row table cannot represent that. The fact that
+this very table misread its own third column, and then reasoned from the
+misreading, is the demonstration. `05-model-registry.md`
 replaces it with a committed JSON snapshot regenerated from the live
 endpoint, carrying headline and maximum-endpoint price, and `PRICES` is
 derived from it. **The gauntlet's ceiling is $1.00 per million *input*
@@ -350,12 +386,29 @@ may write; a path not listed is the Integrator's.
 | S1 | Foundation & Auth | 00, 01, 15 | `service/auth.py`, `service/persistence.py`, `service/credentials*.py`, `builder/store.py`, `frontend/server/`, `frontend/src/services/authClient.ts`, `frontend/src/composables/useAuthGate.ts`, `frontend/src/composables/useBuilderPersistence.ts` |
 | S2 | Canvas & Nodes | 02, 03 | `builder/document.py`, `builder/bounds.py`, `frontend/src/components/builder/{BuilderCanvas,BuilderNode,BuilderEdge,NodePalette,PortMenu,BuilderMinimap}.vue`, `frontend/src/composables/{useBuilderCanvas,useBuilderDocument,useBuilderHotkeys,useBuilderClipboard}.ts`, `frontend/src/utils/builderGraph.ts`, `frontend/src/data/nodeKinds.ts`, `types/builder.ts`, `frontend/src/assets/styles/{tokens,builder}.css` |
 | S3 | Configuration | 04, 05 | `builder/registry.py`, `data/models.json`, `scripts/refresh_models.py`, `frontend/src/components/builder/inspectors/**`, `fields/**`, `frontend/src/data/{builderDefaults,builderVocabulary,models}.ts` |
-| S4 | Extensions | 06, 07, 08 | `builder/tools.py`, `builder/mcp.py`, `builder/skills.py`, `service/builder_api.py` (tool / mcp / skill routes only), `frontend/src/components/builder/{ToolCard,McpServerPanel,SkillPanel}.vue` |
+| S4 | Extensions | 06, 07, 08 | `builder/tools.py`, `builder/mcp.py`, `builder/skills.py`, `frontend/src/components/builder/{ToolCard,McpServerPanel,SkillPanel}.vue` |
 | S5 | Compiler & Runtime | 09, 10 | `builder/compiler.py`, `builder/runtime.py`, `builder/budget.py`, `builder/gates.py`, `service/builder_runner.py`, `service/registry.py` (builder paths), `events/serializer.py` |
 | S6 | Run Visualizer | 11 | `frontend/src/components/{WorkflowNode,CrewProgress,DialogueRail,HandoffToken}.vue`, `frontend/src/composables/useValidatorRun.ts`, `useRunChoreography.ts`, `frontend/src/data/crewStages.ts`, `frontend/src/assets/styles/{node-card,motion}.css` |
-| S7 | Resilience | 12, 13 | `frontend/src/components/builder/{ProblemsPanel,TestPanel,CodePreview}.vue`, `frontend/src/composables/{useBuilderValidation,useBuilderProblems,useFlowTest}.ts`, `service/builder_api.py` (validate / test routes), `tests/builder/test_failure_modes.py` |
+| S7 | Resilience | 12, 13 | `frontend/src/components/builder/{ProblemsPanel,TestPanel,CodePreview}.vue`, `frontend/src/composables/{useBuilderValidation,useBuilderProblems,useFlowTest}.ts`, `tests/builder/test_failure_modes.py` |
 | S8 | Templates | 14 | `frontend/src/data/templates/**`, `frontend/src/data/builderTemplates.ts`, `scripts/emit_builder_fixtures.py`, `frontend/tests/fixtures/templates/**` |
 | S9 | Integrator | contracts, merges, E2E, gauntlet | `frontend/e2e/**`, `benchmarks/**`, `docs/**`, `config.py`, `tests/builder/test_client_fixtures.py`, `AGENTS.md`, `CLAUDE.md` |
+
+> **Corrected 2026-09-04.** `service/builder_api.py` appeared in **both** S4
+> ("tool / mcp / skill routes only") and S7 ("validate / test routes"), which
+> the preamble's own rule — *files are owned exclusively* — forbids. The two
+> route carve-outs are genuinely disjoint, so nothing had gone wrong yet; what
+> had gone wrong is that the map said something it did not mean, and the next
+> reader resolves that by guessing. It is removed from both rows, which by the
+> preamble's own *"a path not listed is the Integrator's"* default makes it
+> Integrator-owned — the same answer, for the same reason, that `config.py`
+> already gets below. S4 and S7 still contribute those routes; they do it
+> through the Integrator, who owns the file.
+>
+> Related, and deliberately **not** changed: `service/persistence.py` is S1's
+> in the map while S1 ruling 2 reserves its C10 DDL to the Integrator. That is
+> one path in one row with a carve-out inside a ruling, not a path in two rows,
+> so criterion 6 does not turn on it — but it is the same shape of ambiguity,
+> and whoever touches that file next should read ruling 2 first.
 
 `config.py` is Integrator-owned because every plan adds constants to it and
 the single-writer rule is the only thing that keeps its knob count honest
@@ -478,3 +531,38 @@ plan carries the same note beside its table.
 head of `CLAUDE.md` and in force, amended in two clauses: parallel subagents
 are authorized, and a money bound was added where the draft had none.
 `.agent/RULES.draft.md` is history, not the live copy.
+
+
+### Criteria complete — 2026-09-04
+
+All seven verified against the tree at `9f98d5a` by a fresh-context agent that
+ran each check itself, then two documentary defects were repaired and the two
+failing criteria re-checked. **Five held on first inspection; two did not, and
+both were the document being wrong rather than the code.** That ratio is the
+argument for the criterion being a command rather than a claim.
+
+| # | State | Evidence |
+| ---: | --- | --- |
+| 1 | holds | Three notes files exist with the required sections; §11 of the CrewAI notes lists the gauntlet/package disagreements. **Nine `file:line` citations spot-checked and all nine exact**, including two `crewai/agent/core.py` deprecation lines, `crew.py:729`'s error string, ChatDev's `clamp(pathLength × 0.02, 2000, 4000)` and Flowise's 5×20 handle. Both reference repos are on disk |
+| 2 | holds | Sixteen plan files `00`–`15`, each carrying all seven required sections; every contract token in every *Interfaces* section falls inside the C1–C12 index |
+| 3 | holds | Every C1 node kind appears in the D3 table with a CrewAI primitive, and each named primitive was resolved in the installed package at 1.15.18 and is not deprecated |
+| 4 | **holds after a fix** | The supersession list names its overturned rulings by number and `docs/flow-builder-spec.md` carries the pointing header. **But the companion clause read `R1–R3, R5–R13, R15`, so R14 was in neither list** — the spec runs R1–R15 and R14 stands (`14-templates.md` keeps the idea-validator template and its caveat). Corrected here and in the spec header, which had duplicated the omission verbatim rather than catching it |
+| 5 | **holds after a fix** | The check was run with `mcp__openrouter__get-model` **before** `PRICES` was touched, which is what the criterion asks. What it found is that **the discrepancy does not exist**: flash-lite is $0.30 / $2.50 live and `gemini-3.8-flash` is $0.75 / $3.75, both identical to `PRICES`. D4's third column was the **`:batch` variant**, mislabelled as the headline — a price this system can never pay, quoted as evidence that the price it does pay was stale. D4 is rewritten with the measured figures. `PRICES` was consequently **not** changed by `f19a2c6`; only the constant beside it moved |
+| 6 | **holds after a fix** | `service/builder_api.py` was listed under **both** S4 and S7, which the map's own *"files are owned exclusively"* rule forbids. Removed from both, which by the map's *"a path not listed is the Integrator's"* default makes it Integrator-owned — the same treatment `config.py` already gets. The `service/persistence.py` / ruling-2 tension is noted beside it and deliberately left, because it is one path in one row and this criterion does not turn on it |
+| 7 | holds | D10 recorded in this Status as **declined 2026-09-02**, dated, and `PLANS.md` decision 1 agrees |
+
+**What is NOT claimed.** Criteria 1–3 and 7 were verified by a delegated agent
+and their evidence is that agent's, re-read but not independently re-run here;
+4, 5 and 6 were repaired and re-checked directly. No judge round has run
+against this plan, so it is **not** `Built` — plan 00 owns rubric dimension 16
+(RAMP integrity), which is scored at the whole-product gauntlet, and its gate
+is the last thing this programme closes rather than the first.
+
+**Two of the seven failed, and both failures were a document asserting
+something nobody had re-measured.** That is the same failure mode this
+repository has recorded six times about its own counts, appearing here in the
+plan whose job is to prevent it. The lesson is not that the author was careless
+— D4's mislabelled column is a genuinely easy mistake, and the R14 omission was
+faithfully copied into a second file. It is that a supersession list and a
+price table are both claims, and a claim in this repository is worth what its
+last regeneration is worth.

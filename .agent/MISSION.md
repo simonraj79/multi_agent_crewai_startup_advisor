@@ -252,7 +252,36 @@ Push-Location frontend; npx playwright test; Pop-Location
 PostgreSQL 18 runs in container `pg18-test` on **5433**, password `test`:
 `TEST_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:5433/postgres`.
 
+> **Docker Desktop must be running, and on 2026-09-04 it was not** — the daemon
+> answered `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the
+> file specified`. Nothing before plan 15's two-writer test needs it, so this is
+> a precondition to check rather than a blocker to clear now. It is the *only*
+> way to exercise the five compare-and-set paths in this codebase that have
+> never met a concurrent writer; SQLite's single-writer model cannot stress any
+> of them.
+
 ## 9. The traps — each of these has already cost somebody a session
+
+0. **The `CLAUDE.md` auto-loaded into your context is the MAIN TREE's copy, and
+   it is a generation stale.** Measured 2026-09-04: a fresh subagent was asked
+   what its context held and answered that it had loaded `CLAUDE.md` and
+   `MEMORY.md`, and that no "Rules for the gauntlet build" section was present —
+   because that section is committed to
+   `D:\MultiAgentSystem-wt\integration\CLAUDE.md` on `gauntlet/plans`, and
+   auto-loading follows the *session's* working directory, which is
+   `D:\MultiAgentSystem` on `main`. Two different files with one name.
+
+   The stale copy predates plans 01 and 15, the credential vault, and ~31,000
+   lines. **The authoritative copy is this worktree's**, and *this* file governs
+   over both. There is no clean file-edit fix: putting the block in the main
+   tree means either an uncommitted change there — which recreates the merge
+   blocker cleared on 2026-09-04 — or a commit to `main`, which is out of
+   scope. So **every subagent brief must say this in its own words.** That is
+   not belt and braces; it is the only mechanism there is.
+
+   This was found by the rules block's own ORRERY smoke test, which exists for
+   exactly this and is the only check in the repository that instructions
+   *arrive* rather than merely exist.
 
 1. **`PYTHONPATH`.** Without it you are testing the main tree's source. Silent.
 2. **`OSError: [Errno 22]` from `test_gates`, `test_builder_runner` or
@@ -302,14 +331,18 @@ Measured on **2026-09-04** at `f19a2c6` in this worktree:
 | Frontend unit | **1195 passed in 65 files** | `npm test` |
 | Type check | **exit 0** | `npx vue-tsc -b --force` |
 | Production build | **1981 modules · 646 ms** | `npm run build` |
-| E2E, listed | **37 tests in 5 files**; **28** with `--grep-invert @launch`, so **9 are `@launch`** | `npx playwright test --list` |
+| E2E | **37 passed in 1.7 min**, all 5 files, zero console errors tolerated | `npx playwright test` against `SYNTHETIC=1` on 8099 |
 <!-- BASELINE-END -->
 
 Every row above was **run in this worktree on 2026-09-04 at `f19a2c6`**, not
-copied. The E2E row is a *listing*: the 37 were not executed in that pass, and
-nine of them press Launch for real. Against `SYNTHETIC=1` on 8099 all 37 are
-free; point them at a paid origin with `E2E_BASE_URL` and those nine spend
-money.
+copied — the E2E included: 37 executed, not merely listed. **Nine of the 37 are
+`@launch`** (`--grep-invert @launch` lists 28). Against `SYNTHETIC=1` on 8099
+all 37 are free and this run cost nothing; point them at a paid origin with
+`E2E_BASE_URL` and those nine spend money.
+
+So the harness is known-good as of this baseline. A later wave that finds it
+red broke it — that is the whole reason for measuring it before building
+anything.
 
 Inherited from plan 15's round-3 report and **not** re-measured there:
 frontend 1195 in 65 files, E2E 37 in 5 files, PostgreSQL two-writer 5/5.

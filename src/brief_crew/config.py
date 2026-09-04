@@ -47,7 +47,29 @@ from urllib.parse import urlsplit
 # real call. Because nitro picks the fastest provider rather than the cheapest,
 # the price below is the published floor and the effective rate may be higher.
 CHEAP_MODEL = "openrouter/google/gemini-3.5-flash-lite:nitro"
-ESCALATION_MODEL = "openrouter/google/gemini-3.7-flash"
+
+# ⚠️ The escalation tier moved 3.7-flash -> 3.8-flash on 2026-09-04. The three
+# benchmark comments above and the two cost comments further down were measured
+# on 3.7-flash and have NOT been re-measured; they are kept because a
+# measurement of 3.7-flash remains a true measurement of 3.7-flash, and
+# rewriting the model name in them would fabricate data this project never
+# collected. Re-measure before quoting one as current.
+#
+# The swap needs no argument because it is free. Measured against the live
+# OpenRouter catalogue on 2026-09-04 (`mcp__openrouter__get-model`):
+#
+#   google/gemini-3.8-flash   $0.75 / $3.75   AA 58.7 / 76.3 / 50.0
+#   google/gemini-3.7-flash   $0.75 / $3.75   AA 56.0 / 76.1 / 45.1
+#
+# Byte-identical price, higher on all three Artificial Analysis indices
+# (intelligence / coding / agentic). The half-price `:batch` variant
+# ($0.375 / $1.875) is NOT usable here: batch is a queued lane, and a run with
+# streaming frames and a human waiting at a gate cannot be queued.
+#
+# The CHEAP tier deliberately did NOT move. 3.8-flash would cost it 2.5x on
+# prompt ($0.75 against $0.30), and the cheap tier exists to be cheap - three
+# tool-using research analysts run on it.
+ESCALATION_MODEL = "openrouter/google/gemini-3.8-flash"
 
 # USD per million tokens, (prompt, completion). Used to ESTIMATE cost, because
 # CrewAI discards OpenRouter's per-generation cost before it reaches any event.
@@ -56,6 +78,13 @@ ESCALATION_MODEL = "openrouter/google/gemini-3.7-flash"
 # de-prefixed spelling CrewAI actually reports.
 PRICES: dict[str, tuple[float, float]] = {
     CHEAP_MODEL: (0.30, 2.50),
+    # Unchanged by the 2026-09-04 escalation swap, and CHECKED rather than
+    # assumed: 3.8-flash is $0.75 / $3.75, the same as the 3.7-flash it
+    # replaces. The dict is keyed by the constants, so a swap can never orphan
+    # a key - but it can leave a stale VALUE, which is exactly the defect that
+    # once priced a 128,069-token run at $0.00. The rule is that the number
+    # moves in the same commit as the constant; here the number did not need
+    # to move, and that is a measurement, not an omission.
     ESCALATION_MODEL: (0.75, 3.75),
 }
 

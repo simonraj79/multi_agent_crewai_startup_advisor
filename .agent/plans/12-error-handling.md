@@ -420,3 +420,45 @@ does not see it because its `abc()` fixture has no gate.
    what the favicon one did. If the suite grows more launching files, the
    limiter — not the runner — becomes the bottleneck.
 
+
+### Integration closers — 2026-09-04
+
+**D2's third surface is wired, and criterion 10's dock half is no longer
+guarded.** `ProblemsPanel` has accepted a `runProblems` prop since this plan
+landed and `runPhaseProblems` has built the rows since this plan landed, both
+unit-proved in `frontend/tests/runProblems.spec.ts` — and **nothing fed
+either**. D2 asks that a failed node say so in three places at once; two of the
+three were true and the third could only be produced by a test handing the
+component props by hand.
+
+It could not simply read what the run console already keeps, and that is the
+part worth recording. `useValidatorRun` holds no frame list — it applies each
+frame and keeps the derived state — and the only place a `node_error` survives
+is `useRunChoreography.nodeErrors`, which keeps the SENTENCE and drops
+`error_class`, `attempt` and `will_retry`. `attempt` is the load-bearing one:
+`runPhaseProblems` filters on it because only `runtime.py::_node_error_frame`
+writes it, and without it the four frames CrewAI raises about one failure become
+four rows — which is the trap this plan's own `runProblems.spec.ts` docstring
+names first.
+
+So `useFlowTest` taps its own transport, on BOTH doors: `subscribe` for a live
+run and `getFrames` for the replay a reload performs. The list is bounded at the
+server's own 2,000 and cleared when a new run starts, because the group's whole
+claim is "this just happened" and carrying the last run's failures into the next
+one is §6.2's stale verdict in the one place it would be least forgivable. The
+tap is an explicit decorator with real getters, so the console's connection
+badge is not frozen at whatever it said when the composable ran.
+
+**`e2e/failure-modes.spec.ts`'s guarded step for this heading is DELETED, not
+un-guarded.** It looked for the problems dock on the RUN CONSOLE, which has no
+problems dock by design — the dock is a builder surface. A comment in its place
+points at the replacement, which is a `@launch` test in `e2e/test-panel.spec.ts`
+authoring a gateless graph whose second agent is `fm_refusal` (the id
+`SYNTHETIC_FAILURE` matches exactly, `builder_runner.py::_FailurePlan.applies_to`)
+and asserting `problems-run-heading`, `problem-run-refusal`, the node's label in
+the row, and that the headline stops reading *"Ready to publish"* over a canvas
+with a red node on it.
+
+Six unit assertions in `frontend/tests/testPanel.spec.ts`, including the replay
+door, the CrewAI echo frames, the clear on relaunch, and a control that every
+frame still reaches the console the tap wrapped.

@@ -397,3 +397,53 @@ tile does. The two gestures are meant to be distinguishable. The change is one
 line in `BuilderCanvas.vue` — another package's file this wave — and is carried
 as a named `test.fixme` in `frontend/e2e/builder-tools.spec.ts` with the exact
 diff.
+
+### Integration closers — 2026-09-04
+
+Two things this plan's Status recorded as belonging to another package's files,
+closed now that one session owns both halves. Neither is a change of plan; both
+are the wire the plan already described.
+
+**Criterion 9's dangling mime entry is read.** The last paragraph above says
+`NodePalette` writes both entries and `BuilderCanvas.onDrop` reads only the
+first, so a tool dragged out of the sub-list lands on the placeholder
+`tool_id`. `onDrop` now reads `BUILDER_TOOL_ID_MIME` and hands it through
+`dropKind` → `createAt` / `attachTo`; `asNamedTool` (`useBuilderCanvas.ts`)
+applies it, and validates it against the SERVED catalogue first, because
+`dataTransfer` is a public channel and a `tool_id` the compiler has never heard
+of is a node that publishes and then fails. An unknown id leaves the
+placeholder, which is the state the inspector already repairs. The label moves
+with the id — it is the only part of a node the canvas shows.
+
+The constant moved to `useBuilderCanvas` beside `BUILDER_DND_MIME` and is
+re-exported from `NodePalette`, so it is one binding now that it has two ends.
+`BUILDER_KIND_MIME` is still the cautionary example: the same string declared
+twice with no test that they agree.
+
+Shown by `frontend/tests/builderCanvas.spec.ts` (four assertions: the named drop
+attached and unattached, an unknown id ignored, a non-tool kind untouched) and
+`e2e/builder-tools.spec.ts`'s *"drags a NAMED tool out of the sub-list"*, whose
+`test.fixme` is now a `test`.
+
+**Decision 18's hotkeys can now attach.** `T` / `M` / `K` went to
+`canvas.insertKind`, whose auto-connect ends at `acceptsIncoming` — and the
+three attachment kinds accept nothing. So the pill landed loose wherever the
+pointer was, with `attachment-unattached` in the dock, and the only working
+attach gesture in the product was a pointer drag onto a card: a hotkey the
+tiles and the shortcut sheet both advertise, that could not do the thing it
+names.
+
+`canvas.attachToSelection` is the attachment half of that same rule, and it
+reuses `attachTo` whole — one commit carrying the node and its wire, labelled
+`Attach tool`, one Ctrl+Z for both. **On the SELECTION, not on the pointer**:
+a hotkey is a keyboard gesture and the keyboard's idea of "here" is what is
+selected; hit-testing the pointer would make one key do two things depending on
+where a mouse the author is not using happens to rest. `BuilderView.placeKind`
+calls it too, because a palette tile is a `<button>` and Enter on a focused tile
+is the same gesture by a second door.
+
+With nothing selected, two nodes selected, or a non-host selected, the
+behaviour is exactly as before and `attachment-unattached` is still the sentence
+the author reads — which is what keeps this a rule rather than an always-attach.
+Six assertions in `builderCanvas.spec.ts`, and a browser test in
+`e2e/builder.spec.ts` asserting both halves plus the single undo step.

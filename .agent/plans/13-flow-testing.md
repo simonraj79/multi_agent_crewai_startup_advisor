@@ -341,3 +341,62 @@ they are 02's and 03's surfaces, and this wave has other agents in them.
 - **The 240 s budget is still the gauntlet's figure and not a measurement of any
   real journey.** 3.5 s here is a synthetic backend with no model in it. The
   first paid journey should be timed once and recorded beside it.
+
+### Integration closers — 2026-09-04
+
+All three follow-ups this plan recorded against other packages' files are
+closed, and D2's third surface — plan 12's, whose only possible home is this
+panel — is wired to it.
+
+**Follow-up 1: the connect gesture writes the port it landed on.**
+`useBuilderDocument.addEdge` built its edge as `{ ...ends, id, target_port:
+'in' }` — a field `EdgeEnds` declares, documents and hands over, overwritten by
+a literal one line below its own spread. The gesture validated one edge and
+committed a different one, and every surface agreed with the wrong one:
+`isValidConnection` reads `targetHandle`, so dragging a tool's `attach` port
+onto an agent's went GREEN; `edgeClassOf` reads `target_port`, so the canvas
+then drew a step in the pipeline where the author had drawn a possession; and
+the server answered `attach-target-not-agent` about a shape nobody drew.
+Attach-by-DROP was never affected — it goes through `addNode`'s third argument —
+which is exactly why this survived a suite with attach coverage in it. The port
+is carried through all four layers now, with `?? 'in'` spelled once, in
+`addEdge`. Four assertions in `frontend/tests/builderPorts.spec.ts` through the
+real store, proved to fail by reverting the one line (3 failed / 39 passed), and
+a browser test in `e2e/builder.spec.ts` beside the existing attach test.
+
+**Follow-up 2: a named tool drag lands that tool.** `BuilderCanvas.onDrop` reads
+`BUILDER_TOOL_ID_MIME` and `dropKind` validates it against the served catalogue
+before applying it. Recorded fully in plans 03 and 06; the `test.fixme` in
+`e2e/builder-tools.spec.ts` is now a `test`.
+
+**Follow-up 3: the palette hotkey attaches.** This plan's note says it is "not a
+bug on its own — the hotkey is documented as placing a node", and that reading
+is now overtaken: with the tool-id drop fixed, a hotkey that cannot attach is
+the one advertised gesture that still cannot do what the tile beside it says.
+`canvas.attachToSelection` attaches to a lone selected agent or crew, reusing
+`attachTo` so it is one commit and one undo; with nothing selected it places a
+loose node and reports `attachment-unattached` exactly as before. **On the
+selection, not on the pointer** — see plan 03's closer for why.
+
+**Plan 12 D2's run-phase problems come off this panel's transport.**
+`useFlowTest` taps `subscribe` and `getFrames`, keeps the `stage: 'error'`
+frames bounded at 2,000, clears them on relaunch, and exposes `runProblems`,
+which `BuilderView` hands to `ProblemsPanel`. It could not read
+`useRunChoreography.nodeErrors` instead: that keeps the sentence and drops
+`error_class`, `attempt` and `will_retry`, and `attempt` is the field that
+separates a C6 frame from the four CrewAI raises about the same failure. The new
+`@launch` test in `e2e/test-panel.spec.ts` is the browser half, and it authors
+its own graph rather than a template because `SYNTHETIC_FAILURE` matches the
+node id EXACTLY.
+
+**One thing this leaves for whoever runs the full suite next.**
+`e2e/test-panel.spec.ts` now presses Run three times where it pressed twice, and
+this file's Status already records that `failure-modes` and `stream-failure` are
+the first files in the repository to meet `RUN_RATE_LIMIT_MAX_RUNS`. Running
+`failure-modes.spec.ts` and `test-panel.spec.ts` back to back in one invocation
+was observed on 2026-09-04 to 429 test-panel's first launch — measured, in the
+serve log — where each file alone passes. It is the limiter working, not a
+product defect, and neither file waits for the other; test-panel does not carry
+`failure-modes`' `Retry-After` wait. If the full suite starts failing there, that
+is the cause and the fix is to give test-panel the same wait, not to raise the
+limit.

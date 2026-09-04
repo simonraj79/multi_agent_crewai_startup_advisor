@@ -618,3 +618,29 @@ BOTH mime entries and `nodePalette.spec.ts` pins it; nothing reads the second.
 an agent"* lands the generic placeholder tool. The read is one line in
 `BuilderCanvas.vue` — another package's file this wave — and the diff is in the
 spec's own footer.
+
+### Integration closers — 2026-09-04
+
+**Criterion 9 is met, and the `fixme` this Status footnotes is now a `test`.**
+The read is the one line the spec's footer specified:
+`BuilderCanvas.onDrop` takes `BUILDER_TOOL_ID_MIME` off the drag and passes it
+to `canvas.dropKind`, which hands it to `createAt` / `attachTo`.
+
+One thing the footer's diff did not say, and it matters: the id is validated
+against the SERVED catalogue before it is applied (`asNamedTool` in
+`useBuilderCanvas.ts`). `dataTransfer` is a public channel — the same reason
+`onDrop` has always validated the KIND — and a `tool_id` the compiler has never
+heard of is a node that publishes cleanly and then fails, which is section 14's
+defect 1 in a different costume. An id the catalogue does not carry leaves the
+placeholder in place, which is the state the inspector is already built to
+repair. The `text/plain` fallback is deliberately not consulted: for a tool row
+it carries the tool id, but for a plain tile it carries the word `tool`, and
+reading it would set `tool_id: 'tool'` on purpose instead of by accident.
+
+The card's label moves with the id, because the pill's label is the only part of
+the node the canvas shows and *"Tool 1"* after dragging the row that says
+*"Web search"* is the drop reporting the wrong thing about itself.
+
+`e2e/builder-tools.spec.ts` *"drags a NAMED tool out of the sub-list and lands
+that tool"* — the card reads `Web search` and the inspector's `tool_id` select
+reads `web_search`. Unit half in `frontend/tests/builderCanvas.spec.ts`.

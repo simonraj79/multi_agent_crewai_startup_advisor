@@ -19,6 +19,16 @@
    is the only thing that decides which wins. Swap these two imports and every
    builder card loses its kind colour. */
 @import './assets/styles/builder.css';
+/* The run console's choreography: the twelve character colours, the idle
+   recede, the medallion, the handoff token and the launch sequence (plan 11).
+
+   LAST of the four, and the order is the same kind of load-bearing as the pair
+   above it. `.is-receded` and `.is-error` here set `opacity`, `filter` and
+   `box-shadow` on the same element as `node-card.css`'s state rules and at the
+   same specificity, so a card that is both errored and mid-run resolves by
+   source order alone. Import this before `node-card.css` and an errored card
+   goes back to glowing. */
+@import './assets/styles/motion.css';
 
 *,
 *::before,
@@ -45,8 +55,8 @@ body {
   letter-spacing: 0;
   background-color: var(--bg-app);
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
+    linear-gradient(var(--page-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--page-grid) 1px, transparent 1px);
   background-size: 32px 32px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -93,7 +103,7 @@ h3 {
   width: 100%;
   height: 100dvh;
   overflow: hidden;
-  background: rgba(18, 18, 18, 0.7);
+  background: var(--shell-bg);
 }
 
 .studio-shell::before {
@@ -120,7 +130,7 @@ h3 {
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  background: rgba(22, 22, 22, 0.88);
+  background: var(--header-bg);
   border-bottom: 1px solid var(--border-default);
   -webkit-backdrop-filter: var(--blur-panel);
   backdrop-filter: var(--blur-panel);
@@ -187,14 +197,50 @@ h3 {
   position: relative;
   z-index: var(--z-base);
   display: grid;
-  grid-template-rows: 64px auto minmax(0, 1fr);
+  /*
+   * FOUR rows now, and the two that come and go are both `auto`: the reconnect
+   * strip exists only while the socket is re-making itself, and the crew strip
+   * only while there is a voyage to narrate.
+   *
+   * The dialogue rail was a fifth row here and is not any more. Measured: it
+   * opened on the first utterance and took the Vue Flow container from 626px to
+   * 462px, mid-run, on the canvas the gauntlet captures. It lives in the
+   * activity column now, where it costs the graph nothing.
+   *
+   * `minmax(0, 1fr)` on the canvas and not `1fr`, for the reason recorded on
+   * `.studio-main`: a grid item's automatic minimum size is its CONTENT, so a
+   * plain `1fr` row re-inflates to whatever Vue Flow's internals want and the
+   * rails below it get pushed off the page. That defect shipped once here
+   * already, at 1894px inside an 848px container.
+   */
+  grid-template-rows: 64px auto auto minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
   background: var(--canvas-bg);
 }
 
-.graph-workspace > .crew-progress { grid-row: 2; }
-.graph-workspace > .validator-flow { grid-row: 3; }
+.graph-workspace > .stream-reconnecting { grid-row: 2; }
+.graph-workspace > .crew-progress { grid-row: 3; }
+.graph-workspace > .validator-flow { grid-row: 4; }
+
+/*
+ * The socket is re-making itself, said where the graph is.
+ *
+ * Amber rather than red: nothing is lost and nothing is broken - the client
+ * replays from its own cursor and the sentence says how much it is holding. A
+ * red strip over a run that is about to carry on would teach an operator to
+ * cancel at the one moment cancelling is worst.
+ */
+.stream-reconnecting {
+  z-index: 9;
+  margin: 0 40px 4px;
+  padding: 6px 14px;
+  color: var(--warn-text);
+  font: 600 var(--fs-11)/1.4 var(--font-mono);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-pill);
+}
 
 .canvas-heading {
   position: absolute;
@@ -213,7 +259,7 @@ h3 {
      text: the heading rendered as "XED VALIDATOR GRAPH / vidence pipeline"
      and the graph version code was clipped at the other end. */
   padding: 0 40px;
-  background: linear-gradient(to bottom, rgba(26, 26, 26, 0.96), rgba(26, 26, 26, 0.72), transparent);
+  background: linear-gradient(to bottom, var(--fade-strong), var(--fade-soft), transparent);
   pointer-events: none;
 }
 
@@ -227,7 +273,7 @@ h3 {
 .vue-flow__pane { cursor: grab; }
 .vue-flow__pane:active { cursor: grabbing; }
 .vue-flow__node { cursor: default; }
-.vue-flow__controls { overflow: hidden; background: rgba(26, 26, 26, 0.92); border: 1px solid var(--border-default); border-radius: var(--r-lg); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
+.vue-flow__controls { overflow: hidden; background: var(--controls-bg); border: 1px solid var(--border-default); border-radius: var(--r-lg); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
 .vue-flow__controls-button { width: 34px; height: 34px; color: var(--text-body); background: transparent; border-color: var(--border-default); }
 .vue-flow__controls-button:hover { background: var(--surface-raised); }
 .vue-flow__controls-button svg { fill: currentColor; }
@@ -548,4 +594,84 @@ h3 {
     transition: transform var(--motion-medium) var(--ease-out);
   }
   .chat-is-collapsed .builder-palette { transform: translateX(-100%); }
+}
+
+/* ---------------------------------------------------------------------------
+   390x844 - a CAPTURE AND INSPECT viewport, not an authoring one (02-canvas.md
+   D9).
+
+   The gauntlet judge captures at this size and scores what is visible, so the
+   question this block answers is "does the product survive a phone" rather than
+   "can a graph be built on one". At 390px the palette is a bottom sheet, the
+   inspector a full-width overlay, and the canvas is pan / zoom / select. Drag
+   and drop FROM a bottom sheet is a different gesture from drag and drop from a
+   rail - a touch drag, with its own long-press and scroll disambiguation - and
+   inventing one here would be scope nobody asked for.
+
+   640px, not 390px, and the number is forced: the 860px block above declares
+   `html, body, #app { min-width: 640px }`, so at any narrower viewport the
+   whole page scrolls sideways and every capture is of a page being dragged
+   around. That min-width was the right call for the run console, which has a
+   three-pane layout with nothing to give up; it is the wrong call here, and
+   this is the block that says so.
+   --------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  html,
+  body,
+  #app {
+    min-width: 0;
+  }
+
+  /* The palette becomes a BOTTOM SHEET: full width, anchored to the bottom
+     edge, and it slides down rather than left. The same `chat-is-collapsed`
+     class the rails already use drives it, so the existing toggle keeps
+     working and no component learns that a phone exists. */
+  .studio-shell.is-builder .studio-main > .builder-palette {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: 46vh;
+    flex-direction: column;
+    border-right: 0;
+    border-top: 1px solid var(--border-default);
+    border-radius: var(--r-2xl) var(--r-2xl) 0 0;
+    box-shadow: 0 -18px 38px rgba(0, 0, 0, 0.34);
+    transform: translateY(0);
+    transition: transform var(--motion-medium) var(--ease-out);
+  }
+  .studio-shell.is-builder.chat-is-collapsed .studio-main > .builder-palette {
+    transform: translateY(100%);
+  }
+
+  /* And the inspector is the whole width. At 340px on a 390px viewport it
+     would leave a 50px sliver of canvas, which reads as a broken overlay
+     rather than as a panel over a graph. */
+  .studio-shell.is-builder .studio-main > .builder-inspector {
+    width: 100%;
+    box-shadow: none;
+  }
+
+  /* THE INLINE-AXIS HALF OF `.studio-main`'S OWN LESSON, and it was measured
+     the same way: at 390px the canvas rendered 802px wide inside a 390px
+     workspace. `.graph-workspace` declares rows and leaves its single column
+     implicit, and an implicit column is `auto` - which resolves to its
+     content's MIN-CONTENT width, not to the track it sits in. The canvas is
+     clipped rather than scrolled, so nothing said so; the graph was simply
+     laid out against a box twice the width of the screen, and every fit was
+     computed against it.
+
+     `minmax(0, 1fr)` is the same fix `.studio-main` records for the block
+     axis, one axis over. Scoped to this breakpoint because it is the only one
+     where the implicit track and the real one disagree. */
+  .studio-shell.is-builder .graph-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The gallery is a page at every size; at 390 it is a single column and its
+     cards must not be squeezed into two. */
+  .studio-shell.is-builder.is-gallery .template-gallery {
+    padding: 12px;
+  }
 }

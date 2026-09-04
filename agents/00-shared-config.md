@@ -273,6 +273,12 @@ LLM(model="openrouter/z-ai/glm-5.3-flash")
 OpenRouter is a native provider. LiteLLM is a lazily-imported fallback for
 providers *not* in `SUPPORTED_NATIVE_PROVIDERS`, and OpenRouter is in that list.
 
+> The model in that block is `glm-5.3-flash`, which stopped being the cheap
+> tier before 2026-09-04. It is **left verbatim**: this is the recorded output
+> of a test that was actually run, and the finding is about OpenRouter's
+> provider resolution, not about the model. It holds for any `openrouter/`
+> slug.
+
 ### Memory footprint — sizing input
 
 Measured RSS in a real process:
@@ -343,8 +349,42 @@ Two tiers. Prices verified against the live catalogue, USD per million tokens,
 
 | Role | Model | $/Mtok | Why |
 |---|---|---|---|
-| **Default (cheap tier)** | `openrouter/z-ai/glm-5.3-flash` | **0.075 / 0.250** | 1,310,720 context, supports `tools`. Cheapest capable tool-caller in the catalogue. |
-| **Escalation** | `openrouter/google/gemini-3.7-flash` | 0.75 / 3.75 | 1,048,576 context. Ten times the *input* price, fifteen times the *output* price — use only where judgement genuinely lives. |
+| **Default (cheap tier)** | `openrouter/google/gemini-3.5-flash-lite:nitro` | **0.30 / 2.50** | 1,048,576 context, supports `tools`. `:nitro` routes on speed rather than price, so this is a published floor, not a ceiling. |
+| **Escalation** | `openrouter/google/gemini-3.8-flash` | 0.75 / 3.75 | 1,048,576 context — the **same** as the cheap tier. **2.5×** the *input* price, **1.5×** the *output* price. The original clause here read "ten times / fifteen times … use only where judgement genuinely lives"; the arithmetic is corrected, the conclusion is not — see the note below. |
+
+> **Both rows were corrected on 2026-09-04. Prices measured live with
+> `mcp__openrouter__get-model`, not copied.**
+>
+> - Escalation moved `gemini-3.7-flash` → **`gemini-3.8-flash`** (`f19a2c6`) at
+>   the same $0.75 / $3.75.
+> - The cheap row was **stale by a whole model**. It read `z-ai/glm-5.3-flash`
+>   at $0.075 / $0.250; `config.py:49` reads
+>   `openrouter/google/gemini-3.5-flash-lite:nitro`, measured at
+>   **$0.30 / $2.50**.
+>
+> 🛑 **The tier gap this file argues from is four times smaller than it says.**
+> The real gap is **2.5× on prompt and 1.5× on completion**, not 10× / 15×, and
+> the two context windows are now **equal at 1,048,576** — so the cheap tier no
+> longer has a context advantage either. Arithmetic has been corrected
+> throughout. **The conclusions drawn from the old gap have NOT been
+> re-argued**, and at 2.5× / 1.5× each is materially weaker than written:
+>
+> | Conclusion | Where |
+> |---|---|
+> | "use only where judgement genuinely lives" | the Escalation row above |
+> | "the one agent for which the escalation tier is non-negotiable"; "the cheap default is a false economy" | `02-analyst.md` |
+> | the Writer A/B, whose payoff was stated as *fifteen-fold* | `03-writer.md` |
+> | "a gate that costs as much as the work it gates is not a gate" | `05-evaluator.md` |
+> | "the model is chosen on price … with a larger context window" | `01-researcher.md` |
+>
+> ⚠️ **Every reasoning/cost measurement below this line was taken on
+> `glm-5.3-flash` and has NOT been re-measured on the current cheap tier.** They
+> keep that model's name deliberately — a measurement of `glm-5.3-flash` remains
+> a true measurement of `glm-5.3-flash`. One reading that bears directly on
+> them: `google/gemini-3.5-flash-lite` reports `default_effort: "minimal"`
+> already (measured 2026-09-04), so the 8.8× reasoning saving below may be
+> largely collected by default rather than available to collect. Re-measure
+> before treating it as the crew's largest cost lever.
 
 > ⚠️ **`glm-5.3-flash` reasons by default, and reasoning bills at the completion
 > rate.** Measured on a one-word prompt: 68 of 71 completion tokens were
@@ -384,13 +424,13 @@ Per agent:
 
 | Agent | Model | Reasoning |
 |---|---|---|
-| Researcher | `glm-5.3-flash` | Longest tool loop, ingests raw scraped markdown. Wants cheap input tokens, not deep reasoning. Escalate if the tool loop thrashes. |
-| Analyst | **`gemini-3.7-flash`** | The one real judgement step. Do not run this on the cheap tier. |
-| Writer | `gemini-3.7-flash` | Prose quality is the visible output — but the task is heavily templated, making this the best A/B candidate for the cheap tier. |
-| Manager *(retired, see `04`)* | `gemini-3.7-flash` | Kept for comparison only. |
-| Evaluator | `glm-5.3-flash` | Mechanical rubric check. |
+| Researcher | `gemini-3.5-flash-lite:nitro` | Longest tool loop, ingests raw scraped markdown. Wants cheap input tokens, not deep reasoning. Escalate if the tool loop thrashes. |
+| Analyst | **`gemini-3.8-flash`** | The one real judgement step. Do not run this on the cheap tier. |
+| Writer | `gemini-3.8-flash` | Prose quality is the visible output — but the task is heavily templated, making this the best A/B candidate for the cheap tier. |
+| Manager *(retired, see `04`)* | `gemini-3.8-flash` | Kept for comparison only. |
+| Evaluator | `gemini-3.5-flash-lite:nitro` | Mechanical rubric check. |
 
-**Note the honest gap:** with Claude Sonnet 5 out of the roster, `gemini-3.7-flash`
+**Note the honest gap:** with Claude Sonnet 5 out of the roster, `gemini-3.8-flash`
 is the ceiling. "If the brief reads thin, trade up" no longer has a destination
 inside this two-tier stack. Widening it is a deliberate decision, not a default.
 
@@ -617,7 +657,7 @@ table is wrong and should be corrected, not worked around.
 | `inject_date` | **`True`** | — | — | — | — | Time-sensitive lookups; also required for the staleness gate. |
 | `respect_context_window` | `True` | `True` | `True` | `True` | `True` | The default. Stated on the Researcher only because it is the one agent whose context can actually fill. |
 | `allow_delegation` | `False` | `False` | `False` | **`True`** | `False` | Exactly one agent in the crew delegates. On the Manager it is forced to `True` by `_create_manager_agent()` regardless of what you set (`04-manager.md`). |
-| `reasoning_effort` | — | — | — | — | **`"minimal"`**, via `extra_body` | `glm-5.3-flash` reasons by default and bills reasoning at the completion rate. Measured 8.8× cheaper on short mechanical calls. ⚠️ The `LLM(reasoning_effort=...)` field is silently dropped for non-o1 models — it must go through `additional_params={"extra_body": {"reasoning": {...}}}`. See §3. **Not set in `src/` today, so the saving is unrealised.** |
+| `reasoning_effort` | — | — | — | — | **`"minimal"`**, via `extra_body` | ⚠️ **The 8.8× was measured on `glm-5.3-flash`, which is no longer the cheap tier (2026-09-04). It reasons by default; the current cheap tier `google/gemini-3.5-flash-lite` reports `default_effort: "minimal"` already — measured live the same day — so this saving may be collected before anything sets it. NOT re-measured.** Original finding, kept verbatim: `glm-5.3-flash` reasons by default and bills reasoning at the completion rate. Measured 8.8× cheaper on short mechanical calls. ⚠️ The `LLM(reasoning_effort=...)` field is silently dropped for non-o1 models — it must go through `additional_params={"extra_body": {"reasoning": {...}}}`. See §3. **Not set in `src/` today, so the saving is unrealised.** |
 | `guardrail_max_retries` | — | — | **2** | — | **2** | Task-level, not agent-level. Default is 3; 2 because each retry re-runs the whole task *plus* a judgement call (`03-writer.md`, `05-evaluator.md`). |
 | `memory` | — | — | — | — | — | **`False`** at the **Crew** level. Keeps the OpenAI embedder unreachable. |
 

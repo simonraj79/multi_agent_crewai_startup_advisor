@@ -29,6 +29,18 @@ export const MIN_IDEA_CHARS = 12
 export const IDEA_CHARS_WARN_AT = 100
 
 /**
+ * How much of a node's failure the CARD shows before the ellipsis (12 D2).
+ *
+ * A client bound and not a server one, and the distinction matters: the frame
+ * carries up to `MAX_NODE_ERROR_CHARS` = 1024 (`config.py:1542`), so nothing is
+ * lost on the wire. This is how much of it fits on a 270px card without pushing
+ * every node under it off the canvas. The remainder is one hover away in the
+ * `title` and is spoken in full by the aria label, so the bound costs a reader
+ * nothing.
+ */
+export const MAX_NODE_CARD_ERROR_CHARS = 120
+
+/**
  * Pull a human sentence out of whatever the API returned.
  *
  * FastAPI answers `{"detail": "..."}` for a refusal the operator can act on -

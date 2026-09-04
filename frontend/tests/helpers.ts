@@ -82,6 +82,8 @@ export class FakeStudioApi implements StudioApiLike {
   mode: TransportMode = 'live'
   /** Null means "the probe reached a real backend", which is this double's default. */
   probeFailure: string | null = null
+  /** The server's sentence when a real backend refused the probe (D-01-2). */
+  probeRefusal: string | null = null
   graph: GraphDescriptor = structuredClone(MOCK_GRAPH)
   snapshot: RunSnapshot = emptySnapshot()
   storedFrames: FrameData[] = []
@@ -157,6 +159,30 @@ export class FakeStudioApi implements StudioApiLike {
 
   async cancelRun(runIdValue: string): Promise<void> {
     this.cancelled.push(runIdValue)
+  }
+
+  /**
+   * The `resume_from` launches, and what the server said if it refused.
+   *
+   * Present for the same reason `listRuns` is: `StudioApiLike` requires it and
+   * the compiler refused this class until it did. `resumeError` exists because
+   * the interesting half of this control is the REFUSAL - somebody else's run
+   * (404), a run still in flight (422), a saved state with no output for an
+   * upstream node - and a double that can only succeed cannot test any of it.
+   */
+  resumeCalls: Array<{ sourceRunId: string; nodeId: string; inputs: Record<string, unknown> }> = []
+  resumeError: Error | null = null
+
+  async resumeRun(
+    _sessionId: string,
+    sourceRunId: string,
+    nodeId: string,
+    _workflowId: string,
+    inputs: Record<string, unknown>,
+  ): Promise<StartRunResponse> {
+    this.resumeCalls.push({ sourceRunId, nodeId, inputs })
+    if (this.resumeError) throw this.resumeError
+    return { run_id: `${this.runIdToIssue}-resumed`, status: 'queued', graph_version: this.graph.version }
   }
 
   async downloadLogs(runIdValue: string, format: LogFormat = 'ndjson'): Promise<void> {
@@ -255,10 +281,26 @@ export function vocabularyFixture(
 ): BuilderVocabulary {
   return {
     schema_id: BUILDER_SCHEMA_ID,
-    // Handler order, NOT sorted. `builder_api.py::_vocabulary` writes these as
-    // literals and the palette renders them in the order it is given, so
-    // sorting here would be testing a palette nobody ships.
-    node_kinds: ['input', 'agent', 'crew', 'gate', 'router', 'transform', 'output'],
+    // Handler order, NOT sorted. `builder_api.py::_vocabulary` derives these
+    // from the `NodeKind` union - flow kinds first, attachments last - and the
+    // palette renders them in the order it is given, so sorting here would be
+    // testing a palette nobody ships.
+    //
+    // Ten since 2026-09-04. Seven until then, while `NodeKind` already declared
+    // ten: the fixture was faithful to a handler that had gone stale, which is
+    // the hazard this whole file exists for arriving one layer up.
+    node_kinds: [
+      'input',
+      'agent',
+      'crew',
+      'gate',
+      'router',
+      'transform',
+      'output',
+      'tool',
+      'mcp',
+      'skill',
+    ],
     tiers: ['cheap', 'escalation'],
     agent_ids: [
       'feasibility_analyst',
@@ -298,6 +340,11 @@ export function vocabularyFixture(
       max_input_chars: 2000,
       max_document_bytes: 262144,
       run_cost_ceiling_usd: 10,
+      // C2 v2\'s two authored-node bounds: BUILDER_MAX_PROMPT_CHARS and
+      // BUILDER_MAX_NODE_RETRIES, served since plan 04 and read by every
+      // PromptField and node-retry stepper rather than restated as a constant.
+      max_prompt_chars: 4000,
+      max_retries: 3,
     },
     ...overrides,
   }
@@ -460,6 +507,13 @@ interface StoredDocument {
   createdAt: string
   updatedAt: string
   published: boolean
+  /**
+   * Which version the service is registered to run, mirroring the server's
+   * `live_version`. Deliberately NOT cleared by a save: that is the whole
+   * shape of critic finding P-05 - the head returns to `draft` while the older
+   * version goes on answering launches.
+   */
+  liveVersion: number | null
 }
 
 /**
@@ -528,11 +582,24 @@ export class FakeBuilderApi implements BuilderApiLike {
     return this.deferred.length
   }
 
-  /** Put a document in the store at a version, as though it had been saved. */
+  /**
+   * Put a document in the store at a version, as though it had been saved.
+   *
+   * `updatedAt` is a parameter because the saved-graphs library orders by it
+   * (D-15-15) and every row otherwise carries the same fixed stamp, which
+   * would make an ordering assertion true by accident.
+   */
   seed(
     doc: BuilderDocument,
     version = 1,
     status: BuilderDocumentModel['status'] = 'draft',
+    updatedAt?: string,
+    /**
+     * Override which version the service is running, for the one state `status`
+     * cannot express: head saved past a published version, so the row reads
+     * `draft v2` while v1 goes on answering launches (critic P-04/P-05).
+     */
+    liveVersion?: number | null,
   ): DocumentId {
     const stamp = new Date(1_750_000_000_000).toISOString()
     this.store.set(doc.id, {
@@ -540,8 +607,9 @@ export class FakeBuilderApi implements BuilderApiLike {
       status,
       version,
       createdAt: stamp,
-      updatedAt: stamp,
+      updatedAt: updatedAt ?? stamp,
       published: status === 'published',
+      liveVersion: liveVersion === undefined ? (status === 'published' ? version : null) : liveVersion,
     })
     return doc.id
   }
@@ -554,6 +622,7 @@ export class FakeBuilderApi implements BuilderApiLike {
       name: row.document.name,
       version: row.version,
       status: row.status,
+      live_version: row.liveVersion,
       created_at: row.createdAt,
       updated_at: row.updatedAt,
     }))
@@ -635,6 +704,7 @@ export class FakeBuilderApi implements BuilderApiLike {
     const row = this.require(id)
     row.status = 'published'
     row.published = true
+    row.liveVersion = row.version
     return (
       this.publishResult ?? {
         workflow_id: id,
@@ -674,6 +744,7 @@ export class FakeBuilderApi implements BuilderApiLike {
       budget: this.validation.budget,
       graph: descriptorFor(document),
       published: row.published,
+      live_version: row.liveVersion,
     }
   }
 }

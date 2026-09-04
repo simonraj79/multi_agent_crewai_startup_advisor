@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { Bot, Check, Cog, FileText, Inbox, RotateCcw, ShieldCheck, Split, TriangleAlert } from 'lucide-vue-next'
+import { Bot, Check, Cog, FileText, Inbox, RedoDot, RotateCcw, ShieldCheck, Split, TriangleAlert } from 'lucide-vue-next'
 import type { StudioNodeData } from '../composables/useValidatorRun'
+import { MAX_NODE_CARD_ERROR_CHARS } from '../data/serverLimits'
 
 const props = defineProps<{ data: StudioNodeData }>()
+
+const emit = defineEmits<{
+  /** "Re-run from here" was pressed on this node. Carries its id (12 D6). */
+  rerun: [string]
+}>()
 
 /**
  * The live elapsed clock for a call in flight.
@@ -125,24 +131,104 @@ const isCrewed = computed(() => props.data.state === 'running' && !isQuarantine.
 const lap = computed(() => props.data.visits ?? 0)
 const looped = computed(() => lap.value > 1 && !isQuarantine.value)
 
+/**
+ * The character medallion's colour (plan 11 D1).
+ *
+ * A custom property rather than a `background` literal, so one declaration in
+ * `motion.css` styles the disc and this only chooses which of the twelve it
+ * fills with. `data.character` is a pure function of the node id, computed once
+ * in the composable, which is what makes this medallion, the dialogue avatar
+ * and the walking token provably the same colour rather than three call sites
+ * that agree today.
+ */
+const characterStyle = computed(() => ({
+  '--character-color': `var(--character-${props.data.character})`,
+}))
+
+/**
+ * The failure, ON the card. Plan 12 D2.
+ *
+ * The rail already carried it, and the rail is not where somebody looking at a
+ * red node is looking - they are looking at the red node, and it said "Error"
+ * and nothing else. 120 characters is the bound the criterion sets and it is
+ * the right one: a card is 270px wide and an untruncated stack trace would push
+ * every node below it off the canvas. The FULL text is never lost - it is the
+ * `title` and it is in the aria label, so a hover and a screen reader both get
+ * all of it, and the NDJSON export has it whole.
+ */
+const errorMessage = computed(() => props.data.errorMessage ?? '')
+const shortError = computed(() =>
+  errorMessage.value.length > MAX_NODE_CARD_ERROR_CHARS
+    ? `${errorMessage.value.slice(0, MAX_NODE_CARD_ERROR_CHARS - 1).trimEnd()}…`
+    : errorMessage.value,
+)
+const hasError = computed(() => props.data.state === 'error' && Boolean(errorMessage.value))
+
+/**
+ * A node whose output was REPLAYED rather than run (10 D5).
+ *
+ * Drawn dimmed, because it is the one thing on a resumed canvas that did not
+ * happen: the value came out of the source run's saved state and no model was
+ * called for it. A replayed node drawn like a run node claims work nobody did.
+ */
+const isReplayed = computed(() => props.data.replayed === true)
+
 const ariaLabel = computed(() => {
   const pass = looped.value ? `, pass ${lap.value}` : ''
   if (isQuarantine.value) return `${props.data.label}, ${quarantineLabel.value}`
   if (isRouter.value) {
     return `${props.data.label}, deterministic router, no model call, ${stateLabel.value}${pass}`
   }
-  return `${props.data.label}, ${stateLabel.value}${pass}`
+  // The failure is in the label UNTRUNCATED. A screen reader has no hover, so
+  // the `title` that carries the full sentence for a sighted reader reaches
+  // nobody here - this is the only place the whole message is spoken.
+  const failure = hasError.value ? `. ${errorMessage.value}` : ''
+  const replay = isReplayed.value ? ', replayed from a saved run' : ''
+  return `${props.data.label}, ${stateLabel.value}${pass}${replay}${failure}`
 })
 </script>
 
 <template>
   <article
     class="workflow-node"
-    :class="[`is-${data.state}`, `is-${data.kind}`, { 'is-holding': isHolding, 'is-quiet': isQuarantine && !isHolding }]"
+    :class="[
+      `is-${data.state}`,
+      `is-${data.kind}`,
+      {
+        'is-holding': isHolding,
+        'is-quiet': isQuarantine && !isHolding,
+        'is-receded': data.receded,
+        'is-replayed': isReplayed,
+      },
+    ]"
     role="group"
     :aria-label="ariaLabel"
   >
     <Handle v-if="!isQuarantine" class="node-handle" type="target" :position="Position.Top" />
+
+    <!--
+      The character. One colour per node, the same colour in the dialogue rail
+      and on the token that walks the edge, so an operator tracking one agent
+      tracks one mark rather than re-reading a 7px label at every stop.
+
+      Not on the quarantine node: that is instrumentation, not a cast member,
+      and giving it a face would put it in the story.
+    -->
+    <div
+      v-if="!isQuarantine"
+      class="node-character"
+      :class="{ 'is-receiving': data.receiving }"
+      data-testid="node-character"
+      :data-character="data.character"
+      :style="characterStyle"
+      aria-hidden="true"
+    >
+      <Split v-if="isRouter" :size="16" :stroke-width="2.2" />
+      <ShieldCheck v-else-if="data.kind === 'gate'" :size="17" :stroke-width="2.2" />
+      <FileText v-else-if="data.kind === 'output'" :size="17" :stroke-width="2.2" />
+      <Cog v-else-if="data.kind === 'step'" :size="17" :stroke-width="2.2" />
+      <Bot v-else :size="17" :stroke-width="2.2" />
+    </div>
 
     <!--
       The crew, moored to the card they are pulling. Aria-hidden because the
@@ -237,6 +323,39 @@ const ariaLabel = computed(() => {
           Reading pages it found — this normally takes under a minute.
         </p>
       </div>
+      <!--
+        The failure, where the failure is. It was in the rail and nowhere else,
+        which is not where somebody looking at a red card is looking.
+      -->
+      <p
+        v-if="hasError"
+        class="node-error"
+        data-testid="node-error-message"
+        :title="errorMessage"
+      >{{ shortError }}</p>
+      <!--
+        Offered on the failed node of a FINISHED run, and nowhere else. The
+        server refuses a resume of a run still being written (422: a state still
+        in flight is not a state to replay), so a control that appeared mid-run
+        would be a button whose only outcome is an error message.
+      -->
+      <button
+        v-if="data.rerunnable"
+        class="node-rerun"
+        type="button"
+        data-testid="rerun-from-here"
+        :title="`Replay this run up to ${data.label} and run again from there`"
+        @click.stop="emit('rerun', data.nodeId)"
+      >
+        <RedoDot :size="12" aria-hidden="true" />
+        Re-run from here
+      </button>
+      <span
+        v-if="isReplayed"
+        class="node-replayed"
+        data-testid="node-replayed"
+        title="This node's output came from the run being resumed. No model was called."
+      >REPLAYED</span>
       <dl v-if="hasUsage && !isQuarantine && !isRouter" class="node-usage" aria-label="Node usage">
         <div><dt>Calls</dt><dd>{{ data.usage.callCount }}</dd></div>
         <div><dt>Tokens</dt><dd>{{ tokenCount }}</dd></div>
@@ -302,7 +421,13 @@ const ariaLabel = computed(() => {
   background-image: none;
   background-color: var(--surface-well);
   border: 1px dashed var(--border-default);
-  opacity: 0.6;
+  /* `--recede-opacity`, not a third number. Plan 11 criterion 3 names exactly
+     two levels on a card - receded 0.55 and present 1.0 - and a run measured
+     THREE, because this rule carried its own 0.6 (critic P-09). An empty
+     quarantine node is a card that is stepped back, which is what
+     `--recede-opacity` already means, so the vocabulary is one value rather
+     than two that happen to look similar. */
+  opacity: var(--recede-opacity);
 }
 
 .is-quiet .node-icon { color: var(--text-40); background: transparent; border-color: var(--border-default); }
@@ -375,6 +500,70 @@ const ariaLabel = computed(() => {
 .is-waiting .node-state { color: var(--warn-text); }
 .is-completed .node-state { color: var(--accent-mint); }
 .is-error .node-state { color: var(--err-text); }
+
+/* The failure sentence, on the card. Red on the card's own error tint rather
+   than in a box: it is part of what the card SAYS, not an annotation on it. */
+.node-error {
+  margin: 7px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--err-text);
+  font: 500 var(--fs-11)/1.4 var(--font-mono);
+}
+
+/* Small, and deliberately not a `.button`: this is a per-node control on a
+   270px card, and the primary action on this screen is Launch. A control that
+   competed with it would be the loudest thing on a canvas full of failures.
+
+   `pointer-events: auto` IS THE WHOLE REASON THIS BUTTON WORKS, and it is not
+   defensive. Vue Flow writes `pointer-events: none` INLINE on every
+   `.vue-flow__node` whose node is not draggable, selectable or connectable and
+   carries no handlers - which on this canvas is all fourteen of them
+   (`StudioView.vue` passes `:nodes-draggable="false"`,
+   `:nodes-connectable="false"`, `:elements-selectable="false"`). Measured: the
+   card resolves to `pointer-events: none`, and `elementFromPoint` over the
+   middle of a card answers `.vue-flow__pane`. So a click on this button was
+   intercepted by the pane every time - the control rendered, reported itself
+   visible and enabled, and did nothing.
+
+   Scoped to the BUTTON and not lifted off the card, deliberately. The card
+   being transparent to the pointer is Vue Flow behaving correctly for a node
+   nobody can select: it is what lets an operator pan the canvas by dragging
+   ACROSS a card, and on a fourteen-node graph the cards are most of the
+   surface. Restoring pointer events to the whole card would trade a working
+   button for a canvas that stops panning wherever there is a node. A
+   descendant may re-enable itself under a `none` ancestor - that is what the
+   property is for. */
+.node-rerun {
+  display: inline-flex;
+  pointer-events: auto;
+  gap: 5px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 4px 8px;
+  color: var(--err-text);
+  font: 600 10px/1.2 var(--font-mono);
+  background: var(--err-bg);
+  border: 1px solid var(--err-border);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+
+.node-rerun:hover { color: var(--text-title); border-color: var(--border-hover); }
+.node-rerun:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+
+/* A node whose value came out of a saved run. Dimmed, because it is the one
+   thing on a resumed canvas that did not happen. */
+.workflow-node.is-replayed { opacity: 0.62; }
+.node-replayed {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 6px;
+  color: var(--text-40);
+  font: 700 9px/1.3 var(--font-mono);
+  letter-spacing: 0.04em;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--r-pill);
+}
 
 .node-handle {
   width: 7px;

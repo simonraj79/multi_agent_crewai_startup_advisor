@@ -263,6 +263,15 @@ function normalise(payload: unknown): BuilderVocabulary | string {
   return {
     schema_id: BUILDER_SCHEMA_ID,
     node_kinds: raw.node_kinds as NodeKind[],
+    /*
+     * C2 v2's tool catalogue, passed through only when the server sends one.
+     * `undefined` is the honest answer for a v1 envelope - the palette's tool
+     * sub-list is then absent rather than empty, and a client-side fallback
+     * catalogue is cut-list item 17 for the same reason a fallback kind list is.
+     */
+    tools: Array.isArray(raw.tools)
+      ? (raw.tools as BuilderVocabulary['tools'])
+      : undefined,
     tiers: raw.tiers as Tier[],
     agent_ids: raw.agent_ids as string[],
     crew_ids: raw.crew_ids as string[],
@@ -312,6 +321,14 @@ function readBounds(raw: unknown): BuilderBounds | string {
     max_gate_message_chars: count('max_gate_message_chars'),
     max_input_chars: count('max_input_chars'),
     max_document_bytes: count('max_document_bytes'),
+    /*
+     * C2 v2's two authored-node bounds. Both are DOCUMENT bounds rather than
+     * money ones - what a graph costs is `run_cost_ceiling_usd` and it is
+     * measured - and both are read straight by the authored-agent form rather
+     * than restated as a client constant, per R6.
+     */
+    max_prompt_chars: count('max_prompt_chars'),
+    max_retries: count('max_retries'),
     /*
      * NOT truncated, and this is the one exception §2's "Math.trunc every bounds
      * value" has to carry: `MAX_RUN_COST_USD` is dollars. Truncating it turns a

@@ -81,6 +81,83 @@ jobs:
               print(f"{path} OK")
           PY
 
+  # Plan 15 D8 / criterion 9: the five compare-and-set paths against a real
+  # PostgreSQL 18, from two processes. Everything else in this workflow runs
+  # on SQLite, which is single-writer and can never exercise a row lock.
+  #
+  # `main` only (PLANS.md decision 25): a `pull_request` event runs at
+  # `refs/pull/N/merge` and a branch push at its own ref, so both skip; the
+  # job runs once per merge. Still no-cost - the service container is free
+  # and `tests/pg/test_two_writers.py` touches no network but the database.
+  # The test creates a throwaway database on the service and drops it again.
+  postgres:
+    name: Two writers on PostgreSQL 18
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CREWAI_DISABLE_TELEMETRY: "true"
+      CREWAI_TRACING_ENABLED: "false"
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:test@127.0.0.1:5432/postgres
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra service
+
+      # THE GUARD, and it is the whole point of these two steps (D-15-32).
+      # `unittest` exits 0 over a suite it skipped entirely - measured:
+      # with TEST_DATABASE_URL unset, `python -m unittest
+      # tests.pg.test_two_writers -v` answers "Ran 5 tests / OK (skipped=5)"
+      # and exit code 0. So this job was green when it proved nothing, and a
+      # comment saying "the log must say ok five times" closed nothing,
+      # because nothing read the log.
+      #
+      # Two steps because they catch different things. This one catches the
+      # variable not reaching the process, which is the failure the row
+      # measured, and it says so before the suite has a chance to look green.
+      - name: The database URL must have reached this job
+        run: |
+          if [ -z "${TEST_DATABASE_URL}" ]; then
+            echo "TEST_DATABASE_URL is empty; this job would skip all five" \
+                 "paths and still report success" >&2
+            exit 1
+          fi
+          echo "TEST_DATABASE_URL is set"
+
+      # And this one catches every OTHER reason a test can be skipped - a
+      # missing extra, a `skipUnless` added later, an import guard - none of
+      # which the check above would see. `-v` is kept: the run log still names
+      # each of the five paths, and now a "skipped" line fails the job.
+      - name: Two writers, five paths
+        run: >-
+          uv run --no-sync python scripts/run_without_skips.py
+          tests.pg.test_two_writers
+
   frontend:
     name: Frontend type-check and build
     runs-on: ubuntu-latest

@@ -17,6 +17,33 @@
   --accent-mint: #aaffcd;
   --accent-cyan: #99eaf9;
   --accent-blue: #a0c4ff;
+  /* The three ATTACHMENT accents (03-node-library.md D5).
+
+     Tokens, where the seven FLOW accents are literals in `builder.css`'s S5.1
+     block, and the asymmetry is deliberate rather than sloppy: the spec writes
+     the seven out one per kind, while these three are one family - one hue at
+     three lightnesses - and a family is a thing worth being able to restyle in
+     one place. They are also the only new colours this repository has added
+     since `tokens.css` was written, and the rule is that a new colour is a
+     token.
+
+     `nodeKinds.ts` restates each as the kind's `accent`, because a minimap dot
+     is an SVG `fill` attribute and cannot read a custom property from here.
+     `tests/nodeKinds.spec.ts` asserts the two agree, so the duplication is a
+     failing test rather than a canvas whose dots and cards disagree. */
+  --kind-tool: #c3a6ff;
+  --kind-mcp: #d5b8ff;
+  --kind-skill: #e0ccff;
+  /* The ATTACHMENT EDGE and PORT colour (02-canvas.md D1, D4).
+
+     Deliberately the same hex as `--kind-tool` today and deliberately NOT an
+     alias of it, because the two are different facts that only happen to agree:
+     `--kind-tool` says "this node is a tool", while this says "this wire hangs
+     a possession off an agent" - and an `attach` edge from an `mcp` node is
+     still this colour, not `--kind-mcp`. Aliasing them would make a later
+     re-hue of the tool tile silently re-hue every attachment edge in the graph,
+     including the ones that have nothing to do with tools. */
+  --accent-attach: #c3a6ff;
   --gradient-brand: linear-gradient(135deg, #aaffcd, #99eaf9, #a0c4ff);
   --gradient-danger: linear-gradient(135deg, #e07152, #dc5d4c, #bd4a4a);
   --link-cyan: #7dc6ff;
@@ -26,12 +53,43 @@
   --err-bg: rgba(255, 82, 82, 0.12);
   --err-border: rgba(255, 82, 82, 0.4);
   --err-text: #ffcccc;
+  /* THE APPLICATION CHROME, which was four literals until 2026-09-04.
+
+     `.studio-shell`, `.app-header`, the two canvas-heading fades and Vue Flow's
+     controls bar each carried their own `rgba(1x, 1x, 1x, .x)`, and the light
+     theme found all four at once: the cards went white, the text went dark, and
+     every one of those four surfaces stayed black - so the palette rendered
+     dark grey text on a dark grey tile. They are tokens now because the rule is
+     that a value is a token or it does not exist, and a theme is the thing that
+     enforces it.
+
+     The FADE is two stops of one colour and is written as two tokens rather
+     than as a gradient, because `DocumentBar` and `.canvas-heading` use the
+     same fade at different lower alphas and a single gradient token could not
+     express both without one of them restating it. */
+  --shell-bg: rgba(18, 18, 18, 0.7);
+  --header-bg: rgba(22, 22, 22, 0.88);
+  --fade-strong: rgba(26, 26, 26, 0.96);
+  --fade-soft: rgba(26, 26, 26, 0.72);
+  --fade-mid: rgba(26, 26, 26, 0.78);
+  --controls-bg: rgba(26, 26, 26, 0.92);
+  /* The page's own faint 32px grid, behind everything. A wash of white over a
+     dark ground; a wash of ink over a light one. */
+  --page-grid: rgba(255, 255, 255, 0.016);
   --canvas-bg: var(--surface-panel);
   --dot-color: #777;
   --dot-gap: 20px;
   --dot-size: 1px;
   --edge-stroke: #f2f2f2;
   --edge-width: 1.2px;
+  /* The two design-time edge weights (02-canvas.md D4). `--edge-width` itself
+     is NOT touched: `WorkflowEdge.vue` reads the same token in the run console,
+     and re-weighting a wire in a view this plan does not own is exactly the
+     kind of change that lands as an unexplained visual diff three plans later.
+     A flow edge is the load-bearing one and is heavier than the structural
+     wires, which say what a node HAS rather than what happens next. */
+  --edge-width-flow: 1.5px;
+  --edge-width-attach: 1px;
   --edge-inactive: #777a7c;
   --edge-label-bg: rgba(10, 10, 10, 0.92);
   --edge-label-brd: rgba(242, 242, 242, 0.72);
@@ -64,3 +122,105 @@
   --z-control: 30;
   --z-toast: 50;
 }
+
+/* ===========================================================================
+   THE LIGHT PALETTE (02-canvas.md D6)
+   ===========================================================================
+
+   ONE block, under one attribute, and `useStudioTheme` is what makes that
+   possible: it resolves the reader's three-state preference - `system`,
+   `light`, `dark` - down to the two values this stylesheet understands and
+   always writes one of them. The obvious alternative is an attribute block plus
+   a `@media (prefers-color-scheme: light)` block, and it costs thirty
+   declarations written twice. Two copies of a palette is two palettes, and the
+   one that rots is always the one nobody looks at.
+
+   WHAT MOVES: surfaces, text, borders, the canvas ground, the edge greys, the
+   two glows, and the warning and error tints. WHAT DOES NOT: the accents and
+   the kind gradients, exactly as D6 rules. A node's identity is its accent -
+   the squircle fill, the minimap dot, the gradient rim, the edge gradient stops
+   - and a kind that is one colour in the dark and another in the light is a
+   kind an author has to learn twice.
+
+   HONEST LIMITATION, recorded rather than hidden: the shared accents are pale
+   pastels chosen against a #1a1a1a ground, so the handful of places that use an
+   accent as SMALL TEXT - a gate's `approve` port label, a router branch chip -
+   are low contrast on a light ground. D6 prescribes sharing them and this
+   follows D6; raising it is a follow-up, and the ground below is deliberately a
+   cool paper rather than pure white so those marks have something to sit on.
+   The warning and error tints are NOT in that category and are moved: they are
+   status colours a reader has to be able to read, not identity.
+
+   Every value below is a token. Nothing outside this block knows a theme
+   exists, which is the property that makes a new surface themed for free. */
+:root[data-theme='light'] {
+  --bg-app: #eceff2;
+  --bg-node: #ffffff;
+  /* The four translucent surfaces invert their tint rather than their alpha:
+     a wash of white over a light ground is invisible, so these become a wash of
+     ink. The alphas are near the dark theme's, because the job - "this panel is
+     slightly raised" - is the same job. */
+  --surface-panel: rgba(15, 20, 25, 0.035);
+  --surface-raised: rgba(15, 20, 25, 0.06);
+  --surface-overlay: rgba(248, 250, 252, 0.95);
+  --surface-well: rgba(15, 20, 25, 0.06);
+  --surface-strong: #f3f5f7;
+  --border-default: rgba(15, 20, 25, 0.14);
+  --border-avatar: rgba(15, 20, 25, 0.22);
+  --border-hover: rgba(15, 20, 25, 0.34);
+  --text-primary: #16191c;
+  --text-body: #24282d;
+  --text-title: #0b0d0f;
+  --text-muted: #566068;
+  --text-40: rgba(11, 13, 15, 0.55);
+  --dot-color: #a8b0b8;
+  --edge-stroke: #3b4148;
+  --edge-inactive: #8b9299;
+  --edge-label-bg: rgba(255, 255, 255, 0.94);
+  --edge-label-brd: rgba(15, 20, 25, 0.28);
+  /* A cyan glow that reads on white has to be darker than the accent it
+     echoes; the accent itself stays where D6 put it. */
+  --glow-input: 0 0 12px rgba(20, 130, 160, 0.28);
+  --glow-bubble: 0 0 10px rgba(20, 130, 160, 0.3);
+  --warn-bg: rgba(180, 120, 0, 0.14);
+  --warn-border: rgba(180, 120, 0, 0.5);
+  --warn-text: #8a5a00;
+  --err-bg: rgba(190, 40, 40, 0.1);
+  --err-border: rgba(190, 40, 40, 0.45);
+  --err-text: #a32020;
+  /* The chrome, inverted. The alphas are close to the dark theme's because the
+     job is the same job - "this bar sits above the page" - and only the ink
+     changes. */
+  --shell-bg: rgba(242, 245, 248, 0.7);
+  --header-bg: rgba(250, 251, 252, 0.9);
+  --fade-strong: rgba(240, 243, 246, 0.96);
+  --fade-soft: rgba(240, 243, 246, 0.72);
+  --fade-mid: rgba(240, 243, 246, 0.78);
+  --controls-bg: rgba(250, 251, 252, 0.94);
+  --page-grid: rgba(15, 20, 25, 0.03);
+  /* `--link-cyan` moves with the status tints and NOT with the accents, and the
+     line between the two is what it is FOR rather than what it looks like. The
+     accents are identity - the squircle fill, the minimap dot, the gradient rim
+     - and a kind whose colour changes with the lights is a kind an author
+     learns twice. This one is a LINK: a router branch label, the `otherwise`
+     port's word, the loop rim. It is read, so it has to be readable. */
+  --link-cyan: #1d6fb8;
+}
+
+/* ---------------------------------------------------------------------------
+   THE ONE THING THE LIGHT THEME DOES NOT FIX, recorded rather than hidden.
+
+   D6 rules that accents and kind gradients are SHARED, and the block above
+   obeys it. The accents were chosen against a #1a1a1a ground and are pale
+   pastels, so everywhere one is used as SMALL TEXT on a light surface -
+   `.canvas-kicker`, the palette's `PALETTE` heading, `Ready to publish`, the
+   inspector's `GRAPH` kicker - it is low contrast. Nothing is unreadable and
+   nothing moves; it is thin.
+
+   Fixing it properly means a second token per accent - the identity colour and
+   the on-surface text colour - and swapping the text sites over. Measured
+   2026-09-04: `color: var(--accent-cyan|mint|blue)` and `--link-cyan` appear at
+   109 sites across 32 files, most of them owned by other plans. That is a
+   change to make deliberately and in one pass, not as a side effect of a canvas
+   plan, so it is a follow-up rather than a silent widening of this one.
+   --------------------------------------------------------------------------- */

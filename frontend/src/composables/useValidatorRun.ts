@@ -1,7 +1,10 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import type { Edge, Node } from '@vue-flow/core'
 import { MOCK_GRAPH } from '../data/mockGraph'
+import { scopedKey } from '../data/identityStorage'
+import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
+import { LANDING_STAGGER_MS, useRunChoreography, type Handoff } from './useRunChoreography'
 import type {
   RunResult,
   CallChip,
@@ -65,6 +68,56 @@ export interface StudioNodeData extends Record<string, unknown> {
    * changes every second refutes "it is stuck" in a way no spinner can.
    */
   activeCall: ActiveCall | null
+  /**
+   * Which of the twelve character colours this node wears (plan 11 D1).
+   *
+   * A pure function of the node id, computed once here rather than in the card,
+   * so the medallion, the dialogue avatar and the handoff token are reading one
+   * value rather than three calls that happen to agree.
+   */
+  character: number
+  /**
+   * True while this card should step back for whoever is speaking (D2).
+   *
+   * Computed in the composable and not in the card, because the answer depends
+   * on the RUN's status as well as this node's state - a completed card recedes
+   * mid-run and does not recede afterwards - and a card has no way to know
+   * which of those it is looking at.
+   */
+  receded: boolean
+  /** The sentence the last `node_error` frame carried for this node, or ''. */
+  errorMessage: string
+  /** True when this node's output was REPLAYED rather than run (10 D5). */
+  replayed: boolean
+  /**
+   * True for the ~200ms after a handoff token arrived here, which is what fires
+   * the medallion's one-shot receipt pulse.
+   *
+   * The ARRIVAL and not the node's state, deliberately. A state is a proxy for
+   * an arrival and proxies drift - the crew strip's row-back announcement keyed
+   * on the boat's position and announced a revision on a run that never revised.
+   */
+  receiving: boolean
+  /**
+   * This node's position in the descriptor, for the landing stagger's negative
+   * delay. Index and not the delay itself, so the 40ms step lives in one place.
+   */
+  index: number
+  /** True from the run's first frame, for the one-shot landing settle (D6.2). */
+  landing: boolean
+  /** This node's own id. On the DATA and not as a prop, deliberately - see below. */
+  nodeId: string
+  /**
+   * Whether this card may offer "Re-run from here" (plan 12 D6).
+   *
+   * A RUN-level fact repeated on every node, because the alternative is a
+   * second prop on `WorkflowNode` and `id` is already reaching that component
+   * as a FALLTHROUGH attribute from `v-bind="nodeProps"` - declaring props
+   * would take it off the `<article>` and move every selector that reads it.
+   * The card stays a one-prop component; `graphNodes` is a computed rebuild
+   * either way.
+   */
+  rerunnable: boolean
 }
 
 export interface ActiveCall {
@@ -80,6 +133,10 @@ export interface ActiveCall {
 export interface StudioEdgeData extends Record<string, unknown> {
   label?: string
   active: boolean
+  /** The token walking this edge right now, or undefined (plan 11 D3). */
+  handoff?: Handoff
+  /** The SOURCE node's character index, so the token wears the sender's colour. */
+  character?: number
 }
 
 const initialUsage = (): UsageMetrics => ({
@@ -94,8 +151,14 @@ const initialUsage = (): UsageMetrics => ({
 const DEFAULT_WORKFLOW_ID = 'idea-validator'
 /** What both built-in workflows call their request input. `BUILTIN_WORKFLOW_INPUT_FIELDS`. */
 const DEFAULT_INPUT_FIELD = 'idea'
-const SESSION_STORAGE_KEY = 'validator-session-id'
-const ACTIVE_RUN_STORAGE_KEY = 'validator-active-run'
+/**
+ * The refresh-recovery pointer and the session id it was launched under. Both
+ * are keyed to the signed-in user when there is one (`u:<id>:` in front;
+ * `identityStorage.ts`, D-01-5). Exported so `tests/identityStorage.spec.ts`
+ * can pin the sign-out sweep's legacy list against them.
+ */
+export const SESSION_STORAGE_KEY = 'validator-session-id'
+export const ACTIVE_RUN_STORAGE_KEY = 'validator-active-run'
 
 /**
  * Mirrors `QUARANTINE_NODE_ID` in `src/brief_crew/events/registry.py`. Frames the
@@ -160,8 +223,8 @@ function removeStorage(key: string): void {
   }
 }
 
-function readStoredRun(): StoredRunContext | null {
-  const value = readStorage(ACTIVE_RUN_STORAGE_KEY)
+function readStoredRun(userId: StorageIdentity): StoredRunContext | null {
+  const value = readStorage(scopedKey(ACTIVE_RUN_STORAGE_KEY, userId))
   if (!value) return null
   try {
     const parsed = JSON.parse(value) as Partial<StoredRunContext>
@@ -172,13 +235,22 @@ function readStoredRun(): StoredRunContext | null {
   }
 }
 
-function persistRun(context: StoredRunContext): void {
-  writeStorage(ACTIVE_RUN_STORAGE_KEY, JSON.stringify(context))
-  writeStorage(SESSION_STORAGE_KEY, context.sessionId)
+function persistRun(context: StoredRunContext, userId: StorageIdentity): void {
+  writeStorage(scopedKey(ACTIVE_RUN_STORAGE_KEY, userId), JSON.stringify(context))
+  writeStorage(scopedKey(SESSION_STORAGE_KEY, userId), context.sessionId)
 }
 
-function clearStoredRun(): void {
-  removeStorage(ACTIVE_RUN_STORAGE_KEY)
+function clearStoredRun(userId: StorageIdentity): void {
+  removeStorage(scopedKey(ACTIVE_RUN_STORAGE_KEY, userId))
+}
+
+/**
+ * What the canvas draws for a graph the server refused: nothing, under the id
+ * that was asked for. `version` is a word rather than a hash so the canvas
+ * meta cannot be mistaken for a served graph, and cannot read `mock-` either.
+ */
+function emptyGraph(id: string): GraphDescriptor {
+  return { id, name: '', version: 'unavailable', start_nodes: [], nodes: [], edges: [] }
 }
 
 function newSessionId(): string {
@@ -205,15 +277,29 @@ export interface ValidatorRunOptions {
    * builder graph's own `input_field`. Defaults to `idea`.
    */
   inputField?: string
+  /**
+   * Whose browser this is (D-01-5). The run pointer and the session id are
+   * keyed to the signed-in user's id, so a different person on the same
+   * profile never restores this user's run and a sign-out can remove the
+   * pointer. A getter so it is never stale; `null`, or no getter at all, is
+   * nobody and keeps the anonymous key shape the auth-off backend and the
+   * unit suite rely on.
+   */
+  userId?: () => StorageIdentity
 }
 
 export function useValidatorRun(
   api: StudioApiLike = studioApi,
   options: ValidatorRunOptions = {},
 ) {
-  const storedAtLoad = readStoredRun()
-  const sessionId = storedAtLoad?.sessionId ?? readStorage(SESSION_STORAGE_KEY) ?? newSessionId()
-  writeStorage(SESSION_STORAGE_KEY, sessionId)
+  /** Whose storage the pointer lives in. Read at every access, never cached. */
+  const identity = (): StorageIdentity => options.userId?.() ?? null
+  const storedAtLoad = readStoredRun(identity())
+  const sessionId =
+    storedAtLoad?.sessionId
+    ?? readStorage(scopedKey(SESSION_STORAGE_KEY, identity()))
+    ?? newSessionId()
+  writeStorage(scopedKey(SESSION_STORAGE_KEY, identity()), sessionId)
 
   const descriptor = ref<GraphDescriptor>(structuredClone(MOCK_GRAPH))
   const workflowId = ref(storedAtLoad?.workflowId ?? options.workflowId ?? DEFAULT_WORKFLOW_ID)
@@ -248,6 +334,8 @@ export function useValidatorRun(
   const pendingGate = ref<PendingGate | null>(null)
   const gateSubmitting = ref(false)
   const launching = ref(false)
+  /** A `resume_from` is in flight. Guards the Re-run control against a double press. */
+  const resuming = ref(false)
   const downloadStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
   const downloadMessage = ref('')
   const lastError = ref('')
@@ -262,6 +350,22 @@ export function useValidatorRun(
    * next probe.
    */
   const transportProblem = ref('')
+  /**
+   * The server's own sentence when it REFUSED the graph this console is
+   * pointed at, or '' when the graph loaded.
+   *
+   * D-01-2. A 404 on `GET /api/workflows/{id}/graph` - which is what a
+   * stranger gets for somebody else's published graph, by design - used to
+   * be treated exactly like "no backend": the transport flipped to mock, the
+   * canvas drew the 14-node demonstration graph under the refused workflow's
+   * own name, and Launch went green. But a 404 can only come from a real
+   * server. So the transport stays live, the canvas stays EMPTY, this carries
+   * the sentence, and `canLaunch` is false while it is set. Not routed through
+   * `lastError` for the same reason `transportProblem` is not: `launch()`
+   * clears that, and a dismissible banner is how an operator ends up pressing
+   * a button the server has already said no to.
+   */
+  const graphProblem = ref('')
   /**
    * The finished validation report. The backend has always delivered this -
    * `GET /api/runs/{id}` returns it as `result` and the terminal frame carries
@@ -296,6 +400,12 @@ export function useValidatorRun(
   const activeEdgeIds = ref(new Set<string>())
   const chatEntries = ref<ChatEntry[]>([])
   const usage = reactive<UsageMetrics>(initialUsage())
+  /**
+   * The first and last frame timestamps this run has produced - the run's own
+   * clock, and the answer to `ELAPSED` when nothing else supplies one.
+   * Plain rather than reactive: only `usage.elapsedMs` is read, and that is.
+   */
+  const runClock = { firstMs: 0, lastMs: 0 }
   const nodeStates = reactive<Record<string, NodeRunState>>({})
   const nodeUsage = reactive<Record<string, UsageMetrics>>({})
   const nodeFrames = reactive<Record<string, number>>({})
@@ -316,6 +426,31 @@ export function useValidatorRun(
     if (!nodeId) return
     nodeActiveCall[nodeId] = call
   }
+
+  /**
+   * The run's motion (plan 11), fed from `applyFrame` and nowhere else.
+   *
+   * Built HERE rather than in the view for the reason `nodeVisits` is counted
+   * here: it reads frames, and there is exactly one place a frame is applied.
+   * A view that subscribed to its own frame stream would have a second replay
+   * path with its own ordering, which is the shape of defect this file's
+   * `ingestFrame` gap-fill exists to prevent.
+   *
+   * `edgeIdFor` hands it the DESCRIPTOR's own edge id, so a handoff token can
+   * find the `<path>` Vue Flow rendered. Falling back to `from-to` matches
+   * `applyEdge`'s own fallback, which keeps the two in step for a graph whose
+   * frames name a pair the descriptor does not draw.
+   */
+  const choreography = useRunChoreography({
+    nodeStates: () => nodeStates,
+    status,
+    activeEdgeIds,
+    labelFor: (nodeId) =>
+      descriptor.value.nodes.find((node) => node.id === nodeId)?.label ?? nodeId,
+    edgeIdFor: (from, to) =>
+      descriptor.value.edges.find((edge) => edge.source === from && edge.target === to)?.id
+      ?? `${from}-${to}`,
+  })
   const seenFrames = new Set<string>()
   const pendingCallEntries = new Map<string, string[]>()
   /** Active edge id -> the node it feeds, so a finished branch can end it. */
@@ -343,10 +478,20 @@ export function useValidatorRun(
   resetNodes()
 
   const graphNodes = computed<Node<StudioNodeData>[]>(() =>
-    descriptor.value.nodes.map((node) => ({
+    descriptor.value.nodes.map((node, index) => ({
       id: node.id,
       type: 'workflow',
       position: node.position,
+      /*
+       * The landing settle, on Vue Flow's OWN node wrapper rather than on the
+       * card. Two reasons and either decides it: `.workflow-node.is-running`
+       * sets the `animation` shorthand, so a landing class on the card at equal
+       * specificity would replace the whole list and cancel a running node's
+       * glow; and Vue Flow positions a node by writing `transform` onto this
+       * wrapper, so the keyframe is opacity-only.
+       */
+      class: choreography.landed.value ? 'is-landing' : undefined,
+      style: { animationDelay: `-${index * LANDING_STAGGER_MS}ms` },
       draggable: false,
       selectable: false,
       connectable: false,
@@ -362,6 +507,19 @@ export function useValidatorRun(
         frameCount: nodeFrames[node.id] ?? 0,
         visits: nodeVisits[node.id] ?? 0,
         activeCall: nodeActiveCall[node.id] ?? null,
+        character: choreography.characterIndex(node.id),
+        receded: choreography.isReceded(node.id),
+        errorMessage: choreography.nodeErrors.value[node.id] ?? '',
+        replayed: choreography.replayed.value.has(node.id),
+        receiving: choreography.receiving.value.has(node.id),
+        index,
+        landing: choreography.landed.value,
+        nodeId: node.id,
+        rerunnable:
+          TERMINAL_STATUSES.includes(status.value)
+          && Boolean(runId.value)
+          && transportMode.value === 'live'
+          && (nodeStates[node.id] ?? 'idle') === 'error',
       },
     })),
   )
@@ -372,17 +530,32 @@ export function useValidatorRun(
       source: edge.source,
       target: edge.target,
       type: 'workflow',
-      data: { label: edge.label ?? undefined, active: activeEdgeIds.value.has(edge.id) },
+      data: {
+        label: edge.label ?? undefined,
+        active: activeEdgeIds.value.has(edge.id),
+        handoff: choreography.handoffs.value.find((entry) => entry.edgeId === edge.id),
+        character: choreography.characterIndex(edge.source),
+      },
     })),
   )
 
   const quarantinedFrames = computed(() => nodeFrames[QUARANTINE_NODE_ID] ?? 0)
   const isActive = computed(() => ['queued', 'running', 'waiting', 'stopping'].includes(status.value))
-  const canLaunch = computed(() => idea.value.trim().length >= 12 && !isActive.value && !launching.value)
+  const canLaunch = computed(
+    () =>
+      idea.value.trim().length >= 12
+      && !isActive.value
+      && !launching.value
+      // The server refused this graph: there is nothing to launch (D-01-2).
+      && !graphProblem.value,
+  )
   const primaryLabel = computed(() =>
     launching.value
       ? 'Launching…'
-      : status.value === 'completed' || status.value === 'cancelled' || status.value === 'error'
+      // "Relaunch" names a run that exists. A terminal status with no run id
+      // is an attempt that never produced one - a refused restore, a refused
+      // launch - and the next click launches, it does not re-launch (D-01-5).
+      : TERMINAL_STATUSES.includes(status.value) && runId.value
       ? 'Relaunch'
       : status.value === 'running' || status.value === 'waiting'
         ? 'Send'
@@ -398,9 +571,13 @@ export function useValidatorRun(
     const wasTerminal = TERMINAL_STATUSES.includes(status.value)
     status.value = next
     if (!TERMINAL_STATUSES.includes(next)) return
-    clearStoredRun()
+    clearStoredRun(identity())
     // Nothing further will stream, so no traversal should still be marching.
     clearEdgeAnimations()
+    // The terminal frame settles the console: the recede lifts (`isReceded`
+    // reads the status), and a half-revealed utterance is shown whole rather
+    // than left mid-sentence under a COMPLETED badge (plan 11 D7).
+    choreography.revealAll()
     // The frame's copy of the report is clipped at 4096 characters; the
     // snapshot's is not. Collect the full one exactly once per run.
     if (!wasTerminal && next === 'completed') void fetchFullReport()
@@ -409,7 +586,7 @@ export function useValidatorRun(
   async function initialize(): Promise<void> {
     transportMode.value = await api.initialize()
     transportProblem.value = api.probeFailure ?? ''
-    const storedRun = readStoredRun()
+    const storedRun = readStoredRun(identity())
     if (storedRun) {
       // Both together or neither. Taking the workflow id from the stored run
       // while leaving `inputField` at whatever the caller asked for would
@@ -418,14 +595,25 @@ export function useValidatorRun(
       workflowId.value = storedRun.workflowId
       inputField.value = storedRun.inputField ?? DEFAULT_INPUT_FIELD
     }
+    graphProblem.value = ''
     try {
       descriptor.value = await api.getGraph(workflowId.value)
       resetNodes()
     } catch (error) {
-      transportMode.value = 'mock'
-      descriptor.value = structuredClone(MOCK_GRAPH)
+      /*
+       * Only reachable with a LIVE transport: in mock mode `getGraph` hands
+       * back the demonstration graph without asking anybody. So this is a
+       * real server refusing this graph - a stranger's 404 on somebody else's
+       * published workflow, most often - and the answer is an empty canvas
+       * carrying the server's sentence, never the mock graph and never an
+       * enabled Launch (D-01-2). `probeRefusal` is the fallback sentence for
+       * the case where the probe itself was refused and the graph read then
+       * failed without one of its own.
+       */
+      const sentence = error instanceof Error ? error.message : ''
+      descriptor.value = emptyGraph(workflowId.value)
       resetNodes()
-      lastError.value = error instanceof Error ? error.message : 'Graph could not be loaded.'
+      graphProblem.value = sentence || api.probeRefusal || 'The graph could not be loaded.'
     }
 
     if (!storedRun) return
@@ -437,6 +625,10 @@ export function useValidatorRun(
     const previousStatus = status.value
     launching.value = true
     lastError.value = ''
+    // D6.1: the control glows from the press until the run's first frame. The
+    // gap it covers is a real one - a POST to Singapore, a queue slot and a
+    // socket handshake - and it was previously three seconds of nothing.
+    choreography.arm()
     try {
       const response = await api.startRun(
         sessionId,
@@ -462,13 +654,16 @@ export function useValidatorRun(
       resetRun()
       runId.value = response.run_id
       setStatus(response.status)
-      persistRun({
-        version: 1,
-        runId: response.run_id,
-        sessionId,
-        workflowId: workflowId.value,
-        inputField: inputField.value,
-      })
+      persistRun(
+        {
+          version: 1,
+          runId: response.run_id,
+          sessionId,
+          workflowId: workflowId.value,
+          inputField: inputField.value,
+        },
+        identity(),
+      )
       connectStream()
     } catch (error) {
       setStatus(runId.value ? previousStatus : 'error')
@@ -491,7 +686,7 @@ export function useValidatorRun(
         // The report is the exception. It is what the operator came back for,
         // and the already-cleared pointer bounds how long it can linger - this
         // shows the conclusion once, not forever.
-        clearStoredRun()
+        clearStoredRun(identity())
         resetRun()
         runId.value = context.runId
         // Replay the frames, do not merely take the result.
@@ -535,15 +730,23 @@ export function useValidatorRun(
       pendingGate.value = snapshot.pending_gate
       droppedFrames.value = snapshot.frames.dropped
       Object.assign(usage, snapshot.usage)
+      // After, not before: the frames above already established the run's own
+      // clock, and a snapshot carrying `elapsed_ms: 0` would otherwise erase it.
+      syncElapsed()
       captureResult(snapshot.result)
       frames.filter((frame) => frame.seq > snapshotSequence).forEach(applyPostSnapshotFrame)
       if (['queued', 'running', 'waiting', 'stopping'].includes(status.value)) connectStream()
     } catch (error) {
       // The saved run is unreachable (expired, purged, or a different server).
       // Keeping the pointer would reproduce this error on every future load.
-      clearStoredRun()
+      clearStoredRun(identity())
       setStatus('error')
       lastError.value = error instanceof Error ? error.message : 'The saved run could not be restored.'
+      // `runId` was set before the fetch so a replay could attribute frames;
+      // the fetch failed, so there is no run on screen to name. Left set, the
+      // status panel printed the old id under "Relaunch" for a run this server
+      // had just refused (D-01-5).
+      runId.value = ''
     }
   }
 
@@ -571,6 +774,7 @@ export function useValidatorRun(
       setStatus('error')
       lastError.value = frame.message
     }
+    noteFrameClock(frame)
   }
 
   function queueFrame(frame: FrameData): void {
@@ -620,7 +824,12 @@ export function useValidatorRun(
       setStatus('error')
       lastError.value = frame.message
     }
+    noteFrameClock(frame)
     if (!['token', 'metrics'].includes(frame.kind)) appendChat(frame)
+    // Last, and after every state write above: the choreography's recede and
+    // its animation bound both read `nodeStates`, so ingesting first would
+    // compute them against the run as it was one frame ago.
+    choreography.ingest(frame)
   }
 
   /**
@@ -935,13 +1144,60 @@ export function useValidatorRun(
 
   function applyMetrics(frame: FrameData): void {
     const metrics = usageFromDetails(frame.details, 0)
-    usage.elapsedMs = metrics.elapsedMs || usage.elapsedMs
+    usage.elapsedMs = Math.max(usage.elapsedMs, metrics.elapsedMs)
     usage.callCount = Math.max(usage.callCount, metrics.callCount)
+  }
+
+  /**
+   * Elapsed from the RUN'S OWN CLOCK, when nothing else has supplied it
+   * (critic round product-1, P-08).
+   *
+   * The panel read `ELAPSED 00:00` on a completed run whose server record held
+   * `created_at` and `completed_at` 15.019 s apart. `usage.elapsedMs` is
+   * summed from per-call timings that only exist once a METRICS frame has been
+   * emitted, so a run that called no priced model - or one whose runner emits
+   * no token frames - reported that it took no time at all. Nothing about
+   * elapsed depends on model usage, and pretending it does is what made a
+   * measurable fact read as a zero.
+   *
+   * Frames carry `ts`, so the span between the first and the last is the run's
+   * own clock, replayed identically after a reload. `Math.max` rather than an
+   * assignment for both directions of disagreement: a real METRICS elapsed
+   * (which includes queue time this cannot see) still wins, and a snapshot
+   * carrying `elapsed_ms: 0` can no longer erase what the frames already said.
+   */
+  function noteFrameClock(frame: FrameData): void {
+    const at = Date.parse(frame.ts)
+    if (!Number.isFinite(at)) return
+    if (!runClock.firstMs || at < runClock.firstMs) runClock.firstMs = at
+    if (at > runClock.lastMs) runClock.lastMs = at
+    syncElapsed()
+  }
+
+  function syncElapsed(): void {
+    if (!runClock.firstMs || runClock.lastMs <= runClock.firstMs) return
+    usage.elapsedMs = Math.max(usage.elapsedMs, runClock.lastMs - runClock.firstMs)
   }
 
   function appendChat(frame: FrameData): void {
     const stage = String(frame.details.stage ?? '')
     if ((frame.kind === 'llm' || frame.kind === 'tool') && stage === 'chunk') return
+    /*
+     * Three C6 shapes the TRACE does not carry, because another surface owns
+     * each and carrying them twice is how one copy goes stale.
+     *
+     * `utterance` is the dialogue rail's whole subject (D5) - it is what an
+     * agent SAID, rendered with an avatar and a progressive reveal, and a
+     * verbatim copy of the same 4,096 characters in the trace beside it is
+     * noise in the surface whose job is the mechanics. `plan` is the stage
+     * lane's (D4): it is a statement about the graph, made seven times before
+     * anything happens, and in the trace it reads as seven system messages
+     * before the run starts. The trace keeps everything else - the kicker, the
+     * tool chips, the warnings, the errors - which is the half of the run the
+     * rail was always good at.
+     */
+    if (frame.kind === 'llm' && stage === 'utterance') return
+    if (frame.kind === 'run_state' && stage === 'plan') return
     if ((frame.kind === 'llm' || frame.kind === 'tool') && stage !== 'before' && completeCallEntry(frame)) return
 
     const call = toCallChip(frame)
@@ -1043,6 +1299,61 @@ export function useValidatorRun(
     }
   }
 
+  /**
+   * Start a new run that replays this one up to `nodeId` and runs from there.
+   *
+   * Plan 12 D6. Offered only on the node that FAILED, and only on a run that
+   * has reached a terminal state - both are the server's own preconditions
+   * (`derived_plan` answers 422 for a run still being written, because a state
+   * still in flight is not a state to replay), and asking first is the
+   * difference between a control that is honest about what it can do and one
+   * that produces a 422 when pressed.
+   *
+   * The server's refusals are SURFACED rather than swallowed. There are four,
+   * and each is a sentence somebody can act on: somebody else's run answers
+   * 404 (`require_own_run` refuses that way because a 403 confirms the run
+   * exists), a run still in flight answers 422, a workflow that is not a
+   * compiled graph answers 422, and a saved state missing an upstream node's
+   * output fails with `replay-missing-output`. That last one is the reason
+   * this button cannot simply be assumed to work: `flow_states` is written per
+   * node, and a run that died before a node it needs has nothing to replay.
+   */
+  async function resumeFrom(nodeId: string): Promise<void> {
+    if (!nodeId || !runId.value || isActive.value || resuming.value) return
+    resuming.value = true
+    lastError.value = ''
+    const source = runId.value
+    try {
+      const response = await api.resumeRun(
+        sessionId,
+        source,
+        nodeId,
+        workflowId.value,
+        { [inputField.value]: idea.value.trim() },
+        gatesMode.value,
+      )
+      resetRun()
+      runId.value = response.run_id
+      setStatus(response.status)
+      persistRun(
+        {
+          version: 1,
+          runId: response.run_id,
+          sessionId,
+          workflowId: workflowId.value,
+          inputField: inputField.value,
+        },
+        identity(),
+      )
+      connectStream()
+    } catch (error) {
+      lastError.value =
+        error instanceof Error ? error.message : 'The run could not be resumed from that node.'
+    } finally {
+      resuming.value = false
+    }
+  }
+
   async function cancel(): Promise<void> {
     if (!runId.value || !isActive.value || status.value === 'stopping') return
     setStatus('stopping')
@@ -1084,8 +1395,11 @@ export function useValidatorRun(
     seenFrames.clear()
     pendingCallEntries.clear()
     clearEdgeAnimations()
+    choreography.reset()
     resetNodes()
     Object.assign(usage, initialUsage())
+    runClock.firstMs = 0
+    runClock.lastMs = 0
     status.value = 'idle'
     connection.value = 'offline'
     runId.value = ''
@@ -1127,6 +1441,7 @@ export function useValidatorRun(
     downloadMessage,
     lastError,
     transportProblem,
+    graphProblem,
     report,
     verdictSummary,
     lastSequence,
@@ -1137,6 +1452,17 @@ export function useValidatorRun(
     nodeVisits,
     nodeActiveCall,
     nodeUsage,
+    resuming,
+    // Plan 11's surfaces, re-exported rather than built in the view: the view
+    // renders them and the composable is the only thing that has seen a frame.
+    dialogue: choreography.dialogue,
+    handoffs: choreography.handoffs,
+    stages: choreography.stages,
+    liveAnimationCount: choreography.liveAnimationCount,
+    framesApplied: choreography.framesApplied,
+    armed: choreography.armed,
+    endHandoff: choreography.endHandoff,
+    revealAll: choreography.revealAll,
     graphNodes,
     graphEdges,
     quarantinedFrames,
@@ -1147,6 +1473,7 @@ export function useValidatorRun(
     launch,
     submitGate,
     cancel,
+    resumeFrom,
     downloadLogs,
     dismissError,
   }

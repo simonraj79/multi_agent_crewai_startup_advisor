@@ -233,6 +233,17 @@ CrewAI's default of 3 → up to 4 attempts, each re-running the whole task.
 **No drift. Both models exist and every price in `config.py` matches what
 OpenRouter advertises right now.**
 
+> **⚠️ This check is dated 2026-08-29, and is deliberately NOT rewritten.** The
+> table below records what the live catalogue said on that day, against the
+> constants as they stood then. `ESCALATION_MODEL` has since moved
+> `gemini-3.7-flash` → **`gemini-3.8-flash`** (`f19a2c6`, 2026-09-04, same
+> $0.75 / $3.75), and `CHEAP_MODEL` has moved as well. The figures are left
+> verbatim because a measurement of `gemini-3.7-flash` remains a true
+> measurement of `gemini-3.7-flash`; renaming the model inside one would
+> fabricate a check nobody ran. **Re-run the check, do not read it.** The same
+> applies to the `Gemini 3.7 Flash` reasoning-token estimate further down under
+> *Where the uncertainty actually is*.
+
 | | `CHEAP_MODEL` | `ESCALATION_MODEL` |
 | --- | --- | --- |
 | Config id | `openrouter/z-ai/glm-5.3-flash` | `openrouter/google/gemini-3.7-flash` |
@@ -734,3 +745,17 @@ Both are free to check and take a minute.
 One recommendation worth the emphasis: **make the first paid run `--no-gates`.**
 Same six agents, same tools, same guardrails, same money — and it never touches
 the `Flow.resume()` path that carries the one known intermittent crash.
+
+> **If the paid run is through the DEPLOYED SERVICE rather than this CLI, one
+> more thing must be true first** (added 2026-09-04). The CLI path
+> (`python -m brief_crew.validator_flow`) never builds the FastAPI app, so
+> nothing here changes. The service path does, and since plan 01 `create_app`
+> **refuses to start** when `AUTH_BASE_URL` is set and `CREDENTIALS_MASTER_KEY`
+> is empty — which is exactly the state `render.yaml` described until
+> 2026-09-04. Measured, with the reproduction, in `CLAUDE.md` remaining-work
+> item 46; the runbook entry is step 4 of [`deploying.md`](deploying.md). It
+> costs nothing to check and it is the difference between a paid run and a
+> service that never comes up.
+>
+> The go-live checklist at the head of `deploying.md` is the fuller version of
+> this paragraph, and it names three other things that are not ready.

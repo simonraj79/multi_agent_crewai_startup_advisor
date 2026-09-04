@@ -160,16 +160,26 @@ function port(page: Page, nodeId: string, portId: string): Locator {
 }
 
 /**
- * A node's single inbound handle.
+ * A node's inbound FLOW handle - the `in` port at the top of the card.
  *
  * An edge lands on a PORT, not on a card: Vue Flow completes a connection only
  * when the pointer is released on a handle (or inside `connectionRadius` of
- * one), and the centre of a 240px card is nowhere near the 9px handle at its
- * top edge. Dragging to `.workflow-node` therefore never connected anything -
- * it just held the gesture open until the hover timed out.
+ * one), and the centre of a 240px card is nowhere near the 12px disc at its top
+ * edge. Dragging to `.workflow-node` therefore never connected anything - it
+ * just held the gesture open until the hover timed out.
+ *
+ * `data-handleid` is now load-bearing and was not before 2026-09-04: a card no
+ * longer has ONE target handle. 02-canvas.md D1 puts `attach` on an agent's and
+ * a crew's left edge and `member` on a crew's, so an unqualified
+ * `.target[data-nodeid=...]` is a strict-mode violation on every agent - which
+ * is the right failure, because the two ports mean categorically different
+ * things and a test that took whichever came first would be asserting about
+ * whichever the card happened to render first.
  */
-function targetPort(page: Page, nodeId: string): Locator {
-  return page.locator(`.vue-flow__handle.target[data-nodeid="${nodeId}"]`)
+function targetPort(page: Page, nodeId: string, portId = 'in'): Locator {
+  return page.locator(
+    `.vue-flow__handle.target[data-nodeid="${nodeId}"][data-handleid="${portId}"]`,
+  )
 }
 
 /** Drag from one locator's centre to another's, the way a person draws an edge. */
@@ -255,6 +265,30 @@ async function clearLibrary(request: APIRequestContext): Promise<void> {
   if (!listed.ok()) return
   const documents = (await listed.json()) as { id: string }[]
   for (const entry of documents) await request.delete(`/api/builder/workflows/${entry.id}`)
+}
+
+/* ─── the three token colours these tests read back off the pixels ────────── */
+
+/** `--accent-mint: #aaffcd`, resolved. A handle the drag will land on. */
+const MINT = 'rgb(170, 255, 205)'
+/** `--err-text: #ffcccc`, resolved. A handle that will refuse it. */
+const ERR = 'rgb(255, 204, 204)'
+/** `--warn-text: #ffe082`, resolved. A gate's `revise` branch. */
+const WARN = 'rgb(255, 224, 130)'
+
+/**
+ * The colour of the VISIBLE disc, which is the handle's `::after`.
+ *
+ * 02-canvas.md D1 splits the port into two elements - a transparent 24x24 hit
+ * target and a 12px disc drawn by `::after` - so the handle's own background is
+ * `rgba(0, 0, 0, 0)` by design and reading it would answer the wrong question.
+ * This is also the read jsdom cannot make at all: it logs "Not implemented" for
+ * a pseudo-element and hands back the element's own style, which would pass.
+ */
+async function discColour(handle: Locator): Promise<string> {
+  return handle.evaluate(
+    (el) => window.getComputedStyle(el, '::after').backgroundColor,
+  )
 }
 
 test.describe('Flow builder', () => {
@@ -660,10 +694,15 @@ test.describe('Flow builder', () => {
     expect(watch.unexpected).toEqual([])
   })
 
-  test('walks to a problem from the panel, fixes it, publishes, and the graph launches', async ({
-    page,
-    request,
-  }) => {
+  test(
+    'walks to a problem from the panel, fixes it, publishes, and the graph launches',
+    // 13 D6: every test that presses Launch carries the tag, so
+    // `--grep-invert @launch` against a deployed origin presses nothing. This
+    // one launches through `request` rather than a button, and the tag is about
+    // what the test DOES, not about which control it uses - `AGENTS.md` called
+    // the untagged version a live hole for exactly that reason.
+    { tag: '@launch' },
+    async ({ page, request }) => {
     /*
      * The whole arc, and the only test here that ends in a real run.
      *
@@ -790,7 +829,8 @@ test.describe('Flow builder', () => {
     await expect(page.locator('textarea#idea')).toBeVisible()
 
     expect(watch.unexpected).toEqual([])
-  })
+    },
+  )
 
   test('never presents an unchecked document as ready to publish', async ({ page }) => {
     /*
@@ -801,9 +841,22 @@ test.describe('Flow builder', () => {
      * and ZERO `/api/builder/validate` requests were sent - measured with a
      * request spy. Over that the dock read `Ready to publish`, the publish
      * checklist ticked `Validation is current` and `No errors`, and the server
-     * answers the same bytes with `no-input-node`. Every other template differs
-     * from the seed and validated by accident, which is why this was invisible
+     * answered the same bytes with two errors. Every other template differs from
+     * the seed and validated by accident, which is why this was invisible
      * anywhere except the one card a first-time visitor is most likely to click.
+     *
+     * REWRITTEN 2026-09-04, because the DOCUMENT changed and the defect did
+     * not. 02-canvas.md D7 seeds the blank canvas with the run's two ends wired,
+     * so it is now genuinely clean and "ready to publish" is the TRUE answer for
+     * it - which means the old assertion would now pass for the wrong reason on
+     * a build where the loop was broken again.
+     *
+     * So the test drives the loop instead of reading one frame of it: the
+     * request has to fire on the very first show, and then deleting the output
+     * node has to make the SERVER's own `no-output-node` appear and the headline
+     * stop saying ready. Nothing in that chain can be satisfied by a client that
+     * never asked - `no-output-node` is `bounds._input_output_problems`, and the
+     * client computes no problem of any kind (§6.1 tier 2).
      */
     const watch = watchConsole(page)
     const validates: string[] = []
@@ -816,17 +869,26 @@ test.describe('Flow builder', () => {
     await page.locator('.template-card').filter({ hasText: 'Blank canvas' }).click()
     await expect(canvas(page)).toBeVisible()
 
+    // The premise: choosing the card really sends the seed to the server. This
+    // is the assertion the original defect failed, and it is unchanged.
     await expect.poll(() => validates.length).toBeGreaterThan(before)
     await validationSettles(page)
-    await expect(headline(page)).not.toContainText(/ready to publish/i)
-    await expect(problemRow(page, 'no-input-node')).toBeVisible()
 
-    // And the dialog refuses it, with the server's count rather than a tick.
-    await page.keyboard.press('Control+Shift+P')
-    const publish = page.locator('[aria-labelledby="publish-title"]')
-    await expect(publish).toBeVisible()
-    await expect(publish).toContainText(/error must be fixed|errors must be fixed/)
-    await expect(publish.getByRole('button', { name: /^Publish$/ })).toBeDisabled()
+    // D7 and criterion 10: a new graph opens clean, with one input node.
+    await expect(nodes(page)).toHaveCount(2)
+    await expect(page.locator('.workflow-node.is-kind-input')).toHaveCount(1)
+    await expect(page.locator('.problem-row')).toHaveCount(0)
+    await expect(headline(page)).toContainText(/ready to publish/i)
+
+    // Now break it, and the answer has to come back from the server.
+    const output = page.locator('.vue-flow__node:has(.workflow-node.is-kind-output)').first()
+    await output.locator('.workflow-node').click()
+    await page.keyboard.press('Delete')
+    await expect(nodes(page)).toHaveCount(1)
+
+    await validationSettles(page)
+    await expect(problemRow(page, 'no-output-node')).toBeVisible()
+    await expect(headline(page)).not.toContainText(/ready to publish/i)
 
     expect(watch.unexpected).toEqual([])
   })
@@ -962,6 +1024,84 @@ test.describe('Flow builder', () => {
     expect(watch.unexpected).toEqual([])
   })
 
+  test('opens a prior version read-only, and Restore makes it the next head', async ({ page }) => {
+    /*
+     * Plan 15 D3, criterion 4's browser half. The unit suite proves the
+     * store's lock, the composable's CAS and the component's rendering each
+     * on their own; what only a browser can answer is whether the four agree
+     * on screen - that the row the author clicks is the version the canvas
+     * draws, that a Delete key over it lands nowhere, that the publish dialog
+     * names the mismatch, and that Restore comes back as a NEW head with the
+     * old one one undo away.
+     *
+     * Newest-first is asserted here and nowhere else on purpose: the
+     * component renders the server's order and never sorts, so this is the
+     * one place the contract is checked end to end.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    await page.keyboard.press('Control+s')
+    await expect(saveChip(page)).toContainText(/saved · v1/)
+    await documentIdFromRoute(page)
+
+    await placeKind(page, 'transform')
+    await page.keyboard.press('Control+s')
+    await expect(saveChip(page)).toContainText(/saved · v2/)
+    await expect(nodes(page)).toHaveCount(5)
+
+    await page.getByRole('button', { name: 'More actions' }).click()
+    await page.getByRole('menuitem', { name: 'Versions' }).click()
+    const browser = page.locator('[data-testid="version-browser"]')
+    await expect(browser).toBeVisible()
+    const rows = browser.locator('.version-row')
+    await expect(rows).toHaveCount(2)
+    await expect(rows.first()).toHaveAttribute('data-testid', 'version-row-2')
+    await expect(rows.first()).toContainText('head')
+
+    await page.locator('[data-testid="version-row-1"]').click()
+
+    await expect(page.locator('[data-testid="version-viewing"]')).toContainText('Viewing v1 of v2')
+    await expect(nodes(page)).toHaveCount(4)
+    await expect(page.locator('.builder-canvas')).toHaveClass(/is-read-only/)
+    // A gesture lands nowhere. Delete over a selected card commits nothing,
+    // and the notice says why rather than the canvas looking broken.
+    const agent = await firstOfKind(page, 'agent')
+    await agent.card.click()
+    await page.keyboard.press('Delete')
+    await expect(nodes(page)).toHaveCount(4)
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    await expect(page.locator('.builder-notice')).toContainText(/read-only/)
+
+    // The precondition `PublishDialog` already enforces keeps refusing a non-head.
+    await page.keyboard.press('Control+Shift+P')
+    const publish = page.locator('[aria-labelledby="publish-title"]')
+    await expect(publish).toContainText('you are viewing v1; publish works on head (v2)')
+    await expect(publish.getByRole('button', { name: /^(Publish|Republish)$/ })).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(publish).toBeHidden()
+
+    await page.locator('[data-testid="version-restore"]').click()
+
+    // v3 with v1's content. v2 is still listed - history was appended to,
+    // never rewritten - and head is one Ctrl+Z away.
+    await expect(saveChip(page)).toContainText(/saved · v3/)
+    await expect(page.locator('[data-testid="version-viewing"]')).toHaveCount(0)
+    await expect(page.locator('.builder-canvas')).not.toHaveClass(/is-read-only/)
+    await expect(nodes(page)).toHaveCount(4)
+    await expect(rows).toHaveCount(3)
+    await expect(rows.first()).toHaveAttribute('data-testid', 'version-row-3')
+    await expect(rows.first()).toContainText('head')
+    await expect(page.locator('[data-testid="version-row-2"]')).toBeVisible()
+
+    await canvas(page).click({ position: { x: 40, y: 40 } })
+    await page.keyboard.press('Control+z')
+    await expect(nodes(page)).toHaveCount(5)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
   test('recovers the open document across a reload without offering a stale draft', async ({
     page,
   }) => {
@@ -993,6 +1133,955 @@ test.describe('Flow builder', () => {
     await expect(page.locator('[data-testid="restore-bar"]')).toHaveCount(0)
     expect(new URL(page.url()).hash).toContain(id)
 
+    expect(watch.unexpected).toEqual([])
+  })
+})
+
+/* ─── ports and edges in a real browser (02-canvas.md criteria 2, 3, 4) ───── */
+
+/**
+ * These four tests are the half of plan 02 that a jsdom mount cannot reach.
+ *
+ * `frontend/tests/builderPorts.spec.ts` proves the RULES - which connections
+ * `isValidConnection` accepts, what `builder.css` declares - and it does that by
+ * reading the real stylesheet, because jsdom does not implement
+ * `getComputedStyle(el, '::after')` at all and would silently hand back the
+ * element's own style instead. What it cannot ask is the question the rubric
+ * actually scores: how big is the target, does the drag land, and what colour is
+ * the disc under the pointer right now. Those have an answer only here.
+ */
+
+/** The pane's current zoom, off the transform matrix Vue Flow writes. */
+async function zoomLevel(page: Page): Promise<number> {
+  return page
+    .locator('.builder-flow .vue-flow__transformationpane')
+    .evaluate((el) => new DOMMatrixReadOnly(window.getComputedStyle(el).transform).a)
+}
+
+/**
+ * Wheel the pane to a target zoom and report what it actually reached.
+ *
+ * d3-zoom's wheel handler scales by `2 ** (-deltaY / 500)`, so the delta for a
+ * ratio is `-500 * log2(ratio)`. It is computed rather than hunted for by
+ * clicking the `+` button, because the zoom-in control steps by a fixed factor
+ * that has nothing to do with 50% or 150% and would land somewhere near them.
+ * The number is READ BACK and asserted rather than assumed: a wheel that the
+ * zoom limits clamped is exactly the failure criterion 7 exists for.
+ */
+async function zoomTo(page: Page, target: number): Promise<number> {
+  const from = await zoomLevel(page)
+  const box = (await canvas(page).boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(0, -500 * Math.log2(target / from))
+  await expect.poll(() => zoomLevel(page)).toBeCloseTo(target, 1)
+  return zoomLevel(page)
+}
+
+test.describe('the canvas, in a browser', () => {
+  test.afterEach(async ({ request }) => {
+    await clearLibrary(request)
+  })
+
+  test('connects at 50 / 100 / 150 % zoom, ten times out of ten', async ({ page }) => {
+    /*
+     * Criterion 2, and rubric 3's whole subject.
+     *
+     * The port was a 9px disc with a 9px hit target until 2026-09-04 - hit
+     * target equal to the visual, which is the shape of defect the rubric names
+     * by example, and below Flowise's own 10px floor. At 50% zoom that is four
+     * and a half pixels of target, and "the first attempt" stops being a
+     * reasonable thing to ask for. It is now a 24px box around a 12px disc, so
+     * the target survives the zoom the mark does not.
+     *
+     * TEN drags rather than one, because a hit target is a probability and a
+     * single success proves nothing about it. Each one is followed by a Ctrl+Z,
+     * so every attempt starts from the same document and the tenth is not
+     * quietly easier than the first.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    const gate = await firstOfKind(page, 'gate')
+    const agent = await firstOfKind(page, 'agent')
+    // The `revise` port is free on the template; `approve` already carries the
+    // edge into the agent, and a duplicate triple is a Tier-1 refusal.
+    const before = await edges(page).count()
+
+    for (const target of [1, 0.5, 1.5]) {
+      const reached = await zoomTo(page, target)
+      for (let attempt = 1; attempt <= 10; attempt += 1) {
+        await dragTo(page, port(page, gate.id, 'revise'), targetPort(page, agent.id))
+        await expect(
+          edges(page),
+          `zoom ${reached.toFixed(2)}, attempt ${attempt}: the drag did not land`,
+        ).toHaveCount(before + 1)
+        await page.keyboard.press('Control+z')
+        await expect(edges(page)).toHaveCount(before)
+      }
+    }
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('paints the target handle green when it will take the edge and red when it will not', async ({
+    page,
+  }) => {
+    /*
+     * Criterion 3, and it is the FD4 class rules seen from the pointer's end.
+     *
+     * Vue Flow sets `vue-flow__handle-connecting` on whatever the pointer is
+     * over and adds `vue-flow__handle-valid` when `isValidConnection` said yes -
+     * exactly as React Flow does, which is why Flowise's two CSS rules
+     * (`views/canvas/index.css:41-49`) transfer verbatim. Agentflow v2 dropped
+     * its type check and its cycle rejection is SILENT: the drop just does
+     * nothing. That is the failure this test exists to keep out.
+     *
+     * A tool is the sharpest case available. Its one port is a SOURCE, an agent
+     * offers two target ports, and exactly one of them will take it: `attach`
+     * yes, `in` no - because nothing an agent HAS is a step in the flow, and
+     * `in` is the big obvious port at the top of every card.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    await canvas(page).click({ position: { x: 260, y: 430 } })
+    await page.keyboard.press('t')
+    await expect(page.locator('.workflow-node.is-kind-tool')).toHaveCount(1)
+    const tool = await firstOfKind(page, 'tool')
+    const agent = await firstOfKind(page, 'agent')
+
+    const attach = targetPort(page, agent.id, 'attach')
+    const flow = targetPort(page, agent.id, 'in')
+
+    // Hold one drag open across both hovers, so the two answers are the same
+    // gesture rather than two gestures that happened to agree.
+    await port(page, tool.id, 'attach').hover()
+    await page.mouse.down()
+
+    await attach.hover()
+    await attach.hover()
+    await expect(attach).toHaveClass(/vue-flow__handle-valid/)
+    // POLLED, not read once. The disc carries `transition: background
+    // var(--motion-fast)`, so a single read lands mid-ramp: this assertion
+    // first failed at `rgb(190, 98, 98)`, which is 70% of the way from the
+    // node's own fill to the refusal red. The end state is the claim.
+    await expect.poll(() => discColour(attach)).toBe(MINT)
+
+    await flow.hover()
+    await flow.hover()
+    await expect(flow).toHaveClass(/vue-flow__handle-connecting/)
+    await expect(flow).not.toHaveClass(/vue-flow__handle-valid/)
+    await expect.poll(() => discColour(flow)).toBe(ERR)
+
+    await page.mouse.up()
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('says no to a refused drop, and commits nothing when it does', async ({ page }) => {
+    /*
+     * The other half of criterion 3: "a refused drop leaves
+     * `useBuilderDocument.depth` unchanged".
+     *
+     * `depth` is not reachable from a browser, so what is read is the thing the
+     * author reads - the Undo button's own tooltip, which is `Undo: <the label
+     * of the command at the top of the history>`. A commit lands first, so the
+     * assertion is about the top of a NON-EMPTY history: a refusal that quietly
+     * pushed an entry would change that string, and a disabled-button check
+     * would not have noticed.
+     *
+     * And the refusal has to be VISIBLE. Flowise v2's does nothing at all, which
+     * teaches an author that the canvas is broken rather than that the edge was.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    await canvas(page).click({ position: { x: 260, y: 430 } })
+    await page.keyboard.press('t')
+    const tool = await firstOfKind(page, 'tool')
+    const agent = await firstOfKind(page, 'agent')
+
+    const undo = page.getByRole('button', { name: 'Undo' })
+    const label = await undo.getAttribute('title')
+    expect(label).toMatch(/^Undo: /)
+    const edgesBefore = await edges(page).count()
+
+    // Onto the agent's `in` port, which refuses an attachment.
+    await dragTo(page, port(page, tool.id, 'attach'), targetPort(page, agent.id, 'in'))
+
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    expect(await undo.getAttribute('title')).toBe(label)
+    // No `PortMenu`: it offers to CREATE a node, which is not the question the
+    // author asked, and it would hide the refusal behind a menu.
+    await expect(page.locator('.builder-portmenu')).toHaveCount(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('shows the port name on the dangling line while a gate branch is dragged', async ({
+    page,
+  }) => {
+    /*
+     * Criterion 4. Flowise previews the branch label and colour on its own
+     * connection line and its notes say why: a drag from a two-branch node then
+     * never lands on the wrong branch. A router here can have four ports and
+     * they are four identical discs along one edge, so without this the author
+     * finds out which one they grabbed by releasing.
+     *
+     * The label is read while the button is still DOWN, which is the only moment
+     * it exists - and is why no unit test can ask this question.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    const gate = await firstOfKind(page, 'gate')
+    const line = page.locator('.builder-connection-line')
+
+    await port(page, gate.id, 'revise').hover()
+    await page.mouse.down()
+    const box = (await canvas(page).boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 80)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 90)
+
+    await expect(line).toBeVisible()
+    await expect(line.locator('.builder-connection-label')).toHaveText('revise')
+    // Tinted by the port's class, not by a default: `revise` is `--warn-text`.
+    // The project pins `colorScheme: 'dark'`, which is why a token value can be
+    // written down here at all - see `playwright.config.ts`.
+    await expect
+      .poll(() => line.evaluate((el) => window.getComputedStyle(el).color))
+      .toBe(WARN)
+
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('places the first node of a new graph in one click from the landing page', async ({
+    page,
+  }) => {
+    /*
+     * Criterion 10, rubric 1: landing -> first node placed is ONE click.
+     *
+     * The click is the gallery card, and what it opens is no longer empty. The
+     * blank canvas used to open with nothing drawn and two errors against it,
+     * so the first thing a new author saw was a red problems dock about a graph
+     * they had not touched. It now opens with the run's two ends wired and the
+     * dock silent - measured against this build's own validator, which answers
+     * zero problems for exactly this document.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+
+    await page.locator('.template-card').filter({ hasText: 'Blank canvas' }).click()
+
+    await expect(nodes(page)).toHaveCount(2)
+    await expect(page.locator('.workflow-node.is-kind-input')).toHaveCount(1)
+    await validationSettles(page)
+    await expect(page.locator('.problem-row')).toHaveCount(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('keeps the zoom limits the plan sets, and the port target inside them', async ({ page }) => {
+    /*
+     * Criterion 7's first half. The ceiling rose from 1.4 to Vue Flow's own
+     * default 2.0, matching Flowise, so a 390px viewport can read an 11px port
+     * label at 22px. The floor stays 0.2: the 16-node validator template fits at
+     * 0.466 in a settled container, so a 48-node document needs roughly 0.3 and
+     * the floor has to be under it.
+     *
+     * Asserted by driving the wheel PAST each limit and reading where it
+     * stopped, because a `min-zoom` prop nobody exercises is a prop that can be
+     * wrong.
+     */
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    const box = (await canvas(page).boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+
+    await page.mouse.wheel(0, -6000)
+    await expect.poll(() => zoomLevel(page)).toBeCloseTo(2, 2)
+
+    await page.mouse.wheel(0, 12000)
+    await expect.poll(() => zoomLevel(page)).toBeCloseTo(0.2, 2)
+  })
+})
+
+/* ═══ attachments, and the inspector (03 criterion 10; 04 criteria 2, 9, 10) ══ */
+
+/**
+ * The global Expert switch, set rather than toggled.
+ *
+ * A `.click()` on a checkbox flips whatever it currently is, and `expertMode`
+ * is a `localStorage` singleton that survives a reload and every earlier test
+ * in this file - so a toggle is a gesture whose outcome depends on the order
+ * the suite ran in. Setting is the only form that means the same thing twice.
+ */
+async function setExpert(page: Page, on: boolean): Promise<void> {
+  const box = inspector(page).locator('.expert-switch input')
+  await expect(box).toHaveCount(1)
+  if ((await box.isChecked()) !== on) await box.click()
+  await expect(box).toBeChecked({ checked: on })
+}
+
+/** Type into one inspector control, addressed by the document path it edits. */
+async function fillField(page: Page, field: string, value: string): Promise<void> {
+  const control = inspector(page)
+    .locator(`[data-field="${field}"] textarea, [data-field="${field}"] input[type="text"], [data-field="${field}"] input:not([type])`)
+    .first()
+  await expect(control, `no control for ${field}`).toBeVisible()
+  await control.fill(value)
+  // A prompt commits on input and coalesces; blurring settles the last one
+  // before the next assertion reads the document.
+  await control.blur()
+}
+
+/**
+ * Every `POST /api/builder/validate` answer the APP itself received.
+ *
+ * Reading the app's own round trip rather than composing a request: a test that
+ * validated a document it built would be asserting about its own copy, and the
+ * question is whether what is ON THE CANVAS is what the server called valid.
+ * A body that will not parse is skipped rather than recorded as false - the
+ * failure this watches for is a clean-looking canvas over an invalid document,
+ * not a network hiccup.
+ */
+function watchValidation(page: Page): boolean[] {
+  const answers: boolean[] = []
+  page.on('response', (response) => {
+    if (!response.url().includes('/api/builder/validate')) return
+    void response
+      .json()
+      .then((body: { valid?: boolean }) => {
+        if (typeof body.valid === 'boolean') answers.push(body.valid)
+      })
+      .catch(() => undefined)
+  })
+  return answers
+}
+
+/** The palette tile for a kind, addressed by the key it announces (§4.1, D7). */
+function paletteTile(page: Page, hotkey: string): Locator {
+  return page.locator(`.builder-tile[aria-keyshortcuts="${hotkey}"]`)
+}
+
+/** One attachment avatar on a host card - 03 D6. */
+const avatars = (page: Page, hostId: string): Locator =>
+  page.locator(`.vue-flow__node[data-id="${hostId}"] .builder-attach-avatar`)
+
+/**
+ * Convert the template's LIBRARY agent into an AUTHORED one.
+ *
+ * 04's Status records that this is the only route to the authored arm:
+ * `nodeKinds.defaultConfig` still builds the library arm, and no plan specifies
+ * a palette tile for a fresh authored node. Every criterion below that is about
+ * `llm.model`, the Expert tier or the 42 controls therefore starts here, and it
+ * is one pointer action - which is also why the click budget in the last test
+ * counts it.
+ */
+async function convertToAuthored(page: Page, card: Locator): Promise<void> {
+  await card.click()
+  await expect(inspector(page)).toBeVisible()
+  await inspector(page)
+    .getByRole('button', { name: /convert to an authored agent/i })
+    .click()
+  await expect(inspector(page).locator('[data-field="llm.model"]')).toBeVisible()
+}
+
+test.describe('attachments and the inspector', () => {
+  test.beforeEach(async ({ request }) => {
+    await clearLibrary(request)
+  })
+
+  test.afterEach(async ({ request }) => {
+    await clearLibrary(request)
+  })
+
+  test('attaches a tool by dropping it on an agent, in one undo step', async ({ page }) => {
+    /*
+     * 03 criterion 10, and 06 criterion 9's first half.
+     *
+     * D8's gesture: a tool dropped INSIDE an agent card is one commit carrying
+     * the node AND the `attach` edge, so one Ctrl+Z removes both. Two commits
+     * would leave an author who pressed undo once holding a pill they never
+     * placed, hanging off nothing - the undo defect that cannot be diagnosed,
+     * because the graph does not change and the key looks broken.
+     *
+     * A real HTML5 drag, not a synthetic call. `NodePalette` writes
+     * `application/x-builder-kind` on `dragstart` and `BuilderCanvas` reads it
+     * on `drop`; a test that called `dropKind` directly would prove the
+     * composable and skip the two handlers where this has actually broken.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    const agent = await firstOfKind(page, 'agent')
+    const nodesBefore = await nodes(page).count()
+    const edgesBefore = await edges(page).count()
+
+    await paletteTile(page, 'T').dragTo(agent.card)
+
+    // One node and one edge, and the card says so without being opened: D6's
+    // avatar is the only place an agent admits what it has in its hands.
+    await expect(nodes(page)).toHaveCount(nodesBefore + 1)
+    await expect(edges(page)).toHaveCount(edgesBefore + 1)
+    await expect(avatars(page, agent.id)).toHaveCount(1)
+
+    // The pill carries the tool's own label, which is the other half of D6:
+    // the avatar says the agent has hands, the pill says which.
+    const pill = page.locator('.workflow-node.is-kind-tool')
+    await expect(pill).toBeVisible()
+    await expect(pill.locator('.builder-chip').first()).not.toBeEmpty()
+
+    await page.keyboard.press('Control+z')
+    await expect(nodes(page)).toHaveCount(nodesBefore)
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('attaches a tool by DRAGGING its port onto the agent, not only by dropping', async ({
+    page,
+  }) => {
+    /*
+     * 13 follow-up 1, and the second of the two ways an attachment is made.
+     *
+     * Drop-on-card goes through `addNode`'s third argument. This gesture - drag
+     * the tool's own `attach` port onto the agent's - goes through `onConnect`
+     * -> `addEdge`, and that path wrote `target_port: 'in'` unconditionally:
+     * `EdgeEnds.target_port` was declared, documented, and then overwritten by
+     * a literal one line below its own spread.
+     *
+     * Every surface agreed with the wrong answer, which is why it needed a
+     * browser to see. `isValidConnection` reads `targetHandle`, so the drag
+     * painted GREEN (the test above measures that mint disc). The commit landed.
+     * The edge appeared. And it appeared as a FLOW edge, because `edgeClassOf`
+     * reads `target_port` - so the canvas drew a step in the pipeline where the
+     * author had drawn a possession, and the server answered
+     * `attach-target-not-agent` about a shape nobody had drawn.
+     *
+     * The three assertions are the three places that lie, in the order an
+     * author meets them: the edge's own class, the host card's avatar, and the
+     * dock.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    // A tool on empty canvas, so nothing is attached by the drop itself and the
+    // only thing that can attach it is the drag under test.
+    await canvas(page).click({ position: { x: 260, y: 430 } })
+    await page.keyboard.press('t')
+    const tool = await firstOfKind(page, 'tool')
+    const agent = await firstOfKind(page, 'agent')
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+    const edgesBefore = await edges(page).count()
+
+    await dragTo(page, port(page, tool.id, 'attach'), targetPort(page, agent.id, 'attach'))
+
+    await expect(edges(page)).toHaveCount(edgesBefore + 1)
+    // Drawn as an ATTACH edge. `is-class-attach` is `edgeClassOf`'s answer
+    // rendered, and `edgeClassOf` reads `target_port` - so this class is a
+    // direct reading of the field that was being overwritten.
+    await expect(page.locator('.vue-flow__edge .builder-edge.is-class-attach')).toHaveCount(1)
+    // And the host admits it, which drop-on-card already did and this did not.
+    await expect(avatars(page, agent.id)).toHaveCount(1)
+
+    // The server agrees, which is the whole point: the two problems this used
+    // to raise are the two an attach edge written as a flow edge produces.
+    await validationSettles(page)
+    await expect(problemRow(page, 'attach-target-not-agent')).toHaveCount(0)
+    await expect(problemRow(page, 'attachment-unattached')).toHaveCount(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('attaches with the T hotkey when an agent is selected, and places it loose when none is', async ({
+    page,
+  }) => {
+    /*
+     * 13 follow-up 3, and decision 18's hotkeys made reachable.
+     *
+     * `T` / `M` / `K` went to `insertKind`, whose auto-connect ends at
+     * `acceptsIncoming` - and the three attachment kinds accept nothing. So the
+     * pill landed loose wherever the pointer happened to be, with
+     * `attachment-unattached` in the dock, and the only attach gesture that
+     * worked in the whole product was a pointer drag onto a card. A hotkey the
+     * shortcut sheet advertises and that cannot do the thing it names is worse
+     * than no hotkey.
+     *
+     * ON THE SELECTION, not on the pointer: a hotkey is a keyboard gesture, and
+     * the keyboard's idea of "here" is what is selected. Both halves are
+     * asserted in one test because the SECOND is what makes the first a rule
+     * rather than an always-attach - an author laying out before wiring keeps
+     * the behaviour they had.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    const agent = await firstOfKind(page, 'agent')
+    const nodesBefore = await nodes(page).count()
+    const edgesBefore = await edges(page).count()
+
+    await agent.card.click()
+    await page.keyboard.press('t')
+
+    await expect(nodes(page)).toHaveCount(nodesBefore + 1)
+    await expect(edges(page)).toHaveCount(edgesBefore + 1)
+    // The host says so on its own face, which is the only place an agent admits
+    // what it is holding without being opened (03 D6).
+    await expect(avatars(page, agent.id)).toHaveCount(1)
+
+    // ONE undo step, exactly as attach-by-drop is: `attachTo` is reused rather
+    // than reimplemented, so the node and its wire go together.
+    await page.keyboard.press('Control+z')
+    await expect(nodes(page)).toHaveCount(nodesBefore)
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+
+    // And with nothing selected it still places a loose pill and says so, which
+    // is the behaviour this change deliberately does not take away.
+    await canvas(page).click({ position: { x: 240, y: 440 } })
+    await page.keyboard.press('t')
+
+    await expect(nodes(page)).toHaveCount(nodesBefore + 1)
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+    await validationSettles(page)
+    await expect(problemRow(page, 'attachment-unattached')).toBeVisible()
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('leaves a tool dropped on empty canvas unattached, and says so', async ({ page }) => {
+    /*
+     * The other half of 03 criterion 10, and a decision rather than an
+     * oversight: a drop on empty canvas is LEGAL and creates an unattached
+     * node, because an author may be laying out before wiring. What makes that
+     * survivable is that `bounds.py` says so in a sentence they can read -
+     * `attachment-unattached`, a WARNING - where a refused drop would say
+     * nothing at all.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    const edgesBefore = await edges(page).count()
+    await paletteTile(page, 'T').dragTo(canvas(page), {
+      targetPosition: { x: 220, y: 470 },
+    })
+
+    await expect(page.locator('.workflow-node.is-kind-tool')).toBeVisible()
+    // No edge: this is the branch of `dropKind` that did NOT find a host.
+    await expect(edges(page)).toHaveCount(edgesBefore)
+
+    await validationSettles(page)
+    await expect(problemRow(page, 'attachment-unattached')).toBeVisible()
+    // The dock's live region carries it too, so a warning that appears while
+    // focus is elsewhere is announced rather than only drawn.
+    await expect(problems(page)).toContainText('attachment-unattached')
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('surfaces a problem that lives behind the Expert switch, and walks to its node', async ({
+    page,
+  }) => {
+    /*
+     * 04 criterion 2, the browser half - and it is TWO claims, only one of
+     * which this build can make. This test is the half that holds; the
+     * `test.fixme` below is the half that does not, with the change it needs.
+     *
+     * `llm.reasoning_effort` lives behind the global Expert switch, which is OFF
+     * by default and renders its region ABSENT FROM THE DOM rather than hidden
+     * with CSS. So a server problem anchored there is one the author is told
+     * about and cannot see - the modal-stack failure R15 exists to prevent,
+     * wearing a smaller hat.
+     *
+     * The problem is a REAL one from `registry.py`: `openai/gpt-4.1-nano`
+     * genuinely does not reason, and `model-lacks-capability` carries C8's
+     * optional `field` naming `llm.reasoning_effort` specifically - which is why
+     * the code alone could not have anchored it, since the same code blames
+     * `llm.response_format` on the next node.
+     *
+     * ORDER IS LOAD-BEARING. The effort is chosen while the model still
+     * supports reasoning, because the segmented control DISABLES itself the
+     * moment the model cannot honour it - so setting the model first would
+     * leave nothing to click.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    const agent = await firstOfKind(page, 'agent')
+    await convertToAuthored(page, agent.card)
+
+    // Expert is off, and the rail says how much is behind it rather than
+    // leaving a gap: "this product cannot do that" and "you have that switched
+    // off" look identical when the answer is empty space.
+    await expect(inspector(page).locator('[data-tier="expert-hidden"]')).toBeVisible()
+    await expect(inspector(page).locator('[data-field="llm.reasoning_effort"]')).toHaveCount(0)
+
+    await setExpert(page, true)
+    await inspector(page)
+      .locator('[data-field="llm.reasoning_effort"]')
+      .getByRole('button', { name: 'high', exact: true })
+      .click()
+    await inspector(page)
+      .locator('[data-field="llm.model"] select')
+      .selectOption('openai/gpt-4.1-nano')
+
+    // Put it back out of sight. This is the state the criterion is about: a
+    // real error, against a control that is not on screen.
+    await setExpert(page, false)
+    await expect(inspector(page).locator('[data-field="llm.reasoning_effort"]')).toHaveCount(0)
+
+    await validationSettles(page)
+    const row = problemRow(page, 'model-lacks-capability')
+    await expect(row).toBeVisible()
+    // The server's own sentence, verbatim, naming both the model and the
+    // parameter - because the author's next action is to change one of the two.
+    await expect(row).toContainText('gpt-4.1-nano')
+    await expect(row).toContainText('reasoning_effort')
+
+    await row.click()
+    // What the row DOES do today: it selects the anchor and opens the rail on
+    // it. That is a repair the author can act on - the sentence names
+    // `llm.model`, which is in Essentials and on screen.
+    await expect(inspector(page)).toBeVisible()
+    await expect(agent.card).toHaveClass(/problem-anchor|is-flashing|has-error/)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  /*
+   * The other half of 04 criterion 2, and it is CLOSED - the integration
+   * closer of 2026-09-04 wired the dock's row click to the rail.
+   *
+   * `InspectorRail.focusField` always did everything the criterion asks: it
+   * turns the global switch on for an Expert field, awaits the tick that
+   * renders the region, flashes the row and focuses the control. What it
+   * lacked was a second caller. The dock's row click went to
+   * `onEdgeSelectFromPanel` -> `canvas.focusProblem`, which selects the node
+   * and flashes the card and never mentions a field, so the walk stopped at
+   * the node and a problem anchored behind the switch left the author looking
+   * at a form that appears clean. `onEdgeSelectFromPanel` now asks
+   * `problems.fieldFor(problem)` and hands the answer to the rail.
+   *
+   * `focusField` falls back to the ROW when every control in it is disabled,
+   * which is this exact problem's state - `llm.reasoning_effort` is disabled
+   * BECAUSE the model cannot honour it - so without that fallback the landing
+   * would be silent. This test asserts the landing, not the mechanism.
+   */
+  test(
+    'turns the Expert switch on and focuses the control a hidden problem blames',
+    async ({ page }) => {
+      const watch = watchConsole(page)
+      await openBuilder(page)
+      await startFromMinimalTemplate(page)
+      await validationSettles(page)
+
+      const agent = await firstOfKind(page, 'agent')
+      await convertToAuthored(page, agent.card)
+      await setExpert(page, true)
+      await inspector(page)
+        .locator('[data-field="llm.reasoning_effort"]')
+        .getByRole('button', { name: 'high', exact: true })
+        .click()
+      await inspector(page)
+        .locator('[data-field="llm.model"] select')
+        .selectOption('openai/gpt-4.1-nano')
+      await setExpert(page, false)
+      await validationSettles(page)
+
+      await problemRow(page, 'model-lacks-capability').click()
+
+      // The switch is ON, not smuggled past: what is on screen and what is in
+      // `localStorage` agree, so an author sent here once finds the rest of the
+      // expert settings where they left them.
+      await expect(inspector(page).locator('.expert-switch input')).toBeChecked()
+      await expect(inspector(page).locator('[data-tier="expert"]')).toBeVisible()
+
+      const row = inspector(page).locator('[data-field="llm.reasoning_effort"]')
+      await expect(row).toBeVisible()
+      await expect(row).toHaveClass(/problem-anchor/)
+      expect(
+        await page.evaluate(
+          () =>
+            (document.activeElement as HTMLElement | null)?.closest(
+              '[data-field="llm.reasoning_effort"]',
+            ) !== null,
+        ),
+        'focus did not land inside the row the sentence blames',
+      ).toBe(true)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+
+  test('is fully keyboard reachable: every control of an authored agent, and the dock', async ({
+    page,
+  }) => {
+    /*
+     * 04 criterion 9. `@axe-core/playwright` is deliberately NOT added - zero
+     * new dependencies - so this is a real Tab walk rather than an audit.
+     *
+     * WHAT IS ASSERTED is the property the criterion names: no control is
+     * SKIPPED. Every focusable control the rail renders is stamped first, the
+     * walk records what focus actually visited, and the two are compared. A
+     * test that merely counted Tab presses would pass straight over a control
+     * with `tabindex="-1"` sitting in the middle of the form.
+     *
+     * Both disclosures are opened first, because a control behind a shut
+     * `<details>` is not skipped - it is not there, and D1 says so on purpose.
+     *
+     * THE DOCK IS REACHED BACKWARDS, with Shift+Tab, and that is a fact about
+     * the layout rather than a convenience: `.graph-workspace` puts the
+     * problems panel in grid row 5 and the rail is a sibling AFTER it
+     * (`BuilderView`'s `<main>`), so from the top of the rail the dock is
+     * behind you. Walking forwards from the canvas would go through every node
+     * card and every port first, which measures Vue Flow rather than this rail.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    // An orphan, so the dock has a row to be reached. `node-unreachable` is the
+    // server's own judgement and needs no fixture.
+    await placeKind(page, 'agent')
+    await validationSettles(page)
+    await expect(problemRow(page, 'node-unreachable')).toBeVisible()
+
+    const agent = await firstOfKind(page, 'agent')
+    await convertToAuthored(page, agent.card)
+
+    // Everything on screen: Advanced open, Expert switched on.
+    await inspector(page).locator('summary.tier-summary').first().click()
+    await setExpert(page, true)
+    await expect(inspector(page).locator('[data-tier="expert"]')).toBeVisible()
+
+    const expected = await inspector(page).evaluate((rail) => {
+      const selector =
+        'input:not([type=hidden]), select, textarea, button, summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
+      return Array.from(rail.querySelectorAll<HTMLElement>(selector))
+        .filter((el) => !(el as HTMLInputElement).disabled)
+        .filter((el) => el.offsetParent !== null || el.tagName === 'SUMMARY')
+        .map((el, index) => {
+          el.dataset.walkId = String(index)
+          return String(index)
+        })
+    })
+    /*
+     * A FLOOR rather than an exact count. The rail renders 42 leaf controls
+     * plus the region summaries, the tier chips and the attachment jumps, and
+     * pinning the total here would fail for every future field. What this test
+     * is about is that none of them is unreachable.
+     */
+    expect(expected.length, 'the rail rendered no focusable control').toBeGreaterThan(30)
+
+    await inspector(page).locator('[data-walk-id="0"]').focus()
+    const seen = new Set<string>(['0'])
+    for (let step = 0; step < expected.length * 3; step += 1) {
+      await page.keyboard.press('Tab')
+      const id = await page.evaluate(
+        () => (document.activeElement as HTMLElement | null)?.dataset?.walkId ?? null,
+      )
+      if (id !== null) seen.add(id)
+      if (seen.size === expected.length) break
+    }
+
+    const missed = expected.filter((id) => !seen.has(id))
+    expect(missed, `Tab never reached ${missed.length} of ${expected.length} controls`).toEqual([])
+
+    // ...and back out of the rail into the dock, which is the other half of the
+    // criterion: a keyboard author who has read the form has to be able to
+    // reach the list of what is wrong with it, and a problem list reachable
+    // only by mouse is a problem list they cannot act on.
+    await inspector(page).locator('[data-walk-id="0"]').focus()
+    let reachedDock = false
+    for (let step = 0; step < 40 && !reachedDock; step += 1) {
+      await page.keyboard.press('Shift+Tab')
+      reachedDock = await page.evaluate(() =>
+        Boolean((document.activeElement as HTMLElement | null)?.closest('[role="log"]')),
+      )
+    }
+    expect(reachedDock, 'Shift+Tab out of the rail never reached the problems dock').toBe(true)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('configures an agent in nine pointer actions, ending valid', async ({ page }) => {
+    /*
+     * 04 criterion 10, rubric 4 - and the count is MEASURED here rather than
+     * argued in prose. `pointer` is incremented at every click and every drag
+     * and nowhere else; typing is free, exactly as D10 says ("8 pointer actions
+     * plus typing five prompt fields"), because the prompts are the author's
+     * content and no product can save them a keystroke.
+     *
+     * THE MEASURED COUNT IS NINE, not D10's eight, and every one of the five
+     * differences is a fact about what shipped rather than a gesture anybody
+     * chose to add:
+     *
+     *     8   D10's budget
+     *    -1   the Blank card seeds an `output`, so its `palette 7` press is gone
+     *    -1   `ModelPicker` is a native `<select>` (04's departure 6), so D10's
+     *         "open + choose" is one gesture and not two
+     *    +1   the authored arm is reached ONLY by converting a library agent
+     *         (04's departure 9); no plan specifies a palette route to one
+     *    +1   the Blank card also ships WIRED, so its own `idea -> result` edge
+     *         has to go before the agent can sit between the two
+     *    +1   a dropped tool lands on `nodeKinds`' placeholder `tool_id`, so
+     *         WHICH tool is a separate choice; D10 assumed the drop carried it
+     *    ═══
+     *     9
+     *
+     * The number is asserted rather than described, so that a future gesture
+     * added to this path fails a test instead of quietly making the product
+     * worse at the thing rubric 4 scores.
+     *
+     * ORDER IS CHOSEN TO SPEND NOTHING ON RE-SELECTION. Every gesture either
+     * leaves the node it needs next already selected (`createAt` and `attachTo`
+     * both call `setSelection`) or is a drag that changes no selection at all.
+     * A test that wandered would have to click back onto the agent twice and
+     * would report ten.
+     *
+     * It ends on the SERVER's answer, read off the app's own last validate
+     * round trip.
+     */
+    /** What the journey below costs, measured. See the arithmetic above. */
+    const BUDGET = 9
+
+    const watch = watchConsole(page)
+    const validations = watchValidation(page)
+    let pointer = 0
+    await openBuilder(page)
+
+    // 1. The Blank card. It seeds `input -> output`, which is why there is no
+    //    separate press for the output node.
+    await page.locator('.template-card').filter({ hasText: 'Blank canvas' }).click()
+    pointer += 1
+    await expect(canvas(page)).toBeVisible()
+    await expect(nodes(page)).toHaveCount(2)
+
+    /*
+     * 2. The agent tile, DRAGGED to a spot rather than clicked.
+     *
+     * A palette click drops at the viewport centre (`BuilderView.placeKind`),
+     * and at 1440x900 the centre puts the card's top `in` port under the budget
+     * meter and its bottom `out` port under the minimap - both of which sit
+     * over the pane and swallow the pointer. An author would then have to move
+     * the node before they could wire it, which is a ninth action nobody
+     * counted. Dragging is the gesture that has a destination.
+     */
+    const pane = (await canvas(page).boundingBox())!
+    await paletteTile(page, '2').dragTo(canvas(page), {
+      // Measured off the pane rather than a literal: the upper-right quadrant
+      // is clear of the template's own `input -> output` column on the left,
+      // of the budget meter above the canvas, and of the minimap in the
+      // bottom-right corner. All three swallow a pointer, and a card that lands
+      // under one of them cannot be wired until it is moved.
+      targetPosition: { x: pane.width * 0.68, y: pane.height * 0.22 },
+    })
+    pointer += 1
+    await expect(nodes(page)).toHaveCount(3)
+
+    const input = await firstOfKind(page, 'input')
+    const output = await firstOfKind(page, 'output')
+    const agent = await firstOfKind(page, 'agent')
+
+    // 3. Convert to the authored arm. The drop selected the node, so the rail
+    //    is already open on it and this is one click rather than two.
+    await expect(inspector(page)).toBeVisible()
+    await inspector(page)
+      .getByRole('button', { name: /convert to an authored agent/i })
+      .click()
+    pointer += 1
+    await expect(inspector(page).locator('[data-field="llm.model"]')).toBeVisible()
+
+    // The five prompt fields, typed. Free by D10's own accounting, and done
+    // here because the rail is already on this node.
+    await fillField(page, 'role', 'Research analyst')
+    await fillField(page, 'goal', 'Answer the question that arrives, with sources.')
+    await fillField(page, 'backstory', 'Years of turning a vague question into a sourced answer.')
+    await fillField(page, 'task.description', 'Research the request and report what you find.')
+    await fillField(page, 'task.expected_output', 'A short report with one cited source per claim.')
+
+    // 4. A model, chosen rather than inherited.
+    await inspector(page)
+      .locator('[data-field="llm.model"] select')
+      .selectOption('qwen/qwen3.7-flash')
+    pointer += 1
+
+    /*
+     * 5. Remove the template's OWN `idea -> result` edge.
+     *
+     * The Blank card ships wired, and its `modifyFirst` line says so: "Drop an
+     * agent between the two nodes and connect it." D10 costed an empty
+     * document, so this action does not appear in its list - leaving the direct
+     * edge in place would produce a graph where the result can arrive without
+     * the agent ever running, which validates and is not the graph the
+     * criterion describes.
+     *
+     * One click to select and `Delete` to remove it; the key is free, and undo
+     * is the confirmation, which is why there is no dialog (§4.4).
+     */
+    await page.locator('.vue-flow__edge').first().click({ force: true })
+    pointer += 1
+    await page.keyboard.press('Delete')
+    await expect(edges(page)).toHaveCount(0)
+
+    // 6-7. Two drags: the flow in, and the flow out.
+    await dragTo(page, port(page, input.id, 'out'), targetPort(page, agent.id))
+    pointer += 1
+    await dragTo(page, port(page, agent.id, 'out'), targetPort(page, output.id))
+    pointer += 1
+    await expect(edges(page)).toHaveCount(2)
+
+    // 8. A tool, dragged onto the agent. One commit: node and edge.
+    await paletteTile(page, 'T').dragTo(agent.card)
+    pointer += 1
+    await expect(avatars(page, agent.id)).toHaveCount(1)
+
+    // 9. Which tool. A fresh tool node lands on the placeholder `tool_id` that
+    //    `nodeKinds.defaultConfig` mints - deliberately unset, so the
+    //    inspector's first control is the one that matters - and the drop
+    //    already selected it, so this is the select and nothing else. The tool
+    //    is one that needs no key, or the graph would be invalid for a reason
+    //    that has nothing to do with the budget.
+    await inspector(page)
+      .locator('[data-field="tool_id"] select')
+      .selectOption('analyze_community_sentiment')
+    pointer += 1
+
+    await validationSettles(page)
+    await expect(headline(page)).toContainText(/ready to publish/i)
+
+    /*
+     * The SERVER's word, and specifically the app's own last validate response
+     * rather than a request this test composed. "The headline says ready" is
+     * the claim a canvas makes about itself; `valid` is the claim the thing
+     * that refuses a publish makes, and reading the app's own round trip is the
+     * only version of it that proves the document ON THE CANVAS is the document
+     * that was checked.
+     */
+    expect(validations.length, 'the canvas never validated').toBeGreaterThan(0)
+    expect(validations[validations.length - 1], 'the last validation was not clean').toBe(true)
+
+    expect(pointer, 'the click budget moved').toBe(BUDGET)
     expect(watch.unexpected).toEqual([])
   })
 })

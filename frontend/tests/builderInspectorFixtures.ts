@@ -4,12 +4,14 @@ import { ref } from 'vue'
 import { BUILDER_PROBLEMS, useBuilderProblems } from '../src/composables/useBuilderProblems'
 import { BUILDER_SCHEMA_ID, documentId, nodeId, edgeId } from '../src/types/builder'
 import type {
-  AgentConfig,
+  AuthoredAgentConfig,
+  AuthoredCrewConfig,
   BuilderDocument,
   BuilderEdge,
   BuilderNode,
   BuilderProblem,
   BuilderVocabulary,
+  LibraryAgentConfig,
 } from '../src/types/builder'
 
 /** `BuilderNode` narrowed to one kind - what a typed `:node` prop wants. */
@@ -38,7 +40,6 @@ type NodeOf<K extends BuilderNode['kind']> = Extract<BuilderNode, { kind: K }>
  * use them - a message printed verbatim to an author is exactly the kind of
  * restated constant this repo has watched drift.
  */
-
 export function pythonSource(relative: string): string {
   return readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf-8')
 }
@@ -85,6 +86,11 @@ export function vocabularyFixture(
       max_input_chars: 2000,
       max_document_bytes: 262144,
       run_cost_ceiling_usd: 10,
+      // C2 v2\'s two authored-node bounds: BUILDER_MAX_PROMPT_CHARS and
+      // BUILDER_MAX_NODE_RETRIES, served since plan 04 and read by every
+      // PromptField and node-retry stepper rather than restated as a constant.
+      max_prompt_chars: 4000,
+      max_retries: 3,
     },
     ...overrides,
   }
@@ -94,7 +100,6 @@ export function vocabularyFixture(
  * `newNode` reads the module-singleton vocabulary, and a spec that seeded that
  * singleton would leak into whichever file ran next. These are explicit, which
  * is also what lets a test say "a router with a broken branch" in one place. */
-
 export function inputNode(id = 'idea', field = 'idea'): NodeOf<'input'> {
   return {
     id: nodeId(id),
@@ -105,7 +110,10 @@ export function inputNode(id = 'idea', field = 'idea'): NodeOf<'input'> {
   }
 }
 
-export function agentNode(id = 'scoper', overrides: Partial<AgentConfig> = {}): NodeOf<'agent'> {
+export function agentNode(
+  id = 'scoper',
+  overrides: Partial<LibraryAgentConfig> = {},
+): NodeOf<'agent'> {
   return {
     id: nodeId(id),
     kind: 'agent',
@@ -118,6 +126,101 @@ export function agentNode(id = 'scoper', overrides: Partial<AgentConfig> = {}): 
       prompt_inputs: {},
       agent_id: nodeId('scoper'),
       tools: [],
+      ...overrides,
+    },
+  }
+}
+
+/**
+ * The AUTHORED agent arm, with every field the S9 ruling leaves standing.
+ *
+ * Written out in full rather than built from a helper, and that is the point:
+ * the specs that mount this assert that the form renders each of these exactly
+ * once, so a field this fixture forgot would be a field no test could miss.
+ * `document.py:AuthoredAgentConfig` is the list it is checked against, at run
+ * time, in `builderInspector.spec.ts`.
+ */
+export function authoredAgentNode(
+  id = 'scoper',
+  overrides: Partial<AuthoredAgentConfig> = {},
+): NodeOf<'agent'> {
+  return {
+    id: nodeId(id),
+    kind: 'agent',
+    label: 'Scoper',
+    position: { x: 0, y: 120 },
+    config: {
+      tier: 'cheap',
+      max_iter: 2,
+      guardrail_max_retries: 2,
+      prompt_inputs: {},
+      role: 'Scoping analyst',
+      goal: 'Turn a sentence into a scoped idea.',
+      backstory: 'Years of turning vague briefs into things a team can act on.',
+      task: {
+        description: 'Scope the idea that arrives.',
+        expected_output: 'A scoped idea with a named user and a named job.',
+        output_schema: null,
+        markdown: false,
+        async_execution: false,
+      },
+      llm: {
+        model: 'google/gemini-3.5-flash-lite',
+        temperature: null,
+        top_p: null,
+        max_tokens: null,
+        timeout: null,
+        response_format: null,
+        frequency_penalty: null,
+        presence_penalty: null,
+        stop: [],
+        seed: null,
+        reasoning_effort: null,
+      },
+      max_rpm: null,
+      max_execution_time: null,
+      allow_delegation: false,
+      memory: false,
+      cache: true,
+      respect_context_window: true,
+      retry: { max_retries: 0, backoff_seconds: 0, fallback_model: null },
+      system_template: null,
+      prompt_template: null,
+      response_template: null,
+      tool_failure_policy: null,
+      planning: false,
+      planning_config: null,
+      ...overrides,
+    },
+  }
+}
+
+/** The AUTHORED crew arm - fifteen fields, `verbose` the fifteenth. */
+export function authoredCrewNode(
+  id = 'team',
+  overrides: Partial<AuthoredCrewConfig> = {},
+): NodeOf<'crew'> {
+  return {
+    id: nodeId(id),
+    kind: 'crew',
+    label: 'Research team',
+    position: { x: 0, y: 240 },
+    config: {
+      tier: 'cheap',
+      max_iter: 2,
+      guardrail_max_retries: 2,
+      prompt_inputs: {},
+      process: 'sequential',
+      task_order: [],
+      manager_llm: null,
+      manager_agent: null,
+      memory: false,
+      cache: true,
+      max_rpm: null,
+      planning: false,
+      planning_llm: null,
+      retry: { max_retries: 0, backoff_seconds: 0, fallback_model: null },
+      verbose: false,
       ...overrides,
     },
   }

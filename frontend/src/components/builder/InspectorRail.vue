@@ -2,9 +2,11 @@
 import { computed, inject, nextTick, ref, useTemplateRef, watch } from 'vue'
 import type { Component } from 'vue'
 import { AlertTriangle, ArrowRight } from 'lucide-vue-next'
-import { nodeId as toNodeId } from '../../types/builder'
+import { isAuthoredAgent, isAuthoredCrew, nodeId as toNodeId } from '../../types/builder'
 import type {
   AgentConfig,
+  AuthoredAgentConfig,
+  AuthoredCrewConfig,
   BuilderDocument,
   BuilderEdge,
   BuilderNode,
@@ -25,7 +27,13 @@ import GateForm from './inspectors/GateForm.vue'
 import RouterForm from './inspectors/RouterForm.vue'
 import TransformForm from './inspectors/TransformForm.vue'
 import OutputForm from './inspectors/OutputForm.vue'
+import ToolForm from './inspectors/ToolForm.vue'
+import McpForm from './inspectors/McpForm.vue'
+import SkillForm from './inspectors/SkillForm.vue'
 import GraphSettings from './inspectors/GraphSettings.vue'
+import ModelPicker from './inspectors/ModelPicker.vue'
+import { AUTHORED_AGENT_FIELDS, AUTHORED_CREW_FIELDS, EXPERT_FIELDS } from './inspectors/authoredFields'
+import { expertMode, setExpertMode } from './inspectors/expertMode'
 import { coalesceKeyFor, inboundCount, patchConfig, replaceNode } from './commit'
 import type { InspectorCommit } from './commit'
 
@@ -42,7 +50,7 @@ import type { InspectorCommit } from './commit'
  * zero modals in the editing path.
  *
  * DISPATCH IS A TOTAL RECORD, NOT A SWITCH. `INSPECTORS` is typed
- * `Record<NodeKind, Component>`, so an eighth kind is a COMPILE error in this
+ * `Record<NodeKind, Component>`, so an eleventh kind is a COMPILE error in this
  * file rather than a blank pane in front of an author. `agent` and `crew` map to
  * the same component on purpose: they extend one `_BillableConfig` in
  * `document.py`, so one form is the truthful modelling of what the schema says
@@ -61,7 +69,7 @@ import type { InspectorCommit } from './commit'
  * `Record<NodeKind, Component>` is what the spec asks for and what the
  * exhaustiveness argument needs: a missing key fails to compile. It does not
  * check that each key got the RIGHT form - `<component :is>` erases props - so
- * `builderInspector.spec.ts` asserts the pairing by mounting all seven and
+ * `builderInspector.spec.ts` asserts the pairing by mounting all TEN and
  * looking for a control only the right form renders.
  */
 const INSPECTORS: Record<NodeKind, Component> = {
@@ -72,6 +80,18 @@ const INSPECTORS: Record<NodeKind, Component> = {
   router: RouterForm,
   transform: TransformForm,
   output: OutputForm,
+  /*
+   * The three ATTACHMENT kinds get one form each, and they are deliberately NOT
+   * folded into one the way `agent` and `crew` are. That pair shares a form
+   * because they extend one `_BillableConfig` in `document.py` - two thirds of
+   * their controls are literally the same field. `ToolConfig`, `McpConfig` and
+   * `SkillConfig` share nothing: three ids into three different catalogues,
+   * owned by three different plans (06, 07, 08). One form over them would be a
+   * switch wearing a component's name.
+   */
+  tool: ToolForm,
+  mcp: McpForm,
+  skill: SkillForm,
 }
 
 /**
@@ -85,12 +105,38 @@ const INSPECTORS: Record<NodeKind, Component> = {
  */
 const INSPECTOR_FIELDS: Record<NodeKind, readonly string[]> = {
   input: ['field', 'label', 'max_chars', 'required'],
-  agent: ['tier', 'agent_id', 'tools', 'max_iter', 'guardrail_max_retries', 'prompt_inputs'],
-  crew: ['tier', 'crew_id', 'max_iter', 'guardrail_max_retries', 'prompt_inputs'],
+  /*
+   * BOTH ARMS' UNION, not one arm's list. `agent` and `crew` each have a
+   * library arm and an authored one (`document.py`'s two-member unions), and
+   * `BillableForm` picks between them at render time - so a per-arm list here
+   * would need this map to know which arm is selected, which it cannot: it is
+   * keyed by KIND.
+   *
+   * The union is the right answer rather than a compromise. Over-listing costs
+   * one thing - a problem anchored to a field the OPEN arm does not render
+   * falls through to nothing instead of to the strip - and that state is
+   * unreachable, because a problem naming `role` can only come from a document
+   * that HAS a `role`, which is the authored arm. Under-listing costs the
+   * opposite and it is reachable: `library-unknown-id` maps to `agent_id`, and
+   * `compiler.py` raises it for a crew's `crew_id` too, which is exactly the
+   * case this parameter was added for.
+   */
+  agent: [
+    'tier', 'agent_id', 'credential_id', 'tools', 'convert',
+    'max_iter', 'guardrail_max_retries', 'prompt_inputs',
+    ...AUTHORED_AGENT_FIELDS,
+  ],
+  crew: [
+    'tier', 'crew_id', 'max_iter', 'guardrail_max_retries', 'prompt_inputs',
+    ...AUTHORED_CREW_FIELDS,
+  ],
   gate: ['message', 'editable_fields', 'max_turns'],
   router: ['branches'],
   transform: ['op', 'args'],
   output: ['body_key', 'source'],
+  tool: ['tool_id'],
+  mcp: ['server_id'],
+  skill: ['skill_id'],
 }
 
 const props = defineProps<{
@@ -101,12 +147,28 @@ const props = defineProps<{
   vocabularyProblem?: string
   selectedNodeIds: readonly string[]
   selectedEdgeIds: readonly string[]
+  /**
+   * A stored version that is not head is on screen (plan 15 D3): every control
+   * in the rail is disabled, and the forms still RENDER, because "is v3 the one
+   * I want back?" is answered by reading v3's configuration. The store's lock
+   * would refuse the commits anyway; this is so a field cannot be typed into
+   * and then watched revert.
+   */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
   commit: [change: InspectorCommit]
   /** What a structural rewrite took with it, for a shell that wants to say so twice. */
   notice: [message: string]
+  /**
+   * Show a node on the canvas - the authored forms' "jump to node".
+   *
+   * The same channel `ProblemsPanel` already uses, and forwarded rather than
+   * handled here, because selecting and centring is `useBuilderCanvas`'s job
+   * and this rail holds no viewport.
+   */
+  focusNode: [id: string]
 }>()
 
 /**
@@ -333,6 +395,93 @@ const sharedTier = computed(() => shared((entry) => entry.config.tier))
 const sharedIter = computed(() => shared((entry) => entry.config.max_iter))
 const sharedRetries = computed(() => shared((entry) => entry.config.guardrail_max_retries))
 
+/*
+ * D8's authored additions.
+ *
+ * The three above are what `agent` and `crew` share in the SCHEMA. These four
+ * are what they share in the AUTHORED arm, and they are here for the same
+ * reason the first three are: they answer the question a multi-selection is
+ * usually asked for, one level up. "Make all of these cheap" is the first
+ * three; "make all of these retry twice, on the same model, and route their
+ * failures" is these.
+ *
+ * `authoredOnly` is the gate. A selection mixing a library agent with an
+ * authored one has no `llm` in common - the library arm does not have one - so
+ * offering the control would be offering to write a field into a config whose
+ * schema forbids it, and `extra="forbid"` makes that a 422 rather than a
+ * dropped key. The pane says so rather than showing controls that would fail.
+ *
+ * D8 lists `tool_failure_policy`, `memory` and `cache` as well. They are not
+ * here, and the reason is the same gate read the other way: an authored CREW
+ * has `memory` and `cache` but no `tool_failure_policy`, so the three do not
+ * share one predicate and a control offered over "authored nodes" would be
+ * wrong for one of the two kinds. They are one selection-kind check away and
+ * that check is a decision about what a mixed selection should DO, which is not
+ * this plan's to make quietly.
+ */
+const authoredOnly = computed(
+  () =>
+    billable.value.length > 0 &&
+    billable.value.every((entry) =>
+      entry.kind === 'agent' ? isAuthoredAgent(entry.config) : isAuthoredCrew(entry.config),
+    ),
+)
+
+/** One value across the selection, or null - which is what MIXED means. */
+function sharedAuthored<T>(read: (config: AuthoredAgentConfig | AuthoredCrewConfig) => T): T | null {
+  if (!authoredOnly.value) return null
+  const values = billable.value.map((entry) =>
+    read(entry.config as AuthoredAgentConfig | AuthoredCrewConfig),
+  )
+  if (!values.length) return null
+  return values.every((value) => value === values[0]) ? values[0] : null
+}
+
+const sharedModel = computed(() =>
+  sharedAuthored((config) => ('llm' in config ? config.llm.model : config.manager_llm?.model ?? null)),
+)
+const sharedNodeRetries = computed(() => sharedAuthored((config) => config.retry.max_retries))
+const sharedBackoff = computed(() => sharedAuthored((config) => config.retry.backoff_seconds))
+const sharedOnError = computed(() => sharedAuthored((config) => config.on_error ?? 'fail'))
+
+/**
+ * ONE COMMIT over every selected authored node, so it is ONE undo step.
+ *
+ * `patch` is built per node rather than shared, because `llm` and `retry` are
+ * composites: spreading a partial `llm` over a node would drop the other ten
+ * leaves, and each node's ten are different.
+ */
+function commitAuthored(
+  build: (config: AuthoredAgentConfig | AuthoredCrewConfig) => Partial<AgentConfig & CrewConfig>,
+  label: string,
+): void {
+  let next = props.doc
+  for (const entry of billable.value) {
+    next = patchConfig(next, entry, build(entry.config as AuthoredAgentConfig | AuthoredCrewConfig))
+  }
+  emit('commit', { label, next })
+}
+
+function commitSharedModel(model: string): void {
+  commitAuthored(
+    (config) =>
+      'llm' in config
+        ? ({ llm: { ...config.llm, model } } as Partial<AgentConfig & CrewConfig>)
+        : config.manager_llm
+          ? ({ manager_llm: { ...config.manager_llm, model } } as Partial<AgentConfig & CrewConfig>)
+          : ({} as Partial<AgentConfig & CrewConfig>),
+    `Set ${billable.value.length} nodes to ${model}`,
+  )
+}
+
+function commitSharedRetry(field: 'max_retries' | 'backoff_seconds', value: number | null): void {
+  if (value === null) return
+  commitAuthored(
+    (config) => ({ retry: { ...config.retry, [field]: value } }) as Partial<AgentConfig & CrewConfig>,
+    field === 'max_retries' ? 'Set node retries' : 'Set retry backoff',
+  )
+}
+
 /** ONE commit over every selected billable node, so it is ONE undo step. */
 function commitToAll(patch: Partial<AgentConfig & CrewConfig>, label: string): void {
   let next = props.doc
@@ -356,7 +505,32 @@ function commitAllCount(field: 'max_iter' | 'guardrail_max_retries', event: Even
   )
 }
 
-/* --- landing on a control ----------------------------------------------- */
+/* --- the expert switch, and landing on a control ------------------------- */
+
+/**
+ * Whether this control lives behind the global Expert switch.
+ *
+ * Read off `authoredFields.ts` rather than restated, so the switch, the "N
+ * hidden" count, the region and this lookup are all the same list. A second
+ * copy here is exactly how a control ends up unreachable from a problem row.
+ */
+function isExpertField(field: string): boolean {
+  return (EXPERT_FIELDS as readonly string[]).includes(field)
+}
+
+/**
+ * How many Expert controls the OPEN form has, for the header switch's label.
+ *
+ * Null when nothing with an Expert tier is selected - a gate, a transform, an
+ * edge - and the switch is then absent rather than offering to reveal nothing.
+ * The switch itself stays global; what varies is whether this rail has anything
+ * to say about it.
+ */
+const expertOnForm = computed(() => {
+  if (!node.value) return 0
+  if (node.value.kind !== 'agent') return 0
+  return isAuthoredAgent(node.value.config) ? EXPERT_FIELDS.length : 0
+})
 
 const root = useTemplateRef<HTMLElement>('root')
 
@@ -374,6 +548,23 @@ const root = useTemplateRef<HTMLElement>('root')
  * "that control is not on this form" instead of assuming.
  */
 async function focusField(field: string): Promise<boolean> {
+  /*
+   * OPEN THE REGION BEFORE LOOKING IN IT.
+   *
+   * D1: a field carrying a problem forces its tier open. Two of the three tiers
+   * can be shut, and they are shut in different ways - Advanced is a `<details>`
+   * whose own form opens it from `forceOpen`, and Expert is ABSENT FROM THE DOM
+   * behind a global switch. The first needs nothing here; the second does,
+   * because a query for a control that has not been rendered finds nothing and
+   * the caller is told "that control is not on this form" about a control that
+   * is.
+   *
+   * Turning the switch on rather than smuggling one region open is deliberate:
+   * the switch is global (decision 19), so an author who was sent to an expert
+   * field once should find the rest of them where they left them. The `await`
+   * below is what lets the newly rendered region exist before the query runs.
+   */
+  if (isExpertField(field)) setExpertMode(true)
   await nextTick()
   const row = root.value?.querySelector<HTMLElement>(`[data-field="${CSS.escape(field)}"]`)
   if (!row) return false
@@ -382,8 +573,30 @@ async function focusField(field: string): Promise<boolean> {
   // the same row adds a class the element already has and nothing plays.
   void row.offsetWidth
   row.classList.add('problem-anchor')
-  const control = row.querySelector<HTMLElement>('input, select, textarea, button')
-  control?.focus()
+  /*
+   * The first ENABLED control, and the row itself when there is none.
+   *
+   * A disabled control silently refuses `focus()`, so the unqualified query
+   * left the author teleported to a region they cannot type in with the caret
+   * still down in the problems dock - the exact half-arrival R15's docked
+   * inspector exists to avoid. It is not a hypothetical: `model-lacks-capability`
+   * anchors to `llm.reasoning_effort`, and that control is disabled precisely
+   * BECAUSE the model cannot honour it, so the one problem that most needs
+   * walking to is the one that could not be walked to.
+   *
+   * Focusing the row rather than giving up: the sentence's repair is elsewhere
+   * (`llm.model`, which it names), so the honest landing is the row that
+   * carries the sentence. `tabIndex = -1` makes it programmatically focusable
+   * without adding it to the tab order, so a keyboard walk is unchanged.
+   */
+  const control = row.querySelector<HTMLElement>(
+    'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])',
+  )
+  if (control) control.focus()
+  else {
+    row.tabIndex = -1
+    row.focus()
+  }
   return true
 }
 
@@ -410,7 +623,12 @@ defineExpose({ focusField })
       }}</span>
     </div>
 
-    <template v-else>
+    <!--
+      A `fieldset` rather than a flag threaded into seven forms: `disabled` on a
+      fieldset disables every descendant control natively, keyboard included,
+      and `display: contents` keeps it out of the rail's layout entirely.
+    -->
+    <fieldset v-else class="rail-lock" :disabled="readOnly">
       <!-- 1. One node. -->
       <template v-if="node && meta">
         <header class="rail-head">
@@ -427,6 +645,22 @@ defineExpose({ focusField })
             </span>
           </div>
           <h2>{{ node.label }}</h2>
+
+          <!--
+            THE EXPERT SWITCH LIVES HERE, IN THE HEADER, AND IT IS GLOBAL.
+            Owner's decision 19: per node kind means an author learns the same
+            control four times and it remembers a different answer each time.
+            It is rendered only where the open form HAS an expert tier, because
+            a switch offering to reveal nothing is worse than no switch.
+          -->
+          <label v-if="expertOnForm" class="expert-switch">
+            <input
+              type="checkbox"
+              :checked="expertMode"
+              @change="setExpertMode(($event.target as HTMLInputElement).checked)"
+            />
+            <span>Expert settings</span>
+          </label>
         </header>
 
         <!-- Pinned above the form, because these are the problems no control
@@ -487,6 +721,7 @@ defineExpose({ focusField })
             :vocabulary="vocabulary"
             @commit="emit('commit', $event)"
             @notice="emit('notice', $event)"
+            @focus-node="emit('focusNode', $event)"
           />
         </section>
       </template>
@@ -701,6 +936,100 @@ defineExpose({ focusField })
               @change="commitAllCount('guardrail_max_retries', $event)"
             />
           </FieldRow>
+
+          <!--
+            D8's authored additions, offered only when EVERY selected node has
+            them. A mixed selection sees the three above and this sentence,
+            because a control that would 422 on half the selection is worse than
+            a control that is not there.
+          -->
+          <template v-if="authoredOnly">
+            <FieldRow
+              label="Model"
+              control-id="insp-many-model"
+              field="llm.model"
+              group
+              :note="sharedModel === null ? 'MIXED' : undefined"
+              :note-warn="sharedModel === null"
+              help="Applied to every selected node in one undo step."
+            >
+              <ModelPicker
+                mode="pick"
+                :model-value="sharedModel"
+                control-id="insp-many-model"
+                @update:model-value="commitSharedModel"
+              />
+            </FieldRow>
+
+            <FieldRow
+              label="Node retries"
+              control-id="insp-many-node-retries"
+              field="retry.max_retries"
+              :note="sharedNodeRetries === null ? 'MIXED' : undefined"
+              :note-warn="sharedNodeRetries === null"
+              v-slot="row"
+            >
+              <input
+                id="insp-many-node-retries"
+                type="number"
+                min="0"
+                :max="vocabulary.bounds.max_retries"
+                step="1"
+                :value="sharedNodeRetries ?? ''"
+                placeholder="Mixed"
+                :aria-describedby="row.describedBy"
+                @change="commitSharedRetry('max_retries', Number(($event.target as HTMLInputElement).value))"
+              />
+            </FieldRow>
+
+            <FieldRow
+              label="Retry backoff"
+              control-id="insp-many-backoff"
+              field="retry.backoff_seconds"
+              note-warn
+              :note="sharedBackoff === null ? 'MIXED' : 'seconds'"
+              v-slot="row"
+            >
+              <input
+                id="insp-many-backoff"
+                type="number"
+                min="0"
+                max="60"
+                step="1"
+                :value="sharedBackoff ?? ''"
+                placeholder="Mixed"
+                :aria-describedby="row.describedBy"
+                @change="commitSharedRetry('backoff_seconds', Number(($event.target as HTMLInputElement).value))"
+              />
+            </FieldRow>
+
+            <FieldRow
+              label="On error"
+              control-id="insp-many-on-error"
+              field="on_error"
+              group
+              :note="sharedOnError === null ? 'MIXED' : undefined"
+              :note-warn="sharedOnError === null"
+              help="Routing grows a second source port named error on every selected card."
+            >
+              <div class="segmented">
+                <button
+                  type="button"
+                  :aria-pressed="sharedOnError === 'fail'"
+                  @click="commitToAll({ on_error: 'fail' }, 'Fail the run on error')"
+                >
+                  fail the run
+                </button>
+                <button
+                  type="button"
+                  :aria-pressed="sharedOnError === 'route'"
+                  @click="commitToAll({ on_error: 'route' }, 'Route errors')"
+                >
+                  route it
+                </button>
+              </div>
+            </FieldRow>
+          </template>
         </section>
 
         <!-- Never blank. A selection with nothing in common is a fact, and
@@ -720,12 +1049,15 @@ defineExpose({ focusField })
           <GraphSettings :doc="doc" :vocabulary="vocabulary" @commit="emit('commit', $event)" />
         </section>
       </template>
-    </template>
+    </fieldset>
   </aside>
 </template>
 
 <style scoped>
 .inspector-rail { display: flex; min-height: 0; flex-direction: column; overflow-y: auto; background: var(--surface-panel); border-left: 1px solid var(--border-default); }
+/* Not a box. The fieldset exists for its `disabled` and for nothing else. */
+.rail-lock { display: contents; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.rail-lock:disabled { opacity: 0.72; }
 .rail-head { padding: 15px 16px 13px; border-bottom: 1px solid var(--border-default); }
 .rail-ident { display: flex; align-items: center; gap: 7px; }
 /* The wash is `color-mix` over the kind's own accent rather than a new custom
@@ -733,6 +1065,11 @@ defineExpose({ focusField })
    package adds nothing to `tokens.css`. */
 .rail-icon { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; background: color-mix(in srgb, currentColor 12%, transparent); border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: var(--r-md); }
 .rail-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.expert-switch { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: var(--text-40); font: 600 var(--fs-11)/1 var(--font-body); cursor: pointer; }
+.expert-switch input { accent-color: var(--accent-cyan); }
+.expert-switch input:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+.expert-switch:hover { color: var(--text-muted); }
+
 .rail-head h2 { margin: 6px 0 0; overflow: hidden; color: var(--text-title); font: 600 var(--fs-15)/1.25 var(--font-display); text-overflow: ellipsis; }
 .edge-title { display: flex; align-items: center; gap: 7px; font-family: var(--font-mono) !important; font-size: var(--fs-13) !important; }
 .edge-title span { overflow: hidden; text-overflow: ellipsis; }

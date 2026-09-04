@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { Background } from '@vue-flow/background'
 import { ControlButton, Controls } from '@vue-flow/controls'
-import { ConnectionMode, SelectionMode, VueFlow, useVueFlow } from '@vue-flow/core'
+import { ConnectionMode, SelectionMode, VueFlow, getBezierPath, useVueFlow } from '@vue-flow/core'
+import type { Position } from '@vue-flow/core'
 import type { EdgeMouseEvent, EdgeUpdateEvent, NodeDragEvent, NodeMouseEvent } from '@vue-flow/core'
 import { Maximize, Minus, Plus } from 'lucide-vue-next'
 import BuilderMinimap from './BuilderMinimap.vue'
@@ -12,7 +13,9 @@ import { NODE_KINDS, NODE_KIND_ORDER } from '../../data/nodeKinds'
 import {
   BUILDER_CANVAS_ATTR,
   BUILDER_DND_MIME,
+  BUILDER_TOOL_ID_MIME,
   BUILDER_HOVERED_NODE,
+  BUILDER_READ_ONLY,
   BUILDER_SELECTED_IDS,
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
@@ -61,6 +64,48 @@ const props = defineProps<{
   canvas: BuilderCanvas
   /** The document's name, for the canvas's own accessible name. */
   label?: string
+  /**
+   * A stored version that is not head is on screen (plan 15 D3).
+   *
+   * The store's `readOnly` lock already refuses every commit, so nothing here
+   * is load-bearing for safety - this is what stops Vue Flow from DRAWING a
+   * drag the store will then refuse: a card that follows the pointer and snaps
+   * back on release reads as a broken canvas, where a card that will not lift
+   * reads as a locked one. Selection stays on, because reading v3 is the
+   * point of opening it.
+   */
+  readOnly?: boolean
+  /**
+   * The shell's dock row - the strips that sit above this canvas in the layout
+   * (round 2, D-15-2). Observed beside the frame so a strip OPENING re-fits the
+   * graph it just shrank, and nothing else after the author's first gesture
+   * does. An element rather than a height, because the observer is the one
+   * thing here that measures.
+   */
+  dock?: HTMLElement | null
+  /**
+   * The docked test panel BELOW this canvas (13 D1).
+   *
+   * A second observed element rather than a second meaning for `dock`, because
+   * the two sit on opposite sides of the graph and only their effect on its
+   * height is shared: opening the test panel takes 260px from the canvas
+   * exactly as opening the version browser does, and the fit is owed for the
+   * same reason. Everything else about the rule - never mid-gesture, only on a
+   * GROW after the author's first gesture - is unchanged and is why this is a
+   * prop here rather than an observer in the panel.
+   */
+  panel?: HTMLElement | null
+  /**
+   * `design` while the author is drawing, `run` while a test run streams into
+   * this canvas (13 D2).
+   *
+   * The handover costs no JavaScript at all - one attribute, and
+   * `builder.css`'s `[data-mode='run']` block outranks the seven kind
+   * gradients by a single extra attribute of specificity. Those rules shipped
+   * with the card and had no writer until now; §5.1 wrote them expecting
+   * exactly this.
+   */
+  mode?: 'design' | 'run'
 }>()
 
 const flow = useVueFlow('builder-flow')
@@ -93,7 +138,8 @@ onMounted(() => {
 })
 
 /**
- * Re-fit while the canvas is still settling into its final height.
+ * Re-fit while the canvas is still settling into its final height - and again
+ * whenever the layout takes height AWAY from it later.
  *
  * `fit-view-on-init` and the shell's own post-load fit both compute against
  * whatever this element measures AT THAT INSTANT, and at that instant it is
@@ -105,33 +151,162 @@ onMounted(() => {
  * two nodes under the dock, on a canvas that reported itself fitted.
  *
  * An observer rather than a longer wait, because "long enough" is a guess about
- * someone else's layout and this is the actual signal. It stops at the author's
- * first gesture: after that the viewport is THEIRS, and a late re-fit that
- * throws away a pan the author just made would be a worse bug than the one this
- * fixes.
+ * someone else's layout and this is the actual signal.
+ *
+ * WHAT THE AUTHOR'S FIRST GESTURE ENDS is the settling phase, not the
+ * observer (round 2, D-15-2). It used to disconnect outright, so that a late
+ * settling re-fit could never throw away a pan the author had just made - and
+ * the same rule then left the canvas blind to every layout change afterwards.
+ * Round 1 measured what that cost: the version browser docking 125px above
+ * the graph hid 2 of 5 nodes below the canvas bottom, and the delete confirm
+ * docked beneath it hid 3 of 5 - an operator confirming a delete could not see
+ * most of the graph they were deleting. The rule now has two halves:
+ *
+ * - before the first gesture, any change to THIS frame re-fits, as before;
+ * - after it, only the DOCK re-fits, and only when it GROWS - a strip the
+ *   author asked for (versions, the delete confirm, the restore bar, the
+ *   import notice) has just taken height from the graph, and the fit is owed.
+ *   A dock closing hides nothing, so the viewport stays where they put it.
+ *
+ * Why the dock and not "any shrink". The first cut of this rule re-fitted on
+ * every shrink of the frame, and the problems panel is under the frame too:
+ * it grows 400ms after a node is placed, as the validate answer lands, and the
+ * re-fit moved the canvas under the author's next drag. Measured on
+ * `e2e/builder.spec.ts`'s router-branch test, six runs each: 2 of 6 failed
+ * with that rule, 0 of 6 without it - the drag that should have wired the
+ * router's `match` port started where the port had been a frame earlier.
+ * A human would meet the same jolt on every edit that changed the problem
+ * count. The dock changes only when the author opens something, which is the
+ * one moment a re-fit is what they want.
+ *
+ * And never mid-gesture: a re-fit that lands while a pointer is down is a
+ * canvas running away from a drag, which is the worse bug this observer was
+ * first written not to cause. It waits for the pointer to lift.
  */
-let settling: ResizeObserver | null = null
+/**
+ * The zoom below which a node's title stops being readable (round 3, D-15-2).
+ *
+ * Round 2 fixed the round-1 half of this row - a docked strip pushed nodes off
+ * the bottom without re-fitting - and the fix traded hidden for unreadable:
+ * the re-fit now honoured every dock, so at 1440x900 the cards went 186px, then
+ * 136 with the Versions panel, 116 with the read-only banner added and 100 with
+ * the delete strip beneath, and the titles with them, down to about 7px. The
+ * row's subject is that the operator cannot see the graph they are about to
+ * delete, and a graph rendered at 7px is not seen.
+ *
+ * `.builder-title` is 15px CSS and the fit scales it, so the rendered size is
+ * `15 * zoom` and an 11px floor is `11 / 15`. Eleven is the smallest size this
+ * repo already treats as legible - it is `--fs-11`, what the eyebrow and every
+ * meta row use.
+ *
+ * WHAT THIS TRADES, deliberately. Below the floor the fit no longer shows
+ * every node, and the ones it cannot keep are reachable by a pan - which is
+ * the trade the row's ruling names. A graph too big to be both whole and
+ * legible has to give up one of them, and "whole" is the one the author can
+ * recover with a drag.
+ *
+ * Not applied to the FIT button. That is the author asking to see everything
+ * at once, and answering "no, here is part of it larger" would be refusing the
+ * one request the control exists to serve.
+ */
+const MIN_LEGIBLE_ZOOM = 11 / 15
 
-function stopSettling(): void {
-  settling?.disconnect()
-  settling = null
+/**
+ * The initial fit's options. `minZoom` for the same reason `refit` carries it:
+ * a fit on init is one nobody asked for, so it keeps the title legible and
+ * leaves the rest to a pan.
+ *
+ * A constant rather than an inline object literal in the template, because the
+ * comment explaining it cannot live inside a tag's attribute list - an HTML
+ * comment there is a Vue compile error, `Duplicate attribute`, which presents
+ * as the whole gallery failing to render.
+ */
+const initialFitOptions = { padding: 0.16, maxZoom: 1, minZoom: MIN_LEGIBLE_ZOOM }
+
+let layoutObserver: ResizeObserver | null = null
+/** The author has panned, zoomed or pressed on the canvas; the viewport is theirs. */
+let settled = false
+let pointerHeld = false
+/** A shrink arrived while the pointer was down; owed on release. */
+let refitOwed = false
+
+function noteGesture(): void {
+  settled = true
+}
+
+function refit(): void {
+  if (pointerHeld) {
+    refitOwed = true
+    return
+  }
+  refitOwed = false
+  flow.fitView({ padding: 0.14, minZoom: MIN_LEGIBLE_ZOOM })
 }
 
 onMounted(() => {
   if (typeof ResizeObserver === 'undefined' || !frame.value) return
-  let last = 0
-  settling = new ResizeObserver((entries) => {
-    const height = entries[0]?.contentRect.height ?? 0
-    // Only a real change, and never the collapse to zero that unmounting shows.
-    if (height <= 0 || Math.abs(height - last) < 1) return
-    last = height
-    flow.fitView({ padding: 0.14 })
+  let lastFrame = 0
+  let lastDock = 0
+  layoutObserver = new ResizeObserver((entries) => {
+    let owed = false
+    for (const entry of entries) {
+      const height = entry.contentRect.height
+      if (entry.target === frame.value) {
+        // Only a real change, and never the collapse to zero that unmounting shows.
+        if (height <= 0 || Math.abs(height - lastFrame) < 1) continue
+        lastFrame = height
+        if (!settled) owed = true
+      } else {
+        // The dock. Zero is its resting state, so a change to zero is a strip
+        // closing and a change from it a strip opening.
+        if (Math.abs(height - lastDock) < 1) continue
+        const grew = height > lastDock
+        lastDock = height
+        if (settled && grew) owed = true
+      }
+    }
+    if (owed) refit()
   })
-  settling.observe(frame.value)
+  layoutObserver.observe(frame.value)
+  if (props.dock) layoutObserver.observe(props.dock)
+  if (props.panel) layoutObserver.observe(props.panel)
 })
 
+/*
+ * The dock usually arrives AFTER this component has mounted. It is a template
+ * ref in the shell, and Vue assigns template refs in a post-render effect once
+ * the whole tree is up - so at this component's own `onMounted` the prop is
+ * still null, and an `observe` there alone observed nothing. Round 2's first
+ * capture of the delete confirm showed exactly that: two strips docked, five
+ * nodes, and the canvas sitting where it was. So the mount observes whatever
+ * is there, and this watches for the element arriving, changing or going.
+ * Not `immediate`: an immediate post-flush callback is queued from setup,
+ * ahead of the mounted hook, and would run before the observer exists.
+ */
+watch(
+  () => props.dock,
+  (dock, previous) => {
+    if (previous) layoutObserver?.unobserve(previous)
+    if (dock) layoutObserver?.observe(dock)
+  },
+  { flush: 'post' },
+)
+
+/* The test panel arrives the same way and for the same reason - a template ref
+   in the shell, assigned in a post-render effect after this component's own
+   `onMounted` has already run. */
+watch(
+  () => props.panel,
+  (panel, previous) => {
+    if (previous) layoutObserver?.unobserve(previous)
+    if (panel) layoutObserver?.observe(panel)
+  },
+  { flush: 'post' },
+)
+
 onBeforeUnmount(() => {
-  stopSettling()
+  layoutObserver?.disconnect()
+  layoutObserver = null
   props.canvas.detachViewport()
 })
 
@@ -153,6 +328,7 @@ watch(
 
 provide(BUILDER_HOVERED_NODE, props.canvas.hoveredNodeId)
 provide(BUILDER_SELECTED_IDS, computed(() => props.canvas.selectedIds.value))
+provide(BUILDER_READ_ONLY, computed(() => props.readOnly === true))
 
 function onNodeEnter({ node }: NodeMouseEvent): void {
   props.canvas.hoveredNodeId.value = node.id
@@ -165,13 +341,20 @@ function onNodeLeave(): void {
 /* --- pointer bookkeeping -------------------------------------------------- */
 
 function onPointerDown(event: PointerEvent): void {
-  // The viewport is the author's from here. See `stopSettling`.
-  stopSettling()
+  // The viewport is the author's from here. See `noteGesture`.
+  noteGesture()
+  pointerHeld = true
   props.canvas.notePointerDown(event)
 }
 
 function onPointerMove(event: PointerEvent): void {
   props.canvas.notePointerMove(event)
+}
+
+/** The gesture ended; a re-fit the layout owed during it lands now. */
+function onPointerUp(): void {
+  pointerHeld = false
+  if (refitOwed) refit()
 }
 
 function onNodeClick({ event, node }: NodeMouseEvent): void {
@@ -200,7 +383,23 @@ function onDrop(event: DragEvent): void {
   const raw =
     event.dataTransfer?.getData(BUILDER_DND_MIME) || event.dataTransfer?.getData('text/plain') || ''
   if (!KINDS.has(raw)) return
-  props.canvas.dropKind(raw as NodeKind, { x: event.clientX, y: event.clientY })
+  /*
+   * The SECOND mime entry, and the reason the palette has always written it.
+   *
+   * `NodePalette.onToolDragStart` sets `BUILDER_TOOL_ID_MIME` beside the kind,
+   * so a row dragged out of the tool sub-list carries WHICH tool. Reading only
+   * the kind made the two gestures indistinguishable: the row landed on the
+   * placeholder `tool_id` exactly as the generic tile does, and an author who
+   * dragged "Web search" got a node that said "Tool 1" and meant nothing.
+   *
+   * `dropKind` validates the id against the served catalogue rather than
+   * trusting it - see `asNamedTool`. The `text/plain` fallback is deliberately
+   * NOT consulted here: for a tool row it carries the tool id, but for a plain
+   * tile it carries the word `tool`, and reading it would set `tool_id: 'tool'`
+   * on purpose instead of by accident.
+   */
+  const toolId = event.dataTransfer?.getData(BUILDER_TOOL_ID_MIME) || null
+  props.canvas.dropKind(raw as NodeKind, { x: event.clientX, y: event.clientY }, null, toolId)
   // The drag started on a palette tile, so that is where focus still is - and
   // the arrow keys are gated on the canvas having it. Taking focus here is what
   // makes "drop a node, then nudge it into place" work without a click nobody
@@ -372,6 +571,31 @@ const minimapNodes = computed<MinimapNode[]>(() =>
   }),
 )
 
+/**
+ * The live zoom, published to CSS as `--canvas-zoom` (critic P-06).
+ *
+ * An SVG `stroke-width` is in USER space, so the viewport transform multiplies
+ * it: the 1.5px flow edge rendered at **1.10 px** on the validator template's
+ * own opening fit (0.733), **0.65 px** after `Fit` (0.436) and **0.56 px** with
+ * the Versions panel open (0.376) - measured by the critic, at zooms the
+ * product chooses for itself rather than any the author asked for. At 0.75
+ * opacity that is a grey suggestion where 22 wires should be.
+ *
+ * Publishing the zoom lets `builder.css` floor the DEVICE-pixel width without
+ * touching a token: `max(<design width>, calc(<floor> / zoom))` is the design
+ * width whenever it is already thick enough and exactly the floor when it is
+ * not. `vector-effect: non-scaling-stroke` was the other candidate and is
+ * worse in one specific way - it pins the stroke at every zoom, so zooming IN
+ * would thin the wires relative to the cards they connect.
+ *
+ * Guarded against 0: a zoom of zero would make the division infinite, and Vue
+ * Flow reports 0 for one frame before the pane is measured.
+ */
+const zoomLevel = computed(() => {
+  const zoom = flow.viewport.value.zoom
+  return Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+})
+
 const minimapViewport = computed(() => flow.viewport.value)
 const minimapPane = computed(() => ({
   width: flow.dimensions.value.width,
@@ -496,6 +720,44 @@ const panOnDrag = computed<boolean | number[]>(() => (spaceHeld.value ? true : [
 /** §5.6: the empty document's one centred line, and only while it is empty. */
 const isEmptyDocument = computed(() => props.canvas.nodes.value.length === 0)
 
+/* --- the dangling connection line (D3) ----------------------------------- */
+
+/** How far above the cursor the port label rides, so the pointer never covers it. */
+const CONNECTION_LABEL_OFFSET_PX = 12
+
+/**
+ * The preview's classes: its edge class, and its port role when it has one.
+ *
+ * Both come from `useBuilderCanvas.connectPreview`, which reads the same
+ * `outPortsOf` and `portRoleFor` the card and the committed edge read - so the
+ * colour of the line an author is dragging is provably the colour of the edge
+ * they are about to make.
+ */
+const connectionLineClasses = computed(() => {
+  const preview = props.canvas.connectPreview.value
+  if (!preview) return []
+  return [`is-class-${preview.edgeClass}`, preview.role ? `is-${preview.role}` : '']
+})
+
+/** The same bezier the committed edge will draw, so the preview does not lie. */
+function connectionPath(line: {
+  sourceX: number
+  sourceY: number
+  sourcePosition: Position
+  targetX: number
+  targetY: number
+  targetPosition: Position
+}): string {
+  return getBezierPath({
+    sourceX: line.sourceX,
+    sourceY: line.sourceY,
+    sourcePosition: line.sourcePosition,
+    targetX: line.targetX,
+    targetY: line.targetY,
+    targetPosition: line.targetPosition,
+  })[0]
+}
+
 const isConnecting = computed(() => props.canvas.connectDrag.value !== null)
 const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
 </script>
@@ -504,14 +766,17 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
   <div
     ref="frame"
     class="builder-canvas"
-    :class="{ 'is-connecting': isConnecting, 'is-hovering': isHovering }"
+    :class="{ 'is-connecting': isConnecting, 'is-hovering': isHovering, 'is-read-only': readOnly }"
+    :style="{ '--canvas-zoom': String(zoomLevel) }"
     :[BUILDER_CANVAS_ATTR]="''"
-    data-mode="design"
+    :data-mode="mode ?? 'design'"
     role="application"
     tabindex="0"
     :aria-label="label ? `Flow builder canvas for ${label}` : 'Flow builder canvas'"
     @pointerdown="onPointerDown"
-    @wheel="stopSettling"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerUp"
+    @wheel="noteGesture"
     @pointermove="onPointerMove"
     @drop="onDrop"
     @dragover="onDragOver"
@@ -521,10 +786,10 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       class="builder-flow"
       :nodes="canvas.nodes.value"
       :edges="canvas.edges.value"
-      :nodes-draggable="true"
-      :nodes-connectable="true"
+      :nodes-draggable="!readOnly"
+      :nodes-connectable="!readOnly"
       :elements-selectable="true"
-      :edges-updatable="true"
+      :edges-updatable="!readOnly"
       :snap-to-grid="canvas.gridSnapping.value"
       :snap-grid="[20, 20]"
       :selection-mode="SelectionMode.Partial"
@@ -536,10 +801,10 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       :is-valid-connection="canvas.isValidConnection"
       :delete-key-code="null"
       :min-zoom="0.2"
-      :max-zoom="1.4"
+      :max-zoom="2"
       :default-viewport="{ x: 0, y: 0, zoom: 0.8 }"
       :fit-view-on-init="true"
-      :fit-view-options="{ padding: 0.16, maxZoom: 1 }"
+      :fit-view-options="initialFitOptions"
       :zoom-on-double-click="false"
       @connect-start="canvas.onConnectStart"
       @click-connect-start="canvas.onConnectStart"
@@ -564,6 +829,36 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       </template>
       <template #edge-builder="edgeProps">
         <slot name="edge" v-bind="edgeProps" />
+      </template>
+
+      <!--
+        D3's dangling line: tinted by the source port's class, and carrying the
+        port's own name when the source has more than one way out.
+
+        Flowise does this (`ConnectionLine.jsx`) and its notes say why it
+        matters - a drag from a two-branch node never lands on the wrong branch.
+        Here it matters more, because a router can have four ports and they are
+        four identical discs along one edge; without the label the author finds
+        out which one they grabbed by releasing.
+
+        `getBezierPath` rather than Vue Flow's default straight line, so the
+        preview has the shape the committed edge will have. The label is an SVG
+        `<text>` and not an HTML overlay: `EdgeLabelRenderer` is for mounted
+        edges and this line does not exist as one yet.
+      -->
+      <template #connection-line="line">
+        <g class="builder-connection-line" :class="connectionLineClasses">
+          <path :d="connectionPath(line)" class="builder-connection-path" />
+          <text
+            v-if="canvas.connectPreview.value?.label"
+            class="builder-connection-label"
+            :x="line.targetX"
+            :y="line.targetY - CONNECTION_LABEL_OFFSET_PX"
+            text-anchor="middle"
+          >
+            {{ canvas.connectPreview.value?.label }}
+          </text>
+        </g>
       </template>
 
       <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />
@@ -646,6 +941,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       :viewport="minimapViewport"
       :pane="minimapPane"
       @centre="canvas.centreOn"
+      @fit="canvas.fitView()"
     />
 
     <!-- `PortMenu`, and anything else the shell wants anchored to the canvas. -->

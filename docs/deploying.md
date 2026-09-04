@@ -19,23 +19,92 @@ procedure; that one is the reasoning.
 > Two of them are restated below as steps, because you need them at the moment
 > they apply. The rest are not.
 
-> **The flow builder changed nothing about the build, and that is measured
-> rather than assumed.** At the merge commit `b4ef654`:
+> **Neither the flow builder nor the gauntlet build changed the build inputs,
+> and that is measured rather than assumed.** Re-run 2026-09-04 at `bc12642`,
+> over everything from the last commit before the builder existed:
 >
 > ```bash
-> git diff --stat 4d70cbf..b4ef654 -- render.yaml pyproject.toml uv.lock \
+> git diff --stat 4d70cbf..HEAD -- render.yaml pyproject.toml uv.lock \
 >   frontend/package.json frontend/package-lock.json \
 >   .github/workflows/ci.yml Dockerfile
+> # .github/workflows/ci.yml | 54 ++++++++++++++++++++++++++++++++++++++++++++++
+> # 1 file changed, 54 insertions(+)
 > ```
 >
-> is **empty**. No new Python dependency, no new npm dependency, no new build
-> step, and not one environment variable added to either service. Steps 1-4, 6
-> and 7 below are unchanged by it — where they read differently from the last
-> revision, that is the auth work catching up, not the builder.
+> One file, and it is the `postgres` CI job. **No new Python dependency, no new
+> npm dependency, no new build step, and no environment variable added to either
+> service by any of it** — the MCP, tools, skills and model-registry work is all
+> built on packages `uv.lock` already pinned. Steps 1-3, 6 and 7 below are
+> unchanged; **step 4 is not**, because the code now demands a secret the
+> manifest never carried.
 >
-> What the builder does change is **two database tables** and what happens at
+> What these changes *do* touch is the **database** — thirteen tables now, and a
+> third additive column on one that has already shipped — and what happens at
 > **boot**: a published user graph lives in the database and its registration
 > does not, so every restart has to put it back. Both are in step 5.
+
+---
+
+## Go-live checklist
+
+**What must be true before a merge to `main`, in the order it must be true.**
+Both Render services carry `autoDeploy: yes`, so **the merge *is* the deploy** —
+there is no separate "press deploy" moment at which to notice something. Every
+line has the command that checks it and a verdict measured on **2026-09-04 at
+`gauntlet/plans` = `bc12642`**, in the integration worktree, on Windows.
+
+**Five lines are NOT READY, five more are unverified, and two of the five red
+ones would break the deploy outright** — row 3 (the studio never builds) and
+row 8 (the API never starts). Four are green and two are operator judgement. An
+honest checklist that names them is worth more than a green one that does not;
+re-run each command rather than trusting the verdict beside it.
+
+> The working tree carried **uncommitted edits from three concurrent build
+> agents** when these were run. Where that changes the reading, the line says
+> so — and it is the reason the frontend rows are red while the committed branch
+> is not.
+
+### Gate 1 — the tree builds and passes
+
+| # | Must be true | Command | 2026-09-04 |
+|---|---|---|---|
+| 1 | Python suite green | `PYTHONPATH=<worktree>/src python -m unittest discover -s tests -t .` | ✅ **READY** — `Ran 2023 tests in 127.201s / OK (skipped=6)` |
+| 2 | Frontend unit suite green | `cd frontend && npm test` | ❌ **NOT READY** — `1400 tests, 37 failed` in `builderDefaults.spec.ts` (33), `builderImport.spec.ts` (2), `versionBrowser.spec.ts` (2). Caused by **uncommitted** work in progress: `git show HEAD:frontend/src/types/builder.ts` contains no `max_prompt_chars` / `AuthoredAgentConfig`, the working copy contains seven such references |
+| 3 | Type-check and production build green | `cd frontend && npx vue-tsc -b --force` | ❌ **NOT READY — this alone fails the studio deploy.** `exit 2`, 11 errors, same cause as row 2. `npm run build` is `vue-tsc -b && vite build && tsc -p tsconfig.server.json`, so the build stops at the first step and Render's studio service never produces a bundle |
+| 4 | E2E green against the free backend | backend on 8099 (`SYNTHETIC=1`, `SYNTHETIC_BRANCH_DELAY_SECONDS=5`, `CREDENTIALS_MASTER_KEY`, `PYTHONPATH`), then `cd frontend && npx playwright test` | ⚠️ **NOT RUN this pass.** `npx playwright test --list` answers **69 tests in 8 files**; `--list --grep-invert @launch` answers 60, so **9 are `@launch`**. A list is not a run |
+| 5 | Two writers on PostgreSQL 18 | `docker start pg18-test`; `TEST_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:5433/postgres python -m unittest tests.pg.test_two_writers -v` | ✅ **READY** — `Ran 5 tests in 23.317s / OK` against `PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2)`. All five compare-and-set paths, two processes each |
+| 6 | CI green on the branch | `gh run list --branch <branch> --limit 5` | ⚠️ **NOT CHECKED** — this pass made no network call. Note the `postgres` job is `if: github.ref == 'refs/heads/main'`, so it has **never run**; the merge to `main` is its first execution |
+| 7 | Both manifests parse | `python -c "import yaml; [yaml.safe_load(open(f, encoding='utf-8')) for f in ('render.yaml', '.github/workflows/ci.yml')]"` | ✅ **READY** — also a CI step |
+
+### Gate 2 — the deployment is configured
+
+| # | Must be true | Command | 2026-09-04 |
+|---|---|---|---|
+| 8 | `CREDENTIALS_MASTER_KEY` is set on the **API** service in the Render dashboard | dashboard → `agentic-crew-ai-api` → Environment | ✅ **SET - verified 2026-09-05** through the Render API (`GET /v1/services/{id}/env-vars`, names only; the value was never read and was NOT rotated, because every stored credential is wrapped under it). The previous status here, ❌ NOT READY, was written before anyone had checked the dashboard rather than the manifest - the manifest cannot say whether a `sync: false` secret exists, only the service can |
+| 9 | The three URL literals match the URLs Render proposes | step 3a, then read the three `value:` lines: `grep -n -A1 'key: CORS_ALLOW_ORIGINS' render.yaml` and the same for the other two keys | ⚠️ **NOT VERIFIABLE from a checkout.** Item 16. Check on the apply preview |
+| 10 | No provisional flag is set anywhere | `grep -nE 'BUILDER_CODE_INTERPRETER|MCP_STDIO|MCP_ALLOWED|PLATFORM_FIRECRAWL' render.yaml` | ✅ **READY** — no `key:` line for any of them, and no dashboard override should exist either. Decisions 3, 7, 8 and 9 are provisional and stay off |
+| 11 | `MAX_RUN_COST_USD` is a value somebody chose | dashboard, plus CLAUDE.md Next Sequence step 2 | ⚠️ **NOT READY as a decision.** Unset means the $10 default is *on*, which is safe; nobody has chosen it deliberately for a public deployment |
+| 12 | Nothing is mid-run | dashboard, or `GET /api/runs/...` | operator check. `maxShutdownDelaySeconds: 300` waits on an executing CrewAI step and a full run can exceed five minutes; a redeploy can still `SIGKILL` mid-flight |
+| 13 | Every builder graph an author cares about is **published**, not mid-edit | sign in, open `#/build` | operator check. Editing a published graph makes it a draft, and the boot sweep only re-registers rows whose status is `published` — so a graph left mid-edit is registered now and gone after this deploy |
+
+### Gate 3 — the things that are not code
+
+| # | Must be true | Check | 2026-09-04 |
+|---|---|---|---|
+| 14 | The repository has a `LICENSE` | `ls LICENSE*` | ❌ **NOT READY** — `No such file or directory`, and `git ls-files` finds none. The repo is **public**, which means all rights reserved. `pyproject.toml:7` already carries the note saying so. This is remaining-work item 17 and MISSION §12 item 4, and it is a decision only the owner can make |
+| 15 | The platform Firecrawl cap exists before decision 9 is confirmed | `grep -rn BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP --include=*.py src` | ❌ **NOT READY** — the knob has no consumer. Do not ask the owner to confirm decision 9 until it does; see step 4 |
+| 16 | Someone has decided what a *published user graph* may cost | CLAUDE.md Next Sequence step 2 | ⚠️ **OPEN.** A second thing on this deployment can now spend money and none of its three levers has been chosen deliberately |
+
+### What this checklist deliberately does not claim
+
+- **It does not say the deployed service is healthy.** Every live figure in
+  `CLAUDE.md`'s *Deployment — Live* table was probed on 2026-08-30 and has not
+  been re-probed since; this pass made no network call of any kind.
+- **It does not cover the paid acceptance run.** That is remaining-work item 1,
+  it costs money, and no automated pass may authorise it.
+- **A green Gate 1 proves the plumbing, not the agents.** The E2E suite runs
+  against a `SYNTHETIC=1` backend; point it at a paid origin with `E2E_BASE_URL`
+  and nine of its 69 tests spend money.
 
 ---
 
@@ -138,7 +207,59 @@ bite silently:
 2. The API service must stay in `singapore`. Move it and the database becomes
    unreachable with nothing in the configuration to blame.
 
-Only when the database row reads *link*, apply.
+Only when the database row reads *link*, apply — after step 3a.
+
+---
+
+## 3a. ⚠️ Check the three URL literals against the URLs Render proposes
+
+Two URLs are written into `render.yaml` three times, and **neither exists until
+this apply creates the services**:
+
+| Key | Service | Value |
+|---|---|---|
+| `CORS_ALLOW_ORIGINS` | api | `https://agentic-crew-ai-studio.onrender.com` |
+| `AUTH_BASE_URL` | api | `https://agentic-crew-ai-studio.onrender.com` |
+| `VITE_API_URL` | studio | `https://agentic-crew-ai-api.onrender.com` |
+
+They are literals rather than `sync: false` on purpose: Render derives a
+service's hostname from its `name`, and both names are declared in this same
+file, so the values are **predictable**. `VITE_API_URL` was `sync: false` once,
+the manual step was missed, and the live console shipped talking to itself.
+
+Predictable is not guaranteed. **If either `name` is already taken in the
+account, Render appends a suffix and all three literals are silently wrong.**
+There is no manifest expression that fixes this — `fromService … property: host`
+yields a bare hostname with no scheme, which is the exact broken case every one
+of those three keys warns about. So it is a manual check, and this is the moment
+it applies:
+
+**On the apply preview, before applying, read the URLs Render proposes for
+`agentic-crew-ai-api` and `agentic-crew-ai-studio`. If either differs from the
+table above, edit all three keys, push, and re-preview.**
+
+```bash
+grep -nE 'CORS_ALLOW_ORIGINS|AUTH_BASE_URL|VITE_API_URL' -A1 render.yaml | grep value:
+```
+
+Do not apply and patch afterwards. Render **snapshots a deploy's environment
+when the deploy is created** (deployment trap 3), and `VITE_API_URL` is inlined
+by Vite at **build** time — so a later edit needs a fresh deploy of the studio,
+not a restart.
+
+Each of the three fails differently and none of them fails loudly:
+
+- wrong `CORS_ALLOW_ORIGINS` → the browser drops every response; reads as
+  missing middleware.
+- wrong `AUTH_BASE_URL` → JWKS location, `iss` and `aud` are all wrong at once;
+  reads as a credential problem.
+- wrong `VITE_API_URL` → the console falls back to its scripted mock and renders
+  a complete, fabricated run with nothing red on the page. This is the worst
+  failure mode in the system.
+
+This is CLAUDE.md remaining-work **item 16**. The item is not closed by writing
+this section — it is downgraded from "a wrong value ships silently" to "a
+checked value ships", which is as far as a manifest can take it.
 
 ---
 
@@ -146,22 +267,68 @@ Only when the database row reads *link*, apply.
 
 Render prompts once, at Blueprint creation, for every variable marked
 `sync: false`. Those values are stored as dashboard secrets and are never
-committed. There are **nine**, split across the two services. Counted from the
-manifest rather than from memory:
+committed. There are **ten**, split across the two services. Counted from the
+manifest rather than from memory — measured 2026-09-04, and it was nine the day
+before:
 
 ```bash
-grep -n -B1 'sync: false' render.yaml | grep 'key:'
+grep -n -B1 'sync: false' render.yaml | grep 'key:' | wc -l   # 10
 ```
 
-Five on the **API** (`agentic-crew-ai-api`):
+Six on the **API** (`agentic-crew-ai-api`):
 
 | Variable | Required? |
 |---|---|
+| `CREDENTIALS_MASTER_KEY` | **yes, and the service will not START without it.** See the box below |
 | `OPENROUTER_API_KEY` | **yes** — every model call and every embedding |
 | `FIRECRAWL_API_KEY` | **yes** — market research and Brief Crew scraping |
 | `PINECONE_API_KEY` | **yes** — the warm cache |
 | `COHERE_API_KEY` | **yes** — stage-2 rerank |
 | `GITHUB_TOKEN` | **optional** — leave blank to run unauthenticated. Present, it raises GitHub search from 8 to 24 req/min. No scopes are needed. |
+
+> ### ⚠️ `CREDENTIALS_MASTER_KEY` is a boot requirement, not a feature flag
+>
+> This is the one item on this page that turns a green-looking deploy into a
+> service that never comes up, and the previous revision of this file did not
+> mention it at all.
+>
+> `_assert_credential_vault_startup_safety()` runs **inside `create_app`**
+> (`src/brief_crew/service/app.py`, called at `:673`, before a route is
+> mounted) and raises when `AUTH_BASE_URL` is set and this key is empty. The
+> reasoning is the one `VALIDATOR_REQUIRE_AUTH` already uses: a deployment that
+> can sign people in and has nowhere to keep their API keys is misconfigured,
+> and the half-configured state is the quiet failure — so it fails loud
+> instead. `render.yaml` sets `AUTH_BASE_URL`, so on this deployment the key is
+> mandatory.
+>
+> **Measured, not reasoned.** On 2026-09-04 at `bc12642`, building the app with
+> exactly this environment:
+>
+> ```text
+> AUTH_BASE_URL=https://agentic-crew-ai-studio.onrender.com CREDENTIALS_MASTER_KEY= >   python -c "from brief_crew.service.app import create_app; create_app()"
+>
+> RuntimeError: AUTH_BASE_URL is set but CREDENTIALS_MASTER_KEY is empty; people
+> can sign in and the credential vault has no key to keep theirs with. Mint one
+> with python -c "import base64, secrets;
+> print(base64.b64encode(secrets.token_bytes(32)).decode())" and set it
+> ```
+>
+> The same command with a valid key returns a `FastAPI` instance. Mint one,
+> once:
+>
+> ```bash
+> python -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"
+> ```
+>
+> **Do not rotate it casually.** Every stored credential is encrypted under it,
+> and `credentials.py` *detects* a changed key and refuses rather than silently
+> re-wrapping — `CREDENTIALS_MASTER_KEY changed without a re-encrypt pass`.
+>
+> **If the Blueprint is already applied**, Render prompted for `sync: false`
+> values at creation and will not prompt again: set this in the dashboard
+> **before** the next deploy. A deploy that reaches this code without it fails
+> its health check and rolls back. That is deployment trap 3 wearing a new hat
+> — Render snapshots a deploy's environment when the deploy is *created*.
 
 Four on the **studio** (`agentic-crew-ai-studio`), all for sign-in — the exact
 values and where each comes from are in [`google-oauth.md`](google-oauth.md):
@@ -188,24 +355,88 @@ linked database automatically.
 
 ### What `render.yaml` deliberately does NOT set
 
-Three knobs that govern what a run may cost and what the builder may do are
-**absent from the manifest**, so production runs on their code defaults. Checked
+**Fourteen** knobs that govern what a run may cost, what the builder may do,
+what a stdio process may be, and how long data is kept are **absent from the
+manifest**, so production runs on their code defaults. That is the right answer
+for thirteen of them and a decision the owner still owes on one. Checked
 directly:
 
 ```bash
-grep -n 'MAX_RUN_COST_USD\|BUILDER_' render.yaml   # only a comment, no key:
+grep -nE 'MAX_RUN_COST_USD|BUILDER_|MCP_|SKILLS_ROOT|RETENTION' render.yaml
+# comments only, no `key:` line for any of them
 ```
 
-| Knob | Default in `config.py` | What production therefore does |
-|---|---|---|
-| `MAX_RUN_COST_USD` | `10.0` | Every run carries a ~$10 ceiling, enforced at the next CrewAI step boundary. `0` disables it; **unset does not** |
-| `BUILDER_ALLOW_GATELESS_GRAPHS` | `False` | An *anonymous* caller cannot launch a user graph that reaches a billable node before any human gate — 403. Irrelevant while auth is on, because `user` is then always truthy |
-| `BUILDER_REHYDRATE_PUBLISHED` | `True` | Published builder graphs are re-registered at every boot. See step 5 |
+The full inventory of environment knobs — **forty-nine**, regenerated
+2026-09-04 — with the command that regenerates it, is
+[`tech-stack.md` §6](tech-stack.md). Do not maintain a second copy there or
+here; what this table owns is the *production decision*, which that file
+deliberately does not.
+
+#### Cost and lifecycle
+
+| Knob | Default | Set it to | Why |
+|---|---|---|---|
+| `MAX_RUN_COST_USD` | `10.0` | **leave unset for now**, and read the note below | Every run carries a ~$10 ceiling enforced at the next CrewAI step boundary. `0` disables it; **unset does not**. It has never fired on a paid run, and it is arithmetic over a local `PRICES` table rather than an invoice |
+| `BUILDER_ALLOW_GATELESS_GRAPHS` | `False` | **leave unset** | An *anonymous* caller cannot launch a user graph that bills before any human gate — 403. Irrelevant while auth is on, because `user` is then always truthy, which is exactly why leaving it off costs nothing and turning it on would be a hole waiting for the day auth is disabled |
+| `BUILDER_REHYDRATE_PUBLISHED` | `True` | **leave unset** | Published builder graphs are re-registered at every boot. Turning it off boots with *no* user graph registered at all; it is a break-glass lever, not a test lever. See step 5 |
+| `VALIDATOR_RUN_RETENTION_DAYS` | `0` | **leave unset until decision 23 is answered**, then set it explicitly | `0` means keep every terminal run, its frames, its metrics and its gates **forever**. The database is `basic_256mb` with a 1 GB disk and one paid run wrote 102 frames, so this is slow growth rather than a leak — but it is unbounded in time and nothing warns. Documents, versions, credentials, skills and tools are never purged by it either way |
+
+> **`MAX_RUN_COST_USD` is the runaway brake and unset means ON.** Only a
+> deliberate `MAX_RUN_COST_USD=0` disables it. It is not a budget — against the
+> measured clean run it is roughly 55x — and it does not bound the cent: it
+> stops at the next CrewAI `PRE_STEP` boundary, so expect to overshoot by about
+> one escalation call, and it is blind to embeddings, rerank and Firecrawl,
+> which raise no LLM event. Choosing a deliberate value for a public deployment
+> is step 2 of CLAUDE.md's Recommended Next Sequence and **it is still open.**
+
+#### The four provisional rulings — OFF, and they stay off until the owner says otherwise
+
+`PLANS.md` marks decisions 3, 7, 8 and 9 **provisional — owner to confirm**,
+because each spends the owner's money or opens a surface. Every one is off in
+the code and unset in the manifest. **Do not set any of them as part of a
+deploy.** Each row says what turning it on would actually do.
+
+| Knob | Default | Set it to | Why |
+|---|---|---|---|
+| `BUILDER_CODE_INTERPRETER_ENABLED` | `False` | **leave unset — decision 3, provisional** | It gives an agent node CrewAI's code interpreter, which runs **author-written Python in an E2B sandbox** on a BYO E2B key. A canvas is a place strangers type things; this makes one of those things a program. It is also on a deprecation path — CrewAI 1.15.18 marks `allow_code_execution` and `code_execution_mode` `Field(deprecated=True)` — so the surface it opens is one that is going away |
+| `MCP_STDIO_ENABLED` | `False` | **leave unset — decision 7, provisional** | This is the gate that matters. A stdio MCP server means **an author's saved document names a process to run on the server**, which is precisely what the compiler's closed `BUILDER_ACTION_REFS` set exists to prevent: everywhere else author data reaches a compiler-owned entrypoint as a *value*, never as a name. Remote `https://` servers are the production answer and they already work |
+| `MCP_ALLOWED_COMMANDS` | empty | **leave unset — the two gates stack** | The allow-list a stdio command must be on *once the flag above is lifted*. Empty means the flag alone opens nothing, and that is the design: two deliberate acts, not one. Lifting the flag and leaving this empty is a safe intermediate state; setting this while the flag is off does nothing at all. If stdio is ever approved, name exact commands (`npx,uvx`) and never a shell |
+| `MCP_ALLOWED_ENV_VARS` | empty | **leave unset** | The environment keys a stdio server may be handed. A key outside the set is **refused rather than dropped**, so an author is told rather than handed a server that silently has no credential. Same stacking rule |
+| `BUILDER_PLATFORM_FIRECRAWL_DEFAULT` | `False` | **leave unset — decision 9, provisional, and read the warning** | It makes the platform's own Firecrawl key every author's default. Off, the three Firecrawl tool entries and `research_market_landscape` require the author's own `firecrawl` credential and say so on the card |
+| `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP` | `50` | **leave unset — it does nothing** | See the warning |
+
+> ### ⚠️ The platform Firecrawl cap is documented and **nothing decrements it**
+>
+> Decision 9 is conditioned on "a daily cap and per-user override". The
+> per-user override exists. **The cap does not.** Measured 2026-09-04 at
+> `bc12642`:
+>
+> ```bash
+> grep -rn 'BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP' --include=*.py --include=*.ts \
+>   src frontend/src tests
+> # src/brief_crew/config.py:3141  - its own definition, and nothing else
+>
+> grep -rn 'BUILDER_PLATFORM_FIRECRAWL_DEFAULT' --include=*.py src
+> # src/brief_crew/config.py:3137        - its definition
+> # src/brief_crew/builder/tools.py:576  - credential_optional=...
+> ```
+>
+> So the flag has an effect and its cap has no consumer: no counter, no store,
+> no reset. **Turning `BUILDER_PLATFORM_FIRECRAWL_DEFAULT` on today is an
+> uncapped spend of the owner's Firecrawl quota by anybody who can sign in**,
+> not the capped one the ruling describes. Say that to the owner before asking
+> them to confirm decision 9; the honest sequence is to build the counter
+> first, then ask.
+
+#### Storage and local addresses
+
+| Knob | Default | Set it to | Why |
+|---|---|---|---|
+| `MCP_ALLOW_INSECURE_LOCAL` | `False` | **leave unset** | It admits `http://127.0.0.1` and `http://localhost` as remote MCP servers, for local development and the E2E loopback fixture. Inside a Render container that reaches nothing useful and relaxes the one rule (`https://` required, every other private/loopback/link-local address refused) that stops a saved document being an SSRF probe |
+| `SKILLS_ROOT` | `data/skills` | **leave unset**, and know what it depends on | The four built-in skill packs are **committed files** under `data/skills/builtin/*/SKILL.md`, and the default is resolved **relative to the process's working directory**. On Render that is the repository root and it works. `load_builtins()` does `if not path.exists(): continue`, so pointing this at a mounted disk that does not contain the built-ins yields **zero** built-in skills with no error anywhere. If you ever move it, copy `data/skills/builtin/` alongside. User packs are safe either way: the database is the durable copy and disk is a materialisation cache that rewrites on content mismatch |
 
 `VALIDATOR_ALLOW_AUTO_GATES` is absent for the same class of reason and
-`render.yaml` explains it at the point it is missing. The full inventory of
-environment knobs, with the command that regenerates it, is
-[`tech-stack.md`](tech-stack.md) — do not maintain a second copy here.
+`render.yaml` explains it at the point it is missing.
 
 `OPENAI_API_KEY` is **not** used and must not be set. Startup asserts that every
 model constant carries an `openrouter/` prefix and refuses to boot otherwise.
@@ -230,19 +461,43 @@ Watch for, in order:
    answers with no credentials set.
 4. **`GET /readyz` returns 200.** This is the one that exercises the database.
 
-### The schema, and the two tables the builder added
+### The schema — thirteen tables now, and three additive columns
 
 There is no migration step. `PostgresFlowPersistence.init_db()` calls
 `metadata.create_all()` at construction, then `_add_missing_columns()`. There are
-**eight** tables now, not six. Regenerate the list rather than trusting this one:
+**thirteen** tables now, not eight and not six. Regenerate the list rather than
+trusting this one — it has been wrong at every previous revision of this file:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from brief_crew.service.persistence import metadata; print(sorted(metadata.tables))"
+$env:PYTHONPATH = "$PWD\src"
+.\.venv\Scripts\python.exe -c "from brief_crew.service.persistence import metadata; ts=sorted(metadata.tables); print(len(ts)); print(ts)"
 ```
 
-Measured 2026-09-02 at `b4ef654`: `builder_document_versions`,
-`builder_documents`, `flow_states`, `pending_feedback`, `run_frames`,
-`run_gates`, `run_node_metrics`, `runs`.
+Measured 2026-09-04 at `bc12642` — **13**: `builder_document_versions`,
+`builder_documents`, `builder_test_inputs`, `flow_states`, `mcp_servers`,
+`pending_feedback`, `run_frames`, `run_gates`, `run_node_metrics`, `runs`,
+`user_credentials`, `user_skills`, `user_tools`.
+
+The five new ones are the gauntlet tables (contract C10): `user_credentials`,
+`user_tools`, `mcp_servers`, `user_skills` and `builder_test_inputs`. **None has
+ever shipped**, so `create_all()` creates each one with its indexes and
+constraints intact on the first boot after this deploy, and no migration is
+needed — the easy case, for the same reason the two builder tables were.
+
+**`_ADDITIVE_COLUMNS` carries three entries now, not one**, and the third is the
+one that matters this deploy:
+
+```text
+("runs",                        "user_id", "VARCHAR(128)")   # shipped, done
+("runs",                        "mode",    "VARCHAR(16)")    # NULL reads as `run`
+("builder_document_versions",   "source",  "VARCHAR(64)")    # NULL reads as `stored`
+```
+
+`builder_document_versions` **shipped on 2026-09-02**, so `source` is the second
+column in this project's history to reach an already-deployed table by this
+path, and `create_all()` would never have added it. Nothing is backfilled and
+nothing needs to be: both new columns are nullable and their NULL has a
+documented reading.
 
 **The six original tables have run against PostgreSQL 18 in production**: the
 deployed API answered `/readyz` with `"backend":"postgresql"` — probed
@@ -262,23 +517,31 @@ the opposite of the `user_id` case, which was a **column** on a table that had
 already shipped and which `create_all()` will never add — see
 [`gotchas-and-insights.md`](gotchas-and-insights.md).
 
-> **The forward hazard, for whoever adds the next column.**
-> `_ADDITIVE_COLUMNS` in `persistence.py` currently carries exactly one entry,
-> `("runs", "user_id", "VARCHAR(128)")`, and the index-ensuring loop beneath it
-> iterates `runs.indexes` and nothing else. Add a column to `builder_documents`
-> and it will be present on a fresh database and **silently absent on this
-> deployed one**, failing at the first INSERT rather than at startup. Adding an
-> index to an existing builder table has the same shape. Both need an explicit
-> entry; anything needing a backfill, a NOT NULL, a rename or a drop is the
-> point at which a real migration tool has become cheaper than that list.
+> **The forward hazard, for whoever adds the next column — and it has NOT
+> moved with the table count.** The index-ensuring loop beneath
+> `_ADDITIVE_COLUMNS` still iterates **`runs.indexes` and nothing else**
+> (`persistence.py`, `for index in runs.indexes:`). So an additive column is
+> handled for any table, but an **index** on a newly added column of any table
+> other than `runs` is created on a fresh database and silently absent on this
+> deployed one. A column with no explicit `_ADDITIVE_COLUMNS` entry fails at the
+> first INSERT rather than at startup; a missing index costs a slow query and
+> never a wrong answer, which is why the loop logs and continues rather than
+> refusing to start. Anything needing a backfill, a NOT NULL, a rename or a drop
+> is the point at which a real migration tool has become cheaper than that list.
 
 Check rather than assume:
 
 - **The service actually reached `readyz`.** A DDL failure surfaces here, not at
   `healthz` — `healthz` answers before the database is touched.
-- **All eight tables exist** with the expected columns. Connect with `psql` via
-  the Render dashboard's connection string and run `\dt`, then
-  `\d builder_document_versions`.
+- **All thirteen tables exist** with the expected columns. Connect with `psql`
+  via the Render dashboard's connection string and run `\dt`, then
+  `\d builder_document_versions` — and confirm it has a `source` column, which
+  is the one thing on this deploy that `create_all()` could not have done.
+- **The service started at all.** Since plan 01 the API refuses to boot when
+  `AUTH_BASE_URL` is set and `CREDENTIALS_MASTER_KEY` is not, so a deploy that
+  never reaches `healthz` and shows `RuntimeError: AUTH_BASE_URL is set but
+  CREDENTIALS_MASTER_KEY is empty` in the log is a missing dashboard secret and
+  not a broken build. Step 4 has the whole entry.
 - **Watch for type mismatches SQLite silently tolerates.** SQLite is dynamically
   typed and PostgreSQL is not; a column SQLite accepted may be rejected here.
   This remains the single most likely failure mode, and the builder gives it a
@@ -525,6 +788,17 @@ not a smoke test.
   on the same executor as the validator and is waited on the same way, so a
   deploy during someone's user-drawn run has the same five-minute ceiling and the
   same answer: deploy when nothing is running.
+- **A missing `CREDENTIALS_MASTER_KEY` is a dead service, not a degraded one.**
+  It is the only environment variable on this deployment whose absence stops the
+  process rather than a feature. It is `sync: false`, and Render prompts for
+  `sync: false` values only at Blueprint **creation** — so on an
+  already-applied Blueprint it must be entered in the dashboard by hand before
+  the next deploy. Reproduce the failure locally in ten seconds before believing
+  it is set; step 4 has the command.
+- **The platform Firecrawl daily cap has no consumer.** If anyone ever sets
+  `BUILDER_PLATFORM_FIRECRAWL_DEFAULT=true`, the spend is uncapped in practice
+  whatever `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP` says. Measured 2026-09-04; see
+  step 4.
 - **The Docker image has never been built.** `Dockerfile` and `.dockerignore`
   exist and target the API only, but no Docker daemon was available where they
   were written. The Blueprint path above does not use them.

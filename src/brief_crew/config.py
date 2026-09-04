@@ -9,8 +9,11 @@ retrieval quality just quietly degrades.
 
 from __future__ import annotations
 
+import json
 import os
+import pathlib
 from collections.abc import Iterable
+from typing import NamedTuple
 from urllib.parse import urlsplit
 
 # --------------------------------------------------------------------------
@@ -47,17 +50,300 @@ from urllib.parse import urlsplit
 # real call. Because nitro picks the fastest provider rather than the cheapest,
 # the price below is the published floor and the effective rate may be higher.
 CHEAP_MODEL = "openrouter/google/gemini-3.5-flash-lite:nitro"
-ESCALATION_MODEL = "openrouter/google/gemini-3.7-flash"
+
+# ⚠️ The escalation tier moved 3.7-flash -> 3.8-flash on 2026-09-04. The three
+# benchmark comments above and the two cost comments further down were measured
+# on 3.7-flash and have NOT been re-measured; they are kept because a
+# measurement of 3.7-flash remains a true measurement of 3.7-flash, and
+# rewriting the model name in them would fabricate data this project never
+# collected. Re-measure before quoting one as current.
+#
+# The swap needs no argument because it is free. Measured against the live
+# OpenRouter catalogue on 2026-09-04 (`mcp__openrouter__get-model`):
+#
+#   google/gemini-3.8-flash   $0.75 / $3.75   AA 58.7 / 76.3 / 50.0
+#   google/gemini-3.7-flash   $0.75 / $3.75   AA 56.0 / 76.1 / 45.1
+#
+# Byte-identical price, higher on all three Artificial Analysis indices
+# (intelligence / coding / agentic). The half-price `:batch` variant
+# ($0.375 / $1.875) is NOT usable here: batch is a queued lane, and a run with
+# streaming frames and a human waiting at a gate cannot be queued.
+#
+# The CHEAP tier deliberately did NOT move. 3.8-flash would cost it 2.5x on
+# prompt ($0.75 against $0.30), and the cheap tier exists to be cheap - three
+# tool-using research analysts run on it.
+ESCALATION_MODEL = "openrouter/google/gemini-3.8-flash"
+
+# --------------------------------------------------------------------------
+# The model registry - plan 05, contract C3. DATA, not constants.
+# --------------------------------------------------------------------------
+#
+# Everything above this line is two models and a hand-typed pair of numbers per
+# model. That was never a registry, and this file said so twice over: one slug
+# has MANY endpoint prices, and a two-row table cannot express that. Measured
+# 2026-09-04, `google/gemini-3.5-flash-lite` is served by eight endpoints from
+# $0.15 to $0.54 per million input - a 3.6x spread with the $0.30 headline
+# sitting in the middle.
+#
+# WHY A COMMITTED FILE AND NOT A FETCH. This module is imported by every test
+# and by the service at boot; the suite must run with no network and CI has no
+# credentials; and a boot that depends on a third-party catalogue is a boot that
+# fails at 3 a.m. `scripts/refresh_models.py` regenerates the file and prints a
+# unified diff, so a price that moves is a visible line in a commit rather than
+# a silent drift - the failure this repository has recorded six times about its
+# own counts.
+#
+# THE PLATFORM RULE STILL HOLDS. "Constants stay in config.py" is about a model
+# name, a price or a threshold never being inlined at a call site. This file
+# still names the path, still owns the ceiling, and is still the only place
+# `PRICES` is built. What moved out is the DATA - ten rows of catalogue facts
+# that nobody in this repository decides.
+MODEL_REGISTRY_PATH = pathlib.Path(__file__).resolve().parents[2] / "data" / "models.json"
+
+#: CrewAI's native-provider prefix, declared here rather than beside
+#: `_build_price_index` (where its reasoning lives) because
+#: `load_model_registry` below runs at import and needs it first.
+_OPENROUTER_PREFIX = "openrouter/"
+
+#: The same prefix, publicly, for the modules that must PRODUCE a model id
+#: rather than parse one - `builder/runtime.py` building an authored node's
+#: `LLM`, and `builder/budget.py` pricing it. They may not spell it
+#: themselves: `test_compiler.py::test_no_builder_module_inlines_a_model_name`
+#: asserts the platform rule by scanning those files for the literal, and the
+#: rule is right - a provider prefix is a model fact, and model facts live
+#: here.
+OPENROUTER_MODEL_PREFIX = _OPENROUTER_PREFIX
+
+#: The schema string `data/models.json` must declare. Bumped only with a
+#: migration, the same discipline BUILDER_DOCUMENT_SCHEMA follows.
+MODEL_REGISTRY_SCHEMA = "models/v1"
+
+#: `speed_tier` is CURATED, not derived: the public catalogue publishes no
+#: throughput figure, and the ordering behind these three words came from the
+#: MCP's `sort: throughput-high-to-low`. Kept a closed set so a picker can group
+#: on it without inventing a fourth word.
+MODEL_SPEED_TIERS = ("fast", "balanced", "deep")
+
+
+class RegistryModel(NamedTuple):
+    """One row of `data/models.json` - C3, and every field is a catalogue fact.
+
+    A `NamedTuple` and NOT a frozen dataclass, and the difference is not taste.
+    `tests/service/test_cors.py` executes THIS FILE by path through a loader
+    that never registers the module in `sys.modules`, which is the only way to
+    observe an import-time refusal without poisoning every module that already
+    imported a constant from here. `dataclasses` resolves `KW_ONLY` through
+    `sys.modules[cls.__module__].__dict__` and dies with `AttributeError:
+    'NoneType' object has no attribute '__dict__'` under that loader - so a
+    dataclass anywhere in this file turns a CORS assertion into a traceback
+    about dataclasses. `NamedTuple` reads its own `__annotations__` and does
+    not care.
+
+    TWO price columns, and reporting only one of them is what produced the
+    mistake this plan had to correct. `cost_in` is what a run is PRICED at - the
+    plain slug's headline, which is also a real endpoint. `cost_in_max_endpoint`
+    is the dearest endpoint serving the same slug, and it is what says how much
+    exposure `provider.max_price` is actually filtering away.
+    """
+
+    id: str
+    name: str
+    provider: str
+    context_window: int
+    supports_tools: bool
+    supports_vision: bool
+    supports_json_mode: bool
+    supports_reasoning: bool
+    #: USD per MILLION prompt tokens, the plain slug's headline.
+    cost_in: float
+    #: USD per MILLION completion tokens, the plain slug's headline.
+    cost_out: float
+    #: USD per million prompt tokens on the DEAREST endpoint serving this slug.
+    #: Measured once at build time (plan 05 decision 6); `refresh_models.py`
+    #: preserves it across a price refresh rather than guessing it from
+    #: NITRO_PRICE_FACTOR, because the measured per-model ratios run 1.0x to
+    #: 9.5x and no single constant was ever going to be right.
+    cost_in_max_endpoint: float
+    speed_tier: str
+    recommended_for: tuple[str, ...]
+
+
+def load_model_registry(path: "pathlib.Path | str | None" = None) -> dict[str, object]:
+    """Parse and CHECK `data/models.json`. Raises on anything malformed.
+
+    Raises rather than degrading, and that is the one place this file is
+    deliberately fragile: a registry that half-loads is a product that offers
+    half a roster and prices the rest at nothing, which is the same shape as the
+    defect that reported a 128,069-token run at $0.00. A missing or malformed
+    registry has to stop the process at import, where the traceback names the
+    file.
+
+    Takes a path so a test can load a fixture registry without an environment
+    knob. There are thirty-nine of those already and this needed none.
+    """
+
+    source = pathlib.Path(path) if path is not None else MODEL_REGISTRY_PATH
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    if payload.get("schema") != MODEL_REGISTRY_SCHEMA:
+        raise ValueError(
+            f"{source} declares schema {payload.get('schema')!r}; this build reads "
+            f"{MODEL_REGISTRY_SCHEMA!r}"
+        )
+
+    ceiling = float(payload["ceiling_usd_per_m_input"])
+    rows = payload["models"]
+    if not 1 <= len(rows) <= 10:
+        raise ValueError(f"{source} carries {len(rows)} models; C3 admits 1 to 10")
+
+    models: list[RegistryModel] = []
+    seen: set[str] = set()
+    for row in rows:
+        model = RegistryModel(
+            id=str(row["id"]),
+            name=str(row["name"]),
+            provider=str(row["provider"]),
+            context_window=int(row["context_window"]),
+            supports_tools=bool(row["supports_tools"]),
+            supports_vision=bool(row["supports_vision"]),
+            supports_json_mode=bool(row["supports_json_mode"]),
+            supports_reasoning=bool(row["supports_reasoning"]),
+            cost_in=float(row["cost_in"]),
+            cost_out=float(row["cost_out"]),
+            cost_in_max_endpoint=float(row["cost_in_max_endpoint"]),
+            speed_tier=str(row["speed_tier"]),
+            recommended_for=tuple(str(value) for value in row["recommended_for"]),
+        )
+        # A base slug, never a variant and never the provider prefix. Both
+        # spellings exist in this codebase for good reasons and a registry keyed
+        # on either would miss - `resolve_price_model`'s whole docstring is the
+        # history of that miss.
+        if model.id.startswith(_OPENROUTER_PREFIX) or ":" in model.id:
+            raise ValueError(f"{model.id!r} is not a base slug: drop the prefix and the variant")
+        if model.id in seen:
+            raise ValueError(f"{source} lists {model.id!r} twice")
+        seen.add(model.id)
+        if model.speed_tier not in MODEL_SPEED_TIERS:
+            raise ValueError(f"{model.id}: speed_tier {model.speed_tier!r} is not one of {MODEL_SPEED_TIERS}")
+        # THE ADMISSION PREDICATE, and it is the headline rather than the max
+        # endpoint on purpose. The owner ruled the ceiling is the MAX endpoint
+        # price, and `provider.max_price` enforces exactly that at the API - so
+        # what this check has to answer is the OTHER half of the same ruling: a
+        # model whose cheapest endpoint is over the ceiling cannot be served at
+        # all under `max_price` and the request would fail rather than
+        # overspend. The headline IS one of the slug's endpoints, so
+        # `cost_in <= ceiling` is a witness that a servable endpoint survives
+        # the filter. `openai/o4-mini` has exactly one endpoint at $1.10 and is
+        # refused here; `openai/gpt-5.2` has a $0.88 flex endpoint but a $1.75
+        # headline and is refused here too, which is the answer the roster wants.
+        if model.cost_in > ceiling:
+            raise ValueError(
+                f"{model.id}: ${model.cost_in}/M input is over the ${ceiling}/M ceiling"
+            )
+        if model.cost_in_max_endpoint < model.cost_in:
+            raise ValueError(
+                f"{model.id}: cost_in_max_endpoint ${model.cost_in_max_endpoint} is below the "
+                f"headline ${model.cost_in}, so the headline is not one of this slug's endpoints"
+            )
+        models.append(model)
+
+    by_id = {model.id: model for model in models}
+    presets = {str(key): str(value) for key, value in payload["presets"].items()}
+    for tier, spelling in presets.items():
+        base = spelling.removeprefix(_OPENROUTER_PREFIX).split(":", 1)[0]
+        if base not in by_id:
+            raise ValueError(f"preset {tier!r} names {spelling!r}, which is not a registry row")
+
+    return {
+        "ceiling_usd_per_m_input": ceiling,
+        "generated_at": payload.get("generated_at", ""),
+        "source": payload.get("source", ""),
+        "presets": presets,
+        "models": tuple(models),
+        "raw": payload,
+    }
+
+
+_REGISTRY = load_model_registry()
+
+#: Every model an author may pick, in the order `data/models.json` lists them -
+#: which is the roster's own ranking, not alphabetical.
+MODEL_REGISTRY: tuple[RegistryModel, ...] = _REGISTRY["models"]  # type: ignore[assignment]
+MODEL_BY_ID: dict[str, RegistryModel] = {model.id: model for model in MODEL_REGISTRY}
+MODEL_IDS: frozenset[str] = frozenset(MODEL_BY_ID)
+#: The registry's own copy of the ceiling. Cross-checked against
+#: MODEL_PRICE_CEILING_IN further down rather than duplicated: two numbers with
+#: one meaning is how every count in this repository has gone stale.
+MODEL_REGISTRY_CEILING_IN: float = float(_REGISTRY["ceiling_usd_per_m_input"])  # type: ignore[arg-type]
+MODEL_PRESETS: dict[str, str] = dict(_REGISTRY["presets"])  # type: ignore[arg-type]
+#: When the roster was measured, and against what. Served with it, because a
+#: client holding a stale copy can then say HOW stale rather than only that its
+#: prices disagree with somebody's.
+MODEL_REGISTRY_GENERATED_AT: str = str(_REGISTRY["generated_at"])
+MODEL_REGISTRY_SOURCE: str = str(_REGISTRY["source"])
+
+
+def registry_model(model: str | None) -> "RegistryModel | None":
+    """The registry row a model id names, in any of the four spellings.
+
+    `openrouter/` prefix and a `:nitro` variant are both routing detail rather
+    than identity, and every one of the four spellings reaches this project
+    somewhere - `config.py` writes one, CrewAI reports another, a document
+    carries a third.
+    """
+
+    name = str(model or "").strip().casefold()
+    if not name:
+        return None
+    for candidate in _price_lookup_spellings(name):
+        found = MODEL_BY_ID.get(candidate)
+        if found is not None:
+            return found
+    return None
+
 
 # USD per million tokens, (prompt, completion). Used to ESTIMATE cost, because
 # CrewAI discards OpenRouter's per-generation cost before it reaches any event.
 # Keys are written the way this project configures a model - with the
 # `openrouter/` provider prefix - and `resolve_price_model` below accepts the
 # de-prefixed spelling CrewAI actually reports.
+#
+# DERIVED from the registry as of 2026-09-04, and the derivation changed no
+# value in this repository - it changed where the value comes from. The two
+# presets measured IDENTICAL to the pair this dict held by hand ($0.30/$2.50 and
+# $0.75/$3.75), which is the whole reason plan 05's own price table had to be
+# corrected before it was implemented: the table it was written against quoted
+# `:batch` variant prices as headlines, and a registry seeded from it would have
+# replaced two correct prices with two wrong ones.
+#
+# THE TWO PRESETS ARE INSERTED FIRST, and the order is load-bearing.
+# `_build_price_index` uses `setdefault`, so whichever key is registered first
+# owns the variant-stripped spellings - and the answer
+# `resolve_price_model("google/gemini-3.5-flash-lite")` gives has to stay
+# CHEAP_MODEL, the key this project actually configures, rather than the bare
+# registry row that happens to carry the same numbers.
 PRICES: dict[str, tuple[float, float]] = {
-    CHEAP_MODEL: (0.30, 2.50),
-    ESCALATION_MODEL: (0.75, 3.75),
+    # Unchanged by the 2026-09-04 escalation swap, and CHECKED rather than
+    # assumed: 3.8-flash is $0.75 / $3.75, the same as the 3.7-flash it
+    # replaces. The dict is keyed by the constants, so a swap can never orphan
+    # a key - but it can leave a stale VALUE, which is exactly the defect that
+    # once priced a 128,069-token run at $0.00. The rule is that the number
+    # moves in the same commit as the constant; here the number did not need
+    # to move, and that is a measurement, not an omission.
+    CHEAP_MODEL: (
+        MODEL_BY_ID[CHEAP_MODEL.removeprefix(_OPENROUTER_PREFIX).split(":", 1)[0]].cost_in,
+        MODEL_BY_ID[CHEAP_MODEL.removeprefix(_OPENROUTER_PREFIX).split(":", 1)[0]].cost_out,
+    ),
+    ESCALATION_MODEL: (
+        MODEL_BY_ID[ESCALATION_MODEL.removeprefix(_OPENROUTER_PREFIX).split(":", 1)[0]].cost_in,
+        MODEL_BY_ID[ESCALATION_MODEL.removeprefix(_OPENROUTER_PREFIX).split(":", 1)[0]].cost_out,
+    ),
 }
+for _model in MODEL_REGISTRY:
+    # `setdefault`, so a preset's own spelling is never displaced by the bare
+    # row underneath it. Both carry the same pair by construction - the presets
+    # above are READ from these rows - so this can only ever add keys.
+    PRICES.setdefault(f"{_OPENROUTER_PREFIX}{_model.id}", (_model.cost_in, _model.cost_out))
+del _model
 
 # --------------------------------------------------------------------------
 # Embeddings - 00-shared-config.md §4, 06-retrieval-layer.md
@@ -115,7 +401,10 @@ CHUNK_OVERLAP_TOKENS = 50
 # The index accepts both spellings in both directions, because the LiteLLM
 # fallback path still reports the prefixed name, and casefolds because an
 # OpenRouter slug is lowercase by convention rather than by enforcement.
-_OPENROUTER_PREFIX = "openrouter/"
+#
+# `_OPENROUTER_PREFIX` is DECLARED ABOVE, beside the model registry, because
+# `load_model_registry` runs at import and needs it before this point in the
+# file. It is documented here, where its reason lives.
 
 
 def _build_price_index() -> dict[str, str]:
@@ -800,6 +1089,98 @@ VALIDATOR_REPORTER_REASONING_EFFORT = "low"
 # serializer records on every model-call frame.
 VALIDATOR_ESCALATION_PROVIDER_SORT = "throughput"
 
+# --------------------------------------------------------------------------
+# The price ceiling, ENFORCED rather than asserted - owner's ruling 2026-09-04
+# --------------------------------------------------------------------------
+#
+# The gauntlet's rule is "no model above $1.00 per 1M INPUT tokens reachable
+# anywhere in the product", and the owner ruled that the ceiling is measured
+# against the MAX endpoint price, not the headline. That ruling has teeth,
+# because a slug's headline is only one of its endpoint prices. Measured
+# 2026-09-04 with `list-model-endpoints`, `google/gemini-3.8-flash` has six:
+#
+#   google-ai-studio/flex           $0.375 / $1.875
+#   google-vertex/global/flex       $0.375 / $1.875
+#   google-ai-studio                $0.75  / $3.75     <- the headline
+#   google-vertex/global            $0.75  / $3.75
+#   google-ai-studio/priority       $1.35  / $6.75     <- OVER THE CEILING
+#   google-vertex/global/priority   $1.35  / $6.75     <- OVER THE CEILING
+#
+# So the escalation tier's max endpoint is $1.35 and the literal ruling
+# excludes it.
+#
+# WHY IT IS NEVERTHELESS ADMISSIBLE, and why that is a fact about routing
+# rather than a reinterpretation of the ruling. OpenRouter's service-tier
+# documentation is explicit: "Non-default tier endpoints (flex, priority) are
+# only considered when your request asks for them", and there are exactly three
+# ways to ask - a `:nitro` / `:floor` model variant, the `service_tier`
+# parameter, or naming a tier endpoint slug in `provider.order` / `provider.only`.
+#
+# `ESCALATION_MODEL` is a plain slug and this file sends `provider: {"sort":
+# "throughput"}`. `sort` is NOT one of the three. The two $1.35 endpoints are
+# therefore not candidates, which is exactly what the one paid run observed:
+# both escalation calls landed on `google-vertex/global` at $0.75.
+#
+# `CHEAP_MODEL` DOES carry `:nitro`, so for the cheap tier priority endpoints
+# ARE admissible - and that is fine, because flash-lite's priority tier is
+# $0.54, comfortably under.
+#
+# THE PROBLEM WITH LEAVING IT THERE is that all of the above is a property of
+# today's configuration. Add `:nitro` to the escalation model, set a
+# `service_tier`, or let a future author name an endpoint slug, and the $1.35
+# endpoint becomes reachable with nothing failing. A ceiling that holds because
+# of what we happen not to have set is not a ceiling.
+#
+# `provider.max_price` makes it one. OpenRouter filters endpoints by price
+# BEFORE routing, so an over-ceiling endpoint cannot be selected regardless of
+# variant, sort, tier or a catalogue change we have not noticed. The bound
+# moves from a test in this repository to the API that does the billing.
+#
+# Failure mode, stated because it is the cost of the guarantee: if a model's
+# CHEAPEST endpoint is over the ceiling, `max_price` filters every candidate
+# and the request fails rather than silently overspending. That is the right
+# direction, and it is also why the registry refuses such a model up front -
+# `openai/o4-mini` has exactly one endpoint at $1.10 and is refused at both
+# doors. Verified 2026-09-04: one endpoint, `openai`, $1.1 / $4.4.
+MODEL_PRICE_CEILING_IN = 1.00
+
+# The registry carries the ceiling too - C3's `ceiling_usd_per_m_input`, because
+# `data/models.json` has to be readable on its own by `refresh_models.py` and by
+# the client mirror, neither of which imports this module. Two numbers with one
+# meaning is exactly how every count in this repository has gone stale, so they
+# are CROSS-CHECKED at import rather than trusted to stay equal. A mismatch is
+# fatal here, where the traceback names both files, rather than at the first
+# publish that admits a model the ceiling forbids.
+if MODEL_REGISTRY_CEILING_IN != MODEL_PRICE_CEILING_IN:
+    raise RuntimeError(
+        f"{MODEL_REGISTRY_PATH} declares a ${MODEL_REGISTRY_CEILING_IN}/M input ceiling and "
+        f"config.py declares ${MODEL_PRICE_CEILING_IN}/M. They are one rule; change both."
+    )
+
+# ⚠️ There is deliberately NO completion ceiling, and the omission is the
+# honest reading rather than an oversight. The gauntlet's rule is stated in one
+# dimension - "$1.00 per 1M INPUT tokens" - and inventing a second bound would
+# be inventing a number, which is the exact failure this whole 2026-09-04 pass
+# exists to correct.
+#
+# It costs nothing in practice, and that is measured rather than assumed: every
+# roster endpoint whose completion price is over $3.75 is a `priority` endpoint
+# whose PROMPT price is $1.35, so the input bound already excludes it. The
+# dearest completion price that survives the input bound is $3.75, the
+# escalation tier's own headline. If a model ever appears with a cheap prompt
+# and a wild completion price, this is where the second bound goes - and it
+# should be added with its own measurement, not by symmetry.
+def openrouter_price_ceiling_params() -> dict[str, float]:
+    """The `provider.max_price` block that enforces the ceiling at the API.
+
+    Returned as the inner mapping rather than a whole `extra_body`, because it
+    has to MERGE with the `sort` this file already sends - two callers each
+    writing their own `provider` key would have one silently overwrite the
+    other, and the one that lost would be whichever ran second.
+    """
+
+    return {"prompt": MODEL_PRICE_CEILING_IN}
+
 
 def openrouter_escalation_params(effort: str | None) -> dict[str, object]:
     """Reasoning effort AND throughput routing, in one ``extra_body``.
@@ -813,9 +1194,39 @@ def openrouter_escalation_params(effort: str | None) -> dict[str, object]:
     body: dict[str, object] = {}
     if effort is not None:
         body["reasoning"] = {"effort": effort}
+    # ONE `provider` block, assembled here, because JSON has no merge and two
+    # writers of the same key means the second wins silently.
+    provider: dict[str, object] = {"max_price": openrouter_price_ceiling_params()}
     if VALIDATOR_ESCALATION_PROVIDER_SORT:
-        body["provider"] = {"sort": VALIDATOR_ESCALATION_PROVIDER_SORT}
+        provider["sort"] = VALIDATOR_ESCALATION_PROVIDER_SORT
+    body["provider"] = provider
     return {"extra_body": body} if body else {}
+
+
+def openrouter_authored_params(effort: str | None) -> dict[str, object]:
+    """The `extra_body` an AUTHORED node's `LLM` carries - 10 D1.
+
+    Two things travel together for the same reason ``openrouter_escalation_params``
+    assembles its two: JSON has no merge, so one ``provider`` object is written
+    once here rather than by two callers of whom the second silently wins.
+
+    What is DELIBERATELY absent is ``provider.sort``. The escalation preset
+    routes on throughput because three research analysts run behind a human
+    waiting at a gate; an authored node's model is the author's own choice out
+    of the registry, and imposing a routing preference on it would be this
+    module choosing an endpoint the author did not.
+
+    The price ceiling is NOT optional and is not a property of the tier. §6a's
+    ruling is measured against the max ENDPOINT price, and an authored node can
+    name any roster model, so without this an author's own slug could route to
+    a priority endpoint over the ceiling exactly as the escalation preset could
+    before ``max_price`` was added.
+    """
+
+    body: dict[str, object] = {"provider": {"max_price": openrouter_price_ceiling_params()}}
+    if effort is not None:
+        body["reasoning"] = {"effort": effort}
+    return {"extra_body": body}
 
 
 def openrouter_reasoning_params(effort: str | None) -> dict[str, object]:
@@ -1106,6 +1517,33 @@ MAX_RUN_COST_USD = _env_non_negative_float("MAX_RUN_COST_USD", 10.0)
 #     row: ~4,000 completed runs to fill the disk at the ceiling, ~20,000 at a
 #     realistic 12 KB.
 MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
+
+# --------------------------------------------------------------------------
+# C6's three frame ceilings - .agent/plans/10-runtime.md D6
+#
+# Separate constants rather than one, because each bounds a different thing and
+# the contract fixes each number independently. They are all far under
+# `SerializerLimits.max_string` on purpose: the ring holds 2,000 frames and a
+# subscriber queue 512, and a run whose narration evicts its own history is a
+# run that cannot be replayed - which is the failure the ring is bounded to
+# prevent in the first place.
+# --------------------------------------------------------------------------
+#: A completed model response, on the `utterance` frame. The whole point of the
+#: frame is that a run view can show what the agent SAID, so this is the one
+#: that has to be generous; `truncated: true` says when it was not enough.
+MAX_UTTERANCE_CHARS = 4096
+#: A tool's arguments, a tool's result, and a node's output, on the
+#: `input_preview` / `output_preview` keys. A preview, not the value: the value
+#: is in the run result and in `flow_states`.
+MAX_FRAME_PREVIEW_CHARS = 2048
+#: One failure's sentence on a `node_error` frame. Shorter than the other two
+#: because a traceback-shaped message is a thing to point at, not to read in a
+#: stream.
+MAX_NODE_ERROR_CHARS = 1024
+#: How long stream chunks for one `call_id` are gathered before one frame is
+#: emitted for them (decision 15, owner, 2026-09-04). The alternative was a
+#: bigger ring, which trades a known bound for an unknown one.
+STREAM_CHUNK_COALESCE_MS = 250
 
 # The result keys that ARE the deliverable, and so earn the bound above.
 # Everything else in a flow result stays on the frame limit, because the
@@ -1581,9 +2019,12 @@ RESERVED_RUN_INPUT_KEYS: frozenset[str] = frozenset(
 # refusing a registered third workflow's own public prompt - `brief` is a Brief
 # Crew result slot AND somebody else's legitimate prompt field. So the two
 # questions have two functions: the SCHEMA asks
-# `declared_reserved_run_input_keys`, which answers only the global keys for an
-# id it cannot resolve, and `create_run` asks `reserved_run_input_keys` for the
-# fail-closed union once it knows which single key is this workflow's prompt.
+# `declared_reserved_run_input_keys`, which answers the two built-ins' declared
+# names and only the global keys for EVERY other id - registered or invented,
+# because a registered graph has an owner and the schema layer runs before
+# ownership is checked (D-01-1) - and `create_run` asks
+# `reserved_run_input_keys` for the fail-closed union once it has resolved the
+# workflow, checked who may see it, and knows which single key is its prompt.
 # --------------------------------------------------------------------------
 
 # `id` is here rather than in the validator's list because it is not this
@@ -1611,6 +2052,12 @@ GLOBAL_RESERVED_RUN_INPUT_KEYS: frozenset[str] = frozenset(
 # which is its one public prompt. `run_id` is on the list for the same reason
 # the validator reserves `source_run_id`: it stamps attribution on indexed
 # cache evidence.
+#: The two workflows whose state names are DECLARED in this file, as opposed to
+#: registered into the dict below by a publish. `declared_reserved_run_input_keys`
+#: answers the dict only for these two - see its docstring for why the schema
+#: layer may never read a registered graph's entry.
+BUILT_IN_WORKFLOW_IDS: frozenset[str] = frozenset({"brief-flow", "idea-validator"})
+
 WORKFLOW_RESERVED_RUN_INPUT_KEYS: dict[str, frozenset[str]] = {
     "brief-flow": frozenset(
         {
@@ -1669,7 +2116,7 @@ def forget_workflow_reserved_run_input_keys(workflow_id: str) -> None:
     which is the single check standing between a request body and `no_gates`.
     """
 
-    if workflow_id in {"brief-flow", "idea-validator"}:
+    if workflow_id in BUILT_IN_WORKFLOW_IDS:
         raise ValueError(f"{workflow_id} is a built-in workflow and is not removable")
     WORKFLOW_RESERVED_RUN_INPUT_KEYS.pop(workflow_id, None)
 
@@ -1725,12 +2172,28 @@ def declared_reserved_run_input_keys(workflow_id: str | None) -> frozenset[str]:
     flow are refused here for every id, invented ones included - which is what
     keeps `no_gates` unsettable from a request body, and therefore keeps the
     403-versus-422 distinction in `create_run` meaningful.
+
+    **"Declared above" means the two literals, and NEVER an entry a publish
+    registered** (D-01-1, 2026-09-03). This function used to read the whole
+    dict, so for a PUBLISHED graph it answered that graph's own `__builder__`
+    and `out__<node>` names to anybody who named its id - and pydantic runs
+    before `create_run`'s rate limiter and its ownership 404. A stranger, or
+    nobody at all, could therefore post `{"inputs": {"idea": "p",
+    "out__scoper": "x"}}` and read off the 422-versus-404 whether the id
+    existed and what its nodes were called, unthrottled, for a graph the same
+    request with a clean body was told did not exist. That is the oracle
+    `graph.py::workflow_visible_to` says it must not become, one layer up.
+
+    So the schema layer consults a workflow's registered keys ONLY through
+    `create_run`, after the caller has been allowed to see that workflow; here
+    a registered id and an invented one get the same answer, which is the
+    global set. The two built-ins are public to everyone, so their declared
+    names leak nothing - and they are the only ids this function has ever been
+    entitled to call "declared".
     """
 
-    if workflow_id is not None:
-        declared = WORKFLOW_RESERVED_RUN_INPUT_KEYS.get(workflow_id)
-        if declared is not None:
-            return GLOBAL_RESERVED_RUN_INPUT_KEYS | declared
+    if workflow_id in BUILT_IN_WORKFLOW_IDS:
+        return GLOBAL_RESERVED_RUN_INPUT_KEYS | WORKFLOW_RESERVED_RUN_INPUT_KEYS[workflow_id]
     return GLOBAL_RESERVED_RUN_INPUT_KEYS
 
 
@@ -1862,6 +2325,59 @@ MAX_CYCLES = 3
 # and giving it a second, larger bound would be two numbers for one fact.
 MAX_CYCLE_ITERATIONS = 3
 
+# --------------------------------------------------------------------------
+# The ATTACHMENT family's own bounds - 03-node-library.md D2.
+#
+# None of the three is a money bound, and that is the whole reason they are
+# separate numbers rather than a share of the ones above. An attachment is not
+# a step: it never runs, never bills, never appears in a cycle and emits no
+# frame, so neither the frame-ring arithmetic behind MAX_GRAPH_NODES nor the
+# token model behind MAX_BILLABLE_NODES has anything to say about it. What each
+# of these bounds is a PROMPT and a DOCUMENT, and the honest thing to record is
+# which of the three rests on a measurement and which does not.
+# --------------------------------------------------------------------------
+
+# Attachment nodes on one canvas. 24 is MAX_GRAPH_NODES, the same ceiling
+# applied to the other family, on the argument that a document may hold as many
+# possessions as it holds steps. It is deliberately NOT derived from the frame
+# ring, because an attachment emits no frames - the reason MAX_GRAPH_NODES is
+# 24 does not transfer, and only the figure does.
+#
+# What actually bounds this in practice is the product below it:
+# MAX_ATTACHMENTS_PER_NODE x the billable nodes that can carry them. This is
+# the outer guard, so that a canvas full of unattached pills is refused by a
+# count rather than by MAX_BUILDER_DOCUMENT_BYTES, which would name a byte
+# figure no author can act on.
+MAX_ATTACHMENT_NODES = 24
+
+# Tools, MCP servers and skills hanging off ONE agent or crew.
+#
+# **This is the one figure here that nobody has measured**, and it is recorded
+# as 03-node-library.md's C2 declares it rather than dressed up as arithmetic.
+# What it bounds is the agent's system prompt: every attachment contributes a
+# tool schema or a skill preamble, and past some width the agent stops choosing
+# well - a claim about model behaviour that this repository has not tested.
+# 8 is the plan's number and the shipped validator's most-tooled agent binds 1,
+# so there is a great deal of headroom and no evidence about where it ends.
+#
+# It is treated the same way MAX_FANOUT_WIDTH is: left where the plan put it
+# until somebody measures a wide attachment set for real, rather than widened
+# or narrowed on judgement, which would be inventing a number.
+MAX_ATTACHMENTS_PER_NODE = 8
+
+# Agents inside one authored crew, along `member` edges.
+#
+# 6 is a measurement: it is the shipped six-agent validator's own crew count -
+# Scoper, Market, Sentiment, Feasibility, Synthesist, Reporter - which is
+# `grep -c '^@CrewBase' src/brief_crew/crews/validator_crew/validator_crew.py`.
+# No headroom multiplier is applied, and that is the difference from
+# MAX_BILLABLE_NODES: the counts above were widened by 1.7 because the
+# validator sat exactly on them and the gallery template could not gain a node,
+# where a crew's membership is not a shape an author grows into - a seventh
+# member is a different crew. The lower end is 1 rather than 0, because a crew
+# with no members compiles to a Crew with no tasks and returns nothing.
+MAX_CREW_MEMBERS = 6
+
 # Headroom over the static estimate, applied when the estimate is compared to
 # MAX_RUN_COST_USD. The estimate is a token model calibrated on ONE paid run;
 # 1.25 is the margin that stops a graph priced at the very edge of the ceiling
@@ -1980,6 +2496,18 @@ BUILDER_METHOD_IDENT_PATTERN = r"^n[0-9]{1,2}_[a-z0-9_]{1,40}$"
 BUILDER_EVENT_LABEL_PATTERN = r"^e[0-9]{1,2}_[a-z0-9_]{1,40}$"
 BUILDER_MAX_IDENT_BODY_CHARS = 40
 BUILDER_GATE_ROUTER_PREFIX = "route_"
+# The same trick a second time, for the second thing that needs a router it did
+# not draw. A billable node whose `on_error` is `route` compiles to TWO methods
+# - the step, and a paired deterministic router that reads `err__<node>` and
+# chooses the `out` or the `error` port - because only a `@router` can choose an
+# event, and a step that raised past its own listener would end the run instead
+# of taking the recovery path the author drew (09 D3).
+BUILDER_ERROR_ROUTER_PREFIX = "route_err_"
+# Where a step records the reason it failed, so its paired router can read it.
+# A separate namespace from `out__` deliberately: a failed node's OUTPUT is
+# still null, and folding the two would make "this node produced nothing" and
+# "this node exploded" the same state.
+BUILDER_STATE_ERROR_PREFIX = "err__"
 
 # The ONE expression shape a `with:` value may take besides a JSON literal.
 # Single-key by construction: only `${state.a_value}` was ever measured
@@ -2005,6 +2533,50 @@ BUILDER_MAX_GATE_MESSAGE_CHARS = 2000
 # research branches in this repo run at VALIDATOR_BRANCH_MAX_ITER = 2.
 BUILDER_MAX_AGENT_ITER = 8
 BUILDER_MAX_GUARDRAIL_RETRIES = 2
+
+# --------------------------------------------------------------------------
+# What an AUTHORED agent or crew may write - 03-node-library.md D3, FD5.
+#
+# A library node names a YAML agent and carries no prose; an authored one
+# carries its own role, goal, backstory and task text, so these four ceilings
+# exist for the first time here. They live in this file rather than as literals
+# in `builder/document.py` for the platform rule's reason - a runtime limit
+# inlined at its use site is a limit nobody can find - and each says what it is
+# derived from, because a bound with no derivation is a number somebody will
+# move on a whim.
+# --------------------------------------------------------------------------
+
+# One free-text prompt field: `role`, `goal`, `backstory`, or a task's
+# `description` / `expected_output`. 4000 is 03-node-library.md's C2
+# (`max_prompt_chars`), and it is twice BUILDER_MAX_GATE_MESSAGE_CHARS on the
+# argument that a gate message is one question to a human while a backstory is
+# the whole of what an agent knows about itself. It is a DOCUMENT bound and not
+# a token bound: what the prompt costs is priced by `builder/budget.py` and
+# capped by MAX_RUN_COST_USD, which is the layer that can measure money.
+BUILDER_MAX_PROMPT_CHARS = 4000
+
+# Whole-node retries - `retry.max_retries`, the builder's own loop inside
+# `run_agent`, and NOT CrewAI's deprecated `Task.max_retries`, which counts
+# guardrail retries and is a different concept sharing a name. 3 is
+# 03-node-library.md's C2 (`max_retries`), and it is the same figure as
+# MAX_CYCLE_ITERATIONS for the same reason: a retry multiplies a node's price
+# exactly the way a cycle does, so the two ceilings that multiply spend are
+# deliberately equal rather than independently chosen.
+BUILDER_MAX_NODE_RETRIES = 3
+
+# The pause between those retries. 60 s x BUILDER_MAX_NODE_RETRIES is three
+# minutes of a worker thread sleeping inside one node, which is well under
+# VALIDATOR_GATE_TIMEOUT_SECONDS - so a retrying node can never outlive the
+# gate an operator is waiting at, which is the one interaction that would be
+# invisible from either side.
+BUILDER_MAX_RETRY_BACKOFF_SECONDS = 60
+
+# `planning_config.max_steps`, one of the FOUR of its eleven fields the S9
+# deprecation ruling admits. 20 is CrewAI 1.15.18's own default for that field
+# (`crewai/agent/planning_config.py`), taken rather than invented: the package
+# owns what a planner does and this repository owns only whether an author may
+# raise it.
+BUILDER_MAX_PLANNING_STEPS = 20
 
 # The three registered research tools an `agent` node may bind, by the name
 # each tool declares. Restated here because `tools/` imports this module and
@@ -2055,6 +2627,13 @@ BUILDER_ACTION_REFS: frozenset[str] = frozenset(
         "brief_crew.builder.runtime:transform",
         "brief_crew.builder.runtime:rejoin",
         "brief_crew.builder.runtime:emit_output",
+        # The ELEVENTH, added by 09 D7. A derived replay plan compiles every
+        # node upstream of a resume or a node test to this ref instead of to
+        # the entrypoint that would have billed, so the downstream listeners
+        # fire exactly as they would after a real run and nothing calls a
+        # model. It widens what the entrypoints ACCEPT and not what the set is
+        # for: `node_id` and a `source` word, both values, neither a name.
+        "brief_crew.builder.runtime:replay_output",
     }
 )
 
@@ -2186,6 +2765,89 @@ CORS_ALLOW_ORIGINS: tuple[str, ...] = _parse_cors_allow_origins(
     os.getenv("CORS_ALLOW_ORIGINS", "")
 )
 
+
+#: The close code `/ws` answers a handshake from an origin it will not serve.
+#: In the 4000-4999 application range like the four already in `service/app.py`
+#: (4400 malformed, 4401 unauthorized, 4403 session mismatch, 4404 not found),
+#: and deliberately its own number rather than reusing 4403: "your session id
+#: does not match this run" and "this page may not open this socket" are
+#: different repairs.
+WS_ORIGIN_REFUSED_CLOSE_CODE = 4406
+
+
+def websocket_origin_allowed(
+    origin: str | None,
+    *,
+    host: str | None,
+    allowed: Iterable[str] | None = None,
+) -> bool:
+    """May a handshake carrying this `Origin` be served? (CLAUDE.md item 13.)
+
+    CORS does not reach a WebSocket: a browser sends no preflight for one and
+    Starlette's `CORSMiddleware` passes every non-HTTP scope straight through,
+    so until 2026-09-04 any page anywhere could open `/ws` and stream any run
+    whose `run_id` and `session_id` it could name - and an UNOWNED run, which
+    is every run on an auth-off checkout and every run in `SYNTHETIC` mode,
+    has no second gate behind that. This is the check that was missing (D-01-7).
+
+    Three rules, in the order they are asked:
+
+    * **No `Origin` header at all is allowed.** A browser always sends one on a
+      handshake, even same-origin, so its absence means the caller is not a
+      page: a Python client, `websocat`, a server-side relay, the probe
+      CLAUDE.md documents. Refusing those would break every non-browser
+      consumer to defend against a threat none of them is, and it buys nothing
+      - anything that can omit a header can forge one.
+    * **An origin on `CORS_ALLOW_ORIGINS` is allowed**, `*` included. This is
+      the same list, deliberately: an operator who has already named the
+      console's origin for the HTTP API has named the origin of the page that
+      opens this socket, and a second knob would be a second thing to get
+      wrong.
+    * **A SAME-origin handshake is allowed whatever the list says**, because a
+      same-origin request is not what a cross-origin list governs. This is what
+      keeps the empty default - "no cross-origin access configured" - from
+      meaning "no console at all": local development and the E2E harness reach
+      this service through a Vite proxy that forwards the page's own `Host`, so
+      `Origin` and `Host` agree and the socket opens with no configuration.
+      Production does not benefit: the SPA is a separate origin there, which is
+      exactly why `render.yaml` sets `CORS_ALLOW_ORIGINS`.
+
+    Compared on host and port, not scheme, because `Host` carries no scheme and
+    the proxy in front of a deployment is where the TLS ends. `Origin: null` -
+    a sandboxed iframe, a `file://` page, some redirect chains - matches
+    nothing and is refused, which is the answer it should get.
+
+    `allowed` exists so the caller can pass the list it CAPTURED at
+    construction, which is what `CORSMiddleware` does with the same value. Read
+    live, this predicate and the HTTP middleware would disagree in exactly the
+    configuration a test sets up - and did, on the first run of the new tests.
+    """
+
+    origins = (
+        CORS_ALLOW_ORIGINS if allowed is None else tuple(allowed)
+    )
+    if origin is None:
+        return True
+    candidate = origin.strip()
+    if not candidate or candidate.lower() == "null":
+        return False
+    if CORS_WILDCARD in origins:
+        return True
+    try:
+        normalised = _normalise_cors_origin(candidate)
+    except ValueError:
+        # Not an origin at all. Nothing on the list can equal it and it cannot
+        # be compared with a Host, so there is no reading under which it is
+        # allowed.
+        return False
+    if normalised in origins:
+        return True
+    if not host:
+        return False
+    parts = urlsplit(normalised)
+    origin_authority = parts.netloc.lower()
+    return origin_authority == host.strip().lower()
+
 # Deliberately a constant and NOT an env var. Access-Control-Allow-Credentials
 # is what makes "*" dangerous, because it turns every page on the internet into
 # an authenticated caller. This service has no ambient credential to abuse: no
@@ -2293,6 +2955,155 @@ AUTH_JWT_LEEWAY_SECONDS = _env_positive_int("AUTH_JWT_LEEWAY_SECONDS", 60)
 AUTH_JWT_ALGORITHMS = ("EdDSA",)
 
 # --------------------------------------------------------------------------
+# The credential vault - contract C4, .agent/plans/01-auth-and-workspaces.md
+#
+# CREDENTIALS_MASTER_KEY is base64 of 32 bytes. It is read HERE and nowhere
+# else, through os.getenv like every other knob, so the section 6 scan in
+# docs/tech-stack.md finds it. The boot check that refuses to start with auth
+# on and no key lives in service/app.py beside the auth checks (01 D3), and
+# is the same shape as the VALIDATOR_REQUIRE_AUTH rule above: configuring the
+# vault half-way is the loud failure, not the quiet one. Empty with auth OFF
+# means "no vault" - the credential routes answer 503 and nothing else
+# changes, so tests, SYNTHETIC mode and a bare checkout keep working.
+# --------------------------------------------------------------------------
+CREDENTIALS_MASTER_KEY = os.getenv("CREDENTIALS_MASTER_KEY", "").strip()
+
+# One credential is one encrypted JSON object of its fields. 4 KiB is a
+# PostgreSQL DSN with room to spare and refuses a pasted PEM by an order of
+# magnitude; the POST answers 413 over it.
+MAX_CREDENTIAL_BYTES = 4096
+
+# `cr_` + 8 hex, minted like `ug_` document ids (BUILDER_DOCUMENT_ID_PATTERN).
+# The Integrator's S1 ruling: 15 D6 wrote `cred_` + 16 hex and 01 C4 wrote
+# this; C4 owns the id shape, and every consumer - the document field, the
+# export strip, the store - reads the pattern from here rather than restating
+# it. The column is String(128) regardless, like every other id.
+CREDENTIAL_ID_PATTERN = r"^cr_[0-9a-f]{8}$"
+
+# The kinds 01 D4 tables, and the fields the vault requires for each. A POST
+# naming a kind outside this set, or missing one of its fields, is a 422 with
+# the field named. `e2b` is listed so a row can exist; nothing constructs from
+# it in v1 (PLANS.md decision 3).
+CREDENTIAL_FIELDS: dict[str, tuple[str, ...]] = {
+    "openrouter": ("api_key",),
+    "firecrawl": ("api_key",),
+    "serper": ("api_key",),
+    "tavily": ("api_key",),
+    "exa": ("api_key",),
+    "brave": ("api_key",),
+    "github": ("token",),
+    "postgres": ("dsn",),
+    # `header_value`, not `value` (D-01-6, 2026-09-04). This pair is the one
+    # place in the vault where the SECRET field was called something the
+    # redaction list passes through: `events/redaction.py` matches key NAMES,
+    # and `value` is a name it cannot take. Measured, by putting `value` on
+    # that list and running the suite: six tests red across four modules,
+    # three of them the GATE surface, because every gate `derived` entry is
+    # `{"key": name, "value": ..., "kind": ...}` and the read-only panel went
+    # to `***`. `value` is also the router branch's compare operand, the
+    # transform's `args.value` and the output node's body - a global entry for
+    # it redacts a compiled graph's own logic in the persisted state.
+    #
+    # So the FIELD moved instead of the list: `header_value` normalises to
+    # `headervalue`, which is an exact entry in `SECRET_KEYS`, and the header's
+    # `name` stays readable because a header name is not a secret.
+    "http_header": ("name", "header_value"),
+    "mcp_header": ("name", "header_value"),
+    "e2b": ("api_key",),
+}
+CREDENTIAL_KINDS: frozenset[str] = frozenset(CREDENTIAL_FIELDS)
+
+#: The vault field names that are LABELS rather than credentials, declared
+#: here so the redaction pin can be derived instead of restated.
+#:
+#: `tests/service/test_secret_redaction.py` asserts that every name in
+#: `CREDENTIAL_FIELDS` is secret unless it is here, which makes a new kind's
+#: secret field a failing test the day the kind exists. Until 2026-09-04 that
+#: exclusion lived in a `HEADER_PAIR` constant inside the test file itself -
+#: a test asserting the opposite of the criterion it belongs to, with nothing
+#: in the product saying so (D-01-10). A field is public because the product
+#: says it is public, and this is where the product says it.
+CREDENTIAL_PUBLIC_FIELDS: frozenset[str] = frozenset({"name"})
+_unknown_public = CREDENTIAL_PUBLIC_FIELDS.difference(
+    field for fields in CREDENTIAL_FIELDS.values() for field in fields
+)
+if _unknown_public:
+    raise RuntimeError(
+        "CREDENTIAL_PUBLIC_FIELDS names fields no credential kind has: "
+        f"{sorted(_unknown_public)}"
+    )
+del _unknown_public
+
+# The vault's route-level constants (01 D3, D4), moved here at Stage 1
+# integration from service/credentials.py under S1 ruling 3. That module
+# re-exports them under the same names.
+#: What every credential route answers (503) while auth is OFF and no master
+#: key is set: "no vault", and nothing else about the service changes.
+VAULT_NOT_CONFIGURED_DETAIL = "credential vault is not configured"
+#: A probe is a user-initiated call to the provider's cheapest authenticated
+#: read, and it is rate-limited with the run limiter's key. Five seconds is
+#: the same budget 01 D4 gives the postgres `SELECT 1`.
+CREDENTIAL_PROBE_TIMEOUT_SECONDS = 5.0
+#: The two free authenticated reads 01 D4 names. Firecrawl has none, so its
+#: probe is a format check that says so.
+OPENROUTER_KEY_PROBE_URL = "https://openrouter.ai/api/v1/auth/key"
+GITHUB_RATE_LIMIT_PROBE_URL = "https://api.github.com/rate_limit"
+#: `user_credentials.label` is String(80) (15 D6, C10); the POST answers 422
+#: over it rather than letting the database truncate or refuse.
+MAX_CREDENTIAL_LABEL_CHARS = 80
+#: The kind an authored agent's `credential_id` must name. The agent's model
+#: is always OpenRouter here (S1 ruling 8: `credential_id` on AgentConfig is
+#: the stand-in for C1 v2's `llm.credential_id`), so a `github` token on an
+#: agent node is refused by name at resolution rather than failing inside
+#: `LLM(api_key=...)` after the run has started.
+AGENT_CREDENTIAL_KIND = "openrouter"
+if AGENT_CREDENTIAL_KIND not in CREDENTIAL_KINDS:
+    raise RuntimeError(
+        f"AGENT_CREDENTIAL_KIND {AGENT_CREDENTIAL_KIND!r} is not one of CREDENTIAL_KINDS"
+    )
+
+# The synthetic identity (01 D8): the header a zero-cost test sets to BE
+# somebody. `current_user` honours it only when the app was built
+# `synthetic=True` AND AUTH_BASE_URL is unset - the same fail-closed shape as
+# EXPOSE_API_DOCS - and ignores it everywhere else. The pattern is also the
+# bound the E2E harness checks a cookie against before forwarding it
+# (frontend/e2e/syntheticUser.ts), so the two must move together.
+SYNTHETIC_USER_HEADER = "X-Synthetic-User"
+SYNTHETIC_USER_PATTERN = r"^[a-z0-9_-]{1,64}$"
+
+# Two document-lifecycle constants (15 D3, S1 ruling 7), moved here from
+# service/builder_api.py under S1 ruling 3.
+#: What a duplicate is called. Appended, and the base is trimmed to make room
+#: rather than the suffix dropped, because a copy that cannot be told from its
+#: source in the sidebar is the one thing a duplicate must not be.
+COPY_SUFFIX = " copy"
+#: What an import is called when the caller already has a document by the
+#: file's name (round 2, D-15-4). Applied only on a collision: a colleague's
+#: file imported into an empty library keeps its own name, and the author's
+#: own export imported back reads "<name> imported" - then "<name> imported 2"
+#: - rather than a second row identical to the first down to the letter.
+IMPORT_SUFFIX = " imported"
+#: How many `needs_credentials` entries an import envelope may name. A node id
+#: per graph node is the most a strip can produce; anything beyond that is a
+#: file that was not written by an export. The server re-derives the list
+#: anyway; this only bounds what it is willing to parse.
+MAX_IMPORT_NEEDS_CREDENTIALS = MAX_GRAPH_NODES
+
+# How a stored version came to be, for the version browser (round 2, D-15-3).
+#: What a CLIENT may declare on a save. The server composes the stored string
+#: from it - `saved`, `autosaved`, `restored from v3` - and writes `created`,
+#: `imported` and `duplicated` itself on the routes that mint a row. Round 1
+#: found two rows that read "3 Sept, 00:19 · DRAFT" apart from 0.2 KB, so
+#: choosing which to restore was guesswork; the source is one of the three
+#: facts that tell them apart, beside the name-and-node-count label and a
+#: relative time with seconds.
+BUILDER_VERSION_SAVE_SOURCES: tuple[str, ...] = ("save", "autosave", "restore")
+#: `builder_document_versions.source` is VARCHAR(64), added through
+#: `persistence._ADDITIVE_COLUMNS` because that table shipped before it
+#: (plan 15 D6, C10, amended 2026-09-03). NULL on older rows reads as `stored`.
+BUILDER_VERSION_SOURCE_MAX_CHARS = 64
+
+# --------------------------------------------------------------------------
 # WebSocket inbound control channel - PRD F27/F37
 #
 # The socket now carries operator commands (gate replies), not just the
@@ -2397,6 +3208,23 @@ VALIDATOR_ORPHAN_RUN_GRACE_SECONDS = _env_positive_int(
 VALIDATOR_ORPHAN_RUN_RECOVERY = _env_flag("VALIDATOR_ORPHAN_RUN_RECOVERY", True)
 
 # --------------------------------------------------------------------------
+# Durable run retention - .agent/plans/15-persistence.md D7
+#
+# The in-memory eviction above (VALIDATOR_RUN_RETENTION_SECONDS) never touched
+# a row, so terminal runs, their frames, metrics and gates accumulated forever
+# (CLAUDE.md closed item 32). This is the durable half: terminal runs older
+# than this many DAYS are deleted by the same periodic sweep the orphan
+# recovery uses, and `run_frames` / `run_node_metrics` / `run_gates` follow by
+# ON DELETE CASCADE. Documents, versions, credentials, skills and tools are
+# never purged by it.
+#
+# 0 means keep everything, which is the deployed behaviour today and stays the
+# default until PLANS.md decision 23 is answered. `minimum=0` because zero is
+# the meaningful "off" value here, not a mistake.
+# --------------------------------------------------------------------------
+VALIDATOR_RUN_RETENTION_DAYS = _env_positive_int("VALIDATOR_RUN_RETENTION_DAYS", 0, minimum=0)
+
+# --------------------------------------------------------------------------
 # Fan-out execution mode - PRD F04 and risk R-3
 #
 # R-3's escape hatch: if the measured speedup misses
@@ -2414,3 +3242,242 @@ VALIDATOR_SEQUENTIAL_BRANCHES = os.getenv(
     "VALIDATOR_SEQUENTIAL_BRANCHES", "false"
 ).strip().lower() in {"1", "true", "yes", "on"}
 VALIDATOR_BRANCH_TURN_TIMEOUT_SECONDS = 900.0
+
+
+# --------------------------------------------------------------------------
+# Plan 06 - the tool registry
+#
+# "Tools = hands." A `tool` attachment node names a CATALOGUE ID and nothing
+# else: the server maps that id to a factory, exactly as BUILDER_ACTION_REFS
+# maps a compiled `do.ref` to one of ten entrypoints. No module path, no class
+# name and no callable reaches a document, which is the same closed-set answer
+# to code execution the compiler already gives.
+#
+# The catalogue itself lives in `builder/tools.py` - a tuple of entries with a
+# factory each - because an entry carries a param schema and a class reference,
+# neither of which belongs in a constants module. What lives here is what the
+# platform rule says lives here: the bounds and the flags.
+# --------------------------------------------------------------------------
+#: `research`, `web`, `data`, `custom` - the four headings the palette groups
+#: catalogue tiles under. Declared here so the vocabulary can serve the order
+#: and the client never holds a copy (cut-list 17: no client fallback list).
+BUILDER_TOOL_CATEGORIES: tuple[str, ...] = ("research", "web", "data", "custom")
+
+#: `ToolFailurePolicy` (`crewai/tools/tool_failure.py`) as this product spells
+#: it. `warn` is CrewAI's own default and stays this product's; `raise` is the
+#: setting that makes plan 12's error edge fire on a tool failure, because only
+#: a raised `ToolExecutionFailedError` leaves the step.
+BUILDER_TOOL_FAILURE_POLICIES: tuple[str, ...] = ("ignore", "warn", "raise")
+BUILDER_DEFAULT_TOOL_FAILURE_POLICY = "warn"
+
+#: A user's declarative HTTP tool. `ut_` + 12 hex, minted the way `cr_` + 8 hex
+#: is (CREDENTIAL_ID_PATTERN) - and deliberately inside BUILDER_ID_PATTERN's
+#: own shape, because `ToolConfig.tool_id` is a `NodeId` and a document that
+#: could not spell its own tool's id would be a catalogue nobody can reference.
+CUSTOM_TOOL_ID_PATTERN = r"^ut_[0-9a-f]{12}$"
+#: The tool NAME an agent sees in its prompt. The same shape as a node id, and
+#: bounded at 40 for the same reason: it is interpolated into a tool list.
+CUSTOM_TOOL_NAME_PATTERN = r"^[a-z][a-z0-9_]{0,39}$"
+#: 16 rows per user against MAX_ATTACHMENTS_PER_NODE = 8: two full agents' worth
+#: of bespoke tools, which is past the point where a second graph is the better
+#: answer. The POST answers 422 over it.
+MAX_CUSTOM_TOOLS_PER_USER = 16
+#: One typed argument per property. 12 is MAX_RUN_INPUT_KEYS (16) minus room for
+#: the envelope keys the tool adds; past a dozen arguments a cheap-tier model
+#: stops filling the schema reliably, which is a tool that fails silently.
+MAX_CUSTOM_TOOL_PROPERTIES = 12
+#: Same ceiling as `user_tools.description` (String(1024), 15 C10).
+MAX_CUSTOM_TOOL_DESCRIPTION_CHARS = 1024
+#: The request template's own bounds. 30 s is `URLReadTool`'s own ceiling; 1 MiB
+#: is the body a tool result may return before it is refused, an order of
+#: magnitude under MAX_RUN_RESULT_BODY_CHARS so a single tool call can never be
+#: the thing that loses a run row at write time.
+CUSTOM_TOOL_MAX_TIMEOUT_SECONDS = 30
+CUSTOM_TOOL_MAX_RESPONSE_BYTES = 1048576
+#: The methods a request template may name. No PUT and no DELETE: a tool an
+#: author drew on a canvas should not be able to destroy anything, and the two
+#: that remain cover every read and every "ask the API a question" shape.
+CUSTOM_TOOL_METHODS: tuple[str, ...] = ("GET", "POST")
+
+# PLANS.md decision 3 - PROVISIONAL, owner to confirm. The code interpreter is
+# BYO E2B key behind this flag and the flag is OFF. Two independent reasons,
+# and the second arrived after the decision was taken: it runs somebody else's
+# code on a paid third-party sandbox, AND CrewAI's own `Agent.allow_code_execution`
+# / `code_execution_mode` are `Field(deprecated=True)` at 1.15.18, so the native
+# path is going away regardless of what is decided here.
+BUILDER_CODE_INTERPRETER_ENABLED = _env_flag("BUILDER_CODE_INTERPRETER_ENABLED", False)
+#: E2B's own ceiling for one sandbox, passed as `sandbox_timeout`. Named here so
+#: the entry exists and is priced the day the flag is turned on.
+E2B_SANDBOX_TIMEOUT_SECONDS = 300
+
+# PLANS.md decision 9 - PROVISIONAL, owner to confirm. The per-user override and
+# the daily cap are BUILT; the platform key backing every user's research is
+# OFF. With it off, `research_market_landscape` and the three Firecrawl entries
+# require the author's own `firecrawl` credential and say so on the card.
+BUILDER_PLATFORM_FIRECRAWL_DEFAULT = _env_flag("BUILDER_PLATFORM_FIRECRAWL_DEFAULT", False)
+#: Calls per user per UTC day against the platform key, counted only when the
+#: flag above is on and the author supplied no credential of their own. 50 is
+#: two full idea-validator runs worth of market research with room over.
+BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP = _env_positive_int(
+    "BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP", 50
+)
+
+
+# --------------------------------------------------------------------------
+# Plan 07 - the MCP client
+#
+# A bare string in `Agent.mcps` is a CrewAI AMP marketplace lookup unless it
+# starts with `https://` (`crewai/mcp/tool_resolver.py`), so user input is NEVER
+# passed as a string here: the runtime always builds an `MCPServerHTTP`,
+# `MCPServerSSE` or `MCPServerStdio`. Everything below bounds what may go into
+# one of those, and what a server is allowed to say back.
+# --------------------------------------------------------------------------
+#: `ms_` + 12 hex, inside BUILDER_ID_PATTERN's shape for the same reason
+#: CUSTOM_TOOL_ID_PATTERN is: `McpConfig.server_id` is a `NodeId`.
+MCP_SERVER_ID_PATTERN = r"^ms_[0-9a-f]{12}$"
+#: The three transports `crewai/mcp/config.py` models. Order is the order the
+#: panel offers them: remote first, because remote is what production allows.
+MCP_TRANSPORTS: tuple[str, ...] = ("http", "sse", "stdio")
+#: A discovery is one connect, one tool listing and a cleanup. 20 s is generous
+#: for a healthy server and short enough that the FastAPI threadpool slot it
+#: occupies is not a denial of service; the route answers 200 `status: error`
+#: over it rather than 504, because the author needs the sentence in the panel.
+MCP_DISCOVERY_TIMEOUT_SECONDS = 20
+#: A day. Past it the panel offers "re-discover" rather than silently serving a
+#: stale tool list, because a server that renamed a tool between discovery and
+#: run simply fails to match `tool_filter` and the agent runs without it.
+MCP_DISCOVERY_STALE_SECONDS = 86400
+#: A tool name reaches the agent's tool list, which is a prompt. Sanitised to
+#: non-alphanumerics as underscores and truncated here.
+MCP_TOOL_NAME_MAX_CHARS = 128
+#: A tool description reaches the same prompt, and is the injection surface
+#: Flowise's `core.ts` treats it as. 1024 matches SkillFrontmatter.description's
+#: own ceiling, so the two untrusted-text bounds in this product agree.
+MCP_TOOL_DESCRIPTION_MAX_CHARS = 1024
+#: 64 tools is past the point where a cheap-tier model can choose between them;
+#: discovery stores the first 64 and says which server overflowed.
+MCP_MAX_TOOLS_PER_SERVER = 64
+#: 16 servers per user, matching MAX_CUSTOM_TOOLS_PER_USER for the same reason.
+MCP_MAX_SERVERS_PER_USER = 16
+
+# PLANS.md decision 7 - PROVISIONAL, owner to confirm. Production is remote-only
+# and stdio is behind this flag, which is OFF. An arbitrary stdio command would
+# let an author's document name a process to run on the server, which is the one
+# thing BUILDER_ACTION_REFS' closed set exists to prevent. With the flag off
+# every stdio server is refused at create, whatever MCP_ALLOWED_COMMANDS says.
+MCP_STDIO_ENABLED = _env_flag("MCP_STDIO_ENABLED", False)
+#: The allow-list a stdio command must be on even once the flag is lifted.
+#: EMPTY by default, so the flag alone opens nothing. Flowise arrived at the
+#: same shape (`CUSTOM_MCP_ALLOWED_COMMANDS`); a local developer may set
+#: `npx,uvx`, and `render.yaml` sets neither this nor the flag.
+MCP_ALLOWED_COMMANDS: tuple[str, ...] = tuple(
+    part.strip()
+    for part in os.getenv("MCP_ALLOWED_COMMANDS", "").split(",")
+    if part.strip()
+)
+#: The environment keys a stdio server may be handed. Empty by default; a key
+#: outside this set is refused rather than dropped, so an author is told.
+MCP_ALLOWED_ENV_VARS: tuple[str, ...] = tuple(
+    part.strip()
+    for part in os.getenv("MCP_ALLOWED_ENV_VARS", "").split(",")
+    if part.strip()
+)
+#: `https://` is required of every remote server. This flag admits
+#: `http://127.0.0.1` and `http://localhost` for local development and for the
+#: E2E loopback fixture, and nothing else - the SSRF rule still refuses every
+#: other private, loopback and link-local address.
+MCP_ALLOW_INSECURE_LOCAL = _env_flag("MCP_ALLOW_INSECURE_LOCAL", False)
+
+#: The thirteen patterns a discovered tool description is tested against, from
+#: Flowise's `MCP/core.ts` sanitiser. A match marks the tool `suspicious` and
+#: names the pattern; it does NOT hide the tool (PLANS.md decision 8), because
+#: "act as" is ordinary English and a picker that quietly drops rows is the
+#: quietly-divergent double this repository keeps warning about.
+MCP_INJECTION_PATTERNS: tuple[str, ...] = (
+    r"\bYOU\s+MUST\b",
+    r"ignore\s+(previous|all|above|prior)\s+instructions?",
+    r"disregard",
+    r"system\s*prompt",
+    r"new\s+instructions",
+    r"act\s+as",
+    r"you\s+are\s+now",
+    r"override",
+    r"jailbreak",
+    r"\bDAN\b",
+    r"do\s+anything\s+now",
+    r"pretend",
+    r"roleplay",
+)
+
+
+# --------------------------------------------------------------------------
+# Plan 08 - skills
+#
+# "Skills = knowledge." CrewAI implements the whole mechanism natively - a
+# SKILL.md's frontmatter loads at run start and its body loads only when the
+# agent activates it - so this product's job is to store a pack, materialise it
+# and hand `Agent(skills=[Path, ...])` a PATH. Never a `str`: a bare string in
+# `Agent.skills` is an AMP registry lookup, the same trap as `mcps`.
+# --------------------------------------------------------------------------
+#: `sk_` + 12 hex, inside BUILDER_ID_PATTERN's shape: `SkillConfig.skill_id` is
+#: a `NodeId`.
+SKILL_ID_PATTERN = r"^sk_[0-9a-f]{12}$"
+#: Where packs live. `builtin/<name>/SKILL.md` is committed and this
+#: repository's; `users/<user_id>/<name>/SKILL.md` is a user's own and is
+#: git-ignored. Env-overridable so a deployment can point it at a mounted disk.
+SKILLS_ROOT = os.getenv("SKILLS_ROOT", "data/skills").strip() or "data/skills"
+#: 64 KiB, and the figure is not a guess: it is exactly
+#: `persistence.MAX_STRING_LENGTH`, whose `_sanitize_json` RAISES rather than
+#: truncates. A larger cap would lose the whole row at write time - the same
+#: trap MAX_RUN_RESULT_BODY_CHARS records from the other side.
+MAX_SKILL_BYTES = 65536
+#: 32 packs per user: this is a STORE bound, not an attach bound -
+#: MAX_ATTACHMENTS_PER_NODE (8) is what bounds one agent's context.
+MAX_SKILLS_PER_USER = 32
+#: A zip import holding one SKILL.md. 256 KiB is four times MAX_SKILL_BYTES,
+#: which leaves room for the archive's own overhead and refuses a zip bomb by
+#: refusing the compressed size before anything is expanded.
+MAX_SKILL_IMPORT_BYTES = 262144
+#: The four packs this repository owns, distilled from prompts it already owns
+#: (`crews/validator_crew/config/tasks.yaml` and the ratified rubric). Seeded
+#: for every user so a fresh account's palette is not empty.
+#:
+#: They ship with NO licence header. PLANS.md decision 11 asks which header, and
+#: it is NOT ANSWERABLE: this repository has no LICENSE file, which for a public
+#: repo means all rights reserved (CLAUDE.md remaining-work item 17). Inventing
+#: one would be inventing provenance. The dependency is recorded and the field
+#: is left unset - `SkillFrontmatter.license` is optional.
+BUILTIN_SKILL_NAMES: tuple[str, ...] = (
+    "market-research-method",
+    "hn-signal-reading",
+    "evidence-citation",
+    "report-writing",
+)
+
+
+# ---------------------------------------------------------------------------
+# The docked test panel's saved inputs - .agent/plans/13-flow-testing.md D3,
+# contract C10's `builder_test_inputs`.
+#
+# An author's own row: the one input field this graph reads, plus the per-node
+# `out__*` values a single-node test replays into the node above it. The table
+# shipped with plan 15 and its read query with plan 10; these are the bounds
+# the CRUD needed and had nowhere to be.
+# ---------------------------------------------------------------------------
+
+#: A saved test input's id. `ti_` + 12 hex, the shape `ut_` and `mcp_` already
+#: use, so one regex family covers every row a builder author owns.
+TEST_INPUT_ID_PATTERN = r"^ti_[0-9a-f]{12}$"
+#: The label column is String(80) (15 D6); restated here because the refusal has
+#: to happen before the INSERT, where a dialect that truncates silently would
+#: otherwise decide it.
+MAX_TEST_INPUT_LABEL_CHARS = 80
+#: 12 saved inputs per document. Past a dozen the panel's picker is a list to
+#: search rather than a set to choose from, and the honest answer at that point
+#: is a second document. The POST answers 422 over it.
+MAX_TEST_INPUTS_PER_DOCUMENT = 12
+#: `node_mocks` is one `out__*` value per node, and a node's output is prose an
+#: agent wrote. Bounded at the same 64 KiB as MAX_RUN_RESULT_BODY_CHARS, for the
+#: same reason: `_sanitize_json` RAISES over MAX_STRING_LENGTH rather than
+#: truncating, so a larger bound here loses the whole row at write time.
+MAX_TEST_INPUT_MOCK_BYTES = 65536

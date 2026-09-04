@@ -68,6 +68,19 @@ function callDuration(startedAt: number, durationMs?: number): string {
       <ChevronLeft v-else :size="17" aria-hidden="true" />
     </button>
 
+    <!--
+      The dialogue rail, mounted HERE rather than under the canvas.
+      
+      It was a fifth row of `.graph-workspace` first, and the measurement is why
+      it is not: opening on the first utterance took the Vue Flow container from
+      626px to 462px, mid-run, on the exact canvas the gauntlet's captures are
+      taken of. A surface whose job is narrating a run must not shrink the run.
+      In this column it costs the canvas nothing, it collapses with the rail it
+      shares, and it is beside the trace it divides the frames with rather than
+      across the page from it.
+    -->
+    <div v-show="!collapsed" class="rail-slot"><slot name="above" /></div>
+
     <div
       v-show="!collapsed"
       ref="list"
@@ -164,6 +177,10 @@ function callDuration(startedAt: number, durationMs?: number): string {
   border-left: 0;
   border-radius: 0 var(--r-lg) var(--r-lg) 0;
 }
+
+/* Sized to its content and never flexed, so the trace below keeps every pixel
+   the dialogue does not need. */
+.rail-slot { flex: 0 0 auto; }
 
 .rail-list {
   min-height: 0;

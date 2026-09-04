@@ -217,14 +217,28 @@ def _restore(
 
     document_id = getattr(stored, "id", "<unknown>")
     try:
-        workflow = build_builder_workflow(stored.document)
+        # The owner comes back with the row (plan 01 D1), so a restart cannot
+        # turn somebody's graph into everybody's. No credential check: a boot
+        # has no identity, and a credential deleted since publish is the
+        # run-time `credential-not-yours`, not a reason to stop booting.
+        workflow = build_builder_workflow(
+            stored.document, user_id=getattr(stored, "user_id", None)
+        )
     except BuilderCompileError as exc:
+        # The compiler's own sentence, plus the problem CODES. The sentence is
+        # what an operator reads and the codes are what an operator greps: the
+        # commonest reason a published graph stops compiling is that the world
+        # moved under it - a model retired from the roster, a bound lowered -
+        # and `model-unknown` in a log line is the difference between "some
+        # graph broke" and "these three name a model we withdrew".
+        codes = ", ".join(sorted({problem.code for problem in exc.problems}))
+        reason = f"{exc} [{codes}]" if codes else str(exc)
         logger.warning(
             "builder graph %s no longer compiles and was not re-registered: %s",
             document_id,
-            exc,
+            reason,
         )
-        return _Outcome(skipped=((document_id, str(exc)),))
+        return _Outcome(skipped=((document_id, reason),))
     except Exception as exc:  # pragma: no cover - defence, not a known path
         logger.exception("builder graph %s could not be compiled at startup", document_id)
         return _Outcome(skipped=((document_id, str(exc)),))

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertTriangle, Archive, Check, CloudOff, PenLine, RefreshCw } from 'lucide-vue-next'
+import { AlertTriangle, Archive, Check, CloudOff, Eye, PenLine, RefreshCw } from 'lucide-vue-next'
 import type { SaveState } from '../../composables/useBuilderPersistence'
 
 /**
@@ -35,6 +35,16 @@ const props = defineProps<{
   error?: string
   /** True when the local draft was too big to keep. §5.6 forbids dropping it silently. */
   draftDropped?: boolean
+  /**
+   * True while a stored version that is not head is on the canvas.
+   *
+   * Round 2, D-15-1: the chip used to read `saved · v1` in the same mint as
+   * `saved · v2`, so the one line an author reads first said the read-only
+   * version was an editable one. The chip now says what the canvas IS - a
+   * view of v1, read-only - in the same amber the restore banner uses, because
+   * "read-only" is a mode and the bar is where a mode is announced.
+   */
+  viewing?: boolean
 }>()
 
 /**
@@ -49,6 +59,7 @@ const saveKey = computed(() =>
 )
 
 const text = computed(() => {
+  if (props.viewing) return `viewing v${props.version} of v${props.headVersion} · read-only`
   switch (props.state) {
     case 'saving':
       return 'saving…'
@@ -66,9 +77,10 @@ const text = computed(() => {
 </script>
 
 <template>
-  <div class="save-chip" :class="`is-${state}`">
+  <div class="save-chip" :class="[`is-${state}`, { 'is-viewing': viewing }]">
     <span class="save-chip-line" role="status" data-testid="save-chip">
-      <Check v-if="state === 'clean'" :size="13" aria-hidden="true" />
+      <Eye v-if="viewing" :size="13" aria-hidden="true" />
+      <Check v-else-if="state === 'clean'" :size="13" aria-hidden="true" />
       <RefreshCw v-else-if="state === 'saving'" :size="13" class="is-spinning" aria-hidden="true" />
       <PenLine v-else-if="state === 'dirty'" :size="13" aria-hidden="true" />
       <AlertTriangle v-else-if="state === 'conflict'" :size="13" aria-hidden="true" />
@@ -98,6 +110,9 @@ const text = computed(() => {
 .is-offline .save-chip-line { color: var(--err-text); }
 /* Always amber, whatever the save state is doing above it. */
 .save-chip-line.is-dropped { color: var(--warn-text); }
+/* Read-only outranks the save state: the canvas shows a stored version, and
+   whether that version is "clean" is not the fact an author needs. */
+.is-viewing .save-chip-line { color: var(--warn-text); }
 
 .is-spinning { animation: save-chip-spin 1.1s linear infinite; }
 @keyframes save-chip-spin { to { transform: rotate(360deg); } }

@@ -68,6 +68,27 @@ function canvas(page: Page): Locator {
   return page.locator('.validator-flow')
 }
 
+/**
+ * Wait until no handoff token is walking, then capture.
+ *
+ * MASKING A MOVING ELEMENT DOES NOT WORK, and the measurement is the reason
+ * this is a wait rather than a third entry in the mask list. Playwright
+ * computes a mask's box per attempt, so a token that has moved between two
+ * comparison captures is covered by two different boxes and the residual is
+ * their difference - measured here at 11,220 pixels on one attempt and 9 on
+ * another, converging but never to zero, which is a flake rather than a gate.
+ *
+ * A token lives at most 4s (`clamp(pathLength x 0.02, 2000, 4000)`) and a
+ * synthetic branch runs for 5s, so there is always a token-free window inside
+ * the branch this test photographs. Waiting for it costs a second and buys an
+ * EXACT comparison, which is what this file is for. The token's own pixels are
+ * `e2e/visual/choreography.spec.ts`'s subject, and a still could not have shown
+ * one moving anyway.
+ */
+async function tokensSettle(page: Page): Promise<void> {
+  await expect(page.locator('[data-testid="handoff-token"]')).toHaveCount(0, { timeout: 6_000 })
+}
+
 /** One computed property off one element, as the browser finally resolved it. */
 async function styleOf(target: Locator, property: string): Promise<string> {
   return target.evaluate(
@@ -102,6 +123,36 @@ async function animationsOn(target: Locator): Promise<string[]> {
       .map((name) => name.replace(/-[0-9a-f]{8}$/, ''))
       .sort(),
   )
+}
+
+/**
+ * The same animations WITH their period and their curve.
+ *
+ * Names alone were what this audit checked, and a name is the half a
+ * regression is least likely to touch: `node-pulse` ran at `ease-in-out` where
+ * `docs/chatdev-notes.md` §2 records the reference (`vueflow.css:81-125`) at
+ * `ease-out`, and every assertion in this file passed for the whole time it
+ * did (critic round product-1, P-09). Rubric 8 is *the reference's curves and
+ * periods*, so the curve has to be in the measurement or the criterion is
+ * being asserted by its title.
+ *
+ * Read from `getComputedStyle` rather than from `getAnimations()`, which
+ * exposes an `effect.getTiming()` whose `easing` is the KEYFRAME easing and
+ * reads `linear` whatever the shorthand said. The two lists are index-aligned
+ * by the shorthand's own order, and the names are re-read here rather than
+ * reused so a mismatch cannot be hidden by a stale sort.
+ */
+async function animationTimings(target: Locator): Promise<string[]> {
+  return target.evaluate((el) => {
+    const style = window.getComputedStyle(el)
+    const split = (value: string) => value.split(',').map((part) => part.trim()).filter(Boolean)
+    const names = split(style.animationName).map((name) => name.replace(/-[0-9a-f]{8}$/, ''))
+    const durations = split(style.animationDuration)
+    const easings = split(style.animationTimingFunction)
+    return names
+      .map((name, index) => `${name} ${durations[index] ?? '?'} ${easings[index] ?? '?'}`)
+      .sort()
+  })
 }
 
 async function openStudio(page: Page): Promise<void> {
@@ -205,20 +256,51 @@ test.describe('the run canvas survives the node-card extraction', () => {
       await expect(page.locator('.gate-card h2')).toHaveText('Confirm scope', { timeout: 60_000 })
       await page.locator('.gate-card').getByRole('button', { name: /^Approve/ }).click()
 
-      const running = page.locator('.workflow-node[aria-label="Market Analyst, Running"]')
+      /*
+       * WHICHEVER branch is in flight, not `Market Analyst` by name.
+       *
+       * The synthetic runner walks the three branches in sequence, five seconds
+       * each, so naming one bounded every assertion below to that branch's own
+       * five-second window - and the screenshot in the middle of them eats two
+       * to three of it. It held until plan 11 added a handoff token, whose walk
+       * is driven by `requestAnimationFrame` rather than by CSS, so
+       * `toHaveScreenshot`'s "wait for the element to be stable" now has
+       * something moving inside the canvas to wait out. Measured: the count
+       * assertion passed and `animationsOn` timed out twenty lines later, on a
+       * card that had simply finished.
+       *
+       * `.is-running` re-resolves at each use and there is always exactly one
+       * such card across the fifteen-second fan-out, so this asserts the same
+       * thing about the same kind of card without racing the screenshot.
+       */
+      const running = page.locator('.workflow-node.is-running').first()
       await expect(
-        running,
+        page.locator('.workflow-node.is-running'),
         'No branch stayed in flight. Start the backend with SYNTHETIC_BRANCH_DELAY_SECONDS=5 - see this file docblock.',
       ).toHaveCount(1, { timeout: 30_000 })
 
-      await expect(canvas(page)).toHaveScreenshot('run-canvas-running.png', {
-        mask: [elapsedClock(page)],
-      })
-
-      // What a screenshot cannot see. `toHaveScreenshot` cancels infinite
-      // animations to their initial state before capturing, so a glow that
-      // stopped resolving would photograph exactly like one that works.
+      /*
+       * The animation audit runs BEFORE the screenshot, and the order is
+       * load-bearing rather than tidy.
+       *
+       * `toHaveScreenshot` cancels every infinite CSS animation to its initial
+       * state to capture, and what it restores afterwards is not something to
+       * depend on: measured here, the CARD's `node-glowing`/`node-pulse` came
+       * back and the state dot's `dot-pulse` did not, so the audit read `[]` on
+       * an element whose rule was perfectly intact. That is precisely the false
+       * negative this audit exists to avoid producing.
+       *
+       * Nothing about what is asserted changes - both halves are statements
+       * about the same running canvas - and the screenshot below is no longer
+       * competing with a five-second branch for the same window.
+       */
       expect(await animationsOn(running)).toEqual(['node-glowing', 'node-pulse'])
+      // Rubric 8's actual subject: the reference's curves and PERIODS, quoted
+      // in `docs/chatdev-notes.md` §2 from `vueflow.css:81-125`.
+      expect(await animationTimings(running)).toEqual([
+        'node-glowing 4s linear',
+        'node-pulse 2s ease-out',
+      ])
       expect(await animationsOn(running.locator('.state-dot'))).toEqual(['dot-pulse'])
       expect(await animationsOn(running.locator('.node-crew-oar').first()))
         .toEqual(['node-oar-stroke'])
@@ -228,12 +310,21 @@ test.describe('the run canvas survives the node-card extraction', () => {
       expect(await animationsOn(running.locator('.node-active-dot')))
         .toEqual(['node-active-pulse'])
 
+      await tokensSettle(page)
+      await expect(canvas(page)).toHaveScreenshot('run-canvas-running.png', {
+        mask: [elapsedClock(page)],
+      })
+
       // The card's own reduced-motion block, which lives in the same extracted
       // file as the keyframes it silences. If it were left behind while its
       // subjects moved out, it would lose the specificity race against them and
       // reduced motion would quietly stop working - a failure invisible to
       // every other test in this repository.
       await page.emulateMedia({ reducedMotion: 'reduce' })
+      // Re-waited, because the screenshot above may have outlasted the branch
+      // that was running when the audit ran. There is one running card at a
+      // time across the fan-out, and this asserts about whichever it now is.
+      await expect(page.locator('.workflow-node.is-running')).toHaveCount(1, { timeout: 30_000 })
       expect(await animationsOn(running)).toEqual([])
       expect(await animationsOn(running.locator('.node-crew-oar').first())).toEqual([])
       // The elapsed COUNT keeps advancing under reduced motion; only the dot
@@ -260,6 +351,7 @@ test.describe('the run canvas survives the node-card extraction', () => {
       await expect(waiting).toHaveCount(1)
       await expect(completed).toHaveCount(1)
 
+      await tokensSettle(page)
       await expect(canvas(page)).toHaveScreenshot('run-canvas-gate-waiting.png', {
         mask: [elapsedClock(page)],
       })

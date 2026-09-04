@@ -90,12 +90,40 @@ services:
       - key: RUN_CONCURRENCY
         value: "1"
 
-      # The static site is a SEPARATE origin, so every request the Vue app
-      # makes is cross-origin and the browser drops the response unless this
-      # names it. Locally the Vite proxy makes everything same-origin, which
-      # is why an empty default is correct there and fatal here. Scheme +
-      # host, no trailing slash - startup refuses a malformed entry and names
-      # the corrected string. Must match the origin serving the static site.
+      # The studio is a SEPARATE origin, so every request the Vue app makes is
+      # cross-origin and the browser drops the response unless this names it.
+      # Locally the Vite proxy makes everything same-origin, which is why an
+      # empty default is correct there and fatal here. Scheme + host, no
+      # trailing slash - startup refuses a malformed entry and names the
+      # corrected string.
+      #
+      # ⚠️ THIS LITERAL, `AUTH_BASE_URL` BELOW AND `VITE_API_URL` ON THE STUDIO
+      # ARE THREE COPIES OF TWO URLS THAT DO NOT EXIST UNTIL THE APPLY CREATES
+      # THE SERVICES. Render derives a service's hostname from its `name`, and
+      # `name` is declared right here - so the values are *predictable*, which
+      # is why they are literals rather than `sync: false` (that was tried on
+      # VITE_API_URL, the manual step was missed, and production shipped a
+      # console talking to itself). Predictable is not guaranteed: if either
+      # `name` is already taken in the account, Render appends a suffix and all
+      # three literals are silently wrong.
+      #
+      # There is NO manifest expression for this. `fromService … property: host`
+      # yields a bare hostname with no scheme, and a scheme-less value is the
+      # exact broken case all three of these keys warn about. So it is a manual
+      # CHECK, and it belongs at one specific moment:
+      #
+      #   ON THE APPLY PREVIEW, BEFORE APPLYING, read the URLs Render proposes
+      #   for `agentic-crew-ai-api` and `agentic-crew-ai-studio`. If either
+      #   differs from the literals here, fix all three keys, push, and
+      #   re-preview. Do not apply and patch afterwards: Render snapshots a
+      #   deploy's environment when the deploy is CREATED (deployment trap 3),
+      #   and VITE_API_URL is inlined at BUILD time, so a later edit needs a
+      #   fresh deploy of the studio and not a restart.
+      #
+      # The failure this prevents is silent in both directions: a wrong
+      # CORS_ALLOW_ORIGINS fails CLOSED and reads as missing middleware, and a
+      # wrong VITE_API_URL makes the console fall back to its fabricated demo.
+      # docs/deploying.md step 3a is the same check as a runbook line.
       - key: CORS_ALLOW_ORIGINS
         value: "https://agentic-crew-ai-studio.onrender.com"
 
@@ -158,6 +186,31 @@ services:
 
       - key: PINECONE_INDEX_NAME
         value: agentic-crew-ai-index
+
+      # ⚠️ REQUIRED SINCE PLAN 01, AND ITS ABSENCE IS NOT A DEGRADED FEATURE -
+      # THE PROCESS DOES NOT START. `_assert_credential_vault_startup_safety`
+      # runs inside `create_app` (service/app.py, called at :673, before any
+      # route is mounted) and raises when AUTH_BASE_URL is set and this is
+      # empty: a deployment that can sign people in and has nowhere to keep
+      # their API keys is misconfigured, and it fails loud rather than serving
+      # a vault-shaped hole. AUTH_BASE_URL is set above, so this is mandatory
+      # here. Measured 2026-09-04 at `bc12642` by building the app with exactly
+      # this environment: RuntimeError, not a 503.
+      #
+      # Base64 of 32 random bytes - the AES-256-GCM master key for the per-user
+      # credential vault. Mint one, once, and never rotate it casually: every
+      # stored credential is encrypted under it and a changed key is detected
+      # and refused, not silently re-wrapped.
+      #
+      #   python -c "import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"
+      #
+      # `sync: false` like every other secret. NOTE for an EXISTING Blueprint:
+      # Render prompts for sync:false values at Blueprint CREATION, so adding
+      # this key to an already-applied Blueprint means entering it in the
+      # dashboard before the next deploy - a deploy that reaches this code
+      # without it will fail its health check and roll back.
+      - key: CREDENTIALS_MASTER_KEY
+        sync: false
 
       # Every credential is `sync: false`: the value is never committed. Render
       # prompts once at Blueprint creation and stores it as a dashboard secret.

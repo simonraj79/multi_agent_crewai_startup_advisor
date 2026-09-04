@@ -1,0 +1,16 @@
+{
+  "$comment": "Canonical MCP roster for building this product. Copy into the tool-specific config (Claude Code: `claude mcp add`; Codex: config.toml; Cursor: .cursor/mcp.json). No credential lives in this file. The load-bearing question is only whether the agent can observe the result of its own work: `playwright` answers it for the UI, `openrouter` answers it for the model roster. Fallback ladder when a server is unavailable: CLI in a shell (`npx playwright test`, `python scripts/refresh_models.py`) -> documented manual step in the plan file.",
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--viewport-size", "1440,900"],
+      "$purpose": "See the running UI: navigate, snapshot, screenshot at the gauntlet's 1440x900 and 390x844 viewports. Point it at http://localhost:5273 (Playwright's own Vite server, proxying to the SYNTHETIC backend on :8099)."
+    },
+    "openrouter": {
+      "url": "https://mcp.openrouter.ai/mcp",
+      "$purpose": "The live model catalogue: list-models with max_price=1.0 and supported_parameters=tools is the roster rule from 05-model-registry.md; get-generation reconciles a real run's cost. OAuth token lasts exactly seven days with no refresh; re-authenticate in-session when the tools disappear."
+    }
+  },
+  "$deploy": "No deploy MCP is configured. Render deploys on push to main (autoDeploy: yes on both services, render.yaml); the fallback is the Render dashboard, documented in docs/deploying.md.",
+  "$database": "No database MCP is configured. Local runs use SQLite at output/validator-studio.db; production PostgreSQL 18 is reachable only from the singapore region (ipAllowList is empty). Two-writer contention tests (remaining-work item 3) need a local PostgreSQL, documented in 15-persistence.md."
+}

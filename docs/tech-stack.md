@@ -5,6 +5,13 @@ says so." Every figure below was produced by running a command on this machine,
 and every command is printed next to its answer — because the command is the
 contract, not the figure.
 
+> **§6 ONLY was regenerated 2026-09-04**, at `gauntlet/plans` = `bc12642`
+> (waves A and B built), by the pre-production pass. The scan answered
+> **forty-nine**, up from the forty-one below. Nothing else in this file was
+> re-measured that day — §2, §3, §4, §5, §7 and §8 still carry the 2026-09-02
+> stamp and should be treated as that old. Saying which rows a pass touched is
+> the whole discipline this document exists to keep.
+
 **Re-measured 2026-09-02 at `main` = `b4ef654`** (the merge of PR #6,
 `6d2743c`, which brought in the flow builder), clean tree, on Windows 11 /
 Python 3.13.5. Every version row in §2, §3 and §4 was re-measured this pass and
@@ -43,8 +50,12 @@ Push-Location frontend; npm ls --depth=0; Pop-Location
 # Environment knobs - MUST be a multiline scan, see §6
 .\.venv\Scripts\python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);print(sorted({n for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py') for n in pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))}))"
 
-# Playwright. NEEDS ITS OWN BACKEND, and needs the delay knob - see §7, quirk 6
+# Playwright. NEEDS ITS OWN BACKEND, and needs the delay knob - see §7, quirk 6.
+# Since plan 01, CREDENTIALS_MASTER_KEY too, or the credential step answers 503;
+# and in a WORKTREE, PYTHONPATH, or serve.exe loads the MAIN tree's source.
 $env:SYNTHETIC = "1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS = "5"; $env:PORT = "8099"
+$env:CREDENTIALS_MASTER_KEY = "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
+$env:PYTHONPATH = "$PWD\src"
 .\.venv\Scripts\serve.exe
 Push-Location frontend; npx playwright test; Pop-Location   # second shell
 ```
@@ -52,9 +63,15 @@ Push-Location frontend; npx playwright test; Pop-Location   # second shell
 **This file carries no test count on purpose.** The suites move faster than any
 prose about them, and CLAUDE.md's *Verified Baseline* owns those figures - copy
 one here and the two drift, which is the mistake §6 has made with a different
-number over six published figures, five of them wrong (the tally is §6's, and
+number over eight published figures, seven of them wrong (the tally is §6's, and
 is stated once, there). Both suites and both build steps were run on 2026-09-02 at
 `b4ef654` and all four were green; the counts they printed belong in CLAUDE.md.
+**On 2026-09-04 at `bc12642` they were not all green** — the Python suite and
+the PostgreSQL two-writer suite passed, and `vue-tsc -b --force` exited 2 with
+the frontend suite at 37 failures, against a working tree carrying three other
+agents' uncommitted edits. CLAUDE.md's Verified Baseline records that with its
+provenance; it is named here only so nobody reads the previous sentence as
+current.
 
 ---
 
@@ -253,10 +270,35 @@ any agent LLM whose model string lacks the `openrouter/` prefix is rejected
 
 | Constant | Value | Price (prompt / completion, per M) |
 | --- | --- | --- |
-| `CHEAP_MODEL` | `openrouter/z-ai/glm-5.3-flash` | $0.075 / $0.250 |
-| `ESCALATION_MODEL` | `openrouter/google/gemini-3.7-flash` | $0.75 / $3.75 |
+| `CHEAP_MODEL` | `openrouter/google/gemini-3.5-flash-lite:nitro` | $0.30 / $2.50 |
+| `ESCALATION_MODEL` | `openrouter/google/gemini-3.8-flash` | $0.75 / $3.75 |
 | `EMBED_MODEL` | `google/gemini-embedding-2`, 768 dims | not in `PRICES` |
 | `RERANK_MODEL` | `rerank-v4.0-fast` (Cohere) | not in `PRICES` |
+
+> **Both model rows were corrected on 2026-09-04, and every price was
+> re-measured with `mcp__openrouter__get-model` rather than carried across.**
+>
+> - `ESCALATION_MODEL` moved `gemini-3.7-flash` → **`gemini-3.8-flash`**
+>   (`f19a2c6`; `src/brief_crew/config.py` carries the reasoning). Identical
+>   $0.75 / $3.75, identical 1,048,576 context, higher on all three Artificial
+>   Analysis indices (58.7 / 76.3 / 50.0 against 56.0 / 76.1 / 45.1).
+> - `CHEAP_MODEL` had been **stale by a whole model**: this row read
+>   `z-ai/glm-5.3-flash` at $0.075 / $0.250, while `config.py:49` has read
+>   `openrouter/google/gemini-3.5-flash-lite:nitro` for some time. Measured
+>   live: **$0.30 / $2.50**, 1,048,576 context, AA 37.4 / 49.3 / 27.2.
+>
+> ⚠️ **`:nitro` routes on speed, not price**, so $0.30 / $2.50 is a *published
+> floor* and the effective rate can be higher — `config.py:44-47` says the same,
+> and §9 below measures the spread across the endpoints that serve this slug.
+> The half-price `:batch` variant ($0.15 / $1.25) is not usable here: batch is a
+> queued lane, and a run with streaming frames and a human at a gate cannot be
+> queued.
+>
+> **Consequence worth carrying:** the two tiers are **2.5× apart on prompt and
+> 1.5× on completion**, not the 10× / 15× the `agents/` specifications were
+> written against, and their context windows are now **equal**. Documents that
+> reason from the old gap are flagged where they sit; none of those arguments
+> has been re-made.
 
 All four live in `src/brief_crew/config.py` and **nowhere else** — a targeted
 grep for `openrouter/`, model-id literals and price literals across `src/`
@@ -303,12 +345,16 @@ or `.parse_raw()` survives anywhere in `src/`. One helper is *named*
 
 ---
 
-## 6. Environment knobs — there are thirty-nine
+## 6. Environment knobs — there are forty-nine
 
-Regenerated with the multiline scan in §1 on **2026-09-02**, at `main` =
-`b4ef654`. **Thirty-five** are read in `config.py` and **four** in
-`service/app.py` (`DATABASE_URL`, `HOST`, `PORT`, `SYNTHETIC`). That split is
-itself scan output, not arithmetic on the list below:
+Regenerated with the multiline scan in §1 on **2026-09-04**, at
+`gauntlet/plans` = `bc12642` (waves A and B built; `main` was still `25634c0`),
+and re-run unchanged at `8ae9a1f` — two commits apart, in a tree three other
+agents were committing to, which is the only way to know a count is the code's
+and not the moment's.
+**Forty-five** are read in `config.py` and **four** in `service/app.py`
+(`DATABASE_URL`, `HOST`, `PORT`, `SYNTHETIC`). That split is itself scan
+output, not arithmetic on the list below:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);[print(f,len(set(pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))))) for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py')]"
@@ -317,29 +363,66 @@ itself scan output, not arithmetic on the list below:
 The block below is pasted scan output, not prose. Regenerate before trusting it.
 
 ```text
-AUTH_BASE_URL                         AUTH_JWKS_CACHE_SECONDS
-AUTH_JWKS_TIMEOUT_SECONDS             AUTH_JWT_LEEWAY_SECONDS
-BUILDER_ALLOW_GATELESS_GRAPHS         BUILDER_REHYDRATE_PUBLISHED
-CORS_ALLOW_ORIGINS                    DATABASE_URL
-EXPOSE_API_DOCS                       HOST
-MAX_QUEUED_RUNS                       MAX_RUN_COST_USD
-PINECONE_INDEX_NAME                   PORT
-RUN_CONCURRENCY                       RUN_RATE_LIMIT_MAX_RUNS
-RUN_RATE_LIMIT_TRUST_FORWARDED_FOR    RUN_RATE_LIMIT_WINDOW_SECONDS
-RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS     SYNTHETIC
-VALIDATOR_ALLOW_AUTO_GATES            VALIDATOR_BRANCH_MAX_ITER
-VALIDATOR_BRANCH_MAX_TOKENS           VALIDATOR_BRANCH_TEMPERATURE
-VALIDATOR_FEASIBILITY_CACHE_ENABLED   VALIDATOR_FIRECRAWL_MAX_AGE_MS
-VALIDATOR_FIRECRAWL_MAX_RETRIES       VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS
-VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS   VALIDATOR_MARKET_SEARCH_LIMIT
-VALIDATOR_MAX_BRANCH_QUERIES          VALIDATOR_MAX_CLAIM_CHARS
-VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS    VALIDATOR_MAX_GATE_TURNS
-VALIDATOR_ORPHAN_RUN_GRACE_SECONDS    VALIDATOR_ORPHAN_RUN_RECOVERY
-VALIDATOR_REQUIRE_AUTH                VALIDATOR_SENTIMENT_STORY_LIMIT
-VALIDATOR_SEQUENTIAL_BRANCHES
+AUTH_BASE_URL                         RUN_RATE_LIMIT_WINDOW_SECONDS
+AUTH_JWKS_CACHE_SECONDS               RUN_SUBMIT_SETTLE_TIMEOUT_SECONDS
+AUTH_JWKS_TIMEOUT_SECONDS             SKILLS_ROOT
+AUTH_JWT_LEEWAY_SECONDS               SYNTHETIC
+BUILDER_ALLOW_GATELESS_GRAPHS         VALIDATOR_ALLOW_AUTO_GATES
+BUILDER_CODE_INTERPRETER_ENABLED      VALIDATOR_BRANCH_MAX_ITER
+BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP  VALIDATOR_BRANCH_MAX_TOKENS
+BUILDER_PLATFORM_FIRECRAWL_DEFAULT    VALIDATOR_BRANCH_TEMPERATURE
+BUILDER_REHYDRATE_PUBLISHED           VALIDATOR_FEASIBILITY_CACHE_ENABLED
+CORS_ALLOW_ORIGINS                    VALIDATOR_FIRECRAWL_MAX_AGE_MS
+CREDENTIALS_MASTER_KEY                VALIDATOR_FIRECRAWL_MAX_RETRIES
+DATABASE_URL                          VALIDATOR_FIRECRAWL_SCRAPE_TIMEOUT_MS
+EXPOSE_API_DOCS                       VALIDATOR_FIRECRAWL_TIMEOUT_SECONDS
+HOST                                  VALIDATOR_MARKET_SEARCH_LIMIT
+MAX_QUEUED_RUNS                       VALIDATOR_MAX_BRANCH_QUERIES
+MAX_RUN_COST_USD                      VALIDATOR_MAX_CLAIM_CHARS
+MCP_ALLOWED_COMMANDS                  VALIDATOR_MAX_EVIDENCE_CLAIM_CHARS
+MCP_ALLOWED_ENV_VARS                  VALIDATOR_MAX_GATE_TURNS
+MCP_ALLOW_INSECURE_LOCAL              VALIDATOR_ORPHAN_RUN_GRACE_SECONDS
+MCP_STDIO_ENABLED                     VALIDATOR_ORPHAN_RUN_RECOVERY
+PINECONE_INDEX_NAME                   VALIDATOR_REQUIRE_AUTH
+PORT                                  VALIDATOR_RUN_RETENTION_DAYS
+RUN_CONCURRENCY                       VALIDATOR_SENTIMENT_STORY_LIMIT
+RUN_RATE_LIMIT_MAX_RUNS               VALIDATOR_SEQUENTIAL_BRANCHES
+RUN_RATE_LIMIT_TRUST_FORWARDED_FOR
 ```
 
-### The three that are new since the thirty-six
+### The eight that are new since the forty-one
+
+Waves A and B added these between `ca43ba8` and `bc12642`. **Every one of them
+is off, empty or a code default in `render.yaml`, and six of them are off on
+purpose** — four because PLANS.md marks the ruling behind them *provisional*
+and the owner has not confirmed it. `docs/deploying.md` carries the production
+decision for each; this table carries what each one *is*.
+
+| Knob | Default | What it decides |
+| --- | --- | --- |
+| `BUILDER_CODE_INTERPRETER_ENABLED` | `False` | Whether an agent node may be given CrewAI's code interpreter, which runs author-written Python in an E2B sandbox on a BYO E2B key. **Provisional — decision 3.** `E2B_SANDBOX_TIMEOUT_SECONDS` (300, a constant) is named beside it so the cost exists the day the flag is lifted. CrewAI 1.15.18 marks `allow_code_execution` / `code_execution_mode` `Field(deprecated=True)`, so the native path is going away regardless. |
+| `MCP_STDIO_ENABLED` | `False` | Whether a **stdio** MCP server may be created at all. This is the gate that matters: stdio lets an author's document name a process to run on the server, which is precisely what `BUILDER_ACTION_REFS`' closed set exists to prevent. With it off every stdio server is refused at create, whatever the allow-list says. **Provisional — decision 7.** |
+| `MCP_ALLOWED_COMMANDS` | `()` (empty) | The allow-list a stdio command must be on **once the flag above is lifted**. Empty by default, so the flag alone opens nothing — the two gates stack, and both must be opened deliberately. Flowise arrived at the same shape (`CUSTOM_MCP_ALLOWED_COMMANDS`); a local developer may set `npx,uvx`. |
+| `MCP_ALLOWED_ENV_VARS` | `()` (empty) | The environment keys a stdio server may be handed. A key outside the set is **refused rather than dropped**, so an author is told rather than silently given a server with no credential. |
+| `MCP_ALLOW_INSECURE_LOCAL` | `False` | Admits `http://127.0.0.1` and `http://localhost` for a remote server, for local development and the E2E loopback fixture, and **nothing else** — the SSRF rule still refuses every other private, loopback and link-local address. `https://` is required of every remote server otherwise. |
+| `BUILDER_PLATFORM_FIRECRAWL_DEFAULT` | `False` | Whether the platform's own Firecrawl key is every author's default. Off, `research_market_landscape` and the three Firecrawl tool entries require the author's own `firecrawl` credential and say so on the card. **Provisional — decision 9**, and see the warning below. |
+| `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP` | `50` | The per-user per-UTC-day ceiling the ruling above is conditioned on. **⚠️ Nothing reads it.** Measured 2026-09-04: `grep -rn BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP --include=*.py --include=*.ts src frontend/src tests` answers only its own definition in `config.py`, while `BUILDER_PLATFORM_FIRECRAWL_DEFAULT` *is* consumed, at `builder/tools.py:576`. So the flag has an effect and its cap does not: turning the flag on today is an **uncapped** spend, not a capped one. |
+| `SKILLS_ROOT` | `data/skills` | Where skill packs live on disk. `builtin/<name>/SKILL.md` is committed and this repository's; `users/<user_id>/<name>/SKILL.md` is a user's own and git-ignored. **The default is CWD-relative, and the four built-in packs are committed files** — `load_builtins()` does `if not path.exists(): continue`, so a root that does not contain them yields *zero* built-in skills with no error. Disk is only a materialisation cache for user packs (the durable copy is the database, and `materialise()` rewrites on content mismatch), so ephemeral storage is safe; a wrong path is not. |
+
+### The two that are new since the thirty-nine
+
+Both landed in one commit, `52a954f`, the Integrator's Stage 1 contract
+commit for the gauntlet build (`.agent/plans/00-architecture.md`, S1 ruling
+3), whose message said the scan now answers 41 and that this section would be
+regenerated at integration rather than in the same commit. This is that
+regeneration.
+
+| Knob | Default | Landed | What it decides |
+| --- | --- | --- | --- |
+| `CREDENTIALS_MASTER_KEY` | `""` | `52a954f` | The AES-256-GCM master key for the per-user credential vault (plan 01, contract C4), base64 of 32 bytes, read once in `config.py` and nowhere else. It is the same fail-loud shape as `VALIDATOR_REQUIRE_AUTH`: **auth on and no key refuses to start**, because a half-configured vault is the quiet failure; auth off and no key means "no vault" and the credential routes answer 503 while everything else keeps working, which is what keeps tests, `SYNTHETIC` mode and a bare checkout runnable. **`render.yaml` does not set it, and `render.yaml` *does* set `AUTH_BASE_URL` — so the manifest as committed does not start.** Measured 2026-09-04 at `bc12642`: `create_app()` with `AUTH_BASE_URL` set and this empty raises `RuntimeError: AUTH_BASE_URL is set but CREDENTIALS_MASTER_KEY is empty…` from `_assert_credential_vault_startup_safety` (`service/app.py:673`), before a route is mounted. That is the fail-loud half working exactly as designed and a manifest that has not caught up with it. |
+| `VALIDATOR_RUN_RETENTION_DAYS` | `0` | `52a954f` | The durable half of run retention (plan 15 D7). `VALIDATOR_RUN_RETENTION_SECONDS` only ever evicted the in-memory ring, so terminal runs, their frames, metrics and gates accumulated in the database forever (CLAUDE.md closed item 32). Terminal runs older than this many days are deleted by the same periodic sweep the orphan recovery uses, and the child tables follow by `ON DELETE CASCADE`; documents, versions and credentials are never purged. `0` means keep everything, which is the deployed behaviour today and stays the default until PLANS.md decision 23 is answered; it is read with `minimum=0` because zero is the meaningful off value, not a mistake. |
+
+### The three that were new since the thirty-six
 
 | Knob | Default | Landed | What it decides |
 | --- | --- | --- | --- |
@@ -367,23 +450,43 @@ they are read in TypeScript rather than in `config.py`: `BETTER_AUTH_URL`,
 
 ### The scan reads exactly two files, and that is now the hole
 
-`config.py` and `service/app.py`. **Five more environment variables are read
-elsewhere in `src/`, and not one of them is in the thirty-nine.** Measured
-2026-09-02 by widening the same pattern over `src/**/*.py`:
+`config.py` and `service/app.py`. **SEVEN more environment variables are read
+elsewhere in `src/`, and not one of them is in the forty-nine.** Re-measured
+2026-09-04 at `6a1176e` by widening the same pattern over `src/**/*.py` — the
+list moved for the first time, by two, and both are plan 12's:
 
 ```text
 src/brief_crew/embeddings.py                OPENROUTER_API_KEY
+src/brief_crew/service/builder_runner.py    SYNTHETIC_FAILURE
+src/brief_crew/service/builder_runner.py    SYNTHETIC_FAILURE_NODE
 src/brief_crew/service/runner.py            SYNTHETIC_BRANCH_DELAY_SECONDS
 src/brief_crew/tools/github_feasibility.py  GITHUB_TOKEN
 src/brief_crew/tools/market_research.py     FIRECRAWL_API_KEY
 src/brief_crew/validator_cache.py           VALIDATOR_CACHE_NAMESPACE
 ```
 
-Three are credentials and belong in `.env`, not in a knob list. Two are not.
-`VALIDATOR_CACHE_NAMESPACE` and `SYNTHETIC_BRANCH_DELAY_SECONDS` are behavioural
-switches this section has never listed, and the second is the sharper case:
-**the Playwright suite does not pass without it** (§7, quirk 6). The canonical
-scan is blind to a knob the test instructions require.
+Regenerate it, never copy it:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);two={'src/brief_crew/config.py','src/brief_crew/service/app.py'};[print(f'{p.as_posix():<44}{n}') for p in sorted(pathlib.Path('src').rglob('*.py')) if p.as_posix() not in two for n in sorted(set(pat.findall(p.read_text(encoding='utf-8'))))]"
+```
+
+Three are credentials and belong in `.env`, not in a knob list. **Four are not**,
+and all four are behavioural switches this section has never listed. Two of
+them are why the list moved:
+
+| knob | default | what it does |
+| --- | --- | --- |
+| `SYNTHETIC_FAILURE` | `""` | 12 D8's trigger. `[node:]reason[:times]`, comma separated, `reason` one of `bad_key` / `tool_timeout` / `refusal` / `malformed_output` / `rate_limit` — the five of the six failure modes that RUN. There is deliberately no `cyclic_graph` reason: `bounds.py` refuses that document at validate and again at publish, so it has no run to fail. Read PER INSTANCE by `SyntheticCrewFactories`, so a browser session triggers all five without restarting the backend. Unreadable input is NO failure rather than a startup refusal. |
+| `SYNTHETIC_FAILURE_NODE` | `""` | Which node an entry that names none applies to. Without it a bare `refusal` fails every billable node, which makes a six-node template unreadable at exactly the moment a critic is reading it; an entry carrying its own `node:` prefix still wins. |
+
+Neither does anything in production: nothing reads them off a paid path, and a
+run that is not `SYNTHETIC=1` never builds the factory that consults them.
+
+The sharper case is still `SYNTHETIC_BRANCH_DELAY_SECONDS`: **the Playwright
+suite does not pass without it** (§7, quirk 6). The canonical scan is blind to a
+knob the test instructions require, and now to two more that a rubric criterion
+requires by name.
 
 Widening the scan's file list is the obvious fix and it is **deliberately not
 applied here.** The two-file scope is quoted verbatim in §1, in CLAUDE.md and in
@@ -392,9 +495,14 @@ drifts without anyone ever publishing a wrong digit. It is recorded as a defect
 instead - §8, finding 7 - so that the widening happens once, everywhere, in a
 commit that says it did.
 
-> **WARNING: thirty-nine is the SIXTH figure published in this section, and the
-> five before it were all wrong.** In order: *eleven*, *fifteen*, *eighteen*,
-> *twenty*, *thirty-six*. Only the first has a technical excuse - a
+> **WARNING: forty-nine is the EIGHTH figure published in this section, and
+> every one of the seven before it went stale.** In order: *eleven*, *fifteen*,
+> *eighteen*, *twenty*, *thirty-six*, *thirty-nine*, *forty-one*. Each of the
+> last three was right when published and stale within a handful of commits;
+> thirty-nine lasted exactly one, and forty-one lasted from `ca43ba8` to the
+> first wave-B commit. **Forty-one was still being quoted on 2026-09-04 by a
+> handoff that had reasoned about it rather than run the scan** - the eighth
+> instance of the one failure this box exists to name. Only the first has a technical excuse - a
 > line-anchored `grep -oE 'os.getenv("[A-Z_]+"'` missed four calls the formatter
 > had wrapped onto the next line, which is why §1's scan is `re.S`-multiline
 > and why [gotchas](gotchas-and-insights.md) 6 exists.
@@ -427,11 +535,20 @@ the `RESERVED_RUN_INPUT_KEYS` set. The builder's structural ceilings
 all, which is why none of them appears above and why raising three of them was
 a code change rather than a deploy-time flip.
 
-`render.yaml` sets **none** of the admission knobs and **neither `BUILDER_*`
-knob**, so production runs on the defaults: no anonymous gateless graphs, and
-published graphs rehydrated at boot. One knob still needs a decision anywhere
-other than Render: `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` defaults **on**, which
-is right behind a proxy and wrong for a directly-reachable host, where
+`render.yaml` sets **none** of the admission knobs, **none of the five
+`BUILDER_*` knobs**, **none of the four `MCP_*` knobs** and **not
+`SKILLS_ROOT`**, so production runs on the code defaults throughout: no
+anonymous gateless graphs, published graphs rehydrated at boot, no code
+interpreter, no stdio MCP, no platform Firecrawl key, and skills read from
+`data/skills` under the process's working directory. Every one of those is the
+right answer today, and `docs/deploying.md` records why for each rather than
+leaving it to be inferred from an absence.
+
+**The one it does not set and must is `CREDENTIALS_MASTER_KEY`**, because it
+*does* set `AUTH_BASE_URL` — see that knob's row above; the manifest as
+committed does not boot. One further knob needs a decision anywhere other than
+Render: `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` defaults **on**, which is right
+behind a proxy and wrong for a directly-reachable host, where
 `X-Forwarded-For` is attacker-supplied and the limiter stops limiting.
 
 ---
@@ -612,6 +729,11 @@ chased is a caveat nobody reads.
   references come from. No browser was launched and no backend was started, so
   the `SYNTHETIC_BRANCH_DELAY_SECONDS` failure mode in quirk 6 is transcribed
   from the spec's assertion message and docblock — **not reproduced here**.
+  *Superseded 2026-09-03 on `gauntlet/plans`:* run, not listed — **34 tests
+  in 5 files**, 34 green on the final run against a fresh `SYNTHETIC=1`
+  backend on :8099 with the delay knob and `CREDENTIALS_MASTER_KEY` set,
+  1.9m, zero console errors; two builder tests are timing-flaky at rates
+  measured in CLAUDE.md remaining-work item 44. `main` is unchanged at 28.
 - **The Docker image has never been built on this machine** (`Dockerfile:11-12`
   says so itself), so the two-stage `uv sync` sequence is unproven.
 - **The keyless run was not repeated.** Moving `.env` aside is the one hazardous

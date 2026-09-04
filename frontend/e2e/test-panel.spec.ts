@@ -1,0 +1,615 @@
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+
+/**
+ * The docked test panel, in a real browser - 13 criterion 9.
+ *
+ * WHAT ONLY A BROWSER CAN ANSWER HERE, and it is the whole reason this file
+ * exists beside `frontend/tests/testPanel.spec.ts`. That suite mounts the panel
+ * in jsdom and asserts what goes on the wire; it cannot see whether the panel
+ * took height from the canvas, whether the run states reached the cards, or
+ * whether a result body ever appeared on screen. "A jsdom mount asserts
+ * structure and never asks how wide anything ended up" is this repository's own
+ * most expensive lesson - two layout defects reached a 988-green suite that way
+ * - and the four tests below are the three questions that lesson names.
+ *
+ * ## Which backend
+ *
+ * The free one. `playwright.config.ts` starts `e2e/vite.e2e.config.ts`, which
+ * proxies `/api` at `E2E_API_TARGET` and stubs the Better Auth origin with a
+ * signed-in session:
+ *
+ *   SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8096 serve.exe
+ *
+ * `SYNTHETIC=1` replaces the crew factories and NOTHING else, so the compiled
+ * definition, the gates, the frames and the persistence are the production
+ * ones. Free, and still a real proof of every part of the panel except what a
+ * model would have written.
+ *
+ * @launch - these press Run. Excluded with `--grep-invert @launch` against any
+ * origin that spends money.
+ */
+
+/**
+ * ONE exemption, and it names its cause - the same shape, for the same reason,
+ * that `e2e/failure-modes.spec.ts` declares.
+ *
+ * `RUN_RATE_LIMIT_MAX_RUNS` is ten per sixty seconds per client, and this file
+ * launches three times immediately after `failure-modes.spec.ts` has spent
+ * eleven. `pressRun` below waits out the window on the server's own terms
+ * rather than raising the limit - which would be turning off what makes an
+ * unauthenticated Launch button survivable - and a refused Launch makes the
+ * browser log the 429 as a failed resource. That console error is THE LIMITER
+ * WORKING, provoked by a test that then waits and launches again.
+ *
+ * Narrow on purpose: only 429, only the words the browser uses for it. Any
+ * other status, any Vue warning and any uncaught exception still fails the
+ * test. **Delete this if the limiter goes or this file stops launching** - an
+ * exemption that outlives its cause widens silently, which is what the favicon
+ * one did before it was retired.
+ */
+const ALLOWED_CONSOLE_ERROR: RegExp | null = /429 \(Too Many Requests\)/
+
+interface ConsoleWatch {
+  unexpected: string[]
+}
+
+function watchConsole(page: Page): ConsoleWatch {
+  const watch: ConsoleWatch = { unexpected: [] }
+  const record = (text: string) => {
+    if (ALLOWED_CONSOLE_ERROR?.test(text)) return
+    watch.unexpected.push(text)
+  }
+  page.on('console', (message) => {
+    if (message.type() === 'error') record(message.text())
+  })
+  page.on('pageerror', (error) => record(`uncaught: ${error.message}`))
+  return watch
+}
+
+const card = (page: Page, title: string): Locator =>
+  page.locator('.template-card').filter({ hasText: title })
+const nodes = (page: Page): Locator => page.locator('.vue-flow__node:has(.workflow-node)')
+const canvasFrame = (page: Page): Locator => page.locator('.builder-canvas')
+const panel = (page: Page): Locator => page.locator('[data-testid="test-panel"]')
+const saveChip = (page: Page): Locator => page.locator('[data-testid="save-chip"]')
+const headline = (page: Page): Locator => page.locator('[data-testid="problems-headline"]')
+
+async function validationSettles(page: Page): Promise<void> {
+  await expect(page.locator('[data-testid="problems-checking"]')).toHaveCount(0, {
+    timeout: 20_000,
+  })
+}
+
+async function documentIdFromRoute(page: Page): Promise<string> {
+  await expect
+    .poll(() => new URL(page.url()).hash, { timeout: 20_000 })
+    .toMatch(/#\/build\/ug_[0-9a-f]{8}$/)
+  return /ug_[0-9a-f]{8}/.exec(new URL(page.url()).hash)![0]
+}
+
+async function clearLibrary(request: APIRequestContext): Promise<void> {
+  const listed = await request.get('/api/builder/workflows')
+  if (!listed.ok()) return
+  const documents = (await listed.json()) as { id: string; status?: string }[]
+  for (const entry of documents) {
+    // A PUBLISHED document is refused (decision 24), so unpublish first. The
+    // refusal is the right one and this is the cleanup that respects it.
+    await request.post(`/api/builder/workflows/${entry.id}/unpublish`)
+    await request.delete(`/api/builder/workflows/${entry.id}`)
+  }
+}
+
+/**
+ * Open the sequential pipeline, save it and publish it.
+ *
+ * Publishing is a PRECONDITION of the panel's three run modes and not an
+ * incidental step: C7 as built resolves `mode` - `dry_run` included - against
+ * `BUILDER_WORKFLOWS`, and only a publish writes that map. The panel says so on
+ * screen, and the first test below asserts that it does.
+ */
+async function openAndPublish(page: Page): Promise<string> {
+  await page.goto('/#/build')
+  await expect(card(page, 'Sequential pipeline')).toBeVisible()
+  await card(page, 'Sequential pipeline').click()
+  await expect(nodes(page)).toHaveCount(7)
+  await validationSettles(page)
+  await expect(headline(page)).toContainText(/ready to publish/i)
+
+  await page.keyboard.press('Control+s')
+  await expect(saveChip(page)).toContainText(/saved/i)
+  const id = await documentIdFromRoute(page)
+
+  await page.keyboard.press('Control+Shift+P')
+  const publish = page.locator('[aria-labelledby="publish-title"]')
+  await expect(publish).toBeVisible()
+  await publish.getByRole('button', { name: /^(Publish|Republish)$/ }).click()
+  await expect(publish).toContainText(/anyone with the link can launch it/i)
+  // The dialog's own Close, not Escape: Escape is handled inside the dialog and
+  // depends on where focus went after the publish resolved, which is one more
+  // thing for a test to be flaky about.
+  await publish.getByRole('button', { name: 'Close' }).click()
+  await expect(publish).toHaveCount(0)
+  return id
+}
+
+/** Open the panel on one tab, the way an author does: by pressing it. */
+async function openTab(page: Page, tab: string): Promise<void> {
+  await page.locator(`[data-testid="test-tab-${tab}"]`).click()
+  await expect(panel(page)).toHaveAttribute('data-open', 'true')
+}
+
+/**
+ * Press Run, and wait out the admission limiter if it is what answers.
+ *
+ * `RUN_RATE_LIMIT_MAX_RUNS` is ten per sixty seconds per client, and this file
+ * is not the only one in the suite that launches: `e2e/failure-modes.spec.ts`
+ * spends eleven launches immediately before this file runs, and waits out the
+ * limiter itself on the server's own `Retry-After`. It does not wait for
+ * anybody else, so the window is still partly spent when this file's first Run
+ * lands.
+ *
+ * MEASURED, not guessed. Running `failure-modes.spec.ts test-panel.spec.ts` in
+ * one invocation on 2026-09-04 produced a 429 on this file's first
+ * `POST /api/sessions/.../runs` - in the serve log - while each file alone
+ * passes. The panel then sits at `idle` with the server's sentence in
+ * `test-panel-problem`, and the assertion that fails is whichever one was
+ * waiting for the run to start, which reads like a product defect and is not.
+ *
+ * WAITING IS THE CORRECT BEHAVIOUR, and raising the limit is not: the limiter
+ * is what makes an unauthenticated Launch button survivable, and turning it
+ * down for a test would be turning off the thing under test everywhere else.
+ * Sixty-one seconds is the window plus a second; three attempts is the bound,
+ * so a genuinely broken backend fails rather than hanging out the timeout.
+ *
+ * The refusal is matched on the SERVER's own sentence (`app.py:1428`), so a
+ * different failure - a 403 for a gateless graph, a compile refusal - is not
+ * silently retried into a timeout.
+ */
+const RATE_LIMITED = /too many runs from this client/i
+const LIMITER_WINDOW_MS = 61_000
+
+async function pressRun(page: Page, testid = 'test-run'): Promise<void> {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.locator(`[data-testid="${testid}"]`).click()
+    const refused = await page
+      .locator('[data-testid="test-panel-problem"]')
+      .filter({ hasText: RATE_LIMITED })
+      .waitFor({ state: 'visible', timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!refused) return
+    test.info().annotations.push({
+      type: 'rate-limited',
+      description: `attempt ${attempt} was refused by the admission limiter; waiting out the window`,
+    })
+    await page.waitForTimeout(LIMITER_WINDOW_MS)
+  }
+  throw new Error('the admission limiter refused three launches a minute apart')
+}
+
+/* --- a graph that fails on purpose (12 D2's third surface) -----------------
+ *
+ * The one document here that is not a gallery template, and it has to be:
+ * `SYNTHETIC_FAILURE` names the node it fails BY ID and the match is exact
+ * (`builder_runner.py::_FailurePlan.applies_to`), so the graph has to declare
+ * `fm_refusal` itself. `e2e/failure-modes.spec.ts` authors the same shape
+ * against the same backend line, and every id it names is one only these two
+ * files write - so one backend serves the whole suite and no other file's run
+ * fails.
+ *
+ * GATELESS, which needs `BUILDER_ALLOW_GATELESS_GRAPHS=1`, for failure-modes'
+ * own reason: a gate above the failure would park the run and this test would
+ * be about the gate.
+ */
+const AUTHORED_MODEL = 'google/gemini-3.8-flash'
+
+function refusingGraph() {
+  const agent = (id: string, source: string) => ({
+    id,
+    kind: 'agent',
+    label: id,
+    position: { x: 0, y: 0 },
+    config: {
+      role: `${id} specialist`,
+      goal: `do the ${id} work`,
+      backstory: 'years of it',
+      task: {
+        description: 'work from ${state.out__' + source + '}',
+        expected_output: 'a paragraph',
+      },
+      llm: { model: AUTHORED_MODEL },
+      tier: 'cheap',
+      on_error: 'fail',
+    },
+  })
+  const edge = (id: string, source: string, target: string) => ({
+    id,
+    source,
+    source_port: 'out',
+    target,
+    target_port: 'in',
+  })
+  return {
+    schema: 'builder.flow/v1',
+    name: 'a graph whose second agent refuses',
+    version: 1,
+    input_field: 'idea',
+    nodes: [
+      { id: 'idea', kind: 'input', label: 'idea', position: { x: 0, y: 0 }, config: { field: 'idea' } },
+      agent('safe', 'idea'),
+      agent('fm_refusal', 'safe'),
+      {
+        id: 'report',
+        kind: 'output',
+        label: 'report',
+        position: { x: 0, y: 0 },
+        config: { body_key: 'markdown_body', source: '${state.out__fm_refusal}' },
+      },
+    ],
+    edges: [
+      edge('e1', 'idea', 'safe'),
+      edge('e2', 'safe', 'fm_refusal'),
+      edge('e3', 'fm_refusal', 'report'),
+    ],
+    joins: {},
+  }
+}
+
+/** Create and publish a document the browser will then open by id. */
+async function publishDocument(request: APIRequestContext, document: unknown): Promise<string> {
+  const created = await request.post('/api/builder/workflows', { data: { document } })
+  expect(created.status(), await created.text()).toBe(201)
+  const id = ((await created.json()) as { document: { id: string } }).document.id
+  const published = await request.post(`/api/builder/workflows/${id}/publish`)
+  expect(published.status(), await published.text()).toBe(200)
+  return id
+}
+
+test.describe('The docked test panel', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.beforeEach(async ({ request }) => {
+    await clearLibrary(request)
+  })
+
+  test.afterEach(async ({ request }) => {
+    await clearLibrary(request)
+  })
+
+  test(
+    'the Run tab completes a published graph and shows a result body inline',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+      await openAndPublish(page)
+
+      // The panel starts collapsed to its tab strip - an author lands on a
+      // canvas to draw, and a pane that opens itself takes 260px from the first
+      // thing they came to do.
+      await expect(panel(page)).toHaveAttribute('data-open', 'false')
+      const canvasBefore = (await canvasFrame(page).boundingBox())!.height
+
+      await openTab(page, 'run')
+
+      // It took height from the CANVAS rather than covering it (R15, D1). This
+      // is the assertion no unit test can make: a jsdom mount reports whatever
+      // it is told, and an overlay and a grid row look identical to it.
+      await expect
+        .poll(async () => (await canvasFrame(page).boundingBox())!.height, { timeout: 10_000 })
+        .toBeLessThan(canvasBefore)
+
+      // Seeded from the template's committed sample, so there is nothing to
+      // configure (criterion 11).
+      const value = page.locator('[data-testid="test-input-value"]')
+      await expect(value).not.toHaveValue('')
+
+      await pressRun(page)
+
+      // The canvas hands over to run tenancy with one attribute, and the
+      // `[data-mode='run']` block in `builder.css` - dormant since §5.1 - is
+      // what draws the cards from here on.
+      await expect(canvasFrame(page)).toHaveAttribute('data-mode', 'run', { timeout: 30_000 })
+
+      // This template gates above its first billable node, which is what makes
+      // it launchable by somebody who is not signed in. The panel offers the
+      // forward answer.
+      const gate = page.locator('[data-testid="test-gate-approve"]')
+      await expect(gate).toBeVisible({ timeout: 60_000 })
+      await gate.click()
+
+      const result = page.locator('[data-testid="test-run-result"]')
+      await expect(result).toBeVisible({ timeout: 180_000 })
+      await expect(result).not.toBeEmpty()
+      await expect(page.locator('[data-testid="test-run-status"]')).toHaveText(/completed/i)
+
+      // At least one card finished, drawn by the run tenancy rather than by its
+      // kind. `.is-completed` is `BuilderNode`'s own class and the selector the
+      // stylesheet keys on.
+      await expect(page.locator('.builder-node.is-completed').first()).toBeVisible()
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+
+  test(
+    'the Node tab names the mocks it has not got, and runs one node once it has',
+    { tag: '@launch' },
+    async ({ page, request }) => {
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+      const id = await openAndPublish(page)
+
+      await openTab(page, 'node')
+
+      // Only flow-kind nodes are offered: an attachment has no output, so there
+      // is nothing to replay and nothing to render.
+      const select = page.locator('[data-testid="test-node-select"]')
+      const options = await select.locator('option').allInnerTexts()
+      expect(options.some((option) => option.includes('· tool'))).toBe(false)
+      expect(options.some((option) => option.includes('· agent'))).toBe(true)
+
+      // The LAST agent has ancestors, so it needs mocks and has none.
+      const agents = options.filter((option) => option.includes('· agent'))
+      await select.selectOption({ label: agents[agents.length - 1] })
+
+      // Refused before a run row exists, naming the keys (D4). The server's 422
+      // says the same thing and is the refusal that binds; this one costs no
+      // request.
+      const missing = page.locator('[data-testid="test-node-missing"]')
+      await expect(missing).toBeVisible()
+      await expect(missing).toContainText('out__')
+      await expect(page.locator('[data-testid="test-node-run"]')).toBeDisabled()
+
+      // Give it mocks the way D3 says is cheapest. Through `request`, because
+      // "run once, then save its outputs" is the Run tab's journey and this
+      // test is about the Node tab.
+      const document = (await (await request.get(`/api/builder/workflows/${id}`)).json()) as {
+        document: { input_field: string; nodes: { id: string; kind: string; label: string }[] }
+      }
+      const flowNodes = document.document.nodes.filter(
+        (node) => !['tool', 'mcp', 'skill'].includes(node.kind),
+      )
+      const mocks = Object.fromEntries(
+        flowNodes.map((node) => [node.id, 'a mocked upstream answer']),
+      )
+      const saved = await request.post(`/api/builder/workflows/${id}/test-inputs`, {
+        data: {
+          label: 'every node mocked',
+          inputs: { [document.document.input_field]: 'clinic scheduling software' },
+          node_mocks: mocks,
+        },
+      })
+      expect(saved.status(), 'the saved test input was refused').toBe(201)
+
+      // Reload so the panel reads the row, then choose it.
+      await page.reload()
+      await expect(nodes(page)).toHaveCount(7)
+      await openTab(page, 'node')
+      await page.locator('[data-testid="test-input-select"]').selectOption({
+        label: 'every node mocked',
+      })
+
+      /*
+       * THE NODE UNDER TEST IS THE GATE, and that is a limitation of the
+       * derived plan rather than a preference. Measured against this backend on
+       * 2026-09-04: a `node_test` on ANY node downstream of a gate fails before
+       * a frame is emitted -
+       *
+       *   n3_research listens for 'e2_approve', which no method emits and no
+       *   method is called. A trigger nothing produces is a node that never runs
+       *
+       * - because a gate compiles to TWO methods (the pause and its paired
+       * router), and replacing the gate node with `runtime:replay_output`
+       * removes the router that emits `<edge>_approve`. Every one of these four
+       * templates gates above its first billable node, so the gate is the one
+       * node here whose ancestors carry none. Recorded against 09 D7 and 10 D5;
+       * not worked around, because the compiler is not this plan's to change.
+       */
+      const gate = flowNodes.find((node) => node.kind === 'gate')!
+      await select.selectOption({ value: gate.id })
+      await expect(missing).toHaveCount(0)
+
+      await pressRun(page, 'test-node-run')
+      // The panel's own refusal is quoted into the failure: a node test that is
+      // refused says why, and a poll reporting only "error" would send the next
+      // reader to the wrong layer.
+      await expect
+        .poll(
+          async () => {
+            const problem = page.locator('[data-testid="test-panel-problem"]')
+            const detail = (await problem.count()) ? await problem.innerText() : ''
+            const status = await page.locator('[data-testid="test-node-status"]').innerText()
+            return `${status}${detail ? ` — ${detail}` : ''}`
+          },
+          { timeout: 90_000 },
+        )
+        .toMatch(/^(waiting|completed)/i)
+
+      /*
+       * ONE node ran, and the canvas says which. This is the assertion the
+       * criterion asks for and the one no unit test can make.
+       *
+       * Stated as "the gate moved and every DESCENDANT is still idle" rather
+       * than as a count of one, because the replayed ancestor moves too: an
+       * ancestor compiled to `runtime:replay_output` announces itself with a
+       * frame carrying `replayed: true` (C6), which is the honest thing for it
+       * to do and would make a count of one an assertion about the wrong
+       * property. What `node_test` promises is that nothing BELOW the node runs.
+       */
+      await expect(
+        page.locator(`.vue-flow__node[data-id="${gate.id}"] .builder-node`),
+      ).not.toHaveClass(/is-idle/)
+      for (const node of flowNodes.filter((entry) => ['agent', 'output'].includes(entry.kind))) {
+        await expect(
+          page.locator(`.vue-flow__node[data-id="${node.id}"] .builder-node`),
+          `${node.id} ran, and a single-node test must not reach it`,
+        ).toHaveClass(/is-idle/)
+      }
+
+      // Every log group the tab draws is that node's - the tab filters, so a
+      // frame from anywhere else would be a frame this run should not have had.
+      const groups = page.locator('[data-testid="test-body-node"] [data-testid="run-log-group"]')
+      for (const group of await groups.all()) {
+        await expect(group).toHaveAttribute('data-node', gate.id)
+      }
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+
+  test('the Dry-run tab prices the graph and creates no run at all', async ({ page, request }) => {
+    /*
+     * DELIBERATELY NOT `@launch`. That is the whole claim: a dry run parses,
+     * bounds, prices and compiles with no kickoff, no run row, no admission
+     * slot and no rate-limit charge (D5, 10 D8). If this test could create a
+     * run it would need the tag, and the run-history assertion below is what
+     * makes the absence of the tag checkable rather than asserted.
+     */
+    const watch = watchConsole(page)
+    await openAndPublish(page)
+
+    const before = ((await (await request.get('/api/runs')).json()) as { runs?: unknown[] }).runs
+    const beforeCount = (before ?? []).length
+
+    await openTab(page, 'dry')
+    await page.locator('[data-testid="test-dry-run"]').click()
+
+    await expect(page.locator('[data-testid="test-dry-free"]')).toContainText(
+      'no tokens were spent',
+    )
+    // BOTH figures. The floor is what a real run's total is comparable with;
+    // the enforced one carries the nitro margin and deliberately is not.
+    await expect(page.locator('[data-testid="test-dry-floor"]')).toContainText('$')
+    await expect(page.locator('[data-testid="test-dry-static"]')).toContainText('$')
+    await expect(page.locator('[data-testid="test-dry-calls"]')).not.toBeEmpty()
+    await expect(page.locator('[data-testid="test-dry-plan"]')).toContainText('n0_')
+
+    const after = ((await (await request.get('/api/runs')).json()) as { runs?: unknown[] }).runs
+    expect((after ?? []).length, 'a dry run appeared in the run history').toBe(beforeCount)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test(
+    'a failed test run puts the node in the problems dock, under its own heading',
+    { tag: '@launch' },
+    async ({ page, request }) => {
+      /*
+       * 12 D2's third surface, and the only place it has ever been true.
+       *
+       * D2 asks that a failed node say so in three places at once - on the
+       * card, in the log, and in the problems dock. The dock is the one that
+       * makes a failure SURVEYABLE: four red nodes on a sixteen-node canvas is
+       * four rows here and four hunts otherwise. `ProblemsPanel`'s run group
+       * and `runPhaseProblems` were both built and both unit-proved, and
+       * NOTHING FED EITHER until 2026-09-04 - so the group could be mounted in
+       * jsdom with hand-made props and could not be produced by a run.
+       *
+       * That is exactly the gap `e2e/failure-modes.spec.ts` had to guard: it
+       * looked for this heading on the RUN CONSOLE, which has no problems dock
+       * by design, and skipped when it found none. The dock lives in the
+       * BUILDER, beside the test panel, and this is where the assertion
+       * belongs. That guarded step is deleted, and the comment left in its
+       * place points here.
+       *
+       * The frames come off the socket into `useFlowTest`'s transport tap;
+       * `frontend/tests/testPanel.spec.ts` drives that tap directly, including
+       * the replay door and the four frames CrewAI raises about one failure.
+       * What only a browser can say is that the row was rendered, in the dock,
+       * while the canvas was in run tenancy.
+       */
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+
+      const id = await publishDocument(request, refusingGraph())
+      await page.goto(`/#/build/${id}`)
+      await expect(nodes(page)).toHaveCount(4)
+
+      await openTab(page, 'run')
+
+      // Not a gallery template, so nothing seeds the box - the author types.
+      const value = page.locator('[data-testid="test-input-value"]')
+      await value.fill('clinic scheduling software')
+      await pressRun(page)
+
+      /*
+       * SKIP RATHER THAN FAIL when the backend was started without the two
+       * knobs, saying so - the `SYNTHETIC_BRANCH_DELAY_SECONDS` lesson. A
+       * gateless launch answers 403 without `BUILDER_ALLOW_GATELESS_GRAPHS`,
+       * and without `SYNTHETIC_FAILURE` this graph simply completes; either way
+       * the dock stays empty and the failure would read like a product defect.
+       */
+      const status = page.locator('[data-testid="test-run-status"]')
+      await expect(status).not.toHaveText(/queued/i, { timeout: 60_000 })
+      const settled = await Promise.race([
+        page
+          .locator('[data-testid="problems-run-heading"]')
+          .waitFor({ state: 'visible', timeout: 180_000 })
+          .then(() => 'failed' as const),
+        status.filter({ hasText: /completed/i }).waitFor({ timeout: 180_000 }).then(() => 'clean' as const),
+      ]).catch(() => 'clean' as const)
+      test.skip(
+        settled !== 'failed',
+        'the backend was started without BUILDER_ALLOW_GATELESS_GRAPHS=1 and SYNTHETIC_FAILURE='
+          + '"fm_bad_key:bad_key:1,fm_tool_timeout:tool_timeout:1,fm_refusal:refusal:1,'
+          + 'fm_malformed:malformed_output:1,fm_rate_limit:rate_limit:1" - see '
+          + 'e2e/failure-modes.spec.ts\'s docstring.',
+      )
+
+      // The heading, which is what separates a run failure from a build
+      // problem: "this graph cannot run" and "this graph ran and one node
+      // failed" are different sentences and an author acts on them differently.
+      await expect(page.locator('[data-testid="problems-run-heading"]')).toBeVisible()
+      await expect(page.locator('ul[aria-label="Run problems"]')).toBeVisible()
+
+      // The class the server sent, prefixed - `run-refusal`. The suffix is the
+      // wire value verbatim and the prefix is the client's, so `refusal` does
+      // not sit in the code chip looking like a build-time code.
+      const row = page.locator('[data-testid="problem-run-refusal"]')
+      await expect(row).toBeVisible()
+      // Named by its LABEL, so the row is readable without knowing the id.
+      await expect(row).toContainText('fm_refusal')
+
+      // And the headline stops claiming the graph is fine. It read
+      // `Ready to publish` over a canvas with a red node on it until the group
+      // had something in it - true about a publish, and the wrong thing to be
+      // saying to somebody whose run just failed. It still counts BUILD-time
+      // problems for the verdict; what it will not do is claim there is nothing
+      // wrong while a failure is on screen.
+      await expect(headline(page)).toContainText(/1 node failed/i)
+      await expect(headline(page)).not.toContainText(/ready to publish/i)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+
+  test('the Code tab shows what a DRAFT compiled to, without publishing it', async ({ page }) => {
+    /*
+     * The one tab an unpublished document can use, and the reason the panel is
+     * still worth opening before a publish: `compiled` reads the document
+     * store, where the three run modes read `BUILDER_WORKFLOWS`.
+     */
+    const watch = watchConsole(page)
+    await page.goto('/#/build')
+    await card(page, 'Sequential pipeline').click()
+    await expect(nodes(page)).toHaveCount(7)
+    await page.keyboard.press('Control+s')
+    await expect(saveChip(page)).toContainText(/saved/i)
+
+    await openTab(page, 'code')
+
+    const yaml = page.locator('[data-testid="code-yaml"]')
+    await expect(yaml).toBeVisible({ timeout: 20_000 })
+    // The literal declaration `Flow.from_declaration` is handed.
+    await expect(yaml).toContainText('crewai.flow/v1')
+    await expect(page.locator('[data-testid="code-python"]')).toContainText('from crewai import')
+
+    // Run is refused, and the sentence names the button that fixes it.
+    await openTab(page, 'run')
+    await expect(page.locator('[data-testid="test-run-blocked"]')).toContainText(/publish/i)
+    await expect(page.locator('[data-testid="test-run"]')).toBeDisabled()
+
+    expect(watch.unexpected).toEqual([])
+  })
+})

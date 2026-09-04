@@ -107,14 +107,26 @@ describe('a problem is indexed under every anchor it carries, not one of them', 
       .map(([code]) => code)
       .sort()
 
-    // Three, and each is a fact about a PAIR: an edge naming a port its source
-    // does not have, an edge arriving at a kind that accepts none, and a back
-    // edge whose source is not a routing kind. An author looking at either end
-    // has to see it, which is why both maps get an entry.
+    // SIX, and each is a fact about a PAIR - which is exactly why both maps get
+    // an entry: an author looking at either end has to see it.
+    //
+    // The first three are the originals: an edge naming a port its source does
+    // not have, an edge arriving at a kind that accepts none, and a back edge
+    // whose source is not a routing kind. The last three arrived with
+    // 03-node-library.md D2's edge classes on 2026-09-04, and every one of them
+    // is a pair by construction - an `attach` or `member` edge is legal or not
+    // according to what is at BOTH of its ends, never according to one.
     expect(both).toEqual([
+      'attach-target-not-agent',
+      // 09: an attachment whose reference did not survive an export. It is a
+      // fact about the pair, like the others here - which node lost its
+      // reference, and which edge hung it on an agent.
+      'attachment-reference-missing',
       'back-edge-not-router',
       'edge-target-refuses-incoming',
       'edge-unknown-port',
+      'member-agent-has-flow-edges',
+      'member-target-not-crew',
     ])
     // A sanity check on the scan itself, because a regex that matched nothing
     // would satisfy the assertion above by accident: it has to have found the
@@ -426,6 +438,8 @@ function mountPanel(props: {
   phase?: 'idle' | 'checking' | 'stale' | 'fresh' | 'unreachable'
   publishProblems?: BuilderProblem[]
   labels?: Record<string, string>
+  /** The stored version on screen, or null while head is being edited (D-15-17). */
+  viewingVersion?: number | null
 }) {
   return mount(ProblemsPanel, {
     props: { phase: 'fresh' as const, publishProblems: [], labels: {}, ...props },
@@ -501,6 +515,44 @@ describe('the panel shows every problem at once, worst first', () => {
 
     expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('Ready to publish')
     expect(wrapper.text()).toContain('Warnings never block; errors always do.')
+  })
+
+  describe('a stored version is never "ready to publish" (D-15-17)', () => {
+    it('says the document bar\'s own words instead, with a lock', () => {
+      const wrapper = mountPanel({ problems: [], viewingVersion: 1 })
+
+      const headline = wrapper.get('[data-testid="problems-headline"]')
+      expect(headline.text()).toBe('viewing v1 · read-only')
+      // Not the clean tick: `Ready to publish` is a claim about what the
+      // author can DO next, and on a stored version that is nothing.
+      expect(headline.classes()).not.toContain('is-clean')
+      expect(wrapper.get('[data-testid="problems-read-only"]').text()).toContain(
+        'publishing and editing act on head',
+      )
+      expect(wrapper.text()).not.toContain('Ready to publish')
+    })
+
+    it('does not read as blocking either, when the stored version has errors', () => {
+      /*
+       * The list is still shown - it is a true verdict about the document on
+       * screen - but the RED headline would tell an author to go and fix
+       * something they cannot edit.
+       */
+      const wrapper = mountPanel({
+        problems: [problem('node-count'), problem('node-count')],
+        viewingVersion: 3,
+      })
+
+      const headline = wrapper.get('[data-testid="problems-headline"]')
+      expect(headline.text()).toBe('viewing v3 · read-only')
+      expect(headline.classes()).not.toContain('is-blocking')
+    })
+
+    it('is unaffected while head is on screen', () => {
+      const wrapper = mountPanel({ problems: [], viewingVersion: null })
+      expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('Ready to publish')
+      expect(wrapper.find('[data-testid="problems-read-only"]').exists()).toBe(false)
+    })
   })
 })
 

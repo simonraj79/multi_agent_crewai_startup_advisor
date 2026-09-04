@@ -92,5 +92,24 @@ db/
 # about that whole dead cluster and an ignore rule must not decide it silently.
 !frontend/src/assets/**/*.png
 
+# VISUAL BASELINES, which are the opposite of a run artifact.
+#
+# A screenshot Playwright WROTE during a run is disposable; a screenshot it
+# COMPARES against is the assertion itself, and one that is not committed cannot
+# fail. Before 2026-09-04 the global `*.png` rule swallowed both, so
+# `run-canvas.spec.ts` had three baselines that existed on one machine and
+# nowhere else - which means a fresh clone generated them on its first run and
+# passed, whatever the canvas looked like.
+#
+# The `-<project>-<platform>` suffix Playwright appends is why this is safe:
+# a Linux run looks for `-linux` files, finds none and writes its own rather
+# than diffing against a Windows render of the same page.
+!frontend/e2e/visual/**/*.png
+
 # Lecture source material - 20 MB binary, not application source.
 *.pdf
+
+# Plan 08 C11: a user's own SKILL.md packs are materialised here as a CACHE of
+# the `user_skills` rows. The committed half is `data/skills/builtin/`, which
+# is this repository's own four and is NOT ignored.
+data/skills/users/

@@ -106,6 +106,7 @@ function model(document: BuilderDocument, version: number, head = version): Buil
     budget: BUDGET,
     graph: { id: DOC_ID, name: 'Sample', version: 'abc', start_nodes: [], nodes: [], edges: [] },
     published: false,
+    live_version: null,
   }
 }
 
@@ -230,6 +231,11 @@ const BOUNDS: BuilderBounds = {
   max_input_chars: 2000,
   max_document_bytes: 262144,
   run_cost_ceiling_usd: 10,
+  // C2 v2\'s two authored-node bounds: BUILDER_MAX_PROMPT_CHARS and
+  // BUILDER_MAX_NODE_RETRIES, served since plan 04 and read by every
+  // PromptField and node-retry stepper rather than restated as a constant.
+  max_prompt_chars: 4000,
+  max_retries: 3,
 }
 
 function serveBounds(overrides: Partial<BuilderBounds> = {}): void {
@@ -759,5 +765,139 @@ describe('ConflictDialog', () => {
     const panel = wrapper.get('[role="dialog"]')
     expect(panel.attributes('aria-modal')).toBe('true')
     expect(panel.attributes('aria-labelledby')).toBe('conflict-title')
+  })
+})
+
+/* --- the draft belongs to the signed-in user (D-01-5) ---------------------- */
+
+/*
+ * The draft holds the whole document - nodes, prompt inputs and
+ * `config.credential_id` - and it is written on every successful load, not
+ * only for unsaved work. Under a key with no identity in it, the next person
+ * on the same browser could read it, and a sign-out did not remove it. The key
+ * now carries the user's id, so a different signed-in user never finds it even
+ * when the previous person just closed the tab.
+ */
+describe('the draft belongs to the signed-in user (D-01-5)', () => {
+  /** A session as somebody, in the same scope discipline as `session()`. */
+  function sessionAs(userId: string | null, initial = sample()) {
+    const api = new FakeBuilderApi()
+    const [pair, stop] = withScope(() => {
+      const document = useBuilderDocument(initial)
+      return {
+        document,
+        persistence: useBuilderPersistence(document, api, { userId: () => userId }),
+      }
+    })
+    openScopes.push(stop)
+    return { api, ...pair, stop }
+  }
+
+  it("is written under the user's own key and never under the anonymous one", async () => {
+    serveBounds()
+    const alice = sessionAs('alice')
+    alice.persistence.adopt(model(sample(), 4))
+    alice.document.setName('Edited by Alice')
+    await nextTick()
+
+    const raw = window.localStorage.getItem(`u:alice:builder-draft:${DOC_ID}`)
+    expect(raw).not.toBeNull()
+    const draft = JSON.parse(raw as string) as { baseVersion: number; document: { name: string } }
+    expect(draft.baseVersion).toBe(4)
+    expect(draft.document.name).toBe('Edited by Alice')
+    expect(window.localStorage.getItem(`builder-draft:${DOC_ID}`)).toBeNull()
+  })
+
+  it('is never offered to a different user on the same browser, even without a sign-out', async () => {
+    serveBounds()
+    const alice = sessionAs('alice')
+    alice.persistence.adopt(model(sample(), 4))
+    alice.document.setName('Work in progress')
+    await nextTick()
+    alice.stop()
+    // Alice closed the tab. Her draft is still there, and its base is head.
+    expect(window.localStorage.getItem(`u:alice:builder-draft:${DOC_ID}`)).not.toBeNull()
+
+    const bob = sessionAs('bob')
+    await bob.persistence.open(DOC_ID as DocumentId)
+    expect(bob.persistence.restoreOffer.value).toBeNull()
+    expect(bob.document.doc.value.name).toBe('Sample')
+    // Bob's own load writes Bob's own draft; Alice's is untouched.
+    await nextTick()
+    expect(window.localStorage.getItem(`u:bob:builder-draft:${DOC_ID}`)).not.toBeNull()
+    const kept = window.localStorage.getItem(`u:alice:builder-draft:${DOC_ID}`)
+    expect(JSON.parse(kept as string).document.name).toBe('Work in progress')
+  })
+
+  it('is offered back to the same user, exactly as before', async () => {
+    serveBounds()
+    const first = sessionAs('alice')
+    first.persistence.adopt(model(sample(), 4))
+    first.document.setName('Work in progress')
+    await nextTick()
+    first.stop()
+
+    const again = sessionAs('alice')
+    await again.persistence.open(DOC_ID as DocumentId)
+    expect(again.persistence.restoreOffer.value?.baseVersion).toBe(4)
+  })
+
+  it('keeps the anonymous shape when nobody is signed in', async () => {
+    serveBounds()
+    const nobody = sessionAs(null)
+    nobody.persistence.adopt(model(sample(), 4))
+    nobody.document.setName('Edited')
+    await nextTick()
+    expect(window.localStorage.getItem(`builder-draft:${DOC_ID}`)).not.toBeNull()
+  })
+})
+
+/* --- which version is LIVE (critic round product-1, P-05) ----------------- */
+
+describe('the session knows which version is live, not merely whether this one is', () => {
+  /**
+   * `adoptIdentity` read `status` alone: a head that had returned to `draft`
+   * nulled `publishedVersion`, so `DocumentBar`'s `v1 is live` chip vanished the
+   * instant the author saved v2 - at exactly the moment it starts mattering,
+   * because v1 goes on answering launches while they edit. The bar's own
+   * rendering was always right; it was being handed the wrong fact.
+   */
+  it('keeps the live version when head is saved past it', () => {
+    const { persistence } = session()
+    persistence.adopt({ ...model(sample(), 1), status: 'published', published: true, live_version: 1 })
+    expect(persistence.publishedVersion.value).toBe(1)
+
+    // The save that reproduces P-05: head is v2 and a draft again, and v1 is
+    // still the registered workflow.
+    persistence.adopt({ ...model(sample(), 2), status: 'draft', published: false, live_version: 1 })
+    expect(persistence.publishedVersion.value).toBe(1)
+    expect(persistence.publishedHere.value).toBe(false)
+    expect(persistence.version.value).toBe(2)
+  })
+
+  it('clears it when nothing of the document is registered', () => {
+    const { persistence } = session()
+    persistence.adopt({ ...model(sample(), 1), status: 'published', published: true, live_version: 1 })
+    persistence.adopt({ ...model(sample(), 2), status: 'draft', published: false, live_version: null })
+    expect(persistence.publishedVersion.value).toBeNull()
+  })
+
+  /**
+   * The other direction, and the branch that was unreachable before: a restart
+   * clears the process registration maps while the row still says `published`.
+   * With no `else` on the old assignment nothing was written at all, so
+   * `liveNote`'s "published but not registered here" sentence could never
+   * render from a fresh load.
+   */
+  it('falls back to the published head when this process registered nothing', () => {
+    const { persistence } = session()
+    persistence.adopt({
+      ...model(sample(), 3, 3),
+      status: 'published',
+      published: false,
+      live_version: null,
+    })
+    expect(persistence.publishedVersion.value).toBe(3)
+    expect(persistence.publishedHere.value).toBe(false)
   })
 })

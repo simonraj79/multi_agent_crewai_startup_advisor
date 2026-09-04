@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
+import { DEFAULT_SYNTHETIC_USER, syntheticUserOf } from './syntheticUser'
 
 /**
  * A second dev server for the end-to-end suite, kept separate from
@@ -44,7 +45,7 @@ const wsTarget = target.replace(/^http/, 'ws')
 function stubAuthOrigin(): Plugin {
   const now = new Date().toISOString()
   const user = {
-    id: 'e2e-user',
+    id: DEFAULT_SYNTHETIC_USER,
     name: 'E2E Operator',
     email: 'e2e@example.test',
     emailVerified: true,
@@ -76,13 +77,40 @@ function stubAuthOrigin(): Plugin {
     '/api/auth/sign-out': { success: true },
   }
 
+  /**
+   * The same session shape for a test-chosen identity (`syntheticUser.ts`).
+   *
+   * `email` is spelled `<id>@synthetic` because that is what the Python side
+   * answers for the forwarded header (plan 01 D8), so the chip in the header
+   * and the owner column in the database name the same person. `name` is the
+   * id itself, which is what `isolation.spec.ts` reads off the chip to prove a
+   * context is who it thinks it is before asserting anything about isolation.
+   */
+  function sessionFor(id: string): unknown {
+    return {
+      session: {
+        id: `e2e-session-${id}`,
+        userId: id,
+        token: `e2e-session-token-${id}`,
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        createdAt: now,
+        updatedAt: now,
+      },
+      user: { ...user, id, name: id, email: `${id}@synthetic` },
+    }
+  }
+
   return {
     name: 'e2e-stub-auth-origin',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const path = (req.url ?? '').split('?')[0]
         if (!path.startsWith('/api/auth/')) return next()
-        const body = routes[path]
+        // A context that set the synthetic-user cookie is that user here as
+        // well as at the API, so the header chip, the history panel and the
+        // owner of every row agree. No cookie: the E2E Operator, as always.
+        const synthetic = path === '/api/auth/get-session' ? syntheticUserOf(req.headers.cookie) : null
+        const body = synthetic ? sessionFor(synthetic) : routes[path]
         res.setHeader('content-type', 'application/json')
         // An unmapped /api/auth/* path answers `null` with a 200 rather than
         // falling through to the proxy. Falling through would 404 against the
@@ -95,6 +123,30 @@ function stubAuthOrigin(): Plugin {
   }
 }
 
+/**
+ * Turn the synthetic-user cookie into the header the free backend honours.
+ *
+ * On BOTH proxies: the HTTP one for every API call and `proxyReqWs` for the
+ * WebSocket upgrade, because a run's frames are read over the socket by a
+ * route that checks who is asking - a page that was Alice on `/api` and nobody
+ * on `/ws` would fail rubric 14's journey at the one step that costs nothing
+ * to get right. The cookie itself still reaches the backend in the `Cookie`
+ * header; the Python side never reads it, and `X-Synthetic-User` is ignored by
+ * any deployment that is not `SYNTHETIC=1` with no `AUTH_BASE_URL`, so nothing
+ * here can make a paid or an authenticated service believe a cookie.
+ */
+const forwardSyntheticUser: NonNullable<ProxyOptions['configure']> = (proxy) => {
+  // No cookie is the E2E Operator, not nobody: the stub already signed that
+  // context in, and an API that sees a stranger behind a signed-in page is a
+  // state production never reaches (see DEFAULT_SYNTHETIC_USER).
+  proxy.on('proxyReq', (proxyReq, req) => {
+    proxyReq.setHeader('X-Synthetic-User', syntheticUserOf(req.headers.cookie) ?? DEFAULT_SYNTHETIC_USER)
+  })
+  proxy.on('proxyReqWs', (proxyReq, req) => {
+    proxyReq.setHeader('X-Synthetic-User', syntheticUserOf(req.headers.cookie) ?? DEFAULT_SYNTHETIC_USER)
+  })
+}
+
 export default defineConfig({
   root: fileURLToPath(new URL('..', import.meta.url)),
   plugins: [vue(), stubAuthOrigin()],
@@ -105,8 +157,8 @@ export default defineConfig({
     // quietly moved to 5274 while Playwright watched 5273 would just time out.
     strictPort: true,
     proxy: {
-      '/api': target,
-      '/ws': { target: wsTarget, ws: true },
+      '/api': { target, configure: forwardSyntheticUser },
+      '/ws': { target: wsTarget, ws: true, configure: forwardSyntheticUser },
     },
   },
 })

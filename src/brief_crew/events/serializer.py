@@ -43,6 +43,13 @@ from crewai.events.types.llm_guardrail_events import (
     LLMGuardrailStartedEvent,
 )
 from crewai.events.types.logging_events import AgentLogsExecutionEvent
+from crewai.events.types.mcp_events import MCPConnectionFailedEvent
+from crewai.events.types.skill_events import (
+    SkillActivatedEvent,
+    SkillLoadedEvent,
+    SkillLoadFailedEvent,
+    SkillUsedEvent,
+)
 from crewai.events.types.tool_usage_events import (
     ToolExecutionErrorEvent,
     ToolSelectionErrorEvent,
@@ -56,6 +63,7 @@ from brief_crew.events.models import (
     FrameLevel,
     UIEventType,
 )
+from brief_crew.events.redaction import REDACTED, is_secret_key
 from brief_crew.events.registry import NodeRegistry
 from brief_crew.events.verdict import (
     VerdictComputedEvent,
@@ -63,7 +71,12 @@ from brief_crew.events.verdict import (
     verdict_frame_message,
     verdict_frame_node,
 )
-from brief_crew.config import compute_cost_usd
+from brief_crew.config import (
+    MAX_FRAME_PREVIEW_CHARS,
+    MAX_NODE_ERROR_CHARS,
+    MAX_UTTERANCE_CHARS,
+    compute_cost_usd,
+)
 from brief_crew.schemas.validator import Verdict
 
 
@@ -247,6 +260,21 @@ class SerializerLimits:
     max_tool_field: int = 512
 
 
+def error_class_of(error: Any) -> dict[str, str]:
+    """`{"error_class": ...}` when the exception names one, else nothing.
+
+    Contract C6: a step failure a client can act on carries a discriminator
+    beside the sentence - `credential-not-yours` is the first. Read off an
+    attribute rather than a type check so this module never imports the
+    service package that raises it.
+    """
+
+    error_class = getattr(error, "error_class", None)
+    if isinstance(error_class, str) and error_class:
+        return {"error_class": error_class[:64]}
+    return {}
+
+
 class FieldBoundedSerializer:
     """Convert supported events without traversing live CrewAI objects."""
 
@@ -275,8 +303,14 @@ class FieldBoundedSerializer:
                 if index >= self.limits.max_items:
                     clipped["__truncated__"] = True
                     break
-                clipped[str(key)[: self.limits.max_key]] = self.clip(
-                    item, depth=depth + 1
+                # The same list the persistence sanitiser applies on the
+                # way to a row, applied here on the way to the RING - which
+                # is what the live socket, `/frames` and the NDJSON export
+                # all read. Until 2026-09-03 only the row was clean.
+                clipped[str(key)[: self.limits.max_key]] = (
+                    REDACTED
+                    if is_secret_key(key)
+                    else self.clip(item, depth=depth + 1)
                 )
             return clipped
         if isinstance(value, Sequence) and not isinstance(value, bytes | bytearray):
@@ -415,13 +449,18 @@ class FieldBoundedSerializer:
         if isinstance(event, MethodExecutionStartedEvent):
             return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_START, node_id, f"{event.method_name} started", {"stage": "before", "params": self.clip(event.params)}),)
         if isinstance(event, MethodExecutionFinishedEvent):
-            frames = [self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} completed", {"stage": "after", "result": self.clip(event.result)})]
+            # `output_preview` is C6's, and it is NOT a second copy of `result`:
+            # `result` goes through `clip`, which bounds a whole structure and
+            # says nothing about what a person would read, while the preview is
+            # the node's own text - `out__<node>` is exactly this method's
+            # return value - bounded to one screenful.
+            frames = [self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} completed", {"stage": "after", "result": self.clip(event.result), "output_preview": self._preview(event.result)})]
             if registry.is_router(event.method_name) and event.result is not None:
                 route = str(event.result)
                 frames.append(self._draft(timestamp, FrameKind.EDGE_TAKEN, UIEventType.EDGE_PROCESS, node_id, f"{event.method_name} routed to {route}", {"from": node_id, "to": registry.resolve_route(event.method_name, route), "route": self.clip(route)}))
             return tuple(frames)
         if isinstance(event, MethodExecutionFailedEvent):
-            return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} failed", {"stage": "error", "error": self.clip(str(event.error))}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} failed", {"stage": "error", "error": self.clip(str(event.error)), **error_class_of(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, HumanFeedbackRequestedEvent):
             return (self._draft(timestamp, FrameKind.GATE_OPEN, UIEventType.HUMAN_INTERACTION, node_id, event.message, {"stage": "before", "gate_id": event.request_id, "options": self.clip(event.emit), "output": self.clip(event.output)}),)
@@ -429,7 +468,7 @@ class FieldBoundedSerializer:
             return (self._draft(timestamp, FrameKind.GATE_CLOSED, UIEventType.HUMAN_INTERACTION, node_id, f"Feedback received for {event.method_name}", {"stage": "after", "gate_id": event.request_id, "feedback": self.clip(event.feedback), "outcome": self.clip(event.outcome)}),)
 
         if isinstance(event, ToolUsageStartedEvent):
-            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} started", {"stage": "before", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "args": self.clip(event.tool_args)}),)
+            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} started", {"stage": "before", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "args": self.clip(event.tool_args), "input_preview": self._preview(event.tool_args)}),)
         if isinstance(event, ToolUsageFinishedEvent):
             duration_ms = max(0, int((event.finished_at - event.started_at).total_seconds() * 1000))
             level = FrameLevel.WARNING if event.failure is not None else FrameLevel.INFO
@@ -437,7 +476,13 @@ class FieldBoundedSerializer:
             # The query the *tool* reports is the one it actually ran, so it
             # wins over the arguments it was handed.
             query = envelope.pop("query", None) or self.tool_query(event.tool_args)
-            details = {"stage": "after", "tool": event.tool_name, "query": query, "from_cache": event.from_cache, "failure": self.clip(event.failure)}
+            # C6's `output_preview` reads the ENVELOPE and never the raw output.
+            # A single market envelope carries ten scraped page bodies and the
+            # ring holds two thousand frames - `tool_envelope`'s whole job is
+            # that the results never reach a frame, and previewing `event.output`
+            # here would have walked straight past it. `envelope["output"]` is
+            # the already-clipped fallback for a tool that returned prose.
+            details = {"stage": "after", "tool": event.tool_name, "query": query, "from_cache": event.from_cache, "failure": self.clip(event.failure), "input_preview": self._preview(event.tool_args), "output_preview": self._preview(envelope.get("output", envelope))}
             details.update(envelope)
             return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} completed", details, level, duration_ms),)
         if isinstance(event, ToolUsageErrorEvent):
@@ -468,8 +513,17 @@ class FieldBoundedSerializer:
             # `None` means the model is not in the price table. It is NOT 0.0:
             # see `config.compute_cost_usd`.
             usage["cost_usd"] = cost_usd
+            # C6 `utterance`. Until this frame existed the completed response
+            # was DROPPED here - the frame carried `finish_reason` and
+            # `response_id` and nothing the agent had actually said - so a run
+            # view could show that a model had been called and never what came
+            # back. `stage: "utterance"` on the existing `llm` kind, not a new
+            # `FrameKind`: the ring, the replay cursor, `run_frames.kind` and
+            # the client's kind switch all stay as they are.
+            text = self._utterance_text(event)
             return (
                 self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call completed", {"stage": "after", "call_id": event.call_id, "model": event.model, "finish_reason": event.finish_reason, "response_id": event.response_id}),
+                self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} said", {"stage": "utterance", "call_id": event.call_id, "text": text[:MAX_UTTERANCE_CHARS], "truncated": len(text) > MAX_UTTERANCE_CHARS, "prompt_tokens": usage["prompt_tokens"], "completion_tokens": usage["completion_tokens"], "model": event.model}),
                 self._draft(timestamp, FrameKind.TOKEN, UIEventType.MODEL_CALL, node_id, "Token usage recorded", {"call_id": event.call_id, "model": model, "usage": usage, "cost_usd": cost_usd}),
             )
         if isinstance(event, LLMCallFailedEvent):
@@ -539,6 +593,57 @@ class FieldBoundedSerializer:
             }[type(event)]
             return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{tool_name} {reason}", {"stage": "error", "tool": tool_name, "query": self.tool_query(getattr(event, "tool_args", None)), "error": self.clip(getattr(event, "error", None))}, FrameLevel.ERROR),)
 
+        # --- MCP (07 D7, C6) ---------------------------------------------
+        #
+        # A server the run cannot reach. CrewAI raises `MCPConnectionError` out
+        # of `_resolve_native` as well, so the STEP already fails, retries and
+        # routes through `_attempted` - `on_error: route` reaches the error
+        # edge's target with no help from here. What was missing is the frame
+        # that says WHICH server and WHY: without it the console shows a node
+        # failing with an exception name and an author with three MCP servers
+        # attached cannot tell which one is down.
+        #
+        # `FrameKind.ERROR` with `stage: "error"` is C6's `node_error` shape,
+        # the same one `runtime._node_error_frame` writes, and `error_class` is
+        # the discriminator a client routes on. `attempt`, `will_retry` and
+        # `routed` are deliberately absent: they are facts about a node's
+        # retry loop, and this frame is about a connection. The node-level
+        # frame that follows when the failure propagates carries all three.
+        if isinstance(event, MCPConnectionFailedEvent):
+            # Imported inside the branch, as the skill mapping below is: `events/`
+            # is on the capture path of every run and must not pull the builder
+            # package in to draft a frame most runs never produce.
+            from brief_crew.builder.mcp import MCP_CONNECTION_ERROR_CLASS
+
+            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.NODE_END, node_id, f"{event.server_name or 'MCP server'} could not be reached", {"stage": "error", "error_class": MCP_CONNECTION_ERROR_CLASS, "message": str(getattr(event, "error", "") or "")[:MAX_NODE_ERROR_CHARS], "server": str(event.server_name or "")[:MAX_IDENTIFIER_LENGTH], "transport": self.clip(getattr(event, "transport_type", None)), "status_code": getattr(event, "status_code", None), "error_type": self.clip(getattr(event, "error_type", None))}, FrameLevel.ERROR),)
+
+        # --- Skills (08 D6, C6) -------------------------------------------
+        #
+        # `skill_frame_details` is plan 08's mapping, written and tested there
+        # against real event objects and left with no caller because the sink
+        # is C6's. This is the caller. Imported inside the branch: `events/` is
+        # imported by the capture path on every run and must not pull the
+        # builder package in to draft a frame that most runs never produce.
+        #
+        # The three informational events are AGENT frames, because a skill is
+        # something an agent HAS - it is rendered on the agent's card at the one
+        # moment it is visibly doing something. `SkillLoadFailedEvent` is an
+        # ERROR frame in the `node_error` shape instead, for the reason
+        # `builder/skills.py` states beside `SKILL_LOAD_ERROR_CLASS`: a missing
+        # skill DEGRADES an agent rather than removing a capability it was told
+        # it had, so it must be visible without failing the step.
+        if isinstance(event, (SkillActivatedEvent, SkillLoadedEvent, SkillUsedEvent)):
+            from brief_crew.builder.skills import skill_frame_details
+
+            verb = {SkillLoadedEvent: "loaded", SkillActivatedEvent: "activated", SkillUsedEvent: "used"}[type(event)]
+            details = skill_frame_details(event)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{verb} skill {details.get('skill') or 'unnamed'}", {"stage": "skill", "skill_event": verb, **details}),)
+        if isinstance(event, SkillLoadFailedEvent):
+            from brief_crew.builder.skills import skill_frame_details
+
+            details = skill_frame_details(event)
+            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.AGENT_CALL, node_id, f"skill {details.get('skill') or 'unnamed'} could not be loaded", {"stage": "error", "skill_event": "load_failed", **details}, FrameLevel.ERROR),)
+
         # Nothing matched. The sink receives *every* CrewAI event, so this is a
         # real and previously silent discard: ~150 event classes exist and this
         # ladder handles about 30. Recording the type name is what turns "the UI
@@ -550,6 +655,72 @@ class FieldBoundedSerializer:
     def _guardrail_name(event: Any) -> str:
         name = getattr(event, "guardrail_name", None) or getattr(event, "guardrail", None)
         return str(name or "Guardrail").strip()[:MAX_IDENTIFIER_LENGTH]
+
+    def _preview(self, value: Any) -> str:
+        """One value as the ≤2,048 characters a person would read (C6).
+
+        A STRING, always, and never a structure. `clip` already carries the
+        structure under the serializer's own limits and a client that wanted to
+        walk it can; this is the one field a rail renders directly, so a shape
+        that is sometimes a dict and sometimes a string would be a rendering
+        decision pushed onto every consumer.
+
+        **It goes through `clip` first, and until 2026-09-04 it did not.** That
+        was a real leak with a measured shape: a builder agent's Firecrawl tool
+        holds its key as a pydantic FIELD (`FirecrawlSearchTool.api_key`), so a
+        tool-usage event carrying the tool's own dump put the plaintext in
+        `details.input_preview` on the TOOL frame while `details.args` beside it
+        read `***` - one walk redacting and one not, in the same frame, on the
+        live socket and in both exports. Found by plan 06 criterion 3's run
+        rather than by review.
+
+        `clip` rather than a second redaction walk of its own: two walks over
+        one list is exactly how `persistence` and this module came to disagree
+        in the first place, which is the reason `events/redaction.py` exists.
+        The bounds it also applies cannot change a preview that fits: 64 items
+        and depth 4 are both far beyond what 2,048 characters can hold.
+        """
+
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value[:MAX_FRAME_PREVIEW_CHARS]
+        # TOTAL, and that is not defensiveness. This runs inside a capture
+        # callback: `_safe_repr` exists because a tool result whose `__repr__`
+        # raises has already reached this module once, and a preview that let
+        # that through would turn a bad frame into a lost one and an emit-error
+        # counter tick.
+        try:
+            text = json.dumps(self.clip(value), default=str, sort_keys=True)
+        except Exception:  # noqa: BLE001 - see above
+            text = self._safe_repr(value)
+        return text[:MAX_FRAME_PREVIEW_CHARS]
+
+    def _utterance_text(self, event: Any) -> str:
+        """What the model actually said, out of a `response` typed `Any`.
+
+        `LLMCallCompletedEvent.response` is `Any` (`crewai/events/types/
+        llm_events.py`), and in practice it is a string for a plain completion
+        and a provider object for a structured one - so this reduces both to
+        text rather than assuming the easy case and emitting `None` for the
+        other. It is NOT clipped here: the caller needs the true length to set
+        `truncated`, which is the field that says the frame is not the whole
+        answer.
+        """
+
+        response = getattr(event, "response", None)
+        if isinstance(response, str):
+            return response
+        if response is None:
+            return ""
+        for attribute in ("content", "text", "output", "raw"):
+            value = getattr(response, attribute, None)
+            if isinstance(value, str) and value:
+                return value
+        try:
+            return json.dumps(response, default=str, sort_keys=True)
+        except (TypeError, ValueError):
+            return self._safe_repr(response)
 
     def _formatted_answer(self, event: Any) -> str:
         """The agent's own reasoning line, reduced to one printable string."""

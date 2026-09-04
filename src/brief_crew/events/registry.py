@@ -153,6 +153,19 @@ class NodeRegistry:
     #: (`score`), and asking an author for the ident would leak the compiler's
     #: naming scheme into the document.
     verdict_node_id: str | None = None
+    #: Every declared successor edge as `(from node id, to node id)`, for the
+    #: one question no other field answers: was the node that just finished
+    #: really this one's predecessor?
+    #:
+    #: `StreamSinkAdapter` emits C6's `edge_traversal` frame from the last
+    #: declared method to FINISH to the next one to START, and without this it
+    #: would have to believe execution order - which is right for a sequential
+    #: edge and for a fan-out, and wrong the moment two branches interleave. An
+    #: EMPTY set means "believe execution order", which is what every registry
+    #: built by `from_flow_structure` gets: the two hand-written flows' edges
+    #: live in `service/graph.py`, not here, and inventing a second copy of them
+    #: for this is exactly the drift this repository keeps paying for.
+    edges: frozenset[tuple[str, str]] = frozenset()
     #: `flow_method_nodes.values()` as a set, computed once.
     #:
     #: `resolve()`'s last fallback asks whether the enclosing node scope is one
@@ -303,6 +316,16 @@ class NodeRegistry:
             quarantine_node_id=quarantine_node_id,
             workflow_node_id=workflow_node_id,
             verdict_node_id=verdict_node_id,
+            # Every edge the author drew, attachment edges included: the
+            # question `edge_traversal` asks is "is this pair adjacent", and an
+            # attachment edge is adjacency the author can see on the canvas.
+            edges=frozenset(
+                (
+                    str(_field(edge, "source", "") or ""),
+                    str(_field(edge, "target", "") or ""),
+                )
+                for edge in _field(document, "edges", ()) or ()
+            ),
         )
         if (
             verdict_node_id is not None

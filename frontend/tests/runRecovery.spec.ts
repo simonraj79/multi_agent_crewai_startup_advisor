@@ -175,3 +175,93 @@ describe('run context persistence', () => {
     expect(run.lastError.value).toBe('')
   })
 })
+
+/*
+ * D-01-5. The pointer is written by whoever is signed in and read back only by
+ * them: nobody else on the same browser profile sees it, even when the first
+ * person closed the tab without signing out, which is the common case. And a
+ * pointer the server refuses to restore leaves nothing of the old run on
+ * screen - the run id was set before the fetch and survived its failure, so a
+ * refused restore still printed it and relabelled Launch as Relaunch.
+ */
+describe('the run pointer belongs to the signed-in user (D-01-5)', () => {
+  let api: FakeStudioApi
+  let run: ValidatorRun
+  let app: App
+
+  const asAlice = { userId: () => 'alice' }
+  const asBob = { userId: () => 'bob' }
+
+  beforeEach(() => {
+    localStorage.clear()
+    api = new FakeStudioApi()
+  })
+
+  afterEach(() => {
+    app?.unmount()
+  })
+
+  it("is written under the user's own key and never under the anonymous one", async () => {
+    ;[run, app] = withSetup(() => useValidatorRun(api, asAlice))
+    await run.initialize()
+    await run.launch()
+
+    const scoped = localStorage.getItem(`u:alice:${ACTIVE_RUN_KEY}`)
+    expect(scoped).toBeTruthy()
+    expect((JSON.parse(scoped as string) as { runId: string }).runId).toBe(RUN_ID)
+    expect(localStorage.getItem(`u:alice:${SESSION_KEY}`)).toBeTruthy()
+    expect(localStorage.getItem(ACTIVE_RUN_KEY)).toBeNull()
+    expect(localStorage.getItem(SESSION_KEY)).toBeNull()
+  })
+
+  it('is not restored for a different user on the same browser, even without a sign-out', async () => {
+    ;[run, app] = withSetup(() => useValidatorRun(api, asAlice))
+    await run.initialize()
+    await run.launch()
+    app.unmount()
+    // Alice closed the tab. Her pointer is still there.
+    expect(localStorage.getItem(`u:alice:${ACTIVE_RUN_KEY}`)).toBeTruthy()
+
+    const bobApi = new FakeStudioApi()
+    ;[run, app] = withSetup(() => useValidatorRun(bobApi, asBob))
+    await run.initialize()
+
+    expect(run.runId.value).toBe('')
+    expect(run.status.value).toBe('idle')
+    expect(run.lastError.value).toBe('')
+    expect(run.primaryLabel.value).toBe('Launch')
+    expect(bobApi.subscribeCalls).toEqual([])
+    // Nothing of Alice's was touched on the way through.
+    expect(localStorage.getItem(`u:alice:${ACTIVE_RUN_KEY}`)).toBeTruthy()
+    expect(localStorage.getItem(`u:bob:${ACTIVE_RUN_KEY}`)).toBeNull()
+  })
+
+  it('gives each user their own session id rather than sharing one across people', async () => {
+    ;[run, app] = withSetup(() => useValidatorRun(api, asAlice))
+    await run.initialize()
+    app.unmount()
+    ;[run, app] = withSetup(() => useValidatorRun(api, asBob))
+    await run.initialize()
+
+    const alice = localStorage.getItem(`u:alice:${SESSION_KEY}`)
+    const bob = localStorage.getItem(`u:bob:${SESSION_KEY}`)
+    expect(alice).toBeTruthy()
+    expect(bob).toBeTruthy()
+    expect(alice).not.toBe(bob)
+  })
+
+  it('a restore the server refused leaves no run id on screen and no Relaunch', async () => {
+    seedStoredRun()
+    api.getRunError = new Error('run not found')
+
+    ;[run, app] = withSetup(() => useValidatorRun(api))
+    await run.initialize()
+
+    expect(run.status.value).toBe('error')
+    expect(run.lastError.value).toBe('run not found')
+    expect(run.runId.value).toBe('')
+    expect(run.primaryLabel.value).toBe('Launch')
+    expect(storedRun()).toBeNull()
+    expect(api.subscribeCalls).toEqual([])
+  })
+})

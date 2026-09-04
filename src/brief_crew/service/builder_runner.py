@@ -47,13 +47,17 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import json
+import os
 from typing import TYPE_CHECKING, Any, Callable
 
 from brief_crew.builder.runtime import (
     DefaultCrewFactories,
     builder_cancellation,
+    builder_state_sink,
+    replay_source,
     use_crew_factories,
 )
+from brief_crew.service.credentials import credential_scope
 from brief_crew.service.runner import RunExecution, Runner
 
 if TYPE_CHECKING:  # pragma: no cover - typing only; the import is not free
@@ -62,7 +66,15 @@ if TYPE_CHECKING:  # pragma: no cover - typing only; the import is not free
 __all__ = [
     "BuilderFlowRunner",
     "BuilderRunnerFactory",
+    "SYNTHETIC_FAILURE_REASONS",
+    "SyntheticBadCredential",
     "SyntheticCrewFactories",
+    "SyntheticMalformedOutput",
+    "SyntheticNodeFailure",
+    "SyntheticRateLimitError",
+    "SyntheticRefusal",
+    "SyntheticToolTimeout",
+    "parse_synthetic_failures",
     "synthetic_builder_runner",
 ]
 
@@ -92,8 +104,9 @@ class BuilderFlowRunner:
     def __call__(self, execution: RunExecution) -> Any:
         from crewai.flow.flow import Flow
 
+        derived = dict(execution.derived or {})
         flow = Flow.from_declaration(
-            contents=self._flow_definition(),
+            contents=self._definition_for(derived),
             persistence=execution.persistence,
         )
         inputs = dict(execution.inputs)
@@ -102,9 +115,85 @@ class BuilderFlowRunner:
         # gate reply, every `from_pending` resume and every restart recovery
         # resolves through.
         inputs["id"] = execution.flow_id or execution.run_id
+        self._emit_plan(execution)
+        # `credential_scope` is the plan 01 D5 seam: the run's OWNER and the
+        # service store, scoped over this thread and every worker CrewAI
+        # starts from it, so `resolve_credential` inside an entrypoint answers
+        # for this person and nobody else. An execution with no owner resolves
+        # nothing, which is the right answer for a run nobody signed in for.
         with builder_cancellation(execution.cancel_requested):
-            with use_crew_factories(self._factories()):
-                return flow.kickoff(inputs=inputs)
+            with credential_scope(
+                user_id=execution.user_id, persistence=execution.persistence
+            ):
+                # The saved outputs a derived plan replays, scoped over the
+                # kickoff and nothing else. An ordinary run enters this with an
+                # empty mapping, which is what makes `replay_output` fail loudly
+                # rather than quietly if a plain plan ever compiled one.
+                with replay_source(derived.get("values"), derived.get("errors")):
+                    with builder_state_sink(self._state_sink(execution)):
+                        with use_crew_factories(self._factories()):
+                            return flow.kickoff(inputs=inputs)
+
+    def _definition_for(self, derived: Mapping[str, Any]) -> Any:
+        """This graph's declaration, or the DERIVED plan when one was asked for.
+
+        A derived plan is compiled fresh per request and cached nowhere: it is
+        never published, never priced onto a document and never rehydrated at
+        boot, so the `_definition` field above deliberately does not hold it -
+        one run's resume point must not become the next run's flow.
+        """
+
+        if not derived.get("node_id"):
+            return self._flow_definition()
+        from crewai.flow.flow_definition import FlowDefinition
+
+        from brief_crew.builder.compiler import compile_replay_plan
+
+        compiled = compile_replay_plan(
+            self.workflow.document,
+            node_id=str(derived["node_id"]),
+            mode=str(derived.get("mode") or "resume_from"),
+            source=str(derived.get("source") or "run"),
+        )
+        return FlowDefinition.from_declaration(contents=compiled.definition)
+
+    def _emit_plan(self, execution: RunExecution) -> None:
+        """C6's `stage` frames - the whole plan, before the first node runs.
+
+        One per topological layer, all at kickoff, so a console can draw the
+        route before anything has happened rather than discovering it a node at
+        a time. Emitted from the RUNNER because it is a statement about the
+        graph rather than about any node in it, and the runner is the one place
+        that holds the document and the capture adapter at once.
+
+        Best effort: a run whose plan could not be narrated still runs.
+        """
+
+        from brief_crew.builder.descriptor import plan_layers
+        from brief_crew.events import FrameKind, UIEventType
+
+        try:
+            layers = plan_layers(self.workflow.document)
+        except Exception:  # noqa: BLE001 - telemetry must not fail a run
+            return
+        labels = {
+            node.id: (node.label or node.id) for node in self.workflow.document.nodes
+        }
+        total = len(layers)
+        for index, layer in enumerate(layers, start=1):
+            execution.capture.emit(
+                kind=FrameKind.RUN_STATE,
+                event_type=UIEventType.NODE_START,
+                node_id=self.workflow.node_registry.workflow_node_id,
+                message=f"Stage {index} of {total}",
+                details={
+                    "stage": "plan",
+                    "index": index,
+                    "of": total,
+                    "label": ", ".join(labels.get(node_id, node_id) for node_id in layer),
+                    "node_ids": list(layer),
+                },
+            )
 
     def resume(self, execution: RunExecution, *, context: Any, feedback: str) -> Any:
         from crewai.flow.flow import Flow
@@ -115,8 +204,43 @@ class BuilderFlowRunner:
             definition=self._flow_definition(),
         )
         with builder_cancellation(execution.cancel_requested):
-            with use_crew_factories(self._factories()):
-                return flow.resume(feedback)
+            with credential_scope(
+                user_id=execution.user_id, persistence=execution.persistence
+            ):
+                with builder_state_sink(self._state_sink(execution)):
+                    with use_crew_factories(self._factories()):
+                        return flow.resume(feedback)
+
+    def _state_sink(self, execution: RunExecution) -> Any:
+        """Checkpoint each node's state to the run's own store, or nothing.
+
+        **CrewAI persists nothing for an ordinary declarative run.** Measured:
+        a two-node graph published, launched and completed on the service
+        persistence leaves `flow_states` empty - the only writer is
+        `save_pending_feedback`, on the pause a gate raises. So a run that never
+        met a gate had no state at all afterwards, which is what
+        `GET /api/runs/{id}/state?step=` reads and what a `resume_from` replays
+        from. Both are plan 10's, so the write is.
+
+        One row per node rather than one per run, deliberately: `?step=` is a
+        question about a MOMENT, and a single end-of-run row would answer every
+        step with the final state and look exactly as if it worked.
+
+        `method_name` is the AUTHOR's node id, not the compiled identifier. This
+        table's other writer stores a CrewAI method name and nothing joins the
+        two columns, so the useful value here is the one a person asking "what
+        did the state look like after `scoper`" already has.
+        """
+
+        persistence = execution.persistence
+        flow_uuid = execution.flow_id or execution.run_id
+        if persistence is None or not hasattr(persistence, "save_state"):
+            return None
+
+        def sink(node_id: str, state: Mapping[str, Any]) -> None:
+            persistence.save_state(flow_uuid, node_id, dict(state))
+
+        return sink
 
     def _flow_definition(self) -> Any:
         """This graph's declaration, parsed once and shared by both paths.
@@ -139,6 +263,170 @@ class BuilderFlowRunner:
         return self.crew_factories or DefaultCrewFactories()
 
 
+class SyntheticNodeFailure(RuntimeError):
+    """A failure the free path can be ASKED for, so the retry loop is testable.
+
+    `SYNTHETIC_FAILURE` is the only way to exercise 10 D3 and D4 without money:
+    every other route to a failing billable node either calls a model or
+    replaces the factory with something that is not the one `SYNTHETIC=1`
+    installs - and a double that diverges from its subject certifies nothing
+    (CLAUDE.md closed items 20 and 33).
+    """
+
+    error_class = "synthetic-failure"
+
+
+class SyntheticRateLimitError(SyntheticNodeFailure):
+    """429. Retryable, and classified by `status_code` rather than by name.
+
+    Deliberately the status path and not the name path: `_RETRYABLE_ERROR_NAMES`
+    lists provider class names this repository does not own and cannot construct
+    in a test, while `status_code` is the branch a wrapped provider error
+    actually takes. Exercising the one that will fire in production is worth
+    more than exercising the one that is easy to name.
+    """
+
+    error_class = "rate_limit"
+    status_code = 429
+
+
+class SyntheticRefusal(SyntheticNodeFailure):
+    """A refusal. NOT retryable, and that is decision 16 made observable.
+
+    A model that declines is a decision, not a transport fault; retrying it with
+    a fallback model is asking a second judge until one agrees. This class
+    carries no status and no listed name, so `_is_retryable` says no.
+    """
+
+    error_class = "refusal"
+
+
+class SyntheticBadCredential(SyntheticNodeFailure):
+    """401. 12 D8's first mode: the key the node names is not accepted.
+
+    NOT retryable, and the status is what says so rather than a rule written
+    here: 401 is absent from `_RETRYABLE_STATUS_CODES` because a rejected
+    credential rejects identically on the second attempt and the only repair is
+    a human changing the key. Its recovery path is the credential picker, then
+    **Re-run from here**.
+
+    Raised from the FACTORY, which is where a real one lands: CrewAI builds the
+    provider client at construction, so a bad key fails before a token is spent.
+    """
+
+    error_class = "auth"
+    status_code = 401
+
+
+class SyntheticToolTimeout(SyntheticNodeFailure):
+    """408. 12 D8's second mode: a tool or MCP call ran past its `timeout`.
+
+    Retryable, by the status rather than by the name, for the reason
+    `SyntheticRateLimitError` already gives: `status_code` is the branch a
+    wrapped provider or transport error actually takes, and exercising the one
+    that will fire in production is worth more than the one that is easy to
+    name. 408 is Request Timeout, which is what a timed-out call is.
+    """
+
+    error_class = "tool_timeout"
+    status_code = 408
+
+
+class SyntheticMalformedOutput(SyntheticNodeFailure):
+    """12 D8's fourth mode: the response failed the node's `output_schema`.
+
+    NOT retryable by the node loop, and this is the one exclusion in
+    `_RETRYABLE_ERROR_NAMES`'s comment that is easiest to get wrong. CrewAI
+    already loops a guardrail with the agent's own llm
+    (`guardrail_max_retries`), so a whole-node retry on top would multiply an
+    answer that has already been asked for twice - and the repair is the
+    schema or the retry count, not another attempt at the same prompt.
+    """
+
+    error_class = "schema"
+
+
+#: `SYNTHETIC_FAILURE` reasons, as the exceptions they raise.
+#:
+#: FIVE of 12 D8's six modes. The sixth, `cyclic_graph`, has no entry here on
+#: purpose: a loop closed by a non-router is refused by `bounds.py` at validate
+#: and again at publish, so it NEVER RUNS and there is no node for a factory to
+#: fail. A reason that produced a run would be a synthetic double diverging from
+#: its subject, which is the one thing this module exists not to do.
+SYNTHETIC_FAILURE_REASONS: Mapping[str, type[SyntheticNodeFailure]] = {
+    "bad_key": SyntheticBadCredential,
+    "malformed_output": SyntheticMalformedOutput,
+    "rate_limit": SyntheticRateLimitError,
+    "refusal": SyntheticRefusal,
+    "tool_timeout": SyntheticToolTimeout,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class _FailurePlan:
+    """One parsed `SYNTHETIC_FAILURE` entry: which node, what, how many times."""
+
+    node_id: str | None
+    error: type[SyntheticNodeFailure]
+    times: int | None
+
+    def applies_to(self, node_id: str) -> bool:
+        return self.node_id is None or self.node_id == node_id
+
+
+def parse_synthetic_failures(
+    raw: str | None, *, default_node: str | None = None
+) -> tuple[_FailurePlan, ...]:
+    """`SYNTHETIC_FAILURE` as plans. Anything unreadable is NO failure.
+
+    The grammar is `[node:]reason[:times]`, comma separated:
+
+    * `rate_limit` - every billable node fails, every time;
+    * `b:rate_limit` - node `b` fails, every time;
+    * `b:rate_limit:2` - node `b` fails its first two attempts and then works,
+      which is the shape that proves a FALLBACK model succeeded rather than
+      merely that three attempts happened.
+
+    `default_node` is `SYNTHETIC_FAILURE_NODE` (12 D8), and it applies only to
+    an entry that names no node of its own. It exists because the E2E and a
+    hand-driven browser session set one knob at the shell and want ONE node to
+    fail - on a graph whose ids they did not write, the `node:` prefix is a
+    thing you have to go and look up, and "every billable node fails" makes a
+    six-node template unreadable at exactly the moment a critic is reading it.
+    An entry that does name a node still wins, so nothing already written moves.
+
+    Unreadable input yields nothing rather than raising: this is a testing knob
+    read on a code path that runs for real, and a typo in it must not be how a
+    free backend refuses to start.
+    """
+
+    plans: list[_FailurePlan] = []
+    for entry in str(raw or "").split(","):
+        parts = [part.strip() for part in entry.split(":") if part.strip()]
+        if not parts:
+            continue
+        node_id: str | None = None
+        if parts[0] not in SYNTHETIC_FAILURE_REASONS and len(parts) > 1:
+            node_id, parts = parts[0], parts[1:]
+        error = SYNTHETIC_FAILURE_REASONS.get(parts[0] if parts else "")
+        if error is None:
+            continue
+        times: int | None = None
+        if len(parts) > 1:
+            try:
+                times = max(0, int(parts[1]))
+            except ValueError:
+                times = None
+        plans.append(
+            _FailurePlan(
+                node_id=node_id if node_id is not None else (default_node or None),
+                error=error,
+                times=times,
+            )
+        )
+    return tuple(plans)
+
+
 class _SyntheticCrew:
     """Whatever a real Crew would have cost, for free - and in the same shape.
 
@@ -157,7 +445,7 @@ class _SyntheticCrew:
         self._tier = tier
 
     def kickoff(self, inputs: Mapping[str, Any] | None = None) -> str:
-        return json.dumps(
+        payload = json.dumps(
             {
                 "node_id": self._node_id,
                 "produced_by": self._produced_by,
@@ -172,6 +460,61 @@ class _SyntheticCrew:
             },
             sort_keys=True,
         )
+        self._speak(payload)
+        return payload
+
+    def _speak(self, text: str) -> None:
+        """The chunk frames and the `utterance` a real completion would raise.
+
+        Without this a published graph ran on the free path and said NOTHING:
+        `LLMStreamChunkEvent` and `LLMCallCompletedEvent` are raised by CrewAI's
+        own LLM, and a synthetic crew never builds one - so the dialogue rail,
+        which exists to show what an agent said, was blank for every E2E run,
+        every local `SYNTHETIC=1` session and every capture. That is the
+        divergence CLAUDE.md's closed items 20 and 33 both record: a double
+        that cannot produce the thing under test certifies nothing.
+
+        Shapes copied from `events/serializer.py` (`stage="utterance"`) and
+        `events/adapter.py::_merged_chunk` (a coalesced chunk carries
+        `call_id`, `stage` and `chunk`, and nothing else). Emitted through
+        `runtime._emit_frame`, which is what every other builder-side frame
+        goes through and which already degrades to a debug log if no capture
+        context is scoped - telemetry must never fail a run.
+        """
+
+        from brief_crew.builder.runtime import _emit_frame
+        from brief_crew.events.models import FrameKind, UIEventType
+
+        call_id = f"synthetic:{self._node_id}"
+        model = str(self._tier)
+        size = max(1, -(-len(text) // 3))
+        for start in range(0, len(text), size):
+            _emit_frame(
+                FrameKind.LLM,
+                UIEventType.MODEL_CALL,
+                node_id=self._node_id,
+                message="Model stream chunk",
+                details={
+                    "stage": "chunk",
+                    "call_id": call_id,
+                    "chunk": text[start : start + size],
+                },
+            )
+        _emit_frame(
+            FrameKind.LLM,
+            UIEventType.MODEL_CALL,
+            node_id=self._node_id,
+            message=f"{model} said",
+            details={
+                "stage": "utterance",
+                "call_id": call_id,
+                "text": text,
+                "truncated": False,
+                "prompt_tokens": 512,
+                "completion_tokens": max(1, len(text) // 4),
+                "model": model,
+            },
+        )
 
 
 class SyntheticCrewFactories:
@@ -180,7 +523,52 @@ class SyntheticCrewFactories:
     This is the ONLY thing `SYNTHETIC=1` replaces on a builder run. The
     compiled definition, the engine, the gates, the routers, the revise
     counters, the persistence and the cancellation are all the production ones.
+
+    `SYNTHETIC_FAILURE` makes a node fail on demand, and
+    `SYNTHETIC_FAILURE_NODE` says which one when the entry does not - see
+    `parse_synthetic_failures`. BOTH are read PER INSTANCE rather than at
+    import, so a test sets them with `patch.dict(os.environ, ...)` and a free
+    backend picks them up on the next publish without a restart. That per-
+    instance read is what makes 12 criterion 5 possible at all: a critic
+    triggering six failure modes from a browser would otherwise be restarting
+    the backend six times.
+
+    `calls` records `(node_id, model)` per built crew, in order. It is the only
+    way to see WHICH model an attempt ran on: the fallback is chosen inside the
+    entrypoint and never reaches a frame except as a name, so without this a
+    test could prove three attempts happened and not that the third was the
+    fallback.
     """
+
+    def __init__(self, failures: str | None = None, *, node: str | None = None) -> None:
+        self.plans = parse_synthetic_failures(
+            failures if failures is not None else os.getenv("SYNTHETIC_FAILURE"),
+            default_node=node if node is not None else os.getenv("SYNTHETIC_FAILURE_NODE"),
+        )
+        self.calls: list[tuple[str, str]] = []
+        self._attempts: dict[str, int] = {}
+
+    def _record(self, node_id: str, model: str) -> None:
+        """Count this attempt, and raise if `SYNTHETIC_FAILURE` says to.
+
+        Raised from the FACTORY rather than from `kickoff`, because that is
+        where a real credential refusal, a bad model id and a constructor
+        failure all land - and those are the failures a builder graph actually
+        meets before any token is spent.
+        """
+
+        self.calls.append((node_id, model))
+        attempt = self._attempts.get(node_id, 0) + 1
+        self._attempts[node_id] = attempt
+        for plan in self.plans:
+            if not plan.applies_to(node_id):
+                continue
+            if plan.times is not None and attempt > plan.times:
+                continue
+            raise plan.error(
+                f"SYNTHETIC_FAILURE: {node_id} attempt {attempt} "
+                f"({plan.error.__name__})"
+            )
 
     def agent_crew(
         self,
@@ -191,7 +579,13 @@ class SyntheticCrewFactories:
         tools: Sequence[str],
         max_iter: int,
         guardrail_max_retries: int,
+        # Accepted and ignored: a synthetic run resolves the author's credential
+        # (the vault is a database read, not a network call) and then calls no
+        # model, so the key has nowhere to go.
+        api_key: str | None = None,
+        **_: Any,
     ) -> _SyntheticCrew:
+        self._record(node_id, tier)
         return _SyntheticCrew(node_id=node_id, produced_by=agent_id, tier=tier)
 
     def crew(
@@ -202,8 +596,29 @@ class SyntheticCrewFactories:
         tier: str,
         max_iter: int,
         guardrail_max_retries: int,
+        **_: Any,
     ) -> _SyntheticCrew:
+        self._record(node_id, tier)
         return _SyntheticCrew(node_id=node_id, produced_by=crew_id, tier=tier)
+
+    # The two AUTHORED builders (09 D1). Without them `SYNTHETIC=1` could run a
+    # library graph and not the thing the gauntlet is about - and the E2E suite,
+    # the rubric-11 harness and every free local run would all be exercising the
+    # half of the compiler that was never the hard part.
+    #
+    # `produced_by` is the author's own ROLE rather than a registry id, which is
+    # what makes the synthetic output identify the node the way a real one would.
+    def authored_agent_crew(self, *, node_id: str, spec: Any) -> _SyntheticCrew:
+        self._record(node_id, str(dict(spec.llm or {}).get("model") or spec.tier))
+        return _SyntheticCrew(node_id=node_id, produced_by=spec.role, tier=spec.tier)
+
+    def authored_crew(self, *, node_id: str, spec: Any) -> _SyntheticCrew:
+        self._record(node_id, str(spec.process))
+        return _SyntheticCrew(
+            node_id=node_id,
+            produced_by=f"{spec.process} crew of {len(spec.members)}",
+            tier=spec.tier,
+        )
 
 
 def synthetic_builder_runner(workflow: "BuilderWorkflow") -> BuilderFlowRunner:

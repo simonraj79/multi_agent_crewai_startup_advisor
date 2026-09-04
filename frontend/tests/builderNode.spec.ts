@@ -23,12 +23,17 @@ import BuilderEdge, { type BuilderEdgeData } from '../src/components/builder/Bui
 import NodePalette, { BUILDER_KIND_MIME, isBillableKind } from '../src/components/builder/NodePalette.vue'
 import PortMenu, { titleiseId, type PortMenuCreation } from '../src/components/builder/PortMenu.vue'
 import { resetVocabulary, vocabulary } from '../src/data/builderVocabulary'
+import { isAuthoredAgent } from '../src/types/builder'
+import { edgeClassOf, targetPortsOf } from '../src/composables/useBuilderCanvas'
+import type { NodeAttachment } from '../src/composables/useBuilderCanvas'
+import { authoredAgentNode, authoredCrewNode } from './builderInspectorFixtures'
 import { NODE_KINDS, outPortsOf } from '../src/data/nodeKinds'
 import {
   nodeId,
   type BuilderNode as DocumentNode,
   type BuilderProblem,
   type BuilderVocabulary,
+  type LlmConfig,
   type NodeKind,
 } from '../src/types/builder'
 
@@ -61,6 +66,11 @@ const VOCABULARY: BuilderVocabulary = {
     max_input_chars: 2000,
     max_document_bytes: 262144,
     run_cost_ceiling_usd: 10,
+    // C2 v2\'s two authored-node bounds: BUILDER_MAX_PROMPT_CHARS and
+    // BUILDER_MAX_NODE_RETRIES, served since plan 04 and read by every
+    // PromptField and node-retry stepper rather than restated as a constant.
+    max_prompt_chars: 4000,
+    max_retries: 3,
   },
 }
 
@@ -159,6 +169,27 @@ const NODES: { [K in NodeKind]: DocumentNode } = {
     position: { x: 0, y: 0 },
     config: { body_key: 'markdown_body', source: null },
   },
+  tool: {
+    id: nodeId('scrape'),
+    kind: 'tool',
+    label: 'Scrape',
+    position: { x: 0, y: 0 },
+    config: { tool_id: nodeId('firecrawl_scrape'), params: {}, credential_id: null },
+  },
+  mcp: {
+    id: nodeId('sandbox'),
+    kind: 'mcp',
+    label: 'Sandbox',
+    position: { x: 0, y: 0 },
+    config: { server_id: nodeId('sandbox'), tool_names: ['run', 'read'], credential_id: null },
+  },
+  skill: {
+    id: nodeId('house_style'),
+    kind: 'skill',
+    label: 'House style',
+    position: { x: 0, y: 0 },
+    config: { skill_id: nodeId('house_style') },
+  },
 }
 
 /**
@@ -176,6 +207,7 @@ function nodeData(node: DocumentNode, overrides: Partial<BuilderNodeData> = {}):
     index: 3,
     ports: outPortsOf(node),
     acceptsIncoming: NODE_KINDS[node.kind].acceptsIncoming,
+    targetPorts: targetPortsOf(node.kind),
     problems,
     severity: problems.some((entry) => entry.severity === 'error')
       ? 'error'
@@ -191,6 +223,7 @@ function nodeData(node: DocumentNode, overrides: Partial<BuilderNodeData> = {}):
     runState: 'idle',
     inbound: 0,
     landing: false,
+    refused: false,
     ...overrides,
   }
 }
@@ -332,12 +365,296 @@ describe('the config summary answers "what is this set to" without a click', () 
     expect(summariseConfig(NODES.output)).toBe('markdown_body')
   })
 
+  it('answers "which one is this" for each of the three attachments', () => {
+    // The only question a 160px pill can be asked without opening it. An author
+    // looking at a canvas of eight tools needs to tell them apart, not to read
+    // their parameters.
+    expect(summariseConfig(NODES.tool)).toBe('firecrawl_scrape')
+    expect(summariseConfig(NODES.mcp)).toBe('sandbox · 2 tools')
+    expect(summariseConfig(NODES.skill)).toBe('house_style')
+  })
+
+  it('says an MCP node with nothing selected exposes nothing', () => {
+    // Nought is worth saying out loud. `McpConfig` does not require `tool_names`
+    // to be non-empty at parse time - `document.py` raises where `bounds.py`
+    // reports - so this is a node an author can really have, and the card must
+    // not read like one that is finished.
+    const empty: DocumentNode = {
+      ...NODES.mcp,
+      config: { ...NODES.mcp.config, tool_names: [] },
+    } as DocumentNode
+    expect(summariseConfig(empty)).toBe('sandbox · 0 tools')
+  })
+
   it('counts tools rather than listing them, so the line never wraps', () => {
     const armed: DocumentNode = {
       ...NODES.agent,
       config: { ...NODES.agent.config, tools: ['market_research'] },
     } as DocumentNode
     expect(summariseConfig(armed)).toBe('escalation · scoper · 2 iter · 1 tool')
+  })
+})
+
+/* ─── D6: what an AUTHORED node is made of (criterion 8) ─────────────────── */
+
+/**
+ * The card's second job, which the summary line cannot do.
+ *
+ * `summariseConfig` answers "what is this set to". These chips answer "what is
+ * this made of" - the model, the crew's process and manager, and the hands. The
+ * two are separate elements rather than one longer sentence because D6 asks for
+ * three different behaviours out of the model fact alone: it is the loudest
+ * token on the card, it carries the full slug in a `title`, and 04 D4 wants it
+ * to move in the same tick the picker writes `llm.model`. A slice of a
+ * `·`-joined string can do none of the three.
+ *
+ * The avatars are DRAWN ON THE HOST while the pills stay on the canvas, which
+ * is deliberate duplication (D6): the pill is where an attachment is
+ * configured, the avatar is where you see whose hands it is. A dropdown inside
+ * the form - Flowise's `agentTools` - cannot show that two agents share one
+ * tool, and the canvas can.
+ */
+describe("an authored card shows what it is MADE of, not only what it is set to", () => {
+  /** One `LlmConfig`, so the manager pill's fixture is a real one. */
+  const MANAGER_LLM: LlmConfig = {
+    model: 'google/gemini-3.8-flash',
+    temperature: null,
+    top_p: null,
+    max_tokens: null,
+    timeout: null,
+    response_format: null,
+    frequency_penalty: null,
+    presence_penalty: null,
+    stop: [],
+    seed: null,
+    reasoning_effort: null,
+  }
+
+  const TOOL = (id: string, label: string): NodeAttachment => ({
+    id: nodeId(id),
+    kind: 'tool',
+    label,
+  })
+
+  it('renders a model pill and one avatar per attachment', () => {
+    const wrapper = mountNode(
+      nodeData(authoredAgentNode('writer'), {
+        attachments: [TOOL('scrape', 'Scrape'), TOOL('search', 'Search'), TOOL('repo', 'Repos')],
+      }),
+    )
+
+    const pill = wrapper.get('[data-testid="node-model-pill"]')
+    // The half after the slash, because `google/gemini-3.5-flash-lite` clips at
+    // this type size and the provider is the roster's business, not the canvas's.
+    expect(pill.text()).toBe('gemini-3.5-flash-lite')
+    expect(pill.attributes('title')).toBe('google/gemini-3.5-flash-lite')
+
+    expect(wrapper.findAll('.builder-attach-avatar')).toHaveLength(3)
+    expect(wrapper.find('[data-testid="node-attachments-more"]').exists()).toBe(false)
+  })
+
+  it('draws four avatars and a +1 when a fifth is attached', () => {
+    /*
+     * FOUR, per D6, and the fifth becomes a count rather than a fifth disc:
+     * `NODE_W` is 240px and five 20px avatars plus the model pill do not fit
+     * beside each other. `+1` rather than `4 of 5` because the question an
+     * author answers at a glance is "is there more than I can see".
+     */
+    const wrapper = mountNode(
+      nodeData(authoredAgentNode('writer'), {
+        attachments: [
+          TOOL('a', 'A'),
+          TOOL('b', 'B'),
+          { id: nodeId('c'), kind: 'mcp', label: 'Sandbox' },
+          { id: nodeId('d'), kind: 'skill', label: 'House style' },
+          TOOL('e', 'E'),
+        ],
+      }),
+    )
+
+    expect(wrapper.findAll('.builder-attach-avatar')).toHaveLength(4)
+    expect(wrapper.get('[data-testid="node-attachments-more"]').text()).toBe('+1')
+  })
+
+  it('gives each avatar its own kind, glyph and accent rather than one badge', () => {
+    // Three attachments that all looked alike would answer "there are three"
+    // and never "which three", which is the whole difference between an avatar
+    // and a counter.
+    const wrapper = mountNode(
+      nodeData(authoredAgentNode('writer'), {
+        attachments: [
+          TOOL('a', 'Scrape'),
+          { id: nodeId('b'), kind: 'mcp', label: 'Sandbox' },
+          { id: nodeId('c'), kind: 'skill', label: 'House style' },
+        ],
+      }),
+    )
+    const avatars = wrapper.findAll('.builder-attach-avatar')
+    expect(avatars.map((node) => node.attributes('data-attachment-kind'))).toEqual([
+      'tool',
+      'mcp',
+      'skill',
+    ])
+    // The accent is `nodeKinds.ts`'s, passed as the same custom property the
+    // kind squircle and the minimap dot read, so one string dresses all three.
+    expect(avatars[1].attributes('style')).toContain(NODE_KINDS.mcp.accent)
+    expect(avatars.map((node) => node.attributes('title'))).toEqual([
+      'Scrape',
+      'Sandbox',
+      'House style',
+    ])
+  })
+
+  it('shows nothing of the sort on a LIBRARY agent, whose model it did not choose', () => {
+    // Its identity is `agent_id` and its model is the tier's. A pill naming a
+    // model the author never picked would invite an edit with no control behind
+    // it.
+    const wrapper = mountNode(nodeData(NODES.agent))
+    expect(wrapper.find('[data-testid="node-model-pill"]').exists()).toBe(false)
+    expect(wrapper.find('.builder-node-chips').exists()).toBe(false)
+  })
+
+  it('marks a hierarchical crew `hier` and names its manager model', () => {
+    const wrapper = mountNode(
+      nodeData(
+        authoredCrewNode('team', {
+          process: 'hierarchical',
+          manager_llm: { ...MANAGER_LLM, model: 'google/gemini-3.8-flash' },
+        }),
+      ),
+    )
+    expect(wrapper.get('[data-testid="node-process-chip"]').text()).toBe('hier')
+    const manager = wrapper.get('[data-testid="node-manager-pill"]')
+    expect(manager.text()).toBe('gemini-3.8-flash')
+    expect(manager.attributes('title')).toBe('Manager · google/gemini-3.8-flash')
+  })
+
+  it('marks a sequential crew `seq` and shows no manager, because it has none', () => {
+    // `Crew.__init__` refuses a manager on a sequential crew, so an empty slot
+    // here would be a slot that can never fill.
+    const wrapper = mountNode(nodeData(authoredCrewNode('team')))
+    expect(wrapper.get('[data-testid="node-process-chip"]').text()).toBe('seq')
+    expect(wrapper.find('[data-testid="node-manager-pill"]').exists()).toBe(false)
+  })
+
+  it('says nothing about a LIBRARY crew, which has no process to name', () => {
+    expect(mountNode(nodeData(NODES.crew)).find('.builder-node-chips').exists()).toBe(false)
+  })
+})
+
+/* ─── identity: silhouette, squircle, accent (D5) ────────────────────────── */
+
+describe('a node says what it is three ways before a word of it is read', () => {
+  it('draws a flow node as a card and an attachment as a pill', () => {
+    /*
+     * D5's third channel, and the one that survives the zoom the other two do
+     * not: at 0.5 an 11px eyebrow is 5.5px and two violets eight points of
+     * lightness apart are one colour, while a 160px pill beside a 240px card is
+     * still unmistakably a different sort of object. A pill can never be
+     * mistaken for a step.
+     *
+     * `is-card` is asserted as a POSITIVE class rather than as the absence of
+     * `is-pill`, because a stylesheet and a capture both need something to name.
+     */
+    for (const kind of Object.keys(NODES) as NodeKind[]) {
+      const wrapper = mountNode(nodeData(NODES[kind]))
+      const attachment = NODE_KINDS[kind].family === 'attachment'
+      expect(wrapper.classes(), kind).toContain(attachment ? 'is-pill' : 'is-card')
+      expect(wrapper.classes(), kind).not.toContain(attachment ? 'is-card' : 'is-pill')
+    }
+  })
+
+  it('puts every kind icon in a squircle filled with that kind accent', () => {
+    // Criterion 7 captures this in a real browser; this is the structural half.
+    // The fill is passed as `--kind-accent` rather than as a `background`, so
+    // the radius, the size and the one contrast decision stay in the stylesheet
+    // and the COLOUR provably comes from `nodeKinds.ts` - the same value the
+    // minimap dot and the inspector kicker read.
+    for (const kind of Object.keys(NODES) as NodeKind[]) {
+      const wrapper = mountNode(nodeData(NODES[kind]))
+      const squircle = wrapper.find('.builder-kind-squircle')
+      expect(squircle.exists(), `${kind} has no squircle`).toBe(true)
+      expect(squircle.attributes('style')).toContain(`--kind-accent: ${NODE_KINDS[kind].accent}`)
+    }
+  })
+
+  it('gives every kind its own eyebrow word, and the same index either way', () => {
+    // The pill keeps the card's eyebrow CONTENT - only the type scale shrinks -
+    // because an author walking the problems dock needs the same number on both
+    // silhouettes.
+    const words = (Object.keys(NODES) as NodeKind[]).map((kind) =>
+      mountNode(nodeData(NODES[kind])).find('.builder-eyebrow').text(),
+    )
+    expect(words).toEqual([
+      '03 · INPUT',
+      '03 · AGENT',
+      '03 · CREW',
+      '03 · GATE',
+      '03 · ROUTER',
+      '03 · TRANSFORM',
+      '03 · OUTPUT',
+      '03 · TOOL',
+      '03 · MCP',
+      '03 · SKILL',
+    ])
+    expect(new Set(words).size).toBe(words.length)
+  })
+
+  it('renders an attachment config as chips and a flow config as the mono line', () => {
+    // D6. A 160px pill ellipsises a comma-separated sentence to nothing, and a
+    // truncated fact is worse than a shorter one because it invites the click
+    // into a modal R15 bans.
+    const pill = mountNode(nodeData(NODES.mcp))
+    expect(pill.find('.builder-summary').exists()).toBe(false)
+    expect(pill.findAll('.builder-chip').map((chip) => chip.text())).toEqual([
+      'sandbox',
+      '2 tools',
+    ])
+
+    const card = mountNode(nodeData(NODES.agent))
+    expect(card.findAll('.builder-chip')).toHaveLength(0)
+    expect(card.find('.builder-summary').exists()).toBe(true)
+  })
+
+  it('flags a tool that carries a key, and only when it carries one', () => {
+    // Whether a tool needs a key is a yes/no an author scans a canvas for.
+    // WHICH key is an inspector question, so the chip says "key" and never the
+    // credential's id - the id is the one thing on the card that would be worth
+    // nothing to read and something to leak.
+    expect(mountNode(nodeData(NODES.tool)).findAll('.builder-chip.is-key')).toHaveLength(0)
+
+    const keyed: DocumentNode = {
+      ...NODES.tool,
+      config: { ...NODES.tool.config, credential_id: 'cr_0123abcd' },
+    } as DocumentNode
+    const chips = mountNode(nodeData(keyed)).findAll('.builder-chip.is-key')
+    expect(chips).toHaveLength(1)
+    expect(chips[0].text()).toBe('key')
+    expect(chips[0].text()).not.toContain('cr_')
+  })
+
+  it('shows a tool the catalogue LABEL once the server serves one, and the id until then', () => {
+    // An author picked "Firecrawl scrape" from a list and should see that, not
+    // `firecrawl_scrape`. The fallback is the id and never a guess: this build's
+    // `/vocabulary` does not serve `tools` yet, so today every pill reads its id
+    // and that is honest rather than a placeholder.
+    expect(mountNode(nodeData(NODES.tool)).find('.builder-chip').text()).toBe('firecrawl_scrape')
+
+    vocabulary.value = {
+      ...VOCABULARY,
+      tools: [
+        {
+          tool_id: 'firecrawl_scrape',
+          label: 'Firecrawl scrape',
+          category: 'web',
+          description: 'Fetch one page as markdown.',
+          credential_kind: 'firecrawl',
+          attaches_to: ['agent'],
+          params: [],
+        },
+      ],
+    }
+    expect(mountNode(nodeData(NODES.tool)).find('.builder-chip').text()).toBe('Firecrawl scrape')
   })
 })
 
@@ -412,7 +729,7 @@ describe('a drawn port cannot disagree with an accepted port', () => {
     expect(labels[0].classes()).toContain('is-branch')
   })
 
-  it('agrees with nodeKinds.outPorts for all seven kinds', () => {
+  it('agrees with nodeKinds.outPorts for all ten kinds', () => {
     for (const kind of Object.keys(NODES) as NodeKind[]) {
       const wrapper = mountNode(nodeData(NODES[kind]))
       const drawn = handles(wrapper)
@@ -478,6 +795,11 @@ function edgeData(overrides: Partial<BuilderEdgeData> = {}): BuilderEdgeData {
     portLabel: null,
     portRole: null,
     joinTarget: false,
+    // Derived from the fixture's own edge rather than defaulted, so an override
+    // that moves `target_port` cannot leave the class saying something else.
+    edgeClass: edgeClassOf(overrides.edge ?? { source_port: 'approve', target_port: 'in' }),
+    sourceAccent: NODE_KINDS.gate.accent,
+    targetAccent: NODE_KINDS.agent.accent,
     active: false,
     ...overrides,
   }
@@ -665,8 +987,8 @@ describe('the palette renders the server vocabulary and nothing else', () => {
     seedVocabulary()
     const wrapper = mountPalette({
       library: [
-        { id: 'ug_00000001', name: 'Pricing check', version: 4, status: 'published', created_at: '', updated_at: '' },
-        { id: 'ug_00000002', name: 'Scratch', version: 1, status: 'draft', created_at: '', updated_at: '' },
+        { id: 'ug_00000001', name: 'Pricing check', version: 4, status: 'published', live_version: 4, created_at: '', updated_at: '' },
+        { id: 'ug_00000002', name: 'Scratch', version: 1, status: 'draft', live_version: null, created_at: '', updated_at: '' },
       ],
       openDocumentId: 'ug_00000002',
     })
@@ -718,7 +1040,11 @@ describe('the port menu creates a node and its edge as one act', () => {
     expect(payload.node.kind).toBe('agent')
     expect(payload.node.label).toBe('Market analyst')
     expect(payload.node.id).toBe('market_analyst')
-    expect(payload.node.kind === 'agent' && payload.node.config.agent_id).toBe('market_analyst')
+    expect(
+      payload.node.kind === 'agent' &&
+        !isAuthoredAgent(payload.node.config) &&
+        payload.node.config.agent_id,
+    ).toBe('market_analyst')
     // Grid-snapped by the caller, and rounded again by `newNode` (R12): an
     // unrounded `position.x` is a hard 422 on a save long after the gesture.
     expect(payload.node.position).toEqual({ x: 240, y: 160 })

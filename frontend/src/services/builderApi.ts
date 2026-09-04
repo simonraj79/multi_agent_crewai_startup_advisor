@@ -3,12 +3,41 @@ import type {
   BuilderDocument,
   BuilderDocumentModel,
   BuilderDocumentSummary,
+  BuilderExportEnvelope,
+  BuilderImportResult,
   BuilderProblem,
   BuilderPublish,
   BuilderValidation,
+  BuilderVersionRow,
+  CompiledPreview,
+  DryRunResult,
+  RunMode,
+  RunStateResult,
+  SaveSource,
+  TestInput,
+  TestInputDraft,
+  CredentialDraft,
+  CredentialProbe,
+  CredentialSummary,
 } from '../types/builder'
+import type {
+  FrameData,
+  GateReply,
+  GraphDescriptor,
+  RunHistoryEntry,
+  RunSnapshot,
+  StartRunResponse,
+} from '../types/studio'
+import type {
+  GatesMode,
+  LogFormat,
+  StreamHandlers,
+  StudioApiLike,
+  TransportMode,
+} from './studioApi'
+import { studioApi } from './studioApi'
 import { forValidate, toWire } from '../utils/builderSerialize'
-import { authedFetch } from './httpCore'
+import { authedFetch, fetchJson } from './httpCore'
 
 /**
  * Every call `/api/builder/*` accepts, and the three refusals peculiar to it.
@@ -52,6 +81,13 @@ export const BUILDER_API_PREFIX = '/api/builder'
  * with no version at all answers the same question, so a parse failure costs
  * one extra request rather than reaching a dead end.
  */
+/** How a save came about, for the version browser (D-15-3). */
+export interface SaveOptions {
+  source?: SaveSource
+  /** With `source: 'restore'`: the version that was put back. */
+  restoredFrom?: number
+}
+
 export class BuilderConflictError extends Error {
   readonly name = 'BuilderConflictError'
   /** The version the server actually holds, or null when unparseable. */
@@ -217,18 +253,30 @@ export class BuilderApi {
    * `validate` round trip is not the stored version at all.
    *
    * A 409 is a `BuilderConflictError`, not a message. See its docblock.
+   *
+   * `options` says how the save came about (round 2, D-15-3) - `save`,
+   * `autosave`, or `restore` with the version it put back - and the server
+   * composes the version browser's `source` from it. Omitted, the server
+   * writes `saved`; the three doubles that implement `BuilderApiLike` with the
+   * three-parameter shape keep compiling, because a caller may pass more.
    */
   async save(
     id: string,
     doc: BuilderDocument,
     expectedVersion: number,
+    options: SaveOptions = {},
   ): Promise<BuilderDocumentModel> {
     return this.json<BuilderDocumentModel>(
       `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document: toWire(doc), expected_version: expectedVersion }),
+        body: JSON.stringify({
+          document: toWire(doc),
+          expected_version: expectedVersion,
+          ...(options.source ? { source: options.source } : {}),
+          ...(options.restoredFrom ? { restored_from: options.restoredFrom } : {}),
+        }),
       },
     )
   }
@@ -297,6 +345,179 @@ export class BuilderApi {
     )
   }
 
+  /* --- plan 15: export, import, duplicate, versions --------------------- */
+
+  /**
+   * The document as a file: secrets stripped, identity dropped.
+   *
+   * Answers the JSON envelope rather than a blob; the file is written on this
+   * side from it (`utils/builderExport.ts`). The response also carries
+   * `Content-Disposition: attachment; filename="<name>.builder.json"`, and it is
+   * unreadable here for the reason `create` gives about `Location`: not a
+   * CORS-safelisted header, not named by `CORS_EXPOSE_HEADERS`, so cross-origin
+   * - the deployed shape - `headers.get()` answers null with nothing raised.
+   * The envelope's own `name` is the same string, always present.
+   *
+   * `version` names a stored version; omitted, the server exports head.
+   * 404 for a document that is not the caller's, the way every read on this
+   * router answers - a 403 would confirm the document exists.
+   */
+  async exportWorkflow(id: string, version?: number): Promise<BuilderExportEnvelope> {
+    const query = version === undefined ? '' : `?version=${encodeURIComponent(String(version))}`
+    return this.json<BuilderExportEnvelope>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}/export${query}`,
+    )
+  }
+
+  /**
+   * A file becomes a NEW draft owned by the caller.
+   *
+   * Never an overwrite: the envelope carries no id, and the server mints one
+   * regardless of anything the file says. The client has already checked the
+   * envelope's SHAPE (`readExportFile`), so a 422 here is about the document
+   * inside it, in the server's words - and it goes through the plain string
+   * path like every refusal but publish's.
+   *
+   * The 201 is the create model plus `needs_credentials`, read off the BODY:
+   * `Location` is unreadable cross-origin (see `create`).
+   */
+  async importWorkflow(envelope: BuilderExportEnvelope): Promise<BuilderImportResult> {
+    return this.json<BuilderImportResult>(`${BUILDER_API_PREFIX}/workflows/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    })
+  }
+
+  /**
+   * `<name> copy`, version 1, `draft`, owner = caller, as a 201 whose body is
+   * the create model. `version` copies a stored version rather than head.
+   * 404 for a document that is not the caller's.
+   */
+  async duplicateWorkflow(id: string, version?: number): Promise<BuilderDocumentModel> {
+    const query = version === undefined ? '' : `?version=${encodeURIComponent(String(version))}`
+    return this.json<BuilderDocumentModel>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}/duplicate${query}`,
+      { method: 'POST' },
+    )
+  }
+
+  /**
+   * Take a published graph out of service and return its head to draft.
+   *
+   * The remedy the delete 409 names (plan 15 D3; PLANS.md decision 24, round 2
+   * D-15-10): "a published graph cannot be deleted; unpublish it first" is only
+   * a rule an author can act on if this route exists. Answers the document
+   * model with `published: false` and `status: 'draft'`; idempotent, so a graph
+   * that was never published answers 200 with nothing changed.
+   */
+  async unpublish(id: string): Promise<BuilderDocumentModel> {
+    return this.json<BuilderDocumentModel>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}/unpublish`,
+      { method: 'POST' },
+    )
+  }
+
+  /** Every stored version of a document, newest first. Same visibility as `get`. */
+  async listVersions(id: string): Promise<BuilderVersionRow[]> {
+    return this.json<BuilderVersionRow[]>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(id)}/versions`,
+    )
+  }
+
+  /* ---------------------------------------------------------------------- *
+   *  The docked test panel - .agent/plans/13-flow-testing.md, contract C7    *
+   * ---------------------------------------------------------------------- */
+
+  /** This author's saved test inputs for one document, newest first. */
+  async listTestInputs(documentId: string): Promise<TestInput[]> {
+    return this.json<TestInput[]>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(documentId)}/test-inputs`,
+    )
+  }
+
+  /**
+   * Save one input set against a document.
+   *
+   * `from_run_id` is sent rather than the mocks it would produce, because the
+   * server is the only side that can read a run's whole state: `/runs/{id}/state`
+   * answers one moment at a time and redacts as it goes, and no route hands the
+   * browser every node's output at once.
+   */
+  async createTestInput(documentId: string, draft: TestInputDraft): Promise<TestInput> {
+    return this.json<TestInput>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(documentId)}/test-inputs`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: draft.label,
+          inputs: draft.inputs,
+          node_mocks: draft.node_mocks ?? {},
+          from_run_id: draft.from_run_id ?? null,
+        }),
+      },
+    )
+  }
+
+  async deleteTestInput(documentId: string, testInputId: string): Promise<void> {
+    const path =
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(documentId)}` +
+      `/test-inputs/${encodeURIComponent(testInputId)}`
+    const response = await authedFetch(path, { method: 'DELETE' })
+    if (!response.ok) throw await this.refusal(response)
+  }
+
+  /**
+   * What this canvas compiled to - the YAML, the Python and the definition.
+   *
+   * Works on any SAVED document, published or not, which is what makes the Code
+   * tab the one tab an unpublished draft can use. A document that no longer
+   * compiles answers 422 carrying the compiler's own problem list, and
+   * `refusal` unwraps it into a `BuilderPublishRefusedError` the same way
+   * publish's does - the shape is what identifies it, not the URL.
+   */
+  async compiled(documentId: string, version?: number): Promise<CompiledPreview> {
+    const query = version === undefined ? '' : `?version=${encodeURIComponent(String(version))}`
+    return this.json<CompiledPreview>(
+      `${BUILDER_API_PREFIX}/workflows/${encodeURIComponent(documentId)}/compiled${query}`,
+    )
+  }
+
+  /**
+   * `mode: dry_run` - parse, bound, price and compile, spending nothing.
+   *
+   * On the RUN endpoint rather than under `/api/builder`, because that is where
+   * C7 put it: a dry run is the launch path stopped one step before it spends,
+   * and answering it from a different router would be a second code path that
+   * could disagree with the one that runs. It is answered BEFORE the rate
+   * limiter (10 D8), so a preview the canvas fires on every edit never competes
+   * with Launch for a launch allowance.
+   *
+   * It needs a PUBLISHED graph, and that is C7 as built rather than a choice
+   * made here: `dry_run_payload` resolves `workflow_id` against
+   * `BUILDER_WORKFLOWS`, which only a publish writes.
+   */
+  async dryRun(sessionId: string, workflowId: string): Promise<DryRunResult> {
+    return fetchJson<DryRunResult>(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow_id: workflowId, inputs: {}, mode: 'dry_run' }),
+    })
+  }
+
+  /**
+   * The flow state as of one frame - C7's `GET /api/runs/{id}/state?step=`.
+   *
+   * `step` is a frame `seq` and not a state row id, because a frame seq is the
+   * only cursor a client already has: it is what `/frames` pages on and what
+   * the socket replays from. Omitting it answers the latest state.
+   */
+  async runState(runId: string, step?: number): Promise<RunStateResult> {
+    const query = step === undefined ? '' : `?step=${encodeURIComponent(String(step))}`
+    return fetchJson<RunStateResult>(`/api/runs/${encodeURIComponent(runId)}/state${query}`)
+  }
+
   private async json<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await authedFetch(path, init)
     if (!response.ok) throw await this.refusal(response)
@@ -312,6 +533,16 @@ export class BuilderApi {
    * string, and for a compile refusal that fallback is the raw envelope - the
    * exact defect item 11 repaired for the run endpoint, reintroduced on the one
    * error that carries the most structure.
+   *
+   * A string `detail` is passed through UNMODIFIED, and that is the design
+   * rather than an omission: the server writes these sentences and this client
+   * must not paraphrase them. D-15-29 landed here because one of those
+   * sentences was `nodes.3.skill_id: Field required` - an array index for a
+   * node the canvas calls Skill - and it is fixed where the sentence is
+   * written, in `service/builder_api.py::_first_schema_error`, which has the
+   * document and can therefore name the mcp node by its label. Rewriting it here
+   * would mean re-deriving which node an index means from a file this client
+   * does not hold.
    */
   private async refusal(response: Response): Promise<Error> {
     const body = await response.text().catch(() => '')
@@ -347,4 +578,285 @@ export type BuilderApiLike = Pick<
   | 'publish'
 >
 
+/**
+ * The five routes plan 15 added, as their own surface.
+ *
+ * NOT folded into `BuilderApiLike`, and the reason is that plan's criterion 11:
+ * `tests/builderPersistence.spec.ts` (33) must pass unchanged, and both it and
+ * `tests/helpers.ts` carry a double declared `implements BuilderApiLike`.
+ * Widening that Pick would stop the persistence suite's double compiling -
+ * which is what the Pick is FOR, except that nothing in the save loop calls any
+ * of these, so the divergence would be a cost with no defect behind it. A
+ * surface that DOES call them asks for this type, and the compiler still forces
+ * its double to match its subject.
+ */
+export type BuilderLifecycleApiLike = Pick<
+  BuilderApi,
+  'exportWorkflow' | 'importWorkflow' | 'duplicateWorkflow' | 'listVersions' | 'unpublish'
+>
+
 export const builderApi = new BuilderApi()
+
+/**
+ * The five calls the docked test panel makes, as their own surface.
+ *
+ * NOT folded into `BuilderApiLike`, for `BuilderLifecycleApiLike`'s reason: two
+ * suites carry doubles declared `implements BuilderApiLike`, and widening that
+ * `Pick` would stop them compiling over methods no save loop calls. A surface
+ * that DOES call these asks for this type, and the compiler still forces its
+ * double to match its subject.
+ */
+export type BuilderTestApiLike = Pick<
+  BuilderApi,
+  'listTestInputs' | 'createTestInput' | 'deleteTestInput' | 'compiled' | 'dryRun' | 'runState'
+>
+
+/**
+ * `studioApi` with a run MODE attached - the whole of the test panel's reuse of
+ * the run console.
+ *
+ * 13 D2 asks for `useValidatorRun` to drive the panel: a test run and a real run
+ * are the same run, `runs.mode` is the only difference (C7), and one frame
+ * pipeline with two tenants is what `node-card.css` already does for two cards.
+ * The composable takes its transport as an argument for exactly this - "the
+ * composable can be driven by a deterministic double" - so a wrapper is the
+ * seam that already existed.
+ *
+ * IT IS A WRAPPER AND NOT AN EDIT because `StudioApi.startRun` cannot carry a
+ * mode: its signature is `(sessionId, idea, workflowId, gates, inputField)` and
+ * plan 11 owns that file this wave. The change this wants is one optional
+ * options bag on `startRun`; until it exists, every other method here delegates
+ * unchanged, so there is exactly one behaviour that differs from the console's
+ * and it is the one the panel is for.
+ *
+ * `mode` and `probeFailure` are getters over the wrapped client rather than
+ * copies. A copy is a second answer to "is there a backend", and the console
+ * has already shipped the defect where two of those disagreed on screen.
+ */
+export class TestRunTransport implements StudioApiLike {
+  /** What the next `startRun` posts. Set by the panel immediately before it. */
+  runMode: RunMode = 'test'
+  /** `node_test` only: which node runs for real, and what the rest replay from. */
+  nodeId: string | null = null
+  testInputId: string | null = null
+
+  private readonly inner: StudioApiLike
+
+  constructor(inner: StudioApiLike = studioApi) {
+    this.inner = inner
+  }
+
+  get mode(): TransportMode {
+    return this.inner.mode
+  }
+
+  get probeFailure(): string | null {
+    return this.inner.probeFailure
+  }
+
+  get probeRefusal(): string | null {
+    return this.inner.probeRefusal
+  }
+
+  initialize(force?: boolean): Promise<TransportMode> {
+    return this.inner.initialize(force)
+  }
+
+  getGraph(workflowId?: string): Promise<GraphDescriptor> {
+    return this.inner.getGraph(workflowId)
+  }
+
+  /**
+   * The one method that differs, and the one refusal that is this class's own.
+   *
+   * A MOCKED transport is refused rather than delegated. `StudioApi`'s mock
+   * fabricates a fourteen-node validator run; drawn on a builder canvas it
+   * would be a scripted demonstration of a graph the author did not write,
+   * under a Run button they pressed on purpose. That is the silent-mock defect
+   * (gotchas 2) aimed at the one surface where the author's own work is what
+   * gets misrepresented, and `builderApi` already refuses a mock for the same
+   * reason.
+   */
+  async startRun(
+    sessionId: string,
+    idea: string,
+    workflowId = 'idea-validator',
+    gates: GatesMode = 'human',
+    inputField = 'idea',
+  ): Promise<StartRunResponse> {
+    const transport = await this.inner.initialize(this.inner.mode === 'mock')
+    if (transport !== 'live') {
+      throw new Error(
+        'the test panel needs a live backend, and this page is in demonstration '
+        + 'mode. A test run has to be a real one.',
+      )
+    }
+    return fetchJson<StartRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        inputs: { [inputField]: idea },
+        gates,
+        mode: this.runMode,
+        node_id: this.nodeId,
+        test_input_id: this.testInputId,
+      }),
+    })
+  }
+
+  /**
+   * Re-run from a failed node, as a TEST run.
+   *
+   * Plan 11's `StudioApiLike.resumeRun` (Re-run from here) and plan 13's
+   * transport met on the merge, and the two disagree on one thing only: what a
+   * resumed run's `mode` is. Delegating to the console's method would post no
+   * mode, and the server's default is a REAL run - so a button pressed inside
+   * the test panel would silently create the one kind of run the panel exists
+   * not to. The body mirrors the console's exactly and adds `mode: 'test'`;
+   * `test` rather than `this.runMode` because a node test's replay set is the
+   * saved input's mocks, and a resume replays the failed run's own state (10
+   * D5) - the two are different plans, and only the first is what a re-run is.
+   */
+  async resumeRun(
+    sessionId: string,
+    sourceRunId: string,
+    nodeId: string,
+    workflowId: string,
+    inputs: Record<string, unknown>,
+    gates: GatesMode = 'human',
+  ): Promise<StartRunResponse> {
+    const transport = await this.inner.initialize(this.inner.mode === 'mock')
+    if (transport !== 'live') {
+      throw new Error('Re-running from a node needs the live backend.')
+    }
+    return fetchJson<StartRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        inputs,
+        gates,
+        resume_from: { run_id: sourceRunId, node_id: nodeId },
+        mode: 'test',
+      }),
+    })
+  }
+
+  getRun(id: string): Promise<RunSnapshot> {
+    return this.inner.getRun(id)
+  }
+
+  getFrames(id: string, after: number): Promise<FrameData[]> {
+    return this.inner.getFrames(id, after)
+  }
+
+  subscribe(runId: string, sessionId: string, handlers: StreamHandlers): () => void {
+    return this.inner.subscribe(runId, sessionId, handlers)
+  }
+
+  replyGate(runId: string, gateId: string, reply: GateReply): Promise<void> {
+    return this.inner.replyGate(runId, gateId, reply)
+  }
+
+  cancelRun(runId: string): Promise<void> {
+    return this.inner.cancelRun(runId)
+  }
+
+  downloadLogs(runId: string, format?: LogFormat): Promise<void> {
+    return this.inner.downloadLogs(runId, format)
+  }
+
+  listRuns(limit?: number): Promise<RunHistoryEntry[]> {
+    return this.inner.listRuns(limit)
+  }
+}
+
+
+/* ======================================================================== *
+ *  Credentials - plan 01, contract C4                                      *
+ * ======================================================================== */
+
+/**
+ * `BUILDER_API_PREFIX` + the credential router's own path. Every one of the
+ * four calls below is `require_user` on the server: 401 with
+ * `WWW-Authenticate: Bearer` for nobody, 503 `credential vault is not
+ * configured` when the deployment has no `CREDENTIALS_MASTER_KEY`.
+ */
+export const CREDENTIALS_PATH = `${BUILDER_API_PREFIX}/credentials`
+
+/**
+ * Free functions rather than methods on `BuilderApi`, and the reason is the
+ * `Pick` above. `BuilderApiLike` is what every document double in the test
+ * suite is compiler-forced to match, and a credential is not a document: a
+ * `FakeBuilderApi` that had to grow four vault methods to keep compiling would
+ * be modelling a surface none of its callers reach. The picker takes its own
+ * narrower `CredentialApiLike`, so its double is checked against exactly what
+ * it stands in for and nothing else.
+ *
+ * They ride `httpCore` - bearer token, one 401 retry, the server's sentence
+ * rather than the envelope - for the reason that file gives: a second copy of
+ * a 401 retry is how one of them quietly stops retrying.
+ */
+
+/** The caller's own credentials, never a field value among them. */
+export async function listCredentials(): Promise<CredentialSummary[]> {
+  return fetchJson<CredentialSummary[]>(CREDENTIALS_PATH)
+}
+
+/**
+ * Store one. The fields leave in THIS body and nowhere else: the 201 answers
+ * with the same row shape the list uses, and a 422 names the kind or the
+ * missing field, a 413 the `MAX_CREDENTIAL_BYTES` (4 KiB) ceiling.
+ */
+export async function createCredential(draft: CredentialDraft): Promise<CredentialSummary> {
+  return fetchJson<CredentialSummary>(CREDENTIALS_PATH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  })
+}
+
+/**
+ * Answers 204 with no body, so nothing is parsed - `.json()` on an empty
+ * body throws, and that would turn a delete that fully succeeded into an
+ * error the author would retry against a row that is already gone. The same
+ * shape as `BuilderApi.remove`. A 404 is absent-or-not-yours, collapsed on the
+ * server so a stranger's probe learns nothing.
+ */
+export async function deleteCredential(id: string): Promise<void> {
+  const response = await authedFetch(`${CREDENTIALS_PATH}/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (response.ok) return
+  const body = await response.text().catch(() => '')
+  let message = readErrorDetail(body, response.status)
+  if (response.status === 429) message += retryAfterSentence(response.headers.get('Retry-After'))
+  throw new Error(message)
+}
+
+/**
+ * Ask the vault to try the credential against its provider. User-initiated
+ * and rate-limited with the run limiter's key, so a 429 here carries the same
+ * `Retry-After` sentence a launch would.
+ */
+export async function testCredential(id: string): Promise<CredentialProbe> {
+  return fetchJson<CredentialProbe>(`${CREDENTIALS_PATH}/${encodeURIComponent(id)}/test`, {
+    method: 'POST',
+  })
+}
+
+/** What `CredentialPicker` depends on - the four calls, nothing else. */
+export interface CredentialApiLike {
+  listCredentials: typeof listCredentials
+  createCredential: typeof createCredential
+  deleteCredential: typeof deleteCredential
+  testCredential: typeof testCredential
+}
+
+export const credentialApi: CredentialApiLike = {
+  listCredentials,
+  createCredential,
+  deleteCredential,
+  testCredential,
+}

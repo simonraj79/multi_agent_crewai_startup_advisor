@@ -22,14 +22,17 @@ shape.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
 import json
 
 from brief_crew import config as project_config
+from brief_crew.builder.bounds import back_edges, flow_edges, step_nodes
 from brief_crew.builder.compiler import CompiledFlow, compile_document
 from brief_crew.builder.document import (
     BILLABLE_KINDS,
+    FLOW_KINDS,
     ROUTING_KINDS,
     BuilderDocument,
     BuilderNode,
@@ -99,9 +102,19 @@ def _description(node: BuilderNode) -> str:
     if node.kind == "input":
         return f"Seed the run from inputs.{config.field}."
     if node.kind == "agent":
+        # An AUTHORED agent names no library id and binds no `tools` tuple - its
+        # hands are `attach` edges - so it describes itself by the role its
+        # author wrote, which is the one sentence that is genuinely about this
+        # node rather than about the registry.
+        role = getattr(config, "role", None)
+        if role is not None:
+            return f"Run the authored agent {role!r} on the {config.tier} tier."
         tools = ", ".join(config.tools) if config.tools else "no tools"
         return f"Run the {config.agent_id} agent on the {config.tier} tier with {tools}."
     if node.kind == "crew":
+        process = getattr(config, "process", None)
+        if process is not None:
+            return f"Run an authored {process} crew on the {config.tier} tier."
         return f"Run the {config.crew_id} crew on the {config.tier} tier."
     if node.kind == "gate":
         return config.message
@@ -151,12 +164,39 @@ def builder_graph_descriptor(document: BuilderDocument) -> GraphDescriptor:
     """
 
     by_id = document.nodes_by_id()
+
+    # ATTACHMENT nodes are not steps and never appear in a descriptor.
+    #
+    # The descriptor drives the RUN console: it is the list of things that
+    # execute, in the order a frame can arrive for them. A tool, an MCP server
+    # or a skill is something an agent HAS, not something the flow does - it
+    # emits no frame, occupies no position in the order, and has no state to
+    # show. Drawing one here would put a card on the run canvas that can only
+    # ever sit idle, which is precisely the "design-time animation in a slot
+    # nothing writes" trap the sprite work already walked into.
+    #
+    # This is not a defensive skip. Before 03-node-library.md D1 grew the union
+    # to ten, `DESCRIPTOR_KINDS[node.kind]` below was a total lookup over seven
+    # keys; an attachment node reaching it raises KeyError and takes the whole
+    # descriptor with it. Filtering here is what keeps that lookup total, which
+    # is why it stays a subscript and not a `.get` with a fallback - a fallback
+    # would turn the next missing kind into a silently mislabelled card.
+    flow_nodes = [node for node in document.nodes if node.kind in FLOW_KINDS]
+
+    # `attach` and `member` edges are excluded for the same reason, and this is
+    # load-bearing rather than tidy: `incoming` decides `flow_method_type`
+    # (start versus listen), `condition_type` (AND versus OR) and
+    # `trigger_methods`. An agent holding three tools has three inbound edges
+    # and has not branched three ways, so counting them would report a join
+    # that the compiler never emits.
     incoming: dict[str, list[str]] = {}
     for edge in document.edges:
+        if edge.target_port != "in":
+            continue
         incoming.setdefault(edge.target, []).append(edge.source)
 
     nodes: list[GraphNode] = []
-    for index, node in enumerate(document.nodes):
+    for index, node in enumerate(flow_nodes):
         nodes.append(
             GraphNode(
                 id=node.id,
@@ -279,6 +319,64 @@ def builder_node_registry(
     )
 
 
+def plan_layers(document: BuilderDocument) -> tuple[tuple[str, ...], ...]:
+    """The graph's step nodes in topological layers - C6's `stage` frames.
+
+    One layer is a set of nodes with no ordering between them, which for a
+    fan-out is the whole point: three research branches are ONE stage because
+    their concurrency is the interesting fact, and a plain topological sort
+    would emit them as three steps and lose it. `frontend/src/data/crewStages.ts`
+    makes the same judgement by hand for the validator; this derives it, because
+    a graph a user drew has nobody to declare it.
+
+    BACK EDGES ARE REMOVED FIRST, and that is what makes this terminate at all.
+    A builder graph may carry up to `MAX_CYCLES` loops - a revise gate is one -
+    and Kahn's algorithm over a cyclic graph produces no layers and no error,
+    just a shorter answer than the node count. `bounds.back_edges` is the same
+    set `budget.py` removes to price a cycle, so the two agree by construction
+    rather than by two walks that could differ.
+
+    A node the layering cannot reach - which after the back-edge removal means
+    an unreachable one - lands in a final layer of its own rather than being
+    dropped: a stage list that silently omits a node is exactly the "the boat
+    skipped a rower" failure `assertStageCoverage` exists to prevent.
+    """
+
+    nodes = [node.id for node in step_nodes(document)]
+    known = set(nodes)
+    loops = {id(edge) for edge in back_edges(document)}
+    successors: dict[str, set[str]] = {node_id: set() for node_id in nodes}
+    indegree: dict[str, int] = {node_id: 0 for node_id in nodes}
+    for edge in flow_edges(document):
+        if id(edge) in loops:
+            continue
+        if edge.source not in known or edge.target not in known:
+            continue
+        if edge.target in successors[edge.source]:
+            continue
+        successors[edge.source].add(edge.target)
+        indegree[edge.target] += 1
+
+    layers: list[tuple[str, ...]] = []
+    placed: set[str] = set()
+    frontier = [node_id for node_id in nodes if indegree[node_id] == 0]
+    while frontier:
+        layer = tuple(frontier)
+        layers.append(layer)
+        placed.update(layer)
+        nxt: list[str] = []
+        for node_id in layer:
+            for target in sorted(successors[node_id]):
+                indegree[target] -= 1
+                if indegree[target] == 0:
+                    nxt.append(target)
+        frontier = nxt
+    stranded = tuple(node_id for node_id in nodes if node_id not in placed)
+    if stranded:
+        layers.append(stranded)
+    return tuple(layers)
+
+
 def gate_before_first_billable(document: BuilderDocument) -> bool:
     """Whether every path from an input reaches a gate before it spends money.
 
@@ -362,6 +460,11 @@ class BuilderWorkflow:
     #: True when an anonymous launch is bounded by a human - see
     #: `gate_before_first_billable`.
     gated_before_spend: bool
+    #: Who published it, copied from the document row (plan 01 D1). None for
+    #: a graph published anonymously or before ownership was recorded, and
+    #: such a graph stays launchable by anyone - `service/graph.py::
+    #: workflow_visible_to` is the one place that rule is applied.
+    user_id: str | None = None
 
     @property
     def workflow_id(self) -> str:
@@ -381,7 +484,11 @@ class BuilderWorkflow:
 
 
 def build_builder_workflow(
-    document: BuilderDocument, *, ceiling_usd: float | None = None
+    document: BuilderDocument,
+    *,
+    ceiling_usd: float | None = None,
+    user_id: str | None = None,
+    credential_check: Callable[[str], bool] | None = None,
 ) -> BuilderWorkflow:
     """Compile a document and derive everything the four maps need.
 
@@ -389,12 +496,20 @@ def build_builder_workflow(
     which is every reason `validate_document` reports plus the compiler's own
     guards over what it emitted.
 
+    `credential_check` is the publisher's identity, as a predicate over
+    credential ids: a publish re-validates with it (plan 01 D10) so a graph
+    naming somebody else's row is refused here rather than failing its first
+    billable node. Rehydration passes none - a boot has no identity, and a
+    credential deleted since publish is the run-time `credential-not-yours`.
+
     Nothing is registered here. Registration is `service/graph.py`'s job, and
     keeping the two apart is what lets the API validate and preview a document
     with no side effect on what this service will run.
     """
 
-    compiled = compile_document(document, ceiling_usd=ceiling_usd)
+    compiled = compile_document(
+        document, ceiling_usd=ceiling_usd, credential_check=credential_check
+    )
     declared_state = compiled.definition["state"]["default"]
     # Every state key the compiled flow declares is a control key, because
     # CrewAI merges `inputs` into state wholesale - except the one the input
@@ -407,4 +522,5 @@ def build_builder_workflow(
         compiled=compiled,
         reserved_input_keys=reserved,
         gated_before_spend=gate_before_first_billable(document),
+        user_id=user_id,
     )

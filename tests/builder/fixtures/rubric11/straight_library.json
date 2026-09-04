@@ -1,0 +1,159 @@
+{
+  "budget": {
+    "billable_nodes": 1,
+    "compiled_at": "2026-09-04T00:00:00Z",
+    "cycles": 0,
+    "escalation_nodes": 1,
+    "static_cost_usd": 0.05234625
+  },
+  "definition": {
+    "config": {
+      "max_method_calls": 4
+    },
+    "description": "Straight library",
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:seed_input",
+          "with": {
+            "field": "idea",
+            "max_chars": 2000,
+            "node_id": "idea",
+            "required": true
+          }
+        },
+        "start": true
+      },
+      "n1_scoper": {
+        "description": "scoper",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "agent_id": "scoper",
+            "guardrail_max_retries": 2,
+            "max_iter": 2,
+            "node_id": "scoper",
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.out__idea}"
+            },
+            "tier": "escalation",
+            "tools": []
+          }
+        },
+        "listen": "n0_idea"
+      },
+      "n2_report": {
+        "description": "report",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "body_key": "markdown_body",
+            "node_id": "report",
+            "source": "${state.out__scoper}"
+          }
+        },
+        "listen": "n1_scoper"
+      }
+    },
+    "name": "builder_ug_11111111_v1",
+    "schema": "crewai.flow/v1",
+    "state": {
+      "default": {
+        "__builder__": {
+          "document": {
+            "id": "ug_11111111",
+            "input_field": "idea",
+            "version": 1
+          },
+          "gates": {}
+        },
+        "idea": "",
+        "out__idea": null,
+        "out__report": null,
+        "out__scoper": null
+      },
+      "type": "dict"
+    }
+  },
+  "frames": [
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_START",
+      "FrameKind.RUN_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "scoper",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "scoper",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "scoper",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scoper",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scoper",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scoper",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scoper",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_END",
+      "FrameKind.RUN_STATE"
+    ]
+  ],
+  "result": {
+    "markdown_body": "{\"node_id\": \"scoper\", \"produced_by\": \"scoper\", \"prompt_inputs\": {\"human_override\": \"\", \"idea\": \"a scheduling assistant for clinics\"}, \"summary\": \"Synthetic output for scoper; no model was called.\", \"tier\": \"escalation\"}",
+    "node_id": "report"
+  }
+}

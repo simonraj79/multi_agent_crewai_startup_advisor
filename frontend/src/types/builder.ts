@@ -71,6 +71,15 @@ export const STATE_REF_PATTERN = /^\$\{state\.[a-z0-9_]{1,64}\}$/
 export const STATE_OUTPUT_PREFIX = 'out__'
 /** `config.py:BUILDER_DOCUMENT_SCHEMA` - the only legal value of `schema`. */
 export const BUILDER_SCHEMA_ID = 'builder.flow/v1'
+/**
+ * `config.py:CREDENTIAL_ID_PATTERN` - `cr_` + 8 hex, server-minted like a
+ * document id. The document carries a credential as this OPAQUE id and nothing
+ * else: the parser never resolves it, the compiler never sees a field value,
+ * and `resolve_credential` reads the row at run time scoped to the user the
+ * run belongs to (plan 01 D5). Restated here so `credentialPicker.spec.ts` can
+ * assert the two agree, the `serverLimits.ts` way.
+ */
+export const CREDENTIAL_ID_PATTERN = /^cr_[0-9a-f]{8}$/
 
 export const isNodeId = (v: string): v is NodeId => NODE_ID_PATTERN.test(v)
 export const nodeId = (v: string): NodeId => {
@@ -99,16 +108,68 @@ export const documentId = (v: string): DocumentId => {
  * compiler never looks at. */
 export type JsonScalar = string | number | boolean | null
 
+/**
+ * `document.py:NodeKind` - TEN kinds in two families, in the Python's own order.
+ *
+ * FLOW kinds are steps: an edge arrives, something happens, it passes on.
+ * ATTACHMENT kinds are not steps at all - they are things an agent or a crew
+ * HAS, and they reach it along an `attach` edge. They never run, never bill,
+ * never sit in a cycle and never count toward the graph-size bound, because
+ * none of that is true of a possession.
+ *
+ * The union is CLOSED on both sides of the wire, and closing it is what turns
+ * "somebody added a kind and forgot the inspector" into a build failure rather
+ * than a blank pane: `nodeKinds.ts`'s `NODE_KINDS` is a mapped type over this
+ * union, `InspectorRail.vue`'s `INSPECTORS` is a `Record<NodeKind, Component>`,
+ * `builderDefaults.ts::newNode` switches exhaustively over it, and
+ * `BuilderNode.vue`'s `KIND_EYEBROW` and `summariseConfig` are total over it.
+ * Five compile errors from one added word.
+ */
 export type NodeKind =
+  // flow
   | 'input' | 'agent' | 'crew' | 'gate' | 'router' | 'transform' | 'output'
+  // attachment
+  | 'tool' | 'mcp' | 'skill'
+
+/**
+ * `document.py:ATTACHMENT_KINDS`, and the two families it partitions the union
+ * into. Restated here rather than derived, because the client needs the set at
+ * RUN time (a pill is not a card) and TypeScript's unions do not survive to
+ * run time; `tests/nodeKinds.spec.ts` reads the frozenset out of `document.py`
+ * and asserts the two agree, and that the two families partition the union.
+ */
+export const ATTACHMENT_KINDS = ['tool', 'mcp', 'skill'] as const
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number]
+export type FlowKind = Exclude<NodeKind, AttachmentKind>
+/** Which family a kind belongs to - the one fact a card-versus-pill decision reads. */
+export const isAttachmentKind = (kind: NodeKind): kind is AttachmentKind =>
+  (ATTACHMENT_KINDS as readonly string[]).includes(kind)
+
 export type Tier = 'cheap' | 'escalation'
 export type Severity = 'error' | 'warning'
 /** `store.py:STATUS_DRAFT` / `STATUS_PUBLISHED`. */
 export type DocumentStatus = 'draft' | 'published'
 
-/** `document.py:_OUT_PORTS_BY_KIND`. `in` is the ONLY target port, for every kind. */
-export type TargetPort = 'in'
+/**
+ * `document.py:BuilderEdge.target_port` - what an edge may ARRIVE at.
+ *
+ * `in` is the flow itself and was the only value before the ten-kind
+ * vocabulary. `attach` hangs a tool, an MCP server or a skill off an agent or a
+ * crew; `member` puts an agent inside a crew. Neither is a step: `bounds.py`
+ * excludes both from fan-out counting, from cycle detection and from billable
+ * depth, because an agent holding three tools has not branched three ways and a
+ * tool cannot be part of a loop.
+ *
+ * EDGE CLASS IS A PURE FUNCTION OF THIS FIELD AND OF NOTHING ELSE. That is the
+ * whole reason an attachment's single port is a SOURCE - the tool reaches
+ * toward the agent, never the reverse - so the canvas's stroke rules and the
+ * server's bounds rules need to agree about one string rather than each
+ * independently deciding what the source happened to be.
+ */
+export type TargetPort = 'in' | 'attach' | 'member'
 export type GatePort = 'approve' | 'revise'
+/** An attachment's one source port. `_OUT_PORTS_BY_KIND` gives all three `('attach',)`. */
+export type AttachPort = 'attach'
 
 /* --- per-kind configs -------------------------------------------------- */
 
@@ -134,9 +195,138 @@ export interface InputConfig {
  * than adds: CrewAI counts guardrail retries PER GUARDRAIL, so the unset
  * default of 3 permits eight full regenerations of a two-guardrail task.
  */
-export interface AgentConfig {
+/**
+ * What a billable node does when its step raises - 03 D3's `on_error`.
+ *
+ * `fail` (the absence, and the only behaviour the runtime has today) ends the
+ * run. `route` sends the failure out of a SECOND source port named `error`, so
+ * an author can draw the recovery path instead of losing the run to it.
+ *
+ * OPTIONAL, and it stays optional until the Python half of D3 lands. Today's
+ * `_BillableConfig` has no such field and `BuilderModel` is `extra="forbid"`,
+ * so a document that carried the key would be a 422 rather than a feature -
+ * which is why `nodeKinds.ts` never writes one into a fresh node and why
+ * `outPortsOf` reads it as "absent means `fail`".
+ */
+export type NodeErrorPolicy = 'fail' | 'route'
+
+/**
+ * `document.py:ToolFailurePolicy` - `Agent.tool_failure_policy` at CrewAI
+ * 1.15.18, by its enum's own VALUES rather than its member names.
+ */
+export type ToolFailurePolicy = 'ignore' | 'warn' | 'raise'
+
+/**
+ * `document.py:ScalarType`. FOUR, not six.
+ *
+ * 04 D2's prose asks a `SchemaEditor` for `string/number/boolean/array/object`.
+ * The schema admits neither `array` nor `object` and adds `integer`, because
+ * `task.output_schema` is a FLAT map the compiler turns into a pydantic class
+ * with `create_model` - a nested schema would be a second document format
+ * inside the document. The package wins; the editor offers these four.
+ */
+export type ScalarType = 'string' | 'number' | 'integer' | 'boolean'
+
+/**
+ * `document.py:TaskConfig` - the one `Task` an authored agent runs.
+ *
+ * A composite rather than five flat fields because a Task is one CrewAI
+ * primitive, and it is one of the three composites whose collapse is the
+ * difference between FD5's 25 and its 41.
+ */
+export interface TaskConfig {
+  /** REQUIRED, 1..`bounds.max_prompt_chars`. */
+  description: string
+  /** REQUIRED, same bound. */
+  expected_output: string
+  /**
+   * A FLAT map of property name to scalar type, or null. Compiles to
+   * `Task.output_json` / `Task.response_model` via `create_model`.
+   */
+  output_schema: Record<string, ScalarType> | null
+  markdown: boolean
+  async_execution: boolean
+}
+
+/**
+ * `document.py:LlmConfig` - eleven leaves, and the reason FD5 counts 41 rather
+ * than 25.
+ *
+ * `stream` is absent on purpose: a builder run streams frames by construction,
+ * so there is nothing for an author to decide. `reasoning_effort` takes the
+ * eleventh slot instead, and the inspector gates it on `supports_reasoning`
+ * because OpenRouter drops it for every model in this roster.
+ */
+export interface LlmConfig {
+  /** REQUIRED. A registry model id, in any of the four spellings `baseSlug` folds. */
+  model: string
+  /** 0..2, or null. */
+  temperature: number | null
+  /** 0..1, or null. */
+  top_p: number | null
+  /** >= 1, or null. No ceiling - what a completion COSTS is `run_cost_ceiling_usd`'s job. */
+  max_tokens: number | null
+  /** Seconds, >= 1, or null. */
+  timeout: number | null
+  /** Gated on `supports_json_mode`. */
+  response_format: 'text' | 'json_object' | null
+  /** -2..2, or null. */
+  frequency_penalty: number | null
+  /** -2..2, or null. */
+  presence_penalty: number | null
+  /** At most four - the OpenAI-compatible ceiling, enforced by `LlmConfig._validate_stop`. */
+  stop: string[]
+  seed: number | null
+  /** Gated on `supports_reasoning`. SILENTLY DROPPED for every OpenRouter model. */
+  reasoning_effort: 'low' | 'medium' | 'high' | null
+}
+
+/**
+ * `document.py:RetryConfig` - the builder's OWN whole-node retry loop.
+ *
+ * Not `Task.max_retries`, which is deprecated at CrewAI 1.15.18, counts
+ * GUARDRAIL retries and is a different concept sharing a name. The field that
+ * means what CrewAI's means is `guardrail_max_retries` on the shared base.
+ */
+export interface RetryConfig {
+  /** 0..`bounds.max_retries`. */
+  max_retries: number
+  /** 0..`BUILDER_MAX_RETRY_BACKOFF_SECONDS` (60). */
+  backoff_seconds: number
+  /** The model to try on the LAST attempt. A REFUSAL is never retried with it (decision 16). */
+  fallback_model: string | null
+}
+
+/**
+ * `document.py:PlanningConfig` - FOUR of CrewAI's eleven.
+ *
+ * The 00 S9 deprecation ruling: `Agent.reasoning` and
+ * `Agent.max_reasoning_attempts` are deprecated at 1.15.18 and are REPLACED by
+ * `Agent.planning` plus these four. The three prompt overrides are excluded
+ * because prompts live in YAML for this repository's crews and in the document
+ * for an authored agent, and a third place would be a third place; `llm` is
+ * excluded because it would put the planner on a different model from the one
+ * the node names - a cost surprise with no visible cause.
+ */
+export interface PlanningConfig {
+  reasoning_effort: 'low' | 'medium' | 'high'
+  /** 1..`bounds.max_retries`, or null. */
+  max_attempts: number | null
+  /** 1..`BUILDER_MAX_PLANNING_STEPS` (20). */
+  max_steps: number
+  /** 0..`bounds.max_retries`. */
+  max_replans: number
+}
+
+export interface LibraryAgentConfig {
   /** REQUIRED, no default. */
   tier: Tier
+  /**
+   * D1's conditional port. `'route'` grows an `error` source port on the card;
+   * anything else, including the absence, does not. See `NodeErrorPolicy` for
+   * why this is optional rather than defaulted.
+   */
+  on_error?: NodeErrorPolicy
   /** int, 1..`BUILDER_MAX_AGENT_ITER` (8). default `VALIDATOR_BRANCH_MAX_ITER` = 2. */
   max_iter: number
   /** int, 0..`BUILDER_MAX_GUARDRAIL_RETRIES` (2). default 2. */
@@ -147,9 +337,79 @@ export interface AgentConfig {
   agent_id: NodeId
   /** default []. Each in `vocabulary.research_tools`. Duplicates rejected server-side. */
   tools: string[]
+  /**
+   * A BYO OpenRouter key, as the id of one of the author's own credentials
+   * (`CREDENTIAL_ID_PATTERN`), or null for the platform key. Stage 1's stand-in
+   * for C1 v2's `llm.credential_id` (S1 ruling 8), which is why it is optional
+   * here: a document written before the field existed carries no key at all.
+   * Never a secret - the runtime resolves it inside the entrypoint, scoped to
+   * the run's user, and a foreign id fails as `credential-not-yours` there.
+   */
+  credential_id?: string | null
 }
 
-export interface CrewConfig {
+/**
+ * `document.py:AuthoredAgentConfig` - a role, a goal, a backstory and one task
+ * the author wrote. FD5's canonical list as amended by the 00 S9 ruling.
+ *
+ * FOUR fields the older plan text names are deliberately ABSENT, and each
+ * absence is a decision rather than an oversight:
+ *
+ *   - `multimodal` and `function_calling_llm` are CUT. Both are deprecated at
+ *     CrewAI 1.15.18 and `multimodal`'s own message says it goes at v2.0, so a
+ *     control for either warns today and breaks at the next major.
+ *   - `reasoning` and `max_reasoning_attempts` are REPLACED by `planning` and
+ *     `planning_config`. CrewAI already folds the old pair into a
+ *     `PlanningConfig` and emits a `DeprecationWarning`; the switch an author
+ *     sees should be the one the package keeps.
+ *
+ * Attachments - tools, MCP servers, skills - are NOT fields. They arrive along
+ * `attach` edges and reach the constructor through the compiled `with:` block,
+ * which is what keeps "what this agent has" a thing you can see on the canvas
+ * rather than a list buried in a form. Flowise v2's `agentTools` array is the
+ * anti-pattern this avoids.
+ */
+export interface AuthoredAgentConfig {
+  /* --- the shared billable base, identical to the library arm ------------ */
+  tier: Tier
+  on_error?: NodeErrorPolicy
+  max_iter: number
+  guardrail_max_retries: number
+  prompt_inputs: Record<string, JsonScalar>
+
+  /* --- essentials -------------------------------------------------------- */
+  role: string
+  goal: string
+  backstory: string
+  task: TaskConfig
+  llm: LlmConfig
+
+  /* --- advanced ---------------------------------------------------------- */
+  max_rpm: number | null
+  max_execution_time: number | null
+  allow_delegation: boolean
+  /** `Agent.memory` is UNIFIED at 1.15.18 and is not three toggles. */
+  memory: boolean
+  cache: boolean
+  respect_context_window: boolean
+  retry: RetryConfig
+
+  /* --- expert ------------------------------------------------------------ */
+  system_template: string | null
+  prompt_template: string | null
+  response_template: string | null
+  tool_failure_policy: ToolFailurePolicy | null
+  planning: boolean
+  /**
+   * `null` unless `planning` is on: `AuthoredAgentConfig._validate_planning`
+   * RAISES on a config that sets one without the other, so the inspector never
+   * writes that shape.
+   */
+  planning_config: PlanningConfig | null
+  credential_id?: string | null
+}
+
+export interface LibraryCrewConfig {
   /**
    * REQUIRED. A DECLARATION, not a derivation - the document is priced before
    * anything is constructed, so an author names the escalation-most tier the
@@ -157,6 +417,8 @@ export interface CrewConfig {
    * budget prices, on that word alone, even though `run_crew` ignores it.
    */
   tier: Tier
+  /** D1's conditional port, exactly as on an agent. See `NodeErrorPolicy`. */
+  on_error?: NodeErrorPolicy
   /** Accepted by the schema, IGNORED at runtime - `run_crew` runs the crew whole. */
   max_iter: number
   /** Accepted by the schema, IGNORED at runtime. */
@@ -168,6 +430,66 @@ export interface CrewConfig {
   // `extra="forbid"`, so sending one is a 422 rather than a silently dropped
   // key - which is why this interface has nothing for an inspector to render.
 }
+
+/**
+ * `document.py:AuthoredCrewConfig` - a team the author assembled.
+ *
+ * FIFTEEN fields, per the 00 S9 ruling that settled 04's count against its own
+ * prose: **`verbose` is the fifteenth**. The gauntlet's Crew Essentials line
+ * reads `process (sequential/hierarchical), verbose`; `process` is among the
+ * fourteen 04's paragraph names and `verbose` is not, and `Crew.verbose` exists
+ * at 1.15.18 and is not deprecated.
+ *
+ * The MEMBERSHIP is not a field - it is the set of `member` edges arriving
+ * here - which is why the inspector renders the member list read-only and lets
+ * an author drag the order that `task_order` records.
+ */
+export interface AuthoredCrewConfig {
+  tier: Tier
+  on_error?: NodeErrorPolicy
+  max_iter: number
+  guardrail_max_retries: number
+  prompt_inputs: Record<string, JsonScalar>
+
+  process: 'sequential' | 'hierarchical'
+  /** The member node ids, in the order their tasks run. */
+  task_order: NodeId[]
+  /**
+   * `Crew.__init__` RAISES when the process is hierarchical and neither manager
+   * is set, and a sequential crew refuses both - `_validate_manager` checks the
+   * pair here rather than reporting it, because it is a cross-field rule about
+   * one object.
+   */
+  manager_llm: LlmConfig | null
+  manager_agent: NodeId | null
+  memory: boolean
+  cache: boolean
+  max_rpm: number | null
+  planning: boolean
+  planning_llm: LlmConfig | null
+  retry: RetryConfig
+  verbose: boolean
+}
+
+/**
+ * The two arms per billable kind, discriminated by PRESENCE rather than a tag.
+ *
+ * There is no `kind` tag because the two arms are not two things an author
+ * picks in a dropdown - they are "I named one of yours" and "I wrote my own",
+ * and the field that says which is the field that does the work. `document.py`
+ * spells the same union the same way, and `_one_of` refuses both-or-neither at
+ * parse.
+ */
+export type AgentConfig = LibraryAgentConfig | AuthoredAgentConfig
+export type CrewConfig = LibraryCrewConfig | AuthoredCrewConfig
+
+/** Whether this agent config is the arm whose prompts the author wrote. */
+export const isAuthoredAgent = (config: AgentConfig): config is AuthoredAgentConfig =>
+  !('agent_id' in config)
+
+/** Whether this crew config is the arm whose members the author assembled. */
+export const isAuthoredCrew = (config: CrewConfig): config is AuthoredCrewConfig =>
+  !('crew_id' in config)
 
 export interface GateConfig {
   /** 1..`BUILDER_MAX_GATE_MESSAGE_CHARS` (2000). REQUIRED. */
@@ -246,9 +568,82 @@ export interface OutputConfig {
   source: JsonScalar
 }
 
+/* --- the three attachment configs ---------------------------------------
+ * `document.py:ToolConfig`, `McpConfig`, `SkillConfig`. Each carries only its
+ * SHAPE: 06 owns what a `tool_id` accepts, 07 owns MCP discovery and 08 owns
+ * skill storage. Every id here is an OPAQUE key into a server-owned closed set
+ * - never a module path, an import or a callable name. That is the whole reason
+ * a document cannot execute code, and these are no exception. */
+
+export interface ToolConfig {
+  /** REQUIRED. Keys the server-owned tool catalogue (`vocabulary.tools[].tool_id`). */
+  tool_id: NodeId
+  /**
+   * default {}. The tool's own configuration, flat like every other
+   * author-supplied mapping - each value a JsonScalar or the one resolvable
+   * state ref.
+   */
+  params: Record<string, JsonScalar>
+  /** The author's own key for tools that need one, by id. The id travels; the secret never does. */
+  credential_id?: string | null
+}
+
+/**
+ * What survives an export when the server reference itself cannot.
+ * `document.py::ServerHint`. Every field is optional because the export nulls
+ * whatever it could not safely carry, and a hint with nothing in it is still a
+ * truthful hint.
+ */
+export interface ServerHint {
+  label?: string | null
+  transport?: string | null
+  /** Masked by `export.mask_url` before it is written: a real MCP url can carry
+   *  `user:password@` and `?token=`, so the raw one never leaves. */
+  url?: string | null
+}
+
+export interface McpConfig {
+  /**
+   * One MCP server, by id — and OPTIONAL, which cost a production defect to
+   * learn (D-15-28). `export.py` NULLS this key on the way out, because it
+   * names a row in the exporting author's own server list and a different
+   * author importing that file must not end up pointing at it. While it was
+   * required, an exported graph could not be re-imported by anyone, its own
+   * author included.
+   */
+  server_id?: NodeId | null
+  /** What the export leaves in `server_id`'s place. Present here because the
+   *  export WRITES it and the server model is `extra="forbid"`. */
+  server_hint?: ServerHint | null
+  /**
+   * WHICH of the server's tools this node exposes. default []. Emptiness is a
+   * `bounds.py` PROBLEM rather than a parse refusal, because an author who has
+   * added a server and not chosen its tools has made an incomplete graph and
+   * not an invalid document - the difference between a row in the dock and a
+   * save that fails.
+   */
+  tool_names: string[]
+  credential_id?: string | null
+}
+
+export interface SkillConfig {
+  /**
+   * One SKILL.md pack. A skill is knowledge, not hands: its name and
+   * description load at run start and its body only when a task matches.
+   *
+   * OPTIONAL for the same reason as `McpConfig.server_id`: the export strips
+   * it, leaving `skill_name` behind as the thing an importing author's own
+   * library resolves against.
+   */
+  skill_id?: NodeId | null
+  /** The human name, which survives an export where the id cannot. */
+  skill_name?: string | null
+}
+
 export type BuilderNodeConfig =
   | InputConfig | AgentConfig | CrewConfig
   | GateConfig | RouterConfig | TransformConfig | OutputConfig
+  | ToolConfig | McpConfig | SkillConfig
 
 /* --- discriminated node --------------------------------------------------
  * The union is what makes `node.config.branches` narrow only on 'router' and
@@ -278,6 +673,9 @@ export type BuilderNode =
   | (BuilderNodeBase & { kind: 'router';    config: RouterConfig })
   | (BuilderNodeBase & { kind: 'transform'; config: TransformConfig })
   | (BuilderNodeBase & { kind: 'output';    config: OutputConfig })
+  | (BuilderNodeBase & { kind: 'tool';      config: ToolConfig })
+  | (BuilderNodeBase & { kind: 'mcp';       config: McpConfig })
+  | (BuilderNodeBase & { kind: 'skill';     config: SkillConfig })
 
 export interface BuilderEdge {
   id: EdgeId
@@ -291,21 +689,40 @@ export interface BuilderEdge {
   source_port: string
   target: NodeId
   /**
-   * The literal `'in'` is the ONLY legal value. A second inbound port would be
-   * a join semantics this document deliberately does not have: `joins` says how
-   * arrivals combine, and the answer is always "all".
+   * `'in'` for a flow edge, `'attach'` for a tool/MCP/skill hanging off an
+   * agent or crew, `'member'` for an agent inside a crew. Default `'in'`.
+   *
+   * This field ALONE decides the edge's class. Nothing may re-derive it from
+   * what the source node happened to be - see `TargetPort`.
    */
   target_port: TargetPort
 }
 
 /**
- * node_id -> 'all'. `'any'` is REFUSED at parse time with a message rather than
- * reported, because there is nothing to fix except deleting it: a multi-event
- * `or_()` listener is added to `_fired_or_listeners` the first time it fires and
- * skipped forever after, so the SECOND arrival ends the run normally having
- * produced nothing. No exception, no warning, no frame. Measured both ways.
+ * node_id -> `'all'` or `'any'`, and nothing else.
+ *
+ * **`'any'` WAS REFUSED, AND IS NOT ANY MORE.** This mirror said `'all'` alone
+ * until 2026-09-04, three days after `document.py::_validate_joins` began
+ * admitting both - so a client could not even express a shape the server had
+ * accepted since 03-node-library.md D3, and `conditionalRouter.ts` was the first
+ * template that needed to. Corrected here rather than worked around, because a
+ * mirror that is narrower than its subject is the same class of defect as one
+ * that is wider: both make the canvas and the compiler disagree about what a
+ * document may say.
+ *
+ * The old refusal was right about a real measurement and wrong about what the
+ * word compiles to. A multi-event `or_()` listener IS added to
+ * `_fired_or_listeners` the first time it fires and skipped forever after - but
+ * that is a fact about an `or_` over METHOD names, and `'any'` compiles to
+ * `compiler._listen_for`'s alternatives shape, where each alternative is a
+ * router LABEL, only one fires per pass, and CrewAI re-arms an or-listener whose
+ * condition names the label a router just emitted. Which is exactly what "the
+ * first arrival wins" means, and what lets a router's mutually exclusive
+ * branches converge on one node instead of waiting forever for the branch that
+ * was not taken. `document.py::BuilderDocument._validate_joins` carries the
+ * whole argument.
  */
-export type BuilderJoins = Record<string, 'all'>
+export type BuilderJoins = Record<string, 'all' | 'any'>
 
 /**
  * The compiler's static estimate, stored on the document it priced. Written by
@@ -385,16 +802,109 @@ export const PROBLEM_CODES = [
   'ident-pattern', 'ident-collision',
   'budget-over-ceiling', 'budget-unpriced-model',
   'library-unknown-id', 'library-missing-prompt-input', 'library-unbuildable-crew',
+  'credential-missing',
+  // 03-node-library.md D2's edge classes, added 2026-09-04 with the ten-kind
+  // vocabulary's server half. `attach` and `member` edges say what a node HAS
+  // rather than what happens next, so every one of these is about a pair the
+  // author drew rather than about a count they exceeded - which is why six of
+  // the seven anchor to a node AND an edge.
+  'attach-target-not-agent', 'member-target-not-crew', 'member-agent-has-flow-edges',
+  'attachment-unattached', 'attachments-over-max', 'attachment-nodes-over-max',
+  'crew-members-out-of-range',
+  // 05-model-registry.md D7's three, added 2026-09-04 with `builder/registry.py`.
+  // The first two are about WHICH model - an id no roster row carries, and a row
+  // whose price crossed the ceiling after the document was published. The third
+  // is about a PARAMETER, and it is the one the inspector also gates: the widget
+  // disables the control and the server reports it anyway, so a stale client
+  // cannot smuggle in a parameter the compiler would silently drop.
+  'model-unknown', 'model-over-ceiling', 'model-lacks-capability',
+  // 06-tool-registry.md, added 2026-09-04 with `builder/tools.py`. A tool node
+  // names a catalogue id and nothing else, so all three are about the id, its
+  // settings, or the key it needs - never about a class or a path, because a
+  // document cannot carry one.
+  //
+  // `tool-credential-required` is deliberately NOT `credential-missing`, which
+  // 06 D4 reuses for both. The repairs differ - "add a key of this kind and
+  // pick it" against "that id is not yours" - and `compiler.py` already states
+  // the rule that a different repair earns a different code.
+  'tool-unknown', 'tool-param-invalid', 'tool-credential-required',
+  // 07-mcp-client.md, added 2026-09-04 with `builder/mcp.py`. The last is the
+  // FIFTH warning: a discovered tool description matching one of thirteen
+  // injection patterns. It warns rather than errors because the list has false
+  // positives by design - `act as` is ordinary English - and PLANS.md decision
+  // 8 rules that the tool stays selectable with the warning shown.
+  'mcp-server-unavailable', 'mcp-tool-unknown', 'mcp-no-tools-selected',
+  'mcp-transport-disallowed', 'mcp-tool-description-suspicious',
+  // 08-skills.md. One code for absent, deleted and foreign; a built-in
+  // validates clean for everyone, so this is not "reject what you do not own".
+  // `skill-contains-scripts` is NOT here: it is an import-time refusal that
+  // never lands on a node, so it is declared in `service/builder_api.py` where
+  // the three greps that build this union cannot sweep it up.
+  'skill-unknown',
+  // 09-compiler.md, added 2026-09-04 with the authored compile path. The first
+  // two are about `document.state`: the compiler owns `out__*`, `err__*`,
+  // `turns__*` and the input field, and a declared key under one of those names
+  // would be overwritten by a node's own output. The third is the `on_error:
+  // route` port with nothing drawn from it - legal, and almost certainly not
+  // what was meant. The fourth is what an IMPORTED graph looks like, because
+  // `export.py` strips `server_id` and `skill_id` on purpose.
+  'state-key-reserved', 'state-schema-invalid', 'error-port-unconnected',
+  'attachment-reference-missing',
+  // The SEVENTH warning, and decision 12 said out loud rather than by silence:
+  // a registered crew builds its own LLMs in python, so the node's `tier` word
+  // prices and bounds the graph and does not choose a model. The gauntlet's own
+  // forbidden list names a parameter rendered in the UI that the compiler
+  // ignores; this is that rule answered on the node.
+  'crew-tier-not-honoured',
+  // 12-error-handling.md's two, added 2026-09-04 with the run-phase surfaces.
+  // Both are one defect in two keys: an authored crew carries a field whose
+  // value the RUNTIME silently discards, and the discarding happens after every
+  // node upstream of the crew has already billed.
+  //
+  // `crew-task-order-mismatch` is the gauntlet's own forbidden "a parameter
+  // rendered in the UI that the compiler ignores", found in
+  // `runtime.py:724`: an order entry naming a node that is not a member of
+  // this crew is filtered out with no word to anybody, so the author dragged
+  // an order and got a different one.
+  //
+  // `crew-hierarchical-needs-manager` is the half `document.py` cannot see. Its
+  // cross-field validator refuses a hierarchical crew with NEITHER manager set,
+  // but whether `manager_agent` names one of THIS crew's members is a question
+  // only the `member` edges answer - and with it unresolved CrewAI raises at
+  // `crew.py:729` mid-run.
+  'crew-task-order-mismatch', 'crew-hierarchical-needs-manager',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 
 /**
- * The ONLY three warnings; everything else is an error and blocks publish.
- * `bounds.py` writes `severity="warning"` at exactly three sites, and all three
- * describe a graph that is legal and probably not what was meant.
+ * The warnings; everything else is an error and blocks publish. Every one of
+ * them describes a graph that is legal and probably not what was meant.
+ *
+ * COUNT IT, never copy it - the list has grown three times and the prose beside
+ * it has been wrong twice:
+ *   grep -c 'severity="warning"' src/brief_crew/builder/*.py
+ *
+ * `attachment-unattached` is the fourth, added with D2. It is a warning rather
+ * than an error for a reason worth keeping: it is exactly what a node looks
+ * like the moment it is dropped, and refusing it would mean an author cannot
+ * put a tool on the canvas before deciding whose it is.
  */
 export const WARNING_CODES = [
   'router-branch-unconnected', 'no-output-node', 'join-single-predecessor',
+  'attachment-unattached',
+  // The fifth, added 2026-09-04 with plan 07. A discovered MCP tool whose
+  // description matched one of thirteen injection patterns: it warns rather
+  // than errors because the list has false positives by design, and PLANS.md
+  // decision 8 rules that the tool stays selectable with the warning shown.
+  // Hiding it in the picker would be the quietly-divergent double this
+  // repository keeps warning about.
+  'mcp-tool-description-suspicious',
+  // The sixth and seventh, added 2026-09-04 with plan 09. `error-port-
+  // unconnected` is a graph that is legal and probably not what was meant - the
+  // author asked for a recovery path and did not draw one. `crew-tier-not-
+  // honoured` is a control that does real work in two places and not in the
+  // third; refusing the document over it would refuse every registered crew.
+  'error-port-unconnected', 'crew-tier-not-honoured',
 ] as const
 
 export interface BuilderProblem {
@@ -409,6 +919,19 @@ export interface BuilderProblem {
   message: string
   node_id: string | null
   edge_id: string | null
+  /**
+   * WHICH CONTROL, when the code alone cannot say - C8's optional `field`,
+   * requested by 04 D7.
+   *
+   * Three codes anchor to a field that varies with the document rather than
+   * with the code: `model-lacks-capability` (the parameter the model cannot
+   * honour), `state-schema-invalid` and `prompt-too-long`. `FIELD_CODES` holds
+   * one string per code and cannot express any of them, so the server names the
+   * control and `useBuilderProblems` prefers it. Absent on every problem from a
+   * server that has not grown it, which is why the index falls back rather than
+   * dropping the row.
+   */
+  field?: string | null
 }
 
 /**
@@ -451,6 +974,64 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
   // where it belongs.
   'library-unknown-id': 'agent_id',
   'library-missing-prompt-input': 'prompt_inputs',
+  // Plan 01 D10: a `credential_id` the caller's vault does not hold anchors to
+  // the picker that chose it (`data-field="credential_id"` in the inspector).
+  'credential-missing': 'credential_id',
+  // 09-compiler.md's two with a fixed control. `on_error` is the switch that
+  // grew the `error` port, so an unconnected one belongs beside it; `tier` is
+  // decision 12's whole subject - the word that prices and bounds a registered
+  // crew and does not choose its models.
+  'error-port-unconnected': 'on_error',
+  'crew-tier-not-honoured': 'tier',
+
+  /*
+   * 04 D7: every FD14 code with a FIXED field. The three whose field varies
+   * with the document rather than with the code carry `field` on the payload
+   * instead (C8) and are deliberately absent here - `model-lacks-capability`
+   * blames `llm.response_format` on one node and `llm.reasoning_effort` on the
+   * next, and one string cannot say both.
+   *
+   * `model-unknown` and `model-over-ceiling` ARE fixed: both are about the
+   * model a node names, and `registry.py::_model_references` reports them for
+   * `llm.model` and for `retry.fallback_model` alike - which is precisely why
+   * those two ALSO carry `field`, and why the index prefers it when it is
+   * there. The entry below is the honest fallback for a server that has not
+   * grown the payload yet, and it points at the far commoner of the two.
+   */
+  'model-unknown': 'llm.model',
+  'model-over-ceiling': 'llm.model',
+  // 06: a tool node names a catalogue id and nothing else, so all three anchor
+  // to one of its two controls.
+  'tool-unknown': 'tool_id',
+  'tool-credential-required': 'credential_id',
+  // 07: which server, which of its tools, and whether any were picked at all.
+  // `mcp-transport-disallowed` is a property of the SERVER record rather than
+  // of this node's reference to it, so it anchors to the server row too.
+  'mcp-server-unavailable': 'server_id',
+  'mcp-transport-disallowed': 'server_id',
+  'mcp-tool-unknown': 'tool_names',
+  'mcp-no-tools-selected': 'tool_names',
+  'mcp-tool-description-suspicious': 'tool_names',
+  // 08: one code for absent, deleted and foreign, and one control to change.
+  'skill-unknown': 'skill_id',
+  // 03 D2's crew membership count. It is about the `member` edges, and the
+  // control that shows them is the authored crew's read-only member list.
+  'crew-members-out-of-range': 'members',
+  // 12's two. `crew-task-order-mismatch` anchors to `members` and not to
+  // `task_order`, because the read-only member list IS the order control - an
+  // author drags rows there and the form writes `task_order`, and there is no
+  // control by that name to focus. `crew-hierarchical-needs-manager` anchors to
+  // the manager select, which is the one thing to change. Both ALSO carry
+  // `field` on the payload; these entries are the fallback for a server that
+  // predates the key, exactly as `model-unknown`'s is.
+  'crew-task-order-mismatch': 'members',
+  'crew-hierarchical-needs-manager': 'manager_agent',
+  /*
+   * `tool-param-invalid` is deliberately absent. Its field is one of the
+   * catalogue's own parameter names - `params.limit`, `params.formats` - which
+   * varies per tool, so it is the fourth code that needs C8's `field` and the
+   * fourth that must not be given a single wrong string here.
+   */
 }
 
 /* --- budget ------------------------------------------------------------ */
@@ -492,6 +1073,21 @@ export interface BuilderBudget {
   over_ceiling: boolean
   /** `MAX_RUN_COST_USD`, default 10.0. <= 0 means DISABLED. */
   ceiling_usd: number
+  /**
+   * The per-node breakdown - C5, requested by 04 D6, OWNED BY PLAN 09.
+   *
+   * OPTIONAL, and it is optional because plan 09 has not landed: today's
+   * `budget.py::BudgetEstimate` carries the six whole-graph figures above and
+   * no breakdown, so the inspector's per-node cost line renders when the key
+   * arrives and is absent when it does not. That is the honest degradation -
+   * computing the figure here instead would be a second estimator quietly
+   * disagreeing with the one that enforces the ceiling (invariant 3), which is
+   * exactly the shape of thing this repository keeps finding.
+   *
+   * `node_call_count` already exists server-side and is addressed by node id,
+   * so the arithmetic 09 has to expose is arithmetic it already does.
+   */
+  per_node?: Record<string, { calls: number; usd: number }>
 }
 
 /* --- vocabulary -------------------------------------------------------- */
@@ -518,6 +1114,17 @@ export interface BuilderBounds {
   max_document_bytes: number
   /** `MAX_RUN_COST_USD`. <= 0 means DISABLED - and it is a dollar figure, so it is NOT trunc'd. */
   run_cost_ceiling_usd: number
+  /**
+   * `BUILDER_MAX_PROMPT_CHARS` (4000) - what one authored prompt field may hold.
+   *
+   * Read by every `PromptField` in the authored-agent form rather than by a
+   * constant here, per R6: a bound the client keeps its own copy of is a bound
+   * that disagrees with the compiler after any server change, and the failure
+   * mode is a 422 about a box the author was told was fine.
+   */
+  max_prompt_chars: number
+  /** `BUILDER_MAX_NODE_RETRIES` (3) - the ceiling on `retry.max_retries`. */
+  max_retries: number
 }
 
 /**
@@ -526,10 +1133,108 @@ export interface BuilderBounds {
  * is a 422 the author cannot act on, and a canvas missing one is a feature
  * nobody can reach.
  */
+/**
+ * One row of C2 v2's `tools` - 06's catalogue, verbatim, served rather than
+ * duplicated.
+ *
+ * The palette's tool sub-list searches `label`, the pill renders it, and a
+ * `credential_kind` is what tells an author this tool needs a key before it
+ * will do anything. `params` is the tool's argument shape; the inspector that
+ * renders it is 04's and 06's, not this plan's.
+ */
+export interface BuilderToolParam {
+  name: string
+  /**
+   * The server's own words, not a mapping of them.
+   *
+   * `'integer'` and `'array'` were added 2026-09-04 when `builder/tools.py`
+   * landed and this union was `'string' | 'number' | 'boolean' | 'json'`. The
+   * catalogue declares `integer` for every bounded count and `array` for
+   * `firecrawl_scrape`'s `formats`, and folding those into `number` and `json`
+   * would have cost the inspector the two things it needs to draw a control -
+   * that a count is whole, and that a list has a closed set of members.
+   * `'number'` and `'json'` are kept because nothing has proved they are
+   * unreachable.
+   */
+  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'json'
+  /**
+   * Always false in today's catalogue, and that is a property rather than an
+   * omission: every entry declares a default for every parameter, so there is
+   * no configuration an author can leave incomplete. A parameter with no
+   * sensible default would be a tool this product cannot offer with zero
+   * configuration, which the idea-validator template depends on.
+   */
+  required: boolean
+  default?: JsonScalar | JsonScalar[]
+  min?: number
+  max?: number
+  /** For `'string'`, the values it may take; for `'array'`, its MEMBERS' set. */
+  enum?: JsonScalar[]
+  description?: string
+}
+
+export interface BuilderToolCatalogueEntry {
+  tool_id: string
+  /** What the palette's sub-list searches and what the pill shows. */
+  label: string
+  category: string
+  description: string
+  /** `config.py:CREDENTIAL_KINDS`, or null when the tool needs no key. */
+  credential_kind: CredentialKind | null
+  /** Which kinds this tool may hang off. */
+  attaches_to: NodeKind[]
+  params: BuilderToolParam[]
+
+  /*
+   * Everything below arrived with `builder/tools.py` on 2026-09-04 and is
+   * OPTIONAL, so a fixture written against the earlier six fields still
+   * type-checks. Each one answers a question the six could not.
+   */
+
+  /**
+   * `web_search` is one tool over four providers, so which key it needs is a
+   * function of a PARAMETER rather than a property of the entry. `{param, map}`,
+   * and `credential_kind` is null whenever this is set.
+   */
+  credential_kind_by_param?: { param: string; map: Record<string, CredentialKind> } | null
+  /**
+   * The tool runs without a key and does better with one - GitHub
+   * unauthenticated is a lower rate limit, not a refusal. The server does NOT
+   * report `tool-credential-required` for these, so a card that showed the
+   * amber "no key" chip on one would be inventing a problem.
+   */
+  credential_optional?: boolean
+  /** Where the author reads about what this tool actually does. */
+  docs_url?: string
+  /** `builtin`, or `user` for one of the caller's own custom HTTP tools. */
+  owner?: 'builtin' | 'user'
+  /**
+   * Whether THIS DEPLOYMENT can build it, which is not the same as whether the
+   * catalogue describes it. `tavily-python` and `exa_py` ship separately and
+   * neither is installed, so two of `web_search`'s four providers abort at run
+   * time - and `TavilySearchTool`'s constructor asks, through `click.confirm`,
+   * whether it should install itself. A picker that offered all four alike
+   * would be offering two that cannot run.
+   */
+  available?: boolean
+  /** The missing distributions, keyed by the `packages_param` value that needs them. */
+  requires_packages?: Record<string, string[]>
+  /** Which parameter chooses a row of `requires_packages`. Only `web_search` has one. */
+  packages_param?: string | null
+}
+
 export interface BuilderVocabulary {
   schema_id: string
   /** ORDERED literals in the handler, deliberately not sorted. Render in this order. */
   node_kinds: NodeKind[]
+  /**
+   * C2 v2's tool catalogue, 06's to fill. OPTIONAL because this build's server
+   * still serves the v1 envelope: the palette renders the sub-list when the key
+   * is there and renders nothing extra when it is not, which is cut-list 17
+   * applied honestly - a client-side catalogue would be a list of tools the
+   * compiler has never heard of.
+   */
+  tools?: BuilderToolCatalogueEntry[]
   /** Ordered: cheap, then escalation. */
   tiers: Tier[]
   agent_ids: string[]
@@ -544,13 +1249,97 @@ export interface BuilderVocabulary {
   bounds: BuilderBounds
 }
 
+/* --- the model registry, C3 ---------------------------------------------- */
+
+/**
+ * How fast a model answers, as a curated word rather than a measurement.
+ *
+ * The public catalogue publishes no throughput figure, so these three come from
+ * the MCP's `sort: throughput-high-to-low` ordering and are a judgement the
+ * roster's author made. A closed set so the picker can group on it without
+ * inventing a fourth word.
+ */
+export type SpeedTier = 'fast' | 'balanced' | 'deep'
+
+/**
+ * One roster model - `data/models.json`, served by `GET /api/builder/models`.
+ *
+ * TWO PRICE COLUMNS, and rendering only one of them is the mistake this
+ * registry exists to stop. `cost_in` is what a run is priced at: the plain
+ * slug's headline, which is itself one of the endpoints serving it.
+ * `cost_in_max_endpoint` is the DEAREST endpoint for the same slug, and it is
+ * what says how much exposure `provider.max_price` is filtering away -
+ * `google/gemini-3.8-flash` bills $0.75 on its headline and $1.35 on its two
+ * `priority` endpoints. A picker that showed only the first would tell an
+ * author the escalation preset costs $0.75 and never that its dearest route
+ * would breach the product's own ceiling; one that showed only the second would
+ * overstate every estimate on the page.
+ */
+export interface RegistryModel {
+  /** A BASE slug: no `openrouter/` prefix and no `:variant`. */
+  id: string
+  /** The catalogue's own human name, e.g. `Google: Gemini 3.5 Flash Lite`. */
+  name: string
+  /** The slug's first segment - `google`, `openai`, `deepseek`. */
+  provider: string
+  context_window: number
+  supports_tools: boolean
+  supports_vision: boolean
+  supports_json_mode: boolean
+  supports_reasoning: boolean
+  /** USD per MILLION prompt tokens, headline. */
+  cost_in: number
+  /** USD per MILLION completion tokens, headline. */
+  cost_out: number
+  /** USD per million prompt tokens on the dearest endpoint serving this slug. */
+  cost_in_max_endpoint: number
+  speed_tier: SpeedTier
+  /** A closed list the picker groups on - `router`, `critic`, `default-cheap`. */
+  recommended_for: string[]
+}
+
+/**
+ * `GET /api/builder/models` - the roster, its ceiling and its two presets.
+ *
+ * `generated_at` and `source` travel with the rows because they are what a
+ * stale client is diagnosed FROM. Comparing prices would only ever say that two
+ * numbers differ; a date says which one is old.
+ */
+export interface ModelRoster {
+  schema: string
+  generated_at: string
+  source: string
+  /** USD per million input tokens. No roster model may exceed it. */
+  ceiling_usd_per_m_input: number
+  /**
+   * Tier name to the id that tier resolves to, WITH its routing variant -
+   * `google/gemini-3.5-flash-lite:nitro`. The variant is kept because it is the
+   * reason the cheap preset's enforced price is above its headline: nitro
+   * routes on speed, not price, so the published rate is a floor. Strip it to
+   * look a row up; render it to explain the meter.
+   */
+  presets: Record<string, string>
+  models: RegistryModel[]
+}
+
 /* --- responses --------------------------------------------------------- */
 
 export interface BuilderDocumentSummary {
   id: string
   name: string
   version: number
+  /** The HEAD's status, and only the head's. See `live_version`. */
   status: DocumentStatus
+  /**
+   * The version this service is actually serving, or `null` when none is.
+   *
+   * `status` is derived from the head, and `save` returns a published head to
+   * `draft` while the registered workflow keeps the older version whose budget
+   * was priced. So a row reading `draft v2` can be answering launches from v1,
+   * and without this field the gallery cannot tell it from a graph that was
+   * never published.
+   */
+  live_version: number | null
   created_at: string
   updated_at: string
 }
@@ -584,6 +1373,15 @@ export interface BuilderDocumentModel {
    * and both are honest.
    */
   published: boolean
+  /**
+   * WHICH version this process is registered to run, or `null` when none is.
+   *
+   * `published` answers "is it this one", which stops being enough the moment
+   * the author saves past a published version: `store.save` returns the head to
+   * `draft`, `published` goes false, and the bar had nothing left telling the
+   * author that v1 was still answering launches while they edited v2.
+   */
+  live_version: number | null
 }
 
 export interface BuilderValidation {
@@ -635,4 +1433,403 @@ export interface BuilderDocumentRequest {
    * update waiting to happen. Ignored on POST and on validate.
    */
   expected_version: number | null
+}
+
+/* --- credentials (plan 01, contract C4) ---------------------------------
+ * The vault's API shape. `config.py:CREDENTIAL_FIELDS` is the ground truth for
+ * the kinds and the field each one needs; `data/credentialKinds.ts` mirrors it
+ * and says so. What is deliberately NOT here is any type carrying a field
+ * VALUE on the way back: the server never returns one, and a client type that
+ * had somewhere to put one would be the first step towards rendering it. */
+
+/** `config.py:CREDENTIAL_KINDS`. */
+export type CredentialKind =
+  | 'openrouter' | 'firecrawl' | 'serper' | 'tavily' | 'exa' | 'brave'
+  | 'github' | 'postgres' | 'http_header' | 'mcp_header' | 'e2b'
+
+/**
+ * One row of `GET /api/builder/credentials`, and what `POST` answers with 201.
+ * Never a field - the list is what an author picks FROM, and the secret is
+ * encrypted at rest and decrypted only inside a tool constructor at run time.
+ */
+export interface CredentialSummary {
+  /** `CREDENTIAL_ID_PATTERN`. */
+  id: string
+  kind: CredentialKind
+  /** 1..80, unique per user. What the picker shows. */
+  label: string
+  created_at: string
+  updated_at: string
+  /** Written by `resolve_credential` on every run-time use; null until then. */
+  last_used_at: string | null
+}
+
+/* --- the attachment stores, C11 and C12 ---------------------------------- */
+
+/**
+ * One tool an MCP server offered, after the server sanitised it.
+ *
+ * `suspicious` is the one field worth pausing on. A tool description lands
+ * verbatim in an agent's tool list, which is a prompt written by a third party,
+ * so discovery tests every description against thirteen injection patterns and
+ * marks a match. **The tool is still listed and still selectable** (PLANS.md
+ * decision 8): the patterns have false positives by design - `act as` is
+ * ordinary English - and a picker that quietly dropped rows would be the
+ * quietly-divergent double this repository keeps warning about. The author sees
+ * `matched_pattern` and decides.
+ */
+export interface McpDiscoveredTool {
+  name: string
+  description: string
+  /** The tool's own JSON Schema, rendered read-only as a parameter preview. */
+  input_schema: Record<string, unknown>
+  suspicious: boolean
+  matched_pattern: string | null
+}
+
+/**
+ * One row of `GET /api/builder/mcp/servers`.
+ *
+ * `url` arrives MASKED - origin plus `/************` - and there is no
+ * unmasked form on this side. Plenty of hosted MCP servers put a token in the
+ * path, so a panel that showed the whole URL would publish a credential to
+ * anybody who could see the screen. The two `has_*_credential` booleans are the
+ * same principle: whether a key is attached is a fact the panel needs, and
+ * which key it is belongs to the credential picker.
+ */
+export interface McpServerRow {
+  /** `MCP_SERVER_ID_PATTERN` - `ms_` + 12 hex. */
+  id: string
+  label: string
+  transport: 'http' | 'sse' | 'stdio'
+  /** Masked. Null for a stdio server. */
+  url: string | null
+  command: string | null
+  args: string[]
+  has_header_credential: boolean
+  has_env_credential: boolean
+  /** `pending` until a discovery has run, then `authorized` or `error`. */
+  status: 'pending' | 'authorized' | 'error'
+  /** No discovery yet, or one older than `MCP_DISCOVERY_STALE_SECONDS` (a day). */
+  stale: boolean
+  tools: McpDiscoveredTool[]
+  discovered_at: string | null
+  /** One sentence. What the panel shows instead of a stack trace. */
+  last_error: string | null
+}
+
+/** What `POST`/`PUT /api/builder/mcp/servers` takes. Credentials travel as ids. */
+export interface McpServerDraft {
+  label: string
+  transport: 'http' | 'sse' | 'stdio'
+  url?: string | null
+  command?: string | null
+  args?: string[]
+  header_credential_id?: string | null
+  env_credential_id?: string | null
+}
+
+/** What `POST .../discover` answers with, whether it worked or not. */
+export interface McpDiscovery {
+  status: 'pending' | 'authorized' | 'error'
+  tools: McpDiscoveredTool[]
+  discovered_at: string | null
+  error: string | null
+}
+
+/**
+ * One row of `GET /api/builder/skills`, WITHOUT the body.
+ *
+ * Thirty packs at 64 KiB each is two megabytes of JSON to draw a palette, so
+ * the list carries the frontmatter and `GET /api/builder/skills/{id}` carries
+ * the pack. `owner` is `builtin` for the four this repository ships - visible
+ * to everybody, editable by nobody - and `me` for the caller's own.
+ */
+export interface SkillSummary {
+  /** `SKILL_ID_PATTERN` - `sk_` + 12 hex. */
+  id: string
+  /** The frontmatter name, which is also the directory name. */
+  name: string
+  description: string
+  /** `metadata.version` in the frontmatter, which is where it lives. */
+  version: number
+  owner: 'builtin' | 'me'
+  size_bytes: number
+  updated_at: string | null
+}
+
+/** A pack with its `SKILL.md` text. Rendered through the escape-first renderer. */
+export interface SkillDetail extends SkillSummary {
+  body: string
+}
+
+/** One typed argument of a custom HTTP tool - Flowise's grid, minus the function. */
+export interface CustomToolProperty {
+  name: string
+  type: 'string' | 'integer' | 'number' | 'boolean'
+  description: string
+  required: boolean
+}
+
+/**
+ * The request template that replaces Flowise's JavaScript `func`.
+ *
+ * A function stored per user is an evaluation surface; a template is a shape.
+ * `{placeholders}` name declared properties and are URL-encoded on the way in;
+ * `{credential}` is the header credential's value and never leaves the server.
+ */
+export interface CustomToolRequest {
+  method: 'GET' | 'POST'
+  url: string
+  header_name: string | null
+  header_template: string | null
+  body_template: string | null
+  timeout_seconds: number
+  max_response_bytes: number
+}
+
+/** One row of the caller's own custom HTTP tools. */
+export interface CustomToolRow {
+  /** `CUSTOM_TOOL_ID_PATTERN` - `ut_` + 12 hex. This is the document's `tool_id`. */
+  id: string
+  name: string
+  description: string
+  properties: CustomToolProperty[]
+  request: CustomToolRequest
+  credential_id: string | null
+  /** The catalogue row it appears as, for its owner only. */
+  entry: BuilderToolCatalogueEntry
+}
+
+/**
+ * The body of `POST`/`PUT /api/builder/tools/custom`. The same shape the row
+ * carries, minus the server's own id and derived entry.
+ */
+export interface CustomToolDraft {
+  name: string
+  description: string
+  properties: CustomToolProperty[]
+  request: CustomToolRequest
+  credential_id?: string | null
+}
+
+/**
+ * The body of `POST /api/builder/credentials`. The ONLY place a field value
+ * exists on this side is inside this object, on its way out.
+ */
+export interface CredentialDraft {
+  kind: CredentialKind
+  label: string
+  fields: Record<string, string>
+}
+
+/**
+ * `POST /api/builder/credentials/{id}/test`. `detail` is the provider's own
+ * sentence, or the vault's when a kind has no free probe (Firecrawl has no
+ * authenticated read that costs nothing, so its probe is a format check and
+ * says so). Never a stack trace.
+ */
+export interface CredentialProbe {
+  ok: boolean
+  detail: string
+}
+
+/* --- export, import, versions (plan 15) ---------------------------------
+ * The lifecycle the builder was missing: a document as a FILE, a file as a
+ * new draft, a copy, and the list of stored versions. Every shape here is the
+ * plan's contract as written on 2026-09-02, built against fakes on this side
+ * and against `builder_api.py` on the other; the Integrator reconciles the two
+ * the way `tests/builderApi.spec.ts` reconciles the route table. */
+
+/**
+ * The `export` values an import accepts.
+ *
+ * Ruling S1-4: the field carries the document's OWN `schema`, so today every
+ * file says `builder.flow/v1`, and the importer already admits the v2 spelling
+ * C1 will introduce because the server passes the document through
+ * `upgrade_document` on the way in. Checked client-side so a file that is not
+ * an export at all - a run log, a clipboard envelope, somebody's `package.json`
+ * - is refused with a sentence naming the FILE, rather than sent to
+ * `POST /import` for a 422 about a field the author never typed.
+ */
+export const EXPORT_SCHEMAS = ['builder.flow/v1', 'builder.flow/v2'] as const
+export type ExportSchema = (typeof EXPORT_SCHEMAS)[number]
+
+/** `GET /workflows/{id}/export` - plan 15 D1, `builder/export.py::strip_for_export`. */
+export interface BuilderExportEnvelope {
+  export: ExportSchema
+  /** ISO. */
+  exported_at: string
+  name: string
+  /** The stored version the file was taken from. */
+  source_version: number
+  /** Node ids whose `credential_id` was nulled on the way out. */
+  needs_credentials: string[]
+  /**
+   * The stripped document: no `id`, `version`, `budget` or `user_id`, every
+   * secret-bearing field null. Carried as the wire shape rather than as a
+   * `BuilderDocument`, because the importer mints its own identity and this
+   * client never parses it - the file round-trips, it is not edited here.
+   */
+  document: Record<string, unknown>
+}
+
+/**
+ * `POST /workflows/import` - the create model, plus the nodes that arrived
+ * without a credential. Ruling S1-7: that list is rendered as a client-side
+ * notice, never as a C8 problem code.
+ */
+export interface BuilderImportResult extends BuilderDocumentModel {
+  needs_credentials: string[]
+}
+
+/** One row of `GET /workflows/{id}/versions`, which answers newest first. */
+export interface BuilderVersionRow {
+  version: number
+  status: DocumentStatus
+  created_at: string
+  /** The stored JSON's size, for the browser's one number about weight. */
+  bytes: number
+  /**
+   * How the row came to be (round 2, D-15-3): `created`, `saved`, `autosaved`,
+   * `restored from v3`, `imported`, `duplicated`, or `stored` for a row older
+   * than the column. Composed by the server from what this client declares on
+   * a save - see `SaveOptions`.
+   */
+  source: string
+  /** The document's name at that version, read leniently off the row; null if it has none. */
+  name: string | null
+  /** How many nodes that version has; null when the row could not say. */
+  node_count: number | null
+  /**
+   * How many edges that version has; null when the row could not say.
+   *
+   * Round 3, D-15-24. The browser subtracts adjacent rows into `+2 nodes,
+   * -1 edge`, and a delta over nodes alone would report a version that only
+   * rewired the graph as no change at all.
+   */
+  edge_count: number | null
+}
+
+/** What a save may declare about itself, for the version browser's `source`. */
+export type SaveSource = 'save' | 'autosave' | 'restore'
+
+/* ======================================================================== *
+ *  The docked test panel - .agent/plans/13-flow-testing.md, contract C7    *
+ * ======================================================================== */
+
+/**
+ * What KIND of run the panel is asking for - C7, `CreateRunRequest.mode`.
+ *
+ * `run` is what Launch has always sent. `test` is an ordinary run that is
+ * LABELLED one: it passes every admission check, the same rate limit, the same
+ * ceiling and the same frames, and it appears in run history (decision 17,
+ * because hiding spend is the failure the cost rules exist to prevent). It is
+ * not a cheaper run, it is a findable one.
+ */
+export type RunMode = 'run' | 'test' | 'dry_run' | 'node_test'
+
+/**
+ * One saved test input - `GET /api/builder/workflows/{id}/test-inputs`.
+ *
+ * `inputs` is the run body: `{<input_field>: string}`. `node_mocks` is the
+ * upstream `out__*` values a single-node test replays into everything above the
+ * node under test, keyed by the AUTHOR's node id rather than by the compiled
+ * state key - the prefix is stripped server-side.
+ *
+ * Two fields and not one nested object, where 13 D3 writes
+ * `{<input_field>: str, mocks: {...}}`: `CreateRunRequest.inputs` is merged
+ * wholesale into the flow's pydantic state by CrewAI, so a `mocks` key inside
+ * `inputs` would arrive as a state field.
+ */
+export interface TestInput {
+  id: string
+  document_id: string
+  label: string
+  inputs: Record<string, unknown>
+  node_mocks: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+/** `POST .../test-inputs`. `from_run_id` is D3's "use last run's outputs as mocks". */
+export interface TestInputDraft {
+  label: string
+  inputs: Record<string, unknown>
+  node_mocks?: Record<string, unknown>
+  /** A finished run of the caller's whose `out__*` slots seed `node_mocks`. */
+  from_run_id?: string
+}
+
+/**
+ * A saved input this build SHIPS, beside the template it belongs to.
+ *
+ * Criterion 11: a template that cannot be run without first inventing a prompt
+ * is a template a cold sign-in cannot run. These are committed constants and
+ * not database rows, deliberately - a row belongs to whoever wrote it, and
+ * "every author gets one" is a property of the build rather than of a user.
+ */
+export interface TemplateTestInput {
+  /** The template's own id, for the test that asserts every one has one. */
+  templateId: string
+  label: string
+  /** The one value, for the template's own `input_field`. */
+  value: string
+}
+
+/**
+ * `POST /api/sessions/{id}/runs` with `mode: dry_run` - 13 D5, 10 D8.
+ *
+ * Parse, bound, price and compile with no kickoff, no run row, no admission
+ * slot and no rate-limit charge. A 200 rather than a 202, because nothing was
+ * accepted for later.
+ *
+ * `budget` is `app.py::_budget_payload`'s SEVEN keys and not the nine
+ * `POST /validate` returns: `over_ceiling` and `ceiling_usd` are absent here.
+ * Typed as what arrives rather than as `BuilderBudget` with two optional
+ * fields, because a panel that read `over_ceiling` off this and got
+ * `undefined` would render "within budget" about a graph nobody priced.
+ */
+export interface DryRunBudget {
+  static_cost_usd: number
+  floor_cost_usd: number
+  modelled_calls: number
+  billable_nodes: number
+  escalation_nodes: number
+  cycles: number
+  unpriced_models: string[]
+}
+
+export interface DryRunResult {
+  valid: boolean
+  problems: BuilderProblem[]
+  budget: DryRunBudget
+  /** The literal declaration `Flow.from_declaration` would have been handed. */
+  definition: Record<string, unknown>
+}
+
+/**
+ * `GET /api/builder/workflows/{id}/compiled` - C7, 09 D8.
+ *
+ * Three renderings of one compiled definition: the YAML is what runs, the
+ * Python is what it means, and the definition is what a client diffs. No secret
+ * reaches any of them - the renderer is handed a labelling function and never
+ * the vault, so `<credential: …>` can only ever be a label.
+ */
+export interface CompiledPreview {
+  document_id: string
+  version: number
+  /** ISO datetime. */
+  generated_at: string
+  yaml: string
+  python: string
+  definition: Record<string, unknown>
+}
+
+/** `GET /api/runs/{id}/state?step=` - C7. The flow state as of one frame. */
+export interface RunStateResult {
+  run_id: string
+  /** The frame `seq` this state was read at; 0 when no step was asked for. */
+  step: number
+  state: Record<string, unknown>
 }

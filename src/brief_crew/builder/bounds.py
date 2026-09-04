@@ -32,19 +32,34 @@ from dataclasses import dataclass
 from typing import Literal
 
 from brief_crew.builder.document import (
+    ATTACH_SOURCE_KINDS,
+    ATTACH_TARGET_KINDS,
+    ATTACHMENT_KINDS,
     BILLABLE_KINDS,
+    MEMBER_SOURCE_KINDS,
+    MEMBER_TARGET_KINDS,
     ROUTING_KINDS,
+    AuthoredCrewConfig,
     BuilderDocument,
     BuilderEdge,
+    BuilderNode,
     GateConfig,
     InputConfig,
+    McpConfig,
     RouterConfig,
+    SkillConfig,
 )
 from brief_crew.config import (
+    BUILDER_ERROR_ROUTER_PREFIX,
     BUILDER_EVENT_LABEL_PATTERN,
     BUILDER_GATE_ROUTER_PREFIX,
     BUILDER_METHOD_IDENT_PATTERN,
+    BUILDER_STATE_ERROR_PREFIX,
+    BUILDER_STATE_OUTPUT_PREFIX,
+    MAX_ATTACHMENT_NODES,
+    MAX_ATTACHMENTS_PER_NODE,
     MAX_BILLABLE_NODES,
+    MAX_CREW_MEMBERS,
     MAX_CYCLE_ITERATIONS,
     MAX_CYCLES,
     MAX_ESCALATION_NODES,
@@ -84,6 +99,50 @@ NODE_UNREACHABLE = "node-unreachable"
 NO_OUTPUT_NODE = "no-output-node"
 JOIN_UNKNOWN_NODE = "join-unknown-node"
 JOIN_SINGLE_PREDECESSOR = "join-single-predecessor"
+ATTACH_TARGET_NOT_AGENT = "attach-target-not-agent"
+MEMBER_TARGET_NOT_CREW = "member-target-not-crew"
+MEMBER_AGENT_HAS_FLOW_EDGES = "member-agent-has-flow-edges"
+ATTACHMENT_UNATTACHED = "attachment-unattached"
+ATTACHMENTS_OVER_MAX = "attachments-over-max"
+ATTACHMENT_NODES_OVER_MAX = "attachment-nodes-over-max"
+CREW_MEMBERS_OUT_OF_RANGE = "crew-members-out-of-range"
+
+# 12-error-handling.md's two, added 2026-09-04. Both are the same defect in two
+# keys: an authored crew carries a field whose value the RUNTIME silently
+# discards, and the discarding happens after every upstream node has billed.
+#
+# `crew-task-order-mismatch` - `runtime.py:724` is
+# `[node for node in spec.task_order if node in by_id]`, so an entry naming
+# something that is not a member of THIS crew is dropped without a word. The
+# author dragged an order and got a different one. A PARTIAL order is legal and
+# is deliberately not reported: the next line completes it from `member_ids`, so
+# naming two of five members really does mean "these two first".
+#
+# `crew-hierarchical-needs-manager` - `document.py::_validate_manager` already
+# refuses a hierarchical crew with NEITHER manager set, and raises rather than
+# reports because that is a cross-field rule about one object. What it cannot
+# see is whether `manager_agent` names a node that is a member of this crew,
+# because only this module knows the `member` edges. `runtime.py:730` resolves
+# it against the crew's own members and falls through to `manager_llm`; with
+# neither resolving, `Crew.__init__` raises at `crew.py:729` MID-RUN. That is
+# the one shape D1 exists to refuse before anything bills.
+CREW_TASK_ORDER_MISMATCH = "crew-task-order-mismatch"
+CREW_HIERARCHICAL_NEEDS_MANAGER = "crew-hierarchical-needs-manager"
+
+# 09-compiler.md's four, added 2026-09-04 with the authored compile path.
+#
+# The first two are about `document.state` (D6): the compiler OWNS `out__*`,
+# `err__*`, `turns__*`, `__builder__` and the input field, and a declared key
+# under one of those names would let a request body overwrite a node's output.
+# The third is the `on_error: route` port with nothing drawn from it - legal,
+# and almost certainly not what was meant. The fourth is what an IMPORTED graph
+# looks like: `export.py` strips `server_id` and `skill_id` deliberately, so a
+# node whose reference did not survive is an author-visible problem rather than
+# a crash inside the compiler.
+STATE_KEY_RESERVED = "state-key-reserved"
+STATE_SCHEMA_INVALID = "state-schema-invalid"
+ERROR_PORT_UNCONNECTED = "error-port-unconnected"
+ATTACHMENT_REFERENCE_MISSING = "attachment-reference-missing"
 
 _METHOD_IDENT = re.compile(BUILDER_METHOD_IDENT_PATTERN)
 _EVENT_LABEL = re.compile(BUILDER_EVENT_LABEL_PATTERN)
@@ -103,6 +162,22 @@ class Problem:
     message: str
     node_id: str | None = None
     edge_id: str | None = None
+    #: WHICH CONTROL, when the code alone cannot say - C8's optional `field`,
+    #: requested by 04 D7 and consumed by `useBuilderProblems.fieldFor`.
+    #:
+    #: The client's `FIELD_CODES` holds ONE string per code, which is the right
+    #: shape for `router-branch-count` and the wrong shape for the three codes
+    #: whose control varies with the document: `model-lacks-capability` blames
+    #: `llm.response_format` on one node and `llm.reasoning_effort` on the next.
+    #: Those checks already know the answer - `_capability_problems` takes the
+    #: field name as an argument - so naming it here costs nothing and is the
+    #: only way the inspector can open the right disclosure and focus the right
+    #: control.
+    #:
+    #: `None` on every problem whose code already answers the question. A client
+    #: that has never heard of this key falls back to its own map, which is what
+    #: makes adding it additive.
+    field: str | None = None
 
 
 def has_errors(problems: Iterable[Problem]) -> bool:
@@ -114,32 +189,139 @@ def has_errors(problems: Iterable[Problem]) -> bool:
 # --------------------------------------------------------------------------
 # Graph analysis - shared with budget.py, which prices what these find
 # --------------------------------------------------------------------------
+def is_flow_edge(edge: BuilderEdge) -> bool:
+    """Whether this edge is the FLOW - the thing that happens next.
+
+    `attach` and `member` edges are structural: they say what a node HAS, not
+    where the run goes. **Every graph question in this module asks it through
+    here**, and 03-node-library.md D2 is a list of the consequences: an agent
+    holding three tools has not fanned out three ways, a tool cannot be part of
+    a cycle, and a crew's members are not three more steps between its input
+    and its output.
+
+    Getting this wrong is not a wrong number, it is a wrong SHAPE - a
+    fan-out-width error on a well-drawn agent, a `back-edge-not-router` on a
+    tool, and a `billable_depths` that charges an author for their own
+    attachments. Edge class is a pure function of `target_port` and of nothing
+    else, which is what keeps this one line the whole rule.
+    """
+
+    return edge.target_port == "in"
+
+
+def flow_edges(document: BuilderDocument) -> tuple[BuilderEdge, ...]:
+    """Just the edges the run travels along."""
+
+    return tuple(edge for edge in document.edges if is_flow_edge(edge))
+
+
+def attachment_edges(document: BuilderDocument) -> tuple[BuilderEdge, ...]:
+    """Just the `attach` edges - what each agent or crew HAS."""
+
+    return tuple(edge for edge in document.edges if edge.target_port == "attach")
+
+
+def member_edges(document: BuilderDocument) -> tuple[BuilderEdge, ...]:
+    """Just the `member` edges - which agents are inside which crew."""
+
+    return tuple(edge for edge in document.edges if edge.target_port == "member")
+
+
+def member_agent_ids(document: BuilderDocument) -> frozenset[str]:
+    """Agents that are inside a crew, and so are not steps of their own.
+
+    A member agent is billable INSIDE its crew - the crew's price multiplies by
+    its membership (09) - and counting it again against MAX_BILLABLE_NODES
+    would charge the same agent twice against a bound that is about shape.
+    """
+
+    return frozenset(edge.source for edge in member_edges(document))
+
+
+def routes_errors(node: BuilderNode) -> bool:
+    """Whether this node's failure takes an `error` port instead of ending the run."""
+
+    return getattr(node.config, "on_error", None) == "route"
+
+
+def error_router_labels(node: BuilderNode) -> tuple[str, ...]:
+    """The two event labels an `on_error: route` node's paired router emits.
+
+    `ok` and `error`, NOT the port names `out` and `error` - C5 spells them that
+    way and the asymmetry is worth keeping: `out` is where the value goes and
+    `ok` is what happened, and a label named after a port would read as though
+    the router were choosing a port rather than reporting an outcome.
+    """
+
+    return ("ok", "error") if routes_errors(node) and node.kind not in ROUTING_KINDS else ()
+
+
+def is_routed(node: BuilderNode) -> bool:
+    """Whether this node compiles a router at all - a gate, a router, or an error port."""
+
+    return node.kind in ROUTING_KINDS or routes_errors(node)
+
+
+def member_of(document: BuilderDocument) -> dict[str, str]:
+    """Member agent id -> the crew it is inside. Last member edge wins."""
+
+    return {edge.source: edge.target for edge in member_edges(document)}
+
+
+def step_nodes(document: BuilderDocument) -> tuple[BuilderNode, ...]:
+    """The nodes that become FLOW METHODS, in document order.
+
+    Two families are excluded and neither is a step. An ATTACHMENT is something
+    an agent HAS: it never runs, so there is no moment at which the flow would
+    move on from it. A MEMBER agent runs inside its crew, in the crew's own
+    order, so compiling it as a method too would run it twice and leave nothing
+    downstream able to say which output it was reading - which is exactly what
+    `member-agent-has-flow-edges` refuses an author for drawing.
+    """
+
+    members = member_of(document)
+    return tuple(
+        node
+        for node in document.nodes
+        if node.kind not in ATTACHMENT_KINDS and node.id not in members
+    )
+
+
 def _edges_by_source(document: BuilderDocument) -> dict[str, list[BuilderEdge]]:
-    """Outgoing edges per node id, in document order (so results are stable)."""
+    """Outgoing FLOW edges per node id, in document order (so results are stable)."""
 
     grouped: dict[str, list[BuilderEdge]] = defaultdict(list)
     for edge in document.edges:
-        grouped[edge.source].append(edge)
+        if is_flow_edge(edge):
+            grouped[edge.source].append(edge)
     return grouped
 
 
 def _indexed_edges_by_source(
     document: BuilderDocument,
 ) -> dict[str, list[tuple[int, BuilderEdge]]]:
-    """Outgoing edges per node id, each paired with its document position."""
+    """Outgoing FLOW edges per node id, each paired with its document position.
+
+    The position is into `document.edges` - the WHOLE list, attachments and all
+    - because `back_edge_indices` publishes positions and `budget.py` removes
+    exactly those to be left with a DAG. Filtering during the walk rather than
+    re-indexing a filtered list is what keeps those positions meaningful.
+    """
 
     grouped: dict[str, list[tuple[int, BuilderEdge]]] = defaultdict(list)
     for position, edge in enumerate(document.edges):
-        grouped[edge.source].append((position, edge))
+        if is_flow_edge(edge):
+            grouped[edge.source].append((position, edge))
     return grouped
 
 
 def _edges_by_target(document: BuilderDocument) -> dict[str, list[BuilderEdge]]:
-    """Incoming edges per node id, in document order."""
+    """Incoming FLOW edges per node id, in document order."""
 
     grouped: dict[str, list[BuilderEdge]] = defaultdict(list)
     for edge in document.edges:
-        grouped[edge.target].append(edge)
+        if is_flow_edge(edge):
+            grouped[edge.target].append(edge)
     return grouped
 
 
@@ -241,7 +423,12 @@ def nodes_on_cycles(document: BuilderDocument) -> frozenset[str]:
     backward: dict[str, list[str]] = defaultdict(list)
     closing = {position for position, _ in loops}
     for position, edge in enumerate(document.edges):
-        if position in closing or edge.source not in known or edge.target not in known:
+        if (
+            position in closing
+            or not is_flow_edge(edge)
+            or edge.source not in known
+            or edge.target not in known
+        ):
             continue
         forward[edge.source].append(edge.target)
         backward[edge.target].append(edge.source)
@@ -271,7 +458,12 @@ def billable_depths(document: BuilderDocument) -> dict[str, int]:
     outgoing: dict[str, list[str]] = defaultdict(list)
     indegree: dict[str, int] = {node_id: 0 for node_id in known}
     for position, edge in enumerate(document.edges):
-        if position in loops or edge.source not in known or edge.target not in known:
+        if (
+            position in loops
+            or not is_flow_edge(edge)
+            or edge.source not in known
+            or edge.target not in known
+        ):
             continue
         outgoing[edge.source].append(edge.target)
         indegree[edge.target] += 1
@@ -314,7 +506,7 @@ def compiled_identifiers(
     loop_sources = {edge.source for edge in back_edges(document)}
 
     index = 0
-    for node in document.nodes:
+    for node in step_nodes(document):
         own = [f"n{index}_{node.id}"]
         routing_index = index
         index += 1
@@ -322,9 +514,18 @@ def compiled_identifiers(
             routing_index = index
             own.append(f"n{index}_{BUILDER_GATE_ROUTER_PREFIX}{node.id}")
             index += 1
+        elif routes_errors(node):
+            # 09 D3: a step whose `on_error` is `route` compiles to TWO methods
+            # for the same reason a gate does - only a `@router` can choose an
+            # event, so the step records `err__<node>` and a paired router reads
+            # it. The second index is consumed here so the two generators cannot
+            # drift; the compiler asserts they have not.
+            routing_index = index
+            own.append(f"n{index}_{BUILDER_ERROR_ROUTER_PREFIX}{node.id}")
+            index += 1
         methods[node.id] = tuple(own)
 
-        emitted = [f"e{routing_index}_{port}" for port in node.out_ports] if node.kind in ROUTING_KINDS else []
+        emitted = [f"e{routing_index}_{port}" for port in error_router_labels(node) or node.out_ports] if is_routed(node) else []
         # A loop-closing node also declares a rejoin label. Under the rule above
         # it is arguably redundant - a back edge can only leave a router or a
         # gate, and it leaves by a branch label that is already in `emitted` -
@@ -351,25 +552,54 @@ def structural_problems(document: BuilderDocument) -> list[Problem]:
     problems += _count_problems(document)
     problems += _identity_problems(document)
     problems += _edge_problems(document)
+    problems += _attachment_problems(document)
+    problems += _membership_problems(document)
     problems += _router_problems(document)
     problems += _cycle_problems(document)
     problems += _input_output_problems(document)
     problems += _join_problems(document)
+    problems += _state_problems(document)
+    problems += _error_port_problems(document)
     problems += _identifier_problems(document)
     return problems
 
 
 def _count_problems(document: BuilderDocument) -> list[Problem]:
-    """The three node counts: total, billable, escalation."""
+    """The node counts: total, attachments, billable, escalation.
+
+    **`MAX_GRAPH_NODES` counts FLOW nodes only** (D2). The 24 is derived from
+    the frame ring - 24 nodes at the production rate of ~7 frames each is ~175
+    frames against a 2,000-frame ring - and an attachment emits no frames at
+    all, so counting one against that ceiling would be applying an arithmetic
+    to a thing it was not about. Attachments have their own count below.
+    """
 
     problems: list[Problem] = []
-    if len(document.nodes) > MAX_GRAPH_NODES:
+    flow_nodes = [node for node in document.nodes if node.kind not in ATTACHMENT_KINDS]
+    attachments = [node for node in document.nodes if node.kind in ATTACHMENT_KINDS]
+
+    if len(attachments) > MAX_ATTACHMENT_NODES:
+        problems.append(
+            Problem(
+                code=ATTACHMENT_NODES_OVER_MAX,
+                severity="error",
+                message=(
+                    f"this graph has {len(attachments)} tool, MCP and skill nodes and the "
+                    f"ceiling is {MAX_ATTACHMENT_NODES} (MAX_ATTACHMENT_NODES). Attachments "
+                    "are counted separately from steps - they never run and never bill - so "
+                    "this is a bound on the document rather than on what the run costs"
+                ),
+                node_id=attachments[MAX_ATTACHMENT_NODES].id,
+            )
+        )
+
+    if len(flow_nodes) > MAX_GRAPH_NODES:
         problems.append(
             Problem(
                 code=NODE_COUNT,
                 severity="error",
                 message=(
-                    f"this graph has {len(document.nodes)} nodes and the ceiling is "
+                    f"this graph has {len(flow_nodes)} nodes and the ceiling is "
                     f"{MAX_GRAPH_NODES} (MAX_GRAPH_NODES); above that a single pass of the "
                     "graph no longer fits comfortably in the 2,000-frame replay ring, and a "
                     "reconnecting client would receive an incomplete run with nothing saying so"
@@ -377,7 +607,15 @@ def _count_problems(document: BuilderDocument) -> list[Problem]:
             )
         )
 
-    billable = [node for node in document.nodes if node.kind in BILLABLE_KINDS]
+    # A MEMBER agent is billable inside its crew, not as a node of its own: the
+    # crew's price multiplies by its membership (09), so counting the agent
+    # again here would charge one agent twice against a bound about shape.
+    members = member_agent_ids(document)
+    billable = [
+        node
+        for node in document.nodes
+        if node.kind in BILLABLE_KINDS and node.id not in members
+    ]
     if len(billable) > MAX_BILLABLE_NODES:
         problems.append(
             Problem(
@@ -478,14 +716,22 @@ def _edge_problems(document: BuilderDocument) -> list[Problem]:
                 )
             )
         if target is not None and not target.accepts_incoming:
+            # Four kinds refuse an inbound edge, for two different reasons, and
+            # the sentence has to give the right one - "an input node starts the
+            # run" said about a tool is a message an author cannot act on.
+            because = (
+                "an input node starts the run and has nothing upstream of it"
+                if target.kind == "input"
+                else (
+                    f"a {target.kind} node is something an agent HAS, not a step: it is "
+                    "reached by attaching it to an agent, and nothing ever flows into it"
+                )
+            )
             problems.append(
                 Problem(
                     code=EDGE_TARGET_REFUSES_INCOMING,
                     severity="error",
-                    message=(
-                        f"edge {edge.id!r} arrives at {edge.target!r}, which is the graph's "
-                        "input: an input node starts the run and has nothing upstream of it"
-                    ),
+                    message=f"edge {edge.id!r} arrives at {edge.target!r}, and {because}",
                     node_id=target.id,
                     edge_id=edge.id,
                 )
@@ -508,6 +754,300 @@ def _edge_problems(document: BuilderDocument) -> list[Problem]:
                     node_id=node.id,
                 )
             )
+    return problems
+
+
+def _attachment_problems(document: BuilderDocument) -> list[Problem]:
+    """The `attach` class: who may reach whom, how many, and who is left hanging.
+
+    Three rules, and the first is the one that carries the family's whole
+    meaning: an attachment reaches an agent, never the other way round and
+    never as a step. Drawing it that way is what makes the edge class a pure
+    function of `target_port` - there is no second rule about what the source
+    happened to be, only this check that the pair agrees.
+    """
+
+    problems: list[Problem] = []
+    nodes = document.nodes_by_id()
+
+    for edge in document.edges:
+        source = nodes.get(edge.source)
+        target = nodes.get(edge.target)
+        if source is None or target is None:
+            # `edge-unknown-endpoint` has already said so, and a second sentence
+            # about an edge one of whose ends does not exist is noise.
+            continue
+
+        if not target.accepts_incoming:
+            # `edge-target-refuses-incoming` has already named this one, and it
+            # names it for the right reason - two rows in the dock for one
+            # dropped edge is how a problems panel becomes unreadable.
+            continue
+
+        if edge.target_port == "attach":
+            if source.kind not in ATTACH_SOURCE_KINDS or target.kind not in ATTACH_TARGET_KINDS:
+                problems.append(
+                    Problem(
+                        code=ATTACH_TARGET_NOT_AGENT,
+                        severity="error",
+                        message=(
+                            f"edge {edge.id!r} attaches a {source.kind} node to a "
+                            f"{target.kind} node. An attach edge runs from a tool, an MCP "
+                            "server or a skill TO an agent or a crew, and only that way: it "
+                            "says what that agent has, so there is nothing for it to mean "
+                            "in any other direction"
+                        ),
+                        node_id=source.id,
+                        edge_id=edge.id,
+                    )
+                )
+        elif is_flow_edge(edge) and source.kind in ATTACHMENT_KINDS:
+            problems.append(
+                Problem(
+                    code=ATTACH_TARGET_NOT_AGENT,
+                    severity="error",
+                    message=(
+                        f"edge {edge.id!r} leaves the {source.kind} node {source.id!r} as a "
+                        "flow edge, and an attachment is not a step: it never runs, so there "
+                        f"is no moment at which the run would move on from it. Drop it onto "
+                        f"{edge.target!r}'s attach port instead"
+                    ),
+                    node_id=source.id,
+                    edge_id=edge.id,
+                )
+            )
+
+    held: dict[str, int] = defaultdict(int)
+    attached: set[str] = set()
+    for edge in attachment_edges(document):
+        held[edge.target] += 1
+        attached.add(edge.source)
+    for node_id, count in held.items():
+        if count > MAX_ATTACHMENTS_PER_NODE:
+            problems.append(
+                Problem(
+                    code=ATTACHMENTS_OVER_MAX,
+                    severity="error",
+                    message=(
+                        f"{node_id!r} holds {count} attachments and the ceiling is "
+                        f"{MAX_ATTACHMENTS_PER_NODE} (MAX_ATTACHMENTS_PER_NODE). What this "
+                        "bounds is the agent's system prompt rather than the run's price: "
+                        "every attachment contributes a tool schema or a skill preamble, and "
+                        "past some width an agent stops choosing between them well"
+                    ),
+                    node_id=node_id,
+                )
+            )
+
+    for edge in attachment_edges(document):
+        source = nodes.get(edge.source)
+        if source is None:
+            continue
+        config = source.config
+        missing = None
+        if isinstance(config, McpConfig) and not config.server_id:
+            missing = "MCP server"
+        elif isinstance(config, SkillConfig) and not config.skill_id:
+            missing = "skill"
+        if missing is None:
+            continue
+        problems.append(
+            Problem(
+                code=ATTACHMENT_REFERENCE_MISSING,
+                severity="error",
+                message=(
+                    f"{source.id!r} is attached to {edge.target!r} and names no {missing}. "
+                    "An exported graph has this shape on purpose - the reference pointed at "
+                    "a row in the exporting author's own library and could not travel - so "
+                    "pick one of yours before this graph will run"
+                ),
+                node_id=source.id,
+                edge_id=edge.id,
+            )
+        )
+
+    for node in document.nodes:
+        if node.kind in ATTACHMENT_KINDS and node.id not in attached:
+            problems.append(
+                Problem(
+                    code=ATTACHMENT_UNATTACHED,
+                    severity="warning",
+                    message=(
+                        f"{node.id!r} is a {node.kind} node attached to nothing, so nothing "
+                        "in this graph can use it. That is legal - it is what a node looks "
+                        "like the moment it is dropped - but a run would never reach it"
+                    ),
+                    node_id=node.id,
+                )
+            )
+    return problems
+
+
+def _membership_problems(document: BuilderDocument) -> list[Problem]:
+    """The `member` class: who may be inside a crew, and how many.
+
+    A member agent is a crew's agent and not a step of the flow, which is why
+    the third rule exists: an agent that is BOTH - inside a crew and wired into
+    the flow - would run twice, once as itself and once as part of its crew,
+    and nothing downstream could tell which output it was reading.
+    """
+
+    problems: list[Problem] = []
+    nodes = document.nodes_by_id()
+    members: dict[str, list[str]] = defaultdict(list)
+
+    for edge in member_edges(document):
+        source = nodes.get(edge.source)
+        target = nodes.get(edge.target)
+        if source is None or target is None:
+            continue
+        if source.kind not in MEMBER_SOURCE_KINDS or target.kind not in MEMBER_TARGET_KINDS:
+            problems.append(
+                Problem(
+                    code=MEMBER_TARGET_NOT_CREW,
+                    severity="error",
+                    message=(
+                        f"edge {edge.id!r} makes a {source.kind} node a member of a "
+                        f"{target.kind} node. Membership runs from an agent TO a crew: a "
+                        "crew is a team of agents, and nothing else can be one of them"
+                    ),
+                    node_id=source.id,
+                    edge_id=edge.id,
+                )
+            )
+            continue
+        members[target.id].append(source.id)
+
+    flow_touched: dict[str, list[str]] = defaultdict(list)
+    for edge in document.edges:
+        if not is_flow_edge(edge):
+            continue
+        for node_id in (edge.source, edge.target):
+            flow_touched[node_id].append(edge.id)
+
+    for agent_id in sorted(member_agent_ids(document)):
+        drawn = flow_touched.get(agent_id, [])
+        if not drawn:
+            continue
+        problems.append(
+            Problem(
+                code=MEMBER_AGENT_HAS_FLOW_EDGES,
+                severity="error",
+                message=(
+                    f"{agent_id!r} is a member of a crew and also carries "
+                    f"{len(drawn)} flow edge(s). It cannot be both: as a member it runs "
+                    "inside its crew, in the crew's own order, and as a step it runs again "
+                    "on its own - so nothing downstream could say which of the two outputs "
+                    "it was reading. Remove the flow edges, or the member edge"
+                ),
+                node_id=agent_id,
+                edge_id=drawn[0],
+            )
+        )
+
+    for node in document.nodes:
+        if node.kind != "crew":
+            continue
+        count = len(members.get(node.id, ()))
+        authored = isinstance(node.config, AuthoredCrewConfig)
+        if authored and not 1 <= count <= MAX_CREW_MEMBERS:
+            problems.append(
+                Problem(
+                    code=CREW_MEMBERS_OUT_OF_RANGE,
+                    severity="error",
+                    message=(
+                        f"the authored crew {node.id!r} has {count} member agents and a crew "
+                        f"takes 1 to {MAX_CREW_MEMBERS} (MAX_CREW_MEMBERS, the shipped "
+                        "validator's own six). With none it compiles to a Crew with no tasks "
+                        "and hands back nothing; the ceiling is the largest team this "
+                        "repository has ever run"
+                    ),
+                    node_id=node.id,
+                )
+            )
+        elif not authored and count:
+            problems.append(
+                Problem(
+                    code=CREW_MEMBERS_OUT_OF_RANGE,
+                    severity="error",
+                    message=(
+                        f"{node.id!r} names a registered crew and has {count} member agents "
+                        "drawn into it. A registered crew declares its own agents in Python, "
+                        "and members drawn here would be silently ignored - which is why "
+                        "they are refused instead"
+                    ),
+                    node_id=node.id,
+                )
+            )
+        if authored:
+            problems += _crew_field_problems(node, tuple(members.get(node.id, ())))
+    return problems
+
+
+def _crew_field_problems(node: BuilderNode, members: tuple[str, ...]) -> list[Problem]:
+    """Two authored-crew fields whose value the runtime would silently discard.
+
+    Both are checked HERE and not in `document.py` for the same reason
+    `task_order`'s own comment already gives: the answer needs the `member`
+    edges, and only this module reads them. Neither is a malformed shape - each
+    is a legal document naming a node that turns out not to be in the team - so
+    each is a fixable position on a canvas rather than a parse refusal.
+    """
+
+    config = node.config
+    if not isinstance(config, AuthoredCrewConfig):  # pragma: no cover - guarded by caller
+        return []
+
+    problems: list[Problem] = []
+    known = set(members)
+
+    strangers = [member for member in config.task_order if member not in known]
+    if strangers:
+        problems.append(
+            Problem(
+                code=CREW_TASK_ORDER_MISMATCH,
+                severity="error",
+                message=(
+                    f"the crew {node.id!r} orders its tasks by "
+                    f"{', '.join(repr(name) for name in strangers)}, which "
+                    f"{'is' if len(strangers) == 1 else 'are'} not "
+                    f"{'a member' if len(strangers) == 1 else 'members'} of it. Its members "
+                    f"are {', '.join(repr(name) for name in members) or 'none yet'}. The "
+                    "runtime drops an order entry it cannot resolve, so the crew would run "
+                    "in a different order from the one on screen and nothing would say so"
+                ),
+                node_id=node.id,
+                # `members`, not `task_order`: the read-only member list IS the
+                # order control on `AuthoredCrewForm` - an author drags rows
+                # there and the form writes `task_order`. Anchoring to a field
+                # name no form renders would drop the row to the node strip.
+                field="members",
+            )
+        )
+
+    if (
+        config.process == "hierarchical"
+        and config.manager_agent is not None
+        and config.manager_agent not in known
+        and config.manager_llm is None
+    ):
+        named = ", ".join(repr(name) for name in members) or "none yet"
+        problems.append(
+            Problem(
+                code=CREW_HIERARCHICAL_NEEDS_MANAGER,
+                severity="error",
+                message=(
+                    f"the hierarchical crew {node.id!r} names {config.manager_agent!r} as its "
+                    "manager, and that node is not one of its members. A manager is resolved "
+                    f"against the crew's own agents ({named}), so this crew would reach CrewAI "
+                    "with no manager at all and raise at construction - after every node "
+                    "upstream of it has already billed. Draw a member edge from that agent, "
+                    "name one that is a member, or set a manager model instead"
+                ),
+                node_id=node.id,
+                field="manager_agent",
+            )
+        )
     return problems
 
 
@@ -713,10 +1253,25 @@ def _input_output_problems(document: BuilderDocument) -> list[Problem]:
 
     if inputs:
         adjacency: dict[str, list[str]] = defaultdict(list)
-        for edge in document.edges:
+        for edge in flow_edges(document):
             adjacency[edge.source].append(edge.target)
         reached = _reachable([node.id for node in inputs], adjacency)
+        members = member_agent_ids(document)
         for node in document.nodes:
+            # Two families are reachable along something OTHER than a flow edge,
+            # and asking this question of them gets the wrong answer for both.
+            #
+            # An ATTACHMENT is never reachable from an input and never should
+            # be: nothing flows into a possession. Whether it is attached at all
+            # is `attachment-unattached`'s question, and answering it twice -
+            # once as a warning about the thing and once as an error about the
+            # graph - would put two rows in the dock for one omission.
+            #
+            # A MEMBER agent is reached through its crew, which is a step and is
+            # checked here in its own right. If the crew is unreachable the crew
+            # says so, and one row is the right number.
+            if node.kind in ATTACHMENT_KINDS or node.id in members:
+                continue
             if node.id not in reached:
                 problems.append(
                     Problem(
@@ -773,6 +1328,140 @@ def _join_problems(document: BuilderDocument) -> list[Problem]:
                     node_id=node_id,
                 )
             )
+    return problems
+
+
+#: What a declared state key may not be called, because the compiler owns it.
+#: `_Plan.state_default()` writes every one of these, and a document key under
+#: the same name would let a run request overwrite a node's output, a node's
+#: failure, or a gate's turn counter.
+def _reserved_state_prefixes() -> tuple[str, ...]:
+    # Imported inside the function: two of the three live in `runtime.py`, which
+    # is a wire detail between two modules of this package rather than a
+    # platform constant, and a module-level import would make `bounds` depend on
+    # the module that loads YAML.
+    from brief_crew.builder.runtime import BUILDER_STATE_TURNS_PREFIX
+
+    return (
+        BUILDER_STATE_OUTPUT_PREFIX,
+        BUILDER_STATE_ERROR_PREFIX,
+        BUILDER_STATE_TURNS_PREFIX,
+    )
+
+
+#: The four python types the four declared scalar types accept as a default.
+#: `bool` is checked BEFORE `int` deliberately: `isinstance(True, int)` is
+#: `True` in python, so an integer field defaulting to `True` would validate.
+_STATE_DEFAULT_TYPES: dict[str, tuple[type, ...]] = {
+    "string": (str,),
+    "number": (float, int),
+    "integer": (int,),
+    "boolean": (bool,),
+}
+
+
+def _state_problems(document: BuilderDocument) -> list[Problem]:
+    """`document.state` (09 D6): reserved keys refused, defaults typed.
+
+    Reported rather than raised, both of them, because both are positions on a
+    canvas: a key with a reserved name is renamed in the state panel, and a
+    default of the wrong type is retyped in the same box that declared it.
+    """
+
+    problems: list[Problem] = []
+    declared = document.state
+    if declared is None:
+        return problems
+
+    from brief_crew.builder.runtime import BUILDER_STATE_KEY
+
+    reserved = _reserved_state_prefixes()
+    for key, field in declared.fields.items():
+        if key == BUILDER_STATE_KEY or key.startswith(reserved):
+            problems.append(
+                Problem(
+                    code=STATE_KEY_RESERVED,
+                    severity="error",
+                    message=(
+                        f"the state key {key!r} is one the compiler owns "
+                        f"({BUILDER_STATE_KEY}, and anything starting "
+                        f"{', '.join(reserved)}). A declared key under that name would be "
+                        "overwritten by a node's own output, or would overwrite it - "
+                        "rename it"
+                    ),
+                    field=key,
+                )
+            )
+            continue
+        if key == document.input_field:
+            problems.append(
+                Problem(
+                    code=STATE_KEY_RESERVED,
+                    severity="error",
+                    message=(
+                        f"the state key {key!r} is this graph's input field, which the run "
+                        "request already seeds. Declaring it again would give one name two "
+                        "sources and no rule for which wins"
+                    ),
+                    field=key,
+                )
+            )
+            continue
+        accepted = _STATE_DEFAULT_TYPES.get(field.type, ())
+        default = field.default
+        wrong = default is not None and (
+            not isinstance(default, accepted)
+            or (field.type != "boolean" and isinstance(default, bool))
+        )
+        if wrong:
+            problems.append(
+                Problem(
+                    code=STATE_SCHEMA_INVALID,
+                    severity="error",
+                    message=(
+                        f"the state key {key!r} is declared {field.type!r} and defaults to "
+                        f"{default!r}, which is a {type(default).__name__}. CrewAI validates "
+                        "a json_schema state at kickoff, so this would fail the run at its "
+                        "first method rather than here"
+                    ),
+                    field=key,
+                )
+            )
+    return problems
+
+
+def _error_port_problems(document: BuilderDocument) -> list[Problem]:
+    """An `on_error: route` node whose error port goes nowhere (09 criterion 4).
+
+    A WARNING, and the severity is the whole judgement. The graph is legal - the
+    error router still fires and the run still ends - but the author asked for a
+    recovery path and then did not draw one, so the failure they wanted to
+    handle would end the run silently anyway. The mirror-image mistake, an edge
+    leaving `error` on a node whose policy is `fail`, is an ERROR and is already
+    reported as `edge-unknown-port`, because such a node has no `error` port at
+    all.
+    """
+
+    problems: list[Problem] = []
+    drawn = {(edge.source, edge.source_port) for edge in flow_edges(document)}
+    for node in document.nodes:
+        if not routes_errors(node) or node.kind in ROUTING_KINDS:
+            continue
+        if (node.id, "error") in drawn:
+            continue
+        problems.append(
+            Problem(
+                code=ERROR_PORT_UNCONNECTED,
+                severity="warning",
+                message=(
+                    f"{node.id!r} routes its failures out of an `error` port and nothing is "
+                    "drawn from it, so a failure here still ends the run - which is what "
+                    "`on_error: fail` already does. Draw the recovery path, or set the "
+                    "policy back to fail"
+                ),
+                node_id=node.id,
+            )
+        )
     return problems
 
 

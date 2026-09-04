@@ -8,10 +8,12 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from contextlib import asynccontextmanager
+from datetime import datetime
 from io import BytesIO
 import json
 import os
 from pathlib import Path
+import re
 from threading import Lock
 from time import monotonic
 from types import MappingProxyType
@@ -49,11 +51,13 @@ from brief_crew.service.graph import (
     VALIDATOR_NODE_REGISTRY,
     VALIDATOR_WORKFLOW,
     WORKFLOWS,
+    workflow_visible_to,
 )
 from brief_crew.service.models import (
     CancelRunResponse,
     CreateRunRequest,
     CreateRunResponse,
+    DryRunResponse,
     ErrorResponse,
     FramePage,
     GateReplyMessage,
@@ -61,12 +65,14 @@ from brief_crew.service.models import (
     GateReplyResponse,
     GraphDescriptor,
     HealthResponse,
+    RunStateResponse,
     RunStatusResponse,
     WorkflowSummary,
     RunHistoryEntry,
     RunHistoryPage,
 )
 from brief_crew.service.registry import (
+    TERMINAL_STATUSES as TERMINAL_RUN_STATUSES,
     GateFieldError,
     RunAdmissionError,
     RunBusyError,
@@ -443,6 +449,81 @@ class GateReplyError(Exception):
         self.detail = detail
 
 
+#: How many of pydantic's errors a refusal names, and how long each half may
+#: be. Three is enough to fix a client that got several fields wrong at once
+#: and short enough that the answer stays a sentence rather than a report.
+_MAX_REPORTED_VALIDATION_ERRORS = 3
+_MAX_VALIDATION_LOCATION_CHARS = 120
+_MAX_VALIDATION_MESSAGE_CHARS = 200
+
+
+def request_validation_detail(errors: "Sequence[Mapping[str, Any]]") -> str:
+    """Pydantic's error list as `loc: msg` sentences, with no `input` in it.
+
+    FastAPI's default handler answers `{"detail": [...]}` with the offending
+    **`input` echoed back**, and the reflection is bounded only by the body
+    ceiling - 256 KiB on the builder prefix. A 200 KB string in the wrong
+    field comes back as a 200 KB refusal.
+
+    This class of defect has now been found on FOUR doors one at a time:
+    the import envelope in round 2 (D-15-9), then create, save and validate
+    in round 3 (D-15-21). Each was answered where it was found, by writing
+    the body-parsing by hand. A fifth hand-written envelope would be the
+    wrong answer to a question that is plainly app-wide, so this handler
+    covers every typed body on every route at once, including the ones
+    nobody has probed yet.
+
+    `_import_envelope` in `builder_api.py` keeps its own parsing: it does
+    more than this can (a 413 measured on the bytes, and a JSON decode whose
+    failure is not a pydantic error at all), and a door that never reaches
+    FastAPI's parser cannot rely on FastAPI's handler.
+    """
+
+    sentences: list[str] = []
+    for error in list(errors)[:_MAX_REPORTED_VALIDATION_ERRORS]:
+        raw_location = error.get("loc") or ()
+        # `body` leads almost every location and says nothing to a client that
+        # knows it sent a body; dropping it makes `document.nodes.0.kind` read
+        # as the path the client actually wrote.
+        parts = [str(part) for part in raw_location]
+        if parts and parts[0] in ("body", "query", "path", "header", "cookie"):
+            parts = parts[1:] or [str(raw_location[0])]
+        location = ".".join(parts) or "request"
+        message = str(error.get("msg", "is invalid"))
+        sentences.append(
+            f"{location[:_MAX_VALIDATION_LOCATION_CHARS]}: "
+            f"{message[:_MAX_VALIDATION_MESSAGE_CHARS]}"
+        )
+    if not sentences:
+        return "request failed validation"
+    return "; ".join(sentences)
+
+
+def _install_validation_handler(app: Any) -> None:
+    """Answer every request-validation failure without echoing the request.
+
+    Registered on the app rather than per router, because the defect is a
+    property of FastAPI's default handler and not of any one door. The status
+    stays **422**, and the body becomes `{"detail": "<loc>: <msg>; ..."}` - a
+    string rather than pydantic's list, which the console already renders:
+    `readErrorDetail` (`frontend/src/data/serverLimits.ts`) reads a `detail`
+    string first and falls back to a list of `msg`, so both shapes were
+    already handled and this is the shape it handles best.
+    """
+
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+
+    async def handle_validation_error(_request: Any, exc: Any) -> Any:
+        errors = exc.errors() if hasattr(exc, "errors") else []
+        return JSONResponse(
+            status_code=422,
+            content={"detail": request_validation_detail(errors)},
+        )
+
+    app.add_exception_handler(RequestValidationError, handle_validation_error)
+
+
 def _validation_detail(error: ValidationError) -> str:
     """A short, bounded description of the first schema failure.
 
@@ -531,6 +612,41 @@ def _assert_auth_startup_safety() -> None:
         )
 
 
+#: Plan 01 D8: the header a zero-cost test sets to BE somebody. Honoured only
+#: when the app was built `synthetic=True` AND `AUTH_BASE_URL` is unset - the
+#: same fail-closed shape as `expose_docs` - and ignored everywhere else.
+#: Owned by config.py (S1 ruling 3); re-exported under the same names.
+SYNTHETIC_USER_HEADER = project_config.SYNTHETIC_USER_HEADER
+SYNTHETIC_USER_PATTERN = project_config.SYNTHETIC_USER_PATTERN
+_SYNTHETIC_USER = re.compile(SYNTHETIC_USER_PATTERN)
+
+
+def _assert_credential_vault_startup_safety() -> None:
+    """Refuse to start with people signed in and nowhere to keep their keys.
+
+    Plan 01 D3, the same shape as `_assert_auth_startup_safety` above and for
+    the same reason: it starts cleanly, serves traffic, and is wrong. A
+    deployment that can sign people in and cannot keep their keys is
+    misconfigured; a bare checkout running `SYNTHETIC=1` with no key is merely
+    keyless, and its credential routes answer 503 naming the knob. A key that
+    is SET and malformed is refused in every configuration - `load_master_key`
+    raises with the knob's name and the command that mints a good one -
+    because that is a typo, not a decision.
+
+    Imported inside the function: the vault module pulls in SQLAlchemy through
+    the persistence module, and importing `app` must stay safe without it.
+    """
+    from brief_crew.service.credentials import load_master_key
+
+    if load_master_key() is None and project_config.AUTH_BASE_URL:
+        raise RuntimeError(
+            "AUTH_BASE_URL is set but CREDENTIALS_MASTER_KEY is empty; people can "
+            "sign in and the credential vault has no key to keep theirs with. Mint "
+            "one with python -c \"import base64, secrets; "
+            "print(base64.b64encode(secrets.token_bytes(32)).decode())\" and set it"
+        )
+
+
 def create_app(
     *,
     registry: RunRegistry | None = None,
@@ -558,6 +674,7 @@ def create_app(
 
     _assert_openrouter_startup_safety()
     _assert_auth_startup_safety()
+    _assert_credential_vault_startup_safety()
 
     try:
         from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
@@ -580,6 +697,8 @@ def create_app(
         create_builder_router,
     )
     from brief_crew.service.builder_rehydrate import rehydrate_published_workflows
+    from brief_crew.service.credentials import CredentialStore
+    from brief_crew.service.credentials_api import create_credentials_router
 
     if registry is not None and (
         runner is not None or validator_runner is not None or synthetic
@@ -665,6 +784,8 @@ def create_app(
         openapi_url="/openapi.json" if expose_docs else None,
     )
 
+    _install_validation_handler(app)
+
     # Added BEFORE the CORS middleware so CORS ends up outermost and a 413
     # still carries the allow-origin header a browser needs to show it.
     app.add_middleware(
@@ -688,10 +809,13 @@ def create_app(
     # CORS_ALLOW_ORIGINS is the default and means no cross-origin caller at
     # all, which leaves local behaviour exactly as it was.
     #
-    # This does NOT cover /ws. A WebSocket handshake is not subject to CORS,
-    # and Starlette's CORSMiddleware passes non-HTTP scopes straight through,
-    # so any page can open the socket. What it cannot do is guess the uuid4
-    # run_id and the session_id that /ws demands before it sends a frame.
+    # The middleware itself does not cover /ws - a handshake is not subject to
+    # CORS and Starlette passes non-HTTP scopes straight through - so `/ws`
+    # asks `config.websocket_origin_allowed` against this SAME captured list
+    # before it accepts anything (D-01-7). Captured, not read live, for the
+    # reason CORSMiddleware captures it: an app built under one policy must not
+    # answer under another.
+    ws_allowed_origins = tuple(project_config.CORS_ALLOW_ORIGINS)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=project_config.CORS_ALLOW_ORIGINS,
@@ -713,45 +837,105 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 
-    def current_user(
+    def synthetic_identity(header_value: str | None) -> AuthenticatedUser | None:
+        """Plan 01 D8: `X-Synthetic-User`, so two users cost nothing.
+
+        Honoured under exactly two conditions - this app was built
+        `synthetic=True` AND `AUTH_BASE_URL` is unset - and ignored, not
+        refused, everywhere else: the same fail-closed shape as `expose_docs`
+        (CLAUDE.md section 9). With an auth server configured the bearer path
+        is the only identity there is, and a header a stranger can type must
+        not be able to become one. A malformed value under the two conditions
+        is a 400 naming the header, because a typo in a test fixture that
+        silently reads as anonymous costs an afternoon.
+        """
+        if header_value is None or not synthetic or project_config.AUTH_BASE_URL:
+            return None
+        if not _SYNTHETIC_USER.match(header_value):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{SYNTHETIC_USER_HEADER} must match {SYNTHETIC_USER_PATTERN}",
+            )
+        return AuthenticatedUser(
+            id=header_value, email=f"{header_value}@synthetic", name=header_value
+        )
+
+    def optional_user(
         authorization: str | None = Header(default=None),
+        x_synthetic_user: str | None = Header(default=None, alias=SYNTHETIC_USER_HEADER),
     ) -> AuthenticatedUser | None:
-        """Resolve the caller from an ``Authorization: Bearer`` header.
+        """Who is calling, or None - never a 401 for a MISSING credential.
+
+        Resolution order is plan 01 D2's: bearer JWT when ``AUTH_BASE_URL`` is
+        set, then the synthetic header under D8's two conditions, then None.
+        A token that is OFFERED is verified and a bad one is refused, exactly
+        as in ``current_user``; what differs is that nobody is sent away for
+        offering nothing. This is the dependency for the reads that were
+        public before ownership existed - the workflow list and the graph - so
+        a signed-out console still probes the transport and draws the fixed
+        topology, while a graph somebody owns collapses to 404 for everybody
+        else.
 
         Declared with ``def`` rather than ``async def`` deliberately. FastAPI
         runs a sync dependency in its threadpool, and the JWKS cache can make a
         blocking HTTP call on a miss; the same code as ``async def`` would stall
         the event loop for every other connection, including live run streams.
-
-        A token that is offered IS verified - silently ignoring a credential the
-        client believed in is not an answer. But only when there is something to
-        verify it against: with no ``AUTH_BASE_URL`` this service has no keys,
-        no issuer and no audience, so it cannot judge a token at all. Answering
-        401 there would tell a client its credential was bad when the truth is
-        that nobody asked for one, and it is also what ``stream_frames`` already
-        does for the WebSocket - the two paths must not disagree about who is
-        signed in.
         """
         token = bearer_token_from_header(authorization)
-        if token is None or not project_config.AUTH_BASE_URL:
-            if auth_is_required():
+        if token is not None and project_config.AUTH_BASE_URL:
+            try:
+                return verify_token(token)
+            except AuthError as exc:
                 raise HTTPException(
                     status_code=401,
-                    detail="sign in to use this endpoint",
-                    # RFC 9110: a 401 MUST carry this, and it is what tells a
-                    # client the credential is a bearer token rather than
-                    # cookies or basic auth.
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            return None
-        try:
-            return verify_token(token)
-        except AuthError as exc:
+                    detail="your session has expired; sign in again",
+                    headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+                ) from exc
+        return synthetic_identity(x_synthetic_user)
+
+    def current_user(
+        authorization: str | None = Header(default=None),
+        x_synthetic_user: str | None = Header(default=None, alias=SYNTHETIC_USER_HEADER),
+    ) -> AuthenticatedUser | None:
+        """Resolve the caller, refusing nobody-at-all when auth is required.
+
+        ``optional_user`` does the resolving; this adds the one refusal. A
+        token that is offered IS verified - silently ignoring a credential the
+        client believed in is not an answer. But only when there is something
+        to verify it against: with no ``AUTH_BASE_URL`` this service has no
+        keys, no issuer and no audience, so it cannot judge a token at all.
+        Answering 401 there would tell a client its credential was bad when the
+        truth is that nobody asked for one, and it is also what
+        ``stream_frames`` already does for the WebSocket - the two paths must
+        not disagree about who is signed in.
+        """
+        user = optional_user(authorization, x_synthetic_user)
+        if user is None and auth_is_required():
             raise HTTPException(
                 status_code=401,
-                detail="your session has expired; sign in again",
-                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
-            ) from exc
+                detail="sign in to use this endpoint",
+                # RFC 9110: a 401 MUST carry this, and it is what tells a
+                # client the credential is a bearer token rather than
+                # cookies or basic auth.
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
+
+    def require_user(user: AuthenticatedUser | None) -> AuthenticatedUser:
+        """Plan 01 D2, rule 1: an owned route with nobody on it is a 401.
+
+        A function a route calls on what ``current_user`` resolved rather than
+        a dependency of its own, so a route that needs an identity and a route
+        that merely uses one share a single resolver. The 401 is the one
+        ``current_user`` writes, header and sentence both.
+        """
+        if user is None:
+            raise HTTPException(
+                status_code=401,
+                detail="sign in to use this endpoint",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
 
     def require_own_run(run_id: str, user: AuthenticatedUser | None) -> RunRecord:
         """Fetch a run, refusing one that belongs to somebody else.
@@ -774,6 +958,46 @@ def create_app(
         if user is None or user.id != record.user_id:
             raise HTTPException(status_code=404, detail="run not found")
         return record
+
+    def _budget_payload(estimate: Any) -> dict[str, Any]:
+        """One `BudgetEstimate` as the same six numbers `/validate` returns.
+
+        Assembled here rather than by importing `builder_api`'s response model:
+        this module is imported to build an app with or without the builder
+        router, and a dry run must not be the reason the whole service needs
+        the document store.
+        """
+
+        return {
+            "static_cost_usd": estimate.static_cost_usd,
+            "floor_cost_usd": estimate.floor_cost_usd,
+            "modelled_calls": estimate.modelled_calls,
+            "billable_nodes": estimate.billable_nodes,
+            "escalation_nodes": estimate.escalation_nodes,
+            "cycles": estimate.cycles,
+            "unpriced_models": list(estimate.unpriced_models),
+        }
+
+    def _redacted_state(state: Mapping[str, Any]) -> dict[str, Any]:
+        """A flow state with every secret-named value replaced by `***`.
+
+        The same `is_secret_key` both other walks ask - `events/redaction.py`
+        exists so this is not a third list. Shallow AND recursive through
+        mappings, because a credential-bearing key inside a node's own output
+        object is exactly where one would end up.
+        """
+
+        from brief_crew.events.redaction import REDACTED, is_secret_key
+
+        def walk(value: Any, depth: int = 0) -> Any:
+            if depth > 6 or not isinstance(value, Mapping):
+                return value
+            return {
+                str(key): REDACTED if is_secret_key(key) else walk(item, depth + 1)
+                for key, item in value.items()
+            }
+
+        return walk(dict(state))
 
     def health_payload(*, readiness: bool) -> tuple[dict[str, Any], int]:
         dependencies = registry.dependency_status()
@@ -802,8 +1026,28 @@ def create_app(
         return HealthResponse.model_validate(payload)
 
     @app.get("/api/workflows", response_model=list[WorkflowSummary])
-    async def list_workflows() -> list[WorkflowSummary]:
-        return [BRIEF_WORKFLOW, VALIDATOR_WORKFLOW]
+    async def list_workflows(
+        user: AuthenticatedUser | None = Depends(optional_user),
+    ) -> list[WorkflowSummary]:
+        """The two hand-written flows, plus the builder graphs THIS caller owns.
+
+        Plan 01 D1. The two literals stay public and stay first, which is what
+        every set-equality assertion in the suite reads. A builder graph is
+        listed to its owner alone; one nobody owns is launchable by anybody
+        (decision 26) but listed to nobody HERE - its home is
+        `GET /api/builder/workflows` - because an anonymous caller must keep
+        reading exactly the two literals, or this list becomes an index of
+        every graph ever published.
+        """
+        owner = user.id if user is not None else None
+        owned = [
+            WORKFLOWS[workflow_id]
+            for workflow_id, builder in sorted(BUILDER_WORKFLOWS.items())
+            if owner is not None
+            and builder.user_id == owner
+            and workflow_id in WORKFLOWS
+        ]
+        return [BRIEF_WORKFLOW, VALIDATOR_WORKFLOW, *owned]
 
     @app.get(
         "/api/workflows/{workflow_id}/graph",
@@ -814,6 +1058,7 @@ def create_app(
         workflow_id: str,
         response: Response,
         if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+        user: AuthenticatedUser | None = Depends(optional_user),
     ) -> GraphDescriptor | Response:
         """The topology, with a conditional GET that is actually conditional.
 
@@ -834,6 +1079,11 @@ def create_app(
         every 304 back into a 200 with nothing in the logs to say why.
         """
 
+        # Plan 01 D1: somebody else's graph is not distinguishable from one
+        # that does not exist. Asked before the map is read, so not even the
+        # ETag of an owned graph reaches a stranger.
+        if not workflow_visible_to(workflow_id, user.id if user is not None else None):
+            raise HTTPException(status_code=404, detail="workflow not found")
         graph = GRAPHS.get(workflow_id)
         if graph is None:
             raise HTTPException(status_code=404, detail="workflow not found")
@@ -887,18 +1137,235 @@ def create_app(
     # untouched: it returns the two literals, which is the only reason the
     # existing set-equality assertions still hold. Builder graphs list on
     # `GET /api/builder/workflows` instead, which costs nothing.
+    def credential_store_factory() -> Any:
+        """The vault over the same persistence, or None with nowhere to keep it.
+
+        Per call, like `builder_store_factory` and for the same reason. A store
+        whose `configured` is False - no master key - is returned rather than
+        hidden, so the routes can answer the 503 that names the knob instead of
+        the one that says this build has no store.
+        """
+
+        persistence = getattr(registry, "persistence", None)
+        if persistence is None:
+            return None
+        return CredentialStore(persistence)
+
     app.include_router(
         create_builder_router(
             store_factory=builder_store_factory,
             registry=registry,
             current_user=current_user,
             runner_factory=resolved_builder_runner_factory,
+            credential_store_factory=credential_store_factory,
+        )
+    )
+    # `/api/builder/credentials` (plan 01 C4). Under the builder prefix, so the
+    # body-size exemption above applies and the client reaches it through the
+    # same `authedFetch` path; a probe is charged to the RUN limiter under the
+    # caller's own key, because it is a user-initiated call to a third party
+    # and that bucket is the one that already means "spend per person".
+    app.include_router(
+        create_credentials_router(
+            store_factory=credential_store_factory,
+            current_user=current_user,
+            require_user=require_user,
+            rate_limiter=run_rate_limiter,
+            limit_key=lambda user: f"user:{user.id}",
         )
     )
 
+    def dry_run_payload(
+        workflow_id: str, user: AuthenticatedUser | None
+    ) -> DryRunResponse:
+        """C7's `mode: dry_run` - `POST /validate` plus the compiled artifact.
+
+        Everything the launch path would have done up to the moment it spends
+        anything: parse, bound, price, compile. Nothing after it: no `runs` row,
+        no admission slot, no frame, no rate-limit bucket.
+
+        The definition returned is the one already registered for this graph
+        rather than a fresh compile of the stored document, and the difference
+        matters: what an author wants to see before pressing Launch is what
+        THIS SERVICE WOULD RUN, which after a bounds change or a lowered ceiling
+        is not always what the document would compile to today.
+        """
+
+        from brief_crew.builder.budget import estimate_budget
+        from brief_crew.builder.compiler import document_problems
+
+        builder = BUILDER_WORKFLOWS.get(workflow_id)
+        if builder is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"workflow {workflow_id} is not a builder graph; a dry run "
+                    "compiles a document, and the two built-in flows are Python"
+                ),
+            )
+        problems = document_problems(builder.document)
+        return DryRunResponse(
+            valid=not any(problem.severity == "error" for problem in problems),
+            problems=[
+                {
+                    "code": problem.code,
+                    "severity": problem.severity,
+                    "message": problem.message,
+                    "node_id": problem.node_id,
+                    "edge_id": problem.edge_id,
+                    "field": problem.field,
+                }
+                for problem in problems
+            ],
+            budget=_budget_payload(estimate_budget(builder.document)),
+            definition=dict(builder.compiled.definition),
+        )
+
+    def derived_plan(
+        request: CreateRunRequest, user: AuthenticatedUser | None
+    ) -> dict[str, Any] | None:
+        """The replay instruction for a `node_test` or a `resume_from`, resolved.
+
+        Resolved HERE and not in the runner, because both halves of it are
+        authorisation questions: a `resume_from` names somebody's run and a
+        `node_test` names somebody's saved input, and the runner has no request,
+        no identity and no HTTP status to answer with.
+
+        A source run that is not the caller's answers **404**, the same as
+        `require_own_run`, and for the same reason: a 403 confirms the run
+        exists.
+        """
+
+        if request.mode == "node_test":
+            if not request.node_id or not request.test_input_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "mode=node_test needs both node_id and test_input_id; a "
+                        "single node has nothing to run against without a saved "
+                        "input, and nothing to replay into without a node"
+                    ),
+                )
+            return {
+                "node_id": request.node_id,
+                "mode": "node_test",
+                "source": "test_input",
+                "values": _test_input_values(request.test_input_id, user),
+            }
+        if request.resume_from is None:
+            return None
+        source = require_own_run(request.resume_from.run_id, user)
+        if source.status not in TERMINAL_RUN_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"run {source.run_id} is {source.status.value}; a resume replays "
+                    "a run that has finished, and a state still being written is not "
+                    "a state to replay"
+                ),
+            )
+        values, errors = _saved_slices(source)
+        undecided = _gate_without_a_decision(
+            request.workflow_id, request.resume_from.node_id, values
+        )
+        if undecided is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"run {source.run_id} recorded no decision at the gate "
+                    f"{undecided!r}, so there is nothing to replay there. A resume "
+                    "re-takes the branch an operator already chose; answer that gate "
+                    "on the source run, or resume from a node above it"
+                ),
+            )
+        return {
+            "node_id": request.resume_from.node_id,
+            "mode": "resume_from",
+            "source": "run",
+            "source_run_id": source.run_id,
+            "values": values,
+            "errors": errors,
+        }
+
+    def _saved_slices(source: RunRecord) -> tuple[dict[str, Any], dict[str, Any]]:
+        """A finished run's `out__<node>` and `err__<node>` slots, by node id.
+
+        Read off the last `flow_states` row rather than off the run's result:
+        the result is one node's output and a replay needs every node's. Both
+        prefixes in one pass, because they are one row and an `on_error: route`
+        node is only replayable if its paired router sees the same pair the
+        source run left - the output AND whether it exploded.
+        """
+
+        if registry.persistence is None or not source.flow_id:
+            return {}, {}
+        state = registry.persistence.load_state(source.flow_id) or {}
+        outputs = project_config.BUILDER_STATE_OUTPUT_PREFIX
+        failures = project_config.BUILDER_STATE_ERROR_PREFIX
+        return (
+            {
+                key[len(outputs):]: value
+                for key, value in state.items()
+                if isinstance(key, str) and key.startswith(outputs)
+            },
+            {
+                key[len(failures):]: value
+                for key, value in state.items()
+                if isinstance(key, str) and key.startswith(failures) and value is not None
+            },
+        )
+
+    def _gate_without_a_decision(
+        workflow_id: str, node_id: str, values: Mapping[str, Any]
+    ) -> str | None:
+        """The first gate this replay would cross whose answer was never recorded.
+
+        Refused HERE, at the door, rather than left to fail inside the run. The
+        alternative is not a silent wrong answer - `route_gate` raises
+        `ReplayGateUndecided` rather than approving on the operator's behalf -
+        but it is a queue slot, a `runs` row and a failed run to say a thing the
+        caller could have been told for nothing.
+
+        A gate's recorded value is the MAPPING `route_gate` wrote. A run that
+        paused and stopped leaves the rendered payload there instead, which is a
+        string, so the two are told apart by shape rather than by a flag.
+        """
+
+        builder = BUILDER_WORKFLOWS.get(workflow_id)
+        if builder is None:
+            return None
+        from brief_crew.builder.compiler import replay_ancestors
+
+        nodes = builder.document.nodes_by_id()
+        for ancestor in sorted(replay_ancestors(builder.document, node_id)):
+            node = nodes.get(ancestor)
+            if node is None or node.kind != "gate":
+                continue
+            recorded = values.get(ancestor)
+            if not isinstance(recorded, Mapping) or "decision" not in recorded:
+                return ancestor
+        return None
+
+    def _test_input_values(test_input_id: str, user: AuthenticatedUser | None) -> dict[str, Any]:
+        """One saved test input's per-node mocked outputs, for the caller only."""
+
+        from brief_crew.builder.store import BuilderTestInputStore
+
+        if registry.persistence is None:
+            raise HTTPException(
+                status_code=503,
+                detail="this service has no store, so it has no saved test inputs",
+            )
+        row = BuilderTestInputStore(registry.persistence).load(
+            test_input_id, user_id=user.id if user is not None else None
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="test input not found")
+        return dict(row.get("node_mocks") or {})
+
     @app.post(
         "/api/sessions/{session_id}/runs",
-        response_model=CreateRunResponse,
+        response_model=None,
         status_code=202,
         responses={
             404: {"model": ErrorResponse},
@@ -911,8 +1378,9 @@ def create_app(
         session_id: str,
         request: CreateRunRequest,
         http_request: Request,
+        response: Response,
         user: AuthenticatedUser | None = Depends(current_user),
-    ) -> CreateRunResponse:
+    ) -> Any:
         """The only endpoint that spends money, and it is unauthenticated.
 
         Three refusals guard it, in the order a hostile request meets them: a
@@ -931,6 +1399,24 @@ def create_app(
         # phone changes address mid-session and gets a fresh allowance. A
         # verified user id is neither shared nor changeable, so the limit finally
         # bounds what it was always meant to bound - spend per person.
+        # `dry_run` is answered BEFORE the limiter, and that is the one place
+        # this endpoint's ordering bends. The limiter exists because this route
+        # spends money and a dry run spends nothing: it writes no row, holds no
+        # slot, emits no frame and calls no model, so charging a launch
+        # allowance for one would make the canvas's own preview compete with the
+        # Launch button it exists to inform.
+        #
+        # The residual is that it is an unthrottled existence oracle for a
+        # workflow id - and it is not a NEW one: `workflow_visible_to` answers
+        # 404 for somebody else's graph exactly as `GET /api/builder/workflows/
+        # {id}` already does, unthrottled, for the same ids.
+        if request.mode == "dry_run":
+            if request.workflow_id not in WORKFLOWS or not workflow_visible_to(
+                request.workflow_id, user.id if user is not None else None
+            ):
+                raise HTTPException(status_code=404, detail="workflow not found")
+            response.status_code = 200
+            return dry_run_payload(request.workflow_id, user)
         limit_key = (
             f"user:{user.id}" if user is not None
             else client_rate_limit_key(http_request)
@@ -943,6 +1429,14 @@ def create_app(
                 headers=_retry_after_header(retry_after),
             )
         if request.workflow_id not in WORKFLOWS:
+            raise HTTPException(status_code=404, detail="workflow not found")
+        # Plan 01 D1: a builder graph somebody else owns answers the same 404
+        # as an unknown id - BEFORE admission, so a stranger's probe holds no
+        # slot and learns nothing. The rate limiter above has already charged
+        # the probe, and deliberately: a flood of guessed ids is throttled too.
+        if not workflow_visible_to(
+            request.workflow_id, user.id if user is not None else None
+        ):
             raise HTTPException(status_code=404, detail="workflow not found")
         # Registration takes four places - GRAPHS, NODE_REGISTRIES, WORKFLOWS
         # and the `workflows=` runtime map above - and three of them are one
@@ -1002,6 +1496,13 @@ def create_app(
         # running reaches nothing, while refusing it refuses an author a word
         # they had every right to. Each workflow's own keys are still refused,
         # which is the half that protects anything.
+        #
+        # This is also the ONLY place a published graph's registered state
+        # names are ever consulted, and it sits below the rate limit and the
+        # ownership 404 on purpose (D-01-1): a stranger's or an anonymous
+        # body carrying `__builder__` or `out__<node>` meets the same
+        # `workflow not found` as a clean one, and is charged for it, before
+        # any answer can depend on which names this graph declared.
         #
         # The union has not been abandoned - it is the FALLBACK, and that is why
         # this asks `reserved_run_input_keys` rather than reading one map entry
@@ -1140,12 +1641,18 @@ def create_app(
             # did not smuggle this in, so setting it here is the ONLY way it can
             # become true - which is what makes the 403 above meaningful.
             run_inputs["no_gates"] = True
+        # Resolved after every admission check and before the row is written:
+        # both halves are ownership questions, and neither should be answerable
+        # by a caller the rate limiter or the ceiling would have refused.
+        plan = derived_plan(request, user)
         try:
             record = registry.create_run(
                 session_id=session_id,
                 workflow_id=request.workflow_id,
                 inputs=run_inputs,
                 user_id=user.id if user is not None else None,
+                mode=request.mode,
+                derived=plan,
             )
         except RunAdmissionError as exc:
             # 429, not 503: nothing is broken and the service is not down for
@@ -1221,6 +1728,57 @@ def create_app(
     ) -> RunStatusResponse:
         require_own_run(run_id, user)
         return RunStatusResponse.model_validate(registry.status_payload(run_id))
+
+    @app.get(
+        "/api/runs/{run_id}/state",
+        response_model=RunStateResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def get_run_state(
+        run_id: str,
+        step: int | None = Query(default=None, ge=1),
+        user: AuthenticatedUser | None = Depends(current_user),
+    ) -> RunStateResponse:
+        """C7: the flow state as of one frame. Owner-only, 404 otherwise.
+
+        `step` is a FRAME sequence, not a state row id, because a frame seq is
+        the only cursor a client already has - it is what `/frames` pages on and
+        what the socket replays from. The answer is the last `flow_states` row
+        written at or before that frame's timestamp.
+
+        Every value is redacted through the same walk that bounds a frame, so a
+        state slot holding something a tool put under `api_key` reads `***`
+        here exactly as it does in the stream. The reserved keys are NOT
+        removed: `__builder__` and the `turns__` counters are the interesting
+        half of "why did this run take the branch it took".
+        """
+
+        record = require_own_run(run_id, user)
+        if registry.persistence is None or not record.flow_id:
+            return RunStateResponse(run_id=run_id, step=step or 0, state={})
+        moment = None
+        resolved_step = step or 0
+        if step is not None:
+            # `replay_frames` answers DICTS - the ring's `to_dict()` and the
+            # stored row are one shape on purpose - so the timestamp arrives as
+            # the ISO string the client sees rather than as a datetime.
+            frames = registry.replay_frames(run_id, after=step - 1, limit=1)
+            if not frames or int(frames[0]["seq"]) != step:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"run {run_id} has no frame {step}",
+                )
+            resolved_step = int(frames[0]["seq"])
+            try:
+                moment = datetime.fromisoformat(str(frames[0]["ts"]))
+            except ValueError:
+                moment = None
+        state = registry.persistence.load_state_at(record.flow_id, moment) or {}
+        return RunStateResponse(
+            run_id=run_id,
+            step=resolved_step,
+            state=_redacted_state(state),
+        )
 
     @app.get(
         "/api/runs/{run_id}/frames",
@@ -1451,11 +2009,38 @@ def create_app(
         that is already expired by the time anyone reads it. The durable
         session cookie never leaves the auth origin.
 
-        Item 13 in CLAUDE.md's remaining work notes that /ws has no Origin
-        check, because CORS does not apply to a handshake. This does not close
-        that item, but it narrows it considerably: a hostile page could always
-        open the socket, and now it also needs a valid token for the right user.
+        **There IS an Origin check now** (D-01-7; CLAUDE.md remaining-work
+        item 13, which closes with it). It is the first thing asked, before the
+        token and before the run is looked up, because a page this service will
+        not serve should not get as far as trying a credential or learning
+        whether a `run_id` exists. `config.websocket_origin_allowed` carries the
+        three rules and the reason for each; the short form is that a missing
+        header is a non-browser client and is allowed, an origin on
+        `CORS_ALLOW_ORIGINS` is allowed, a same-origin handshake is allowed
+        whatever the list says, and everything else is closed with
+        `WS_ORIGIN_REFUSED_CLOSE_CODE` having sent nothing.
+
+        What this fixes is narrower than "the socket was open to anyone" and
+        worth stating exactly: an OWNED run was already 4404 to everybody but
+        its owner. An UNOWNED one - every run on an auth-off checkout and every
+        run in `SYNTHETIC` mode - had only the `run_id`/`session_id` pair
+        between a hostile page and the stream.
         """
+        if not project_config.websocket_origin_allowed(
+            websocket.headers.get("origin"),
+            host=websocket.headers.get("host"),
+            allowed=ws_allowed_origins,
+        ):
+            # accept-then-close for the same reason as every refusal below: a
+            # handshake rejected outright surfaces in the browser as an opaque
+            # failure indistinguishable from an edge block.
+            await websocket.accept()
+            await websocket.close(
+                code=project_config.WS_ORIGIN_REFUSED_CLOSE_CODE,
+                reason="origin not allowed",
+            )
+            return
+
         ws_user: AuthenticatedUser | None = None
         try:
             if access_token and project_config.AUTH_BASE_URL:
@@ -1465,6 +2050,21 @@ def create_app(
                 ws_user = verify_token(access_token)
             elif auth_is_required():
                 raise AuthError("no token on the socket handshake")
+            else:
+                # Plan 01 D8 on the handshake. The browser WebSocket API cannot
+                # set a header, but the E2E proxy can and does forward this one
+                # on the upgrade as on every other request; a run launched under
+                # a synthetic identity is OWNED, so without this its own console
+                # would be closed with 4404. Same two conditions as the HTTP
+                # path - `synthetic_identity` answers None everywhere else.
+                try:
+                    ws_user = synthetic_identity(
+                        websocket.headers.get(SYNTHETIC_USER_HEADER.lower())
+                    )
+                except HTTPException as exc:
+                    await websocket.accept()
+                    await websocket.close(code=4400, reason=str(exc.detail)[:120])
+                    return
         except AuthError:
             # accept() first, then close with a reason. A handshake REJECTED
             # outright surfaces in the browser as an opaque failure with no

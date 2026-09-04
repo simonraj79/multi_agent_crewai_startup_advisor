@@ -1,14 +1,19 @@
 import { BUILDER_SCHEMA_ID, documentId, edgeId, nodeId } from '../types/builder'
 import type { BuilderDocument, BuilderEdge, BuilderNode } from '../types/builder'
 import { IDEA_VALIDATOR_CAVEAT, IDEA_VALIDATOR_DOCUMENT } from './templates/ideaValidator'
+import { CONDITIONAL_ROUTER_DOCUMENT } from './templates/conditionalRouter'
+import { HIERARCHICAL_DELEGATION_DOCUMENT } from './templates/hierarchicalDelegation'
+import { REFLECTION_LOOP_DOCUMENT } from './templates/reflectionLoop'
+import { SEQUENTIAL_PIPELINE_DOCUMENT } from './templates/sequentialPipeline'
+import { resolveModelRoles } from './templates/modelRoles'
 
 /**
- * The four graphs the gallery opens with, as code.
+ * The graphs the gallery opens with, as code.
  *
  * Template AUTHORING is cut (cut list item 12): there is no "save as template",
- * no template store and no server route, and these four are literals a
- * contributor edits. That is the honest shape for four, and the reason it stays
- * honest is that a template is not a special kind of document - `TemplateGallery`
+ * no template store and no server route, and these are literals a contributor
+ * edits. That is the honest shape at this size, and the reason it stays honest
+ * is that a template is not a special kind of document - `TemplateGallery`
  * hands one to the store as an ordinary unsaved draft and every command, undo
  * and problem behaves over it exactly as over a graph drawn by hand.
  *
@@ -22,10 +27,18 @@ import { IDEA_VALIDATOR_CAVEAT, IDEA_VALIDATOR_DOCUMENT } from './templates/idea
  * says so in `ProblemsPanel` with the server's own sentence, which is the same
  * answer any other document would get.
  *
- * EVERY ONE VALIDATES. All four were POSTed to a live `/api/builder/validate` on
- * 2026-09-02; `MINIMAL_GATED_AGENT`, `FAN_OUT_JOIN` and `IDEA_VALIDATOR` each
- * came back `valid: true` with zero problems. `BLANK` deliberately does not -
- * see its own note.
+ * A MODEL ID IS THE ONE THING THEY DO NOT NAME. The four pattern templates say
+ * `{{workhorse}}` and `{{cheapest}}` and `{{escalation}}`, resolved against the
+ * served roster at the moment a card is clicked - see `templates/modelRoles.ts`
+ * for why a slug written here would be wrong, silently, the first time
+ * `scripts/refresh_models.py` runs.
+ *
+ * EVERY ONE VALIDATES, and that is a measurement rather than a claim: each
+ * template carries a Python-generated fixture under
+ * `frontend/tests/fixtures/templates/`, regenerated and byte-compared by
+ * `tests/builder/test_client_fixtures.py`, and `frontend/tests/templates.spec.ts`
+ * asserts each document is the one the recorded answer answered. `BLANK`
+ * deliberately has no billable node - see its own note.
  */
 
 /** One edge. `'in'` is the only legal target port, so it is not a parameter. */
@@ -226,6 +239,25 @@ export interface BuilderTemplate {
   /** One sentence on the card. What you get, not what it is called. */
   readonly blurb: string
   /**
+   * What opening this teaches, in one sentence, rendered on the card.
+   *
+   * Required rather than optional, and that is the whole point of the field: a
+   * gallery of graphs is a gallery of pictures, and a picture of a flow does
+   * not say why one would draw it. An author choosing between six cards is
+   * choosing between six ideas, not six shapes.
+   */
+  readonly teaches: string
+  /**
+   * The one edit to make first, rendered on the card.
+   *
+   * The gauntlet's first rubric dimension is clicks and confusion from landing
+   * to a first node placed, and the honest answer for a template is that the
+   * first thing you do is not place a node - it is change one field on a graph
+   * that already runs. Naming which field is the difference between a starting
+   * point and something to read.
+   */
+  readonly modifyFirst: string
+  /**
    * A truth about this template that its picture cannot carry.
    *
    * Rendered VERBATIM on the card when present (R14). Only `IDEA_VALIDATOR` has
@@ -238,27 +270,109 @@ export interface BuilderTemplate {
 }
 
 /**
- * Nothing drawn, and deliberately not valid.
+ * The run's beginning and its end, wired, and ZERO problems (02-canvas.md D7).
  *
- * A blank document carries `no-input-node` and `input-field-undeclared` from the
- * moment it opens, and that is correct rather than unfortunate: a draft need not
- * be valid - the server says so and `builderApi.create` documents it - and the
- * two problems name the first two things an author has to do. Seeding a phantom
- * input node instead would be inventing a decision, and `input_field` still has
- * to say something, so the problem would only move.
+ * It opened with nothing drawn and two errors against it until 2026-09-04 -
+ * `no-input-node` and `input-field-undeclared` - on the argument that a draft
+ * need not be valid and that the two problems name the first two things an
+ * author has to do. That argument is wrong in one specific way, and the way is
+ * the whole of rubric 1: the FIRST thing a new author sees is a red problems
+ * dock about a graph they have not touched. It reads as "you have already made
+ * a mistake", and it is the one screen where nothing has happened yet.
+ *
+ * The counter-argument that seeding an input node "invents a decision" does not
+ * survive contact with what the node actually says. Every flow this product can
+ * compile starts at an input - `document.py` gives `input` no target port at
+ * all, because it is where the run begins - so the node is not a guess about
+ * the author's graph, it is the one thing every graph has. Flowise v2 reached
+ * the same conclusion and seeds a Start node at the same `{x:100, y:100}`
+ * (`Canvas.jsx:656-677`).
+ *
+ * `input_field` names the node's own `field`, so the pair is consistent on
+ * arrival rather than consistent once somebody presses a button. A SECOND input
+ * node is still perfectly legal and is still flagged `input-field-ambiguous`,
+ * which is the problem that means something: two candidates and no statement of
+ * which one the run reads.
+ *
+ * WHY TWO NODES AND NOT ONE. D7 and criterion 10 each say "one `input` node"
+ * AND "zero problems", and only one shape satisfies both - which is why the
+ * reading here is "exactly one node OF KIND input", not "exactly one node".
+ * Measured against this build's own `/api/builder/validate` on 2026-09-04:
+ *
+ *   one input alone                -> 1 problem, `no-output-node` (warning)
+ *   input + output + the edge      -> 0 problems
+ *
+ * `no-output-node` is the server saying a completed run would hand back no
+ * body, and it is right: a graph that ends nowhere produces nothing an operator
+ * can read. Seeding the output is not inventing a decision any more than
+ * seeding the input was - every graph this product compiles has both ends, and
+ * `document.py` gives `input` no target port and `output` no source port
+ * precisely because they ARE the ends.
+ *
+ * Landing to first node placed is now ONE click - the template card.
  */
+const BLANK_INPUT_FIELD = nodeId('idea')
+
 export const BLANK: BuilderTemplate = {
   id: 'blank',
   title: 'Blank canvas',
-  blurb: 'An empty grid. Drag a kind from the palette, or press 1–7.',
+  blurb: 'An input and an output, wired and clean. Drag a kind from the palette, or press 1–7.',
+  teaches:
+    'Where a run begins and where its body comes back, and that both ends already exist.',
+  modifyFirst: 'Drop an agent between the two nodes and connect it. Nothing else is needed.',
   document: {
     schema: BUILDER_SCHEMA_ID,
     id: UNSAVED,
     name: 'Untitled graph',
     version: 1,
-    input_field: nodeId('idea'),
-    nodes: [],
-    edges: [],
+    input_field: BLANK_INPUT_FIELD,
+    nodes: [
+      {
+        id: nodeId('idea'),
+        label: 'Idea',
+        // Flowise's own seed position, and it is a sensible one for the reason
+        // it is sensible there: far enough from the origin that a fit-view has
+        // something to centre, close enough that the first node an author adds
+        // below it is still on screen.
+        position: { x: 100, y: 100 },
+        kind: 'input',
+        config: {
+          field: BLANK_INPUT_FIELD,
+          // Null rather than the label, exactly as `nodeKinds.ts` argues: a node
+          // called "Idea" may reasonably ask the operator for something longer,
+          // and inventing the prompt from the canvas label puts words in the
+          // author's mouth that an operator then reads.
+          label: null,
+          max_chars: 2000,
+          required: true,
+        },
+      },
+      {
+        id: nodeId('result'),
+        label: 'Result',
+        // Directly below the input, on the 20 grid, so the first kind an author
+        // drops between them has somewhere obvious to land.
+        position: { x: 100, y: 300 },
+        kind: 'output',
+        config: {
+          // `RUN_RESULT_BODY_KEYS[0]`. A body written under any other key comes
+          // back clipped by the streaming frame serializer rather than by
+          // `MAX_RUN_RESULT_BODY_CHARS`, which is how the first paid run's
+          // report was lost mid-link.
+          body_key: 'markdown_body',
+          source: null,
+        },
+      },
+    ],
+    edges: [
+      {
+        id: edgeId('e1'),
+        source: nodeId('idea'),
+        source_port: 'out',
+        target: nodeId('result'),
+        target_port: 'in',
+      },
+    ],
     joins: {},
     budget: null,
   },
@@ -283,6 +397,9 @@ export const MINIMAL_GATED_AGENT: BuilderTemplate = {
   id: 'minimal-gated-agent',
   title: 'Minimal gated agent',
   blurb: 'Input, a human gate, one agent, one result — the smallest graph anyone can launch.',
+  teaches:
+    'Why a gate sits above the first agent: while nobody is signed in, human inaction is the spend cap.',
+  modifyFirst: "The agent's prompt inputs, which are what the scoping task interpolates.",
   document: {
     schema: BUILDER_SCHEMA_ID,
     id: UNSAVED,
@@ -316,6 +433,9 @@ export const FAN_OUT_JOIN: BuilderTemplate = {
   id: 'fan-out-join',
   title: 'Fan out and join',
   blurb: 'Three branches run in parallel and one node waits for all of them.',
+  teaches:
+    'That one line — joins — decides whether a node waits for its branches or runs on the first home.',
+  modifyFirst: "Delete the joins key and watch the score node fire on one branch out of three.",
   document: {
     schema: BUILDER_SCHEMA_ID,
     id: UNSAVED,
@@ -344,37 +464,128 @@ export const IDEA_VALIDATOR: BuilderTemplate = {
   id: 'idea-validator',
   title: 'Idea validator',
   blurb: 'Six agents, two human gates, two revise loops — the evaluator, drawn.',
+  teaches:
+    'What a real pipeline looks like at full size: six agents, two gates and two revise loops.',
+  modifyFirst: 'The scope gate’s editable fields, which are what an operator may change mid-run.',
   caveat: IDEA_VALIDATOR_CAVEAT,
   document: IDEA_VALIDATOR_DOCUMENT,
 }
 
 /**
- * The gallery's four cards, in the order they are shown.
+ * The four PATTERN templates - agents this repository does not own the prompts
+ * for, models named by role, and one lesson each.
+ *
+ * The two older templates above are built out of LIBRARY agents, whose role,
+ * goal and task are fixed in `crews/validator_crew/config/*.yaml`. That makes
+ * them excellent proofs that the compiler works and poor teachers: a new author
+ * opening one sees six dropdown choices rather than a team they could have
+ * written. These four are authored end to end, so every prompt on the canvas is
+ * a prompt the author may edit, which is what the builder is for.
+ */
+export const SEQUENTIAL_PIPELINE: BuilderTemplate = {
+  id: 'sequential-pipeline',
+  title: 'Sequential pipeline',
+  blurb: 'Research, analyse, write — three agents in a line with a keyless search attached.',
+  teaches:
+    'That an edge is a listener, ${state.out__x} is how one step reaches the next, and a tool is dropped onto an agent.',
+  modifyFirst: "The writer's expected output. One sentence there changes the whole deliverable.",
+  document: SEQUENTIAL_PIPELINE_DOCUMENT,
+}
+
+export const CONDITIONAL_ROUTER: BuilderTemplate = {
+  id: 'conditional-router',
+  title: 'Conditional router',
+  blurb: 'Classify a message, send it to one of three desks, and converge again.',
+  teaches:
+    'That a router is arithmetic rather than a model, and that the cheap tier belongs where the decision is small.',
+  modifyFirst:
+    "The classifier's model. Swap it for the escalation one and watch the meter move for one word.",
+  document: CONDITIONAL_ROUTER_DOCUMENT,
+}
+
+export const REFLECTION_LOOP: BuilderTemplate = {
+  id: 'reflection-loop',
+  title: 'Reflection loop',
+  blurb: 'A drafter and a critic go round until the score clears 8, or four drafts in.',
+  teaches:
+    'That only a router may close a loop, and that output_schema is what turns prose into a number one can compare.',
+  modifyFirst: 'The threshold 8. It is the only thing deciding how long this runs.',
+  document: REFLECTION_LOOP_DOCUMENT,
+}
+
+export const HIERARCHICAL_DELEGATION: BuilderTemplate = {
+  id: 'hierarchical-delegation',
+  title: 'Hierarchical delegation',
+  blurb: 'A manager and three specialists, inside one crew node.',
+  teaches:
+    'That a crew node is a real Crew whose members are agents it owns, wired by member edges rather than flow edges.',
+  modifyFirst:
+    'The process. Flip it to sequential and the manager leaves the inspector and the price together.',
+  document: HIERARCHICAL_DELEGATION_DOCUMENT,
+}
+
+/**
+ * The gallery's six cards, in the order they are shown.
  *
  * Ordered by how much a reader has to understand before the card helps them:
- * nothing, one rule, one hard rule, then the whole product. Not by size, and
- * not alphabetically - the flagship last is deliberate, because a gallery that
- * opens on the biggest graph teaches an author that the builder is for
- * transcribing something rather than for drawing.
+ * nothing, one line, one fork, one loop, one team, then the whole product. Not
+ * by size and not alphabetically - the flagship last is deliberate, because a
+ * gallery that opens on the biggest graph teaches an author that the builder is
+ * for transcribing something rather than for drawing.
  */
 export const BUILDER_TEMPLATES: readonly BuilderTemplate[] = [
   BLANK,
-  MINIMAL_GATED_AGENT,
-  FAN_OUT_JOIN,
+  SEQUENTIAL_PIPELINE,
+  CONDITIONAL_ROUTER,
+  REFLECTION_LOOP,
+  HIERARCHICAL_DELEGATION,
   IDEA_VALIDATOR,
 ]
 
 /**
- * A fresh, unshared copy of a template's document.
+ * The two library-agent templates, kept and demoted rather than deleted.
  *
- * `structuredClone`, and it is load-bearing rather than defensive. These four
+ * Owner's decision 21, and the reason is not sentiment: `e2e/builder.spec.ts`
+ * drives `MINIMAL_GATED_AGENT` through the whole authoring journey, so deleting
+ * it would turn a template change into a suite change and lose the only E2E
+ * proof that a LIBRARY-agent graph still publishes. They sit in a second row
+ * because what they teach - that the compiler works - is not what a first-time
+ * author needs from a gallery.
+ */
+export const MORE_BUILDER_TEMPLATES: readonly BuilderTemplate[] = [
+  MINIMAL_GATED_AGENT,
+  FAN_OUT_JOIN,
+]
+
+/** Every card the gallery renders, both rows, in render order. */
+export const ALL_BUILDER_TEMPLATES: readonly BuilderTemplate[] = [
+  ...BUILDER_TEMPLATES,
+  ...MORE_BUILDER_TEMPLATES,
+]
+
+/**
+ * A fresh, unshared copy of a template's document, with its model roles resolved.
+ *
+ * `structuredClone`, and it is load-bearing rather than defensive. These
  * documents are module singletons: seeding one into the store by reference
  * would put the SAME object behind the editor twice in one session, so a graph
  * the author edited, undid and abandoned would still be what the gallery hands
  * the next person who clicks the card. `commit` replaces rather than mutates,
  * which makes that safe most of the time - and "most of the time" is not a
  * property worth relying on for the thing every session starts from.
+ *
+ * THE CLONE IS ALSO WHAT MAKES ROLE RESOLUTION SAFE. `resolveModelRoles`
+ * rewrites `{{workhorse}}` into the id the roster names today, in place - so it
+ * must never see the singleton, or the second caller would get a document whose
+ * models were resolved against a roster that has since been refreshed. Cloning
+ * first means every seeded copy is resolved exactly once, against the roster as
+ * it stands at the moment the author clicked.
+ *
+ * A role the roster cannot answer is LEFT AS ITS TOKEN rather than substituted,
+ * which is `data/models.ts`'s rule rather than a new one: the server answers
+ * `model-unknown` naming the token, in the problems dock, beside the roster
+ * failure the gallery is already showing.
  */
 export function documentFromTemplate(template: BuilderTemplate): BuilderDocument {
-  return structuredClone(template.document)
+  return resolveModelRoles(structuredClone(template.document))
 }

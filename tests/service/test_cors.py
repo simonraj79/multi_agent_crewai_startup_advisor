@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import unittest
+from typing import Any
 from unittest.mock import patch
 
 
@@ -262,30 +263,186 @@ class CorsMiddlewareTests(unittest.TestCase):
         ]
         self.assertIn("ETag", exposed)
 
-    def test_the_websocket_handshake_is_not_governed_by_cors(self) -> None:
-        """Documents a real gap: `/ws` is not protected by this middleware.
 
-        Browsers do not apply CORS to a WebSocket handshake, and Starlette's
-        CORSMiddleware passes every non-HTTP scope straight through, so a page
-        on any origin can open the socket. What it cannot do is guess the uuid4
-        run_id and the session_id that `/ws` checks before it sends anything -
-        that pair, not CORS, is what keeps a run private.
-        """
+@unittest.skipUnless(
+    FASTAPI_AVAILABLE,
+    "FastAPI is not installed; install the existing project service extra",
+)
+class WebsocketOriginTests(unittest.TestCase):
+    """`/ws` IS governed by `CORS_ALLOW_ORIGINS` now (D-01-7).
+
+    This class replaces `test_the_websocket_handshake_is_not_governed_by_cors`,
+    which asserted the opposite and passed: a page on any origin could open the
+    socket and stream any run whose `run_id` and `session_id` it could name.
+    That was survivable for an OWNED run, which is 4404 to everybody but its
+    owner, and not for an unowned one - every run on an auth-off checkout and
+    every run in `SYNTHETIC` mode, which is the configuration the whole judging
+    round ran in.
+
+    The pin is flipped deliberately rather than deleted: the property it
+    documented is now the property that must NOT hold.
+    """
+
+    @staticmethod
+    def _run(client: Any) -> tuple[str, int]:
+        created = client.post(
+            "/api/sessions/session-ws-cors/runs",
+            json={"workflow_id": "brief-flow", "inputs": {"topic": "cors"}},
+        )
+        run_id = created.json()["run_id"]
+        client.app.state.run_registry.wait(run_id, timeout=2)
+        last_seq = client.get(f"/api/runs/{run_id}").json()["frames"]["last_seq"]
+        return run_id, last_seq
+
+    def _socket(self, client: Any, run_id: str, last_seq: int, **kwargs: Any) -> Any:
+        return client.websocket_connect(
+            f"/ws?session_id=session-ws-cors&run_id={run_id}&after={last_seq}",
+            **kwargs,
+        )
+
+    def test_a_foreign_origin_is_refused_before_anything_is_streamed(self) -> None:
+        from starlette.websockets import WebSocketDisconnect
+
+        from brief_crew.config import WS_ORIGIN_REFUSED_CLOSE_CODE
+
         with cors_client([ALLOWED_ORIGIN]) as client:
-            created = client.post(
-                "/api/sessions/session-ws-cors/runs",
-                json={"workflow_id": "brief-flow", "inputs": {"topic": "cors"}},
-            )
-            run_id = created.json()["run_id"]
-            client.app.state.run_registry.wait(run_id, timeout=2)
-            last_seq = client.get(f"/api/runs/{run_id}").json()["frames"]["last_seq"]
+            run_id, last_seq = self._run(client)
+            with self._socket(
+                client, run_id, last_seq, headers={"Origin": OTHER_ORIGIN}
+            ) as websocket:
+                websocket.send_json({"type": "ping"})
+                with self.assertRaises(WebSocketDisconnect) as caught:
+                    websocket.receive_json()
+        self.assertEqual(caught.exception.code, WS_ORIGIN_REFUSED_CLOSE_CODE)
+        self.assertEqual(caught.exception.reason, "origin not allowed")
 
-            with client.websocket_connect(
-                f"/ws?session_id=session-ws-cors&run_id={run_id}&after={last_seq}",
-                headers={"Origin": OTHER_ORIGIN},
+    def test_an_allowed_origin_still_streams(self) -> None:
+        with cors_client([ALLOWED_ORIGIN]) as client:
+            run_id, last_seq = self._run(client)
+            with self._socket(
+                client, run_id, last_seq, headers={"Origin": ALLOWED_ORIGIN}
             ) as websocket:
                 websocket.send_json({"type": "ping"})
                 self.assertEqual(websocket.receive_json()["type"], "pong")
+
+    def test_a_handshake_with_no_origin_header_is_a_non_browser_and_is_served(
+        self,
+    ) -> None:
+        """The probe CLAUDE.md documents, and every server-side consumer.
+
+        A browser always sends `Origin` on a handshake, so its absence is
+        positive evidence the caller is not a page. Refusing it would break
+        every non-browser client to defend against a threat none of them is.
+        """
+
+        with cors_client([ALLOWED_ORIGIN]) as client:
+            run_id, last_seq = self._run(client)
+            with self._socket(client, run_id, last_seq) as websocket:
+                websocket.send_json({"type": "ping"})
+                self.assertEqual(websocket.receive_json()["type"], "pong")
+
+    def test_a_same_origin_handshake_is_served_with_the_empty_default_list(
+        self,
+    ) -> None:
+        """The empty default must not mean "no console".
+
+        Local development and the E2E harness both reach this service through a
+        Vite proxy that forwards the page's own `Host`, so `Origin` and `Host`
+        agree and no configuration is needed. A cross-origin deployment names
+        its origins - `render.yaml` does.
+        """
+
+        with cors_client([]) as client:
+            run_id, last_seq = self._run(client)
+            with self._socket(
+                client, run_id, last_seq, headers={"Origin": "http://testserver"}
+            ) as websocket:
+                websocket.send_json({"type": "ping"})
+                self.assertEqual(websocket.receive_json()["type"], "pong")
+
+    def test_a_foreign_origin_is_refused_with_the_empty_default_list(self) -> None:
+        from starlette.websockets import WebSocketDisconnect
+
+        from brief_crew.config import WS_ORIGIN_REFUSED_CLOSE_CODE
+
+        with cors_client([]) as client:
+            run_id, last_seq = self._run(client)
+            with self._socket(
+                client, run_id, last_seq, headers={"Origin": OTHER_ORIGIN}
+            ) as websocket:
+                websocket.send_json({"type": "ping"})
+                with self.assertRaises(WebSocketDisconnect) as caught:
+                    websocket.receive_json()
+        self.assertEqual(caught.exception.code, WS_ORIGIN_REFUSED_CLOSE_CODE)
+
+    def test_the_wildcard_opens_the_socket_to_everyone_as_it_does_the_api(
+        self,
+    ) -> None:
+        with cors_client(["*"]) as client:
+            run_id, last_seq = self._run(client)
+            with self._socket(
+                client, run_id, last_seq, headers={"Origin": OTHER_ORIGIN}
+            ) as websocket:
+                websocket.send_json({"type": "ping"})
+                self.assertEqual(websocket.receive_json()["type"], "pong")
+
+
+class WebsocketOriginPredicateTests(unittest.TestCase):
+    """The rule itself, with no FastAPI - `config.websocket_origin_allowed`."""
+
+    def setUp(self) -> None:
+        from brief_crew import config
+
+        self.config = config
+
+    def _allowed(self, origin, *, host=None, origins=(ALLOWED_ORIGIN,)):
+        with patch.object(self.config, "CORS_ALLOW_ORIGINS", tuple(origins)):
+            return self.config.websocket_origin_allowed(origin, host=host)
+
+    def test_a_missing_header_is_allowed_and_an_empty_one_is_not(self) -> None:
+        self.assertTrue(self._allowed(None))
+        # A present-but-blank header is not a non-browser client; something
+        # sent the header and it names nothing.
+        self.assertFalse(self._allowed(""))
+        self.assertFalse(self._allowed("   "))
+
+    def test_null_is_refused(self) -> None:
+        """A sandboxed iframe, a `file://` page, some redirect chains."""
+
+        self.assertFalse(self._allowed("null"))
+        self.assertFalse(self._allowed("NULL"))
+
+    def test_the_list_is_matched_after_the_same_normalisation_the_api_uses(
+        self,
+    ) -> None:
+        self.assertTrue(self._allowed("https://studio.example.com"))
+        self.assertTrue(self._allowed("HTTPS://Studio.Example.COM"))
+        self.assertFalse(self._allowed(OTHER_ORIGIN))
+
+    def test_a_value_that_is_not_an_origin_at_all_is_refused(self) -> None:
+        for junk in (
+            "studio.example.com",
+            "https://studio.example.com/x",
+            "javascript:",
+        ):
+            with self.subTest(junk=junk):
+                self.assertFalse(self._allowed(junk, host="studio.example.com"))
+
+    def test_same_origin_is_compared_on_authority_because_host_has_no_scheme(
+        self,
+    ) -> None:
+        self.assertTrue(
+            self._allowed("http://localhost:5277", host="localhost:5277", origins=())
+        )
+        self.assertTrue(
+            self._allowed("https://localhost:5277", host="LOCALHOST:5277", origins=())
+        )
+        # A different port is a different origin, which is the whole point of
+        # the rule: the attacker controls Origin and not Host.
+        self.assertFalse(
+            self._allowed("http://localhost:5278", host="localhost:5277", origins=())
+        )
+        self.assertFalse(self._allowed("http://localhost:5277", host=None, origins=()))
 
 
 if __name__ == "__main__":

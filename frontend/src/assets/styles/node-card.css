@@ -83,7 +83,14 @@
 .workflow-node.is-running {
   --node-gradient: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
   box-shadow: 0 0 0 1px rgba(153, 234, 249, 0.3), 0 14px 34px rgba(0, 0, 0, 0.35);
-  animation: node-glowing 4s linear infinite, node-pulse 2s ease-in-out infinite;
+  /* `ease-out`, not `ease-in-out`, and the difference is a criterion rather
+     than a preference: rubric 8 is "the reference's curves and periods, quoted
+     in `docs/chatdev-notes.md` §2", and that table records `vueflow.css:81-125`
+     as `node-glowing 4s linear infinite, node-pulse 2s ease-out infinite`
+     verbatim. The names, both periods and the dual-period intent already
+     matched; this was the one departure, and it was undeclared, which is the
+     part that made it a defect (critic round product-1, P-09). */
+  animation: node-glowing 4s linear infinite, node-pulse 2s ease-out infinite;
 }
 
 .quarantine-count {

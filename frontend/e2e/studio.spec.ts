@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
 
 /**
  * End-to-end coverage of the Validator Studio console.
@@ -263,6 +264,32 @@ test.describe('Validator Studio', () => {
       // on a visible quarantine node rather than dropped silently.
       await expect(page.locator('[data-testid="quarantine-count"]')).toHaveText('0')
 
+      /*
+       * The SPEND surface, on a run that has finished (critic round product-1,
+       * P-08). This panel read `ELAPSED 00:00 · CALLS 0 · TOKENS 0 · $0.0000`
+       * on a completed run whose dialogue rail beside it showed `640 in · 78
+       * out` and whose server record held two timestamps 15.019 s apart. It is
+       * what an operator watches while a graph somebody else drew spends
+       * against `MAX_RUN_COST_USD`, and until the synthetic runner emitted
+       * TOKEN frames it was the one surface no free path could exercise at all.
+       *
+       * Asserted here rather than in a test of its own because the run is
+       * already finished at this point: a second `@launch` test would spend
+       * money against a paid origin to learn the same thing.
+       */
+      const metric = async (name: string): Promise<string> =>
+        (
+          await page
+            .locator('.status-panel .metrics-grid div', { hasText: new RegExp(`^${name}`) })
+            .locator('dd')
+            .innerText()
+        ).trim()
+
+      expect(await metric('Elapsed'), 'ELAPSED on a completed run').not.toBe('00:00')
+      expect(Number(await metric('Calls')), 'CALLS on a completed run').toBeGreaterThan(0)
+      expect(await metric('Tokens'), 'TOKENS on a completed run').not.toBe('0')
+      expect(await metric('Cost'), 'COST on a completed run').not.toBe('$0.0000')
+
       await expect(page.locator('.workflow-node[aria-label="Reporter, Completed"]')).toHaveCount(1)
       await expect(page.locator('.workflow-node[aria-label="Validation brief, Completed"]')).toHaveCount(1)
       await expect(page.locator('.error-banner')).toHaveCount(0)
@@ -443,8 +470,12 @@ test.describe('Validator Studio', () => {
       expect(runIdBefore).toBeTruthy()
 
       // The pointer the recovery reads is a localStorage record, not a cookie
-      // and not server-side session state.
-      const stored = await page.evaluate(() => window.localStorage.getItem('validator-active-run'))
+      // and not server-side session state - keyed to the signed-in user
+      // (D-01-5), who for a cookieless context is the E2E Operator.
+      const stored = await page.evaluate(
+        (key) => window.localStorage.getItem(key),
+        storageKeyFor(DEFAULT_SYNTHETIC_USER, 'validator-active-run'),
+      )
       expect(stored).toBeTruthy()
       const parsed = JSON.parse(stored as string) as {
         version: number

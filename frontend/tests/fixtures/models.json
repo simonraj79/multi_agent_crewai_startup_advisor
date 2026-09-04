@@ -1,0 +1,198 @@
+{
+  "schema": "models/v1",
+  "generated_at": "2026-09-04T00:00:00Z",
+  "source": "https://openrouter.ai/api/v1/models",
+  "ceiling_usd_per_m_input": 1.0,
+  "presets": {
+    "cheap": "google/gemini-3.5-flash-lite:nitro",
+    "escalation": "google/gemini-3.8-flash"
+  },
+  "models": [
+    {
+      "id": "google/gemini-3.5-flash-lite",
+      "name": "Google: Gemini 3.5 Flash Lite",
+      "provider": "google",
+      "context_window": 1048576,
+      "supports_tools": true,
+      "supports_vision": true,
+      "supports_json_mode": true,
+      "supports_reasoning": true,
+      "cost_in": 0.3,
+      "cost_out": 2.5,
+      "cost_in_max_endpoint": 0.54,
+      "speed_tier": "fast",
+      "recommended_for": [
+        "research",
+        "tool-calling",
+        "default-cheap"
+      ]
+    },
+    {
+      "id": "google/gemini-3.8-flash",
+      "name": "Google: Gemini 3.8 Flash",
+      "provider": "google",
+      "context_window": 1048576,
+      "supports_tools": true,
+      "supports_vision": true,
+      "supports_json_mode": true,
+      "supports_reasoning": true,
+      "cost_in": 0.75,
+      "cost_out": 3.75,
+      "cost_in_max_endpoint": 1.35,
+      "speed_tier": "balanced",
+      "recommended_for": [
+        "synthesis",
+        "reporting",
+        "manager"
+      ]
+    },
+    {
+      "id": "deepseek/deepseek-v4-flash",
+      "name": "DeepSeek: DeepSeek V4 Flash 0423",
+      "provider": "deepseek",
+      "context_window": 1048576,
+      "supports_tools": true,
+      "supports_vision": false,
+      "supports_json_mode": true,
+      "supports_reasoning": true,
+      "cost_in": 0.088606,
+      "cost_out": 0.177212,
+      "cost_in_max_endpoint": 0.21,
+      "speed_tier": "fast",
+      "recommended_for": [
+        "default",
+        "tool-calling",
+        "summarising"
+      ]
+    },
+    {
+      "id": "z-ai/glm-5.3-flash",
+      "name": "Z.ai: GLM 5.3 Flash",
+      "provider": "z-ai",
+      "context_window": 1310720,
+      "supports_tools": true,
+      "supports_vision": true,
+      "supports_json_mode": true,
+      "supports_reasoning": true,
+      "cost_in": 0.075,
+      "cost_out": 0.25,
+      "cost_in_max_endpoint": 0.15,
+      "speed_tier": "fast",
+      "recommended_for": [
+        "tool-calling",
+        "vision",
+        "fast-agents"
+      ]
+    },
+    {
+      "id": "qwen/qwen3.7-flash",
+      "name": "Qwen: Qwen3.7 Flash",
+      "provider": "qwen",
+      "context_window": 1000000,
+      "supports_tools": true,
+      "supports_vision": true,
+      "supports_json_mode": true,
+      "supports_reasoning": true,
+      "cost_in": 0.03,
+      "cost_out": 0.13,
+      "cost_in_max_endpoint": 0.03,
+      "speed_tier": "fast",
+      "recommended_for": [
+        "router",
+        "classifier",
+        "extraction"
+      ]
+    },
+    {
+      "id": "openai/gpt-5-mini",
+      "name": "OpenAI: GPT-5 Mini",
+      "provider": "openai",
+      "context_window": 400000,
+      "supports_tools": true,
+      "supports_vision": true,
+      "supports_json_mode": true,
+      "supports_reasoning": true,
+      "cost_in": 0.25,
+      "cost_out": 2.0,
+      "cost_in_max_endpoint": 0.275,
+      "speed_tier": "balanced",
+      "recommended_for": [
+        "general",
+        "json-mode",
+        "instruction-following"
+      ]
+    },
+    {
+      "id": "openai/gpt-4.1-nano",
+      "name": "OpenAI: GPT-4.1 Nano",
+      "provider": "openai",
+      "context_window": 1047576,
+      "supports_tools": true,
+      "supports_vision": true,
+      "supports_json_mode": true,
+      "supports_reasoning": false,
+      "cost_in": 0.1,
+      "cost_out": 0.4,
+      "cost_in_max_endpoint": 0.11,
+      "speed_tier": "fast",
+      "recommended_for": [
+        "router",
+        "classifier",
+        "cheapest-openai"
+      ]
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "name": "OpenAI: gpt-oss-120b",
+      "provider": "openai",
+      "context_window": 131072,
+      "supports_tools": true,
+      "supports_vision": false,
+      "supports_json_mode": true,
+      "supports_reasoning": true,
+      "cost_in": 0.037,
+      "cost_out": 0.17,
+      "cost_in_max_endpoint": 0.35,
+      "speed_tier": "balanced",
+      "recommended_for": [
+        "reasoning-cheap",
+        "coding"
+      ]
+    },
+    {
+      "id": "deepseek/deepseek-r1",
+      "name": "DeepSeek: R1",
+      "provider": "deepseek",
+      "context_window": 64000,
+      "supports_tools": true,
+      "supports_vision": false,
+      "supports_json_mode": true,
+      "supports_reasoning": true,
+      "cost_in": 0.7,
+      "cost_out": 2.5,
+      "cost_in_max_endpoint": 0.7,
+      "speed_tier": "deep",
+      "recommended_for": [
+        "critic",
+        "deep-reasoning"
+      ]
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "OpenAI: GPT-4o-mini",
+      "provider": "openai",
+      "context_window": 128000,
+      "supports_tools": true,
+      "supports_vision": true,
+      "supports_json_mode": true,
+      "supports_reasoning": false,
+      "cost_in": 0.15,
+      "cost_out": 0.6,
+      "cost_in_max_endpoint": 0.165,
+      "speed_tier": "fast",
+      "recommended_for": [
+        "tool-calling-baseline"
+      ]
+    }
+  ]
+}

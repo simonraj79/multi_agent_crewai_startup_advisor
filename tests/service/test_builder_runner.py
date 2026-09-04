@@ -550,5 +550,181 @@ class SyntheticServiceTests(unittest.TestCase):
         self.assertIn("Synthetic output for scoper", finished["result"][BODY_KEY])
 
 
+# --------------------------------------------------------------------------
+# The AUTHORED arm - .agent/plans/10-runtime.md D1, criterion 1
+# --------------------------------------------------------------------------
+class AuthoredAgentTests(unittest.TestCase):
+    """An authored node runs free, and the real one is built with real bounds.
+
+    Two halves, and the second is the one that costs nothing but proves the
+    most: `DefaultCrewFactories` is asked to CONSTRUCT the agent from the same
+    `with:` block. Constructing an `Agent` and an `LLM` calls no model, so the
+    whole of D1's "the LLM is `LLM(model=...)` and nothing else" defect is
+    testable for free - and it was a real defect: no temperature, no
+    `max_tokens`, no stream, while `budget.py` priced every call at 4,253
+    completion tokens.
+    """
+
+    def _spec(self, **overrides: Any) -> Any:
+        from brief_crew.builder.runtime import AuthoredAgentSpec
+
+        fields: dict[str, Any] = {
+            "role": "market analyst",
+            "goal": "size the market",
+            "backstory": "years of it",
+            "task": {
+                "description": "work from ${state.out__idea}",
+                "expected_output": "a paragraph",
+            },
+            "llm": {"model": "google/gemini-3.8-flash", "temperature": 0.2},
+            "tier": "cheap",
+            "prompt_inputs": {"idea": IDEA},
+        }
+        fields.update(overrides)
+        return AuthoredAgentSpec(**fields)
+
+    # ---------------------------------------------------------- the free path
+    def test_the_synthetic_factory_receives_the_whole_authored_block(self) -> None:
+        from brief_crew.builder.runtime import run_agent, use_crew_factories
+
+        seen: list[Any] = []
+
+        class Recording(SyntheticCrewFactories):
+            def authored_agent_crew(self, *, node_id: str, spec: Any) -> Any:
+                seen.append(spec)
+                return super().authored_agent_crew(node_id=node_id, spec=spec)
+
+        class Flow:
+            state: dict[str, Any] = {}
+
+        with use_crew_factories(Recording()):
+            run_agent(
+                Flow(),
+                node_id="draft",
+                role="market analyst",
+                goal="size the market",
+                backstory="years of it",
+                task={"description": "d", "expected_output": "e"},
+                llm={"model": "google/gemini-3.8-flash", "temperature": 0.2},
+                prompt_inputs={"idea": IDEA},
+                tools=[{"tool_id": "serper_search", "params": {}}],
+                mcps=[{"server_id": "mcp_a1b2c3d4", "tool_names": ["search"]}],
+                skills=["sk_house"],
+            )
+
+        self.assertEqual(len(seen), 1)
+        spec = seen[0]
+        self.assertEqual(spec.role, "market analyst")
+        self.assertEqual(spec.goal, "size the market")
+        self.assertEqual(spec.backstory, "years of it")
+        self.assertEqual(dict(spec.task)["expected_output"], "e")
+        self.assertEqual(dict(spec.llm)["model"], "google/gemini-3.8-flash")
+        self.assertEqual(dict(spec.prompt_inputs), {"idea": IDEA})
+        # The three C5 lists, folded into the one discriminated list
+        # `bind_attachments` reads - and all three arrived.
+        kinds = [entry["kind"] for entry in spec.attachment_list()]
+        self.assertEqual(sorted(kinds), ["mcp", "skill", "tool"])
+
+    def test_an_authored_graph_runs_end_to_end_on_the_free_factories(self) -> None:
+        from tests.builder.test_compiler import (
+            authored_agent_node,
+            input_node as _input,
+            output_node as _output,
+        )
+        from tests.builder.test_document import document as _document, edge as _edge
+
+        graph = _document(
+            [
+                _input(),
+                authored_agent_node("draft"),
+                _output("report", source="${state.out__draft}"),
+            ],
+            [_edge("e1", "idea", "draft"), _edge("e2", "draft", "report")],
+        )
+        workflow = workflow_of(graph)
+        runner = BuilderFlowRunner(workflow, crew_factories=SyntheticCrewFactories())
+        result = runner(execution_for(workflow))
+        # `produced_by` is the author's own ROLE, not a registry id.
+        self.assertIn("draft specialist", result[BODY_KEY])
+
+    # ------------------------------------------------- the constructed thing
+    def test_the_real_llm_carries_the_model_the_bound_and_the_stream(self) -> None:
+        from brief_crew.builder.runtime import DefaultCrewFactories
+        from brief_crew.config import GRAPH_BUDGET_CALL_COMPLETION_TOKENS
+
+        agent = DefaultCrewFactories()._authored_agent(self._spec(), node_id="draft")
+        self.assertTrue(agent.llm.model)
+        self.assertEqual(agent.llm.max_tokens, GRAPH_BUDGET_CALL_COMPLETION_TOKENS)
+        self.assertEqual(agent.llm.temperature, 0.2)
+        self.assertIs(agent.llm.stream, True)
+
+    def test_the_agent_is_the_authors_own_and_its_llm_is_never_none(self) -> None:
+        """`Agent.llm = None` resolves to OpenAI - the platform rule's own trap."""
+
+        from brief_crew.builder.runtime import DefaultCrewFactories
+
+        agent = DefaultCrewFactories()._authored_agent(self._spec(), node_id="draft")
+        self.assertEqual(agent.role, "market analyst")
+        self.assertEqual(agent.goal, "size the market")
+        self.assertEqual(agent.backstory, "years of it")
+        self.assertIsNotNone(agent.llm)
+
+    def test_an_author_who_names_max_tokens_wins(self) -> None:
+        """It is their model and their money; the default is only a default."""
+
+        from brief_crew.builder.runtime import DefaultCrewFactories
+
+        agent = DefaultCrewFactories()._authored_agent(
+            self._spec(llm={"model": "google/gemini-3.8-flash", "max_tokens": 128}),
+            node_id="draft",
+        )
+        self.assertEqual(agent.llm.max_tokens, 128)
+
+    def test_the_price_ceiling_travels_with_every_authored_call(self) -> None:
+        """MISSION 6a: measured against the MAX ENDPOINT price, at the API.
+
+        An authored node may name any roster model, so the ceiling cannot be a
+        property of the tier - and `provider.max_price` filters endpoints before
+        routing, which is the only thing a variant, a sort or a catalogue change
+        cannot get past.
+        """
+
+        from brief_crew.builder.runtime import DefaultCrewFactories
+        from brief_crew.config import MODEL_PRICE_CEILING_IN
+
+        agent = DefaultCrewFactories()._authored_agent(self._spec(), node_id="draft")
+        provider = dict(agent.llm.additional_params["extra_body"])["provider"]
+        self.assertEqual(provider["max_price"], {"prompt": MODEL_PRICE_CEILING_IN})
+        # And no `sort`: the author chose the model, so this module does not
+        # also choose the endpoint.
+        self.assertNotIn("sort", provider)
+
+    def test_reasoning_effort_leaves_the_constructor_for_the_wire(self) -> None:
+        """CrewAI drops the kwarg for every non-o1 model - config.py's own note."""
+
+        from brief_crew.builder.runtime import DefaultCrewFactories
+
+        agent = DefaultCrewFactories()._authored_agent(
+            self._spec(
+                llm={"model": "google/gemini-3.8-flash", "reasoning_effort": "high"}
+            ),
+            node_id="draft",
+        )
+        body = dict(agent.llm.additional_params["extra_body"])
+        self.assertEqual(body["reasoning"], {"effort": "high"})
+
+    def test_the_crew_streams_too(self) -> None:
+        """Both halves of D7: without the Crew flag no chunk event is raised."""
+
+        from brief_crew.builder.runtime import DefaultCrewFactories
+
+        crew = DefaultCrewFactories().authored_agent_crew(
+            node_id="draft", spec=self._spec()
+        )
+        self.assertIs(crew.stream, True)
+        self.assertEqual(len(crew.tasks), 1)
+        self.assertEqual(crew.tasks[0].expected_output, "a paragraph")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

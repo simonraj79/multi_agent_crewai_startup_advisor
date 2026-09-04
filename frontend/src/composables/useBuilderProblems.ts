@@ -63,6 +63,12 @@ export interface BuilderProblemsIndex {
   unplacedForNode: (nodeId: string, knownFields?: readonly string[]) => BuilderProblem[]
   /** Which control a code anchors to, or undefined when nothing claims it. */
   fieldForCode: (code: ProblemCode | string) => string | undefined
+  /**
+   * Which control ONE problem anchors to: its own `field` (C8) if it carries
+   * one, else its code's. This is the answer every sink uses; `fieldForCode` is
+   * kept beside it because a caller holding only a code still has a question.
+   */
+  fieldFor: (problem: BuilderProblem) => string | undefined
 }
 
 /**
@@ -121,12 +127,26 @@ export function useBuilderProblems(
   const fieldForCode = (code: ProblemCode | string): string | undefined =>
     FIELD_CODES[code as ProblemCode]
 
+  /**
+   * The control ONE problem anchors to - its own `field` first, then its code's.
+   *
+   * C8's optional `field` exists because three codes blame a control that
+   * varies with the document rather than with the code:
+   * `model-lacks-capability` is about `llm.response_format` on one node and
+   * `llm.reasoning_effort` on the next, and `FIELD_CODES` holds one string per
+   * code. The payload wins where it is present, because it is the more specific
+   * statement and it was made by the check that found the problem; the map is
+   * the fallback for every server that has not grown the key.
+   */
+  const fieldFor = (problem: BuilderProblem): string | undefined =>
+    problem.field || fieldForCode(problem.code)
+
   const problemsForField = (nodeId: string, field: string): BuilderProblem[] =>
-    problemsForNode(nodeId).filter((problem) => fieldForCode(problem.code) === field)
+    problemsForNode(nodeId).filter((problem) => fieldFor(problem) === field)
 
   const unplacedForNode = (nodeId: string, knownFields?: readonly string[]): BuilderProblem[] =>
     problemsForNode(nodeId).filter((problem) => {
-      const field = fieldForCode(problem.code)
+      const field = fieldFor(problem)
       if (field === undefined) return true
       return knownFields ? !knownFields.includes(field) : false
     })
@@ -146,6 +166,7 @@ export function useBuilderProblems(
     problemsForField,
     unplacedForNode,
     fieldForCode,
+    fieldFor,
   }
 }
 
@@ -179,4 +200,80 @@ function worst(index: ReadonlyMap<string, BuilderProblem[]>): ReadonlyMap<string
     severities.set(key, bucket.some(isError) ? 'error' : 'warning')
   }
   return severities
+}
+
+/* --- the run phase (12 D2) ----------------------------------------------- */
+
+/**
+ * The shape a `node_error` frame arrives in, structurally.
+ *
+ * Declared here rather than imported from `types/studio.ts` on purpose: the
+ * builder's problems index has no business depending on the run console's frame
+ * union, and everything this function reads is three keys deep. A frame that
+ * carries more is unaffected; a frame that carries less falls out of the filter.
+ */
+export interface NodeErrorFrameLike {
+  node_id?: string | null
+  details?: {
+    stage?: string | null
+    error_class?: string | null
+    message?: string | null
+    attempt?: number | null
+    will_retry?: boolean | null
+    routed?: boolean | null
+  } | null
+}
+
+/**
+ * C6 `node_error` frames as problems the dock can render - 12 D2.
+ *
+ * WHY THEY ARE PROBLEMS AT ALL. The plan's D2 asks that a failed node say so in
+ * three places at once: on the node, in the log, and in the problems dock. The
+ * dock is the one that makes a failure SURVEYABLE - four nodes red on a
+ * sixteen-node canvas is four rows here and four hunts otherwise - and it
+ * already owns "every reason this graph is not working, all at once, errors
+ * first, each one one click from the thing it is about". A run failure is that
+ * kind of fact.
+ *
+ * THE CODE IS PREFIXED, and the prefix is this module's and not the wire's. C8
+ * is explicit that run-phase classes surface through `node_error.error_class`
+ * and are NOT union members, so `auth` and `rate_limit` are the values the
+ * server really sends. Rendered raw in the code chip they would sit beside
+ * `back-edge-not-router` reading like a build-time code this build had never
+ * heard of; `run-auth` says which phase it came from in the one place a reader
+ * is already looking. Nothing is invented - the suffix is the wire value
+ * verbatim - and the frame is untouched.
+ *
+ * THE LAST ATTEMPT WINS. A retried node emits one frame per attempt, and three
+ * rows saying the same sentence about one node is a dock nobody reads. The one
+ * kept is the last, because that is the one whose `will_retry` is false and
+ * whose message describes the state the run actually ended in; the attempt
+ * count is carried into the sentence so nothing about the earlier ones is lost.
+ */
+export function runPhaseProblems(
+  frames: readonly NodeErrorFrameLike[],
+): BuilderProblem[] {
+  const latest = new Map<string, BuilderProblem>()
+  for (const frame of frames) {
+    const details = frame.details ?? null
+    // `stage: 'error'` alone is not enough: `serializer.py:455` raises one for
+    // CrewAI's own MethodExecutionFailedEvent, and a tool, an llm call and a
+    // crew each raise another. `attempt` is the field only the runtime writes.
+    if (!details || details.stage !== 'error' || typeof details.attempt !== 'number') continue
+    const nodeId = frame.node_id ?? null
+    if (!nodeId) continue
+    const attempt = details.attempt
+    const sentence = (details.message ?? '').trim() || 'the node failed'
+    latest.set(nodeId, {
+      code: `run-${details.error_class || 'error'}`,
+      severity: 'error',
+      message:
+        attempt > 1
+          ? `${sentence} (attempt ${attempt})`
+          : sentence,
+      node_id: nodeId,
+      edge_id: null,
+    })
+  }
+  return [...latest.values()]
 }

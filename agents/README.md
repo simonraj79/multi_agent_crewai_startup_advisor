@@ -89,14 +89,30 @@ CrewAI, see `patterns.md`.
 
 | Concern | Provider | Credential |
 |---|---|---|
-| LLM — default | `z-ai/glm-5.3-flash` · $0.075/$0.250 | `OPENROUTER_API_KEY` |
-| LLM — escalation | `google/gemini-3.7-flash` · $0.75/$3.75 | same |
+| LLM — default | `google/gemini-3.5-flash-lite:nitro` · $0.30/$2.50 | `OPENROUTER_API_KEY` |
+| LLM — escalation | `google/gemini-3.8-flash` · $0.75/$3.75 | same |
 | Embeddings | `google/gemini-embedding-2` @ **768** dims · $0.20/Mtok | same |
 | Web search + fetch | Firecrawl | `FIRECRAWL_API_KEY` |
 | Vector store | Pinecone · `agentic-crew-ai-index` | `PINECONE_API_KEY` |
 | Rerank | Cohere `rerank-v4.0-fast` | `COHERE_API_KEY` |
 | Database + hosting | Render · Postgres 18 + web + static | `RENDER_API_KEY` |
 | Tracing | **CrewAI AMP** (free tier) + Postgres `run_metrics` | `crewai login` |
+
+> **Both model rows were corrected on 2026-09-04**, each price measured live
+> with `mcp__openrouter__get-model` rather than copied. Escalation moved
+> `gemini-3.7-flash` → `gemini-3.8-flash` (`f19a2c6`) at an unchanged
+> $0.75 / $3.75. The default row had been **stale by a whole model** — it read
+> `z-ai/glm-5.3-flash` at $0.075 / $0.250, while `config.py:49` reads
+> `openrouter/google/gemini-3.5-flash-lite:nitro`, measured at $0.30 / $2.50.
+> `:nitro` routes on speed, not price, so that is a published floor.
+>
+> 🛑 **The tier gap is therefore 2.5× on prompt and 1.5× on completion, not
+> the 10× / 15× the specifications in this directory were written against, and
+> the two context windows are now equal.** Arithmetic is corrected in `00`,
+> `01`, `03` and `05`; the *conclusions* drawn from the old gap are flagged in
+> place and have not been re-argued. Any reasoning- or cost-measurement in
+> `agents/` predating 2026-09-04 was taken on `glm-5.3-flash` or
+> `gemini-3.7-flash` and keeps that model's name.
 
 Pinned: Python 3.13 · `crewai` **1.15.18** · `crewai-tools` **1.15.18** ·
 `firecrawl-py` **4.40.0** · `pinecone` **9.1.0**.

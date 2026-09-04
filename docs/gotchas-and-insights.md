@@ -543,6 +543,47 @@ exists, so create it first and hardcode second.
 
 ---
 
+### 36. `crewai`'s lock file is an NTFS alternate data stream, and nothing ever removes one
+
+**Symptom.** Seventeen persistence tests fail at once with
+`OSError: [Errno 22] Invalid argument:
+'C:\Users\<you>\AppData\Local\Temp\crewai:9e4096…ab.lock'`, on a tree that
+was green an hour ago and on code that does not touch that path. Every failing
+test is one that runs a real CrewAI `Flow` with persistence; nothing else
+notices, and the same modules pass on a colleague's machine.
+
+**Cause.** `crewai_core/lock_store.py:97-108` names its cross-process lock
+`crewai:<md5 of the lock name>` — a Redis channel name — and, when Redis is
+absent, reuses that string verbatim as a file name under
+`tempfile.gettempdir()` and hands it to `portalocker`. On NTFS a colon in a
+file name is stream syntax: `Temp\crewai:9e40….lock` is not a file called
+`crewai:9e40….lock`, it is a named stream `9e40….lock` on a zero-byte *file*
+called `crewai`. `portalocker` creates it without complaint. Every distinct
+lock name adds another stream to that one file, and **nothing removes a
+stream** — not the lock's release, not a test's teardown, not any cleanup this
+repository runs, because none of them knows the file exists. NTFS caps how
+many attributes one file can carry; measured 2026-09-03, the file (created
+2026-08-29) held **2,520** `.lock` streams plus its own `:$DATA`, and the next
+new lock name failed with `EINVAL`. The tests that fail are simply the ones
+whose lock name has not been seen before, which is why the set looks arbitrary
+and why a *new* test module fails first.
+
+**Do this.** Delete the file — it is a file, so `-Recurse` is beside the
+point:
+
+```powershell
+Remove-Item -LiteralPath "$env:TEMP\crewai" -Force
+```
+
+The streams go with it and the next run recreates it with one. To see it
+coming: `@(Get-Item "$env:TEMP\crewai" -Stream *).Count`. Do not "fix" it by
+pointing the tests at another temp directory — `gettempdir()` is CrewAI's
+choice, not this repository's, and the count climbs again wherever it points.
+The first time this presented, the path was not read literally and it cost
+most of a session; the second time (six `test_builder_runner` errors during the
+round-2 build) it cost one `Get-Item -Stream` and one `Remove-Item`, which is
+the whole argument for this entry.
+
 ## Checks that were satisfied by the wrong thing
 
 Five entries from the flow-builder work, kept together because they share a
@@ -784,3 +825,199 @@ builds the old shape.
 reason over the restatement — why the order is load-bearing, why the default is
 derived, what was tried and rejected. Every entry above started life as a comment
 that was not there.
+
+## Six traps a green suite could not see — plan 15, round 2 (2026-09-03)
+
+Recorded together because they share a shape with 31-35: every one was
+invisible to 1,157 green frontend tests and 1,642 green Python ones, and two
+of them were found only by LOOKING at a 1440x900 capture of the running app.
+The captures are in `docs/comparison/ours/round2/` (ignored); the commits
+they forced are `b249d89` and `d9672a0`.
+
+### 37. `withDefaults` uses a Function-typed prop's default as the value, not as a factory
+
+**Symptom.** Every version row rendered the dated form ("3 Sept, 04:38")
+and never "12 s ago", in the real app only. `versionBrowser.spec.ts` was
+green, 31 tests.
+
+**Cause.** Vue calls a prop's default as a factory only for `Object` and
+`Array` props; for a `Function` prop the default IS the function. The prop
+was declared `clock?: () => number` with the default written as a factory,
+`clock: () => () => Date.now()`, so `props.clock()` answered a *function*,
+`now - at` was `NaN`, every comparison was false and every row fell through
+to the dated form. The spec passed because every test handed in a stilled
+clock and never exercised the default.
+
+**Do this.** For a Function prop, write the function itself as the default:
+`clock: () => Date.now()`. And give every prop default a test that does NOT
+override it - the one test that would have caught this cost four lines.
+
+### 38. A template ref is `null` at a child's `onMounted`
+
+**Symptom.** The canvas was handed the shell's dock row as a prop and
+observed it in `onMounted`; the jsdom test passed; the capture showed two
+strips docked over a graph that had not moved.
+
+**Cause.** Vue assigns template refs in a post-render effect after the whole
+tree is mounted, and a child's `onMounted` runs before its parent's - so
+when the child looked, `props.dock` was still `null` and `observe` was
+skipped. The test passed because it handed the element in from the first
+render. And the obvious repair - `watch(() => props.dock, …, { immediate:
+true, flush: 'post' })` - fails the other way: an immediate post-flush
+callback is queued from setup, *ahead* of the mounted hook, and runs before
+the observer it needs exists.
+
+**Do this.** Observe whatever is there at mount, and add a non-immediate
+post-flush watch for the element arriving, changing or going. Test both
+orders: the element present from the start, and the element set after mount.
+
+### 39. A top-level injected ref is unwrapped in the template
+
+**Symptom.** `inject(BUILDER_READ_ONLY, null)` in `<script setup>`, then
+`v-if="readOnly?.value"` in the template; the lock never rendered.
+
+**Cause.** Top-level refs in `<script setup>` are auto-unwrapped in the
+template, so `readOnly` is already the boolean and `true.value` is
+`undefined`. Reading `.value` in the template is exactly wrong for a
+top-level ref and exactly right for a nested one, which is why it reads as
+plausible.
+
+**Do this.** `v-if="readOnly"`. A null default from `inject` is falsy, so the
+same expression covers "outside a canvas".
+
+### 40. SQLite drops the timezone, and `Date.parse` reads a naive stamp as local time
+
+**Symptom.** A version saved seconds ago read "8 h ago" on a machine at
+UTC+8, against a SQLite backend; the same code against PostgreSQL was right.
+
+**Cause.** `created_at` is written with `utcnow()` into
+`DateTime(timezone=True)`. PostgreSQL hands the offset back and the API
+serialises `…Z`; SQLite - every local and synthetic backend - drops the
+tzinfo, the API serialises `2026-09-03T04:38:12` with no zone, and the
+ECMAScript spec reads a date-time with no offset as LOCAL time.
+
+**Do this.** On the client, treat a stamp with no zone as UTC before parsing
+(`/(?:Z|[+-]\d\d:?\d\d)$/` or append `Z`). On the server the honest fix is
+to emit the offset regardless of dialect; until then, every `Date.parse` of
+an API timestamp needs the guard.
+
+### 41. A re-fit that fires on any shrink fights the author, and the E2E drag test measures it
+
+**Symptom.** After the first cut of D-15-2 - "re-fit whenever the canvas
+frame shrinks after the author's first gesture" - `e2e/builder.spec.ts`'s
+router-branch test failed 2 runs in 6, and 0 in 6 without it.
+
+**Cause.** The problems panel is under the canvas frame too, and it grows
+about 400ms after a node is placed, as the validate answer lands. The
+re-fit then moved every node under the author's next drag, which is the
+same jolt a human gets on every edit that changes the problem count. The
+strip the critic asked about - the version browser, the delete confirm -
+lives in a different row, the dock, which changes only when the author
+opens something.
+
+**Do this.** Observe the specific element whose change is the author's own
+action (the dock row) rather than the frame it shrinks, and defer any
+re-fit while a pointer is down. When a rule is about timing, measure it
+with the timing-sensitive test, six runs each way, before and after; a
+single green run of a flaky test is not evidence in either direction
+(CLAUDE.md remaining-work item 44 has the base rates).
+
+### 42. `git checkout <rev> -- <path>` wipes the uncommitted edits under that path
+
+**Symptom.** After measuring a flake rate against the frontend source at
+the base commit - `git checkout a952c74 -- src` then `git checkout HEAD --
+src` - the palette-row edit made ten minutes earlier was gone.
+
+**Cause.** A path checkout writes the named revision's files over the
+working tree and then `HEAD --` writes HEAD's over that; anything not
+committed under the path is overwritten both times, silently, and
+`git status` afterwards looks clean because the tree matches HEAD.
+
+**Do this.** Commit or `git stash push -- <path>` before checking an old
+revision into a path, and prefer a second worktree (`git worktree add`) for
+any measurement against an older tree. The repair here was re-applying the
+edit script; a hand edit would have been re-typed from memory.
+
+
+### 43. .NET's current directory does not follow PowerShell's `Set-Location`
+
+**Symptom.** A script that did `Set-Location <worktree>\frontend` and then
+`[IO.File]::ReadAllText("src\components\builder\BuilderView.vue")` reported
+`Could not find a part of the path 'D:\MultiAgentSystem\src\components\...'` -
+a path in the MAIN tree, from a shell whose prompt was in the worktree. The
+same script's `npx` call in the next line ran in the right place, so the
+failure read as an intermittent path problem rather than a systematic one.
+
+**Cause.** `Set-Location` moves the PowerShell provider's location.
+`[System.IO]` reads `Environment.CurrentDirectory`, which PowerShell does not
+keep in step - by design, because a provider location can be a registry key
+or a certificate store. A native process launched from the shell inherits the
+provider location, which is why `npx` was fine.
+
+**Do this.** Give every `[IO.File]` and `[IO.Directory]` call an ABSOLUTE
+path. The dangerous shape is a revert-and-restore probe - read the file,
+patch it, run a test, write the original back - because the read throws, the
+variable is null, the write throws, and the *test still runs and passes*
+against an unmodified file. That is a red-then-green measurement reporting
+green for the wrong reason, and it happened here: "1 passed" for a probe that
+had reverted nothing.
+
+### 44. An HTML comment inside a tag's attribute list is a Vue compile error
+
+**Symptom.** Adding a three-line `<!-- … -->` between two attributes of
+`<VueFlow>` took the whole builder off the air. Playwright reported
+`locator.click: Timeout` waiting for a template card; the page snapshot held
+`[plugin:vite:vue] Duplicate attribute` and Vite's error overlay.
+
+**Cause.** Vue's template compiler tokenises a tag's attribute list and has no
+state for a comment inside it; the `<!--` is parsed as an attribute name and
+the second `--` collides. The message names neither comments nor the line the
+comment starts on.
+
+**Do this.** Put the comment ABOVE the tag, or move the value into a named
+constant in `<script setup>` and comment it there - which is what
+`initialFitOptions` in `BuilderCanvas.vue` is for. The wider lesson is that a
+timeout waiting for an element that should exist is worth one look at the
+page snapshot before it is worth any look at the selector: the snapshot said
+exactly what was wrong and the selector was never the problem.
+
+### 45. `vi.useFakeTimers()` around a mount that awaits real work hangs the file
+
+**Symptom.** One new test installed fake timers, mounted a component through a
+helper that awaits a stubbed fetch, advanced 30 s and asserted. It failed -
+and took ten OTHER tests in the file with it, including three about delete,
+with a 55-second duration. The eleven failures read as a regression in the
+code under test.
+
+**Cause.** Two compounding. The helper's awaits resolve on timers that fake
+timers now control, so the mount never finishes. And the one test that failed
+never reached its `wrapper.unmount()`, leaking the `beforeunload` listener
+`useBuilderPersistence` registers on the shared `window` - so a later test's
+unload assertion read the leaked, dirty document instead of its own.
+
+**Do this.** To assert that *no* timer was armed, `vi.spyOn(window,
+'setTimeout')` - a spy records and keeps the original, so nothing else in the
+mount changes - and read `spy.mock.calls` for the delay. Reserve fake timers
+for a subject with no async mount. And when a change makes a cluster of
+unrelated tests fail, suspect a leaked listener from the one test that failed
+first before suspecting the change: the file's own `openScopes` comment
+already says this about scopes, and `beforeunload` is the same hazard one
+level up.
+
+### 46. The builder canvas pans on space-drag or middle-drag, never on a left drag
+
+**Symptom.** An E2E step that panned by pressing the canvas background and
+dragging reported "a pan did not reach it" for a node 3 px outside the pane.
+The canvas pans perfectly well by hand.
+
+**Cause.** `pan-on-drag` is `[1, 2]` - middle and right button - unless the
+space bar is held, at which point it is `true` (`BuilderCanvas.vue`, §1.48,
+so that `selection-key-code="true"` can own the left button). A left drag
+therefore drew a selection box and moved the viewport not at all.
+
+**Do this.** `keyboard.down('Space')` around the drag, which is also the
+gesture a human uses, or `mouse.down({ button: 'middle' })`. And read the
+viewport's zoom as `rect.width / offsetWidth` on any node rather than off
+`getComputedStyle(...).transform`, which answered `none` here and yields an
+identity matrix - a zoom of 1 that is really 0.66 is exactly the confident
+wrong number a layout test exists to catch.

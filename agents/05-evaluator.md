@@ -76,13 +76,30 @@ At the default `guardrail_max_retries=3`, worst case for one brief:
 4 × writing_task execution  +  4 × guardrail judgement call
 ```
 
-The Writer runs on `gemini-3.7-flash` at $3.75/Mtok completion — the most
+The Writer runs on `gemini-3.8-flash` at $3.75/Mtok completion — the most
 expensive completion rate in the crew — which makes a frequently-firing string
 guardrail the costliest thing in it. Two consequences:
 
 - Use `guardrail_max_retries: 2`, not the default 3.
 - Put deterministic checks in a **function** guardrail — arithmetic like word
   count and "does a Sources section exist" costs nothing and needs no model.
+
+> **Both tiers were corrected on 2026-09-04, prices measured live.** Escalation
+> moved `gemini-3.7-flash` → `gemini-3.8-flash` (`f19a2c6`) at the same
+> $0.75 / $3.75. The cheap tier had been recorded as `z-ai/glm-5.3-flash` at
+> $0.075 / $0.250 and is really `gemini-3.5-flash-lite:nitro` at
+> **$0.30 / $2.50**.
+>
+> 🛑 **Two arguments on this page were written against a gap four times larger
+> than the real one, and neither has been re-argued.** "A gate that costs as
+> much as the work it gates is not a gate" was written at 10× on input; it is
+> **2.5×**. And the `reasoning_effort: "minimal"` section below — "the single
+> largest cost lever in the crew" — rests on an **8.8× saving measured on
+> `glm-5.3-flash`**, which is no longer the cheap tier. Measured 2026-09-04,
+> `google/gemini-3.5-flash-lite` reports `default_effort: "minimal"` *already*,
+> so that saving may be collected by default rather than available to collect.
+> The glm measurements keep their model's name deliberately and have not been
+> re-run.
 
 ⚠️ **Exhaustion raises.** When retries run out, `Task._invoke_guardrail_function`
 (`task.py:1327` in 1.15.18 — *not* `_process_guardrail`, which does not exist) raises a
@@ -174,7 +191,7 @@ evaluator:
 
 | Setting | Value |
 |---|---|
-| `llm` | `openrouter/z-ai/glm-5.3-flash` with the effort set to **`"minimal"`** — via `additional_params={"extra_body": {"reasoning": {"effort": "minimal"}}}`. The `LLM(reasoning_effort=...)` field is accepted and then silently dropped for non-o1 models in 1.15.18; see `00-shared-config.md` §3. |
+| `llm` | `openrouter/google/gemini-3.5-flash-lite:nitro` with the effort set to **`"minimal"`** — via `additional_params={"extra_body": {"reasoning": {"effort": "minimal"}}}`. The `LLM(reasoning_effort=...)` field is accepted and then silently dropped for non-o1 models in 1.15.18; see `00-shared-config.md` §3. |
 | `tools` | *(none — it checks internal consistency, it does not re-research)* |
 | `max_iter` | `5` |
 | `max_execution_time` | `300` |
@@ -190,9 +207,9 @@ more than anywhere else.
 
 **Why the cheap tier.** This is a mechanical comparison against a fixed list, not
 a judgement call. A gate that costs as much as the work it gates is not a gate.
-At $0.075/$0.250 per Mtok, `glm-5.3-flash` is 10× cheaper on input than the
-`gemini-3.7-flash` Writer it polices. If it produces sloppy verdicts, escalate to
-`gemini-3.7-flash` — but measure first, because a gate that costs as much as the
+At $0.30/$2.50 per Mtok, `gemini-3.5-flash-lite:nitro` is **2.5×** cheaper on
+input than the `gemini-3.8-flash` Writer it polices. If it produces sloppy verdicts, escalate to
+`gemini-3.8-flash` — but measure first, because a gate that costs as much as the
 Writer inverts the economics of having one.
 
 **Why no tools.** Same logic as the Analyst. Its job is *faithfulness to the

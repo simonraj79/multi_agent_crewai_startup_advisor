@@ -123,6 +123,17 @@ const entries = computed<PortMenuEntry[]>(() => {
   const direction = props.origin?.direction ?? 'source'
 
   const isLegal = (kind: NodeKind): boolean => {
+    /*
+     * Attachments are not offered here at all, in EITHER direction, and that is
+     * a fact about the gesture rather than about the kinds. This menu creates a
+     * node and a FLOW edge as one act (`target_port: 'in'`), and an attachment
+     * has neither an `in` port to receive one nor an `out` port to send one -
+     * its single `attach` port is a different edge class entirely. Offering a
+     * tool here would create `tool.attach -> agent.in`, which `bounds.py`
+     * refuses as `attach-target-not-agent` on an edge the author was invited to
+     * draw. Attaching is a drop-onto-the-agent gesture (02 D8), not a port drag.
+     */
+    if (NODE_KINDS[kind].family === 'attachment') return false
     if (direction === 'source') return NODE_KINDS[kind].acceptsIncoming
     // The new node would be the SOURCE, so it needs somewhere for the edge to
     // leave by. Asked of `outPorts` over a default node of that kind rather

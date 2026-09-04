@@ -480,21 +480,36 @@ class TransformConfigTests(unittest.TestCase):
 
 
 class JoinTests(unittest.TestCase):
-    """`join: "any"` is the one policy rule refused at parse time."""
+    """`joins` takes two words - 03-node-library.md D3 admitted the second.
+
+    `"any"` was refused by name until D3, and the refusal was not wrong about
+    its evidence: a multi-event `or_()` listener really is added to
+    `_fired_or_listeners` on its first firing and skipped forever after. What
+    changed is the reading of what `"any"` compiles TO. `_listen_for` builds
+    the alternatives shape for it, where each alternative is a router label and
+    CrewAI re-arms an or-listener whose condition names the label a router just
+    emitted - so the second arrival is not a suppressed re-fire, it is a branch
+    that was never taken. That is what lets a router's mutually exclusive
+    branches converge instead of waiting forever.
+    """
 
     def test_all_is_accepted(self) -> None:
         parsed = document([input_node("idea")], joins={"idea": "all"})
         self.assertEqual(parsed.joins, {"idea": "all"})
 
-    def test_any_is_refused_and_the_message_says_what_it_would_do(self) -> None:
-        with self.assertRaises(ValidationError) as caught:
-            document([input_node("idea")], joins={"synthesize": "any"})
-        message = str(caught.exception)
-        self.assertIn("synthesize", message)
-        self.assertIn("silently", message)
-        self.assertIn("or_()", message)
+    def test_any_is_accepted_now_that_the_compiler_has_a_shape_for_it(self) -> None:
+        parsed = document([input_node("idea")], joins={"synthesize": "any"})
+        self.assertEqual(parsed.joins, {"synthesize": "any"})
 
-    def test_a_third_join_mode_is_refused_too(self) -> None:
+    def test_a_third_join_mode_is_refused_and_the_message_names_both_words(self) -> None:
+        with self.assertRaises(ValidationError) as caught:
+            document([input_node("idea")], joins={"synthesize": "either"})
+        message = str(caught.exception)
+        self.assertIn("either", message)
+        self.assertIn('"all"', message)
+        self.assertIn('"any"', message)
+
+    def test_a_fourth_join_mode_is_refused_too(self) -> None:
         with self.assertRaises(ValidationError) as caught:
             document([input_node("idea")], joins={"synthesize": "first"})
         self.assertIn("first", str(caught.exception))

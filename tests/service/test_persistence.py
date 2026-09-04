@@ -42,12 +42,19 @@ class PersistenceTests(unittest.TestCase):
             {
                 "builder_document_versions",
                 "builder_documents",
+                # Contract C10 (.agent/plans/15-persistence.md D6): the five
+                # gauntlet tables, landed 2026-09-02 before Stage 1 branched.
+                "builder_test_inputs",
                 "flow_states",
+                "mcp_servers",
                 "pending_feedback",
                 "run_frames",
                 "run_gates",
                 "run_node_metrics",
                 "runs",
+                "user_credentials",
+                "user_skills",
+                "user_tools",
             },
             set(inspect(self.store.engine).get_table_names()),
         )
@@ -65,7 +72,7 @@ class PersistenceTests(unittest.TestCase):
 
         self.assertEqual(
             self.store.load_state("flow-a"),
-            {"id": "flow-a", "count": 2, "api_key": "[REDACTED]"},
+            {"id": "flow-a", "count": 2, "api_key": "***"},
         )
         with self.assertRaises(PersistenceValueError):
             self.store.save_state("flow-a", "bad", {"live": object()})

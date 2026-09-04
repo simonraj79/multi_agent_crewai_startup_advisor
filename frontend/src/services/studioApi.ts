@@ -1,7 +1,9 @@
 import { buildMockSegments, type MockScriptStep } from '../data/mockFrames'
 import { MOCK_GRAPH } from '../data/mockGraph'
+import { readErrorDetail } from '../data/serverLimits'
 import { getAccessToken } from './authClient'
 import { API_BASE_URL, authedFetch, fetchJson } from './httpCore'
+import { saveBlob } from '../utils/saveBlob'
 import type {
   BackendFramePage,
   BackendGatePrompt,
@@ -136,6 +138,19 @@ export class StudioApi {
    * operator tried the button that cannot work.
    */
   probeFailure: string | null = null
+  /**
+   * The server's own sentence when the probe reached a REAL server that
+   * refused the request, or null. Distinct from `probeFailure`, which means no
+   * live backend answered at all.
+   *
+   * D-01-2: a 403 or 404 from the probe is proof of a backend, exactly as the
+   * 401 above is, and until 2026-09-03 both were filed under "no backend" and
+   * dropped the console into the scripted mock - a 14-node fabricated topology
+   * drawn under the name of a workflow the server had just refused, with an
+   * enabled Launch. The sentence is kept so the console can show what the
+   * server said instead of what a demonstration would have looked like.
+   */
+  probeRefusal: string | null = null
   /*
    * Kept as a field rather than reaching for `API_BASE_URL` at each use, so
    * `initialize`'s misconfiguration sentence and `subscribe`'s socket URL go on
@@ -151,6 +166,7 @@ export class StudioApi {
     if (!force && this.mode !== 'probing') return this.mode
 
     this.probeFailure = null
+    this.probeRefusal = null
     /*
      * The token is minted BEFORE the clock starts. `authedFetch` opens with
      * `await getAccessToken(...)`, which is itself a network request to the
@@ -223,6 +239,20 @@ export class StudioApi {
           `The validator API is misconfigured: ${this.baseUrl || window.location.origin}` +
           `/api/workflows answered ${response.status} ${contentType || 'with no content type'}` +
           ' instead of JSON. This usually means VITE_API_URL was not set when the site was built.'
+      } else if (response.status >= 400 && response.status < 500) {
+        /*
+         * Any other 4xx is the 401 case again (D-01-2). A 403 or a 404 can
+         * only come from a real server that parsed the request and refused
+         * it, so there is nothing to fall back TO - and falling back was the
+         * defect: the console drew the demonstration graph under the refused
+         * workflow's own name with a live-looking Launch. The mode is live,
+         * and the server's sentence is kept for the console to show. A 5xx
+         * stays below: Render's edge answers 502 for a service that is not
+         * there, and that IS "no backend".
+         */
+        this.mode = 'live'
+        const body = await response.text().catch(() => '')
+        this.probeRefusal = readErrorDetail(body, response.status)
       } else {
         this.mode = 'mock'
         this.probeFailure =
@@ -447,11 +477,48 @@ export class StudioApi {
       socket.addEventListener('error', () => socket?.close())
     }
 
+    /*
+     * The browser saying it is offline IS a dropped stream, and until this the
+     * console did not believe it.
+     *
+     * A WebSocket whose network has gone away does not necessarily fire
+     * `close` - not promptly, and on a laptop that suspended, not for minutes.
+     * Nothing else here polls, so the console went on reporting `connected`
+     * over a socket that was carrying nothing: exactly the shape of lie the
+     * header badge was fixed for once already (CLAUDE.md closed item 31),
+     * one layer down and about the stream rather than about the transport.
+     *
+     * Closing the socket rather than merely reporting `reconnecting` is what
+     * makes the recovery real. `close` is the one path that increments the
+     * attempt counter, schedules the backoff and eventually re-handshakes with
+     * `after=` at the client's own cursor - so the drop is handled by the code
+     * that already knows how to come back from one, instead of by a second
+     * mechanism that would have to learn.
+     *
+     * `online` retries at once rather than waiting out a backoff that may have
+     * grown to ten seconds while the network was away. It is safe to call into
+     * a socket that is already open: `connect` is only reached from here when
+     * the previous one has closed, because that is what `onOffline` did first.
+     */
+    const onOffline = () => {
+      if (closed) return
+      socket?.close()
+    }
+    const onOnline = () => {
+      if (closed || socket?.readyState === WebSocket.OPEN) return
+      window.clearTimeout(reconnectTimer)
+      void connect()
+    }
+    window.addEventListener('offline', onOffline)
+    window.addEventListener('online', onOnline)
+
     // Floating on purpose: `connect` is async now but never rejects, and the
     // caller wants the unsubscribe function back immediately, not a socket.
     void connect()
     return () => {
       closed = true
+      window.removeEventListener('offline', onOffline)
+      window.removeEventListener('online', onOnline)
       window.clearTimeout(reconnectTimer)
       window.clearInterval(pingTimer)
       if (this.liveSockets.get(runIdValue) === socket) this.liveSockets.delete(runIdValue)
@@ -531,6 +598,50 @@ export class StudioApi {
       this.pendingGateReplies.delete(requestId)
       pending.reject(new Error(reason))
     }
+  }
+
+  /**
+   * Start a run that REPLAYS another run up to `nodeId` and runs from there.
+   *
+   * C7's `resume_from`, and the reason it is a separate method rather than an
+   * argument to `startRun`: this is not a launch. It never re-probes the
+   * transport, it is refused outright in mock mode, and it carries the same
+   * `inputs` the source run carried rather than whatever is in the idea box -
+   * a resume that ran a different idea from the run it is resuming would be a
+   * new run wearing the old one's name.
+   *
+   * The server answers four ways and every one of them is a sentence worth
+   * showing: 404 for a run that is not the caller's (`require_own_run` answers
+   * 404 rather than 403 because a 403 confirms the run exists), 422 for a run
+   * still in flight, 422 for a workflow that is not a compiled graph, and
+   * `replay-missing-output` when the saved state has no value for a node
+   * upstream of the replay point. `fetchJson` unwraps `detail`, so the caller
+   * gets the sentence and not the envelope.
+   */
+  async resumeRun(
+    sessionId: string,
+    sourceRunId: string,
+    nodeId: string,
+    workflowId: string,
+    inputs: Record<string, unknown>,
+    gates: GatesMode = 'human',
+  ): Promise<StartRunResponse> {
+    if (this.mode !== 'live') {
+      throw new Error('Re-running from a node needs the live backend.')
+    }
+    return fetchJson<StartRunResponse>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/runs`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_id: workflowId,
+          inputs,
+          gates,
+          resume_from: { run_id: sourceRunId, node_id: nodeId },
+        }),
+      },
+    )
   }
 
   async cancelRun(runIdValue: string): Promise<void> {
@@ -657,37 +768,6 @@ export class StudioApi {
   }
 }
 
-/**
- * Hands a blob to the browser's download machinery.
- *
- * An object URL is a document-lifetime entry in the blob URL store: nothing
- * reclaims it, so every one that is minted has to be revoked or the blob stays
- * resident until the tab closes. The revoke is in `finally` because `click()`
- * can throw - a blocked popup, a detached document during teardown - and a
- * throw on the happy path was the one way this could leak.
- *
- * The revoke is synchronous, immediately after the click. Chromium and Firefox
- * both resolve the blob URL while the click is still being dispatched, so the
- * download is already underway by then. WebKit has historically been less
- * forgiving; if a Safari download ever comes back empty, this is the line, and
- * the fix is to defer the revoke rather than to drop it.
- */
-function saveBlob(blob: Blob, filename: string): void {
-  const href = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = href
-  anchor.download = filename
-  anchor.rel = 'noopener'
-  anchor.style.display = 'none'
-  document.body.append(anchor)
-  try {
-    anchor.click()
-  } finally {
-    anchor.remove()
-    URL.revokeObjectURL(href)
-  }
-}
-
 function normalizeGate(gate: BackendGatePrompt) {
   return {
     gateId: gate.gate_id,
@@ -753,9 +833,11 @@ export type StudioApiLike = Pick<
   StudioApi,
   | 'mode'
   | 'probeFailure'
+  | 'probeRefusal'
   | 'initialize'
   | 'getGraph'
   | 'startRun'
+  | 'resumeRun'
   | 'getRun'
   | 'getFrames'
   | 'subscribe'

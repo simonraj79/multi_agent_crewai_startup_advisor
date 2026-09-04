@@ -33,6 +33,17 @@ const props = withDefaults(
     /** The server's exact wording for a repeat, so both refusals read alike. */
     duplicateMessage: string
     placeholder?: string
+    /**
+     * How many chips the schema admits, when it admits a bounded number.
+     *
+     * `LlmConfig.stop` is the case: `_validate_stop` REFUSES a fifth rather than
+     * truncating, so a fifth chip is a 422 - which makes it a Tier-1 rule this
+     * widget is allowed, and required, to refuse at the keyboard. Absent means
+     * unbounded, which is what `editable_fields` and `tool_names` are.
+     */
+    max?: number
+    /** What to say at the ceiling. The schema's own sentence, so both read alike. */
+    maxMessage?: string
   }>(),
   { subject: 'entry', pattern: () => /^[a-z][a-z0-9_]{0,39}$/, placeholder: 'Type and press Enter' },
 )
@@ -41,9 +52,14 @@ const emit = defineEmits<{ commit: [value: string[]] }>()
 
 const draft = ref('')
 
+const full = computed(() => props.max !== undefined && props.modelValue.length >= props.max)
+
 const hint = computed(() => {
   const value = draft.value.trim()
   if (!value) return undefined
+  if (full.value) {
+    return props.maxMessage ?? `At most ${props.max} of these are allowed.`
+  }
   if (props.modelValue.includes(value)) return props.duplicateMessage
   if (!props.pattern.test(value)) {
     return `A ${props.subject} must start with a lowercase letter and use only lowercase letters, digits and underscores.`
@@ -108,7 +124,8 @@ function onBackspace(): void {
         spellcheck="false"
         autocomplete="off"
         autocapitalize="off"
-        :placeholder="placeholder"
+        :placeholder="full ? '' : placeholder"
+        :disabled="full"
         :aria-describedby="row.describedBy"
         :aria-invalid="row.invalid"
         @keydown.enter.prevent="add"

@@ -1,0 +1,112 @@
+{
+  "status": "completed",
+  "usage": {
+    "successful_requests": 10,
+    "prompt_tokens": 31711,
+    "completion_tokens": 7119,
+    "total_tokens": 38830,
+    "call_count": 10,
+    "elapsed_ms": 33972,
+    "cost_usd": 0.04171325
+  },
+  "result": {
+    "provisional": true,
+    "thin_dimensions": [
+      "D",
+      "C",
+      "F",
+      "X"
+    ],
+    "sources": [
+      {
+        "claim": "Use MagicSchool’s AI Lesson Plan Generator to quickly build high-quality plans tailored to your subject, goals, and standards. Great for all grade levels.",
+        "url": "https://www.magicschool.ai/tools/lesson-plan",
+        "publisher": "www.magicschool.ai",
+        "dated": "2026-09-04T08:47:54Z",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "firecrawl"
+      },
+      {
+        "claim": "Eduaide helps K-12 teachers turn learning objectives, standards, and source materials into lesson plans, assessments, graphic organizers, games, and differentiated classroom resources.",
+        "url": "https://www.eduaide.ai/",
+        "publisher": "Eduaide",
+        "dated": "2026-09-04T08:47:54Z",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "firecrawl"
+      },
+      {
+        "claim": "NCCE serves educational institutions across the globe providing professional learning opportunities. NCCE embraces every opportunity to work closely with schools and districts of any size to ensure delivery of relevant and rigorous professional learning experiences.",
+        "url": "https://ncce.org/five-new-ai-lesson-plan-generators/",
+        "publisher": "NCCE",
+        "dated": "2025-07-19T09:02:00+00:00",
+        "dated_is_retrieval_time": false,
+        "retrieved_via": "firecrawl"
+      },
+      {
+        "claim": "I started as a teacher. I taught 7th-grade English and writing with Teach For America, and every day I struggled to deliver differentiated instruction to 30 students with 30 different sets of needs. Some students needed remediatio",
+        "url": "https://news.ycombinator.com/item?id=48981136",
+        "publisher": "Hacker News",
+        "dated": "2026-07-20T16:32:10.000Z",
+        "dated_is_retrieval_time": false,
+        "retrieved_via": "hn_algolia"
+      },
+      {
+        "claim": "Create Books and Worksheets: Authors, educators, and technical writers can use the app to assemble books, worksheets, and other large projects, especially when working in a modular or component-based approach. Books can also be created using prompts, and unique worksheets can be generated for each student.",
+        "url": "https://news.ycombinator.com/item?id=41289451",
+        "publisher": "Hacker News",
+        "dated": "2024-08-19T09:45:58.000Z",
+        "dated_is_retrieval_time": false,
+        "retrieved_via": "hn_algolia"
+      },
+      {
+        "claim": "I built ConceptViz (https://conceptviz.app ) for teachers who spend too much time searching or drawing diagrams for science and math lessons.",
+        "url": "https://news.ycombinator.com/item?id=46097211",
+        "publisher": "Hacker News",
+        "dated": "2025-11-30T15:06:13.000Z",
+        "dated_is_retrieval_time": false,
+        "retrieved_via": "hn_algolia"
+      },
+      {
+        "claim": "SVstudent/LLM-Math: license permits commercial = false, months since push = 11, relevance = IRRELEVANT, archived = false",
+        "url": "https://github.com/SVstudent/LLM-Math",
+        "publisher": "GitHub",
+        "dated": "2026-09-04",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      },
+      {
+        "claim": "ellmos-ai/worksheet-generator: license permits commercial = true, months since push = 0, relevance = SOLVES_ENTIRELY, archived = false",
+        "url": "https://github.com/ellmos-ai/worksheet-generator",
+        "publisher": "GitHub",
+        "dated": "2026-09-04",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      },
+      {
+        "claim": "ali-hassan2509/ai-paper-generator: license permits commercial = false, months since push = 2, relevance = IRRELEVANT, archived = false",
+        "url": "https://github.com/ali-hassan2509/ai-paper-generator",
+        "publisher": "GitHub",
+        "dated": "2026-09-04",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      },
+      {
+        "claim": "Caravaca-Labs/puzzletide-cli: license permits commercial = true, months since push = 1, relevance = IRRELEVANT, archived = false",
+        "url": "https://github.com/Caravaca-Labs/puzzletide-cli",
+        "publisher": "GitHub",
+        "dated": "2026-09-04",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      },
+      {
+        "claim": "JovannyEspinal/chiron: license permits commercial = false, months since push = 3, relevance = IRRELEVANT, archived = false",
+        "url": "https://github.com/JovannyEspinal/chiron",
+        "publisher": "GitHub",
+        "dated": "2026-09-04",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      }
+    ],
+    "markdown_body_chars": 8042
+  }
+}

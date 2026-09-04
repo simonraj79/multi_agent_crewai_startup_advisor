@@ -4,10 +4,12 @@ version = "0.1.0"
 description = "Two CrewAI applications on one package: Brief Crew (Researcher/Analyst/Writer over a warm Pinecone cache) and Validator Studio (a six-agent startup-idea validator with durable human gates, a FastAPI/WebSocket service and a Vue 3 UI)."
 readme = "README.md"
 authors = [{ name = "Simon Raj", email = "inspiring.resilience@gmail.com" }]
-# NOTE: there is no `license` field yet, and no LICENSE file at the repo root.
-# Until one exists, default copyright applies and nobody may legally reuse this
-# code. See docs/licensing.md for the options and what to add here once you
-# have chosen - it is a two-line change (`license` plus a LICENSE file).
+# MIT, chosen by the owner on 2026-09-04 (PLANS.md decision 11 depended on this).
+# The LICENSE file at the repo root is the authoritative text; docs/licensing.md
+# records the options that were weighed and why the vendored MIT skills under
+# .agents/skills/ keep their own notices.
+license = "MIT"
+license-files = ["LICENSE"]
 # crewai requires >=3.10,<3.14. Pinned to 3.13 in .python-version as well:
 # Render services created after Feb 2026 default to 3.14, which would fail the build.
 requires-python = ">=3.10,<3.14"

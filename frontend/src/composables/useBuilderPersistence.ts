@@ -9,11 +9,14 @@ import type {
   DocumentId,
   DocumentStatus,
   NodeId,
+  SaveSource,
 } from '../types/builder'
 import { BuilderConflictError, builderApi } from '../services/builderApi'
 import type { BuilderApiLike } from '../services/builderApi'
 import { fingerprint, toWire, wireBytes } from '../utils/builderSerialize'
 import { vocabulary } from '../data/builderVocabulary'
+import { scopedKey } from '../data/identityStorage'
+import type { StorageIdentity } from '../data/identityStorage'
 import type { BuilderDocumentStore } from './useBuilderDocument'
 
 /**
@@ -46,8 +49,14 @@ import type { BuilderDocumentStore } from './useBuilderDocument'
 /** Spec §2 WP-B. Long enough that a sentence being typed is one save, short enough to be a safety net. */
 const AUTOSAVE_IDLE_MS = 2500
 
-/** `builder-draft:<id>`. One key per document, so two tabs on two graphs do not fight. */
-const DRAFT_PREFIX = 'builder-draft:'
+/**
+ * `builder-draft:<id>`. One key per document, so two tabs on two graphs do not
+ * fight - and, signed in, one key per PERSON per document (`u:<id>:` in front;
+ * `identityStorage.ts`, D-01-5), so two people on one browser do not share.
+ * Exported so `tests/identityStorage.spec.ts` can pin the sign-out sweep's
+ * legacy list against it.
+ */
+export const DRAFT_PREFIX = 'builder-draft:'
 
 /** The stored-draft envelope. Versioned, because a shape change must discard rather than misread. */
 interface StoredDraft {
@@ -96,6 +105,33 @@ export type SaveState = 'clean' | 'dirty' | 'saving' | 'conflict' | 'offline'
 export function useBuilderPersistence(
   document: BuilderDocumentStore,
   api: BuilderApiLike = builderApi,
+  options: {
+    /**
+     * What to do once a write has actually landed.
+     *
+     * `onSaved` exists because the saved-graphs list was refreshed on `mount` and
+     * on `publish` and nowhere else, so a first Ctrl+S turned the chip to
+     * `saved · v1` above a panel still reading "No saved graphs yet".
+     *
+     * A hook rather than a watcher on `documentId`/`version` in the caller, and
+     * the difference is not style. A watcher is keyed on state that several
+     * things move - `adoptIdentity` runs from `adopt`, from `discardMine` and
+     * from `keepMine` as well as from here - and measured, it fired two library
+     * fetches for the first save and three for the second. This fires exactly
+     * once per successful write, by construction, because there is exactly one
+     * place a successful write finishes. It also reaches autosave, which calls
+     * `save()` from inside this composable where no wrapper in the caller could.
+     */
+    onSaved?: () => void
+    /**
+     * Whose browser this is (D-01-5). The draft is keyed to the signed-in
+     * user's id, so a different person on the same profile never reads it and
+     * a sign-out can remove it. A getter rather than a value so it is never
+     * stale; `null`, or no getter at all, is nobody and keeps the anonymous
+     * key shape the auth-off backend and the unit suite rely on.
+     */
+    userId?: () => StorageIdentity
+  } = {},
 ) {
   /** Server-assigned, so null until a create comes back. `builder-draft:<id>` keys off it. */
   const documentId = shallowRef<DocumentId | null>(null)
@@ -190,14 +226,14 @@ export function useBuilderPersistence(
     if (!dirty.value || documentId.value === null || saving.value || conflict.value) return
     idleTimer = window.setTimeout(() => {
       idleTimer = 0
-      void save()
+      void save('autosave')
     }, AUTOSAVE_IDLE_MS)
   }
 
   /* --- the local draft --------------------------------------------------- */
 
   function draftKey(id: DocumentId): string {
-    return `${DRAFT_PREFIX}${id}`
+    return scopedKey(`${DRAFT_PREFIX}${id}`, options.userId?.())
   }
 
   /**
@@ -215,12 +251,17 @@ export function useBuilderPersistence(
    * worse than no draft: it would be offered on the next load and would restore
    * work the author has since moved past.
    */
-  function writeDraft(): void {
+  function writeDraft(source: BuilderDocument = document.doc.value): void {
     const id = documentId.value
     if (id === null) return
+    // A draft is a claim about HEAD. While an older version is on screen nothing
+    // can be edited, and a draft written from it would carry a `baseVersion` the
+    // next load discards - and overwrite, under the same key, a genuine
+    // head-based draft another tab may have left.
+    if (viewingVersion.value) return
 
     const limit = vocabulary.value?.bounds.max_document_bytes
-    if (limit !== undefined && wireBytes(document.doc.value) > limit) {
+    if (limit !== undefined && wireBytes(source) > limit) {
       draftDropped.value = true
       try {
         window.localStorage.removeItem(draftKey(id))
@@ -234,7 +275,7 @@ export function useBuilderPersistence(
       v: 1,
       baseVersion: version.value,
       savedAt: new Date().toISOString(),
-      document: toWire(document.doc.value),
+      document: toWire(source),
     }
     try {
       window.localStorage.setItem(draftKey(id), JSON.stringify(draft))
@@ -340,8 +381,28 @@ export function useBuilderPersistence(
     headVersion.value = model.head_version
     status.value = model.status
     publishedHere.value = model.published
-    if (model.status === 'draft') publishedVersion.value = null
-    else if (model.published) publishedVersion.value = model.version
+    // `live_version` is the SERVICE's answer and `status` is the ROW's, and the
+    // two legitimately disagree in both directions - which is why this reads
+    // both rather than deriving one from the other.
+    //
+    // It used to read `status` alone: a `draft` head nulled `publishedVersion`,
+    // so the `v1 is live` chip vanished the instant the author saved v2 - at
+    // exactly the moment it starts mattering, because v1 goes on answering
+    // launches while they edit. `save` returning a published head to draft is
+    // the server behaving correctly; the bar was reading the wrong fact.
+    //
+    // The fallback is the other direction: a row that says `published` with
+    // nothing registered here (a restart clears the process maps) keeps the
+    // note, which is what makes `liveNote`'s "published but not registered
+    // here - republish it" branch reachable at all. It was not, before: with
+    // no `else` this assignment simply did not run and the note stayed empty.
+    publishedVersion.value =
+      model.live_version ?? (model.status === 'published' ? model.head_version : null)
+    // The store's lock is set HERE, synchronously, from the same two numbers
+    // `viewingVersion` reads - not from a watcher on them, which would run a
+    // tick later and leave `restoreVersion`'s commit refused by a lock that
+    // had not yet heard head was back in hand.
+    document.readOnly.value = model.head_version > 0 && model.version !== model.head_version
   }
 
   /**
@@ -356,7 +417,13 @@ export function useBuilderPersistence(
     adoptIdentity(model)
     conflict.value = null
     error.value = ''
-    considerDraft(model.id as DocumentId, model)
+    restoreOffer.value = null
+    pendingRestore.value = null
+    // A stored version that is not head has no draft to consider. The offer
+    // condition is `baseVersion === head_version`, which a head-based draft
+    // still meets while v3 of v7 is on screen - so consulting storage here would
+    // offer the author work about a document they are not looking at.
+    if (model.version === model.head_version) considerDraft(model.id as DocumentId, model)
   }
 
   /** Fetch a document by id and adopt it. The `#/build/:documentId` entry point. */
@@ -385,6 +452,7 @@ export function useBuilderPersistence(
     error.value = ''
     draftDropped.value = false
     restoreOffer.value = null
+    document.readOnly.value = false
   }
 
   /** A successful publish is the other way this session learns which version is live. */
@@ -392,6 +460,20 @@ export function useBuilderPersistence(
     publishedVersion.value = publishedAt
     status.value = 'published'
     if (publishedAt === version.value) publishedHere.value = true
+  }
+
+  /**
+   * The reverse: `POST .../unpublish` landed (plan 15 D3, round 2 D-15-10).
+   *
+   * Three facts and nothing else - the document on screen, its history and
+   * its version are untouched, because unpublishing changes what the SERVICE
+   * runs and not what the author drew. `adopt` would have reloaded the
+   * document and cleared the undo ring for a change that edited nothing.
+   */
+  function noteUnpublished(): void {
+    publishedVersion.value = null
+    publishedHere.value = false
+    status.value = 'draft'
   }
 
   /* --- the save ----------------------------------------------------------- */
@@ -411,8 +493,13 @@ export function useBuilderPersistence(
    * spec §4.6 is explicit that a 409 never auto-reloads, because the author's
    * only copy of their work is the one on screen.
    */
-  async function save(): Promise<void> {
+  async function save(origin: SaveSource = 'save', restoredFrom?: number): Promise<void> {
     if (saving.value || conflict.value) return
+    // Ctrl+S over v3 of v7 would PUT with `expected_version: 3` and be a 409
+    // about a conflict nobody had - the version on screen is read-only, so
+    // there is nothing to write. `restoreVersion` re-adopts head BEFORE it
+    // calls this, which is what lets a restore through the same door.
+    if (viewingVersion.value) return
     cancelAutosave()
     document.sealHistory()
 
@@ -420,15 +507,39 @@ export function useBuilderPersistence(
     const id = documentId.value
     saving.value = true
     try {
+      // `origin` is what the version browser will say this row came from
+      // (D-15-3): the idle timer says `autosave`, Ctrl+S says `save`, and
+      // `restoreVersion` says which version it put back. A create carries
+      // none - the server writes `created` itself.
       const model =
-        id === null ? await api.create(snapshot) : await api.save(id, snapshot, version.value)
+        id === null
+          ? await api.create(snapshot)
+          : await api.save(id, snapshot, version.value, { source: origin, restoredFrom })
       adoptIdentity(model)
       error.value = ''
-      if (document.doc.value === snapshot) document.markSaved()
       // Rewritten rather than removed, so the key carries the NEW baseVersion.
       // A draft left behind at an older base is discarded on the next load and
       // the author is told nothing; one that matches head is simply not offered.
-      writeDraft()
+      //
+      // Written from the RESPONSE when nothing changed during the round trip.
+      // The server fills in schema defaults on the way in (since plan 01,
+      // `credential_id: null` on every agent node), so a document born from a
+      // template no longer round-trips byte-identical, and a draft written from
+      // the local copy fingerprinted differently from the document the next
+      // load fetched - the restore bar then offered the author the version they
+      // were looking at. The response is the canonical form of exactly what is
+      // on screen; the local copy is written only when it holds work the
+      // response does not. `tests/builderDraftCanonical.spec.ts`.
+      if (document.doc.value === snapshot) {
+        document.markSaved()
+        writeDraft(model.document)
+      } else {
+        writeDraft()
+      }
+      // Last, and inside the `try`: a save that threw did not change what the
+      // library holds, and telling the caller otherwise would have it fetch a
+      // list to redraw it identically.
+      options.onSaved?.()
     } catch (failure) {
       if (failure instanceof BuilderConflictError) {
         conflict.value = { detail: failure.detail, storedVersion: failure.storedVersion }
@@ -494,6 +605,53 @@ export function useBuilderPersistence(
     await save()
   }
 
+  /* --- versions (plan 15 D3) ----------------------------------------------- */
+
+  /**
+   * True while the document on screen is a stored version that is not head.
+   *
+   * Derived from the two numbers `adoptIdentity` already writes rather than
+   * from a flag `open(id, atVersion)` would set, so there is no third thing
+   * to keep in step: a save, a restore or a plain `open(id)` all move
+   * `version` back onto `headVersion` and this reads false again by
+   * arithmetic. `headVersion > 0` excludes the unsaved draft, where both are 0.
+   */
+  const viewingVersion = computed(
+    () => headVersion.value > 0 && version.value !== headVersion.value,
+  )
+
+  /**
+   * Make the version on screen the NEXT head, and leave head one Ctrl+Z away.
+   *
+   * Never a rewrite. History is append-only on the server - `store.save`
+   * stamps `expected + 1` - so restoring v3 over a head of v7 produces v8 whose
+   * content is v3's, and v4..v7 stay exactly where they were. The shape is
+   * `keepMine`'s: `load(head)` puts the server's version in hand, the restored
+   * document is committed over it, the ring holds one entry, and the author who
+   * restored the wrong version is a single undo from where they were.
+   *
+   * `expected_version` is adopted from the head just fetched, which is what
+   * makes the PUT a compare-and-set against the version that actually exists
+   * rather than the one this tab opened with. A head somebody else wrote in
+   * between is still a 409 through `save()`, and `ConflictDialog` meets it like
+   * any other. Head is re-GET rather than remembered because the ring needs its
+   * DOCUMENT, and the version list carries only numbers.
+   */
+  async function restoreVersion(): Promise<void> {
+    if (!viewingVersion.value || saving.value || conflict.value) return
+    const restored = document.doc.value
+    const from = version.value
+    const head = await loadHead()
+    document.load(head.document)
+    // Head's identity BEFORE the commit: `adoptIdentity` is what releases the
+    // store's read-only lock, and a commit made while v3 was still the version
+    // in hand would be refused by it - silently, which is the one way this
+    // function could do nothing and say so nowhere.
+    adoptIdentity(head)
+    document.commit(`Restored v${from} over v${head.version}`, restored)
+    await save('restore', from)
+  }
+
   /* --- wiring ------------------------------------------------------------- */
 
   watch(document.doc, () => {
@@ -537,11 +695,14 @@ export function useBuilderPersistence(
     adopt,
     startNew,
     notePublished,
+    noteUnpublished,
     loadHead,
     discardMine,
     keepMine,
     acceptRestore,
     dismissRestore,
+    viewingVersion,
+    restoreVersion,
   }
 }
 

@@ -110,6 +110,72 @@ def _document(document_id: str, *, compiles: bool = True) -> Any:
     )
 
 
+def _authored_document(document_id: str, *, model: str) -> Any:
+    """The same shape with an AUTHORED agent, so the model id is the variable.
+
+    A library node names an `agent_id` and no model at all - its tier chooses
+    one - so a "the roster moved" test has to use the arm where the author
+    writes the model down.
+    """
+
+    from brief_crew.builder.document import BuilderDocument
+    from brief_crew.config import BUILDER_DOCUMENT_SCHEMA, RUN_RESULT_BODY_KEYS
+
+    return BuilderDocument.model_validate(
+        {
+            "schema": BUILDER_DOCUMENT_SCHEMA,
+            "id": document_id,
+            "name": f"Graph {document_id}",
+            "version": 1,
+            "input_field": "idea",
+            "nodes": [
+                {"id": "idea", "kind": "input", "label": "idea", "config": {"field": "idea"}},
+                {
+                    "id": "draft",
+                    "kind": "agent",
+                    "label": "draft",
+                    "config": {
+                        "role": "drafter",
+                        "goal": "draft it",
+                        "backstory": "years of it",
+                        "task": {
+                            "description": "work from ${state.out__idea}",
+                            "expected_output": "a paragraph",
+                        },
+                        "llm": {"model": model},
+                        "tier": "cheap",
+                    },
+                },
+                {
+                    "id": "report",
+                    "kind": "output",
+                    "label": "report",
+                    "config": {
+                        "body_key": RUN_RESULT_BODY_KEYS[0],
+                        "source": "${state.out__draft}",
+                    },
+                },
+            ],
+            "edges": [
+                {
+                    "id": "e0",
+                    "source": "idea",
+                    "source_port": "out",
+                    "target": "draft",
+                    "target_port": "in",
+                },
+                {
+                    "id": "e1",
+                    "source": "draft",
+                    "source_port": "out",
+                    "target": "report",
+                    "target_port": "in",
+                },
+            ],
+        }
+    )
+
+
 def _workflow_id(document: Any) -> str:
     """The compiled workflow id for a document, without registering anything."""
 
@@ -211,6 +277,93 @@ class BuilderRehydrationTestCase(BuilderRegistrationCleanup):
         }
         options.update(kwargs)
         return rehydrate_published_workflows(**options)
+
+
+class SchemaAndModelDriftTests(BuilderRehydrationTestCase):
+    """10 criterion 10: what a boot does with a row the world has moved past.
+
+    Two kinds of drift, and the answers are deliberately different:
+
+    * the SCHEMA moved - the row is upgraded on the way out and rehydrates
+      normally, because a document written under an older schema is not a broken
+      document;
+    * the ROSTER moved - the model that row names is gone, so it cannot be
+      compiled and is skipped with the compiler's own sentence. Skipped and NOT
+      fatal: bounds and rosters are expected to move, and a graph published
+      under a laxer set must not be the reason a process fails to boot.
+    """
+
+    def test_a_stored_row_comes_back_through_the_upgrade_seam(self) -> None:
+        """The read path calls `upgrade_document`, so a v1 row is upgradable.
+
+        **The mapping is registered and inert at head**, because
+        `config.BUILDER_DOCUMENT_SCHEMA` is still `builder.flow/v1` - moving it
+        is a two-suite contract change plan 15's own module docstring describes
+        and does not take. So what is asserted here is the SEAM being in the
+        rehydration read path, with the walk itself proved end to end by
+        `tests/builder/test_upgrade.py` under a patched constant. Asserting
+        anything stronger would be asserting a constant nobody has moved.
+        """
+
+        from unittest.mock import patch
+
+        import brief_crew.builder.store as store_module
+
+        persistence = self.persistence()
+        document = _document(GOOD_ID)
+        self.publish_into(persistence, document)
+        seen: list[str] = []
+        real = store_module.upgrade_document
+
+        def watched(payload: Any) -> Any:
+            seen.append("upgraded")
+            return real(payload)
+
+        with patch.object(store_module, "upgrade_document", watched):
+            report = self.sweep(persistence, self.registry(persistence))
+        self.track(_workflow_id(document))
+        self.assertEqual(len(report.registered), 1)
+        self.assertTrue(seen, "the sweep did not go through the upgrade seam")
+
+    def test_a_model_no_longer_in_the_registry_is_skipped_and_named(self) -> None:
+        from brief_crew.builder import MODEL_UNKNOWN
+
+        persistence = self.persistence()
+        good = _document(GOOD_ID)
+        stale = _authored_document("ug_5a1e000d", model="acme/model-that-was-retired")
+        self.publish_into(persistence, good)
+        self.publish_into(persistence, stale)
+        # Only the good one has a workflow id at all: `_workflow_id` compiles,
+        # and the whole point of the stale row is that it no longer does.
+        self.track(_workflow_id(good))
+
+        with self.assertLogs("brief_crew.service.builder_rehydrate", level="WARNING") as logs:
+            report = self.sweep(persistence, self.registry(persistence))
+
+        self.assertEqual(report.registered, (_workflow_id(good),))
+        skipped = dict(report.skipped)
+        self.assertIn("ug_5a1e000d", skipped)
+        self.assertIn(MODEL_UNKNOWN, skipped["ug_5a1e000d"])
+        self.assertIn("ug_5a1e000d", "\n".join(logs.output))
+        # And the sweep did not stop: the good graph behind it landed.
+        self.assertFalse(report.stopped_early)
+
+    def test_the_process_still_boots_with_such_a_row_in_the_store(self) -> None:
+        """The whole point of skipping rather than raising.
+
+        `autoDeploy: yes` is on both Render services, so every push to `main`
+        restarts the API - and a row published under a roster that has since
+        changed must not be the thing that stops it coming back up.
+        """
+
+        persistence = self.persistence()
+        self.publish_into(
+            persistence, _authored_document("ug_5a1e0002", model="acme/gone")
+        )
+        report = self.sweep(persistence, self.registry(persistence))
+        self.assertEqual(report.registered, ())
+        self.assertEqual(len(report.skipped), 1)
+        self.assertFalse(report.stopped_early)
 
 
 class RestartRestoresPublishedGraphs(BuilderRehydrationTestCase):

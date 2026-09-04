@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useVueFlow } from '@vue-flow/core'
 import type { NodeDragEvent } from '@vue-flow/core'
 import BuilderCanvas from '../src/components/builder/BuilderCanvas.vue'
+import { flush } from './helpers'
 import BuilderMinimap from '../src/components/builder/BuilderMinimap.vue'
 import type { MinimapNode } from '../src/components/builder/BuilderMinimap.vue'
 import {
@@ -19,6 +20,7 @@ import type {
   EdgeOrigin,
   NodeMove,
 } from '../src/composables/useBuilderCanvas'
+import { edgeOptionsFor, useBuilderDocument } from '../src/composables/useBuilderDocument'
 import {
   HOTKEY_BINDINGS,
   bindingLabels,
@@ -96,6 +98,39 @@ function outputNode(id: string, x = 0, y = 0): BuilderNode {
   }
 }
 
+/** The second attachment HOST, so "agent or crew" is asserted as both. */
+function crewNode(id: string, x = 0, y = 0): BuilderNode {
+  return {
+    id: nodeId(id),
+    label: id,
+    position: { x, y },
+    kind: 'crew',
+    config: {
+      tier: 'cheap',
+      max_iter: 2,
+      guardrail_max_retries: 2,
+      prompt_inputs: {},
+      crew_id: nodeId('brief'),
+    },
+  }
+}
+
+/** A flow kind that is NOT a host, for the refusal half of the same rule. */
+function gateNode(id: string, x = 0, y = 0): BuilderNode {
+  return {
+    id: nodeId(id),
+    label: id,
+    position: { x, y },
+    kind: 'gate',
+    config: {
+      message: 'Confirm the scope before the branches run.',
+      editable_fields: [],
+      max_turns: 1,
+      expiry_seconds: 1800,
+    },
+  }
+}
+
 function edge(id: string, source: string, target: string): BuilderEdge {
   return {
     id: edgeId(id),
@@ -144,6 +179,20 @@ function vocabularyFixture(): BuilderVocabulary {
     router_comparisons: ['contains', 'eq', 'gt', 'gte', 'lt', 'lte', 'ne'],
     router_otherwise: 'otherwise',
     result_body_keys: ['markdown_body'],
+    // 06 criterion 9's other end. `dropKind` reads the SERVED catalogue to turn
+    // a tool-id off the drag into a real `tool_id` and label, so the fixture
+    // has to carry one or the named-drop tests would be asserting the fallback.
+    tools: [
+      {
+        tool_id: 'web_search',
+        label: 'Web search',
+        category: 'research',
+        description: 'One search over the open web.',
+        credential_kind: null,
+        attaches_to: ['agent', 'crew'],
+        params: [],
+      },
+    ],
     bounds: {
       max_graph_nodes: 24,
       max_billable_nodes: 8,
@@ -160,6 +209,11 @@ function vocabularyFixture(): BuilderVocabulary {
       max_input_chars: 2000,
       max_document_bytes: 262144,
       run_cost_ceiling_usd: 10,
+      // C2 v2\'s two authored-node bounds: BUILDER_MAX_PROMPT_CHARS and
+      // BUILDER_MAX_NODE_RETRIES, served since plan 04 and read by every
+      // PromptField and node-retry stepper rather than restated as a constant.
+      max_prompt_chars: 4000,
+      max_retries: 3,
     },
   }
 }
@@ -250,6 +304,226 @@ beforeEach(() => {
 
 afterEach(() => {
   resetVocabulary()
+})
+
+/* --- attach by drop (criterion 11) ---------------------------------------- */
+
+/**
+ * The real store behind the real adapter, because the criterion is about undo.
+ *
+ * `RecordingStore` counts calls, which is the right instrument for "how many
+ * commits was that" and the wrong one for "what does one Ctrl+Z leave behind".
+ * `edgeOptionsFor` is the same function `BuilderView` hands `useBuilderCanvas`,
+ * exported so this can drive it rather than reimplement it - a double that has
+ * quietly diverged from its subject certifies nothing.
+ */
+function liveCanvas(doc: BuilderDocument) {
+  const store = useBuilderDocument(doc)
+  const canvas = useBuilderCanvas({
+    document: {
+      doc: store.doc,
+      addNode: (node, connectFrom, attachTo) =>
+        store.addNode(node, edgeOptionsFor(node, connectFrom ?? null, attachTo ?? null)),
+      addEdge: (origin, target) =>
+        store.addEdge({ source: origin.source, source_port: origin.source_port, target }),
+      moveNodes: (moves) => store.moveNodes(moves),
+      deleteSelection: (nodes, edges) => store.deleteSelection(nodes, edges),
+      setEdgePort: (edge, port) => store.setEdgePort(edge, port),
+      retargetEdge: () => undefined,
+      setJoin: (node, join) => store.setJoin(node, join === 'all'),
+    },
+  })
+  // The identity bridge, so a screen point IS a flow point and the hit test can
+  // be written in the coordinates the fixture declares its nodes in.
+  canvas.attachViewport(
+    fakeBridge({ screenToFlowCoordinate: (point) => ({ x: point.x, y: point.y }) }),
+  )
+  return { store, canvas }
+}
+
+describe('dropping an attachment inside a card is one commit carrying its wire', () => {
+  const hostAt = (x: number, y: number): BuilderDocument =>
+    document([{ ...agentNode('scoper'), position: { x, y } }])
+
+  it('creates the node and the attach edge together', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    // Inside the card: `fakeBridge` measures every card at 240x96.
+    canvas.dropKind('tool', { x: 460, y: 340 })
+
+    expect(store.doc.value.nodes).toHaveLength(2)
+    expect(store.doc.value.edges).toHaveLength(1)
+    const [edge] = store.doc.value.edges
+    expect(edge.target).toBe('scoper')
+    expect(edge.target_port).toBe('attach')
+    expect(edge.source_port).toBe('attach')
+    expect(store.doc.value.nodes[1].kind).toBe('tool')
+    expect(edge.source).toBe(store.doc.value.nodes[1].id)
+  })
+
+  it('is ONE undo step, and one undo removes both entries', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+    expect(store.depth.value).toBe(0)
+
+    canvas.dropKind('tool', { x: 460, y: 340 })
+    expect(store.depth.value).toBe(1)
+
+    store.undo()
+
+    expect(store.doc.value.nodes).toHaveLength(1)
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('labels the step after the gesture, not after the node', () => {
+    // The undo announcement reads this. "Attach tool" is what happened; "Add
+    // tool" would be true of a drop on empty canvas and false of this one.
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+    canvas.dropKind('tool', { x: 460, y: 340 })
+    expect(store.undoLabel.value).toBe('Attach tool')
+  })
+
+  it('parks the pill to the LEFT of its host, where the attach port is', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+    canvas.dropKind('tool', { x: 460, y: 340 })
+
+    const pill = store.doc.value.nodes[1]
+    // 160 wide plus two grid steps of gap, both snapped. Dropped ON the card,
+    // the pill would land under the thing it is attached to.
+    expect(pill.position.x).toBeLessThan(400)
+    expect(pill.position.x).toBe(200)
+    expect(pill.position.y).toBe(300)
+  })
+
+  it('staggers the second attachment on the same host', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+    canvas.dropKind('tool', { x: 460, y: 340 })
+    canvas.dropKind('skill', { x: 460, y: 340 })
+
+    const [, first, second] = store.doc.value.nodes
+    expect(second.position.y).toBeGreaterThan(first.position.y)
+    expect(store.doc.value.edges).toHaveLength(2)
+    expect(store.depth.value).toBe(2)
+  })
+
+  it('creates an UNATTACHED node when the drop misses every card', () => {
+    // Deliberately legal: an author may be laying out before wiring, and
+    // `attachment-unattached` is a sentence they can read where a refused drop
+    // is not.
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('tool', { x: 40, y: 40 })
+
+    expect(store.doc.value.nodes).toHaveLength(2)
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('never attaches a FLOW kind, however precisely it lands on a card', () => {
+    // A gate dropped on an agent is a gate dropped at that point. Only the
+    // three attachment kinds have anywhere to attach.
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('gate', { x: 460, y: 340 })
+
+    expect(store.doc.value.edges).toEqual([])
+    expect(store.doc.value.nodes[1].kind).toBe('gate')
+  })
+
+  it('reports which node it made and what it hung it off', () => {
+    const { canvas } = liveCanvas(hostAt(400, 300))
+
+    const attached = canvas.dropKind('tool', { x: 460, y: 340 })
+    const loose = canvas.dropKind('tool', { x: 40, y: 40 })
+
+    expect(attached?.attachedTo).toBe('scoper')
+    expect(loose?.attachedTo).toBeNull()
+    expect(attached?.nodeId).not.toBe(loose?.nodeId)
+  })
+
+  /* --- the NAMED tool drop (06 criterion 9) -------------------------------
+   *
+   * `NodePalette` has always written the tool id on its own MIME entry and
+   * nothing read it, so dragging the row that says "Web search" produced a node
+   * indistinguishable from the one the generic tile makes - the placeholder
+   * `tool_id: 'tool'`, labelled "Tool 1". The four tests below are the two
+   * halves of the fix plus the two refusals that keep it honest.
+   */
+
+  it('lands THAT tool, not a placeholder, when the drag names one', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('tool', { x: 460, y: 340 }, null, 'web_search')
+
+    const pill = store.doc.value.nodes[1]
+    expect(pill.kind).toBe('tool')
+    expect(pill.config).toMatchObject({ tool_id: 'web_search' })
+    // The label moves with the id. A card reading "Tool 1" after the author
+    // dragged "Web search" is the drop reporting the wrong thing about itself,
+    // and the label is the only part of a node the canvas shows.
+    expect(pill.label).toBe('Web search')
+    // Still one commit carrying its wire - naming the tool changed nothing
+    // about the gesture.
+    expect(store.depth.value).toBe(1)
+    expect(store.doc.value.edges).toHaveLength(1)
+  })
+
+  it('names the tool on an UNATTACHED drop too', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('tool', { x: 40, y: 40 }, null, 'web_search')
+
+    expect(store.doc.value.nodes[1].config).toMatchObject({ tool_id: 'web_search' })
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('ignores a tool id the served catalogue does not carry', () => {
+    // `dataTransfer` is a public channel, so the id is validated rather than
+    // trusted: a `tool_id` the compiler has never heard of is a node that
+    // publishes and then fails. The placeholder is the state the inspector is
+    // already built to repair.
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('tool', { x: 460, y: 340 }, null, 'not_a_tool')
+
+    expect(store.doc.value.nodes[1].config).toMatchObject({ tool_id: 'tool' })
+    expect(store.doc.value.nodes[1].label).toBe('Tool 1')
+  })
+
+  it('never applies a tool id to a kind that is not a tool', () => {
+    const { store, canvas } = liveCanvas(hostAt(400, 300))
+
+    canvas.dropKind('skill', { x: 460, y: 340 }, null, 'web_search')
+
+    const pill = store.doc.value.nodes[1]
+    expect(pill.kind).toBe('skill')
+    expect(pill.label).toBe('Skill 1')
+    expect(pill.config).not.toHaveProperty('tool_id')
+  })
+})
+
+describe('the hit test answers in flow coordinates and prefers the top card', () => {
+  it('finds a card the point is inside and nothing when it is outside', () => {
+    const { canvas } = liveCanvas(
+      document([
+        { ...agentNode('scoper'), position: { x: 0, y: 0 } },
+        { ...agentNode('writer'), position: { x: 500, y: 500 } },
+      ]),
+    )
+
+    expect(canvas.hitTestNode({ x: 10, y: 10 })).toBe('scoper')
+    expect(canvas.hitTestNode({ x: 520, y: 520 })).toBe('writer')
+    expect(canvas.hitTestNode({ x: 300, y: 300 })).toBeNull()
+  })
+
+  it('gives the LAST card in document order the point, because that is paint order', () => {
+    const { canvas } = liveCanvas(
+      document([
+        { ...agentNode('under'), position: { x: 0, y: 0 } },
+        { ...agentNode('over'), position: { x: 20, y: 20 } },
+      ]),
+    )
+
+    expect(canvas.hitTestNode({ x: 30, y: 30 })).toBe('over')
+  })
 })
 
 /* --- creating ------------------------------------------------------------- */
@@ -376,6 +650,88 @@ describe('the number keys drop a kind and connect it to a lone selection', () =>
     canvas.insertKind('agent')
 
     expect(store.commits).toEqual(['addNode'])
+  })
+
+  /* --- the ATTACHMENT half of the same rule (13 follow-up 3) --------------
+   *
+   * `T` / `M` / `K` (decision 18) placed a loose pill at the pointer or the
+   * viewport centre, whatever was selected, because the auto-connect above
+   * ends at `acceptsIncoming` and the three attachment kinds accept nothing.
+   * So the hotkeys were documented and could not attach, and the only working
+   * attach gesture in the product was a pointer drag onto a card.
+   */
+
+  it('ATTACHES an attachment kind to a lone selected agent, in one commit', () => {
+    const { store, canvas } = liveCanvas(document([{ ...agentNode('scoper'), position: { x: 400, y: 300 } }]))
+    canvas.selectNode(nodeId('scoper'))
+
+    canvas.insertKind('tool')
+
+    // One commit carrying both, which is what makes a single Ctrl+Z take them
+    // together - `attachTo` is reused whole rather than reimplemented.
+    expect(store.depth.value).toBe(1)
+    expect(store.undoLabel.value).toBe('Attach tool')
+    expect(store.doc.value.nodes).toHaveLength(2)
+    const [edge] = store.doc.value.edges
+    expect(edge.target).toBe('scoper')
+    expect(edge.target_port).toBe('attach')
+    expect(edge.source).toBe(store.doc.value.nodes[1].id)
+  })
+
+  it('attaches to a lone selected CREW as well as to an agent', () => {
+    const { store, canvas } = liveCanvas(document([{ ...crewNode('brief'), position: { x: 400, y: 300 } }]))
+    canvas.selectNode(nodeId('brief'))
+
+    canvas.insertKind('skill')
+
+    expect(store.doc.value.edges[0]).toMatchObject({ target: 'brief', target_port: 'attach' })
+  })
+
+  it('places it loose when NOTHING is selected, exactly as before', () => {
+    // Deliberately unchanged: `attachment-unattached` is a warning the author
+    // can read, and an author may be laying out before wiring.
+    const { store, canvas } = liveCanvas(document([{ ...agentNode('scoper'), position: { x: 400, y: 300 } }]))
+    canvas.setSelection([])
+
+    canvas.insertKind('tool')
+
+    expect(store.doc.value.nodes).toHaveLength(2)
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('places it loose when the lone selection cannot HAVE an attachment', () => {
+    // Only `agent` and `crew` are hosts. A gate with a tool hanging off it is a
+    // shape the compiler has no node to build from.
+    const { store, canvas } = liveCanvas(document([{ ...gateNode('confirm'), position: { x: 400, y: 300 } }]))
+    canvas.selectNode(nodeId('confirm'))
+
+    canvas.insertKind('tool')
+
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('places it loose when two nodes are selected, like the flow half', () => {
+    const { store, canvas } = liveCanvas(
+      document([
+        { ...agentNode('a'), position: { x: 0, y: 0 } },
+        { ...agentNode('b'), position: { x: 400, y: 300 } },
+      ]),
+    )
+    canvas.setSelection([nodeId('a'), nodeId('b')])
+
+    canvas.insertKind('tool')
+
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('leaves a FLOW kind alone however host-shaped the selection is', () => {
+    const { store, canvas } = liveCanvas(document([{ ...agentNode('scoper'), position: { x: 400, y: 300 } }]))
+    canvas.selectNode(nodeId('scoper'))
+
+    canvas.insertKind('gate')
+
+    // The ordinary auto-connect, arriving at `in` - not an attach edge.
+    expect(store.doc.value.edges[0]).toMatchObject({ target_port: 'in' })
   })
 })
 
@@ -786,6 +1142,7 @@ function recordingActions(): { actions: HotkeyActions; log: string[] } {
       focusFilter: note('focusFilter'),
       walkProblems: note('walkProblems'),
       toggleShortcuts: note('toggleShortcuts'),
+      toggleTheme: note('toggleTheme'),
     },
   }
 }
@@ -812,7 +1169,7 @@ describe('the binding table is the shortcut sheet and the dispatcher at once', (
     for (const kind of NODE_KIND_ORDER) {
       const binding = HOTKEY_BINDINGS.find((entry) => entry.id === `insert-${kind}`)
       expect(binding, `no binding for ${kind}`).toBeDefined()
-      expect(binding?.chords[0].key).toBe(String(NODE_KINDS[kind].paletteOrder + 1))
+      expect(binding?.chords[0].key).toBe(NODE_KINDS[kind].hotkey)
     }
   })
 
@@ -1065,6 +1422,155 @@ describe('the mounted canvas hands the library the settings the spec names', () 
     wrapper.unmount()
   })
 
+  it('re-fits when a docked strip opens, even after the author has gestured (D-15-2)', async () => {
+    /*
+     * Round 1 measured the defect this pins: the version browser docking 125px
+     * above the graph hid 2 of 5 nodes and no re-fit followed, because the
+     * settling observer disconnected at the author's first gesture. The rule
+     * now: before a gesture every change to the frame re-fits; after one, only
+     * the DOCK growing does - the problems panel growing under the frame does
+     * not, because that re-fit moved the canvas under the next drag (2 of 6
+     * E2E runs) - and never while a pointer is down. A stand-in observer whose
+     * callback the test drives is the only way jsdom can say any of this.
+     */
+    interface Driven {
+      callback: ResizeObserverCallback
+      targets: Element[]
+      disconnected: boolean
+    }
+    const instances: Driven[] = []
+    // `disconnect` is honoured, so the code this test was written against -
+    // which disconnected at the first gesture - fails here for the reason it
+    // was wrong, not for a stub that kept calling a dead observer.
+    class DrivenResizeObserver {
+      private readonly entry: Driven
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [], disconnected: false }
+        instances.push(this.entry)
+      }
+      observe(target: Element): void {
+        this.entry.targets.push(target)
+      }
+      unobserve(): void {}
+      disconnect(): void {
+        this.entry.disconnected = true
+      }
+    }
+    vi.stubGlobal('ResizeObserver', DrivenResizeObserver)
+    const dock = window.document.createElement('div')
+    const store = new RecordingStore()
+    store.doc.value = document([agentNode('a', 0, 0), agentNode('b', 300, 0)], [edge('e1', 'a', 'b')])
+    const canvasComposable = useBuilderCanvas({ document: store })
+    const wrapper = mount(BuilderCanvas, {
+      props: { canvas: canvasComposable, label: 'under test', dock },
+      slots: { node: '<div class="stub-node" />', edge: '<g class="stub-edge" />' },
+      attachTo: window.document.body,
+    })
+    const flow = useVueFlow('builder-flow')
+    const fitView = vi.spyOn(flow, 'fitView').mockImplementation(async () => true)
+    const frame = wrapper.element as HTMLElement
+    // Vue Flow builds observers of its own; ours is the one watching the frame
+    // AND the dock.
+    const canvasObserver = instances.find((entry) => entry.targets.includes(frame))
+    expect(canvasObserver).toBeDefined()
+    expect(canvasObserver!.targets).toContain(dock)
+    const resize = (target: Element, height: number) => {
+      if (canvasObserver!.disconnected) return
+      canvasObserver!.callback(
+        [{ target, contentRect: { height } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+    }
+
+    // Settling: every change to the frame fits.
+    resize(frame, 700)
+    resize(frame, 640)
+    expect(fitView).toHaveBeenCalledTimes(2)
+
+    // The author gestures; the viewport is theirs. The frame shrinking under
+    // them - the problems panel growing after a validate - changes nothing.
+    await wrapper.trigger('pointerdown')
+    await wrapper.trigger('pointerup')
+    resize(frame, 540)
+    resize(frame, 700)
+    expect(fitView).toHaveBeenCalledTimes(2)
+
+    // A strip docks above the graph: the dock GROWS, and the fit is owed.
+    resize(dock, 125)
+    expect(fitView).toHaveBeenCalledTimes(3)
+
+    // It closes again: the dock shrinks back, nothing is hidden, nothing moves.
+    resize(dock, 0)
+    expect(fitView).toHaveBeenCalledTimes(3)
+
+    // Not mid-drag. It lands when the pointer lifts.
+    await wrapper.trigger('pointerdown')
+    resize(dock, 230)
+    expect(fitView).toHaveBeenCalledTimes(3)
+    await wrapper.trigger('pointerup')
+    expect(fitView).toHaveBeenCalledTimes(4)
+
+    // Below a pixel of movement, and the frame's collapse to zero on unmount: nothing.
+    resize(dock, 230.4)
+    resize(frame, 0)
+    expect(fitView).toHaveBeenCalledTimes(4)
+    wrapper.unmount()
+  })
+
+  it('observes a dock that arrives after mount, the way a template ref does (D-15-2)', async () => {
+    /*
+     * The shell's dock is a template ref, assigned in a post-render effect
+     * after the whole tree mounts - so when this component mounted, the prop
+     * was still null and the first cut observed nothing. Round 2's capture of
+     * the delete confirm showed the graph unmoved under two docked strips.
+     */
+    interface Driven {
+      callback: ResizeObserverCallback
+      targets: Element[]
+    }
+    const instances: Driven[] = []
+    class DrivenResizeObserver {
+      private readonly entry: Driven
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [] }
+        instances.push(this.entry)
+      }
+      observe(target: Element): void {
+        this.entry.targets.push(target)
+      }
+      unobserve(target: Element): void {
+        this.entry.targets = this.entry.targets.filter((t) => t !== target)
+      }
+      disconnect(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', DrivenResizeObserver)
+    const { wrapper } = mountCanvas()
+    const flow = useVueFlow('builder-flow')
+    const fitView = vi.spyOn(flow, 'fitView').mockImplementation(async () => true)
+    const frame = wrapper.element as HTMLElement
+    const canvasObserver = instances.find((entry) => entry.targets.includes(frame))!
+    expect(canvasObserver).toBeDefined()
+
+    const dock = window.document.createElement('div')
+    expect(canvasObserver.targets).not.toContain(dock)
+    await wrapper.setProps({ dock })
+    await flush(2)
+    expect(canvasObserver.targets).toContain(dock)
+
+    await wrapper.trigger('pointerdown')
+    await wrapper.trigger('pointerup')
+    canvasObserver.callback(
+      [{ target: dock, contentRect: { height: 125 } } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver,
+    )
+    expect(fitView).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ dock: null })
+    await flush(2)
+    expect(canvasObserver.targets).not.toContain(dock)
+    wrapper.unmount()
+  })
+
   it('attaches a viewport on mount and lets go of it on unmount', () => {
     const { wrapper, canvas, store } = mountCanvas()
 
@@ -1156,6 +1662,72 @@ describe('the minimap is coloured by problems before anything else', () => {
     expect(Number(box.attributes('y'))).toBeGreaterThanOrEqual(0)
   })
 
+  /**
+   * Critic round product-1, P-07. The panel sits bottom-right at
+   * `z-index: var(--z-control)` and covered 30.2% of a node placed there,
+   * including its model pill and its meta line. jsdom reports 0 for every
+   * `offset*`, so the panel's own box has to be declared here - the geometry
+   * under test is the OVERLAP, and asserting it against a 0x0 panel would pass
+   * for the wrong reason. `builder-layout.spec.ts` asks the same question of a
+   * real browser, which is the only place a layout question has an answer.
+   */
+  function placePanel(
+    wrapper: ReturnType<typeof mountMap>,
+    box = { left: 902, top: 558, width: 186, height: 158 },
+  ) {
+    const element = wrapper.element as HTMLElement
+    for (const [key, value] of [
+      ['offsetLeft', box.left],
+      ['offsetTop', box.top],
+      ['offsetWidth', box.width],
+      ['offsetHeight', box.height],
+    ] as const) {
+      Object.defineProperty(element, key, { configurable: true, value })
+    }
+  }
+
+  it('yields to a node placed underneath it (P-07)', async () => {
+    const wrapper = mountMap([{ ...base, id: 'under', x: 940, y: 600 }])
+    placePanel(wrapper)
+    // Re-run the measurement now the panel has a size: `flush: 'post'` reads
+    // the DOM, and the DOM only became measurable a line ago.
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 1 } })
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 0.999 } })
+    expect(wrapper.classes()).toContain('is-yielding')
+    expect(wrapper.attributes('data-yielding')).toBe('true')
+  })
+
+  it('stays put for a graph that is nowhere near it', async () => {
+    const wrapper = mountMap([{ ...base, id: 'far', x: 0, y: 0 }])
+    placePanel(wrapper)
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 0.999 } })
+    expect(wrapper.classes()).not.toContain('is-yielding')
+  })
+
+  /**
+   * The rule is COVERAGE, not intersection, and this is the measurement that
+   * made it so: on the one-node visual capture a 240x96 card clipped the
+   * panel's corner by about 11x3 px - 0.14% of the card - and a bare
+   * intersection test faded the map, changing a committed baseline for
+   * something no author would ever see. The defect being fixed is 30.2%.
+   */
+  it('ignores a corner nick that hides nothing worth hiding', async () => {
+    // The card's bottom-right corner overlaps the panel's top-left by 11x3.
+    const wrapper = mountMap([{ ...base, id: 'nick', x: 902 + 11 - 240, y: 558 + 3 - 96 }])
+    placePanel(wrapper)
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 0.999 } })
+    expect(wrapper.classes()).not.toContain('is-yielding')
+  })
+
+  it('follows the pan: the same node stops overlapping once it is scrolled away', async () => {
+    const wrapper = mountMap([{ ...base, id: 'under', x: 940, y: 600 }])
+    placePanel(wrapper)
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 0.999 } })
+    expect(wrapper.classes()).toContain('is-yielding')
+    await wrapper.setProps({ viewport: { x: -900, y: -600, zoom: 1 } })
+    expect(wrapper.classes()).not.toContain('is-yielding')
+  })
+
   it('collapses to its toggle and says so to a screen reader', async () => {
     const wrapper = mountMap([base])
     expect(wrapper.find('[data-testid="minimap-surface"]').exists()).toBe(true)
@@ -1164,5 +1736,66 @@ describe('the minimap is coloured by problems before anything else', () => {
 
     expect(wrapper.find('[data-testid="minimap-surface"]').exists()).toBe(false)
     expect(wrapper.find('.minimap-toggle').attributes('aria-expanded')).toBe('false')
+  })
+
+  /*
+   * D-15-2, three rounds on one surface. Docking the version browser or the
+   * delete strip takes height out of the canvas and the fit that follows has to
+   * choose between legible and complete: round 1 hid nodes below the bottom,
+   * round 2 shrank the cards to 100px, round 3 kept them legible with 15 of a
+   * 16-node template outside the pane. The row's ruling is that a fourth turn
+   * of that dial is the wrong answer and what is wanted is an indicator of what
+   * is off-pane. The fit is untouched by everything below.
+   */
+  describe('says what is off-pane rather than re-tuning the fit (D-15-2)', () => {
+    // The collapse is remembered in localStorage, and the test above leaves it
+    // collapsed for every mount that follows - which is exactly the kind of
+    // shared state a per-file suite should not carry between blocks.
+    beforeEach(() => {
+      window.localStorage.removeItem('builder-minimap-collapsed')
+    })
+
+    it('says nothing at all when every node is on screen', () => {
+      const wrapper = mountMap([base, { ...base, id: 'b', x: 300 }])
+      expect(wrapper.find('[data-testid="minimap-offpane"]').exists()).toBe(false)
+    })
+
+    it('counts the nodes with no pixels on screen, and names the whole graph', () => {
+      const wrapper = mountMap([
+        base,
+        { ...base, id: 'far', x: 40000 },
+        { ...base, id: 'above', y: -9000 },
+      ])
+      const strip = wrapper.get('[data-testid="minimap-offpane"]')
+      expect(strip.text()).toContain('2')
+      expect(strip.attributes('title')).toContain('2 of 3 off-pane')
+    })
+
+    it('does not cry wolf over a node the pane merely clips', () => {
+      /* The pane is 800 wide; a 240px card at x=700 hangs over the edge and is
+         one the author can see and reach. Counting it would make the strip
+         permanent on every graph wider than the pane. */
+      const wrapper = mountMap([base, { ...base, id: 'edge', x: 700 }])
+      expect(wrapper.find('[data-testid="minimap-offpane"]').exists()).toBe(false)
+    })
+
+    it('is a real button, because the map itself is aria-hidden and pointer-only', async () => {
+      const wrapper = mountMap([base, { ...base, id: 'far', x: 40000 }])
+      const strip = wrapper.get('[data-testid="minimap-offpane"]')
+      expect(strip.element.tagName).toBe('BUTTON')
+      await strip.trigger('click')
+      expect(wrapper.emitted('fit')).toHaveLength(1)
+    })
+
+    it('keeps the fact reachable when the map is collapsed', async () => {
+      /* Collapsed is remembered per browser, so an author who hid the map once
+         would otherwise never be told again. */
+      const wrapper = mountMap([base, { ...base, id: 'far', x: 40000 }])
+      await wrapper.find('.minimap-toggle').trigger('click')
+      expect(wrapper.find('[data-testid="minimap-offpane"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="minimap-offpane-badge"]').attributes('title')).toBe(
+        '1 of 2 off-pane',
+      )
+    })
   })
 })

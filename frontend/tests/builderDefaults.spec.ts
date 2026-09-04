@@ -10,7 +10,7 @@ import {
   vocabularyUnavailable,
 } from '../src/data/builderVocabulary'
 import { NODE_KINDS, NODE_KIND_ORDER, outPortsOf } from '../src/data/nodeKinds'
-import { NODE_ID_PATTERN } from '../src/types/builder'
+import { NODE_ID_PATTERN, isAuthoredAgent, isAuthoredCrew } from '../src/types/builder'
 import type { NodeKind } from '../src/types/builder'
 
 /**
@@ -101,14 +101,33 @@ function pythonFields(className: string): string[] {
 
 const BILLABLE_FIELDS = pythonFields('_BillableConfig')
 
+/*
+ * The LIBRARY arm of each billable kind, and that is the whole of what
+ * `builderDefaults.ts` writes.
+ *
+ * `AgentConfig` and `CrewConfig` stopped being classes on 2026-09-04 and became
+ * unions discriminated by presence - `LibraryAgentConfig | AuthoredAgentConfig`
+ * - so there is no single class to read. The defaults this file checks are the
+ * library ones: `newNode('agent')` writes an `agent_id`, because a fresh node
+ * has to be one arm or the other and only the library arm has a value the
+ * client can supply without asking the author to write a prompt first. The
+ * authored arm's defaults are 04's inspector, not this file's palette.
+ */
 const FIELDS_BY_KIND: Record<NodeKind, string[]> = {
   input: pythonFields('InputConfig'),
-  agent: [...BILLABLE_FIELDS, ...pythonFields('AgentConfig')],
-  crew: [...BILLABLE_FIELDS, ...pythonFields('CrewConfig')],
+  agent: [...BILLABLE_FIELDS, ...pythonFields('LibraryAgentConfig')],
+  crew: [...BILLABLE_FIELDS, ...pythonFields('LibraryCrewConfig')],
   gate: pythonFields('GateConfig'),
   router: pythonFields('RouterConfig'),
   transform: pythonFields('TransformConfig'),
   output: pythonFields('OutputConfig'),
+  // The three attachments, read out of the same Python. `ToolConfig`,
+  // `McpConfig` and `SkillConfig` extend `BuilderModel` directly rather than a
+  // shared base - they have nothing in common but being possessions - so unlike
+  // the billable pair there is no parent list to union in.
+  tool: pythonFields('ToolConfig'),
+  mcp: pythonFields('McpConfig'),
+  skill: pythonFields('SkillConfig'),
 }
 
 /**
@@ -154,6 +173,8 @@ function vocabularyPayload(): Record<string, unknown> {
       max_input_chars: 2000.0,
       max_document_bytes: 262144.0,
       run_cost_ceiling_usd: 10.0,
+      max_prompt_chars: 4000,
+      max_retries: 3,
     },
   }
 }
@@ -195,6 +216,8 @@ describe('the vocabulary is fetched once and never invented', () => {
     Object.assign(payload.bounds as Record<string, number>, {
       max_graph_nodes: 24.7,
       run_cost_ceiling_usd: 2.5,
+      max_prompt_chars: 4000,
+      max_retries: 3,
     })
     stubFetch(servingFetch(payload))
 
@@ -338,7 +361,18 @@ describe('a new node is one the server would accept', () => {
       // `BuilderModel` is `extra="forbid"`, so a key too many is a 422 naming a
       // field the author never typed - and a key too few is a 422 too, for the
       // required ones. The set has to be exact in both directions.
-      expect(Object.keys(node.config).sort()).toEqual([...FIELDS_BY_KIND[kind]].sort())
+      //
+      // ONE exception, and it is `nodeKinds.ts`'s own documented choice rather
+      // than an omission: `on_error` landed on `_BillableConfig` with D3 and a
+      // fresh node deliberately does not write it. `outPortsOf` reads the
+      // absence as `fail`, which is the schema's default, so writing it would
+      // put a key in every new document that means exactly what leaving it out
+      // means - and the second port it controls would then be one edit away
+      // from appearing on a card nobody has configured.
+      const optionalOnANewNode = ['on_error']
+      expect(Object.keys(node.config).sort()).toEqual(
+        [...FIELDS_BY_KIND[kind]].filter((field) => !optionalOnANewNode.includes(field)).sort(),
+      )
     })
 
     it(`gives a fresh ${kind} a legal id, label and integer position`, () => {
@@ -388,6 +422,11 @@ describe('a new node is one the server would accept', () => {
     expect(node.config.max_iter).toBe(pythonInt('VALIDATOR_BRANCH_MAX_ITER'))
     expect(node.config.guardrail_max_retries).toBe(pythonInt('BUILDER_MAX_GUARDRAIL_RETRIES'))
     expect(node.config.max_iter).toBeLessThanOrEqual(pythonInt('BUILDER_MAX_AGENT_ITER'))
+    // `newNode` builds the LIBRARY arm - the authored one is reached by
+    // converting, never by dragging a tile - so this narrows before reading the
+    // two fields only that arm has.
+    expect(isAuthoredAgent(node.config)).toBe(false)
+    if (isAuthoredAgent(node.config)) throw new Error('unreachable')
     expect(node.config.agent_id).toBe(vocabulary.value?.agent_ids[0])
     expect(node.config.tools).toEqual([])
   })
@@ -414,6 +453,8 @@ describe('a new node is one the server would accept', () => {
     }
     // The first id the server offers, with nothing stepped over on this side.
     expect(vocabulary.value?.crew_ids).toEqual(BUILDABLE_CREW_IDS)
+    expect(isAuthoredCrew(node.config)).toBe(false)
+    if (isAuthoredCrew(node.config)) throw new Error('unreachable')
     expect(node.config.crew_id).toBe(BUILDABLE_CREW_IDS[0])
   })
 

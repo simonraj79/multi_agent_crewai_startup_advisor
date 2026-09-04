@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { BuilderNodeData as CanvasNodeData } from '../../composables/useBuilderCanvas'
-import type { BuilderNode as BuilderDocumentNode, NodeKind } from '../../types/builder'
+import { isAuthoredAgent, isAuthoredCrew } from '../../types/builder'
+import type { AgentConfig, BuilderNode as BuilderDocumentNode, NodeKind } from '../../types/builder'
 import type { NodeRunState } from '../../types/studio'
 
 /**
@@ -63,13 +64,14 @@ export function summariseConfig(node: BuilderDocumentNode): string {
       const { field, max_chars, required } = node.config
       return `${field} · ${max_chars} chars · ${required ? 'required' : 'optional'}`
     }
-    case 'agent': {
-      const { tier, agent_id, max_iter, tools } = node.config
-      const bound = tools.length === 0 ? 'no tools' : `${tools.length} tool${tools.length === 1 ? '' : 's'}`
-      return `${tier} · ${agent_id} · ${max_iter} iter · ${bound}`
+    case 'agent':
+      return agentLines(node.config).join(' · ')
+    case 'crew': {
+      const config = node.config
+      return isAuthoredCrew(config)
+        ? `${config.tier} · ${config.process} · ${config.task_order.length} member${config.task_order.length === 1 ? '' : 's'}`
+        : `${config.tier} · ${config.crew_id}`
     }
-    case 'crew':
-      return `${node.config.tier} · ${node.config.crew_id}`
     case 'gate': {
       const { max_turns, editable_fields } = node.config
       return `${max_turns} turn${max_turns === 1 ? '' : 's'} · ${editable_fields.length} editable`
@@ -84,8 +86,48 @@ export function summariseConfig(node: BuilderDocumentNode): string {
     }
     case 'output':
       return node.config.body_key
+    /*
+     * The three attachments (03 D6). Each answers "which one is this", which is
+     * the only question a pill can be asked without opening it: an author looks
+     * at a canvas of eight tools and needs to tell them apart, not to read their
+     * parameters.
+     *
+     * A key glyph is NOT in this string. `credential_id` is rendered as its own
+     * chip in the template, because a sentence saying "key" would be one more
+     * token competing for a 160px pill, and because whether a tool has a key is
+     * a yes/no an author scans for rather than reads.
+     */
+    case 'tool': {
+      const names = Object.keys(node.config.params)
+      return names.length === 0 ? node.config.tool_id : `${node.config.tool_id} · ${names.join(', ')}`
+    }
+    case 'mcp': {
+      const count = node.config.tool_names.length
+      // Nought is worth saying out loud: an MCP node with no tools selected
+      // exposes nothing, and `bounds.py` reports it. The card should not read
+      // like a node that is finished.
+      const server = node.config.server_id ?? node.config.server_hint?.label ?? UNRESOLVED
+      return `${server} · ${count} tool${count === 1 ? '' : 's'}`
+    }
+    case 'skill':
+      return node.config.skill_name ?? node.config.skill_id ?? UNRESOLVED
   }
 }
+
+/**
+ * What an attachment card says when its reference did not survive an export.
+ *
+ * `export.py` strips `server_id` and `skill_id` deliberately — they name rows in
+ * the EXPORTING author's lists — so an imported graph genuinely contains an
+ * `mcp` node with no server and a `skill` node with no id. The card has to say
+ * something, and the honest something is that the reference is missing rather
+ * than a blank, an `undefined`, or a guess at what it used to be.
+ *
+ * A skill keeps its `skill_name` across an export, so it can still say WHICH
+ * skill it wants; only the resolvable id is gone. An MCP node falls back to its
+ * hint label for the same reason.
+ */
+const UNRESOLVED = 'no reference'
 
 /**
  * The summary, split into the lines the card actually draws.
@@ -106,9 +148,32 @@ export function summariseConfig(node: BuilderDocumentNode): string {
  * canvas under an author who is typing.
  */
 export function summaryLines(node: BuilderDocumentNode): string[] {
-  const whole = summariseConfig(node)
-  if (node.kind !== 'agent') return [whole]
-  const { tier, agent_id, max_iter, tools } = node.config
+  if (node.kind !== 'agent') return [summariseConfig(node)]
+  return agentLines(node.config)
+}
+
+/**
+ * An agent card's two lines: identity, then budget.
+ *
+ * TWO ARMS, TWO IDENTITIES. A library agent IS its `agent_id` - that id is the
+ * whole of what the document says about who it is. An authored agent has no id
+ * to show and a model it names outright, so line one carries the MODEL PILL:
+ * `llm.model` is the single fact that changes what this node costs and what it
+ * can do, and 04 D4 asks for it to move in the same tick the picker writes it.
+ * Showing `agent_id` there for one arm and nothing for the other would leave
+ * the more configurable node with the emptier card.
+ *
+ * The model is printed WITHOUT its provider prefix. `google/gemini-3.8-flash`
+ * at the card's type size wraps or clips, and the half that identifies the
+ * model is the half after the slash - the provider is already the roster's
+ * business rather than the canvas's.
+ */
+function agentLines(config: AgentConfig): string[] {
+  if (isAuthoredAgent(config)) {
+    const model = config.llm.model.split('/').pop() ?? config.llm.model
+    return [`${config.tier} · ${model}`, `${config.max_iter} iter · authored`]
+  }
+  const { tier, agent_id, max_iter, tools } = config
   const bound = tools.length === 0 ? 'no tools' : `${tools.length} tool${tools.length === 1 ? '' : 's'}`
   return [`${tier} · ${agent_id}`, `${max_iter} iter · ${bound}`]
 }
@@ -122,15 +187,23 @@ export const KIND_EYEBROW: Record<NodeKind, string> = {
   router: 'ROUTER',
   transform: 'TRANSFORM',
   output: 'OUTPUT',
+  tool: 'TOOL',
+  mcp: 'MCP',
+  skill: 'SKILL',
 }
 </script>
 
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { BUILDER_HOVERED_NODE } from '../../composables/useBuilderCanvas'
+import { KeyRound, Lock } from 'lucide-vue-next'
+import { BUILDER_HOVERED_NODE, BUILDER_READ_ONLY } from '../../composables/useBuilderCanvas'
 import { NODE_KINDS } from '../../data/nodeKinds'
+import { vocabulary } from '../../data/builderVocabulary'
 import type { BuilderProblem } from '../../types/builder'
+// `isAuthoredAgent` / `isAuthoredCrew` come from the module `<script>` block
+// above, whose bindings share this module's scope. Importing them again here
+// would be a redeclaration.
 
 const props = defineProps<{
   id: string
@@ -179,6 +252,13 @@ const isEscalation = computed(
  * canvas - in a spec, in a thumbnail - renders instead of throwing.
  */
 const hovered = inject(BUILDER_HOVERED_NODE, null)
+/**
+ * The canvas's read-only flag, for the lock in the eyebrow (D-15-1). Null
+ * outside a canvas. A top-level ref, so the template reads it unwrapped -
+ * `readOnly`, never `readOnly.value`, which on an unwrapped boolean is
+ * `undefined` and hides the lock everywhere.
+ */
+const readOnly = inject(BUILDER_READ_ONLY, null)
 function setHover(value: string | null): void {
   if (hovered) hovered.value = value
 }
@@ -202,19 +282,71 @@ onBeforeUnmount(() => {
 const portOffsets = computed<number[]>(() => {
   const ports = props.data.ports
   if (node.value.kind === 'gate' && ports.length === 2) return [30, 70]
+  // `out` then `error`, on a node whose `on_error` is `route`. D1 puts the
+  // error exit bottom-RIGHT rather than at the formula's 25/75, because the two
+  // are not siblings: one is where the run goes and the other is where it goes
+  // when it did not. Symmetry would say they were alternatives of equal weight.
+  if (ports.length === 2 && ports[1] === 'error') return [40, 82]
   return ports.map((_port, index) => ((index + 0.5) / ports.length) * 100)
 })
 
-/** Which colour a source port and its label take. Gate and router only. */
+/**
+ * The target ports drawn on the LEFT edge - `attach`, then `member`.
+ *
+ * `in` is excluded because it is drawn on the top edge, where the flow arrives.
+ * D1 puts these two on the left so attachment wires run horizontally against
+ * the flow's vertical, which is the thing that keeps a wired agent readable
+ * once it has three tools and a skill hanging off it.
+ */
+const sideTargetPorts = computed(() => props.data.targetPorts.filter((port) => port !== 'in'))
+
+const sideTargetOffsets = computed<number[]>(() =>
+  sideTargetPorts.value.map((_port, index) => ((index + 0.5) / sideTargetPorts.value.length) * 100),
+)
+
+/**
+ * Which class a source port and its label take.
+ *
+ * One function for both, because the port and its label must never disagree
+ * about what they are - a mint disc under an amber word is a port that reads as
+ * two different things depending on which half you looked at.
+ */
 function portTone(port: string): string {
+  if (port === 'error') return 'is-port-error'
+  // An attachment's one port is a SOURCE and it is the square, not a disc: the
+  // shape is what survives 50% zoom and deuteranopia, where the violet does not.
+  if (port === 'attach') return 'is-port-attach'
   if (node.value.kind === 'gate') return port === 'approve' ? 'is-approve' : 'is-revise'
   if (node.value.kind !== 'router') return ''
   const branch = node.value.config.branches.find((candidate) => candidate.label === port)
   return branch?.op === 'otherwise' ? 'is-otherwise' : 'is-branch'
 }
 
-/** Gate and router ports carry a permanently visible label. Nothing else does. */
-const labelledPorts = computed(() => node.value.kind === 'gate' || node.value.kind === 'router')
+/** The class a left-edge target port takes. Two ports, two shapes, no overlap. */
+function targetTone(port: string): string {
+  return port === 'member' ? 'is-port-member' : 'is-port-attach'
+}
+
+/**
+ * Whether a source port carries a permanently visible label.
+ *
+ * Gate and router ports always do - which of a gate's two exits an edge leaves
+ * by is the single fact the canvas exists to show. `error` does too, and for a
+ * sharper reason: an unlabelled red disc beside an unlabelled grey one is a
+ * decoration, and the whole point of an error exit is that a reader can tell it
+ * from the ordinary one without opening anything.
+ */
+function portLabelled(port: string): boolean {
+  if (port === 'error') return true
+  if (port === 'attach') return false
+  return node.value.kind === 'gate' || node.value.kind === 'router'
+}
+
+/** True when ANY source port on this card is labelled, so the footer lane is reserved. */
+const labelledPorts = computed(() => props.data.ports.some((port) => portLabelled(port)))
+
+/** An attachment's one port sits on the right edge, not along the bottom. */
+const portsOnRight = computed(() => NODE_KINDS[node.value.kind].family === 'attachment')
 
 /* ─── inline rename (§4.4) ───────────────────────────────────────────────── */
 
@@ -337,6 +469,149 @@ const lines = computed(() => summaryLines(node.value))
  * on the ones where somebody had already switched it on from the inspector.
  */
 const showsJoin = computed(() => props.data.inbound >= 2 || props.data.joined)
+
+/* ─── the two silhouettes (§5.1, 03 D5) ─────────────────────────────── */
+
+/**
+ * A flow node is a CARD; an attachment is a PILL. One class, read off
+ * `nodeKinds.ts`'s `family`, and the third identity channel D5 asks for.
+ *
+ * Colour and icon both stop working before the shape does. At the 0.5 zoom
+ * criterion 7 captures at, an 11px eyebrow is 5.5px and two violet accents
+ * eight points of lightness apart are one colour - but a 160px pill beside a
+ * 240px card is still unmistakably a different sort of object. That is the
+ * whole argument for spending a channel on silhouette rather than on a fourth
+ * shade.
+ */
+const isAttachment = computed(() => meta.value.family === 'attachment')
+
+/**
+ * The three chips an attachment shows instead of a summary line (D6).
+ *
+ * The catalogue LABEL rather than the id where the server has served one: an
+ * author picked "Firecrawl scrape" from a list and should see that, not
+ * `firecrawl_scrape`. The fallback is the id, never a guess - this build's
+ * `/vocabulary` does not serve `tools` yet (C2 v2 is criterion 5's, on the
+ * Python side), so today every pill reads its id and that is honest.
+ */
+const attachmentChips = computed<{ text: string; key: boolean }[]>(() => {
+  const current = node.value
+  if (current.kind === 'tool') {
+    const entry = vocabulary.value?.tools?.find((row) => row.tool_id === current.config.tool_id)
+    return [
+      { text: entry?.label ?? current.config.tool_id, key: false },
+      // A KEY, not the credential's label or id: which key a tool uses is an
+      // inspector question, and whether it needs one at all is the thing an
+      // author scans a canvas for.
+      ...(current.config.credential_id ? [{ text: 'key', key: true }] : []),
+    ]
+  }
+  if (current.kind === 'mcp') {
+    const count = current.config.tool_names.length
+    return [
+      {
+        text: current.config.server_id ?? current.config.server_hint?.label ?? UNRESOLVED,
+        key: false,
+      },
+      { text: `${count} tool${count === 1 ? '' : 's'}`, key: false },
+      ...(current.config.credential_id ? [{ text: 'key', key: true }] : []),
+    ]
+  }
+  if (current.kind === 'skill') {
+    return [
+      { text: current.config.skill_name ?? current.config.skill_id ?? UNRESOLVED, key: false },
+    ]
+  }
+  return []
+})
+/* ─── D6's authored chips: the model pill, the process chip, the hands ───── */
+
+/**
+ * The model an AUTHORED node names, short, or null.
+ *
+ * The pill is a separate element from the summary line rather than a slice of
+ * it, because D6 asks for three different things from one fact: it is the
+ * loudest token on the card, it carries the whole slug in a `title` for a
+ * reader who needs the provider, and 04 D4 asks for it to move in the same tick
+ * the picker writes `llm.model`. A substring of a `·`-joined sentence can do
+ * none of the three.
+ *
+ * A LIBRARY agent gets none. Its identity is `agent_id`, the model is the
+ * tier's, and a pill naming a model the author did not choose would invite an
+ * edit there is no control for.
+ */
+const modelPill = computed<{ short: string; full: string } | null>(() => {
+  const current = node.value
+  if (current.kind !== 'agent') return null
+  const config = current.config
+  if (!isAuthoredAgent(config)) return null
+  return { short: shortModel(config.llm.model), full: config.llm.model }
+})
+
+/**
+ * `seq` or `hier` on an authored crew - D6's process chip.
+ *
+ * ABBREVIATED, and that is the point rather than a saving: `hierarchical`
+ * spelled out is the widest token any card carries and it ellipsises at
+ * `NODE_W` 240 into `hierarchi…`, which is a truncated fact. The full word is
+ * in the summary's `title`, where it always was.
+ */
+const processChip = computed<string | null>(() => {
+  const current = node.value
+  if (current.kind !== 'crew') return null
+  const config = current.config
+  if (!isAuthoredCrew(config)) return null
+  return config.process === 'hierarchical' ? 'hier' : 'seq'
+})
+
+/**
+ * The MANAGER's model, on a hierarchical crew only - D6.
+ *
+ * `Crew.__init__` raises unless a hierarchical crew names a manager, so this is
+ * a fact about the run that the card can state without qualification. A
+ * sequential crew has no manager by construction and shows nothing, rather than
+ * an empty slot.
+ */
+const managerPill = computed<{ short: string; full: string } | null>(() => {
+  const current = node.value
+  if (current.kind !== 'crew') return null
+  const config = current.config
+  if (!isAuthoredCrew(config) || config.process !== 'hierarchical') return null
+  const model = config.manager_llm?.model
+  return model ? { short: shortModel(model), full: model } : null
+})
+
+/**
+ * Up to four attachment avatars plus the overflow count - D6.
+ *
+ * FOUR, because the fifth is where a 240px card stops holding 20px discs and a
+ * label beside them; beyond that the honest thing is a count. The overflow chip
+ * says `+1`, not `4 of 5`, because the question an author is answering at a
+ * glance is "is there more than I can see".
+ *
+ * The avatars are drawn on the HOST, and the pills stay on the canvas. That
+ * duplication is deliberate (D6): the pill is where an attachment is
+ * configured, the avatar is where you see whose hands it is - and the canvas is
+ * the only surface that can show one tool wired to two agents.
+ */
+const AVATAR_LIMIT = 4
+const attachmentAvatars = computed(() => (props.data.attachments ?? []).slice(0, AVATAR_LIMIT))
+const attachmentOverflow = computed(() =>
+  Math.max(0, (props.data.attachments ?? []).length - AVATAR_LIMIT),
+)
+const showsAuthoredChips = computed(
+  () =>
+    modelPill.value !== null ||
+    processChip.value !== null ||
+    managerPill.value !== null ||
+    attachmentAvatars.value.length > 0,
+)
+
+/** `google/gemini-3.8-flash` -> `gemini-3.8-flash`. The half that identifies it. */
+function shortModel(model: string): string {
+  return model.split('/').pop() ?? model
+}
+
 const showsBadges = computed(
   () => props.data.severity !== null || showsJoin.value || isEscalation.value,
 )
@@ -363,6 +638,9 @@ const ariaLabel = computed(() => {
     :class="[
       meta.className,
       `is-${runState}`,
+      // D5's silhouette channel. `is-card` is written out rather than left as
+      // the absence of `is-pill`, so a test and a stylesheet can both name it.
+      isAttachment ? 'is-pill' : 'is-card',
       {
         'has-error': data.severity === 'error',
         'has-warning': data.severity === 'warning',
@@ -391,6 +669,9 @@ const ariaLabel = computed(() => {
         // shape of the graph an author is searching inside.
         'is-filter-match': data.filterMatch,
         'is-filter-dimmed': data.filterDimmed,
+        // D2: a connect drag was released over this card and refused. One shot,
+        // cleared by the canvas on a `--motion-medium` timer.
+        'is-refused': data.refused,
       },
     ]"
     role="group"
@@ -430,7 +711,7 @@ const ariaLabel = computed(() => {
       `isValidConnection` will accept.
     -->
     <Handle
-      v-if="data.acceptsIncoming"
+      v-if="data.targetPorts.includes('in')"
       id="in"
       class="builder-port is-port-in"
       :class="{ 'is-port-ready': data.connectable }"
@@ -438,15 +719,63 @@ const ariaLabel = computed(() => {
       :position="Position.Top"
     />
 
+    <!--
+      The STRUCTURAL target ports, on the left edge (D1): `attach` on an agent
+      or a crew, `member` on a crew. Drawn from `data.targetPorts`, which the
+      canvas projects from the same table `isValidConnection` refuses against -
+      so a port that exists here is a port the pointer will accept, and there is
+      no second opinion to drift.
+
+      They carry no `is-port-ready`: that pulse is the answer to "could the edge
+      you are currently dragging land here", and the canvas computes it for the
+      flow port. An attach drag is a different question and gets Vue Flow's own
+      red/green under the pointer instead, which is the more direct answer.
+    -->
+    <Handle
+      v-for="(port, index) in sideTargetPorts"
+      :id="port"
+      :key="`target-${port}`"
+      class="builder-port"
+      :class="targetTone(port)"
+      type="target"
+      :position="Position.Left"
+      :style="{ top: `${sideTargetOffsets[index]}%` }"
+    />
+
     <span class="node-eyebrow-row builder-eyebrow-row">
-      <component
-        :is="meta.icon"
-        class="builder-kind-icon"
-        :size="13"
-        :stroke-width="2"
+      <!--
+        D5: a 28px colour-FILLED squircle, not a bare 13px glyph on the panel.
+        Flowise v2 draws its node icon this way and it is the reason its cards
+        read at a glance; a stroke-only icon in the accent colour is a thin line
+        that disappears at the zoom an author actually works at.
+
+        The fill is `meta.accent` - the same value the minimap dot and the
+        inspector's kicker use - passed as a custom property rather than as a
+        `background` so the stylesheet keeps the radius, the size and the
+        contrast rule in one place. The glyph is `--bg-app` on top, because
+        every accent is a light tint and a light glyph on it would vanish.
+      -->
+      <span
+        class="builder-kind-squircle"
+        :style="{ '--kind-accent': meta.accent }"
         aria-hidden="true"
-      />
+      >
+        <component :is="meta.icon" :size="15" :stroke-width="2" />
+      </span>
       <span class="node-eyebrow builder-eyebrow">{{ eyebrow }}</span>
+      <!--
+        Round 2, D-15-1: a stored version on the canvas is read-only, and the
+        card says so where the eye lands rather than leaving it to a banner in
+        the dock. The store refuses every commit either way; this is the cue.
+      -->
+      <span
+        v-if="readOnly"
+        class="builder-node-lock"
+        title="Read-only — a stored version is on the canvas"
+        data-testid="node-lock"
+      >
+        <Lock :size="11" :stroke-width="2" aria-hidden="true" />
+      </span>
     </span>
 
     <!--
@@ -477,8 +806,78 @@ const ariaLabel = computed(() => {
       >{{ node.label }}</strong
     >
 
-    <span class="builder-summary" :title="summary">
+    <!--
+      D6: an attachment's config is CHIPS, a flow node's is the mono summary
+      line. Not a style choice - a pill is 160px and a comma-separated sentence
+      in it ellipsises to nothing, while three chips wrap and each one still
+      reads. The `title` carries the whole sentence either way, so nothing is
+      lost to the shorter form.
+    -->
+    <span v-if="isAttachment" class="builder-chips" :title="summary">
+      <span
+        v-for="chip in attachmentChips"
+        :key="chip.text"
+        class="builder-chip"
+        :class="{ 'is-key': chip.key }"
+      >
+        <KeyRound v-if="chip.key" :size="10" :stroke-width="2.2" aria-hidden="true" />
+        {{ chip.text }}
+      </span>
+    </span>
+    <span v-else class="builder-summary" :title="summary">
       <span v-for="line in lines" :key="line" class="builder-summary-line">{{ line }}</span>
+    </span>
+
+    <!--
+      D6's authored row: the model pill, the crew's process chip and manager,
+      and the avatars of whatever is wired to this node's `attach` port.
+
+      Rendered only when there is something in it, so a library agent's card is
+      exactly the card it was. Every value here is read off the projection or
+      off the node's own config - nothing is looked up, nothing is computed
+      twice, and an attachment that is not on the canvas cannot appear here.
+    -->
+    <span v-if="showsAuthoredChips" class="builder-node-chips">
+      <span
+        v-if="modelPill"
+        class="builder-model-pill"
+        data-testid="node-model-pill"
+        :title="modelPill.full"
+        >{{ modelPill.short }}</span
+      >
+      <span v-if="processChip" class="builder-process-chip" data-testid="node-process-chip">{{
+        processChip
+      }}</span>
+      <span
+        v-if="managerPill"
+        class="builder-model-pill is-manager"
+        data-testid="node-manager-pill"
+        :title="`Manager · ${managerPill.full}`"
+        >{{ managerPill.short }}</span
+      >
+      <span
+        v-if="attachmentAvatars.length"
+        class="builder-attachments"
+        data-testid="node-attachments"
+      >
+        <span
+          v-for="attachment in attachmentAvatars"
+          :key="attachment.id"
+          class="builder-attach-avatar"
+          :class="`is-kind-${attachment.kind}`"
+          :style="{ '--kind-accent': NODE_KINDS[attachment.kind].accent }"
+          :title="attachment.label"
+          :data-attachment-kind="attachment.kind"
+        >
+          <component :is="NODE_KINDS[attachment.kind].icon" :size="11" :stroke-width="2.2" />
+        </span>
+        <span
+          v-if="attachmentOverflow"
+          class="builder-attach-more"
+          data-testid="node-attachments-more"
+          >+{{ attachmentOverflow }}</span
+        >
+      </span>
     </span>
 
     <div v-if="showsBadges" class="builder-badges">
@@ -542,16 +941,23 @@ const ariaLabel = computed(() => {
     -->
     <footer v-if="data.ports.length > 0" class="builder-ports" :class="{ 'is-labelled': labelledPorts }">
       <template v-for="(port, index) in data.ports" :key="port">
+        <!--
+          An attachment's one port goes on the RIGHT edge and every flow port
+          along the bottom. Same element, same classes, one different side -
+          because that one difference is what makes attachment wires horizontal
+          and flow wires vertical, which is the whole of D1's argument about a
+          wired agent staying readable.
+        -->
         <Handle
           :id="port"
           class="builder-port is-port-out"
           :class="portTone(port)"
           type="source"
-          :position="Position.Bottom"
-          :style="{ left: `${portOffsets[index]}%` }"
+          :position="portsOnRight ? Position.Right : Position.Bottom"
+          :style="portsOnRight ? { top: '50%' } : { left: `${portOffsets[index]}%` }"
         />
         <span
-          v-if="labelledPorts"
+          v-if="portLabelled(port)"
           class="builder-port-label"
           :class="portTone(port)"
           :style="{ left: `${portOffsets[index]}%` }"

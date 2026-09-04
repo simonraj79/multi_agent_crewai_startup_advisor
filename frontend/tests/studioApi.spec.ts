@@ -520,6 +520,73 @@ describe('StudioApi http surface', () => {
       // signal, which is how a late 401 used to be reclassified as offline.
       expect(fetchMock).toHaveBeenCalledTimes(1)
     })
+
+    /*
+     * D-01-2. A 403 or a 404 is the 401 case again: it can only come from a
+     * real server, so "fall back to the scripted mock" is the one answer that
+     * cannot be right. Round 1 found Bob's console, pointed at Alice's
+     * workflow, drawing a 14-node fabricated topology under her graph's name
+     * with an enabled Launch, because every non-401 refusal was filed under
+     * "no backend".
+     */
+    const refused = (status: number, statusText: string, detail: string) => ({
+      ok: false,
+      status,
+      statusText,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify({ detail }),
+      json: async () => ({ detail }),
+    })
+
+    it('reads a 404 as a live server and keeps its sentence', async () => {
+      const probe = new StudioApi()
+      fetchMock.mockResolvedValueOnce(refused(404, 'Not Found', 'workflow not found'))
+
+      await expect(probe.initialize()).resolves.toBe('live')
+
+      expect(probe.probeFailure).toBeNull()
+      expect(probe.probeRefusal).toBe('workflow not found')
+    })
+
+    it('reads a 403 as a live server and keeps its sentence', async () => {
+      const probe = new StudioApi()
+      fetchMock.mockResolvedValueOnce(
+        refused(403, 'Forbidden', 'workflow ug_0b94fc25 reaches a billable node before any human gate'),
+      )
+
+      await expect(probe.initialize()).resolves.toBe('live')
+
+      expect(probe.probeFailure).toBeNull()
+      expect(probe.probeRefusal).toContain('reaches a billable node')
+    })
+
+    it('still treats a 5xx as no backend, because an edge answers 502 for nothing', async () => {
+      const probe = new StudioApi()
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        headers: new Headers({ 'content-type': 'text/html' }),
+        text: async () => '<html>502</html>',
+        json: async () => ({}),
+      })
+
+      await expect(probe.initialize()).resolves.toBe('mock')
+
+      expect(probe.probeRefusal).toBeNull()
+      expect(probe.probeFailure).toContain('502')
+    })
+
+    it('clears a previous refusal when a later probe succeeds', async () => {
+      const probe = new StudioApi()
+      fetchMock.mockResolvedValueOnce(refused(404, 'Not Found', 'workflow not found'))
+      await probe.initialize()
+      expect(probe.probeRefusal).toBe('workflow not found')
+
+      fetchMock.mockResolvedValueOnce(jsonResponse([{ id: 'idea-validator' }]))
+      await expect(probe.initialize(true)).resolves.toBe('live')
+      expect(probe.probeRefusal).toBeNull()
+    })
   })
 })
 

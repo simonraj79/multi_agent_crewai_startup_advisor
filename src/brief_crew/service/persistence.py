@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 import json
@@ -26,9 +26,12 @@ from sqlalchemy import (
     Integer,
     MetaData,
     Numeric,
+    LargeBinary,
     String,
     Table,
     Text,
+    UniqueConstraint,
+    and_,
     create_engine,
     delete,
     func,
@@ -43,6 +46,12 @@ from sqlalchemy.pool import StaticPool
 from threading import RLock
 
 from brief_crew.events import FrameData
+from brief_crew.events.redaction import (
+    REDACTED,
+    SECRET_KEYS,
+    is_secret_key,
+    normalize_secret_key as _normalize_secret_key,
+)
 
 
 if TYPE_CHECKING:
@@ -61,6 +70,18 @@ MAX_OPEN_GATE_SCAN = 500
 MAX_STALE_RUN_SCAN = 500
 
 _UNSET = object()
+#: What a `runs.mode` of NULL means, and what the API answers for it. The
+#: column is additive and nullable (C7): a row written before it existed and a
+#: row written by an ordinary run are the same NULL, deliberately, so nothing
+#: has to be backfilled for the two to agree.
+DEFAULT_RUN_MODE = "run"
+
+
+def run_mode(value: Any) -> str:
+    """One `runs.mode` column value as the word the API uses."""
+
+    text = str(value or "").strip()
+    return text or DEFAULT_RUN_MODE
 _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 # Statuses that assert "a worker somewhere is supposed to be doing this".
 # `waiting` is deliberately absent: it is durably anchored by run_gates and
@@ -68,21 +89,13 @@ _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _LIVE_RUN_STATUSES = ("queued", "running", "cancelling")
 # F03/R-2 watch ladder for an unanswered gate: open -> expired -> alerted.
 _GATE_WATCH_STATUSES = frozenset({"expired", "alerted"})
-_SECRET_KEYS = frozenset(
-    {
-        "apikey",
-        "authorization",
-        "clientsecret",
-        "cookie",
-        "password",
-        "privatekey",
-        "refreshtoken",
-        "secret",
-        "setcookie",
-        "token",
-        "accesstoken",
-    }
-)
+# One list, shared with the frame serializer - `events/redaction.py` says why
+# it left this module. The old name is kept because tests and the docstring
+# above `_sanitize_json` refer to it. The WALK below asks `is_secret_key`, not
+# this set: until 2026-09-03 it tested membership itself, so the suffix rule
+# added to `redaction.py` would have reached the ring and not the row - the
+# exact two-walks-two-answers drift that module exists to end.
+_SECRET_KEYS = SECRET_KEYS
 _URL_CREDENTIALS = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s:]+:[^/@\s]+@", re.I)
 
 
@@ -144,6 +157,11 @@ runs = Table(
     Column("flow_id", String(128)),
     Column("graph_version", String(128), nullable=False),
     Column("status", String(32), nullable=False),
+    # C7 (10-runtime.md): `run` / `test` / `node_test`. NULL reads as `run`,
+    # and it is NULLable because `runs` shipped without it - see
+    # _ADDITIVE_COLUMNS below for why a NOT NULL here would never reach the
+    # live table at all.
+    Column("mode", String(16)),
     Column("inputs", _json_type(), nullable=False),
     Column("usage", _json_type(), nullable=False),
     Column("result", _json_type()),
@@ -272,6 +290,149 @@ builder_document_versions = Table(
     Column("version", Integer, primary_key=True),
     Column("document", _json_type(), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    # How this version came to be - `created`, `saved`, `autosaved`,
+    # `restored from v3`, `imported`, `duplicated` - for the version browser
+    # (plan 15 D6 amended 2026-09-03, C10; round 2 D-15-3). Nullable, because
+    # the table shipped without it: `create_all` never alters a shipped table,
+    # so the column reaches a deployed database only through
+    # `_ADDITIVE_COLUMNS`, and every row written before it stays NULL.
+    Column("source", String(64)),
+)
+
+
+# --------------------------------------------------------------------------
+# Gauntlet tables - contract C10, owned by .agent/plans/15-persistence.md D6
+#
+# Six tables and one additive column, landed together by the Integrator before
+# any Stage 1 feature branched, so that 01 (credentials), 06 (custom tools),
+# 07 (MCP servers), 08 (skills) and 13 (test inputs) build against one shape
+# rather than five. None of these tables has ever shipped, so `create_all()`
+# creates each one WITH its indexes and constraints; the additive-column rule
+# below applies only to `runs.mode`, because `runs` has shipped.
+#
+# Every table carries a NOT NULL `user_id`. These rows never existed before
+# authentication did, so unlike `runs.user_id` and `builder_documents.user_id`
+# there are no legacy rows to protect and no reason to admit an ownerless one
+# (01 D2, isolation rule 1). There is still no ForeignKey to a `user` table,
+# for the reason given above `runs`.
+# --------------------------------------------------------------------------
+user_credentials = Table(
+    "user_credentials",
+    metadata,
+    # `cr_` + 8 hex (config.CREDENTIAL_ID_PATTERN), minted by
+    # service/credentials.py the way store.py mints `ug_` document ids.
+    # String(128) like every other id column here - 15 D6 wrote a longer id
+    # and 01 C4 a shorter one; the Integrator's S1 ruling is in 00's Status.
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("kind", String(32), nullable=False),
+    Column("label", String(80), nullable=False),
+    # AES-256-GCM over the fields JSON. The nonce is 12 random bytes per write,
+    # and the associated data binds `id` and `user_id` into the ciphertext, so
+    # a row copied under another user or id fails to authenticate rather than
+    # decrypting (01 D3). The plaintext never appears in any other table.
+    Column("ciphertext", LargeBinary, nullable=False),
+    Column("nonce", LargeBinary, nullable=False),
+    Column("key_version", Integer, nullable=False, default=1),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("last_used_at", DateTime(timezone=True)),
+    UniqueConstraint("user_id", "label", name="uq_user_credentials_user_label"),
+)
+Index("ix_user_credentials_user_kind", user_credentials.c.user_id, user_credentials.c.kind)
+
+# The index row for a SKILL.md pack on disk (08 owns the files, C11).
+user_skills = Table(
+    "user_skills",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("name", String(64), nullable=False),
+    Column("description", String(1024), nullable=False),
+    Column("path", String(255), nullable=False),
+    Column("bytes", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("user_id", "name", name="uq_user_skills_user_name"),
+)
+Index("ix_user_skills_user_updated", user_skills.c.user_id, user_skills.c.updated_at)
+
+# A per-user MCP server record and its last discovery result (07 owns
+# discovery, C12). `header_credential_id` / `env_credential_id` name rows in
+# `user_credentials` with no ForeignKey, as `runs.user_id` has none: a deleted
+# credential makes the server validate as `credential-missing`, not fail DDL.
+mcp_servers = Table(
+    "mcp_servers",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("label", String(80), nullable=False),
+    Column("transport", String(8), nullable=False),
+    Column("url", String(2048)),
+    Column("command", String(255)),
+    Column("args", _json_type()),
+    Column("header_credential_id", String(128)),
+    Column("env_credential_id", String(128)),
+    Column("status", String(16), nullable=False),
+    Column("discovered_tools", _json_type()),
+    Column("discovered_at", DateTime(timezone=True)),
+    Column("last_error", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+Index("ix_mcp_servers_user_updated", mcp_servers.c.user_id, mcp_servers.c.updated_at)
+
+# The declarative custom HTTP tool (00 D8, 06): a schema grid and a request
+# template, never code.
+user_tools = Table(
+    "user_tools",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("name", String(64), nullable=False),
+    Column("description", String(1024), nullable=False),
+    Column("input_schema", _json_type(), nullable=False),
+    Column("request", _json_type(), nullable=False),
+    Column("credential_id", String(128)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("user_id", "name", name="uq_user_tools_user_name"),
+)
+
+# A saved set of run inputs for the docked test panel (13). The ForeignKey is
+# real here because both tables are ours and a document's test inputs have no
+# meaning once the document is gone.
+builder_test_inputs = Table(
+    "builder_test_inputs",
+    metadata,
+    Column("id", String(128), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column(
+        "document_id",
+        String(128),
+        ForeignKey("builder_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("label", String(80), nullable=False),
+    Column("inputs", _json_type(), nullable=False),
+    Column("node_mocks", _json_type()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+Index(
+    "ix_builder_test_inputs_document_updated",
+    builder_test_inputs.c.document_id,
+    builder_test_inputs.c.updated_at,
+)
+
+# The tables above, by name, for the boot-time inspector assertion and the
+# isolation matrix. Order is the order they were declared.
+GAUNTLET_TABLES: tuple[str, ...] = (
+    "user_credentials",
+    "user_skills",
+    "mcp_servers",
+    "user_tools",
+    "builder_test_inputs",
 )
 
 
@@ -289,10 +450,6 @@ class GateAnswerResult:
 
 class PersistenceValueError(ValueError):
     """Raised when a value cannot be safely stored as bounded JSON."""
-
-
-def _normalize_secret_key(key: str) -> str:
-    return "".join(character for character in key.lower() if character.isalnum())
 
 
 def _redact_text(value: str) -> str:
@@ -334,8 +491,8 @@ def _sanitize_json(value: Any, *, label: str, depth: int = 0) -> Any:
             normalized_key = str(key)
             if len(normalized_key) > 255:
                 raise PersistenceValueError(f"{label} contains an oversized key")
-            if _normalize_secret_key(normalized_key) in _SECRET_KEYS:
-                sanitized[normalized_key] = "[REDACTED]"
+            if is_secret_key(normalized_key):
+                sanitized[normalized_key] = REDACTED
             else:
                 sanitized[normalized_key] = _sanitize_json(
                     item, label=label, depth=depth + 1
@@ -546,6 +703,13 @@ class PostgresFlowPersistence(FlowPersistence):
     # which a real migration tool has become cheaper than this list.
     _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
         ("runs", "user_id", "VARCHAR(128)"),
+        # C7 run mode, .agent/plans/15-persistence.md D6. VARCHAR(16), NULL = `run`.
+        ("runs", "mode", "VARCHAR(16)"),
+        # Plan 15 D6 amended 2026-09-03 (C10, round 2 D-15-3): how a version
+        # came to be. `builder_document_versions` shipped on 2026-09-02, so
+        # this is the second column to reach a deployed table by this path.
+        # NULL reads as `stored`; nothing is backfilled.
+        ("builder_document_versions", "source", "VARCHAR(64)"),
     )
 
     def _add_missing_columns(self) -> None:
@@ -632,12 +796,60 @@ class PostgresFlowPersistence(FlowPersistence):
             state = connection.execute(statement).scalar_one_or_none()
         return dict(state) if isinstance(state, Mapping) else None
 
+    def load_state_at(
+        self, flow_uuid: str, moment: datetime | None
+    ) -> dict[str, Any] | None:
+        """The last state written at or before `moment` - C7's `?step=`.
+
+        `moment` is a FRAME's timestamp, and the answer is the state as of that
+        frame, which is what "read the flow state at a step" can mean when the
+        two are recorded in different tables by different writers. `None` for
+        `moment` is `load_state`: no bound asked for, the latest given.
+
+        Ordered by `id` and not by `created_at` for the tie. CrewAI writes a
+        state row per method and two of them can share a timestamp to the
+        resolution the column stores; the autoincrement is the only total order
+        there is, and a `?step=` that answered differently on two calls would
+        be worse than one that answers coarsely.
+        """
+
+        at = _as_utc(moment)
+        if at is None:
+            return self.load_state(flow_uuid)
+        flow_uuid = _identifier(flow_uuid, label="flow_uuid")
+        statement = (
+            select(flow_states.c.state)
+            .where(flow_states.c.flow_uuid == flow_uuid)
+            .where(flow_states.c.created_at <= at)
+            .order_by(flow_states.c.id.desc())
+            .limit(1)
+        )
+        with self._connect() as connection:
+            state = connection.execute(statement).scalar_one_or_none()
+        return dict(state) if isinstance(state, Mapping) else None
+
     def save_pending_feedback(
         self,
         flow_uuid: str,
         context: PendingFeedbackContext,
         state_data: dict[str, Any] | BaseModel,
-    ) -> None:
+    ) -> bool:
+        """Anchor a paused flow. True when this call's context is what is stored.
+
+        UPDATE-then-INSERT rather than an upsert, because the two dialects this
+        runs on spell upsert differently and the row is keyed by
+        ``flow_uuid`` alone. That shape has one race, and it is the one
+        ``tests/pg/test_two_writers.py`` drives: two processes raising
+        ``HumanFeedbackPending`` for one flow both read ``rowcount == 0`` from
+        the UPDATE, both INSERT, and the primary key decides. The loser's
+        transaction - the ``flow_states`` row included - is rolled back by the
+        raise, so nothing half-written remains, and it returns ``False``
+        rather than propagating ``IntegrityError``: the flow IS pending, which
+        is what the caller asked for, and the winner's context is the one
+        anchor a resume may read. Two processes pausing the same flow at once
+        means two processes are executing it, and the second anchor is the one
+        thing that must not overwrite the first.
+        """
         flow_uuid = _identifier(flow_uuid, label="flow_uuid")
         if _identifier(context.flow_id, label="context.flow_id") != flow_uuid:
             raise ValueError("pending feedback flow_id must match flow_uuid")
@@ -645,29 +857,48 @@ class PostgresFlowPersistence(FlowPersistence):
         context_data = _bounded_json(context.to_dict(), label="pending feedback")
         now = _utcnow()
 
-        with self._begin() as connection:
-            self._insert_flow_state(
-                connection,
-                flow_uuid=flow_uuid,
-                method_name=context.method_name,
-                state=state,
-                created_at=now,
-            )
-            result = connection.execute(
-                update(pending_feedback)
-                .where(pending_feedback.c.flow_uuid == flow_uuid)
-                .values(context=context_data, state=state, updated_at=now)
-            )
-            if result.rowcount == 0:
-                connection.execute(
-                    insert(pending_feedback).values(
-                        flow_uuid=flow_uuid,
-                        context=context_data,
-                        state=state,
-                        created_at=now,
-                        updated_at=now,
-                    )
+        try:
+            with self._begin() as connection:
+                self._insert_flow_state(
+                    connection,
+                    flow_uuid=flow_uuid,
+                    method_name=context.method_name,
+                    state=state,
+                    created_at=now,
                 )
+                result = connection.execute(
+                    update(pending_feedback)
+                    .where(pending_feedback.c.flow_uuid == flow_uuid)
+                    .values(context=context_data, state=state, updated_at=now)
+                )
+                if result.rowcount == 0:
+                    connection.execute(
+                        insert(pending_feedback).values(
+                            flow_uuid=flow_uuid,
+                            context=context_data,
+                            state=state,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+        except IntegrityError:
+            with self._connect() as connection:
+                existing = connection.execute(
+                    select(pending_feedback.c.flow_uuid).where(
+                        pending_feedback.c.flow_uuid == flow_uuid
+                    )
+                ).scalar_one_or_none()
+            if existing is None:
+                # Not the race: the constraint that fired was some other one,
+                # and hiding it behind "already pending" would be a lie.
+                raise
+            logger.warning(
+                "pending feedback for flow %s was written by another process "
+                "first; this context was not stored",
+                flow_uuid,
+            )
+            return False
+        return True
 
     def load_pending_feedback(
         self, flow_uuid: str
@@ -708,6 +939,7 @@ class PostgresFlowPersistence(FlowPersistence):
         user_id: str | None = None,
         status: Any = "queued",
         created_at: datetime | None = None,
+        mode: str | None = None,
     ) -> dict[str, Any]:
         run_id = _identifier(run_id or uuid.uuid4(), label="run_id")
         session_id = _identifier(session_id, label="session_id")
@@ -723,6 +955,15 @@ class PostgresFlowPersistence(FlowPersistence):
         status_value = _identifier(_enum_value(status), label="status", limit=32)
         safe_inputs = _bounded_json(dict(inputs or {}), label="run inputs")
         now = _as_utc(created_at) or _utcnow()
+        # NULL for the default, not the literal `run`. Every row written before
+        # the column existed reads NULL, and `run_mode()` maps both to `run` -
+        # so a fresh default row and a legacy one are indistinguishable, which
+        # is the property that makes the additive column honest.
+        mode_value = (
+            None
+            if mode in (None, "", DEFAULT_RUN_MODE)
+            else _identifier(mode, label="mode", limit=16)
+        )
 
         with self._begin() as connection:
             connection.execute(
@@ -734,6 +975,7 @@ class PostgresFlowPersistence(FlowPersistence):
                     flow_id=flow_id,
                     graph_version=graph_version,
                     status=status_value,
+                    mode=mode_value,
                     inputs=safe_inputs,
                     usage={},
                     captured_frames=0,
@@ -811,6 +1053,60 @@ class PostgresFlowPersistence(FlowPersistence):
         if updated is None:
             raise KeyError(run_id)
         return updated
+
+    def claim_run_status(
+        self,
+        run_id: str,
+        status: Any,
+        *,
+        expected_statuses: Sequence[Any],
+    ) -> bool:
+        """Move a run's status only while it is still one of ``expected_statuses``.
+
+        The compare-and-set the orphan sweep needed and did not have. Plan 15
+        D8 and CLAUDE.md remaining-work item 3 both list the sweep among the
+        guarded ``UPDATE ... WHERE ...; rowcount`` paths, and until this method
+        it was not one: ``_fail_interrupted`` reached storage through
+        ``update_run_status``, which guards on ``id`` alone, so two API
+        instances sweeping one store - a deploy overlapping the instance it is
+        replacing, which ``autoDeploy: yes`` makes routine - would BOTH
+        reconcile one run, each writing its own terminal status and frames.
+        Guarding on the status the sweeper loaded means the second writer sees
+        ``rowcount == 0`` and learns the row is already terminal.
+
+        Only the status and its timestamps move here; ``completed_at`` is set
+        for a terminal target and left alone otherwise. The rest of the record
+        - result, error, usage, frame counters - is written afterwards by the
+        winner through ``update_run_status``, which stays unconditional and is
+        right to: it now runs only in the process holding the claim. Returns
+        True when this call made the change; False when the row is gone or
+        already left the expected set, which the caller must treat as somebody
+        else's reconciliation and not as an error.
+
+        ``tests/pg/test_two_writers.py`` drives two processes into this
+        UPDATE at once; ``tests/service/test_orphan_sweep_claim.py`` pins the
+        loser's behaviour on SQLite.
+        """
+        run_id = _identifier(run_id, label="run_id")
+        status_value = _identifier(_enum_value(status), label="status", limit=32)
+        expected = tuple(
+            _identifier(_enum_value(item), label="expected_status", limit=32)
+            for item in expected_statuses
+        )
+        if not expected:
+            raise ValueError("expected_statuses cannot be empty")
+        now = _utcnow()
+        values: dict[str, Any] = {"status": status_value, "updated_at": now}
+        if status_value in _TERMINAL_RUN_STATUSES:
+            values["completed_at"] = func.coalesce(runs.c.completed_at, now)
+        with self._begin() as connection:
+            result = connection.execute(
+                update(runs)
+                .where(runs.c.id == run_id, runs.c.status.in_(expected))
+                .values(**values)
+            )
+            claimed = result.rowcount == 1
+        return claimed
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")
@@ -1296,6 +1592,103 @@ class PostgresFlowPersistence(FlowPersistence):
             for row in rows
         ]
 
+    def purge_expired_runs(
+        self,
+        *,
+        retention_days: int,
+        now: datetime | None = None,
+        limit: int = MAX_STALE_RUN_SCAN,
+        on_purged: Callable[[str], None] | None = None,
+    ) -> int:
+        """Delete terminal runs that finished more than ``retention_days`` ago.
+
+        Plan 15 D7. The in-memory eviction (``RunRegistry.evict_stale_runs``)
+        never touched a row, so completed runs, their frames, their node
+        metrics and their gates accumulated forever - CLAUDE.md closed item 32
+        names it. This is the durable half, and it is the only thing in this
+        module that deletes a run.
+
+        What it will not delete, each for a reason:
+
+        * anything but ``completed`` / ``failed`` / ``cancelled``. ``waiting``
+          above all: a gate answered late is deliberate behaviour, and a run
+          parked at a gate is never old enough. ``queued`` / ``running`` /
+          ``cancelling`` belong to the orphan sweep, which decides what they
+          are before anything decides how old they are.
+        * a terminal run that still has an UNANSWERED gate row. That shape
+          should not exist - ``_close_interrupted_gate`` answers it - but a
+          purge that could take a run out from under an open gate would be the
+          exact hazard the plan names, so the predicate refuses it outright
+          rather than trusting the sweep that ran before it.
+        * ``retention_days == 0``: never, which is the default and the
+          deployed behaviour today (PLANS.md decision 23).
+
+        Age is ``completed_at``, falling back to ``updated_at`` for a row that
+        reached a terminal status without one. The children go first and by
+        name - ``run_frames``, ``run_node_metrics``, ``run_gates`` - for the
+        reason ``BuilderDocumentStore.delete`` gives: they carry ``ON DELETE
+        CASCADE`` and PostgreSQL honours it, but SQLite only does with a pragma
+        this service never sets, so the cascade is done explicitly rather than
+        hopefully. Documents, versions, credentials, skills and tools are not
+        runs and are never touched.
+
+        Bounded by ``limit`` per call, like every other sweep here, so one
+        tick after a long retention change cannot hold a transaction over the
+        whole table. ``on_purged`` is told each deleted id after the commit, so
+        a caller holding an in-memory copy can let it go.
+        """
+        days = int(retention_days)
+        if days < 0:
+            raise ValueError("retention_days cannot be negative")
+        if days == 0:
+            return 0
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        moment = _as_utc(now) or _utcnow()
+        cutoff = moment - timedelta(days=days)
+        finished_at = func.coalesce(runs.c.completed_at, runs.c.updated_at)
+        open_gate = (
+            select(run_gates.c.gate_id)
+            .where(
+                run_gates.c.run_id == runs.c.id,
+                run_gates.c.answered_at.is_(None),
+            )
+            .exists()
+        )
+        expired = and_(
+            runs.c.status.in_(sorted(_TERMINAL_RUN_STATUSES)),
+            finished_at < cutoff,
+            ~open_gate,
+        )
+        purged: list[str] = []
+        with self._begin() as connection:
+            candidates = connection.execute(
+                select(runs.c.id).where(expired).order_by(finished_at).limit(limit)
+            ).scalars().all()
+            for run_id in candidates:
+                # The predicate is repeated on the DELETE, so a row that changed
+                # between the SELECT and here - answered, reopened, anything -
+                # is left alone by the write rather than by the read.
+                result = connection.execute(
+                    delete(runs).where(runs.c.id == run_id, expired)
+                )
+                if result.rowcount != 1:
+                    continue
+                for child in (run_frames, run_node_metrics, run_gates):
+                    connection.execute(delete(child).where(child.c.run_id == run_id))
+                purged.append(str(run_id))
+        if on_purged is not None:
+            for run_id in purged:
+                on_purged(run_id)
+        if purged:
+            logger.info(
+                "purged %d terminal run(s) that finished more than %d day(s) ago, "
+                "with their frames, node metrics and gates",
+                len(purged),
+                days,
+            )
+        return len(purged)
+
     def get_pending_gate(self, run_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")
         with self._connect() as connection:
@@ -1426,6 +1819,10 @@ class PostgresFlowPersistence(FlowPersistence):
             "usage": dict(row["usage"] or {}),
             "result": row["result"],
             "error": row["error"],
+            # NULL reads as `run` (C7). `_run_dict` is what restart recovery and
+            # `GET /api/runs/{id}` on a run this process never held both read,
+            # so the mapping has to happen HERE rather than at either caller.
+            "mode": run_mode(row["mode"]),
         }
 
     @staticmethod

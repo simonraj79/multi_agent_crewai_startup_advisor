@@ -159,11 +159,12 @@ function withNode(doc: BuilderDocument, index: number, node: BuilderNode): Build
 
 /**
  * The problem codes as the Python declares them, read at run time - from all
- * THREE files that declare one.
+ * FOUR files that declare one.
  *
  * Transcribing them would make this test agree with the tuple it is checking
  * for exactly as long as both were copied from the same place, which is no
- * check at all. `bounds.py` (25), `budget.py` (2) and `compiler.py` (3) declare
+ * check at all. `bounds.py` (25), `budget.py` (2), `compiler.py` (3) and
+ * `registry.py` (3) declare
  * every code as a module-level constant precisely so neither side has an inline
  * string, and the kebab-case filter is what tells a code apart from any other
  * string constant any of them might grow.
@@ -186,6 +187,20 @@ function pythonProblemCodes(): string[] {
     '../../src/brief_crew/builder/bounds.py',
     '../../src/brief_crew/builder/budget.py',
     '../../src/brief_crew/builder/compiler.py',
+    // Plans 06, 07 and 08 declare their own codes in their own modules, in the
+    // module-level shape this regex can see. SEVEN files now, and the same
+    // seven are named in `tests/builder/test_problem_code_declarations.py`, in
+    // `scripts/emit_builder_fixtures.py` and in `_problem_code_union` - they
+    // move together, or a code exists on the server that this tuple has never
+    // heard of, which is section 14's defect 2.
+    '../../src/brief_crew/builder/tools.py',
+    '../../src/brief_crew/builder/mcp.py',
+    '../../src/brief_crew/builder/skills.py',
+    // The fourth, added 2026-09-04 with plan 05. `compiler.py` was missing from
+    // this array for a while and twenty-seven codes passed as thirty; the same
+    // omission here would hide `model-lacks-capability`, which is the most
+    // frequent thing an author does wrong with a model picker.
+    '../../src/brief_crew/builder/registry.py',
   ]
   const codes = new Set<string>()
   for (const relative of sources) {
@@ -452,28 +467,63 @@ describe('the problem codes are the python problem codes', () => {
     expect([...PROBLEM_CODES].sort()).toEqual(pythonProblemCodes())
   })
 
-  it('finds all thirty, so an empty read cannot pass as agreement', () => {
+  it('finds all fifty, so an empty read cannot pass as agreement', () => {
     // Without this the assertion above would be satisfied by a regex that
     // matched nothing against a tuple that had lost everything - and, as the
     // 27 that stood here until 2026-09-02 proved, by a file list missing a
     // whole module against a tuple missing the same three codes.
     //
-    // 30 is not this figure copied forward. It was re-derived by parsing every
-    // `Problem(...)` call under `src/brief_crew/builder/` - 32 sites, 30
-    // distinct codes: 25 in bounds.py (two of them raised through a loop
-    // variable at `_identity_problems`, so they have no literal to grep), 2 in
-    // budget.py, 3 in compiler.py.
-    expect(pythonProblemCodes()).toHaveLength(30)
-    expect(PROBLEM_CODES).toHaveLength(30)
+    // 31 until 2026-09-04, when 03-node-library.md D2 landed the seven
+    // edge-class codes in `bounds.py`: `attach-target-not-agent`,
+    // `member-target-not-crew`, `member-agent-has-flow-edges`,
+    // `attachment-unattached`, `attachments-over-max`,
+    // `attachment-nodes-over-max` and `crew-members-out-of-range`. The
+    // Python-side twin of this assertion is
+    // `tests/builder/test_problem_code_declarations.py`, whose failure message
+    // names this line and the tuple by path - which is the only mechanism that
+    // makes a server-side code addition break a TypeScript test in the same
+    // commit rather than three commits later.
+    //
+    // 38 until 2026-09-04, when plan 05 added a FOURTH declaring file -
+    // `builder/registry.py` - and its three model codes: `model-unknown`,
+    // `model-over-ceiling` and `model-lacks-capability`. That is exactly the
+    // four-place edit the `compiler.py` paragraph above predicts, made in one
+    // commit rather than discovered three commits later.
+    //
+    // 41 until 2026-09-04, when plans 06, 07 and 08 added three more declaring
+    // files - `builder/tools.py`, `builder/mcp.py` and `builder/skills.py` -
+    // and nine codes: three about a tool node's id, settings and key, five
+    // about an MCP server and its tools, and one about a skill pack. That is
+    // the same four-place edit again, made in one commit.
+    //
+    // 55 until 2026-09-04, when plan 12 added its two crew codes to `bounds.py`:
+    // `crew-task-order-mismatch` and `crew-hierarchical-needs-manager`. Both are
+    // one defect in two keys - an authored crew field whose value the runtime
+    // silently discards, after every node upstream has already billed.
+    //
+    // 57 is NOT the 57 plan 12's criterion 1 asks for by the route it asks for
+    // it, and the plan's own Status records the arithmetic: its table has 27
+    // rows, 21 of which landed with plans 03-09, two of which are deliberately
+    // not union members (`credential-not-yours` is a run-phase `error_class`,
+    // `skill-contains-scripts` an import-time refusal declared outside the seven
+    // swept files) and two of which are blocked on a C1 schema change
+    // (`prompt-too-long`, `retry-over-max` are parse-time constraints today).
+    expect(pythonProblemCodes()).toHaveLength(57)
+    expect(PROBLEM_CODES).toHaveLength(57)
   })
 
-  it('declares the three warnings, and they are codes', () => {
-    // `bounds.py` writes `severity="warning"` at exactly three sites. Every
-    // other code is an error and blocks publish.
+  it('declares the five warnings, and they are codes', () => {
+    // `bounds.py` writes `severity="warning"` at exactly four sites and
+    // `mcp.py` at one. Every other code is an error and blocks publish. The
+    // fourth is `attachment-unattached`, which is a warning because it is
+    // exactly what a node looks like the moment it is dropped; the fifth is
+    // `mcp-tool-description-suspicious`, which is a warning because the
+    // thirteen injection patterns have false positives by design and PLANS.md
+    // decision 8 rules that the author decides with eyes open.
     for (const code of WARNING_CODES) {
       expect(PROBLEM_CODES).toContain(code)
     }
-    expect(WARNING_CODES).toHaveLength(3)
+    expect(WARNING_CODES).toHaveLength(7)
   })
 
   it('anchors every FIELD_CODES entry to a real code', () => {

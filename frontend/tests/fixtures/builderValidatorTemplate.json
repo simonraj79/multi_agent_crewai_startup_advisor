@@ -71,7 +71,13 @@
       "max_gate_message_chars": 2000,
       "max_input_chars": 2000,
       "max_document_bytes": 262144,
-      "run_cost_ceiling_usd": 10
+      "run_cost_ceiling_usd": 10,
+      "max_attachment_nodes": 24.0,
+      "max_attachments_per_node": 8.0,
+      "max_crew_members": 6.0,
+      "max_prompt_chars": 4000.0,
+      "max_retries": 3.0,
+      "ceiling_usd_per_m_input": 1.0
     }
   },
   "document": {

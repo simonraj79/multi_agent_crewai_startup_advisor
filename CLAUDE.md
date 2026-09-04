@@ -1,5 +1,136 @@
 # CLAUDE.md
 
+## Rules for the gauntlet build
+
+Applied 2026-09-04 (`PLANS.md` decision 2, taken). The source draft is
+`.agent/RULES.draft.md`; **this pasted copy is the one in force** and the draft
+is now history. Two of its clauses were amended on the owner's rulings of the
+same day and each amendment says so where it sits.
+
+**The gauntlet build has its own briefing: [`.agent/MISSION.md`](.agent/MISSION.md).**
+Read it before touching anything under `.agent/plans/`, `benchmarks/`, or a
+builder surface. It carries the goal, the gate, the build order, the rulings,
+the money rule, the exact commands and the traps. Where it and this block
+disagree, MISSION.md is the more specific document and wins.
+
+### Responses
+Concise. No preamble. Don't restate the plan back to me.
+
+### Planning
+Never modify files in planning. Ask clarifying questions until the spec is
+unambiguous. Never assume design, copy, or features. Write plans to
+`.agent/plans/<feature>.md` with numbered acceptance criteria and references;
+record status in `PLANS.md`.
+
+### Building
+Follow the current plan file. If reality contradicts the plan, stop and say
+so — do not improvise around it. Report a contradiction against a plan
+section, a contract number (C1–C12 in `.agent/plans/00-architecture.md`) or
+a ruling number in `docs/flow-builder-spec.md`; never around one.
+
+### Framework
+CrewAI only, at the version pinned in `docs/tech-stack.md` (1.15.18). Every
+canvas node maps to a real CrewAI primitive; the table is
+`.agent/plans/00-architecture.md` D3. If a node can't map, the node design
+is wrong — fix the design, never fake the runtime. Where the gauntlet and
+the installed package disagree, the package wins: `docs/crewai-notes.md`
+§11 is the list. Never install `crewai[litellm]`.
+
+### Models
+OpenRouter only. Hard ceiling: **$1.00 per 1M input tokens**, enforced by
+`tests/test_model_ceiling.py` over `data/models.json`; the registry is
+regenerated from the live catalogue, never typed from memory. Never
+introduce Claude Opus/Sonnet, GPT-4o full, o1, o3, o4-mini, or any
+frontier-priced model — not in code, not in defaults, not in examples, not
+in tests. A price written in prose is stale; look it up.
+
+> **Amended 2026-09-04.** `ESCALATION_MODEL` is
+> `openrouter/google/gemini-3.8-flash` ($0.75 / $3.75) as of `f19a2c6`;
+> `CHEAP_MODEL` is unchanged. Both are inside the ceiling. `PRICES` moves in
+> the same commit as either constant — the reason is in `config.py` beside the
+> dict. See MISSION.md §6.
+
+### Design
+Flowise for build-time interaction (`docs/flowise-notes.md`). ChatDev for
+run-time motion (`docs/chatdev-notes.md`). Follow `docs/design.md`. No new
+colours, spacing or type scales — a value is a token in
+`frontend/src/assets/styles/tokens.css` or it does not exist. No
+third-party sprites. The design canvas is still.
+
+### Testing
+Verify with available tools before reporting done. Check the plan's
+acceptance criteria explicitly, item by item. Never assume it works. A green
+suite is not evidence a UI is right (`docs/gotchas-and-insights.md` 34, 35).
+The judge loop is `benchmarks/README.md`.
+
+### Cost
+Never press Launch against the paid backend on :8000; the free one is
+`SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099`. E2E tests that launch
+are tagged `@launch`.
+
+> **Amended 2026-09-04, on the owner's rulings.** The draft said *"single-threaded
+> by default; ask before spawning parallel agents"*. **Parallel subagents are
+> now authorized and encouraged** for the gauntlet build — the constraint that
+> replaces it is ownership, not count: the Integrator owns every contract
+> change, merge, plan `Status` table and ledger row, and a subagent that needs
+> one reports the need instead of making the change.
+>
+> **Money, which the draft did not bound at all:** live `gemini-3.8-flash` runs
+> for E2E and smoke testing are authorized up to **$5.00 cumulative** across the
+> programme, recorded per session. Plan 14's four paid template runs, the paid
+> acceptance run and the live fan-out benchmark each need a costed estimate and
+> a fresh yes. Balance was **$27.55** on 2026-09-04 — re-measure with
+> `mcp__openrouter__get-credits` rather than quoting that.
+
+### Invariants (the sections below own the reasoning)
+Prompts for this repository's own crews stay in YAML; a user's authored
+agent carries its prompts in the user's document and nowhere else.
+Constants stay in `config.py`. Embeddings go through
+`brief_crew.embeddings`, never CrewAI's embedder. `SYNTHETIC=1` is a
+factory swap, not a second runner. No tools on Scoper, Synthesist or
+Reporter. Do not regress Brief Crew. `tests/__init__.py`'s placeholder keys
+gain a row whenever a test constructs a new provider client.
+
+### Three directories that look alike — do not merge them
+`.agent/plans/` — the gauntlet plan files, this build. `agents/` — the
+authoritative CrewAI specifications; where code and spec disagree, the spec
+is right. `.agents/skills/` — vendored MIT CrewAI skills, third-party files.
+
+### Commands
+The gauntlet build runs from a **worktree**, and every Python command there
+needs `PYTHONPATH` or it silently tests the main tree's source. MISSION.md §8
+carries the full recipe; these are the short forms for the main tree.
+
+```text
+build:  Push-Location frontend; npm run build; Pop-Location
+test:   .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
+        Push-Location frontend; npm test; Pop-Location
+lint:   Push-Location frontend; npx vue-tsc -b --force; Pop-Location
+e2e:    (see Cost) then  npx playwright test
+```
+
+### Smoke test — IT FIRED, 2026-09-04, and the answer was no
+
+When this file loads, begin your first reply with the word ORRERY. If a
+fresh session does not, the rules are decorative: fix the loading before
+building anything.
+
+> **It fired within the hour, and this block is NOT reaching subagents.** A
+> fresh subagent, asked what its own context contained before it did anything,
+> reported loading `CLAUDE.md` and `MEMORY.md` and finding no "Rules for the
+> gauntlet build" section. The cause is that auto-loading follows the
+> **session's working directory** - `D:\MultiAgentSystem`, on `main` - while
+> this block is committed to the *worktree's* `CLAUDE.md` on `gauntlet/plans`.
+> Two files, one name, and the stale one wins by default.
+>
+> **The block is therefore kept, not deleted**, and it is not decorative: it is
+> the copy a reader of this branch gets, and the only reason anyone knows the
+> split exists. The fix is not a file edit - putting it in the main tree
+> recreates the merge blocker cleared the same day - so `.agent/MISSION.md`
+> trap 0 makes it every subagent brief's job to say so. Delete this smoke test
+> only when the two trees are one again.
+
+
 ## Read This First
 
 This repository now contains three things that share one Python package:
@@ -12,6 +143,18 @@ This repository now contains three things that share one Python package:
    here. Its contract is [`docs/flow-builder-spec.md`](docs/flow-builder-spec.md).
    Read that before changing anything under `src/brief_crew/builder/` or
    `frontend/src/components/builder/`.
+4. **The gauntlet build** - the visual agent builder planned on 2026-09-02.
+   **Stage 1 (plans 01 and 15) was built and integrated on 2026-09-03** on
+   branch `gauntlet/plans`, not on `main`. **Three judge rounds have now been
+   through it**: rounds 1 and 2 SCORED (`benchmarks/rounds/`), and round 3
+   BUILT on 2026-09-03 with its critic not yet invoked - so "round 3" means
+   the fixes are in and nobody hostile has looked at them yet. Neither plan
+   has met its gate: **13 rows are open** in `benchmarks/DEFECTS.md`, 1 for
+   plan 01 and 12 for plan 15, and a row is closed by the CRITIC, never by
+   the builder. Section 15 below is the summary. [`PLANS.md`](PLANS.md) tracks status and the open
+   owner decisions; [`.agent/plans/`](.agent/plans/README.md) holds one plan
+   per feature, `00` the contracts. Read a plan file before building its
+   feature; read nothing else of it into a session.
 
 Read [`AGENTS.md`](AGENTS.md) before changing CrewAI code. The specifications in [`agents/`](agents/) remain authoritative for behavior they already cover. [`PRD.md`](PRD.md) extends those specifications for Validator Studio.
 
@@ -30,8 +173,8 @@ neither should ever be restated here.**
 > arrangement that has ever stopped this drifting.)*
 
 > **[`docs/gotchas-and-insights.md`](docs/gotchas-and-insights.md) — the
-> mistakes, and how not to repeat them.** **35** numbered entries as of
-> 2026-09-02 — count it, never copy it:
+> mistakes, and how not to repeat them.** **46** numbered entries as of
+> 2026-09-03 — count it, never copy it:
 > `grep -cE '^### [0-9]+\.|^## [0-9]+\.' docs/gotchas-and-insights.md`. It said
 > 30 in two places in this file until today; the grep answered 30 when this
 > reconciliation started and 35 by the time it reached these two lines, because
@@ -76,24 +219,56 @@ rests on committed history it says so.
 
 ## Verified Baseline
 
-Re-measured on **2026-09-02** against the `feat/flow-builder` working tree, on
-Windows. Three of the four gates were executed here - the Python suite, the
-frontend unit suite and the two build steps. **The E2E row is inherited, not
-re-run**, and the block says so on its own line rather than in a footnote,
-because a baseline that does not distinguish "I ran this" from "I copied this"
-is the exact failure the stamp above promises to avoid.
+Re-measured on **2026-09-04** against `gauntlet/plans` = `bc12642` (waves A
+and B built), in the integration worktree
+(`D:\MultiAgentSystem-wt\integration`), on Windows, by the pre-production
+pass. **Two rows are RED and one was not run**, and the block says which is
+which on its own line rather than in a footnote.
+
+> ⚠️ **The working tree carried UNCOMMITTED edits from three concurrent build
+> agents** when these ran. That is not an excuse and it is not a hedge — it is
+> the measured cause of the two red rows, and the evidence is one command:
+> `git show HEAD:frontend/src/types/builder.ts` contains **no**
+> `max_prompt_chars` and no `AuthoredAgentConfig`, while the working copy
+> contains seven such references. So the committed branch is very probably
+> green on those rows and *this tree* is not. Nothing was stashed to prove it:
+> stashing would have destroyed three other agents' work in progress.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:  1228 run, 0 failures, 0 errors, 1 skipped - 114.6s
-Frontend unit: 1024 run, 0 failures, 54 files (Vitest + jsdom) - 13.3s
-Frontend build: GREEN - `vue-tsc -b --force` exit 0, `npm run build` in 789ms
-Playwright E2E:  28 tests, ALL GREEN with ZERO console errors tolerated - 1.7m
-                 (15 builder + 3 builder-layout + 7 studio + 3 node-card visual)
-                 ^ NOT RE-RUN. This is `6d2743c`'s own measurement, carried
-                   forward; the doc pass only LISTED the suite. No browser was
-                   launched and no backend was started.
+Python tests:  2439 run, 0 failures, 0 errors, 6 skipped - 179.0s   GREEN
+Frontend unit: 1696 run, 0 failures, 84 files (Vitest + jsdom)      GREEN
+Frontend build: GREEN - `vue-tsc -b --force` exit 0, `npm run build` 720ms
+Playwright E2E:  130 passed, 0 failed, 0 skipped - 8.1m, 23 files    GREEN
+                 both projects, zero console errors tolerated, against
+                 SYNTHETIC=1 on :8099 with MISSION.md §8's knobs and the
+                 MCP fixture on :8791. Measured 2026-09-05 at 953ccbd.
 ```
+
+> **The previous block, for the record, and it was fully run:** 2026-09-03 at
+> `5f63cc8` — Python 1655 / 6 skipped / 86.3s, PostgreSQL 5 OK / 25.2s,
+> frontend unit 1195 in 65 files, `vue-tsc` and `npm run build` both exit 0,
+> and Playwright **37 tests in 5 files all green** with zero console errors
+> tolerated, 9 of them `@launch`. Two builder tests are timing-flaky there
+> (MEASURED, item 44), and a throwaway capture spec left in `e2e/` raises the
+> LIST above the suite, which is why none is committed.
+
+> **These are `gauntlet/plans` figures, not `main`'s.** `main` is still
+> `25634c0`, where 1228 / 1024 / 28 stand. Waves A and B (`5f63cc8` →
+> `bc12642`) added **368 Python tests, 205 frontend tests and 32 E2E tests**
+> over the 2026-09-03 block below — arithmetic on two measured pairs, not a
+> count anybody took at the time. Stage 1 of
+> the gauntlet (section 15) took the suites to 1548 / 1131 / 33; plan 15's
+> round 2 (`a952c74` → `90699e9`) added 94 Python and 26 frontend tests and
+> one E2E layout test; **round 3 for both plans** (`f2a3bb8` → `5f63cc8`)
+> added 13 Python and 38 frontend tests and three E2E tests. The three visual specs need
+> the gitignored PNG baselines copied from the main tree into a fresh
+> worktree, or they fail with "a snapshot doesn't exist" - an environment
+> gap, not a regression, and it cost one run here.
+
+> **Superseded 2026-09-03**: the note below explains why the *previous*
+> baseline's E2E row had to say it was inherited. This pass ran the suite.
+
 
 > **What "28 tests, ALL GREEN" is and is not evidence of.** The figure comes
 > from the builder commit, whose message records `E2E 28 tests, zero console
@@ -140,8 +315,9 @@ Playwright E2E:  28 tests, ALL GREEN with ZERO console errors tolerated - 1.7m
 
 ⚠️ These counts move, and they move fast. The Python suite has gone
 65 → 295 → 341 → 378 → 415 → 459 → 522 → 537 → 660 → 679 → 698 → 713 → 772 →
-**1228** and the frontend
-103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → **1024**. Re-run before
+1228 → 1548 → 1642 → 1655 → **2023** (on `gauntlet/plans`) and the frontend
+103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → 1024 → 1131 → 1157 →
+1195 → **1400** (37 of them failing, see the baseline). Re-run before
 quoting a number; the command is the contract, not the figure. The last step in
 each series is one commit.
 
@@ -241,14 +417,27 @@ able to press that button. Start the free one yourself:
 
 ```powershell
 $env:SYNTHETIC = "1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS = "5"; $env:PORT = "8099"
+# Since plan 01 (2026-09-03): the vault must be configured or the isolation
+# spec's credential step answers 503. Any base64 of 32 bytes; this is the
+# placeholder tests/__init__.py uses and it authenticates against nothing.
+$env:CREDENTIALS_MASTER_KEY = "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
 .\.venv\Scripts\serve.exe
 
 # second shell
 Push-Location frontend
-npx playwright test                          # all 28
+npx playwright test                          # all 37. A throwaway capture spec
+                                             # left in e2e/ raises the LIST by
+                                             # one per test it holds, which is
+                                             # why none is ever committed.
 npx playwright test --grep-invert @launch    # the ones that never press Launch
 Pop-Location
 ```
+
+> **In a worktree, `serve.exe` serves the MAIN tree's source unless
+> `PYTHONPATH=<worktree>/src` is set** - the venv's editable install points at
+> `D:\MultiAgentSystem\src`, and a backend that answers `/healthz` proves
+> nothing about which tree it loaded. Prove it with a route that exists only
+> on the branch under test before trusting a green run.
 
 > **`SYNTHETIC_BRANCH_DELAY_SECONDS=5` is not optional, and its absence looks
 > like a visual regression.** `e2e/visual/run-canvas.spec.ts` screenshots a
@@ -278,10 +467,11 @@ The app is deployed on Render and serving.
 
 | | |
 | --- | --- |
-| UI | `https://agentic-crew-ai-web.onrender.com` — static site, free plan |
+| UI | `https://agentic-crew-ai-studio.onrender.com` — **a Node web service, not a static site**, free plan, `region: singapore`. This row said `agentic-crew-ai-web` and "static site" until 2026-09-04; both halves were stale. `render.yaml` declares `agentic-crew-ai-studio` with `runtime: node`, and its own comment records a probe of `https://agentic-crew-ai-studio.onrender.com/api/workflows` on 2026-09-01. Better Auth needs a runtime a CDN cannot give it, and the region is load-bearing because the database's `ipAllowList` is empty |
 | API | `https://agentic-crew-ai-api.onrender.com` — web service, python, **starter**, **singapore** |
 | DB | `agentic-crew-ai-db` — basic_256mb, PostgreSQL 18, singapore. Pre-existing and **reused**, not recreated by the apply |
 | Repo | `https://github.com/simonraj79/multi_agent_crewai_startup_advisor` (**public**), branch `main`, `autoDeploy: yes` on both services |
+| ⚠️ Next deploy | **Will not start unless `CREDENTIALS_MASTER_KEY` is entered in the API service's dashboard first.** Remaining-work item 46; measured, not reasoned |
 | Commit | **Unknown, and now more so.** This row said "inferred `d3523c5`" as of 2026-08-30; local `main` is `b4ef654` as of 2026-09-02 and `autoDeploy: yes` is set on both services, so the flow builder has *probably* shipped. The service still exposes no version endpoint, **no probe was made this pass**, and "probably" is doing all the work in that sentence. If it did ship, section 14's endpoints and `MAX_RUN_COST_USD` are live on a public origin and have never been exercised there |
 
 > **Every live measurement below was taken on 2026-08-30 at `e539811` and was
@@ -362,9 +552,12 @@ recreate the problem this move solves.
 | 7 | `onrender.com` is on the Public Suffix List |
 | 8 | A free Render web service sleeps, and that decides your architecture |
 
-That file carries **35 numbered entries** plus a set of reusable design
-insights — measured 2026-09-02 with the `grep -cE` above, while another agent
-was still adding to it, so regenerate rather than quote this. It covers the toolchain (`tsc -b` skipping an unreferenced config,
+That file carries **46 numbered entries** plus a set of reusable design
+insights — measured 2026-09-03 with the `grep -cE` above, after plan 15's
+round-2 build added six and round 3 added four more (43-46: .NET's current
+directory ignoring `Set-Location`, an HTML comment inside a Vue tag, fake
+timers around a mount, and the canvas's space-drag pan), so regenerate rather
+than quote this. It covers the toolchain (`tsc -b` skipping an unreferenced config,
 Node's literal import resolution, Vite proxy ordering), the runtime
 (`create_all` never altering a shipped table, `value or DEFAULT` eating a
 legitimate zero, `Authorization` not being CORS-safelisted), an entire section
@@ -809,9 +1002,10 @@ reply.
   comma-separated origins, **empty default, so it fails closed**; a malformed
   entry is refused *at import* with the corrected string in the message rather
   than normalised away; `CORS_ALLOW_CREDENTIALS` is a fixed `False`, which is
-  what makes the `"*"` escape hatch survivable. **It does not govern `/ws`** —
-  browsers do not apply CORS to a WebSocket handshake and Starlette passes
-  non-HTTP scopes straight through. See remaining-work item 13.
+  what makes the `"*"` escape hatch survivable. The **middleware** still does
+  not govern `/ws` — browsers do not apply CORS to a WebSocket handshake and
+  Starlette passes non-HTTP scopes straight through — but since 2026-09-04 the
+  handshake asks the same list itself, before it accepts. See closed item 13.
   `CORS_EXPOSE_HEADERS` is `("ETag", "Retry-After")`: neither is
   CORS-safelisted, and the static site is a separate origin, so without the
   second entry a rate-limited browser client cannot read the one header that
@@ -824,14 +1018,41 @@ reply.
 - Synthetic service mode for no-cost integration and UI testing, selected by
   `SYNTHETIC=1` through `app_from_env()`.
 
-**Environment knobs: there are THIRTY-NINE, and the canonical list lives in
-[`docs/tech-stack.md` §6](docs/tech-stack.md).** Thirty-five are read in
+**Environment knobs: there are FORTY-NINE, and the canonical list lives in
+[`docs/tech-stack.md` §6](docs/tech-stack.md).** Forty-five are read in
 `config.py`, four in `service/app.py` (`DATABASE_URL`, `HOST`, `PORT`,
-`SYNTHETIC`). Regenerated 2026-09-02 at `b4ef654` with the multiline scan below,
+`SYNTHETIC`). Regenerated 2026-09-04 at `bc12642`, and re-run unchanged at `8ae9a1f`, with
+the multiline scan below,
 per file rather than in aggregate, because "thirty-two and four" was itself a
-figure nobody had re-split.
+figure nobody had re-split. **The production decision for each unset knob is
+[`docs/deploying.md`](docs/deploying.md)'s, not this file's** — four of the
+eight new ones are provisional rulings that must stay off.
 
-> **Thirty-nine is the SIXTH figure this paragraph has published, and the five
+> **Forty-nine is the EIGHTH, regenerated 2026-09-04 at `bc12642`, and
+> forty-one lasted one wave.** The eight new knobs are waves A and B's:
+> `BUILDER_CODE_INTERPRETER_ENABLED`, `BUILDER_PLATFORM_FIRECRAWL_DEFAULT`,
+> `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP`, `MCP_STDIO_ENABLED`,
+> `MCP_ALLOWED_COMMANDS`, `MCP_ALLOWED_ENV_VARS`, `MCP_ALLOW_INSECURE_LOCAL`
+> and `SKILLS_ROOT`. `docs/tech-stack.md` §6 carries a row for each and this
+> file does not restate them.
+>
+> **The eighth failure was the same failure**, and it is worth naming because
+> the previous entry predicted it in so many words. The handoff into this pass
+> stated the count as 39 and the number of new knobs as ten; the scan answers
+> 49 and eight. Both halves of that were arrived at by *reasoning about what a
+> wave added* rather than by running the scan — which is exactly what the
+> `MAX_RUN_COST_USD` correction below says never produces a right answer. The
+> 39 also came from the **main tree's** `CLAUDE.md`, which is a generation
+> stale; this worktree's copy already said 41.
+>
+> **Forty-one was the SEVENTH, regenerated 2026-09-03 at `ca43ba8`.** Its two
+> new knobs were `CREDENTIALS_MASTER_KEY` (plan 01, the credential vault) and
+> `VALIDATOR_RUN_RETENTION_DAYS` (plan 15, durable run retention), landed
+> together in the Stage 1 contract commit `52a954f`, whose message said the
+> scan now answers 41 and deferred this regeneration to integration. It was the
+> first time the count moved in a commit that announced it would.
+>
+> **Thirty-nine was the SIXTH figure this paragraph published, and the five
 > before it were all wrong — never twice for the same reason.** (Six published,
 > five wrong: that is the tally
 > [`docs/tech-stack.md` §6](docs/tech-stack.md) owns, and it is the only place
@@ -891,9 +1112,13 @@ The scan that regenerates it — **multiline**, never line-anchored:
 ./.venv/Scripts/python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);print(sorted({n for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py') for n in pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))}))"
 ```
 
-`render.yaml` sets **none** of the admission knobs, so production runs on the
-defaults above — including `VALIDATOR_ALLOW_AUTO_GATES` off, which is the right
-answer for a public endpoint. One knob needs a decision anywhere else:
+`render.yaml` sets **none** of the admission knobs, none of the five `BUILDER_*`
+knobs, none of the four `MCP_*` knobs and not `SKILLS_ROOT`, so production runs
+on the defaults above — including `VALIDATOR_ALLOW_AUTO_GATES` off, which is the
+right answer for a public endpoint. **The one it must set and did not is
+`CREDENTIALS_MASTER_KEY`** — see remaining-work item 46; the manifest sets
+`AUTH_BASE_URL`, and the two together are a boot refusal rather than a degraded
+feature. One knob needs a decision anywhere else:
 `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` defaults to **on**, which is right behind
 Render's proxy — the socket peer *is* the proxy, so without it every visitor on
 earth shares one bucket and the first person to click Launch rate-limits
@@ -1383,7 +1608,41 @@ PUT    /api/builder/workflows/{id}
 DELETE /api/builder/workflows/{id}
 POST   /api/builder/validate
 POST   /api/builder/workflows/{id}/publish
+
+GET    /api/builder/workflows/{id}/export?version=       # plan 15, 2026-09-03
+POST   /api/builder/workflows/import
+POST   /api/builder/workflows/{id}/duplicate?version=
+GET    /api/builder/workflows/{id}/versions
+POST   /api/builder/workflows/{id}/unpublish             # plan 15 round 2, 2026-09-03
+
+GET    /api/builder/credentials                          # plan 01, 2026-09-03
+POST   /api/builder/credentials
+DELETE /api/builder/credentials/{id}
+POST   /api/builder/credentials/{id}/test
 ```
+
+The eight below the gap landed with Stage 1 of the gauntlet (section 15);
+their shapes are in `.agent/plans/15-persistence.md` D1/D3 and
+`.agent/plans/01-auth-and-workspaces.md` C4, each plan's Status section
+naming where the build diverged from the text. `unpublish` landed with plan
+15's round 2 (`9e85e9f`): decision 24 is now BUILT rather than assumed -
+`DELETE` refuses **409** while *any* version is registered, not only a
+published head, and the sentence names this route as the remedy in the same
+words the docked confirm uses. Round 1 had found the guard one save deep:
+its own remedy ("save a new version") returned the head to draft while the
+older version stayed registered, so the next delete unregistered a live
+graph.
+
+Two visibility rules on this router since round 2 (`95dfd70`). A document
+with an **owner** is invisible to everybody else, 404. A document with **no
+owner** - pre-auth history, or anything written on a deployment without
+identity - is readable and launchable by everyone and **writable by nobody
+who has an identity**: save, publish, delete and unpublish answer **403**
+naming Duplicate, which is safe only because the row is visible to everyone
+already. The anonymous caller on an auth-off backend keeps write, being that
+deployment's only author, and an auth-configured backend refuses to mint an
+unowned row at all (401 on create, import and duplicate for nobody). The
+isolation matrix carries a row per verb for it.
 
 A save is a **compare-and-set on the head version**, in the same
 `UPDATE ... WHERE ...; rowcount` shape `answer_gate` and `reopen_gate` already
@@ -1551,8 +1810,9 @@ and it is bigger than all of them.
    committed (normalising line endings first, because `core.autocrlf` is `true`
    here and a raw comparison would report the platform instead of the drift), and
    `tests/builder/test_problem_code_declarations.py` forbids the inline-literal
-   spelling that the frontend's grep cannot see. Both sides answer **30** at
-   head; regenerate rather than trust that sentence.
+   spelling that the frontend's grep cannot see. Both sides answered **30** at
+   `b4ef654` and answer **31** on `gauntlet/plans` since 2026-09-03
+   (`credential-missing`, plan 01 D10); regenerate rather than trust either.
 3. **On the empty gallery, a 236x70 box held 1356px of content.** Neither rail
    renders there, but the shell still declared three columns, so the gallery
    landed in the 236px palette slot inside a 0px row. An `is-gallery` modifier in
@@ -1629,6 +1889,128 @@ of the older sections above:
   its own state names through `register_workflow_reserved_run_input_keys`, and
   `all_reserved_run_input_keys` is what an unknown workflow id is answered
   against. That registration is the fifth map of defect 6.
+
+### 15. The gauntlet, Stage 1 - plans 01 and 15, on `gauntlet/plans`
+
+Built 2026-09-02 to 2026-09-03 by four parallel builder agents on their own
+worktrees (`s1/01-api`, `s1/01-ui`, `s1/15-api`, `s1/15-ui`) and integrated
+by a fifth, on branch `gauntlet/plans` at `18a7944`. **Not on `main`.** The
+plan files own the detail and this section does not restate it:
+[`.agent/plans/01-auth-and-workspaces.md`](.agent/plans/01-auth-and-workspaces.md)
+(workflow ownership, the AES-256-GCM credential vault, synthetic identity,
+secret redaction, the credential picker, the two-user isolation E2E) and
+[`.agent/plans/15-persistence.md`](.agent/plans/15-persistence.md) (export,
+import, duplicate, version history, delete, retention, the two-writer
+PostgreSQL test). Each carries a dated Status entry with every criterion's
+test file and count and every place the build diverged from the plan.
+[`PLANS.md`](PLANS.md) is the tracker; both plans read
+`In judge (round 1 pending)`, which means every criterion is ticked and the
+critic in `benchmarks/README.md` has not been invoked.
+
+What is worth knowing here rather than there, because it is about how the
+work was done and not what it does:
+
+- **Three defects were visible only to the merged tree**, after every branch
+  was green alone. Plan 15's export strip noted a node on the credential KEY,
+  and plan 01 made every agent node serialise `credential_id: null`, so a clean
+  export reported `needs_credentials` (`348af34`). The E2E harness told the
+  SPA it was signed in and told the API nothing, so plan 01's first owned
+  route answered 401 and seven builder tests failed the zero-console-errors
+  rule. And the post-save draft was written from the local copy, which no
+  longer fingerprinted equal to the server's defaulted one, so the restore bar
+  offered the version on screen (`e62235a`). A branch suite cannot see any of
+  these; only the merge can. That is the argument for integrating early.
+- **`BuilderView.vue` and `ProblemsPanel.vue` were binary to git** - literal
+  NUL bytes in three dedup keys since `6d2743c` - so the one file every
+  builder branch touches could not be merged by line. Spelled as escapes now
+  (`5ebe001`). Check `git ls-files --eol` before assuming a source file is
+  text.
+- **`config.py` stayed Integrator-owned** (S1 ruling 3). The builders left
+  ten `# TODO(integrator)` constants, moved in `18a7944`; each module
+  re-exports its old name. No environment knob was added by any builder; the
+  two Stage 1 knobs landed in the contract commit and §6 counts 41.
+- **The synthetic backend for E2E now needs `CREDENTIALS_MASTER_KEY`**, and
+  in a worktree needs `PYTHONPATH`; the recipe in the Verified Baseline says
+  both. A cookieless E2E context is `e2e-user` at the API, not nobody.
+- **New test modules** (Python, 2026-09-03, run alone):
+  `test_workflow_ownership` 14, `test_credentials` 19,
+  `test_credential_crypto` 24, `test_boot_checks` 8,
+  `test_credential_resolution` 15, `test_secret_redaction` 13,
+  `test_synthetic_identity` 14, `test_validate_identity` 18,
+  `test_export` 38, `test_upgrade` 12, `test_builder_import` 21,
+  `test_builder_duplicate` 16, `test_builder_delete` 11,
+  `test_builder_export_route` 13, `test_builder_versions` 14,
+  `test_isolation_matrix` 16, `test_run_retention` 24,
+  `test_orphan_sweep_claim` 12, `tests/pg/test_two_writers` 5. Frontend:
+  `builderAccountChip` 12, `credentialPicker` 29, `versionBrowser` 23,
+  `builderImport` 9, `builderExport` 15, `documentLifecycle` 10,
+  `builderDraftCanonical` 3; E2E `isolation.spec.ts` 4 and one new
+  `builder.spec.ts` step. These are the builders' own counts; the suite
+  totals in the Verified Baseline are the measurement.
+- **Still open from Stage 1**: the `postgres` CI job has never run; decisions
+  23, 25 and 26 are built on their recommendation and unanswered, and 24 is
+  now BUILT (unpublish exists, delete refuses while any version is
+  registered) but still unratified. Item 43 (the console's mock-mode
+  fallback on a foreign 404) was CLOSED on 2026-09-03 in plan 01's round-2
+  build (ledger row D-01-2); judge round 1 scored both plans on 2026-09-03
+  and neither met the gate (`benchmarks/rounds/`).
+- **Plan 15 round 2 was built on 2026-09-03** (`a952c74` → `90699e9`, one
+  commit per ledger id, every D-15 row left `open` for the critic;
+  `benchmarks/DEFECTS.md` names the fixing commit per row). What it
+  changed outside the six visual rows: the store's write gate (above), an
+  unknown version of your own document answers "has no version 99; the
+  newest is v2" rather than "document not found", a malformed import file is
+  one sentence and never echoed, the unpublish route and the widened delete
+  guard, and a **second additive column** -
+  `builder_document_versions.source`, VARCHAR(64), NULL reads `stored` -
+  recorded against C10 in `00-architecture.md` and asserted against the
+  shipped DDL in `test_additive_migration.py::VersionSourceColumnTests`.
+  New module `test_builder_unpublish` (12); the isolation matrix went
+  16 → 31, and **32** by the time round 3 re-ran it alone, which is why
+  plan 15's Status regenerated every per-module count rather than carrying
+  one forward. Two of the fixing commits (`b249d89`, `d9672a0`) exist only
+  because the 1440x900 captures were LOOKED at: a Function-typed prop's
+  `withDefaults` default is the value, not a factory, and a template ref is
+  null at a child's `onMounted` - gotchas 37-42 are that session's traps.
+- **Judge round 2 SCORED both plans on 2026-09-03** (`f2a3bb8`,
+  `benchmarks/rounds/01-2.md` and `15-2.md`): plan 01 dim 14 = 9, dim 16 =
+  10; plan 15 dim 4 = 7 against Flowise 3.1.4 at 4 (blind), 11 = 10, 12 = 6,
+  14 = 10, 16 = 7. Neither met the gate. A row verifier re-ran every round-1
+  row and found all sixteen defects absent as written (two partly), the
+  critics landed two of plan 15's again with new sentences, and eleven new
+  rows opened.
+- **Round 3 was BUILT for both plans on 2026-09-03**, plan 01 at
+  `f2a3bb8` → `b176dda` and plan 15 at `b176dda` → `5f63cc8`, one commit per
+  ledger id with the id in the subject, and **every built row left `open`**
+  because a row is the critic's to close. **Round 3's critic has not been
+  invoked**, so nothing here is scored. Each plan's Status carries a table
+  naming every commit per id, round 2's included.
+
+  What round 3 changed that a reader of the sections above will not expect:
+
+  - **Per-user browser storage** (D-01-5). A draft, a run handoff and a run
+    pointer are keyed `u:<user id>:<base>` (`frontend/src/data/identityStorage.ts`),
+    so the next person on a shared browser reads none of them even without a
+    sign-out, and `endSession` sweeps that prefix. Section 13's account of
+    sign-out is now incomplete: it ended the token and nothing else.
+  - **One app-wide `RequestValidationError` handler** (D-15-21,
+    `service/app.py::_install_validation_handler`). FastAPI's default echoes
+    the offending `input`, measured at **200,159 bytes** from `create`. The
+    import door keeps its own hand-written parsing, for the 413-on-bytes and
+    the JSON decode a pydantic handler cannot see.
+  - **The import's `needs_credentials` is an intersection** (D-15-19/20), not
+    the re-derivation section 14's export notes describe: the export nulls
+    each key, so re-deriving found nothing and the list was always empty for
+    the file the criterion is about. Plan 15's Status records one departure
+    from the ruling here for the owner to confirm.
+  - **The delete 409 names the graph, not its id** (D-15-18), and the
+    docked and gallery confirms now use one layout.
+  - **A refusal no longer retires itself** (D-15-22): `say()` arms no timer
+    for `kind: 'error'`.
+  - **A legibility floor on the automatic canvas fits** (D-15-2,
+    `MIN_LEGIBLE_ZOOM = 11 / 15`). It trades whole for readable, and what it
+    crops is reachable by a pan - which is why one existing E2E assertion
+    was AMENDED rather than added to. Gotchas 43-46 are this session's traps.
 
 ## No-Cost Integration Coverage
 
@@ -1801,16 +2183,32 @@ where it previously could only assert that the reply was accepted.
 
 ## Remaining Work and Unverified Risks
 
-Updated 2026-09-02 against `b4ef654` (the flow-builder merge), clean tree apart
-from one doc file another agent was editing at the time. The previous pass was
-2026-08-31 at `c63aca0`. Numbering is continuous with previous handoffs and has
-not been compacted, so cross-references keep resolving.
+**Deployment surfaces updated 2026-09-04 against `bc12642`** (waves A and B
+built) by the pre-production pass, which owns `render.yaml`, `docs/deploying.md`,
+`docs/tech-stack.md`, `docs/preflight.md`, this file, `Dockerfile` and
+`.github/workflows/**` and nothing else. It added **items 46, 47 and 48**, re-ran
+item 3's PostgreSQL suite, and wrote a **go-live checklist** into
+[`docs/deploying.md`](docs/deploying.md) — sixteen lines, of which **five are
+NOT READY, five more unverified, and two of the five red ones would break the
+deploy outright**. Read that
+checklist before a merge to `main`; both Render services carry
+`autoDeploy: yes`, so the merge *is* the deploy and there is no later moment at
+which to notice.
+
+**Item 46 is the one that stops a deploy dead**, and it is new: the manifest
+sets `AUTH_BASE_URL` and nothing sets `CREDENTIALS_MASTER_KEY`, which is a
+startup `RuntimeError` rather than a degraded feature. It is measured.
+
+Everything else below was updated 2026-09-02 against `b4ef654` (the flow-builder
+merge), clean tree apart from one doc file another agent was editing at the time.
+The pass before that was 2026-08-31 at `c63aca0`. Numbering is continuous with
+previous handoffs and has not been compacted, so cross-references keep resolving.
 
 **The flow builder closed nothing on this list**, and that is worth saying
-plainly because it shipped 59,489 lines. Items 1, 3, 5 and 17 — the paid
-acceptance run, PostgreSQL concurrency, the ratified rubric that no paid run
-has exercised, and the missing `LICENSE` — are all still open, and item 3 is now *worse* by one path.
-What the builder added is items 40-42.
+plainly because it shipped 59,489 lines. Items 1, 5 and 17 — the paid
+acceptance run, the ratified rubric that no paid run has exercised, and the
+missing `LICENSE` — are all still open. **Item 3's concurrency half is now
+closed** and re-verified twice; what the builder added is items 40-42.
 
 ### Needs money or a live host - no agent can close these
 
@@ -1870,7 +2268,23 @@ What the builder added is items 40-42.
    real Firecrawl scrapes at 10-30 s, projecting 2.8x-2.9x. Two things could
    still sink it: unequal branch latencies, and GitHub's shared 10 req/min
    per-IP limit serializing the feasibility branch (R-7).
-3. **Live PostgreSQL 18 exercise — still half closed.** `metadata.create_all()`
+3. **Live PostgreSQL 18 exercise — the concurrency half is CLOSED LOCALLY and
+   INDEPENDENTLY RE-VERIFIED on 2026-09-04, and not yet in CI.**
+   `tests/pg/test_two_writers.py` (plan 15 D8) races two processes from a
+   barrier on each of the five paths and passed 5/5 against PostgreSQL 18.6 in
+   the `pg18-test` container, three times over on 2026-09-03 and once more by
+   the pre-production pass on 2026-09-04 at `bc12642` — `Ran 5 tests in
+   23.317s / OK`, against a server reporting `PostgreSQL 18.6 (Debian
+   18.6-1.pgdg13+2)`. **That is the half of this item that has been open since
+   the project began, and a second pass on a different day agrees with the
+   first.** What is still open is not the code: it is that the CI job proving
+   it runs only on `main` and has therefore never executed, so the merge that
+   ships this is also the first run of the job that guards it. Two things it found: the **orphan sweep was not a
+   compare-and-set** (`_fail_interrupted` guarded on `id` alone; it is
+   `claim_run_status` now), and a losing `save` reported the pre-CAS version.
+   `ci.yml` gained a `postgres` job on `main` only (decision 25) that has not
+   yet run. Everything below this line is the entry as it stood before, kept
+   for the reasoning. `metadata.create_all()`
    has run clean against PG 18 in production: the deployed API answered
    `/readyz` with `"backend":"postgresql"`. Every test still runs on SQLite, so
    that is one DDL pass on one dialect, not coverage.
@@ -2251,11 +2665,27 @@ What the builder added is items 40-42.
     correction. Its own small lesson: a remaining-work list decays like any
     other prose, and "re-verified open" is only as good as the date beside it.
 
-13. **`/ws` has no `Origin` check.** `CORS_ALLOW_ORIGINS` does not reach it:
-    browsers do not apply CORS to a WebSocket handshake and Starlette passes
-    non-HTTP scopes through. The socket does require a `run_id` that exists and
-    a matching `session_id`, so an attacker needs a run identifier to get
-    anything, but nothing stops a page on any origin from opening the socket.
+13. ~~**`/ws` has no `Origin` check.**~~ **FIXED 2026-09-04 (D-01-7).**
+    `config.websocket_origin_allowed` is asked on the handshake, before the
+    token and before the run is looked up, against the SAME
+    `CORS_ALLOW_ORIGINS` the HTTP middleware captured. Three rules and each is
+    a decision rather than a default: a **missing** `Origin` is a non-browser
+    client and is allowed, because a browser always sends one and anything that
+    can omit a header can forge one; an origin **on the list** is allowed,
+    `*` included; and a **same-origin** handshake is allowed whatever the list
+    says, which is what keeps the empty default from meaning "no console" for
+    local development and the E2E harness, both of which reach this service
+    through a Vite proxy that forwards the page's own `Host`. Everything else
+    is closed with `WS_ORIGIN_REFUSED_CLOSE_CODE` (4406) having sent nothing.
+
+    What it fixes is narrower than "the socket was open to anyone", and the
+    row that found it says so: an **owned** run was already 4404 to everybody
+    but its owner. An **unowned** one - every run on an auth-off checkout and
+    every run in `SYNTHETIC` mode - had only the `run_id`/`session_id` pair
+    between a hostile page and the stream.
+    `tests/service/test_cors.py::WebsocketOriginTests` (6) and
+    `WebsocketOriginPredicateTests` (5); the pin that said `/ws` was **not**
+    covered is flipped rather than deleted.
 14. ~~**The graph `ETag` is set and never honoured.**~~ **FIXED 2026-08-31.**
     `get_graph` now takes an `If-None-Match` header and answers **304** with an
     empty body and the tag repeated (RFC 9110 requires the repeat, so a cache
@@ -2482,8 +2912,207 @@ true.
     this document refuses to do. Either record the method (the dimensions, what
     each was scored against, at what viewport) or stop quoting the number.
 
+#### New with Stage 1 of the gauntlet
+
+43. ~~**[Medium] A foreign workflow's 404 reads as demonstration mode.**~~
+    **FIXED 2026-09-03, plan 01 round 2, ledger row D-01-2.** Found
+    2026-09-03 by plan 01's isolation E2E and then, independently, by the
+    round-1 critic from a handoff record and a browser: Bob's console pointed
+    at Alice's workflow drew the kicker PUBLISHED GRAPH / her graph's name over
+    a 14-node fabricated topology (`mock-of-…`) with an enabled green Launch,
+    and only a 12px "Mock Mode" chip to say otherwise.
+
+    Two layers were wrong, and the E2E had been asserting past both. The
+    transport probe in `studioApi.ts` filed every non-401 refusal under "no
+    backend"; it now reads any 4xx as a live server (a 401 already was) and
+    keeps the sentence in `probeRefusal`, with 5xx still "no backend" because
+    Render's edge answers 502 for a service that is not there. And
+    `useValidatorRun.initialize` answered a refused graph read by flipping to
+    mock and drawing `MOCK_GRAPH`; it now stays live, draws an EMPTY graph
+    (`version: 'unavailable'`, so the canvas meta cannot read `mock-`), records
+    the server's sentence in `graphProblem`, and `canLaunch` is false while it
+    is set. `StatusPanel.vue` renders that sentence in a non-dismissible
+    `.graph-banner` because the disabled Launch needs a reason the operator
+    cannot wave away. Pinned by `frontend/tests/studioApi.spec.ts` (the 403 /
+    404 / 502 probe cases), `frontend/tests/foreignWorkflow.spec.ts` (6), and
+    the isolation E2E's launch test, which now asserts what the canvas shows
+    BEFORE anything is pressed: not mock, zero nodes, the sentence, Launch
+    disabled. It is the 401-to-mock bug of closed item 31 one status code
+    over, and the original diagnosis stands: a 404 or 403 can only come from a
+    real server.
+
+44. **[Low] The E2E suite is not self-cleaning, and two of its drag tests
+    are timing-flaky.** Measured 2026-09-03 during plan 15's round-2 build,
+    on a fresh `SYNTHETIC=1` backend. `clearLibrary` in `e2e/builder.spec.ts`
+    deletes every document before each test and cannot delete a published
+    one - 409 by design, decision 24 - so every full run leaves one published
+    "Minimal gated agent" behind, and a long-lived backend accumulates them
+    (five after five runs here). Now that `POST …/unpublish` exists the
+    helper can unpublish first; a fresh synthetic backend is in-memory and
+    starts clean, which is why a critic's first run does not see this. And
+    two tests fail on timing alone: "deletes a router branch and its edge
+    together" failed **1 in 8** with `frontend/src` at `a952c74` and 2 in 8
+    at HEAD, with two different failure shapes (the drag wired nothing; the
+    drag wired the wrong port); "ends the keyboard connect gesture it starts"
+    failed once in a full run and 4/4 alone. The `dragTo` helper's
+    hover-hover-release sequence is the moving part. Neither is a plan-15
+    defect; both are a green suite that is green by a margin.
+
+    **Corroborated 2026-09-03 by round 3**, which ran the full suite four
+    times across the two plans: 35/35, then 34/35 on the router-branch test
+    (which passed alone immediately afterwards), then 37/37 twice. So the
+    base rate is real and low, the failure is not new, and the isolated
+    re-run is the right protocol - but nobody has reproduced it at a base
+    commit within one session, so "pre-existing" still rests on this item's
+    own measurement rather than on a controlled comparison.
+
+45. **[Decision] Two round-3 departures need the owner's word.** Both are
+    recorded where the work is, not only here: plan 15's Status carries the
+    first at length, and `service/builder_api.py::import_document`'s
+    docstring carries it beside the code.
+
+    - **D-15-19's rule is an intersection UNION the strip's own report.** The
+      ruling said "the intersection of the envelope's list and the nodes
+      whose credential key is null in the file". Applied literally it also
+      drops a hand-typed, non-empty `credential_id` in a foreign file - which
+      the inbound strip really does remove, so nobody would be told, which is
+      the harm D-15-19 is about - and it turns
+      `test_a_hand_typed_credential_id_never_becomes_a_reference` red, a test
+      that predates the row. Both of the ruling's stated reasons still hold:
+      a name alone buys nothing, an empty key alone buys nothing.
+    - **One E2E assertion was AMENDED, not added to.** `builder-layout`'s
+      `lands every node of the validator template inside the canvas pane`
+      asserted zero overflow, which D-15-2's legibility floor makes
+      impossible for a 16-node graph at 1440x900. It now asserts the
+      disjunction - every node inside, OR the fit sitting exactly on the
+      floor - which a stale fit satisfies neither of. If the owner would
+      rather have whole-over-legible, the floor is one constant
+      (`MIN_LEGIBLE_ZOOM`) and this assertion goes back.
+
+    Also worth a look and not a departure: with the delete strip docked the
+    floor crops the first and last node, and nothing on screen says the
+    graph is cropped. A reviewer handed the capture cold called that worse
+    than illegible. The pan reaches them and the E2E proves it; whether a
+    cue is wanted is a design call.
+
+46. **[BLOCKER] The deployed API will not start on its next deploy, because
+    `render.yaml` sets `AUTH_BASE_URL` and nothing sets
+    `CREDENTIALS_MASTER_KEY`.** Found and **measured** 2026-09-04 at `bc12642`
+    by the pre-production pass, by building the app with exactly the
+    environment the manifest describes:
+
+    ```text
+    AUTH_BASE_URL=https://agentic-crew-ai-studio.onrender.com \
+    CREDENTIALS_MASTER_KEY= python -c \
+      "from brief_crew.service.app import create_app; create_app()"
+
+    RuntimeError: AUTH_BASE_URL is set but CREDENTIALS_MASTER_KEY is empty;
+    people can sign in and the credential vault has no key to keep theirs
+    with. Mint one with python -c "import base64, secrets;
+    print(base64.b64encode(secrets.token_bytes(32)).decode())" and set it
+    ```
+
+    The same command with a valid key returns a `FastAPI` instance. This is
+    **not** a defect in the code — `_assert_credential_vault_startup_safety`
+    (`service/app.py`, called from `create_app` at `:673`) is plan 01 D3
+    working exactly as designed, the same fail-loud shape as
+    `_assert_auth_startup_safety`: a deployment that can sign people in and has
+    nowhere to keep their API keys is misconfigured, and the half-configured
+    state is the quiet failure. The defect is that the **manifest never caught
+    up with it**, and `docs/tech-stack.md` §6 described the consequence as
+    "the deployed API therefore has no vault until it does", which understates
+    it by a whole category: it is a dead service, not a missing feature.
+
+    **Half fixed on 2026-09-04.** `render.yaml` now declares
+    `CREDENTIALS_MASTER_KEY` with `sync: false`, a minting command and the
+    rotation warning, so a *fresh* Blueprint prompts for it like every other
+    secret. **The other half cannot be fixed in a file**: Render prompts for
+    `sync: false` values at Blueprint **creation** only, so on the
+    already-applied Blueprint the value must be entered in the dashboard before
+    the next deploy — and both services carry `autoDeploy: yes`, which makes
+    "the next deploy" the next merge to `main`. A deploy that reaches this code
+    without it fails its health check and rolls back.
+
+    Two further notes, both measured rather than assumed. The key is the
+    AES-256-GCM master key for the per-user credential vault, so **rotating it
+    is not free**: `credentials.py` detects a changed key and refuses
+    (`CREDENTIALS_MASTER_KEY changed without a re-encrypt pass`) rather than
+    silently re-wrapping. And a *keyless* deployment is still a supported
+    state — `SYNTHETIC=1`, the test suites and a bare checkout all run with no
+    key and answer 503 on the credential routes; it is only the combination
+    with `AUTH_BASE_URL` that refuses.
+
+47. **[Medium] `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP` has no consumer, so the
+    ruling it exists to satisfy is not implemented.** PLANS.md decision 9 is
+    "platform Firecrawl key as everyone's default, **with a daily cap** and
+    per-user override", and it is provisional. The override exists. The cap is
+    a constant nothing reads. Measured 2026-09-04 at `bc12642`:
+
+    ```bash
+    grep -rn 'BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP' --include=*.py --include=*.ts \
+      src frontend/src tests
+    # src/brief_crew/config.py:3141   - its own definition, and nothing else
+
+    grep -rn 'BUILDER_PLATFORM_FIRECRAWL_DEFAULT' --include=*.py src
+    # src/brief_crew/config.py:3137        - its definition
+    # src/brief_crew/builder/tools.py:576  - credential_optional=...
+    ```
+
+    So the **flag is wired and its cap is not**: no counter, no store, no UTC
+    reset. Turning `BUILDER_PLATFORM_FIRECRAWL_DEFAULT` on today would be an
+    uncapped spend of the owner's Firecrawl quota by anybody who can sign in,
+    which is not the thing decision 9 describes. The flag is off and
+    `render.yaml` does not set it, so nothing is spending today — this is a
+    **sequencing** item, not an incident: build the counter, then ask the owner
+    to confirm decision 9. Asking first would be asking them to approve a
+    sentence the code does not implement.
+
+    The contrast worth keeping is `VALIDATOR_RUN_RETENTION_DAYS`, which is the
+    same shape of knob and *is* wired end to end
+    (`registry.py:1370`, `:2139`, `persistence.py:1543`) — so this is one
+    knob's gap and not a pattern.
+
+48. **[Medium] The Docker image could not have imported the application, and
+    half of that is now fixed.** Found 2026-09-04 by reading the two files
+    against the code rather than by building the image — which still has never
+    been built here, and that is exactly why this survived.
+
+    `Dockerfile` copied `src/`, `pyproject.toml` and `uv.lock` and **not
+    `data/`**, on the stated premise that "the image needs exactly" those
+    three. That premise predates two waves of work that put runtime data on
+    disk:
+
+    - `config.MODEL_REGISTRY_PATH` resolves to
+      `Path(config.py).resolve().parents[2] / "data" / "models.json"`, which
+      with `src/` at `/app/src` is `/app/data/models.json`, and
+      `load_model_registry` **raises at import** on a missing file — a
+      deliberate fragility, because "a registry that half-loads is a product
+      that offers half a roster and prices the rest at nothing". So
+      `import brief_crew.config` would have failed and the container would
+      never have served anything.
+    - `SKILLS_ROOT` defaults to the CWD-relative `data/skills`, `WORKDIR` is
+      `/app`, and the four built-in packs are committed files.
+
+    **`COPY data ./data` is added and closes the first half completely.** The
+    second half is still open and cannot be closed from the `Dockerfile`:
+    `.dockerignore` excludes `*.md` wholesale, so every `SKILL.md` is stripped
+    from the build context before `COPY` runs, and `load_builtins()` does
+    `if not path.exists(): continue` — so the image would serve **zero**
+    built-in skills with no error anywhere. The fix is one line,
+    `!data/skills/builtin/**/*.md`, in a file outside the surface of the pass
+    that found this. It is recorded rather than half-fixed, because a `COPY`
+    that looks complete and silently drops four packs is worse than a known
+    gap.
+
+    **Neither half affects the Render deployment**, which checks the repository
+    out whole and therefore has `data/` — the Blueprint path does not use this
+    image at all. What it affects is anybody who believes the container is a
+    working alternative. `Dockerfile`'s header comment also still described the
+    frontend as "a separate static site"; it has been a Node web service since
+    the auth work, and that is corrected in the same edit.
+
 Item 34 below is **resolved** (see item 35 in the closed ledger) and is kept
-only because its diagnosis is the valuable part. It appears after 36-42 because
+only because its diagnosis is the valuable part. It appears after 36-48 because
 those are the open ones; the numbering is chronological, not a priority order.
 
 34. **A latent CrewAI defect in `or_()`, under investigation by another agent —
@@ -2657,8 +3286,10 @@ Kept because the *reasoning* is what stops the defect coming back.
     and `cancelling` reaches `CANCELLED`. The one shape that **is** resumable — a
     crash between `open_gate` and `mark_waiting`, where both durable anchors
     survive — is adopted back to `WAITING` instead. `VALIDATOR_ORPHAN_RUN_RECOVERY`
-    / `VALIDATOR_ORPHAN_RUN_GRACE_SECONDS`; 22 tests. Related: there is still no
-    retention or purge, so terminal rows accumulate.
+    / `VALIDATOR_ORPHAN_RUN_GRACE_SECONDS`; 22 tests. Related: retention now
+    exists on `gauntlet/plans` - `VALIDATOR_RUN_RETENTION_DAYS` (plan 15 D7,
+    default `0` = keep everything, decision 23) purges terminal runs on the
+    same sweep - so terminal rows accumulate only until it is set.
 33. **The console shows the run's conclusion.** The backend had always delivered
     it — `GET /api/runs/{id}` returns `result`, and the terminal frame carries
     `details.result` — and the client discarded it at **three** separate layers,
@@ -2687,9 +3318,24 @@ Kept because the *reasoning* is what stops the defect coming back.
 
 ## Recommended Next Sequence
 
+> **⚠️ Nothing below is step one any more. Step zero is the go-live checklist
+> in [`docs/deploying.md`](docs/deploying.md)** (written 2026-09-04), and the
+> reason it outranks everything here is mechanical rather than editorial: both
+> Render services carry `autoDeploy: yes`, so **a merge to `main` is a deploy**
+> and there is no later moment at which to notice. Five of its sixteen lines
+> are NOT READY as measured on 2026-09-04, five more are unverified, and two of
+> the five red ones break the deploy outright — `CREDENTIALS_MASTER_KEY` absent from the API service
+> (item 46, a startup `RuntimeError`) and `vue-tsc -b` exiting 2, which is the
+> first of three steps in `npm run build` and therefore the studio's whole
+> Render build. A third, the missing `LICENSE`, is step 3 below and has been
+> open since the repository went public.
+>
+> **"Deployment is settled" was true on 2026-09-02 and is not true now.** The
+> sentence below is kept because its reasoning about *money* still holds.
+
 Rewritten 2026-09-02, after the flow builder merged. Deployment, admission
-control and CI are all settled, and the builder settled nothing on this list —
-it added to it. What is left is still one human decision and then money, and
+control and CI were settled at the time — the deployment half no longer is, see
+the box above — and the builder settled nothing on this list; it added to it. What is left is still one human decision and then money, and
 there is now **more** money-shaped work than before, because a second thing can
 now spend it.
 
@@ -2740,7 +3386,10 @@ the same reason — every cleanup it listed was completed on 2026-08-31.
    section 14.
 3. **Add a `LICENSE`** (item 17). The repo is public with no licence file, which
    means all rights reserved — almost certainly not the intent — and
-   `pyproject.toml` already carries the note saying so.
+   `pyproject.toml` already carries the note saying so. Re-verified 2026-09-04:
+   `ls LICENSE*` answers `No such file or directory` and `git ls-files` finds
+   none. PLANS.md decision 11 (a licence header on the built-in skills) is
+   **not answerable** until this is.
 4. **Run one real idea through both gates on the deployed service, with traces
    enabled**, and inspect citation closure before sharing any trace link. This
    is what actually closes item 1 and puts real concurrent load on PG 18
@@ -2836,6 +3485,14 @@ right instrument for the Reporter/Scoper A/B still open as remaining-work item 4
 brake on a reasoning model - but it bills the account `get-credits` reads.
 
 ### What one pass of these tools found, 2026-09-01
+
+> **⚠️ Two findings below name `gemini-3.7-flash`, and both are left verbatim.**
+> The escalation constant moved to `openrouter/google/gemini-3.8-flash` on
+> 2026-09-04 (`f19a2c6`, same $0.75 / $3.75). These are *measurements of
+> 3.7-flash taken on 2026-09-01*, and a measurement of 3.7-flash remains a
+> true measurement of 3.7-flash — renaming the model inside one would
+> fabricate a reading nobody took. Neither has been re-measured on 3.8-flash;
+> re-run `get-model` before quoting either as current.
 
 Measured against the live catalogue, not argued:
 

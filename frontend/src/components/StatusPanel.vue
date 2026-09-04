@@ -29,6 +29,18 @@ const props = withDefaults(defineProps<{
   canLaunch: boolean
   isActive: boolean
   primaryLabel: string
+  /**
+   * The run has been asked for and its first frame has not arrived (plan 11
+   * D6.1).
+   *
+   * The gap it covers is real and was previously blank: a POST to Singapore, a
+   * queue slot and a socket handshake, during which the button read `Launching…`
+   * and nothing else on the page acknowledged the press. The glow is the
+   * reference's own `gradientShift` + `glowPulse` pair, because there is one
+   * motion vocabulary here and a second glow meaning the same thing is how a
+   * design stops reading as one system.
+   */
+  armed?: boolean
   activeView: 'graph' | 'activity'
   gatesMode: GatesMode
   error: string
@@ -39,6 +51,14 @@ const props = withDefaults(defineProps<{
    * scripted verdict as their own.
    */
   transportProblem: string
+  /**
+   * The server's sentence when it refused the graph this console is pointed
+   * at (D-01-2). Rendered like `transportProblem` - above `error`, not
+   * dismissible - because while it is set the Launch button below is disabled
+   * for a reason the operator has to be able to read, and the only other
+   * carrier is a banner they can wave away.
+   */
+  graphProblem?: string
   downloadStatus: 'idle' | 'pending' | 'success' | 'error'
   downloadMessage: string
   /**
@@ -56,6 +76,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   workflowName: 'Idea Validator',
   inputLabel: 'IDEA TO VALIDATE',
+  graphProblem: '',
 })
 
 const emit = defineEmits<{
@@ -119,6 +140,20 @@ const logFormat = ref<LogFormat>('ndjson')
       <span>
         <strong>Demonstration mode - no agent is running.</strong>
         {{ transportProblem }}
+      </span>
+    </div>
+
+    <!--
+      A real server refused this graph (D-01-2). Until 2026-09-03 the console
+      answered that by drawing the demonstration graph under the refused
+      workflow's name with a green Launch; now the canvas is empty, Launch is
+      disabled, and this says why in the server's own words.
+    -->
+    <div v-if="graphProblem" class="graph-banner" role="alert">
+      <TriangleAlert :size="15" aria-hidden="true" />
+      <span>
+        <strong>This graph cannot be launched from here.</strong>
+        The server answered: {{ graphProblem }}
       </span>
     </div>
 
@@ -226,7 +261,14 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <div class="control-actions">
-      <button class="button button-primary" type="button" :disabled="!canLaunch" @click="emit('launch')">
+      <button
+        class="button button-primary"
+        :class="{ 'is-armed': armed }"
+        data-testid="launch-button"
+        type="button"
+        :disabled="!canLaunch"
+        @click="emit('launch')"
+      >
         <RotateCcw v-if="primaryLabel === 'Relaunch'" :size="16" aria-hidden="true" />
         <Play v-else :size="16" aria-hidden="true" />
         {{ primaryLabel }}
@@ -327,6 +369,8 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
    connected to anything. And no dismiss control, by design. */
 .transport-banner { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; color: var(--warn-text); font-size: var(--fs-12); line-height: 1.45; background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); }
 .transport-banner svg { flex: 0 0 auto; margin-top: 1px; }
+.graph-banner { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; color: var(--err-text); font-size: var(--fs-12); line-height: 1.45; background: var(--err-bg); border-bottom: 1px solid var(--err-border); }
+.graph-banner svg { flex: 0 0 auto; margin-top: 1px; }
 .download-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .format-picker { grid-template-columns: 1fr 1fr; }
 .format-picker button { min-height: 34px; padding: 0 10px; font: 600 10px/1 var(--font-mono); }

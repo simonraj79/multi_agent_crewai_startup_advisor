@@ -93,12 +93,17 @@ manager:
 
 | Setting | Value |
 |---|---|
-| `llm` | `openrouter/google/gemini-3.7-flash` |
+| `llm` | `openrouter/google/gemini-3.8-flash` |
 | `tools` | *(none — the manager delegates, it does not do the work)* |
 | `allow_delegation` | **`True`** *(set anyway — see below)* |
 | `max_iter` | `20` |
 | `max_execution_time` | `600` *(deliberate deviation from the crew's 300s)* |
 | `verbose` | `True` |
+
+> **Escalation tier: `gemini-3.8-flash` since 2026-09-04** (`f19a2c6`) — same
+> $0.75 / $3.75 as the `gemini-3.7-flash` it replaced. This agent is retired
+> and unbuilt, so the row above is the spec's assignment, not a running
+> configuration.
 
 `allow_delegation=True` is **redundant but worth writing**: `_create_manager_agent()`
 forces `self.manager_agent.allow_delegation = True` regardless of what you set.

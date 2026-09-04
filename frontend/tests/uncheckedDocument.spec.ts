@@ -119,8 +119,13 @@ describe('a document is checked the moment it is shown, whatever its fingerprint
     // The premise of the defect, asserted directly: the seed and the "Blank
     // canvas" card are one document, so nothing about the fingerprint changes
     // when it is chosen and the watcher can never be what checks it.
-    expect(documentFromTemplate(BLANK).nodes).toEqual([])
-    expect(documentFromTemplate(BLANK).edges).toEqual([])
+    //
+    // Asserted as EQUALITY against the template rather than as "it is empty",
+    // which is what it said until 2026-09-04. BLANK now seeds one input node
+    // (02-canvas.md D7) and the emptiness was never the point - sameness was,
+    // and sameness is what the defect turned on.
+    expect(documentFromTemplate(BLANK)).toEqual(BLANK.document)
+    expect(documentFromTemplate(BLANK)).not.toBe(BLANK.document)
   })
 })
 

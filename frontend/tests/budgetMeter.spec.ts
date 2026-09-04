@@ -59,6 +59,11 @@ const BOUNDS: BuilderBounds = {
   max_input_chars: 2000.0,
   max_document_bytes: 262144.0,
   run_cost_ceiling_usd: 10.0,
+  // C2 v2\'s two authored-node bounds: BUILDER_MAX_PROMPT_CHARS and
+  // BUILDER_MAX_NODE_RETRIES, served since plan 04 and read by every
+  // PromptField and node-retry stepper rather than restated as a constant.
+  max_prompt_chars: 4000,
+  max_retries: 3,
 }
 
 const VOCABULARY: BuilderVocabulary = {

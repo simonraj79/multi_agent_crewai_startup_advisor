@@ -1,5 +1,5 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
-import type { ComputedRef, Ref } from 'vue'
+import type { ComputedRef, InjectionKey, Ref } from 'vue'
 import { builderApi } from '../services/builderApi'
 import type { BuilderApiLike } from '../services/builderApi'
 import { fingerprint } from '../utils/builderSerialize'
@@ -37,6 +37,25 @@ import type { BuilderBudget, BuilderDocument, BuilderProblem } from '../types/bu
 
 /** Spec sections 4.6 and 6.2. Long enough to swallow a typed word, short enough to feel live. */
 export const VALIDATE_DEBOUNCE_MS = 400
+
+/**
+ * The server's latest estimate, published for the inspector's per-node cost line
+ * (04 D6).
+ *
+ * PUBLISHED RATHER THAN THREADED, for the reason `BUILDER_PROBLEMS` already
+ * gives: the LLM sub-form is four components below the rail, and a prop would
+ * have to be forwarded through `<component :is>` - which erases it - and
+ * through every form that does not care. The rail's own `BudgetMeter` keeps its
+ * prop, because it is a sibling of the thing that owns the figure.
+ *
+ * `null` is a REAL STATE and every reader has to render it: nothing has been
+ * validated yet, or the last attempt failed. The default of the inject is null
+ * for the same reason - a form mounted in a spec that provides nothing shows no
+ * cost line, rather than throwing the way `FieldProblem` deliberately does. The
+ * difference is that a missing problem index hides a refusal and a missing
+ * budget hides an estimate.
+ */
+export const BUILDER_BUDGET: InjectionKey<Ref<BuilderBudget | null>> = Symbol('builder-budget')
 
 /**
  * Where the rendered list stands relative to the document on screen.

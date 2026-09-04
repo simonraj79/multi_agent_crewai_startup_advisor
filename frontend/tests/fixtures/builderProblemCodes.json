@@ -5,10 +5,20 @@
   "ceiling_usd": 10.0,
   "note": "One real instance of every problem code, produced by running the named function over a document that provokes it. The `message` strings are verbatim: the canvas renders them unaltered, so a client test asserting against a paraphrase would be asserting about a fiction.",
   "codes": [
+    "attach-target-not-agent",
+    "attachment-nodes-over-max",
+    "attachment-reference-missing",
+    "attachment-unattached",
+    "attachments-over-max",
     "back-edge-not-router",
     "billable-count",
     "budget-over-ceiling",
     "budget-unpriced-model",
+    "credential-missing",
+    "crew-hierarchical-needs-manager",
+    "crew-members-out-of-range",
+    "crew-task-order-mismatch",
+    "crew-tier-not-honoured",
     "cycle-count",
     "cycle-iterations",
     "duplicate-edge-id",
@@ -16,6 +26,7 @@
     "edge-target-refuses-incoming",
     "edge-unknown-endpoint",
     "edge-unknown-port",
+    "error-port-unconnected",
     "escalation-count",
     "fanout-width",
     "ident-collision",
@@ -27,6 +38,16 @@
     "library-missing-prompt-input",
     "library-unbuildable-crew",
     "library-unknown-id",
+    "mcp-no-tools-selected",
+    "mcp-server-unavailable",
+    "mcp-tool-description-suspicious",
+    "mcp-tool-unknown",
+    "mcp-transport-disallowed",
+    "member-agent-has-flow-edges",
+    "member-target-not-crew",
+    "model-lacks-capability",
+    "model-over-ceiling",
+    "model-unknown",
     "no-input-node",
     "no-output-node",
     "node-count",
@@ -34,9 +55,75 @@
     "router-branch-count",
     "router-branch-unconnected",
     "router-duplicate-branch",
-    "router-otherwise"
+    "router-otherwise",
+    "skill-unknown",
+    "state-key-reserved",
+    "state-schema-invalid",
+    "tool-credential-required",
+    "tool-param-invalid",
+    "tool-unknown"
   ],
   "instances": [
+    {
+      "code": "attach-target-not-agent",
+      "scenario": "a tool dropped onto a gate instead of onto an agent",
+      "why": "An attach edge runs from a tool, an MCP server or a skill TO an agent or a crew, and only that way: it says what that agent HAS, so there is nothing for it to mean pointing anywhere else. This is the most likely wrong drop on a canvas where a gate sits between two agents.",
+      "problem": {
+        "code": "attach-target-not-agent",
+        "severity": "error",
+        "message": "edge 'e4' attaches a tool node to a gate node. An attach edge runs from a tool, an MCP server or a skill TO an agent or a crew, and only that way: it says what that agent has, so there is nothing for it to mean in any other direction",
+        "node_id": "scraper",
+        "edge_id": "e4"
+      }
+    },
+    {
+      "code": "attachment-nodes-over-max",
+      "scenario": "more attachment nodes than the document ceiling",
+      "why": "Counted SEPARATELY from MAX_GRAPH_NODES, because that bound's 24 comes from the 2,000-frame replay ring and an attachment emits no frames at all - applying the ring's arithmetic to a thing it was not about would be a number that happens to be right for the wrong reason.",
+      "problem": {
+        "code": "attachment-nodes-over-max",
+        "severity": "error",
+        "message": "this graph has 25 tool, MCP and skill nodes and the ceiling is 24 (MAX_ATTACHMENT_NODES). Attachments are counted separately from steps - they never run and never bill - so this is a bound on the document rather than on what the run costs",
+        "node_id": "t24",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "attachment-reference-missing",
+      "scenario": "an imported graph whose MCP server reference did not survive",
+      "why": "`export.py` nulls `server_id` deliberately - it names a row in the EXPORTING author's own server list - so this is what a legitimately imported file looks like, and the importer has to be told which node.",
+      "problem": {
+        "code": "attachment-reference-missing",
+        "severity": "error",
+        "message": "'hands' is attached to 'scope' and names no MCP server. An exported graph has this shape on purpose - the reference pointed at a row in the exporting author's own library and could not travel - so pick one of yours before this graph will run",
+        "node_id": "hands",
+        "edge_id": "a1"
+      }
+    },
+    {
+      "code": "attachment-unattached",
+      "scenario": "a tool node nobody attached to anything",
+      "why": "A WARNING and not an error, because it is exactly what a node looks like the moment it is dropped - refusing it would mean an author cannot put a tool on the canvas before deciding whose it is. It is also why an attachment is exempt from `node-unreachable`: that would be a second, louder row about the same omission.",
+      "problem": {
+        "code": "attachment-unattached",
+        "severity": "warning",
+        "message": "'scraper' is a tool node attached to nothing, so nothing in this graph can use it. That is legal - it is what a node looks like the moment it is dropped - but a run would never reach it",
+        "node_id": "scraper",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "attachments-over-max",
+      "scenario": "one agent holding more attachments than the per-node ceiling",
+      "why": "",
+      "problem": {
+        "code": "attachments-over-max",
+        "severity": "error",
+        "message": "'draft' holds 9 attachments and the ceiling is 8 (MAX_ATTACHMENTS_PER_NODE). What this bounds is the agent's system prompt rather than the run's price: every attachment contributes a tool schema or a skill preamble, and past some width an agent stops choosing between them well",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
     {
       "code": "back-edge-not-router",
       "scenario": "four loops against the cycle ceiling, one of them from a plain agent",
@@ -80,8 +167,68 @@
       "problem": {
         "code": "budget-unpriced-model",
         "severity": "error",
-        "message": "this graph cannot be priced: openrouter/example/unpriced-preview has no entry in PRICES, so every call it makes would contribute $0.00 to a total that is supposed to bound spend. Add the price in the same commit as the model",
+        "message": "this graph cannot be priced: openrouter/example/unpriced-preview has no entry in PRICES, so every call it makes would contribute $0.00 to a total that is supposed to bound spend. Add the model to data/models.json in the same commit that names it",
         "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "credential-missing",
+      "scenario": "an agent naming a credential that is not in the caller's vault",
+      "why": "Plan 01 D10: absent and foreign are ONE code, because the vault answers both with one exception and a canvas that could tell them apart would be an oracle for other people's ids. Only produced when the caller has an identity; this fixture validates as somebody whose vault is empty.",
+      "problem": {
+        "code": "credential-missing",
+        "severity": "error",
+        "message": "draft names the credential cr_0badc0de, which is not in your vault; pick one of your own or create it first",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "crew-hierarchical-needs-manager",
+      "scenario": "a hierarchical crew whose manager is not one of its members",
+      "why": "The half `document.py` cannot see. Its cross-field validator refuses a hierarchical crew with NEITHER manager set and raises, because that is a rule about one object; whether `manager_agent` names one of THIS crew's members is a question only the `member` edges answer. `runtime.py:730` resolves it against the crew's own agents and falls through to `manager_llm`; with neither resolving, `Crew.__init__` raises at `crew.py:729` mid-run - after every node upstream has already billed.",
+      "problem": {
+        "code": "crew-hierarchical-needs-manager",
+        "severity": "error",
+        "message": "the hierarchical crew 'team' names 'ghost' as its manager, and that node is not one of its members. A manager is resolved against the crew's own agents ('worker'), so this crew would reach CrewAI with no manager at all and raise at construction - after every node upstream of it has already billed. Draw a member edge from that agent, name one that is a member, or set a manager model instead",
+        "node_id": "team",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "crew-members-out-of-range",
+      "scenario": "an authored crew with no members at all",
+      "why": "A crew with no members compiles to a Crew with no tasks and hands back nothing - the same silent-empty-result failure `back-edge-not-router` exists for, arrived at from the other direction.",
+      "problem": {
+        "code": "crew-members-out-of-range",
+        "severity": "error",
+        "message": "the authored crew 'team' has 0 member agents and a crew takes 1 to 6 (MAX_CREW_MEMBERS, the shipped validator's own six). With none it compiles to a Crew with no tasks and hands back nothing; the ceiling is the largest team this repository has ever run",
+        "node_id": "team",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "crew-task-order-mismatch",
+      "scenario": "an authored crew ordering a task by a node that is not a member",
+      "why": "The gauntlet's own forbidden 'a parameter rendered in the UI that the compiler ignores', found in `runtime.py:724`: an order entry naming something that is not a member of this crew is filtered out with no word to anybody, so the author drags an order and the crew runs a different one. Reachable by clicking - choose an order, then delete that agent's member edge, and `AuthoredCrewForm` hides the stranger it left behind. A PARTIAL order is deliberately NOT reported: the next line completes it from `member_ids`, so naming two of five members really does mean 'these two first'.",
+      "problem": {
+        "code": "crew-task-order-mismatch",
+        "severity": "error",
+        "message": "the crew 'team' orders its tasks by 'ghost', which is not a member of it. Its members are 'worker'. The runtime drops an order entry it cannot resolve, so the crew would run in a different order from the one on screen and nothing would say so",
+        "node_id": "team",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "crew-tier-not-honoured",
+      "scenario": "a registered crew whose tier chooses nothing",
+      "why": "Decision 12. A registered crew builds its own LLMs in python, so the word prices and bounds the graph and does not pick a model. A warning rather than an error: the field is required by the schema and does real work twice over.",
+      "problem": {
+        "code": "crew-tier-not-honoured",
+        "severity": "warning",
+        "message": "'team' runs the registered crew 'scope' on the escalation tier, and that word does not choose the crew's models: a registered crew builds its own LLMs in python, from config.py, inside the crew. What the tier does do is price this node and count it against the escalation bound. Author the agents here if you need to choose the model",
+        "node_id": "team",
         "edge_id": null
       }
     },
@@ -140,7 +287,7 @@
       "problem": {
         "code": "edge-target-refuses-incoming",
         "severity": "error",
-        "message": "edge 'e2' arrives at 'idea', which is the graph's input: an input node starts the run and has nothing upstream of it",
+        "message": "edge 'e2' arrives at 'idea', and an input node starts the run and has nothing upstream of it",
         "node_id": "idea",
         "edge_id": "e2"
       }
@@ -167,6 +314,18 @@
         "message": "edge 'e2' leaves 'draft' by the port 'approve', and a agent node offers out",
         "node_id": "draft",
         "edge_id": "e2"
+      }
+    },
+    {
+      "code": "error-port-unconnected",
+      "scenario": "an error port with nothing drawn from it",
+      "why": "A WARNING. The author asked for a recovery path and did not draw one, so a failure here still ends the run - which is what `on_error: fail` already does.",
+      "problem": {
+        "code": "error-port-unconnected",
+        "severity": "warning",
+        "message": "'draft' routes its failures out of an `error` port and nothing is drawn from it, so a failure here still ends the run - which is what `on_error: fail` already does. Draw the recovery path, or set the policy back to fail",
+        "node_id": "draft",
+        "edge_id": null
       }
     },
     {
@@ -302,6 +461,126 @@
       }
     },
     {
+      "code": "mcp-no-tools-selected",
+      "scenario": "an MCP node that checks no tools",
+      "why": "An incomplete graph rather than an invalid document, so document.py allows it and bounds reports it - the difference between a problem in the dock and a save that fails.",
+      "problem": {
+        "code": "mcp-no-tools-selected",
+        "severity": "error",
+        "message": "hands names a server and checks none of its tools; pick at least one, or the agent gains nothing from the attachment",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "mcp-server-unavailable",
+      "scenario": "an MCP server that is not this caller's",
+      "why": "Absent and foreign are one answer, for the reason above.",
+      "problem": {
+        "code": "mcp-server-unavailable",
+        "severity": "error",
+        "message": "hands names the MCP server ms_ffffffffffff, which is not one of yours; add it in the MCP panel first",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "mcp-tool-description-suspicious",
+      "scenario": "an MCP tool whose description matches an injection pattern",
+      "why": "The fifth warning. PLANS.md decision 8: the tool stays selectable and the author decides, because the thirteen patterns have false positives by design - `act as` is ordinary English.",
+      "problem": {
+        "code": "mcp-tool-description-suspicious",
+        "severity": "warning",
+        "message": "hands checks 'search_docs', whose description matches 'ignore\\\\s+(previous|all|above|prior)\\\\s+instructions?'. That is often innocent - the pattern list has false positives - but the description reaches the agent's prompt, so read it before you ship",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "mcp-tool-unknown",
+      "scenario": "an MCP tool the last discovery does not carry",
+      "why": "The shape a server RENAMING a tool takes. It is a validate problem rather than an exception because `tool_filter` simply fails to match and the agent runs without it.",
+      "problem": {
+        "code": "mcp-tool-unknown",
+        "severity": "error",
+        "message": "hands checks 'renamed' and 'Docs server''s last discovery does not carry it; re-discover the server",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "mcp-transport-disallowed",
+      "scenario": "a stored MCP server whose transport is no longer permitted",
+      "why": "The shape a document takes after MCP_STDIO_ENABLED is turned back off, which is why the transport is checked at validate and not only at create.",
+      "problem": {
+        "code": "mcp-transport-disallowed",
+        "severity": "error",
+        "message": "hands uses 'Local server', and this deployment connects to remote MCP servers only; a stdio server would be a process started on the server by a document, and that is off by default",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "member-agent-has-flow-edges",
+      "scenario": "an agent that is both a crew member and a step of the flow",
+      "why": "It cannot be both. As a member it runs inside its crew in the crew's own order, and as a step it runs again on its own - so nothing downstream could say which of the two outputs it was reading, and the author would be billed for both.",
+      "problem": {
+        "code": "member-agent-has-flow-edges",
+        "severity": "error",
+        "message": "'worker' is a member of a crew and also carries 1 flow edge(s). It cannot be both: as a member it runs inside its crew, in the crew's own order, and as a step it runs again on its own - so nothing downstream could say which of the two outputs it was reading. Remove the flow edges, or the member edge",
+        "node_id": "worker",
+        "edge_id": "e3"
+      }
+    },
+    {
+      "code": "member-target-not-crew",
+      "scenario": "an agent made a member of a transform",
+      "why": "Membership runs from an agent TO a crew. A crew is a team of agents and nothing else can be one of them, so the pair is checked rather than only the port - the port alone would let an author draw a transform into a crew and find out at the first paid run.",
+      "problem": {
+        "code": "member-target-not-crew",
+        "severity": "error",
+        "message": "edge 'e3' makes a agent node a member of a transform node. Membership runs from an agent TO a crew: a crew is a team of agents, and nothing else can be one of them",
+        "node_id": "worker",
+        "edge_id": "e3"
+      }
+    },
+    {
+      "code": "model-lacks-capability",
+      "scenario": "JSON mode asked of a model that has none",
+      "why": "Every roster row supports JSON mode as measured on 2026-09-04, so this is provoked by patching one row's flag off rather than by finding a model that lacks it. The behaviour it stands against is the one the gauntlet names as the worst competitor habit: a parameter rendered, accepted, sent and silently dropped. Enforced twice - the inspector disables the control, and this fires anyway, so a stale client cannot smuggle it past.",
+      "problem": {
+        "code": "model-lacks-capability",
+        "severity": "error",
+        "message": "openai/gpt-4o-mini does not support JSON mode, so llm.response_format would be sent and dropped and this node would answer prose where the graph expects an object. Pick a model with JSON mode, or ask for text",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "model-over-ceiling",
+      "scenario": "a registry row whose price crossed the ceiling after publish",
+      "why": "Unreachable against the live registry, and that is the point: config.py REFUSES an over-ceiling row at import, so this code can only fire on data that was legal when it was written and is not now. The scenario patches one roster row to $1.50 to reproduce a catalogue price moving under a published document. The repair is a refresh_models.py run, not an edit to the graph, which is why the message says so.",
+      "problem": {
+        "code": "model-over-ceiling",
+        "severity": "error",
+        "message": "openai/gpt-4o-mini is priced at $1.5000 per million input tokens, over the $1.00 ceiling. Its price moved after this graph was saved; pick a cheaper model",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "model-unknown",
+      "scenario": "an authored agent naming a model this build does not offer",
+      "why": "openai/o4-mini is the worked example of a model the registry refuses: exactly ONE endpoint, at $1.10 per million input, measured 2026-09-04. Under provider.max_price every candidate endpoint is filtered and the request fails rather than overspending, so the model is not merely dear - it is unservable. It is therefore absent from the roster, and a document naming it gets this code rather than model-over-ceiling.",
+      "problem": {
+        "code": "model-unknown",
+        "severity": "error",
+        "message": "'openai/o4-mini' is not a model this build offers, so llm.model names something no run could resolve. Pick one from the model picker; the roster is at GET /api/builder/models",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
+    {
       "code": "no-input-node",
       "scenario": "a graph with nothing to seed it",
       "why": "",
@@ -394,6 +673,78 @@
         "severity": "error",
         "message": "router 'wide' declares 0 otherwise branches and must declare exactly one. Without it a value that matches no comparison wedges the run at this router; with two, which one takes an unmatched value is a coin toss written into the document",
         "node_id": "wide",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "skill-unknown",
+      "scenario": "a skill pack that is not this caller's",
+      "why": "One code for absent, deleted and foreign. A built-in is checked without an identity and validates clean for everyone, which is why this cannot simply be reject anything you do not own.",
+      "problem": {
+        "code": "skill-unknown",
+        "severity": "error",
+        "message": "hands names the skill sk_ffffffffffff, which is not one of yours and is not a built-in; it may have been deleted",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "state-key-reserved",
+      "scenario": "a declared state key the compiler already owns",
+      "why": "`_Plan.state_default()` writes every `out__*`, `err__*` and `turns__*` key, so a document declaring one would be overwritten by a node's own output - or would overwrite it.",
+      "problem": {
+        "code": "state-key-reserved",
+        "severity": "error",
+        "message": "the state key 'out__draft' is one the compiler owns (__builder__, and anything starting out__, err__, turns__). A declared key under that name would be overwritten by a node's own output, or would overwrite it - rename it",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "state-schema-invalid",
+      "scenario": "a declared state default of the wrong type",
+      "why": "CrewAI validates a json_schema state at kickoff, so this would fail the run at its first method rather than on the canvas.",
+      "problem": {
+        "code": "state-schema-invalid",
+        "severity": "error",
+        "message": "the state key 'turns' is declared 'integer' and defaults to 'three', which is a str. CrewAI validates a json_schema state at kickoff, so this would fail the run at its first method rather than here",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "tool-credential-required",
+      "scenario": "a tool that needs a key with none named",
+      "why": "A DIFFERENT repair from `credential-missing` - add a key of this kind, rather than that id is not yours - and therefore a different code, which is the rule compiler.py already states for its library codes.",
+      "problem": {
+        "code": "tool-credential-required",
+        "severity": "error",
+        "message": "hands runs 'Search the web (Firecrawl)', which needs a firecrawl key, and names none; add a firecrawl credential and pick it here",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "tool-param-invalid",
+      "scenario": "a tool parameter the catalogue entry refuses",
+      "why": "The gauntlet forbids a parameter rendered in the UI that the compiler ignores; this is the same rule from the other side - a parameter the server refuses has to be reported rather than silently dropped.",
+      "problem": {
+        "code": "tool-param-invalid",
+        "severity": "error",
+        "message": "hands: 'provider' is one of serper, tavily, exa, brave; not 'nope'",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "tool-unknown",
+      "scenario": "a tool this deployment does not have",
+      "why": "One code for a made-up id and for somebody else's custom tool, the rule `credential-missing` already states: a canvas that told the two apart would be an oracle for other people's ids.",
+      "problem": {
+        "code": "tool-unknown",
+        "severity": "error",
+        "message": "hands names the tool 'no_such_tool', which is not in this deployment's catalogue and is not one of yours; the builtins are research_market_landscape, analyze_community_sentiment, assess_technical_feasibility, firecrawl_scrape, firecrawl_crawl, firecrawl_search, web_search, http_request, scrape_website, postgres_query",
+        "node_id": "hands",
         "edge_id": null
       }
     }
@@ -3297,6 +3648,2895 @@
           "source": "draft",
           "source_port": "out",
           "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool dropped onto a gate instead of onto an agent": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "attached to a gate",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "confirm",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "message": "Confirm before spending.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "scraper",
+          "kind": "tool",
+          "label": "scraper",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "confirm",
+          "source_port": "revise",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "scraper",
+          "source_port": "attach",
+          "target": "confirm",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool node nobody attached to anything": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unattached tool",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "scraper",
+          "kind": "tool",
+          "label": "scraper",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "one agent holding more attachments than the per-node ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too many hands",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "t0",
+          "kind": "tool",
+          "label": "t0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t1",
+          "kind": "tool",
+          "label": "t1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t2",
+          "kind": "tool",
+          "label": "t2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t3",
+          "kind": "tool",
+          "label": "t3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t4",
+          "kind": "tool",
+          "label": "t4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t5",
+          "kind": "tool",
+          "label": "t5",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t6",
+          "kind": "tool",
+          "label": "t6",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t7",
+          "kind": "tool",
+          "label": "t7",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t8",
+          "kind": "tool",
+          "label": "t8",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "a0",
+          "source": "t0",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a1",
+          "source": "t1",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a2",
+          "source": "t2",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a3",
+          "source": "t3",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a4",
+          "source": "t4",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a5",
+          "source": "t5",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a6",
+          "source": "t6",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a7",
+          "source": "t7",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a8",
+          "source": "t8",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "more attachment nodes than the document ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too many attachments",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "t0",
+          "kind": "tool",
+          "label": "t0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t1",
+          "kind": "tool",
+          "label": "t1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t2",
+          "kind": "tool",
+          "label": "t2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t3",
+          "kind": "tool",
+          "label": "t3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t4",
+          "kind": "tool",
+          "label": "t4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t5",
+          "kind": "tool",
+          "label": "t5",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t6",
+          "kind": "tool",
+          "label": "t6",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t7",
+          "kind": "tool",
+          "label": "t7",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t8",
+          "kind": "tool",
+          "label": "t8",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t9",
+          "kind": "tool",
+          "label": "t9",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t10",
+          "kind": "tool",
+          "label": "t10",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t11",
+          "kind": "tool",
+          "label": "t11",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t12",
+          "kind": "tool",
+          "label": "t12",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t13",
+          "kind": "tool",
+          "label": "t13",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t14",
+          "kind": "tool",
+          "label": "t14",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t15",
+          "kind": "tool",
+          "label": "t15",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t16",
+          "kind": "tool",
+          "label": "t16",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t17",
+          "kind": "tool",
+          "label": "t17",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t18",
+          "kind": "tool",
+          "label": "t18",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t19",
+          "kind": "tool",
+          "label": "t19",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t20",
+          "kind": "tool",
+          "label": "t20",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t21",
+          "kind": "tool",
+          "label": "t21",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t22",
+          "kind": "tool",
+          "label": "t22",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t23",
+          "kind": "tool",
+          "label": "t23",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t24",
+          "kind": "tool",
+          "label": "t24",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an agent made a member of a transform": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "member of nothing",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "step",
+          "kind": "transform",
+          "label": "step",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "step",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "step",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "worker",
+          "source_port": "out",
+          "target": "step",
+          "target_port": "member"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an agent that is both a crew member and a step of the flow": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "member wired into the flow",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "sequential",
+            "task_order": []
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "idea",
+          "source_port": "out",
+          "target": "worker",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "worker",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an authored crew with no members at all": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "empty crew",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "sequential",
+            "task_order": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an authored crew ordering a task by a node that is not a member": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "order names a stranger",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "sequential",
+            "task_order": [
+              "worker",
+              "ghost"
+            ]
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "worker",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a hierarchical crew whose manager is not one of its members": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "manager outside the team",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "hierarchical",
+            "task_order": [],
+            "manager_agent": "ghost"
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "worker",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an agent naming a credential that is not in the caller's vault": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "foreign credential",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": [],
+            "credential_id": "cr_0badc0de"
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an authored agent naming a model this build does not offer": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unknown model",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+              "description": "Research the market for ${state.idea}",
+              "expected_output": "Three competitors with URLs"
+            },
+            "llm": {
+              "model": "openai/o4-mini"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a registry row whose price crossed the ceiling after publish": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "dear model",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+              "description": "Research the market for ${state.idea}",
+              "expected_output": "Three competitors with URLs"
+            },
+            "llm": {
+              "model": "openai/gpt-4o-mini"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "JSON mode asked of a model that has none": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "json on a text model",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+              "description": "Research the market for ${state.idea}",
+              "expected_output": "Three competitors with URLs"
+            },
+            "llm": {
+              "model": "openai/gpt-4o-mini",
+              "response_format": "json_object"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool this deployment does not have": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unknown tool",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "tool",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "no_such_tool",
+            "params": {}
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool parameter the catalogue entry refuses": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "bad provider",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "tool",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "web_search",
+            "params": {
+              "provider": "nope"
+            }
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool that needs a key with none named": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "keyless firecrawl",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "tool",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_search",
+            "params": {}
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an MCP node that checks no tools": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "no tools ticked",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_0123456789ab",
+            "tool_names": []
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an MCP server that is not this caller's": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a stranger's server",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_ffffffffffff",
+            "tool_names": [
+              "search_docs"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an MCP tool the last discovery does not carry": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a renamed tool",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_0123456789ab",
+            "tool_names": [
+              "renamed"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a stored MCP server whose transport is no longer permitted": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a stdio server",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_0123456789ab",
+            "tool_names": [
+              "search_docs"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an MCP tool whose description matches an injection pattern": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a suspicious description",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_0123456789ab",
+            "tool_names": [
+              "search_docs"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a skill pack that is not this caller's": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a stranger's pack",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "skill",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "skill_id": "sk_ffffffffffff"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a declared state key the compiler already owns": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a reserved state key",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "role": "draft specialist",
+            "goal": "do the work",
+            "backstory": "years of it",
+            "task": {
+              "description": "work",
+              "expected_output": "a paragraph"
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash"
+            },
+            "tier": "cheap",
+            "on_error": "fail"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null,
+      "state": {
+        "fields": {
+          "out__draft": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "a declared state default of the wrong type": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a mistyped state default",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "role": "draft specialist",
+            "goal": "do the work",
+            "backstory": "years of it",
+            "task": {
+              "description": "work",
+              "expected_output": "a paragraph"
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash"
+            },
+            "tier": "cheap",
+            "on_error": "fail"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null,
+      "state": {
+        "fields": {
+          "turns": {
+            "type": "integer",
+            "default": "three"
+          }
+        }
+      }
+    },
+    "an error port with nothing drawn from it": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "an unconnected error port",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "role": "draft specialist",
+            "goal": "do the work",
+            "backstory": "years of it",
+            "task": {
+              "description": "work",
+              "expected_output": "a paragraph"
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash"
+            },
+            "tier": "cheap",
+            "on_error": "route"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an imported graph whose MCP server reference did not survive": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a stripped server reference",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_names": [
+              "search"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a registered crew whose tier chooses nothing": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a library crew",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "crew_id": "scope",
+            "tier": "escalation"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__team}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "done",
           "target_port": "in"
         }
       ],

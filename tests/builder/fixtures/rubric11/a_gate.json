@@ -1,0 +1,204 @@
+{
+  "budget": {
+    "billable_nodes": 1,
+    "compiled_at": "2026-09-04T00:00:00Z",
+    "cycles": 0,
+    "escalation_nodes": 0,
+    "static_cost_usd": 0.15703875
+  },
+  "definition": {
+    "config": {
+      "max_method_calls": 4
+    },
+    "description": "A gate",
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:seed_input",
+          "with": {
+            "field": "idea",
+            "max_chars": 2000,
+            "node_id": "idea",
+            "required": true
+          }
+        },
+        "start": true
+      },
+      "n1_confirm": {
+        "description": "confirm",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:render_gate",
+          "with": {
+            "editable_fields": [],
+            "node_id": "confirm",
+            "source": "${state.out__idea}"
+          }
+        },
+        "human_feedback": {
+          "default_outcome": null,
+          "emit": null,
+          "llm": null,
+          "message": "Does this look right? Reply with JSON: decision=approve, or decision=revise plus feedback.",
+          "metadata": {
+            "canvas_node": "confirm",
+            "editable_fields": [],
+            "expiry_seconds": 1800,
+            "gate_id": "confirm",
+            "label": "confirm",
+            "max_turns": 1
+          },
+          "provider": "brief_crew.builder.gates:GATE_PROVIDER"
+        },
+        "listen": "n0_idea"
+      },
+      "n2_route_confirm": {
+        "description": "confirm: route the operator's decision",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:route_gate"
+        },
+        "emit": [
+          "e2_approve",
+          "e2_revise"
+        ],
+        "listen": "n1_confirm",
+        "router": true
+      },
+      "n3_draft": {
+        "description": "draft",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "advanced": {
+              "allow_delegation": false,
+              "cache": true,
+              "max_execution_time": null,
+              "max_rpm": null,
+              "memory": false,
+              "respect_context_window": true
+            },
+            "backstory": "years of it",
+            "expert": {
+              "planning": false,
+              "planning_config": null,
+              "prompt_template": null,
+              "response_template": null,
+              "system_template": null
+            },
+            "goal": "do the draft work",
+            "guardrail_max_retries": 2,
+            "llm": {
+              "frequency_penalty": null,
+              "max_tokens": null,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": null,
+              "seed": null,
+              "stop": [],
+              "temperature": 0.2,
+              "timeout": null,
+              "top_p": null
+            },
+            "max_iter": 2,
+            "mcps": [],
+            "node_id": "draft",
+            "prompt_inputs": {},
+            "role": "draft specialist",
+            "skills": [],
+            "task": {
+              "async_execution": false,
+              "description": "work from ${state.out__confirm}",
+              "expected_output": "a paragraph",
+              "markdown": false,
+              "output_schema": null
+            },
+            "tier": "cheap",
+            "tools": []
+          }
+        },
+        "listen": "e2_approve"
+      },
+      "n4_report": {
+        "description": "report",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "body_key": "markdown_body",
+            "node_id": "report",
+            "source": "${state.out__draft}"
+          }
+        },
+        "listen": "n3_draft"
+      }
+    },
+    "name": "builder_ug_11111111_v1",
+    "schema": "crewai.flow/v1",
+    "state": {
+      "default": {
+        "__builder__": {
+          "document": {
+            "id": "ug_11111111",
+            "input_field": "idea",
+            "version": 1
+          },
+          "gates": {
+            "n2_route_confirm": {
+              "approve": "e2_approve",
+              "max_turns": 1,
+              "node_id": "confirm",
+              "rearm": [],
+              "replayed": false,
+              "revise": "e2_revise"
+            }
+          }
+        },
+        "idea": "",
+        "out__confirm": null,
+        "out__draft": null,
+        "out__idea": null,
+        "out__report": null,
+        "turns__confirm": 0
+      },
+      "type": "dict"
+    }
+  },
+  "frames": [
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_START",
+      "FrameKind.RUN_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "confirm",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "confirm",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "confirm",
+      "UIEventType.NODE_PAUSED",
+      "FrameKind.NODE_STATE"
+    ]
+  ],
+  "result": "Human feedback pending for flow 'rubric11' at method 'n1_confirm'"
+}

@@ -1,0 +1,2259 @@
+{
+  "_source": "scripts/dump-templates.mjs, from frontend/src/data/builderTemplates.ts",
+  "schema": "builder.templates/v1",
+  "roles": {
+    "cheapest": "qwen/qwen3.7-flash",
+    "workhorse": "google/gemini-3.5-flash-lite:nitro",
+    "escalation": "google/gemini-3.8-flash"
+  },
+  "order": [
+    "blank",
+    "sequential-pipeline",
+    "conditional-router",
+    "reflection-loop",
+    "hierarchical-delegation",
+    "idea-validator"
+  ],
+  "more": [
+    "minimal-gated-agent",
+    "fan-out-join"
+  ],
+  "documents": {
+    "blank": {
+      "schema": "builder.flow/v1",
+      "name": "Untitled graph",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "label": "Idea",
+          "position": {
+            "x": 100,
+            "y": 100
+          },
+          "kind": "input",
+          "config": {
+            "field": "idea",
+            "label": null,
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "result",
+          "label": "Result",
+          "position": {
+            "x": 100,
+            "y": 300
+          },
+          "kind": "output",
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "result",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "sequential-pipeline": {
+      "schema": "builder.flow/v1",
+      "name": "Sequential pipeline",
+      "version": 1,
+      "input_field": "topic",
+      "nodes": [
+        {
+          "id": "topic",
+          "kind": "input",
+          "label": "Topic",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "topic",
+            "label": "What should the team write about?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the topic",
+          "position": {
+            "x": 340,
+            "y": 160
+          },
+          "config": {
+            "message": "Three agents are about to research and write about this. Approve the topic, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "research",
+          "kind": "agent",
+          "label": "Research",
+          "position": {
+            "x": 340,
+            "y": 320
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 3,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "topic": "${state.topic}"
+            },
+            "role": "Research Analyst",
+            "goal": "Find what is actually known about a topic, and where each claim came from.",
+            "backstory": "You have spent a decade checking claims for a newsroom. You would rather report four things you can source than ten you cannot, and you never present a summary as if it were evidence.",
+            "task": {
+              "description": "Search the discussion for {topic} and report the five most load-bearing things practitioners say about it — the ones a reader would be wrong without — with the URL each came from.",
+              "expected_output": "Five numbered findings. Each is one sentence, followed by the URL it came from on its own line. No preamble.",
+              "output_schema": null,
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "search",
+          "kind": "tool",
+          "label": "Search the discussion",
+          "position": {
+            "x": 40,
+            "y": 320
+          },
+          "config": {
+            "tool_id": "analyze_community_sentiment",
+            "params": {}
+          }
+        },
+        {
+          "id": "analyse",
+          "kind": "agent",
+          "label": "Analyse",
+          "position": {
+            "x": 340,
+            "y": 480
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "research": "${state.out__research}"
+            },
+            "role": "Analyst",
+            "goal": "Turn a pile of facts into the two or three tensions that actually decide the question.",
+            "backstory": "You read research the way an editor reads a draft: looking for the places where two true things pull in opposite directions, because that is where the reader learns something.",
+            "task": {
+              "description": "From the research below, name the three tensions a reader must understand, and give the evidence for each.\n\nRESEARCH:\n{research}",
+              "expected_output": "Three headed sections. Each names one tension in a short phrase, explains it in two or three sentences, and cites the facts on both sides.",
+              "output_schema": null,
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "write",
+          "kind": "agent",
+          "label": "Write",
+          "position": {
+            "x": 340,
+            "y": 640
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "analysis": "${state.out__analyse}"
+            },
+            "role": "Writer",
+            "goal": "Write something a busy reader finishes and can act on.",
+            "backstory": "You write briefs for people who will read them once, on a phone, between meetings. You put the answer first and you never pad.",
+            "task": {
+              "description": "Write a 600-word brief from the analysis below. Headline, three sections, and a sources list at the end.\n\nANALYSIS:\n{analysis}",
+              "expected_output": "Markdown. An H1 headline, three H2 sections of roughly 200 words each, and a final \"Sources\" list of the URLs the research carried.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "brief",
+          "kind": "output",
+          "label": "Brief",
+          "position": {
+            "x": 340,
+            "y": 800
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "topic",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "research",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "research",
+          "source_port": "out",
+          "target": "analyse",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "analyse",
+          "source_port": "out",
+          "target": "write",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "write",
+          "source_port": "out",
+          "target": "brief",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "search",
+          "source_port": "attach",
+          "target": "research",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "conditional-router": {
+      "schema": "builder.flow/v1",
+      "name": "Conditional router",
+      "version": 1,
+      "input_field": "request",
+      "nodes": [
+        {
+          "id": "request",
+          "kind": "input",
+          "label": "Request",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "request",
+            "label": "Paste the customer message.",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the request",
+          "position": {
+            "x": 340,
+            "y": 160
+          },
+          "config": {
+            "message": "This message is about to be classified and answered. Approve it, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "classify",
+          "kind": "agent",
+          "label": "Triage",
+          "position": {
+            "x": 340,
+            "y": 320
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 1,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "request": "${state.request}"
+            },
+            "role": "Triage",
+            "goal": "Put a message on the right desk, in one word, and never guess twice.",
+            "backstory": "You have sorted support mail for years. You read for the ask rather than the tone, and you would rather send an ambiguous message to accounts than invent a fourth category.",
+            "task": {
+              "description": "Classify the customer message below as exactly one of: billing, technical, account.\n\nMESSAGE:\n{request}",
+              "expected_output": "An object with one key, `category`, whose value is billing, technical or account.",
+              "output_schema": {
+                "category": "string"
+              },
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "qwen/qwen3.7-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "category",
+          "kind": "transform",
+          "label": "Category",
+          "position": {
+            "x": 340,
+            "y": 480
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.out__classify}",
+              "key": "category"
+            }
+          }
+        },
+        {
+          "id": "route",
+          "kind": "router",
+          "label": "Which desk?",
+          "position": {
+            "x": 340,
+            "y": 640
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "billing",
+                "op": "eq",
+                "key": "out__category",
+                "value": "billing"
+              },
+              {
+                "label": "technical",
+                "op": "eq",
+                "key": "out__category",
+                "value": "technical"
+              },
+              {
+                "label": "account",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "billing",
+          "kind": "agent",
+          "label": "Billing",
+          "position": {
+            "x": 40,
+            "y": 800
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "request": "${state.request}"
+            },
+            "role": "Billing Specialist",
+            "goal": "Answer a money question completely enough that nobody has to write again.",
+            "backstory": "You handle invoices, refunds and plan changes. You quote the exact amounts and dates, because a billing reply that is vague is a second ticket.",
+            "task": {
+              "description": "Answer this billing message.\n\nMESSAGE:\n{request}",
+              "expected_output": "A reply the customer can read as-is: what happened, what you did, and what happens next.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "technical",
+          "kind": "agent",
+          "label": "Technical",
+          "position": {
+            "x": 340,
+            "y": 800
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "request": "${state.request}"
+            },
+            "role": "Support Engineer",
+            "goal": "Get somebody unstuck in as few steps as they will actually follow.",
+            "backstory": "You debug from the far side of the screen. You ask for one thing at a time and you say what you expect to see, so a reply tells you something either way.",
+            "task": {
+              "description": "Answer this technical message.\n\nMESSAGE:\n{request}",
+              "expected_output": "A reply with the likely cause, the steps to try in order, and what to send back if none of them work.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "account",
+          "kind": "agent",
+          "label": "Account",
+          "position": {
+            "x": 640,
+            "y": 800
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "request": "${state.request}"
+            },
+            "role": "Account Manager",
+            "goal": "Handle anything about the relationship, and route what is not yours.",
+            "backstory": "You own the account rather than the ticket. When a message is not about billing or the product you are the one who answers it, and you never send somebody back to the start.",
+            "task": {
+              "description": "Answer this account message.\n\nMESSAGE:\n{request}",
+              "expected_output": "A reply that answers what was asked, or names the one thing you need to answer it.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "merge",
+          "kind": "transform",
+          "label": "Whichever answered",
+          "position": {
+            "x": 340,
+            "y": 960
+          },
+          "config": {
+            "op": "join_text",
+            "args": {
+              "billing": "${state.out__billing}",
+              "technical": "${state.out__technical}",
+              "account": "${state.out__account}"
+            }
+          }
+        },
+        {
+          "id": "reply",
+          "kind": "output",
+          "label": "Reply",
+          "position": {
+            "x": 340,
+            "y": 1120
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "request",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "classify",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "classify",
+          "source_port": "out",
+          "target": "category",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "category",
+          "source_port": "out",
+          "target": "route",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "route",
+          "source_port": "billing",
+          "target": "billing",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "route",
+          "source_port": "technical",
+          "target": "technical",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "route",
+          "source_port": "account",
+          "target": "account",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "billing",
+          "source_port": "out",
+          "target": "merge",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "technical",
+          "source_port": "out",
+          "target": "merge",
+          "target_port": "in"
+        },
+        {
+          "id": "e10",
+          "source": "account",
+          "source_port": "out",
+          "target": "merge",
+          "target_port": "in"
+        },
+        {
+          "id": "e11",
+          "source": "merge",
+          "source_port": "out",
+          "target": "reply",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "merge": "any"
+      },
+      "budget": null
+    },
+    "reflection-loop": {
+      "schema": "builder.flow/v1",
+      "name": "Reflection loop",
+      "version": 1,
+      "input_field": "ask",
+      "nodes": [
+        {
+          "id": "ask",
+          "kind": "input",
+          "label": "Ask",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "ask",
+            "label": "What should be drafted?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the ask",
+          "position": {
+            "x": 340,
+            "y": 160
+          },
+          "config": {
+            "message": "A drafter and a critic are about to go round on this, up to four times. Approve the ask, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "generate",
+          "kind": "agent",
+          "label": "Draft",
+          "position": {
+            "x": 340,
+            "y": 320
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "ask": "${state.ask}",
+              "feedback": "${state.out__feedback}"
+            },
+            "role": "Drafter",
+            "goal": "Produce a draft, and improve it whenever somebody says how.",
+            "backstory": "You write first drafts fast and you do not defend them. When a critic gives you three fixes you make all three, rather than arguing with one.",
+            "task": {
+              "description": "Draft the piece described below. If FEEDBACK is present, revise your previous draft to address every point in it.\n\nASK:\n{ask}\n\nFEEDBACK:\n{feedback}",
+              "expected_output": "The draft itself, in Markdown, and nothing about the draft.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "critique",
+          "kind": "agent",
+          "label": "Critique",
+          "position": {
+            "x": 340,
+            "y": 480
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "draft": "${state.out__generate}"
+            },
+            "role": "Critic",
+            "goal": "Say how good this is, on a scale, and what would most improve it.",
+            "backstory": "You review as an editor rather than as a fan. You give a number you would defend and three fixes ordered by how much each one buys.",
+            "task": {
+              "description": "Score the draft below out of 10 and give the three most important fixes.\n\nDRAFT:\n{draft}",
+              "expected_output": "An object with two keys: `score`, a whole number 0 to 10, and `feedback`, the three fixes as one string.",
+              "output_schema": {
+                "score": "integer",
+                "feedback": "string"
+              },
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "score",
+          "kind": "transform",
+          "label": "Score",
+          "position": {
+            "x": 140,
+            "y": 640
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.out__critique}",
+              "key": "score"
+            }
+          }
+        },
+        {
+          "id": "feedback",
+          "kind": "transform",
+          "label": "Feedback",
+          "position": {
+            "x": 540,
+            "y": 640
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.out__critique}",
+              "key": "feedback"
+            }
+          }
+        },
+        {
+          "id": "judge",
+          "kind": "router",
+          "label": "Good enough?",
+          "position": {
+            "x": 340,
+            "y": 800
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "again",
+                "op": "lt",
+                "key": "out__score",
+                "value": 8
+              },
+              {
+                "label": "done",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "final",
+          "kind": "output",
+          "label": "Final draft",
+          "position": {
+            "x": 340,
+            "y": 960
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__generate}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "ask",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "generate",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "generate",
+          "source_port": "out",
+          "target": "critique",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "critique",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "critique",
+          "source_port": "out",
+          "target": "feedback",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "score",
+          "source_port": "out",
+          "target": "judge",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "feedback",
+          "source_port": "out",
+          "target": "judge",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "judge",
+          "source_port": "done",
+          "target": "final",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "judge",
+          "source_port": "again",
+          "target": "generate",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "judge": "all"
+      },
+      "budget": null
+    },
+    "hierarchical-delegation": {
+      "schema": "builder.flow/v1",
+      "name": "Hierarchical delegation",
+      "version": 1,
+      "input_field": "brief",
+      "nodes": [
+        {
+          "id": "brief",
+          "kind": "input",
+          "label": "Brief",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "brief",
+            "label": "Describe the deliverable.",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the brief",
+          "position": {
+            "x": 340,
+            "y": 160
+          },
+          "config": {
+            "message": "A manager and three specialists are about to work from this brief. Approve it, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "Delivery team",
+          "position": {
+            "x": 340,
+            "y": 320
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "brief": "${state.out__confirm}"
+            },
+            "process": "hierarchical",
+            "task_order": [
+              "market",
+              "product",
+              "risk"
+            ],
+            "manager_llm": {
+              "model": "google/gemini-3.8-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "manager_agent": null,
+            "memory": false,
+            "cache": true,
+            "max_rpm": null,
+            "planning": false,
+            "planning_llm": null,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "verbose": false
+          }
+        },
+        {
+          "id": "market",
+          "kind": "agent",
+          "label": "Market",
+          "position": {
+            "x": 40,
+            "y": 500
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "brief": "${state.brief}"
+            },
+            "role": "Market Specialist",
+            "goal": "Say who would pay for this and roughly how many of them there are.",
+            "backstory": "You have sized enough markets to distrust a number with no buyer attached to it. You would rather name one segment you can describe than three you cannot.",
+            "task": {
+              "description": "Size the market for {brief} and name the buyer.",
+              "expected_output": "Two short paragraphs: the buyer, described specifically enough to find one, and the size with the reasoning that produced it.",
+              "output_schema": null,
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "product",
+          "kind": "agent",
+          "label": "Product",
+          "position": {
+            "x": 340,
+            "y": 500
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "brief": "${state.brief}"
+            },
+            "role": "Product Specialist",
+            "goal": "Draw the smallest first version that is still worth shipping.",
+            "backstory": "You have watched more products die of scope than of competition. Everything you cut, you cut on purpose and can say why.",
+            "task": {
+              "description": "Define the v1 scope for {brief} in five bullets.",
+              "expected_output": "Exactly five bullets, each one shippable on its own, ordered by what to build first.",
+              "output_schema": null,
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "risk",
+          "kind": "agent",
+          "label": "Risk",
+          "position": {
+            "x": 640,
+            "y": 500
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "brief": "${state.brief}"
+            },
+            "role": "Risk Specialist",
+            "goal": "Name the ways this fails while there is still time to notice.",
+            "backstory": "You write the pre-mortem nobody asks for. A risk with no early signal attached is, to you, just an opinion.",
+            "task": {
+              "description": "List the three ways {brief} fails, and the early signal for each.",
+              "expected_output": "Three numbered failures. Each is one sentence for the failure and one for the signal that would show it first.",
+              "output_schema": null,
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "plan",
+          "kind": "output",
+          "label": "Plan",
+          "position": {
+            "x": 340,
+            "y": 680
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "brief",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "team",
+          "source_port": "out",
+          "target": "plan",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "market",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
+        },
+        {
+          "id": "e5",
+          "source": "product",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
+        },
+        {
+          "id": "e6",
+          "source": "risk",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "idea-validator": {
+      "schema": "builder.flow/v1",
+      "name": "Idea validator",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "Startup idea",
+          "position": {
+            "x": 0,
+            "y": 190
+          },
+          "config": {
+            "field": "idea",
+            "label": "Describe the idea in a sentence or two",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scoper",
+          "kind": "agent",
+          "label": "Scope the idea",
+          "position": {
+            "x": 300,
+            "y": 190
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "scoper",
+            "tools": [],
+            "prompt_inputs": {
+              "idea": "${state.idea}",
+              "human_override": ""
+            }
+          }
+        },
+        {
+          "id": "confirm_scope",
+          "kind": "gate",
+          "label": "Confirm scope",
+          "position": {
+            "x": 600,
+            "y": 190
+          },
+          "config": {
+            "message": "Read the scope below. Approve it, or send it back with what to change.",
+            "editable_fields": [
+              "segment",
+              "job"
+            ],
+            "max_turns": 2,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "revise_scope",
+          "kind": "agent",
+          "label": "Revise scope",
+          "position": {
+            "x": 600,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "scoper",
+            "tools": [],
+            "prompt_inputs": {
+              "idea": "${state.idea}",
+              "human_override": "${state.out__confirm_scope}"
+            }
+          }
+        },
+        {
+          "id": "route_scope",
+          "kind": "router",
+          "label": "Scope again?",
+          "position": {
+            "x": 900,
+            "y": 0
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "again",
+                "op": "lt",
+                "key": "turns__confirm_scope",
+                "value": 2
+              },
+              {
+                "label": "otherwise",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "scope_brief",
+          "kind": "transform",
+          "label": "Agreed scope",
+          "position": {
+            "x": 900,
+            "y": 190
+          },
+          "config": {
+            "op": "default",
+            "args": {
+              "value": "${state.out__revise_scope}",
+              "default": "${state.out__scoper}"
+            }
+          }
+        },
+        {
+          "id": "market_analyst",
+          "kind": "agent",
+          "label": "Market",
+          "position": {
+            "x": 1200,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "market_analyst",
+            "tools": [
+              "research_market_landscape"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__scope_brief}",
+              "market_query": "${state.out__scope_brief}",
+              "cached_evidence_block": ""
+            }
+          }
+        },
+        {
+          "id": "sentiment_analyst",
+          "kind": "agent",
+          "label": "Signal",
+          "position": {
+            "x": 1200,
+            "y": 190
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "sentiment_analyst",
+            "tools": [
+              "analyze_community_sentiment"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__scope_brief}",
+              "community_queries_block": "${state.out__scope_brief}"
+            }
+          }
+        },
+        {
+          "id": "feasibility_analyst",
+          "kind": "agent",
+          "label": "Build",
+          "position": {
+            "x": 1200,
+            "y": 380
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "feasibility_analyst",
+            "tools": [
+              "assess_technical_feasibility"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__scope_brief}",
+              "tech_queries_block": "${state.out__scope_brief}",
+              "cached_evidence_block": ""
+            }
+          }
+        },
+        {
+          "id": "score",
+          "kind": "agent",
+          "label": "Score the evidence",
+          "position": {
+            "x": 1500,
+            "y": 190
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "synthesist",
+            "tools": [],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__scope_brief}",
+              "market_findings_json": "${state.out__market_analyst}",
+              "sentiment_findings_json": "${state.out__sentiment_analyst}",
+              "feasibility_findings_json": "${state.out__feasibility_analyst}",
+              "human_override": ""
+            }
+          }
+        },
+        {
+          "id": "review_verdict",
+          "kind": "gate",
+          "label": "Review verdict",
+          "position": {
+            "x": 300,
+            "y": 700
+          },
+          "config": {
+            "message": "Read the scored verdict. Approve it, or send it back with what to reconsider.",
+            "editable_fields": [],
+            "max_turns": 2,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "revise_verdict",
+          "kind": "agent",
+          "label": "Rescore",
+          "position": {
+            "x": 300,
+            "y": 890
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "synthesist",
+            "tools": [],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__scope_brief}",
+              "market_findings_json": "${state.out__market_analyst}",
+              "sentiment_findings_json": "${state.out__sentiment_analyst}",
+              "feasibility_findings_json": "${state.out__feasibility_analyst}",
+              "human_override": "${state.out__review_verdict}"
+            }
+          }
+        },
+        {
+          "id": "route_verdict",
+          "kind": "router",
+          "label": "Score again?",
+          "position": {
+            "x": 600,
+            "y": 890
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "again",
+                "op": "lt",
+                "key": "turns__review_verdict",
+                "value": 2
+              },
+              {
+                "label": "otherwise",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "verdict_brief",
+          "kind": "transform",
+          "label": "Standing verdict",
+          "position": {
+            "x": 600,
+            "y": 700
+          },
+          "config": {
+            "op": "default",
+            "args": {
+              "value": "${state.out__revise_verdict}",
+              "default": "${state.out__score}"
+            }
+          }
+        },
+        {
+          "id": "reporter",
+          "kind": "agent",
+          "label": "Write the report",
+          "position": {
+            "x": 900,
+            "y": 700
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "reporter",
+            "tools": [],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__scope_brief}",
+              "market_findings_json": "${state.out__market_analyst}",
+              "sentiment_findings_json": "${state.out__sentiment_analyst}",
+              "feasibility_findings_json": "${state.out__feasibility_analyst}",
+              "verdict_json": "${state.out__verdict_brief}"
+            }
+          }
+        },
+        {
+          "id": "brief",
+          "kind": "output",
+          "label": "Validation report",
+          "position": {
+            "x": 1200,
+            "y": 700
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__reporter}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scoper",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scoper",
+          "source_port": "out",
+          "target": "confirm_scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "confirm_scope",
+          "source_port": "approve",
+          "target": "scope_brief",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "confirm_scope",
+          "source_port": "revise",
+          "target": "revise_scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "revise_scope",
+          "source_port": "out",
+          "target": "route_scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "route_scope",
+          "source_port": "again",
+          "target": "confirm_scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "route_scope",
+          "source_port": "otherwise",
+          "target": "scope_brief",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "scope_brief",
+          "source_port": "out",
+          "target": "market_analyst",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "scope_brief",
+          "source_port": "out",
+          "target": "sentiment_analyst",
+          "target_port": "in"
+        },
+        {
+          "id": "e10",
+          "source": "scope_brief",
+          "source_port": "out",
+          "target": "feasibility_analyst",
+          "target_port": "in"
+        },
+        {
+          "id": "e11",
+          "source": "scope_brief",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e12",
+          "source": "market_analyst",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e13",
+          "source": "sentiment_analyst",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e14",
+          "source": "feasibility_analyst",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e15",
+          "source": "score",
+          "source_port": "out",
+          "target": "review_verdict",
+          "target_port": "in"
+        },
+        {
+          "id": "e16",
+          "source": "review_verdict",
+          "source_port": "approve",
+          "target": "verdict_brief",
+          "target_port": "in"
+        },
+        {
+          "id": "e17",
+          "source": "review_verdict",
+          "source_port": "revise",
+          "target": "revise_verdict",
+          "target_port": "in"
+        },
+        {
+          "id": "e18",
+          "source": "revise_verdict",
+          "source_port": "out",
+          "target": "route_verdict",
+          "target_port": "in"
+        },
+        {
+          "id": "e19",
+          "source": "route_verdict",
+          "source_port": "again",
+          "target": "review_verdict",
+          "target_port": "in"
+        },
+        {
+          "id": "e20",
+          "source": "route_verdict",
+          "source_port": "otherwise",
+          "target": "verdict_brief",
+          "target_port": "in"
+        },
+        {
+          "id": "e21",
+          "source": "verdict_brief",
+          "source_port": "out",
+          "target": "reporter",
+          "target_port": "in"
+        },
+        {
+          "id": "e22",
+          "source": "reporter",
+          "source_port": "out",
+          "target": "brief",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "score": "all"
+      },
+      "budget": null
+    },
+    "minimal-gated-agent": {
+      "schema": "builder.flow/v1",
+      "name": "Minimal gated agent",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "Request",
+          "position": {
+            "x": 300,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "What should this run work from?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the request",
+          "position": {
+            "x": 300,
+            "y": 180
+          },
+          "config": {
+            "message": "Check the request before this run spends anything. Approve it, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "Draft",
+          "position": {
+            "x": 300,
+            "y": 360
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "scoper",
+            "tools": [],
+            "prompt_inputs": {
+              "idea": "${state.idea}",
+              "human_override": "${state.out__confirm}"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "Result",
+          "position": {
+            "x": 300,
+            "y": 540
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "fan-out-join": {
+      "schema": "builder.flow/v1",
+      "name": "Fan out and join",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "Request",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "What should the three branches research?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the request",
+          "position": {
+            "x": 340,
+            "y": 180
+          },
+          "config": {
+            "message": "Three research branches are about to run in parallel. Approve the request, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "brief",
+          "kind": "transform",
+          "label": "Shared brief",
+          "position": {
+            "x": 340,
+            "y": 360
+          },
+          "config": {
+            "op": "default",
+            "args": {
+              "value": "${state.out__confirm}",
+              "default": "${state.idea}"
+            }
+          }
+        },
+        {
+          "id": "market",
+          "kind": "agent",
+          "label": "Market",
+          "position": {
+            "x": 60,
+            "y": 540
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "market_analyst",
+            "tools": [
+              "research_market_landscape"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__brief}",
+              "market_query": "${state.out__brief}",
+              "cached_evidence_block": ""
+            }
+          }
+        },
+        {
+          "id": "signal",
+          "kind": "agent",
+          "label": "Signal",
+          "position": {
+            "x": 340,
+            "y": 540
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "sentiment_analyst",
+            "tools": [
+              "analyze_community_sentiment"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__brief}",
+              "community_queries_block": "${state.out__brief}"
+            }
+          }
+        },
+        {
+          "id": "build",
+          "kind": "agent",
+          "label": "Build",
+          "position": {
+            "x": 620,
+            "y": 540
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "feasibility_analyst",
+            "tools": [
+              "assess_technical_feasibility"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__brief}",
+              "tech_queries_block": "${state.out__brief}",
+              "cached_evidence_block": ""
+            }
+          }
+        },
+        {
+          "id": "score",
+          "kind": "agent",
+          "label": "Score the evidence",
+          "position": {
+            "x": 340,
+            "y": 720
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "synthesist",
+            "tools": [],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__brief}",
+              "market_findings_json": "${state.out__market}",
+              "sentiment_findings_json": "${state.out__signal}",
+              "feasibility_findings_json": "${state.out__build}",
+              "human_override": ""
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "Result",
+          "position": {
+            "x": 340,
+            "y": 900
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__score}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "brief",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "brief",
+          "source_port": "out",
+          "target": "market",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "brief",
+          "source_port": "out",
+          "target": "signal",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "brief",
+          "source_port": "out",
+          "target": "build",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "market",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "signal",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "build",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "score",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "score": "all"
+      },
+      "budget": null
+    }
+  },
+  "cards": {
+    "blank": {
+      "title": "Blank canvas",
+      "blurb": "An input and an output, wired and clean. Drag a kind from the palette, or press 1–7.",
+      "teaches": "Where a run begins and where its body comes back, and that both ends already exist.",
+      "modifyFirst": "Drop an agent between the two nodes and connect it. Nothing else is needed.",
+      "caveat": null
+    },
+    "sequential-pipeline": {
+      "title": "Sequential pipeline",
+      "blurb": "Research, analyse, write — three agents in a line with a keyless search attached.",
+      "teaches": "That an edge is a listener, ${state.out__x} is how one step reaches the next, and a tool is dropped onto an agent.",
+      "modifyFirst": "The writer's expected output. One sentence there changes the whole deliverable.",
+      "caveat": null
+    },
+    "conditional-router": {
+      "title": "Conditional router",
+      "blurb": "Classify a message, send it to one of three desks, and converge again.",
+      "teaches": "That a router is arithmetic rather than a model, and that the cheap tier belongs where the decision is small.",
+      "modifyFirst": "The classifier's model. Swap it for the escalation one and watch the meter move for one word.",
+      "caveat": null
+    },
+    "reflection-loop": {
+      "title": "Reflection loop",
+      "blurb": "A drafter and a critic go round until the score clears 8, or four drafts in.",
+      "teaches": "That only a router may close a loop, and that output_schema is what turns prose into a number one can compare.",
+      "modifyFirst": "The threshold 8. It is the only thing deciding how long this runs.",
+      "caveat": null
+    },
+    "hierarchical-delegation": {
+      "title": "Hierarchical delegation",
+      "blurb": "A manager and three specialists, inside one crew node.",
+      "teaches": "That a crew node is a real Crew whose members are agents it owns, wired by member edges rather than flow edges.",
+      "modifyFirst": "The process. Flip it to sequential and the manager leaves the inspector and the price together.",
+      "caveat": null
+    },
+    "idea-validator": {
+      "title": "Idea validator",
+      "blurb": "Six agents, two human gates, two revise loops — the evaluator, drawn.",
+      "teaches": "What a real pipeline looks like at full size: six agents, two gates and two revise loops.",
+      "modifyFirst": "The scope gate’s editable fields, which are what an operator may change mid-run.",
+      "caveat": "This is the evaluator’s shape, not its judgement. The six agents, the two human gates and both revise loops are the real ones — but the rubric, the confidence arithmetic, the guardrails and the warm evidence cache live in Python, and a drawn graph carries plain text between its nodes. Treat what it produces as a draft an analyst wrote, not as a score."
+    },
+    "minimal-gated-agent": {
+      "title": "Minimal gated agent",
+      "blurb": "Input, a human gate, one agent, one result — the smallest graph anyone can launch.",
+      "teaches": "Why a gate sits above the first agent: while nobody is signed in, human inaction is the spend cap.",
+      "modifyFirst": "The agent's prompt inputs, which are what the scoping task interpolates.",
+      "caveat": null
+    },
+    "fan-out-join": {
+      "title": "Fan out and join",
+      "blurb": "Three branches run in parallel and one node waits for all of them.",
+      "teaches": "That one line — joins — decides whether a node waits for its branches or runs on the first home.",
+      "modifyFirst": "Delete the joins key and watch the score node fire on one branch out of three.",
+      "caveat": null
+    }
+  }
+}

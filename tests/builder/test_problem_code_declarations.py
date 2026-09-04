@@ -47,11 +47,24 @@ BUILDER = pathlib.Path(__file__).resolve().parents[2] / "src" / "brief_crew" / "
 #: two ever disagree this file is asserting about a gate that does not exist.
 DECLARATION = re.compile(r'^([A-Z][A-Z0-9_]*) = "([a-z]+(?:-[a-z]+)+)"$', re.MULTILINE)
 
-#: The files that declare codes. The frontend reads exactly these three, and the
+#: The files that declare codes. The frontend reads exactly these FOUR, and the
 #: third was missing there for a while - which is how twenty-seven passed as
-#: thirty. A fourth file appearing here without appearing there is the next
+#: thirty. A fifth file appearing here without appearing there is the next
 #: instance of that defect, so the count test below pins the pair.
-SOURCES = ("bounds.py", "budget.py", "compiler.py")
+#:
+#: `registry.py` is the fourth, added 2026-09-04 with plan 05's three model
+#: codes. It went into `builderTypes.spec.ts`, `emit_builder_fixtures.py`'s
+#: `_declared_codes` and `builder_api.py`'s `_problem_code_union` in the same
+#: commit, which is exactly the four-place edit the paragraph above predicts.
+SOURCES = (
+    "bounds.py",
+    "budget.py",
+    "compiler.py",
+    "registry.py",
+    "tools.py",
+    "mcp.py",
+    "skills.py",
+)
 
 
 def _module(name: str) -> tuple[ast.Module, str]:
@@ -197,13 +210,52 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
                 "codes are declared here",
             )
 
-    def test_the_three_files_carry_every_code_the_frontend_lists(self) -> None:
-        """Thirty, and the arithmetic is stated so a change has to face it.
+    def test_the_four_files_carry_every_code_the_frontend_lists(self) -> None:
+        """Forty-one, and the arithmetic is stated so a change has to face it.
 
-        Twenty-five, two and three. The compiler's three were absent from the
-        TypeScript tuple for a while precisely because that file was not in the
-        frontend's source list, and one of them - `library-missing-prompt-input`
-        - is the most common problem in the whole builder.
+        Thirty-two, two, four, three and nine - across seven files. The
+        compiler's first three were absent from
+        the TypeScript tuple for a while precisely because that file was not in
+        the frontend's source list, and one of them -
+        `library-missing-prompt-input` - is the most common problem in the
+        whole builder. The fourth is `credential-missing` (plan 01 D10), the
+        first code that is emitted only when `validate` has an identity.
+
+        **Thirty-one until 2026-09-04**, when 03-node-library.md D2 added the
+        seven edge-class codes: `attach-target-not-agent`,
+        `member-target-not-crew`, `member-agent-has-flow-edges`,
+        `attachment-unattached` (the fourth warning), `attachments-over-max`,
+        `attachment-nodes-over-max` and `crew-members-out-of-range`. That is a
+        C8 change, which is why this assertion's failure message names both
+        client files rather than merely reporting a number - it is the only
+        thing standing between a server that emits a code and a canvas that
+        renders it nowhere.
+
+        **Thirty-eight until 2026-09-04**, when plan 05 added `registry.py` and
+        its three: `model-unknown`, `model-over-ceiling` and
+        `model-lacks-capability`. The third is the one this count is really
+        protecting - it is the code that fires when an author asks a model for
+        a parameter it cannot honour, and a client that had never heard of it
+        would render nothing while the compiler refused the publish.
+
+        **Forty-one until 2026-09-04**, when plans 06, 07 and 08 added three
+        more declaring files and nine codes. `tools.py`: `tool-unknown`,
+        `tool-param-invalid` and `tool-credential-required`. `mcp.py`:
+        `mcp-server-unavailable`, `mcp-tool-unknown`, `mcp-no-tools-selected`,
+        `mcp-transport-disallowed` and `mcp-tool-description-suspicious`, the
+        FIFTH warning. `skills.py`: `skill-unknown`.
+
+        `skill-contains-scripts` is deliberately NOT among them. It is an
+        import-time refusal that never lands on a node, so the problems dock
+        would have nothing to anchor it to - and it is declared in
+        `service/builder_api.py`, outside the package these three greps read,
+        precisely so it cannot be swept in.
+
+        **Fifty-five until 2026-09-04**, when plan 12 added `bounds.py`'s two
+        crew codes: `crew-task-order-mismatch` and
+        `crew-hierarchical-needs-manager`. Neither adds a declaring FILE, which
+        is why the file count below did not move with them - they are the first
+        addition since 03 that did not.
         """
 
         codes: set[str] = set()
@@ -212,7 +264,7 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             codes |= {match.group(2) for match in DECLARATION.finditer(text)}
         self.assertEqual(
             len(codes),
-            30,
+            57,
             "the number of problem codes moved; frontend/src/types/builder.ts's "
             "PROBLEM_CODES and builderTypes.spec.ts's length assertion both "
             "have to move with it",

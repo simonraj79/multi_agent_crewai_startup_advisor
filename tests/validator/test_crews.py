@@ -13,6 +13,8 @@ from brief_crew.config import (
     ANCHOR_MATCH_THRESHOLD,
     CHEAP_MODEL,
     ESCALATION_MODEL,
+    MODEL_PRICE_CEILING_IN,
+    openrouter_escalation_params,
     LEVEL_ONE_ANCHOR,
     RUBRIC_ANCHORS,
     VALIDATOR_ESCALATION_PROVIDER_SORT,
@@ -210,20 +212,59 @@ class ValidatorCrewWiringTests(unittest.TestCase):
             model=ESCALATION_MODEL, reasoning_effort="high"
         )._prepare_completion_params(message)
 
-        # BOTH knobs must reach the body. The provider block is what routes the
-        # call to a faster endpoint - measured at 216 tok/s against the 60 tok/s
-        # this pipeline was landing on - and it travels the same way reasoning
-        # does, so a regression that drops one would probably drop both.
+        # THREE knobs must reach the body, and they share one channel, so a
+        # regression that drops one would probably drop all three. The provider
+        # block routes the call to a faster endpoint - measured at 216 tok/s
+        # against the 60 tok/s this pipeline was landing on - and it now also
+        # carries the price ceiling.
         self.assertEqual(
             wired.get("extra_body"),
             {
                 "reasoning": {"effort": VALIDATOR_SYNTHESIST_REASONING_EFFORT},
-                "provider": {"sort": VALIDATOR_ESCALATION_PROVIDER_SORT},
+                "provider": {
+                    "max_price": {"prompt": MODEL_PRICE_CEILING_IN},
+                    "sort": VALIDATOR_ESCALATION_PROVIDER_SORT,
+                },
             },
         )
         self.assertNotIn("reasoning_effort", wired)
         self.assertNotIn("reasoning_effort", ignored)
         self.assertNotIn("extra_body", ignored)
+
+    def test_the_price_ceiling_survives_sharing_a_provider_block_with_sort(
+        self,
+    ) -> None:
+        """The ceiling and the sort are ONE `provider` key, and JSON has no merge.
+
+        Added 2026-09-04 with the owner's ruling that the ceiling is measured
+        against the max ENDPOINT price rather than the headline. The failure this
+        pins is specific and silent: `max_price` and `sort` are two independent
+        decisions that have to travel in the same `provider` object, so a second
+        caller writing its own `provider` key overwrites the first, and the one
+        that loses is whichever ran second. Nothing would raise - the call would
+        simply become eligible for the $1.35/M endpoints again.
+
+        `openrouter_escalation_params` assembles the block once for exactly that
+        reason, and this asserts both keys survive together at every effort,
+        including `None`, where there is no `reasoning` key to hide behind.
+        """
+
+        for effort in ("high", "low", None):
+            with self.subTest(effort=effort):
+                body = openrouter_escalation_params(effort)["extra_body"]
+                provider = body["provider"]
+                self.assertEqual(
+                    provider["max_price"], {"prompt": MODEL_PRICE_CEILING_IN}
+                )
+                self.assertEqual(
+                    provider["sort"], VALIDATOR_ESCALATION_PROVIDER_SORT
+                )
+
+        # The ceiling is the one thing here that is not a performance tweak, so
+        # it is asserted against the constant rather than a literal: a change to
+        # the ceiling should move this test's expectation with it, and a change
+        # to the SHAPE should break it.
+        self.assertEqual(MODEL_PRICE_CEILING_IN, 1.00)
 
     def test_guardrail_sets_are_exactly_as_specified(self) -> None:
         """F16: count, type and order, asserted rather than read."""

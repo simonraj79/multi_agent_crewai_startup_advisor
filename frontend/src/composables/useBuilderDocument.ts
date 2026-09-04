@@ -14,6 +14,7 @@ import type {
   NodePosition,
   OutputConfig,
   RouterConfig,
+  TargetPort,
   TransformConfig,
 } from '../types/builder'
 import { renameCascade } from '../utils/builderGraph'
@@ -120,6 +121,15 @@ export interface EdgeEnds {
   source: NodeId
   source_port: string
   target: NodeId
+  /**
+   * `'in'` when absent, which is every flow edge and so almost every caller.
+   *
+   * Optional rather than required because the canvas's attach-by-drop
+   * (02-canvas.md D8) is the ONE gesture that mints an edge arriving anywhere
+   * else, and making the field mandatory would have every other call site
+   * restate the default - which is how a default stops being one.
+   */
+  target_port?: TargetPort
 }
 
 /**
@@ -179,6 +189,54 @@ function deepFreeze<T>(value: T): T {
  * answers to "what does an empty graph look like" - the shape this repo has
  * already been bitten by often enough to have a name for.
  */
+/**
+ * The `addNode` options a node-creating gesture becomes, in either direction.
+ *
+ * Two shapes reach `addNode` and they are not symmetrical. A FLOW edge is drawn
+ * from something that already exists TO the new node - the number keys'
+ * auto-connect, `PortMenu`, a keyboard link - so the origin is the fixed end.
+ * An ATTACH edge points the other way: the tool is the source and the agent it
+ * hangs off is the target (`document.py`'s `_OUT_PORTS_BY_KIND`), which is what
+ * makes an edge's class a pure function of its own `target_port`.
+ *
+ * Either way it is ONE commit, because two would be two undo steps forever and
+ * the second undo would leave something dangling that nobody asked for.
+ *
+ * Exported and living here rather than inside `BuilderView`'s setup, so that
+ * `builderCanvas.spec.ts` can drive the real store through the real adapter and
+ * assert what `undo()` actually removes. An adapter that only exists inside a
+ * component is an adapter no test can exercise, and this one is the whole of
+ * criterion 11.
+ */
+export function edgeOptionsFor(
+  node: BuilderNode,
+  connectFrom: { source: NodeId; source_port: string } | null,
+  attachTo: { target: NodeId; target_port: TargetPort } | null,
+): { edge?: EdgeEnds; label?: string } | undefined {
+  if (attachTo) {
+    return {
+      edge: {
+        source: node.id,
+        source_port: 'attach',
+        target: attachTo.target,
+        target_port: attachTo.target_port,
+      },
+      label: `Attach ${node.kind}`,
+    }
+  }
+  if (connectFrom) {
+    return {
+      edge: {
+        source: connectFrom.source,
+        source_port: connectFrom.source_port,
+        target: node.id,
+      },
+      label: `Add ${node.label.toLowerCase()}`,
+    }
+  }
+  return undefined
+}
+
 export function useBuilderDocument(initial: BuilderDocument) {
   const doc = shallowRef<BuilderDocument>(import.meta.env.DEV ? deepFreeze(initial) : initial)
   /**
@@ -204,6 +262,30 @@ export function useBuilderDocument(initial: BuilderDocument) {
   const revision = shallowRef(0)
 
   const dirty = computed(() => doc.value !== baseline.value)
+
+  /**
+   * While true, `commit()` refuses every write and the document stays exactly
+   * what it is.
+   *
+   * The lock for a stored version that is not head (plan 15 D3). It lives on
+   * the ONE write path rather than on each of the surfaces that reach it - the
+   * canvas, the inspector, the hotkeys, the clipboard, the port menu - because a
+   * surface-by-surface guard is a list, and the next surface added forgets to
+   * be on it. Set by `useBuilderPersistence.adoptIdentity`, which is the only
+   * place `version` and `headVersion` are written, so the lock and the two
+   * numbers it is derived from cannot disagree.
+   *
+   * `load()` is NOT locked: opening another version, or head, is exactly what
+   * an author viewing v3 of v7 does next.
+   */
+  const readOnly = shallowRef(false)
+  /**
+   * How many commits the lock has refused. A counter rather than an event so
+   * the shell can watch it and say "read-only" the moment a gesture is
+   * swallowed - a drag that snaps back with nothing on screen saying why reads
+   * as a broken canvas, not as a locked one.
+   */
+  const lockedRefusals = shallowRef(0)
   const canUndo = computed(() => revision.value >= 0 && history.length > 0)
   const canRedo = computed(() => revision.value >= 0 && future.length > 0)
   const undoLabel = computed(() =>
@@ -236,6 +318,10 @@ export function useBuilderDocument(initial: BuilderDocument) {
    */
   function commit(label: string, next: BuilderDocument, coalesceKey?: string | null): void {
     if (next === doc.value) return
+    if (readOnly.value) {
+      lockedRefusals.value += 1
+      return
+    }
 
     const key = coalesceKey ?? undefined
     const top = history[history.length - 1]
@@ -334,7 +420,7 @@ export function useBuilderDocument(initial: BuilderDocument) {
           {
             ...options.edge,
             id: mintEdgeId(new Set(doc.value.edges.map((edge) => edge.id as string))),
-            target_port: 'in' as const,
+            target_port: options.edge.target_port ?? ('in' as const),
           },
         ]
       : doc.value.edges
@@ -488,9 +574,23 @@ export function useBuilderDocument(initial: BuilderDocument) {
   }
 
   /** One new edge, with its id minted here. Returns the id so a caller can select it. */
+  /**
+   * `target_port` is the CALLER's, defaulting to `'in'` - it used to be `'in'`
+   * unconditionally, which is 13 follow-up 1.
+   *
+   * `EdgeEnds.target_port` was declared, documented and then overwritten by the
+   * literal one line below its own spread, so every attach and member edge a
+   * connect gesture minted arrived as a flow edge. The gesture painted GREEN
+   * while it did it, because `isValidConnection` reads `targetHandle` correctly
+   * - so a drag from a tool's `attach` port to an agent looked accepted at the
+   * mouse and came back from the server as `attach-target-not-agent`, blaming
+   * a shape the author never drew. Attach-by-DROP was unaffected: it goes
+   * through `addNode`'s third argument, which is why the defect survived a
+   * suite with attach coverage in it.
+   */
   function addEdge(ends: EdgeEnds): EdgeId {
     const id = mintEdgeId(new Set(doc.value.edges.map((edge) => edge.id as string)))
-    const edge: BuilderEdge = { ...ends, id, target_port: 'in' }
+    const edge: BuilderEdge = { ...ends, id, target_port: ends.target_port ?? 'in' }
     commit('Connect nodes', { ...doc.value, edges: [...doc.value.edges, edge] })
     return id
   }
@@ -590,6 +690,8 @@ export function useBuilderDocument(initial: BuilderDocument) {
     doc,
     dirty,
     revision,
+    readOnly,
+    lockedRefusals,
     commit,
     load,
     markSaved,

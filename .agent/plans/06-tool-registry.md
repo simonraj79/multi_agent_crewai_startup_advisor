@@ -452,3 +452,70 @@ it, because a per-user daily counter is a table and a table is C10, which is
 plan 15's - so enabling the flag today would spend the owner's money with a
 documented cap and no enforcement. That is the gap to close before the owner
 says yes.
+
+### Wave A/B closers — 2026-09-04
+
+Row **3** moves, and it found a real leak on the way.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 3 | no credential substring in a tool frame | **met** | `tests/builder/test_tool_credentials.py` (11, 6 new) · `tests/events/test_preview_redaction.py` (7, new) |
+
+**The stated blocker is gone.** This row was `partial` because the compiler did
+not fold `tool` attachments into a definition, so *"a tool frame captured during
+a synthetic run with a Firecrawl credential attached"* named a run that could not
+exist. Plan 09 landed that fold (C5,
+`test_compiler.py::AttachmentFoldTests`), so the run exists and
+`FirecrawlRunTests` is it: a `firecrawl` credential in the real vault, an
+authored agent with a `firecrawl_search` node attached, published and launched
+through the real service on the free factories.
+
+Three legs, and each is worthless without the others:
+
+- **The control.** `ToolBuildingFactories` builds the REAL `Agent` — and so runs
+  `bind_attachments`, and so asks the vault — then kicks off synthetically.
+  `FirecrawlSearchTool.api_key` is asserted to hold the canary. Without this the
+  sweep below would pass on a run that never resolved a credential at all. It is
+  also the first proof that a **tool** credential travels the vault path;
+  `test_credentials_runtime.py` covers the agent's LLM key and nothing else.
+- **The sweep.** Every frame from `GET /api/runs/{id}/frames` (with an
+  anti-vacuity assertion that the run emitted any), the NDJSON export, every
+  entry of the ZIP, and the run snapshot.
+- **The tool frame itself.** A synthetic run calls no model, so CrewAI raises no
+  tool-usage event and the run's own frames contain **no TOOL frame at all** —
+  which would have made the criterion's noun true of an empty set. The three real
+  CrewAI tool-usage events are pushed through the real `StreamSinkAdapter` into a
+  real `FrameBuffer` — the path `/frames`, the socket and both exports read —
+  carrying the constructed tool's own `model_dump()`.
+
+**And that last leg found a leak, in the code rather than in the list.**
+`FieldBoundedSerializer` has two ways of putting a value on a frame:
+`clip`, which redacts, and `_preview`, which `json.dumps`ed the same value with
+no redaction at all. Both ran on the same `tool_args`, so one frame carried
+`details.args → api_key: "***"` and `details.input_preview` with the plaintext
+**beside it**. Not contrived: a builder agent's Firecrawl tool holds its key as a
+pydantic FIELD, so anything putting the tool's own dump into a tool-usage event
+put a live credential on the live socket and into both exports. Three previews
+were affected — `input_preview` and `output_preview` on TOOL frames, and
+`output_preview` on NODE_END, which is the one a builder node's **own output**
+goes through.
+
+The repair is one line: `_preview` now dumps `self.clip(value)`. `clip` rather
+than a second redaction walk of its own, because two walks over one list is
+exactly how `persistence` and the serializer came to disagree in the first place
+and is the reason `events/redaction.py` exists. The bounds `clip` also applies
+cannot change a preview that fits — 64 items and depth 4 are both far beyond
+what 2,048 characters hold — and `tests/events/**` is green at **77** (7 new,
+70 unchanged).
+
+**Verified by breaking it**, not by assuming: reverting that one line turns
+5 of the 7 new tests red, including
+`test_the_two_walks_on_one_frame_now_AGREE`, whose failure message names both
+fields.
+
+**The pre-existing asymmetry this file already recorded is unchanged and still
+open.** A DSN's password *inside a free-text string* is stripped by
+`persistence._redact_text` on the way to a row and is not stripped by the
+serializer on the way to the ring. That is about a value with no key name in
+front of it, so no key-based walk can see it; it is outside this plan's surfaces
+and is a follow-up rather than a fix here.

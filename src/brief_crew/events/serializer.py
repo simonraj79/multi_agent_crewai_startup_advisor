@@ -605,6 +605,21 @@ class FieldBoundedSerializer:
         walk it can; this is the one field a rail renders directly, so a shape
         that is sometimes a dict and sometimes a string would be a rendering
         decision pushed onto every consumer.
+
+        **It goes through `clip` first, and until 2026-09-04 it did not.** That
+        was a real leak with a measured shape: a builder agent's Firecrawl tool
+        holds its key as a pydantic FIELD (`FirecrawlSearchTool.api_key`), so a
+        tool-usage event carrying the tool's own dump put the plaintext in
+        `details.input_preview` on the TOOL frame while `details.args` beside it
+        read `***` - one walk redacting and one not, in the same frame, on the
+        live socket and in both exports. Found by plan 06 criterion 3's run
+        rather than by review.
+
+        `clip` rather than a second redaction walk of its own: two walks over
+        one list is exactly how `persistence` and this module came to disagree
+        in the first place, which is the reason `events/redaction.py` exists.
+        The bounds it also applies cannot change a preview that fits: 64 items
+        and depth 4 are both far beyond what 2,048 characters can hold.
         """
 
         if value is None:
@@ -617,7 +632,7 @@ class FieldBoundedSerializer:
         # that through would turn a bad frame into a lost one and an emit-error
         # counter tick.
         try:
-            text = json.dumps(value, default=str, sort_keys=True)
+            text = json.dumps(self.clip(value), default=str, sort_keys=True)
         except Exception:  # noqa: BLE001 - see above
             text = self._safe_repr(value)
         return text[:MAX_FRAME_PREVIEW_CHARS]

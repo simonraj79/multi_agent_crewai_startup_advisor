@@ -1,0 +1,387 @@
+{
+  "generator": "scripts/emit_builder_fixtures.py",
+  "source": "brief_crew.builder.tools.ToolCatalogueEntry.serialisable",
+  "mirror": "frontend/src/types/builder.ts::BuilderToolCatalogueEntry",
+  "note": "Every builtin entry, INCLUDING any behind a deployment flag, as the vocabulary serves them. A client fixture, never a client catalogue: nothing under frontend/src holds a copy of these rows.",
+  "entries": [
+    {
+      "tool_id": "research_market_landscape",
+      "label": "Market landscape",
+      "category": "research",
+      "credential_kind": "firecrawl",
+      "credential_kind_by_param": null,
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "default": 3,
+          "description": "Full page fetches per query. Each one is a Firecrawl credit.",
+          "min": 1,
+          "max": 3
+        }
+      ],
+      "description": "Search and scrape the web for market evidence, returning the repository's JSON envelope with a source URL per row.",
+      "docs_url": "https://docs.firecrawl.dev/api-reference/endpoint/search",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {},
+      "packages_param": null
+    },
+    {
+      "tool_id": "analyze_community_sentiment",
+      "label": "Community sentiment",
+      "category": "research",
+      "credential_kind": null,
+      "credential_kind_by_param": null,
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "story_limit",
+          "type": "integer",
+          "required": false,
+          "default": 5,
+          "description": "Distinct threads to retrieve. One story is one URL.",
+          "min": 1,
+          "max": 5
+        },
+        {
+          "name": "comments_per_story",
+          "type": "integer",
+          "required": false,
+          "default": 5,
+          "description": "Comments walked per story.",
+          "min": 1,
+          "max": 20
+        }
+      ],
+      "description": "Search Hacker News stories and walk their comment trees, citing the HN item URL for every thread.",
+      "docs_url": "https://hn.algolia.com/api",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {},
+      "packages_param": null
+    },
+    {
+      "tool_id": "assess_technical_feasibility",
+      "label": "Technical feasibility",
+      "category": "research",
+      "credential_kind": "github",
+      "credential_kind_by_param": null,
+      "credential_optional": true,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "default": 5,
+          "description": "Repositories to inspect.",
+          "min": 1,
+          "max": 5
+        }
+      ],
+      "description": "Search GitHub repositories and report what exists, with the shared rate limiter this deployment already runs.",
+      "docs_url": "https://docs.github.com/en/rest/search",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {},
+      "packages_param": null
+    },
+    {
+      "tool_id": "firecrawl_scrape",
+      "label": "Scrape a page (Firecrawl)",
+      "category": "web",
+      "credential_kind": "firecrawl",
+      "credential_kind_by_param": null,
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "only_main_content",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "description": "Strip navigation, headers and footers."
+        },
+        {
+          "name": "formats",
+          "type": "array",
+          "required": false,
+          "default": [
+            "markdown"
+          ],
+          "description": "What to return for each page.",
+          "enum": [
+            "markdown",
+            "links"
+          ]
+        }
+      ],
+      "description": "Fetch one URL as clean markdown, JavaScript rendered.",
+      "docs_url": "https://docs.crewai.com/en/tools/web-scraping/firecrawlscrapewebsitetool",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {
+        "": [
+          "firecrawl"
+        ]
+      },
+      "packages_param": null
+    },
+    {
+      "tool_id": "firecrawl_crawl",
+      "label": "Crawl a site (Firecrawl)",
+      "category": "web",
+      "credential_kind": "firecrawl",
+      "credential_kind_by_param": null,
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "default": 10,
+          "description": "Pages to fetch at most.",
+          "min": 1,
+          "max": 20
+        },
+        {
+          "name": "max_depth",
+          "type": "integer",
+          "required": false,
+          "default": 1,
+          "description": "Link hops from the starting URL.",
+          "min": 1,
+          "max": 2
+        }
+      ],
+      "description": "Follow links from one URL and return every page. Bounded, because a crawl is a bill.",
+      "docs_url": "https://docs.crewai.com/en/tools/web-scraping/firecrawlcrawlwebsitetool",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {
+        "": [
+          "firecrawl"
+        ]
+      },
+      "packages_param": null
+    },
+    {
+      "tool_id": "firecrawl_search",
+      "label": "Search the web (Firecrawl)",
+      "category": "web",
+      "credential_kind": "firecrawl",
+      "credential_kind_by_param": null,
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "default": 5,
+          "description": "Results to return.",
+          "min": 1,
+          "max": 5
+        }
+      ],
+      "description": "Semantic web search returning scraped page content.",
+      "docs_url": "https://docs.crewai.com/en/tools/search-research/firecrawlsearchtool",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {
+        "": [
+          "firecrawl"
+        ]
+      },
+      "packages_param": null
+    },
+    {
+      "tool_id": "web_search",
+      "label": "Web search",
+      "category": "web",
+      "credential_kind": null,
+      "credential_kind_by_param": {
+        "param": "provider",
+        "map": {
+          "serper": "serper",
+          "tavily": "tavily",
+          "exa": "exa",
+          "brave": "brave"
+        }
+      },
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "provider",
+          "type": "string",
+          "required": false,
+          "default": "serper",
+          "description": "Which search back end runs the query.",
+          "enum": [
+            "serper",
+            "tavily",
+            "exa",
+            "brave"
+          ]
+        },
+        {
+          "name": "n_results",
+          "type": "integer",
+          "required": false,
+          "default": 5,
+          "description": "Results to return. Exa ignores this and returns highlights.",
+          "min": 1,
+          "max": 10
+        }
+      ],
+      "description": "Search the web through one of four providers; the agent sees a single tool called web_search whichever one is chosen.",
+      "docs_url": "https://docs.crewai.com/en/tools/search-research/serperdevtool",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {
+        "exa": [
+          "exa_py"
+        ],
+        "tavily": [
+          "tavily"
+        ]
+      },
+      "packages_param": "provider"
+    },
+    {
+      "tool_id": "http_request",
+      "label": "HTTP request",
+      "category": "data",
+      "credential_kind": "http_header",
+      "credential_kind_by_param": null,
+      "credential_optional": true,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "timeout",
+          "type": "integer",
+          "required": false,
+          "default": 15,
+          "description": "Seconds before the request is abandoned.",
+          "min": 1,
+          "max": 30
+        },
+        {
+          "name": "max_bytes",
+          "type": "integer",
+          "required": false,
+          "default": 1048576,
+          "description": "Response bytes read at most.",
+          "min": 1024,
+          "max": 5242880
+        }
+      ],
+      "description": "Read one URL. Already refuses private, loopback and link-local targets, so an agent cannot use it to reach this network.",
+      "docs_url": "https://docs.crewai.com/en/tools/web-scraping/urlreadtool",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {},
+      "packages_param": null
+    },
+    {
+      "tool_id": "scrape_website",
+      "label": "Scrape a page",
+      "category": "web",
+      "credential_kind": null,
+      "credential_kind_by_param": null,
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [],
+      "description": "Keyless page fetch for sites that do not need Firecrawl.",
+      "docs_url": "https://docs.crewai.com/en/tools/web-scraping/scrapewebsitetool",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {},
+      "packages_param": null
+    },
+    {
+      "tool_id": "postgres_query",
+      "label": "Ask a Postgres database",
+      "category": "data",
+      "credential_kind": "postgres",
+      "credential_kind_by_param": null,
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [
+        {
+          "name": "tables",
+          "type": "array",
+          "required": false,
+          "default": [],
+          "description": "Tables the agent may see. Empty means every table."
+        }
+      ],
+      "description": "Turn a question into SQL against your own database. Reads only - writes are locked off and are not a setting.",
+      "docs_url": "https://docs.crewai.com/en/tools/database-data/nl2sqltool",
+      "owner": "builtin",
+      "available": true,
+      "requires_packages": {},
+      "packages_param": null
+    },
+    {
+      "tool_id": "code_interpreter",
+      "label": "Run Python (sandboxed)",
+      "category": "data",
+      "credential_kind": "e2b",
+      "credential_kind_by_param": null,
+      "credential_optional": false,
+      "attaches_to": [
+        "agent",
+        "crew"
+      ],
+      "params": [],
+      "description": "Execute Python in an E2B sandbox on your own E2B key. Off by default: it runs code, and the sandbox is a third-party account.",
+      "docs_url": "https://docs.crewai.com/en/tools/automation/e2bpythontool",
+      "owner": "builtin",
+      "available": false,
+      "requires_packages": {
+        "": [
+          "e2b_code_interpreter"
+        ]
+      },
+      "packages_param": null
+    }
+  ]
+}

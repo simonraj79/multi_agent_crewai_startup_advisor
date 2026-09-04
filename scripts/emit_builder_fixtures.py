@@ -1492,6 +1492,43 @@ def build_problem_codes() -> dict[str, Any]:
     }
 
 
+TOOL_CATALOGUE_PATH = FIXTURES / "builderToolCatalogue.json"
+
+
+def build_tool_catalogue() -> dict[str, Any]:
+    """The served tool catalogue, through `serialisable` - the same function
+    `GET /api/builder/tools` and `GET /api/builder/vocabulary` both call.
+
+    **This is a TEST fixture and not a client catalogue**, and the distinction
+    is cut-list item 17. Nothing under `frontend/src` holds a copy of these
+    rows: the palette, the node card and the inspector all read the served
+    vocabulary, because a client-side catalogue would offer tools the compiler
+    has never heard of. What the fixture is for is the OTHER failure - a spec
+    whose hand-built entry has quietly stopped resembling a real one, which is
+    the double-that-diverges-from-its-subject defect closed items 20 and 33 both
+    record.
+
+    `code_interpreter` is included even though the endpoint withholds it, and
+    that is deliberate: a fixture that only carried what today's flags happen to
+    enable would go stale the moment a flag moved, and the shape of a withheld
+    entry is exactly what a client needs to be able to render if it ever is.
+    """
+
+    from brief_crew.builder.tools import catalogue as tool_catalogue
+
+    return {
+        "generator": "scripts/emit_builder_fixtures.py",
+        "source": "brief_crew.builder.tools.ToolCatalogueEntry.serialisable",
+        "mirror": "frontend/src/types/builder.ts::BuilderToolCatalogueEntry",
+        "note": (
+            "Every builtin entry, INCLUDING any behind a deployment flag, as the "
+            "vocabulary serves them. A client fixture, never a client catalogue: "
+            "nothing under frontend/src holds a copy of these rows."
+        ),
+        "entries": [entry.serialisable() for entry in tool_catalogue(include_disabled=True)],
+    }
+
+
 # --------------------------------------------------------------------------
 # Emit
 # --------------------------------------------------------------------------
@@ -1534,6 +1571,10 @@ def targets() -> tuple[tuple[pathlib.Path, bytes], ...]:
         (BACK_EDGES_PATH, render(build_back_edges())),
         (PROBLEM_CODES_PATH, render(build_problem_codes())),
         (MODELS_PATH, render(build_models())),
+        # Plan 06 criterion 11. A TEST fixture, never a client catalogue - see
+        # `build_tool_catalogue`'s own docstring for why the distinction is
+        # cut-list item 17 rather than a naming choice.
+        (TOOL_CATALOGUE_PATH, render(build_tool_catalogue())),
     )
 
 

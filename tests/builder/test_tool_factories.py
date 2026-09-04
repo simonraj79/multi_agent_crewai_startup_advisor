@@ -318,6 +318,109 @@ class DmlLockTests(unittest.TestCase):
         self.assertIn("read-only", str(caught.exception))
 
 
+class FailurePolicyTests(unittest.TestCase):
+    """`ToolFailurePolicy` reaches every tool and the agent - plan 06 D6.
+
+    **Criterion 8 is only half reachable here, and the half that is not is named
+    rather than approximated.** It asks that `raise` on an agent with a throwing
+    tool make "the paired router emit `error` and the run reach the error edge's
+    target". The error edge, the paired router and the `node_error` frame are
+    plan 12's, and its file - `tests/builder/test_failure_modes.py` - does not
+    exist. What is asserted here is everything upstream of it: the policy is a
+    real `ToolFailurePolicy`, it reaches the constructed tool, it reaches the
+    `Agent`, and `warn` is what a node gets when it says nothing.
+
+    That distinction matters because the two halves fail differently. If the
+    policy did not reach the tool, `raise` would silently behave as `warn` and
+    12's error edge would never fire for a reason nothing in 12 could find.
+    """
+
+    def test_the_three_policies_are_the_packages_own_enum(self) -> None:
+        from crewai.tools.tool_failure import ToolFailurePolicy
+
+        self.assertEqual(
+            sorted(project_config.BUILDER_TOOL_FAILURE_POLICIES),
+            sorted(member.value for member in ToolFailurePolicy),
+        )
+        self.assertEqual(
+            project_config.BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
+            ToolFailurePolicy.WARN.value,
+            "warn is CrewAI's own default and stays this product's",
+        )
+
+    def test_every_constructed_tool_carries_the_policy_it_was_built_with(self) -> None:
+        from crewai.tools.tool_failure import ToolFailurePolicy
+
+        for policy in project_config.BUILDER_TOOL_FAILURE_POLICIES:
+            with self.subTest(policy=policy), mock.patch.dict(os.environ, {}, clear=True):
+                tool = resolved_tool(
+                    "scrape_website", params={}, credential=None, failure_policy=policy
+                )
+                self.assertEqual(tool.tool_failure_policy, ToolFailurePolicy(policy))
+
+    def test_a_custom_http_tool_carries_it_too(self) -> None:
+        """The one tool this repository builds itself, so the one that could
+        forget."""
+
+        from crewai.tools.tool_failure import ToolFailurePolicy
+
+        from brief_crew.builder.tools import build_custom_tool, parse_custom_tool
+
+        spec = parse_custom_tool(
+            {
+                "name": "weather_lookup",
+                "description": "Weather for a city.",
+                "properties": [{"name": "city", "type": "string", "description": "City"}],
+                "request": {"method": "GET", "url": "https://api.example.test/w?q={city}"},
+            },
+            tool_id="ut_0123456789ab",
+        )
+        tool = build_custom_tool(spec, failure_policy="raise")
+        self.assertEqual(tool.tool_failure_policy, ToolFailurePolicy.RAISE)
+
+    def test_run_agent_passes_a_NON_default_policy_to_the_factory(self) -> None:
+        """And passes nothing when it is the default.
+
+        Only when it says something, exactly as the resolved credential is -
+        every crew-factory double in this repository predates plans 06 to 08 and
+        has a fixed signature, and handing them a keyword they do not declare
+        turned 46 green tests red in one edit.
+        """
+
+        from brief_crew.builder import runtime as runtime_module
+
+        seen: list[dict[str, Any]] = []
+
+        class Crew:
+            @staticmethod
+            def kickoff(**_: Any) -> str:
+                return "done"
+
+        class Factories:
+            def agent_crew(self, **kwargs: Any) -> Any:
+                seen.append(kwargs)
+                return Crew()
+
+            def crew(self, **_: Any) -> Any:  # pragma: no cover - unused here
+                return Crew()
+
+        class Flow:
+            state = type("S", (), {"model_dump": lambda self: {}})()
+
+        with mock.patch.object(runtime_module, "_factories", lambda: Factories()), \
+                mock.patch.object(runtime_module, "checkpoint", lambda _node: None), \
+                mock.patch.object(runtime_module, "missing_prompt_inputs", lambda *a: ()), \
+                mock.patch.object(runtime_module, "_record", lambda _f, _n, value: value):
+            runtime_module.run_agent(
+                Flow(), node_id="n1", agent_id="market", tier="cheap",
+                tool_failure_policy="raise",
+            )
+            runtime_module.run_agent(Flow(), node_id="n2", agent_id="market", tier="cheap")
+
+        self.assertEqual(seen[0]["tool_failure_policy"], "raise")
+        self.assertNotIn("tool_failure_policy", seen[1])
+
+
 class FlaggedEntryTests(unittest.TestCase):
     """PLANS.md decision 3: the code interpreter EXISTS and is OFF."""
 

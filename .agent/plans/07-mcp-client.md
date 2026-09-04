@@ -363,3 +363,73 @@ argument against it is in the code: the thirteen patterns have false positives
 by design, `act as` is ordinary English, and
 `test_the_list_has_false_positives_and_that_is_why_it_only_WARNS` is the case
 that would have to be deleted.
+
+### Wave A/B closers — 2026-09-04
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 1 | discovery stores its result; a second read is served from the row | **met** | `tests/service/test_mcp_live_discovery.py` (7, new) + `tests/service/mcp_fixture_server.py` |
+
+**The missing half was a live server, and standing one up found that discovery
+had never worked at all.** Every other test in this plan injects a `Resolver` —
+the right seam for policy, sanitising, truncation and the stale window, and this
+Status said so. What it also meant is that **nothing in this repository had ever
+constructed the real `MCPToolResolver`.** The first thing that did got:
+
+```text
+status: error   could not connect: MCPToolResolver.__init__() missing 2
+                required positional arguments: 'agent' and 'logger'
+```
+
+`_default_resolver` called it with none. So `POST …/discover` against any real
+server, in any deployment, answered `status: error` with a sentence about a
+Python constructor in the place where an author expects to read why their server
+would not connect — and it would have survived review indefinitely, because it
+*looks* like a connection failure to anybody not reading the string.
+
+The repair is `MCPToolResolver(agent=None, logger=Logger(verbose=False))`, and
+`agent=None` is correct rather than a stand-in: the resolver reads `self._agent`
+in exactly one place, building a `ToolFilterContext` for a **callable**
+`tool_filter`, and discovery passes no filter at all — the filter belongs to the
+run, where `server_config` builds it from the author's checked names. Reverting
+the one line turns **5 of the 7** new tests red.
+
+**Both transports the criterion names are exercised.** An HTTP `FastMCP` over
+loopback in a daemon thread (`MCP_ALLOW_INSECURE_LOCAL`, the flag whose own
+docstring names this fixture), and a **stdio server that is really spawned** —
+this interpreter on the fixture file, with `MCP_STDIO_ENABLED` and
+`MCP_ALLOWED_COMMANDS` both patched on. That is the only place in the suite
+where those two gates are lifted together, and the same record with the flag off
+is asserted refused beside it so the arm cannot be vacuous.
+
+**"Served from the row" is proved OFFLINE, which is the only way to prove it.**
+After discovery the server's URL is repointed at a dead port; the row still
+answers with both tools, the same `discovered_at` and `stale: false`. A read
+that dialled anything could not do that. Asking it to *re-discover* then errors,
+which is the control.
+
+**Three facts measured against the real package, none of which any plan knew:**
+
+1. **CrewAI namespaces a discovered tool name with the SERVER.** `search` on the
+   loopback fixture arrives as `127_0_0_1_54253_mcp_search`, and on the stdio
+   fixture as the whole sanitised command line. `MCPNativeTool` derives its name
+   from the server; `sanitise_tool` only normalises what it is handed.
+   Consequence worth knowing before an author meets it: **an HTTP server's
+   discovered names contain its port**, so re-discovering the same server on a
+   different port renames every tool and a stored `tool_names` selection stops
+   matching. A hosted server has a stable address and does not have this;
+   a loopback fixture on an ephemeral port always does.
+2. **A stdio command's own path must be spelled with forward slashes.**
+   `_SHELL_METACHARACTERS` includes the backslash, so a Windows path passed as an
+   *argument* is refused — correctly, and the fixture passes one the way a caller
+   would have to.
+3. **The schemas really do arrive.** `input_schema` is a JSON Schema object with
+   both of `search`'s parameters in `properties`, which is what the inspector's
+   read-only parameter preview renders and the reason discovery stores more than
+   a list of names.
+
+**The fixture's `fetch` carries an injection phrase on purpose**, word for word
+from `MCP_INJECTION_PATTERNS`. A fixture whose descriptions were all innocuous
+could not tell decision 8's rule working apart from the sanitiser never having
+run; here the tool comes back `suspicious` with its pattern named **and still
+selectable**, from a description a real server actually sent.

@@ -380,9 +380,30 @@ Resolver = Callable[[Any], Iterable[Any]]
 
 
 def _default_resolver(config: Any) -> Iterable[Any]:
-    from crewai.mcp.tool_resolver import MCPToolResolver
+    """The real CrewAI resolver, for discovery against a real server.
 
-    resolver = MCPToolResolver()
+    **`MCPToolResolver` takes `agent` and `logger` POSITIONALLY, and this
+    function called it with neither until 2026-09-04.** Every test injected a
+    fake resolver - which is the seam's whole purpose - so nothing ever
+    constructed the real one, and discovery against any real server answered
+    `status: error` with `MCPToolResolver.__init__() missing 2 required
+    positional arguments` in the sentence where an author expected to read why
+    their server would not connect. Found by plan 07 criterion 1's live
+    loopback server, and by nothing else that could have existed.
+
+    `agent=None` is correct rather than a stand-in: the resolver reads
+    `self._agent` in exactly one place, building a `ToolFilterContext` for a
+    CALLABLE `tool_filter`, and discovery passes no filter at all - the filter
+    belongs to the run, where `server_config` builds it from the author's
+    checked names. A `Logger` is real, and `verbose=False`, because its only
+    caller here logs a warning about a server that offered no tools and this
+    module reports that as a result rather than as console output.
+    """
+
+    from crewai.mcp.tool_resolver import MCPToolResolver
+    from crewai.utilities.logger import Logger
+
+    resolver = MCPToolResolver(agent=None, logger=Logger(verbose=False))
     try:
         return list(resolver.resolve([config]))
     finally:

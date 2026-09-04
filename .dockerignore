@@ -46,6 +46,13 @@ output/
 
 # --- documentation and lecture source -------------------------------------
 *.md
+# ...except the built-in skill packs, which ARE the feature rather than
+# documentation about it. `*.md` above is meant to keep READMEs and notes out
+# of the image; it also stripped every `data/skills/builtin/*/SKILL.md`, so
+# `load_builtins()` - which does `if not path.exists(): continue` - would have
+# found ZERO built-in skills in a built image and said nothing at all.
+# Found 2026-09-04 alongside the `data/` copy the Dockerfile was also missing.
+!data/skills/builtin/**/*.md
 *.pdf
 agents/
 new features/

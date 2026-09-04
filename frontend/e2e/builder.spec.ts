@@ -1653,34 +1653,25 @@ test.describe('attachments and the inspector', () => {
   })
 
   /*
-   * The other half of 04 criterion 2, and it is blocked on one function this
-   * package does not own.
+   * The other half of 04 criterion 2, and it is CLOSED - the integration
+   * closer of 2026-09-04 wired the dock's row click to the rail.
    *
-   * `InspectorRail.focusField` does everything the criterion asks - it turns
-   * the global switch on for an Expert field, awaits the tick that renders the
-   * region, flashes the row and focuses the control - and it is reached from
-   * exactly ONE call site: `BuilderView`'s credential notice (D-15-19,
-   * `BuilderView.vue:829`). The problems dock's row click goes to
+   * `InspectorRail.focusField` always did everything the criterion asks: it
+   * turns the global switch on for an Expert field, awaits the tick that
+   * renders the region, flashes the row and focuses the control. What it
+   * lacked was a second caller. The dock's row click went to
    * `onEdgeSelectFromPanel` -> `canvas.focusProblem`, which selects the node
-   * and flashes the card and never mentions a field. So the walk stops at the
-   * node, and a problem anchored to a control behind the switch leaves the
-   * author looking at a form that appears clean.
+   * and flashes the card and never mentions a field, so the walk stopped at
+   * the node and a problem anchored behind the switch left the author looking
+   * at a form that appears clean. `onEdgeSelectFromPanel` now asks
+   * `problems.fieldFor(problem)` and hands the answer to the rail.
    *
-   * THE CHANGE, in `frontend/src/components/builder/BuilderView.vue`:
-   *
-   *   async function onEdgeSelectFromPanel(problem: BuilderProblem): Promise<void> {
-   *     canvas.focusProblem(problem)
-   *     const field = problems.fieldFor(problem)
-   *     if (field) await inspectorRef.value?.focusField(field)
-   *   }
-   *
-   * `problems` (line 206) and `inspectorRef` (line 370) are both already in
-   * scope; nothing else moves. `focusField` was made to fall back to the ROW
-   * when every control in it is disabled, which is this exact problem's state -
-   * `llm.reasoning_effort` is disabled BECAUSE the model cannot honour it, so
-   * without that fallback the landing would be silent.
+   * `focusField` falls back to the ROW when every control in it is disabled,
+   * which is this exact problem's state - `llm.reasoning_effort` is disabled
+   * BECAUSE the model cannot honour it - so without that fallback the landing
+   * would be silent. This test asserts the landing, not the mechanism.
    */
-  test.fixme(
+  test(
     'turns the Expert switch on and focuses the control a hidden problem blames',
     async ({ page }) => {
       const watch = watchConsole(page)

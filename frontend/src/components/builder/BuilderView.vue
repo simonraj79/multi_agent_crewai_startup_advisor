@@ -1404,7 +1404,9 @@ function walkProblems(step: 1 | -1): void {
   const list = problems.ordered.value
   if (list.length === 0) return
   problemCursor = (problemCursor + step + list.length) % list.length
-  canvas.focusProblem(list[problemCursor])
+  // Literally the same path, so the field walk below is not a thing only the
+  // mouse gets. Declared after this function; hoisting makes the order legal.
+  void onEdgeSelectFromPanel(list[problemCursor])
 }
 
 /* ── what the cards and edges hand back ────────────────────────────────── */
@@ -1437,8 +1439,31 @@ function onDeleteEdge(payload: { edgeId: string }): void {
   store.deleteSelection([], [payload.edgeId as EdgeId])
 }
 
-function onEdgeSelectFromPanel(problem: BuilderProblem): void {
+/**
+ * A problems-dock row click: walk to the node AND to the control it blames.
+ *
+ * 04 criterion 2. `canvas.focusProblem` selects the node and flashes the card,
+ * which is where the walk used to stop - and stopping there is worse than it
+ * looks for the one tier that is not merely collapsed. `llm.reasoning_effort`
+ * lives behind the global Expert switch, which renders its region ABSENT FROM
+ * THE DOM rather than hidden, so a `model-lacks-capability` anchored there left
+ * the author staring at a form that appears clean while the dock insists
+ * something is wrong.
+ *
+ * `focusField` owns the rest: it turns the switch on (globally - decision 19,
+ * so the other expert settings stay where the author left them), awaits the
+ * tick that renders the region, flashes the row, and focuses the first ENABLED
+ * control or the row itself when every control in it is disabled. That
+ * fallback is this exact problem's state - the control is disabled BECAUSE the
+ * model cannot honour it - so without it the landing would be silent.
+ *
+ * The node selection comes first and is not awaited past it: `focusField`
+ * queries the rail, and the rail renders the node `focusProblem` just selected.
+ */
+async function onEdgeSelectFromPanel(problem: BuilderProblem): Promise<void> {
   canvas.focusProblem(problem)
+  const field = problems.fieldFor(problem)
+  if (field) await inspectorRef.value?.focusField(field)
 }
 
 /**

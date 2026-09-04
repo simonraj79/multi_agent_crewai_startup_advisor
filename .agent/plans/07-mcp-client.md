@@ -256,3 +256,110 @@ the compiler's closed set of ten action refs exists to prevent.
 **Decision 8 — selectable with a warning. PROVISIONAL: the owner confirms.**
 Hiding it in the picker is the quietly-divergent double this repository keeps
 warning about; the author should see the warning and decide.
+
+### Built · 2026-09-04
+
+Record, discovery, sanitiser, transport policy, run-time construction, panel and
+form. Python **2019** run / 0 failures / 6 skipped; frontend **1400** in 72
+files; `vue-tsc` exit 0.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 1 | discovery stores its result; a second read is served from the row | **partial** | `tests/builder/test_mcp_discovery.py`, `tests/service/test_mcp_isolation.py` |
+| 2 | a stdio command off the allow-list is refused and never spawned | **met** | `test_mcp_discovery.py::TransportPolicyTests` |
+| 3 | names and descriptions are sanitised; injection marked | **met** | `tests/builder/test_mcp_sanitise.py` |
+| 4 | `run_agent` builds the config, filters, and cleans up | **met, extended** | `tests/builder/test_mcp_runtime.py` |
+| 5 | the resolved header reaches no frame | **met** | `test_mcp_runtime.py::CredentialInFramesTests` |
+| 6 | another user's server is `mcp-server-unavailable` | **met** | `tests/service/test_mcp_isolation.py` |
+| 7 | a timed-out discovery is 200 `status: error` | **met** | `test_mcp_discovery.py::test_timeout` |
+| 8 | `MCPConnectionFailedEvent` becomes a `node_error` frame | **not reached** | — |
+| 9 | Playwright: add, discover, drag, check two, see the preview | **partial** | `frontend/tests/attachmentPanels.spec.ts` |
+| 10 | the client `PROBLEM_CODES` fixture agrees | **met** | `tests/builder/test_client_fixtures.py` |
+
+**Criterion 1 - partial, and the missing half is a fixture server.** Discovery
+is proved against an injected resolver: the tool list, the schemas, the
+sanitised names, the truncation at `MCP_MAX_TOOLS_PER_SERVER`, a malformed
+schema degrading rather than raising, and the header reaching the config. The
+stored-and-read-back half is proved through the route
+(`test_mcp_isolation.py::test_discovery_stores_the_sanitised_tools_on_the_row`)
+and the stale window is proved directly. What is NOT done is a **live** local
+MCP server - neither the stdio one the criterion names nor an HTTP loopback
+fixture. The seam exists precisely so a test need not start one, and standing a
+real server up is the E2E harness's job, which is criterion 9's.
+
+**Criterion 4 - met, and it grew a clause the plan did not have.** `cleanup()`
+in a `finally` is asserted, and so is something the plan could not have known:
+**CrewAI cleans up an agent's MCP clients only on the HAPPY path.**
+`agent/core.py` calls `_cleanup_mcp_clients()` after the completion event is
+emitted, so a task that RAISES skips it and the client survives the step. A
+builder graph fails a step for a dozen ordinary reasons - a guardrail, a cancel,
+a cost ceiling - so `release_mcp_clients` sweeps the crew's agents in
+`run_agent`'s `finally` and covers what the package does not.
+
+**Criterion 8 - not reached, and it is honestly two things.** The frame mapping
+for MCP events is not written and neither is the error edge. The edge is plan
+12's (`tests/builder/test_failure_modes.py` does not exist); the MAPPING is D7's
+and is this plan's, and it was cut for time rather than for a reason. The
+equivalent for skills IS written and tested against real event objects
+(`builder/skills.py::skill_frame_details`), so the shape a reviewer would want
+exists next door and the MCP one is a small, well-specified piece of work.
+
+**Criterion 9 - partial. The panel is built and unit-proved; the browser is
+not.** `frontend/e2e/builder-mcp.spec.ts` was not written and no loopback
+fixture server exists. What is proved without a browser: the masked URL, the
+`key` chip with no value beside it, a failed discovery landing as a sentence
+under its own row, a suspicious tool staying checkable with its pattern shown,
+the sentinel "no tools available" row, the transport refusal shown verbatim with
+the option still in the select, and the read-only parameter preview appearing
+for a CHECKED tool only. A jsdom mount cannot say how wide any of that ended up,
+and that is exactly the gap this repository has been bitten through twice.
+
+#### Departures from the plan, each with its reason
+
+1. **There is no `header_name` column and none is missing.** An `mcp_header`
+   credential's two fields ARE the header's name and value
+   (`config.CREDENTIAL_FIELDS`), so the plaintext name travels with the secret it
+   labels rather than beside it in a second place. The shipped `mcp_servers`
+   table (15 C10) has no such column and needs none.
+2. **`discover` and `mcp_problems` take an injectable DNS resolver.** Without it
+   every transport test measures `getaddrinfo` rather than the policy - which is
+   how the first draft of `test_mcp_isolation.py` produced ten red tests and one
+   honest message. The same seam `service/credentials.py` opened for its probes.
+3. **`sanitise_description` turns a control character into a SPACE** and still
+   deletes a zero-width one. A zero-width joiner sits between two halves of one
+   word and deleting it restores the word; a newline separates two words and
+   deleting it glues them into a third that appears in no source - a sanitiser
+   inventing text.
+4. **`mcp-transport-disallowed` is a validate-time problem code as well as a
+   create-time 422.** The plan asks only for the 422. The stdio flag can be
+   turned off after a row exists, and a stored row whose transport is no longer
+   permitted has to say so on the canvas rather than at the first run.
+
+#### Provisional rulings: what was built, and what would turn each on
+
+**Decision 7, stdio.** Two independent gates, and they stack. `MCP_STDIO_ENABLED`
+is **off**, so every stdio server is refused at create, at validate and at
+`server_config` - three doors, and the refusal names the policy rather than the
+row. Lifting that flag alone still refuses everything, because
+`MCP_ALLOWED_COMMANDS` defaults to `()`. **Turning it on is BOTH**: the flag,
+and a comma-separated allow-list of commands. `render.yaml` sets neither. Even
+then, arguments carrying shell metacharacters are refused, `cwd` is not
+settable, and environment keys must be on `MCP_ALLOWED_ENV_VARS`. Both defaults
+and both refusals are asserted in both directions.
+
+> The reason to hold it: an arbitrary stdio command lets an author's ROW name a
+> process to run on the server, which is the one thing `BUILDER_ACTION_REFS`'
+> closed set exists to prevent. A row is not a document, so the compiler's
+> guarantee does not cover it - the allow-list is the equivalent guarantee, and
+> an empty allow-list is the equivalent of a closed set with nothing in it.
+
+**Decision 8, a suspicious tool.** Built exactly as ruled: the tool is stored,
+listed, checkable and attachable, with `matched_pattern` shown on the chip and
+in the title. Selecting one produces `mcp-tool-description-suspicious`, the
+**fifth** warning code, which contributes no error and blocks no publish.
+Nothing anywhere hides a row. **Turning it the other way** - hiding a suspicious
+tool - would be a change to `mcp_problems` and to the two pickers, and the
+argument against it is in the code: the thirteen patterns have false positives
+by design, `act as` is ordinary English, and
+`test_the_list_has_false_positives_and_that_is_why_it_only_WARNS` is the case
+that would have to be deleted.

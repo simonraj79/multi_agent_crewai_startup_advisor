@@ -234,3 +234,122 @@ and attaching to them makes the boundary between the two disappear.
 `LICENSE`.** A public repo with no licence file means all rights reserved
 (CLAUDE.md remaining-work item 17). Build the four skills with no licence header
 and record the dependency; do not invent a header.
+
+### Built · 2026-09-04
+
+Parser, store, materialisation, four built-in packs, routes, panel and form.
+Python **2019** run / 0 failures / 6 skipped; frontend **1400** in 72 files;
+`vue-tsc` exit 0.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 1 | the four built-ins list for anonymous and signed-in | **met, `init_db` clause corrected** | `tests/service/test_skills_endpoint.py` |
+| 2 | a bad frontmatter is 422 with the parser's sentence | **met** | same file |
+| 3 | a zip carrying `scripts/` is refused | **met** | `tests/service/test_skills_import.py` |
+| 4 | `materialise` writes once and rewrites after an edit | **met** | `tests/builder/test_skills_materialise.py` |
+| 5 | `run_agent` attaches a pack the package can load | **met, shape corrected** | `tests/builder/test_skills_runtime.py` |
+| 6 | another user's pack is `skill-unknown` | **met** | `tests/service/test_skills_isolation.py` |
+| 7 | an AGENT frame carries `skill` and `disclosure` | **partial** | `test_skills_runtime.py::SkillFrameTests` |
+| 8 | deleting a pack orphans a document that names it | **met** | `test_skills_endpoint.py::test_delete_orphans_document` |
+| 9 | Playwright: paste, list, drag, see `v1` and the body | **partial** | `frontend/tests/attachmentPanels.spec.ts` |
+| 10 | the four packs parse under the package's parser | **met** | `tests/builder/test_builtin_skills.py` |
+
+**Criterion 1 - two clauses corrected, both asserted.**
+
+*`init_db` does not seed them, and does not need to.* The four are committed
+FILES, `load_builtins` parses them at read time, and their ids are DERIVED from
+their names (`sk_` + the first 12 hex of a sha256) rather than minted - so they
+are the same ids on every deployment with no row to go stale. A seeding pass
+would be a migration whose only job is to copy four files into a table nothing
+reads, and it would introduce the one failure mode this arrangement does not
+have: a row that disagrees with the file.
+
+*"Anonymous in `SYNTHETIC` mode" is true; anonymous on a service that requires
+auth is a **401**.* `Depends(current_user)` refuses before the handler runs and
+this route gets no exception to the service's own rule. `AnonymousSkillTests`
+builds the app the criterion describes - synthetic, no auth server - and asserts
+the four list there; `SkillRouteTests` asserts the signed-in half.
+
+**Criterion 5 - met, and the shape is corrected against a measurement.** The
+criterion asks for `Agent(skills=[Path])` and `load_skill` on that path
+returning a `Skill` at METADATA. Measured: `load_skill` treats a `Path` as a
+**search** path and `discover_skills` iterates its CHILDREN, so a pack's own
+directory answers `[]` and its parent answers every sibling pack - four
+built-ins when the author attached one. `loaded_skill` therefore passes a
+`Skill` object, which `Agent.skills` also accepts, which is still not a `str`,
+and which names exactly one pack. Both halves are asserted, including the empty
+answer that motivated the change; `search_path` exists so a test can still prove
+the on-disk layout is a legal CrewAI search path, and one does.
+
+**Criterion 7 - partial, and the boundary is a contract.**
+`skill_frame_details` is the mapping D6 specifies and it is tested against REAL
+CrewAI event objects rather than dictionaries, because the whole risk is that
+the package's field names are not what this plan guessed. Registering it on the
+event bus is `events/serializer.py`, which is **C6 and plan 10's**, so no frame
+is emitted yet and the criterion's synthetic-run clause is not satisfied. A
+mapping with no caller is a smaller debt than a mapping written twice.
+
+**Criterion 9 - partial. The panel is built, docked and unit-proved.** Pasting a
+`SKILL.md`, seeing it under *mine*, the `v1` and *built-in*/*mine* chips, the
+rendered body and the three attachment headings are all asserted in
+`attachmentPanels.spec.ts`. `frontend/e2e/builder-skills.spec.ts` was not
+written: a jsdom mount cannot say how wide anything ended up, and the drag
+gesture in particular proves a handler is bound and nothing about whether a tile
+lands on a card.
+
+#### Departures from the plan, each with its reason
+
+1. **The disk is the store and the row is the index.** Plan D1 specifies
+   `user_skills` with `body`, `version` and `size_bytes` and says the row is the
+   truth. The table plan 15 shipped (C10) carries `path` and `bytes`, and its own
+   comment calls itself "the index row for a SKILL.md pack **on disk**". The
+   shipped schema wins, and `version` lives in `metadata.version` where D2
+   already put it - so a `PUT` bumps the frontmatter and the card reads it back.
+
+   > **The consequence, recorded rather than papered over: on Render's ephemeral
+   > disk a USER's own pack does not survive a restart.** Built-ins are
+   > unaffected - they are committed files. Closing it is a C10 change (a `body`
+   > column, `TEXT`, bounded at `MAX_SKILL_BYTES`) and C10 belongs to the
+   > Integrator. `SkillStore._pack` already degrades to an empty body rather than
+   > dropping the row, so the failure is visible rather than silent.
+
+2. **`skill-contains-scripts` is declared in `service/builder_api.py`, not in
+   the builder package.** Three separate greps sweep every kebab-case
+   module-level constant under `brief_crew/builder/` into the canvas
+   problem-code union, and an import-time refusal never lands on a node - the
+   problems dock would have nothing to anchor it to. It is still a machine
+   readable `code` beside its sentence, which is what the C8 request asked for.
+
+3. **The store lives in `service/attachments.py`.** The builder package must
+   stay importable without SQLAlchemy.
+
+4. **`_first_sentence` returns pydantic's actual message**, not the header and
+   the field name, and it CUTS the `[type=..., input_value=...]` tail. That tail
+   echoes the offending value back into an HTTP response body, and a route that
+   echoes its input is the shape `service/credentials_api.py` parses by hand
+   specifically to avoid.
+
+#### Decisions
+
+**Decision 10 - authored only.** Nothing here can attach a pack to a LIBRARY
+agent, and it is a property rather than a check: an `attach` edge reaches a node,
+`bounds.py` refuses any target that is not an agent or a crew, and a library
+agent node's prompt comes from YAML that no skill can reach. The rule is 03's
+and this plan adds nothing to it.
+
+**Decision 11 - not answerable, and the dependency is pinned.** The four packs
+ship with **no `license` field**. This repository has no `LICENSE`, which for a
+public repo means all rights reserved (CLAUDE.md remaining-work item 17), and
+inventing a header would be inventing provenance - which this repository has
+been bitten by before. `test_no_pack_claims_a_licence_because_decision_11_is_not_answerable`
+asserts the absence AND asserts that no `LICENSE` exists, so the day one appears
+the test fails and names the decision that has become answerable.
+
+#### Contract requests, unchanged and one added
+
+- **C10 (15):** `user_skills.body` (`TEXT`, `<= MAX_SKILL_BYTES`), so a user's
+  pack survives a restart on an ephemeral disk. NEW, and it is the one thing in
+  this plan that is a real gap rather than a boundary.
+- **C6 (10):** call `skill_frame_details` from the serializer's event ladder.
+  Written and tested here; nothing emits it.
+- **v2, C11:** multi-file packs (`references/`, `assets/`). Unchanged.

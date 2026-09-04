@@ -309,3 +309,146 @@ default.
 platform Firecrawl default stays OFF. PROVISIONAL: the owner confirms.** A
 platform key backing every user's research spends the owner's money on other
 people's requests.
+
+### Built · 2026-09-04
+
+Server, client and tests. Python **2019** run / 0 failures / 6 skipped;
+frontend **1400** in 72 files; `vue-tsc` exit 0; `npm run build` green. Every
+row below names the command that shows it.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 1 | catalogue endpoint, no `class_ref` | **met, count corrected** | `tests/service/test_tools_endpoint.py` |
+| 2 | every factory takes a supplied credential | **met** | `tests/builder/test_tool_factories.py` |
+| 3 | no credential substring in a tool frame | **partial** | `tests/builder/test_tool_credentials.py` |
+| 4 | `web_search` over four providers, one name | **met** | `test_tool_factories.py::WebSearchProviderTests` |
+| 5 | `postgres_query` cannot be writable | **met, hardened** | `test_tool_factories.py::DmlLockTests` |
+| 6 | the declarative custom HTTP tool | **met** | `tests/builder/test_custom_tools.py` |
+| 7 | another user's custom tool is `tool-unknown` | **met** | `tests/service/test_tools_isolation.py` |
+| 8 | `tool_failure_policy: raise` reaches the error edge | **partial** | `test_tool_factories.py::FailurePolicyTests` |
+| 9 | Playwright: drag a tool onto an agent | **not reached** | — |
+| 10 | Playwright: the amber "no key" chip and the dock | **partial** | `frontend/tests/attachmentPanels.spec.ts` |
+| 11 | the catalogue fixture is byte-identical | **met** | `tests/builder/test_tool_catalogue_fixture.py` |
+
+**Criterion 1 - ten builtins, not eleven, and the arithmetic is asserted.**
+D2's table has eleven rows and its last is `custom_http:<id>`, which is
+per-user rather than a builtin. The eleventh BUILTIN is `code_interpreter`,
+which exists and is withheld behind `BUILDER_CODE_INTERPRETER_ENABLED`. Both
+counts are asserted - ten with the flag off, eleven with it on.
+
+**Criterion 3 - partial, and the missing half is a wave away.** The credential
+is proved absent from a frame through the real redaction walk and the real
+`FieldBoundedSerializer.clip`, over a payload carrying a plaintext under every
+name a factory here hands one to. It is NOT captured during a synthetic run with
+a Firecrawl tool attached, because the compiler does not emit `tool`
+attachments into a definition yet - that is C5, plan 09's, and no builder run
+can carry an attachment until it does. The test found a real leak on the way:
+`db_uri` normalises to `dburi`, which ends in none of `SECRET_KEY_SUFFIXES`, so
+NL2SQL's constructor keyword was the one credential-bearing name in the builder
+that reached a frame in clear. Fixed in `events/redaction.py`.
+
+**Criterion 6 - met, with one clause read differently.** The six cases are the
+six that decide whether this is a tool or a hole in the network, and all six
+pass: the envelope, a URL resolving to `127.0.0.1`, an `http://` URL, a
+2 MiB response, a redirect, and every refusal arriving as a `status: failed`
+ENVELOPE rather than an exception. The clause about "running the fan-out
+template with a stub HTTPS server" is not honoured literally - the tool's own
+`_run` is driven with an injected transport instead, which exercises the same
+code with no server to start and no port to collide on.
+
+**Criterion 8 - the half that is reachable, and the half that is not.** The
+policy is a real `ToolFailurePolicy`, it reaches every constructed tool
+including the custom HTTP one, and `run_agent` passes a non-default through
+while passing nothing when it is the default. The error edge, the paired router
+and the `node_error` frame are plan 12's and `tests/builder/test_failure_modes.py`
+does not exist. The distinction matters: if the policy did not reach the tool,
+`raise` would silently behave as `warn` and 12's error edge would never fire for
+a reason nothing in 12 could find.
+
+**Criteria 9 and 10 - the browser half is not reached and is not approximated.**
+`frontend/e2e/builder-tools.spec.ts` was not written. A jsdom mount asserts
+structure and never asks how wide anything ended up, and a `dragstart`
+dispatched in jsdom proves a handler is bound and nothing about whether a tile
+lands on a card - so writing that spec in vitest would have been the failure
+this repository already records twice. What IS proved without a browser is
+criterion 10's substance: the amber chip renders exactly when a REQUIRED key is
+absent (`attachmentPanels.spec.ts`), and `tool-credential-required` is reported
+by the server and anchored to the tool node (`test_tools_isolation.py`).
+
+#### Departures from the plan, each with its reason
+
+1. **The wire key is `tool_id`, not `id`, and `params` is a list rather than
+   `param_schema`.** Three client files already read `tool_id`, `attaches_to`
+   and `params[]` off `types/builder.ts::BuilderToolCatalogueEntry`, written
+   before this catalogue existed, and two of them are outside this plan's
+   surfaces. Serving the plan's spelling meant editing files this plan may not
+   touch, or shipping a palette that renders an empty label for every tool. The
+   plan's own extra fields are ADDED to the client's six.
+2. **A custom tool's catalogue id is `ut_<12 hex>`, not `custom_http:<id>`.**
+   `ToolConfig.tool_id` is a `NodeId` and `BUILDER_ID_PATTERN` has no colon in
+   it, so the plan's spelling is not expressible in the document schema. Fixing
+   that is a C1 change and C1 is not this plan's.
+3. **A missing required key is `tool-credential-required`, not
+   `credential-missing`.** D4 reuses the latter for both. The repairs differ -
+   "add a key of this kind and pick it" against "that id is not yours" - and
+   `compiler.py` already states the rule that a different repair earns a
+   different code.
+4. **`builder/custom_tools.py` does not exist; the custom tool lives in
+   `builder/tools.py`.** One module rather than two for a catalogue entry and
+   its factory.
+5. **The stores live in `service/attachments.py`**, a new file, rather than in
+   the builder package. The builder package must stay importable without
+   SQLAlchemy - `compile_document` and `estimate_budget` must not pay for it.
+
+#### Package facts the plan did not have, all measured
+
+- **`SerperDevTool` and `BraveSearchTool` have no `api_key` field** and read
+  `os.environ` inside `_run`. D4's "never reads `os.environ`" is not achievable
+  by construction for them, so the key is bound in a CLOSURE and written to the
+  environment for the length of one call under a process lock. It is never a
+  pydantic field, so `model_dump` cannot emit it - which is a stronger property
+  than the redaction list. Brave reads it at CONSTRUCTION too, so that window
+  covers the constructor.
+- **`NL2SQLTool.model_post_init` lets `CREWAI_NL2SQL_ALLOW_DML=true` OVERRIDE
+  the constructor argument.** `allow_dml=False` is therefore locked three ways:
+  a literal, a forced environment across construction, and an assertion on the
+  built instance. A deployment with that variable set would otherwise have got a
+  writable tool through a constructor that says `allow_dml=False`.
+- **`TavilySearchTool.__init__` calls `click.confirm`** to offer to install its
+  own package, which raises `Abort` in a service process. `tavily` and `exa_py`
+  are both absent here, so availability is checked with `find_spec` BEFORE
+  constructing and the entry is served with `available`/`requires_packages` so a
+  picker can grey out what cannot run.
+- **`postgres_query`'s constructor dials the database.** Its behaviour is
+  asserted through a recorder rather than by building one, which is the more
+  precise test anyway.
+
+#### Provisional rulings: what was built, and what would turn each on
+
+**Decision 3, the code interpreter.** `code_interpreter` is a full catalogue
+entry - `E2BPythonTool`, BYO `e2b` credential, `sandbox_timeout` fixed at E2B's
+own cap and not author-settable. `BUILDER_CODE_INTERPRETER_ENABLED` is **off**,
+`entry_enabled` withholds it from every list, and `resolved_tool` refuses it by
+naming the flag. **Turning it on is one environment variable** and nothing else;
+`test_the_only_thing_between_it_and_shipping` asserts that.
+
+> **New evidence the decision was not made with, surfaced again as asked.**
+> CrewAI's own `Agent.allow_code_execution` and `code_execution_mode` are
+> `Field(deprecated=True)` at 1.15.18 with the message *"CodeInterpreterTool is
+> no longer available. Use dedicated sandbox services instead."* The native path
+> is going away regardless of what the owner decides, so the choice is between a
+> paid third-party sandbox and nothing - there is no third option in which
+> CrewAI keeps executing code.
+
+**Decision 9, the platform Firecrawl key.** `BUILDER_PLATFORM_FIRECRAWL_DEFAULT`
+is **off** and `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP` is 50. With the flag off,
+`research_market_landscape` reports `credential_optional: false` and an author
+with no Firecrawl key gets the amber chip and
+`tool-credential-required`. **Turning it on is that one flag**: the entry's
+`credential_optional` follows it, the chip and the problem both stop, and an
+author with no key of their own runs on the platform's. **What is NOT built is
+the counter the cap would read.** The constant exists and nothing decrements
+it, because a per-user daily counter is a table and a table is C10, which is
+plan 15's - so enabling the flag today would spend the owner's money with a
+documented cap and no enforcement. That is the gap to close before the owner
+says yes.

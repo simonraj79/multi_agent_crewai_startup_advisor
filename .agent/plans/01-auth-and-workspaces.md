@@ -248,6 +248,31 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
    because round 1 ticked this criterion with its text unchanged and the
    deviation living only in a Status row - which is the process failure the
    critic's dimension 16 exists to catch.
+
+   **Amended 2026-09-04 (round 3, D-01-6 / D-01-10). There is no longer a
+   SECOND exclusion.** Round 3 found one: `tests/service/test_secret_redaction.py`
+   carried its own `HEADER_PAIR = {"name", "value"}` and asserted
+   `is_secret_key(field) == field not in HEADER_PAIR` over
+   `config.CREDENTIAL_FIELDS` - so the file that owns this criterion pinned as
+   NOT secret the very field holding the `http_header` / `mcp_header` secret,
+   with nothing in the plan saying so and nothing in the product declaring it.
+   The row offered two repairs and this is the second one: rather than record
+   the exclusion, **it is gone.** The vault pair is `("name", "header_value")`
+   now; `headervalue` is an exact entry in `SECRET_KEYS`; and which vault
+   fields are public is declared by `config.CREDENTIAL_PUBLIC_FIELDS`
+   (`{"name"}`) in the product, with the test deriving its pin from that
+   constant instead of carrying one of its own.
+
+   **The row's own suggested fix - putting the bare word `value` on the list -
+   was tried first and measured, and it is the wrong repair.** Six tests red
+   across four modules, three of them the gate surface, because every gate
+   `derived` entry is `{"key": name, "value": display, "kind": kind}` and its
+   read-only panel went to `***`; `value` is also a router branch's compare
+   operand, a transform's `args.value` and an output node's body slot, so a
+   global entry redacts a compiled graph's own logic in the persisted state.
+   The field moved instead of the list. Pinned by
+   `ListTests::test_the_header_pair_secret_half_is_covered_and_the_name_half_is_not`
+   and `ListTests::test_no_vault_field_is_excluded_by_a_constant_in_this_file`.
 7. `tests/service/test_synthetic_identity.py`: the header is honoured only under `SYNTHETIC=1` with `AUTH_BASE_URL` unset; with `AUTH_BASE_URL` set it is ignored and the bearer path wins; with neither, the caller is anonymous.
 8. `tests/service/test_validate_identity.py`: `validate` with a user emits `credential-missing` for a foreign id; without a user it emits nothing and returns `identity_checked: false`.
 9. `frontend/tests/builderAccountChip.spec.ts`: `BuilderView` renders the chip from the `user` prop and calls sign-out; with `authenticated: false` and auth configured, the builder shows the sign-in panel, not the gallery.

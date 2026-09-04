@@ -752,9 +752,16 @@
   stroke-width: var(--edge-width-attach);
   stroke-dasharray: 6 3;
 }
+/* 12 D3: the THIRD stroke class, dashed-red.
+   Red alone was already the colour of `has-error` - a validation problem on an
+   ordinary flow edge - so a solid red wire said two different things depending
+   on which one you happened to be looking at. The dash is what makes it a
+   class rather than a tint, and it is a longer dash than the back edge's 5-4
+   so a loop and a recovery path are not one glyph at 50% zoom. */
 .builder-edge.is-class-error .builder-edge-path {
   stroke: var(--err-text);
   stroke-width: var(--edge-width-flow);
+  stroke-dasharray: 9 5;
 }
 
 /* Hover-only, 20px, at the midpoint - Flowise v2's affordance, and the reason

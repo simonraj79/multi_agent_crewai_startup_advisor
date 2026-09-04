@@ -14,6 +14,7 @@ import type {
 import FieldRow from '../fields/FieldRow.vue'
 import ScalarInput from '../fields/ScalarInput.vue'
 import CredentialPicker from '../CredentialPicker.vue'
+import ModelPicker from './ModelPicker.vue'
 import { coalesceKeyFor, patchConfig } from '../commit'
 import type { InspectorCommit } from '../commit'
 
@@ -43,6 +44,14 @@ import type { InspectorCommit } from '../commit'
  *     word alone;
  *   - a crew has no `tools` control at all, because `BuilderModel` is
  *     `extra="forbid"` and the key is a 422 rather than a dropped field.
+ *
+ * FOURTH NOTE, added with plan 05: the tier row now SAYS WHAT THE TIER IS. Until
+ * the model registry landed, `cheap` and `escalation` were two words with no
+ * answer anywhere in the console to "which model, and what does it cost" - the
+ * two questions an author has at exactly the moment they pick one. `ModelPicker`
+ * in `preset` mode answers both, read-only, because a library node genuinely has
+ * nothing to write: its LLMs are built inside the YAML crew from `config.py`'s
+ * constants, and the tier word is the whole of what the document gets to say.
  */
 const props = defineProps<{
   doc: BuilderDocument
@@ -295,6 +304,11 @@ function commitValue(key: string, value: JsonScalar): void {
           {{ tier }}
         </button>
       </div>
+
+      <!-- Inside the tier row rather than beside it: it describes the button
+           that was just pressed, and a separate row would read as a second
+           control the author has to decide about. -->
+      <ModelPicker mode="preset" :tier="config.tier" :control-id="control('tier-model')" />
     </FieldRow>
 
     <FieldRow

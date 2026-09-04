@@ -517,6 +517,233 @@ usage: refresh_models.py [--write] [--keep-ids ID ...] [--max 10]
 
 ## Status
 
+**BUILT · 2026-09-04.** Ten of the eleven acceptance criteria are met and
+criterion 10 is not reached; the blocker is named below and it is not this
+plan's to clear. Two commits on `gauntlet/plans`.
+
+| # | | Shown by |
+| ---: | --- | --- |
+| 1 | met | `python -c "from brief_crew.config import MODEL_REGISTRY, PRICES; print(len(MODEL_REGISTRY), len(PRICES))"` → `10 11` |
+| 2 | met | `tests/test_refresh_models.py`, 22 tests, against `tests/fixtures/openrouter_catalogue.json`. Also run against the LIVE endpoint: the committed registry round-trips at exit 0 |
+| 3 | met | `PRICES[CHEAP_MODEL]` is `(0.3, 2.5)` and `PRICES[ESCALATION_MODEL]` is `(0.75, 3.75)` — the values `config.py` already held. `tests/service/test_run_result_and_cost.py` stays green |
+| 4 | met | `tests/test_model_ceiling.py::RegistryCeilingTests::test_unknown_model_is_unpriced` |
+| 5 | met | `tests/test_model_ceiling.py`, 11 tests, and PROVED BY BREAKING — see below |
+| 6 | met | `tests/builder/test_budget.py::PerModelPricingTests::test_per_model_pricing` |
+| 7 | met | `tests/builder/test_model_gating.py`, 16 tests |
+| 8 | met | `tests/service/test_models_endpoint.py`, 20 tests |
+| 9 | met | `tests/builder/test_client_fixtures.py::ModelFixtureTests` |
+| 10 | **not reached** | see *Criterion 10* below |
+| 11 | met | criterion 5's test, run as part of `unittest discover -s tests -t .` |
+
+Measured in this worktree on 2026-09-04, both suites run:
+
+```text
+Python        1821 run · 0 failures · 6 skipped · 103.0 s
+Frontend unit 1349 passed · 1 failed in 71 files
+vue-tsc       exit 0
+npm run build 1981 modules · 648 ms
+```
+
+The one frontend failure is **not this plan's**:
+`builderApi.spec.ts::calls only paths the python declares` asserts
+`declared.size === 13` and `builder_api.py` now declares **30**. Sixteen of the
+seventeen extra routes are plan 06's tool/MCP/skill catalogue, committed
+concurrently in `3f317da`; `GET /models` is the seventeenth. Without it the
+count would be 29, so the assertion was already red — that is arithmetic over
+the route list, not a run with the route removed, and it is labelled as such.
+
+### Criterion 5's deliberate break
+
+The criterion asks for the ceiling test to fail when a fixture is temporarily
+given `openai/o4-mini`. `frontend/tests/fixtures/models.json` was given a row
+with that id at $1.10 and the suite answered:
+
+```text
+AssertionError: Lists differ: ["openai/o4-mini is exempt only in [...]"] != []
+  "openai/o4-mini is exempt only in ['src/brief_crew/config.py',
+   'scripts/emit_builder_fixtures.py', 'scripts/refresh_models.py',
+   'tests/fixtures/openrouter_catalogue.json', 'tests/test_refresh_models.py',
+   'tests/builder/test_model_gating.py',
+   'frontend/tests/fixtures/builderProblemCodes.json']
+   and appears in frontend/tests/fixtures/models.json"
+```
+
+Reverted; green. **It then bit a second time, unplanned**, on
+`frontend/tests/modelRegistry.spec.ts` — a file written later the same day whose
+own subject is that `openai/o4-mini` renders as *"not in this build"*. That was
+not staged, and it is better evidence than the staged break: the gate caught a
+real new file within hours of being written.
+
+Two defects in the test found by its own first run, both fixed:
+
+- `startswith(FORBIDDEN_FAMILIES)` reported `openai/gpt-4o-mini` — a **roster
+  model at $0.15** — as a forbidden frontier model, because `openai/gpt-4o` is a
+  prefix of it. A provider is a prefix; a model is an exact id, and they are two
+  lists now.
+- D9's pattern matched `openai/completion.py` out of a `config.py` comment naming
+  a LiteLLM source path. A rule that reports a filename as a frontier model is a
+  rule nobody keeps, so the pattern gained a left boundary and a
+  file-extension filter.
+
+### What the live measurement said, against what this plan said
+
+Every roster figure was re-measured on 2026-09-04 with `get-model` and
+`list-model-endpoints`, and the committed `data/models.json` was then
+round-tripped through `scripts/refresh_models.py` against the live public
+catalogue at **exit 0** — so every price, context window and capability flag in
+it is the catalogue's, not a transcription.
+
+**D5's ten `cost_in_max_endpoint` figures were confirmed to the cent.** So were
+D2's prices and context windows. Four things moved or were added:
+
+| | This plan said | Measured 2026-09-04 |
+| --- | --- | --- |
+| `deepseek/deepseek-v4-flash` name | *DeepSeek V4 Flash* | **DeepSeek: DeepSeek V4 Flash 0423** — the catalogue's own name, which is what the refresh writes |
+| `openai/gpt-5.2` cheapest endpoint | not recorded | **$0.875** on `openai/flex`, against a $1.75 headline and $3.50 on `openai/fast`. Confirms D9's own correction |
+| `openai/o4-mini` | one endpoint, $1.10 | confirmed: one endpoint, `openai`, **$1.10 / $4.40** |
+| `qwen/qwen3.7-flash` tiers | $0.10 above 32K, $0.20 above 256K | confirmed exactly, plus cache-read/write rates. Still unexpressible in C3 |
+
+Two further measurements this plan did not record, and both matter to 04:
+
+- **`qwen/qwen3.7-flash` is the only roster row without `structured_outputs`.**
+  It has `response_format`, so `supports_json_mode` is true under C3's rule — but
+  a strict-schema JSON path would degrade there and the registry cannot say so.
+- **`reasoning_effort` is absent from the `supported_parameters` of FOUR roster
+  rows** — `qwen3.7-flash` and `deepseek-r1` (which support reasoning but publish
+  no effort levels) and `gpt-4.1-nano` and `gpt-4o-mini` (which support neither).
+  `supports_reasoning` cannot express that, so the inspector will offer the
+  effort control on two models that ignore it. Contract request below.
+
+### Criterion 10 — not reached, and the blocker is upstream
+
+It asks Playwright to *"select an agent, change its model from the cheap preset
+to `qwen/qwen3.7-flash`"*. **`llm.model` exists only on the AUTHORED arm, and the
+client has no authored arm**: `frontend/src/types/builder.ts::AgentConfig` is the
+library arm alone — `agent_id`, `tools`, `tier` — with no `llm` anywhere, and
+`FAN_OUT_JOIN`'s five billable nodes are all library agents. Mirroring
+`AuthoredAgentConfig` is plan 03's contract work and plan 04's inspector work,
+both of which were in flight in this worktree while this was built; adding a
+speculative second mirror here is exactly the quietly-diverging double this
+repository keeps recording.
+
+What was built instead, so 04 has the picker rather than a note:
+
+- **`frontend/src/data/models.ts`** — the session-cached, unauthenticated client
+  mirror, refusing a roster it cannot use rather than half-rendering one. 32
+  tests in `frontend/tests/modelRegistry.spec.ts`.
+- **`ModelPicker.vue`**, in two modes. `mode="pick"` is D7's picker with the
+  capability gating rendered (disabled, struck through, tooltip naming the model
+  and the parameter) and is unit-tested against `openai/gpt-4.1-nano`, which
+  genuinely does not reason. `mode="preset"` is read-only and is **wired into
+  `BillableForm`'s tier row today**, so it is not dead scaffold: it answers the
+  two questions a tier control could not answer before — which model
+  `escalation` is, and what it costs. Both price columns, the context window,
+  the speed tier, the four capability chips, and the `:nitro` sentence
+  explaining why the cheap preset's enforced rate is $0.54 rather than $0.30.
+
+Closing criterion 10 needs `AuthoredAgentConfig` in `types/builder.ts` and the
+authored arm in the inspector. When it lands, `ModelPicker` in `pick` mode is
+the control and the E2E spec is `frontend/e2e/builder-models.spec.ts`.
+
+### Departures from this plan's own text, each made where the code is
+
+Where the plan and a live measurement disagreed, the measurement won.
+
+1. **`supports_reasoning` is `reasoning ∈ supported_parameters`**, not C3's
+   *"`reasoning.supported_efforts` non-empty"*. Measured, `deepseek/deepseek-r1`
+   publishes `{mandatory: true}` and no efforts at all, and it is on the roster
+   **for** reasoning. C3's rule would have written `supports_reasoning: false`
+   for the roster's reasoning model. `scripts/refresh_models.py::derive_row`
+   carries the reasoning; the contract request stands below.
+2. **`MODEL_CEILING_USD_PER_M_INPUT` was not added.** `config.py` already had
+   `MODEL_PRICE_CEILING_IN = 1.00`, and a second constant with one meaning is how
+   every count in this repository has gone stale. `data/models.json` carries the
+   ceiling too — it has to, because `refresh_models.py` and the client mirror both
+   read the file without importing the module — and the two are **cross-checked at
+   import**, fatally, where the traceback names both files.
+3. **The ceiling's admission predicate is `cost_in <= ceiling`, and that IS the
+   owner's ruling rather than a softening of it.** The ruling has two halves. A
+   model whose *cheapest* endpoint is over the ceiling cannot be served at all
+   under `provider.max_price` — the request fails rather than overspending — and
+   the headline **is** one of the slug's endpoints, so `cost_in <= ceiling` is a
+   witness that a servable endpoint survives the filter. `openai/o4-mini` (one
+   endpoint, $1.10) and `openai/gpt-5.2` ($1.75 headline) are both refused by it.
+   The other half — that a recorded `cost_in_max_endpoint` over the ceiling is
+   only safe because the filter is actually sent — is asserted separately, by
+   name, in `test_the_max_price_block_is_what_makes_an_over_ceiling_endpoint_safe`.
+   `cost_in_min_endpoint` was considered and not added: the headline already
+   supplies the witness, and an unused field is one more thing to keep measured.
+4. **The ceiling test admits path-scoped exemptions.** D9 asks for zero matches
+   of `anthropic/` and criterion 4 asks for a test that `compute_cost_usd`
+   answers `None` for `anthropic/claude-haiku-4.5`. Both cannot hold. The rule
+   implemented is that **a literal whose presence asserts a refusal is not a
+   reachable model**: each entry names its paths and its reason, a dead entry
+   fails, and the literal outside its paths fails. `EMBED_MODEL`'s entry is
+   DERIVED from the constant rather than typed, so an embedding swap carries its
+   own exemption.
+5. **`RegistryModel` is a `NamedTuple`, not a frozen dataclass.**
+   `tests/service/test_cors.py` executes `config.py` by path through a loader
+   that never registers the module in `sys.modules`, and `dataclasses` resolves
+   `KW_ONLY` through `sys.modules[cls.__module__].__dict__` — so a dataclass
+   anywhere in that file turns a CORS assertion into `AttributeError: 'NoneType'
+   object has no attribute '__dict__'`. Measured, not reasoned: it failed that
+   way once.
+6. **`NITRO_PRICE_FACTOR` is now a FLOOR under a measured ratio**, per the
+   owner's note that it is a fallback for estimation rather than the ceiling
+   mechanism. `budget.py::_nitro_multiplier` uses
+   `max(cost_in_max_endpoint / cost_in, NITRO_PRICE_FACTOR)` for a `:nitro` id
+   and `1.0` for a plain one. The published frontier figures did not move, and
+   that is only true because the cheap preset is the one row where 1.8 was a
+   measurement — $0.54 over $0.30, to the cent.
+7. **`models` is served at its own route and NOT added to the vocabulary.** C2
+   declares a `models` key and `test_the_two_keys_this_build_cannot_serve_are_
+   absent_not_empty` pins its absence as a decision. Serving the roster twice
+   would be the mirror problem again, and the roster is the one payload with a
+   real cache story — it is fixed for the life of a deploy and every page load
+   wants it. A C2 change to drop the key is the Integrator's; it is a request,
+   not an edit.
+8. **The 8-node frontier is NOT refused at `deepseek-r1` prices.** Criterion 6
+   says "still refused", and it is — at the bound-derived frontier of 13 billable
+   and 8 escalation, which is what `MAX_BILLABLE_NODES = 13` now permits: $13.99
+   floor, **$17.49 with the 1.25 margin**. The published 8-node document from the
+   original sweep prices at $6.47 / $8.08 and is admitted. The test says so in
+   its own docstring rather than quietly choosing the document that passed.
+
+### Contract requests for 00 — restated, and one is now urgent
+
+- **C3 — `supports_reasoning` derivation.** As above. The rule as written
+  computes `false` for `qwen/qwen3.7-flash` and `deepseek/deepseek-r1`, both of
+  which support reasoning; on `deepseek-r1` it is *mandatory*. The build uses
+  `reasoning ∈ supported_parameters`; the contract still says otherwise.
+- **C3 — a field for the reasoning EFFORT LEVEL.** Separate from the capability
+  and now measured: `reasoning_effort` is absent from the `supported_parameters`
+  of four roster rows. Two of them support reasoning and will be offered an
+  effort control they ignore, which is the silently-dropped-parameter behaviour
+  D7 exists to prevent, one level down.
+- **C3 — no field expresses tiered prompt pricing.** `qwen/qwen3.7-flash` is
+  $0.03/M up to 32,000 prompt tokens, **$0.10/M above 32,000** and **$0.20/M
+  above 256,000** — re-confirmed 2026-09-04, along with cache-read and
+  cache-write rates the schema also cannot hold. It is the roster's cheapest
+  model and its stated roles are short-prompt work, so the headline is usually
+  right and occasionally under-prices by **6.7×**.
+- **C1/C3 — per-node budget breakdown.** Unchanged: D8's *"≈ $N for this node"*
+  needs `budget.per_node`. `ModelPicker` shows the model's own rates and the
+  meter shows the flow total; the per-node figure is still not available.
+- **C2 — the `models` key.** See departure 7.
+
+### What is NOT verified
+
+- **No paid run.** Every figure here is a catalogue price and a token model. The
+  budget model's own calibration is still ONE paid run (CLAUDE.md remaining-work
+  item 41), and this pass did not add a second.
+- **No E2E.** `frontend/e2e/builder-models.spec.ts` does not exist, for the
+  reason under *Criterion 10*.
+- **Spend: $0.00.** Only free read-only MCP tools (`get-model`,
+  `list-model-endpoints`) and the unauthenticated public
+  `GET https://openrouter.ai/api/v1/models`.
+
+---
+
 **Planned · 2026-09-02. Price and capability tables re-measured and corrected
 · 2026-09-04.**
 

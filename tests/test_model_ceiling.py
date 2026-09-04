@@ -158,6 +158,7 @@ EXEMPTIONS: dict[str, tuple[tuple[str, ...], str]] = {
             "tests/test_refresh_models.py",
             "tests/builder/test_model_gating.py",
             "frontend/tests/fixtures/builderProblemCodes.json",
+            "frontend/tests/modelRegistry.spec.ts",
         ),
         "The worked example of a REFUSED model: one endpoint, $1.10/M input, so "
         "provider.max_price filters every candidate and the request fails rather "

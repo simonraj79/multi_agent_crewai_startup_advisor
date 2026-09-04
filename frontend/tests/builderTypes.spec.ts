@@ -458,7 +458,7 @@ describe('the problem codes are the python problem codes', () => {
     expect([...PROBLEM_CODES].sort()).toEqual(pythonProblemCodes())
   })
 
-  it('finds all thirty-eight, so an empty read cannot pass as agreement', () => {
+  it('finds all forty-one, so an empty read cannot pass as agreement', () => {
     // Without this the assertion above would be satisfied by a regex that
     // matched nothing against a tuple that had lost everything - and, as the
     // 27 that stood here until 2026-09-02 proved, by a file list missing a
@@ -474,8 +474,14 @@ describe('the problem codes are the python problem codes', () => {
     // names this line and the tuple by path - which is the only mechanism that
     // makes a server-side code addition break a TypeScript test in the same
     // commit rather than three commits later.
+    //
+    // 38 until 2026-09-04, when plan 05 added a FOURTH declaring file -
+    // `builder/registry.py` - and its three model codes: `model-unknown`,
+    // `model-over-ceiling` and `model-lacks-capability`. That is exactly the
+    // four-place edit the `compiler.py` paragraph above predicts, made in one
+    // commit rather than discovered three commits later.
     expect(pythonProblemCodes()).toHaveLength(41)
-    expect(PROBLEM_CODES).toHaveLength(38)
+    expect(PROBLEM_CODES).toHaveLength(41)
   })
 
   it('declares the four warnings, and they are codes', () => {

@@ -751,6 +751,79 @@ export interface BuilderVocabulary {
   bounds: BuilderBounds
 }
 
+/* --- the model registry, C3 ---------------------------------------------- */
+
+/**
+ * How fast a model answers, as a curated word rather than a measurement.
+ *
+ * The public catalogue publishes no throughput figure, so these three come from
+ * the MCP's `sort: throughput-high-to-low` ordering and are a judgement the
+ * roster's author made. A closed set so the picker can group on it without
+ * inventing a fourth word.
+ */
+export type SpeedTier = 'fast' | 'balanced' | 'deep'
+
+/**
+ * One roster model - `data/models.json`, served by `GET /api/builder/models`.
+ *
+ * TWO PRICE COLUMNS, and rendering only one of them is the mistake this
+ * registry exists to stop. `cost_in` is what a run is priced at: the plain
+ * slug's headline, which is itself one of the endpoints serving it.
+ * `cost_in_max_endpoint` is the DEAREST endpoint for the same slug, and it is
+ * what says how much exposure `provider.max_price` is filtering away -
+ * `google/gemini-3.8-flash` bills $0.75 on its headline and $1.35 on its two
+ * `priority` endpoints. A picker that showed only the first would tell an
+ * author the escalation preset costs $0.75 and never that its dearest route
+ * would breach the product's own ceiling; one that showed only the second would
+ * overstate every estimate on the page.
+ */
+export interface RegistryModel {
+  /** A BASE slug: no `openrouter/` prefix and no `:variant`. */
+  id: string
+  /** The catalogue's own human name, e.g. `Google: Gemini 3.5 Flash Lite`. */
+  name: string
+  /** The slug's first segment - `google`, `openai`, `deepseek`. */
+  provider: string
+  context_window: number
+  supports_tools: boolean
+  supports_vision: boolean
+  supports_json_mode: boolean
+  supports_reasoning: boolean
+  /** USD per MILLION prompt tokens, headline. */
+  cost_in: number
+  /** USD per MILLION completion tokens, headline. */
+  cost_out: number
+  /** USD per million prompt tokens on the dearest endpoint serving this slug. */
+  cost_in_max_endpoint: number
+  speed_tier: SpeedTier
+  /** A closed list the picker groups on - `router`, `critic`, `default-cheap`. */
+  recommended_for: string[]
+}
+
+/**
+ * `GET /api/builder/models` - the roster, its ceiling and its two presets.
+ *
+ * `generated_at` and `source` travel with the rows because they are what a
+ * stale client is diagnosed FROM. Comparing prices would only ever say that two
+ * numbers differ; a date says which one is old.
+ */
+export interface ModelRoster {
+  schema: string
+  generated_at: string
+  source: string
+  /** USD per million input tokens. No roster model may exceed it. */
+  ceiling_usd_per_m_input: number
+  /**
+   * Tier name to the id that tier resolves to, WITH its routing variant -
+   * `google/gemini-3.5-flash-lite:nitro`. The variant is kept because it is the
+   * reason the cheap preset's enforced price is above its headline: nitro
+   * routes on speed, not price, so the published rate is a floor. Strip it to
+   * look a row up; render it to explain the meter.
+   */
+  presets: Record<string, string>
+  models: RegistryModel[]
+}
+
 /* --- responses --------------------------------------------------------- */
 
 export interface BuilderDocumentSummary {

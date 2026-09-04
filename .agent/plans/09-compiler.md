@@ -288,3 +288,52 @@ accepted exactly this dependency after prototyping the alternative: the router
 variant costs two pass-through nodes carrying no agent, no model and no
 decision, plus lockstep edits to seven files. The guard test's failure message
 must name the router variant as the replacement, as item 35's does.
+
+
+### Pre-flight for criterion 10 (rubric 11) — Integrator, 2026-09-04
+
+Criterion 10 is the hardest thing in this plan set: twenty fixtures compiled and
+run **twice in-process and once in a subprocess**, with definition, frame
+sequence and result body byte-equal to committed goldens all three ways. Two
+things routinely make a determinism test like that fail for reasons that have
+nothing to do with the compiler, so both were measured **before** the wave that
+depends on them, rather than discovered inside it.
+
+**1. Hash-order leakage — CLEAR.** A subprocess gets a fresh `PYTHONHASHSEED`
+unless one is pinned, so any `set` or `dict` iteration order reaching the emitted
+definition would differ *there and nowhere else*. Compiled the committed
+validator-template fixture in four separate processes at
+`PYTHONHASHSEED=0`, `1`, `12345` and unset:
+
+```text
+PYTHONHASHSEED=0         ffa499ae01459e9a…   hash_randomization=0
+PYTHONHASHSEED=1         ffa499ae01459e9a…   hash_randomization=1
+PYTHONHASHSEED=12345     ffa499ae01459e9a…   hash_randomization=1
+unset (randomised)       ffa499ae01459e9a…   hash_randomization=1
+```
+
+One digest. `compile_document` does not leak hash order today, so the subprocess
+leg is safe as things stand — and if it ever stops being safe, this is the probe
+that says so. Nothing in `compiler.py` reads the clock, a UUID or `random`
+(`grep` finds none of them in the compile path).
+
+**2. A timestamp that WILL break a golden, and it is not in the definition.**
+`budget.py::as_budget` defaults `compiled_at` to `datetime.now(timezone.utc)`,
+and it drifts, measured a second apart:
+
+```text
+2026-09-04T06:02:25.117106+00:00
+2026-09-04T06:02:26.167275+00:00     equal? False
+```
+
+The **definition is unaffected** — its top-level keys are `config`,
+`description`, `methods`, `name`, `schema`, `state`, and `compiled_at` appears
+nowhere in it. But criterion 10 compares **three** artefacts, and any golden
+that carries a `BuilderBudget` cannot be byte-compared while that default
+applies.
+
+The seam already exists and costs nothing: `as_budget(compiled_at=...)` takes an
+explicit value, verified. **Pin it in the golden harness; do not add a
+normalisation step that strips the field**, because a stripped field is one the
+test stops checking, and this plan set already has one lesson about clauses that
+cannot fail.

@@ -128,7 +128,7 @@ describe('turning routing off', () => {
 
     const commit = lastCommit(wrapper)
     const node = commit.next.nodes.find((entry) => entry.id === 'scoper')!
-    expect(node.config.on_error).toBe('fail')
+    expect((node.config as { on_error: string }).on_error).toBe('fail')
     expect(outPortsOf(node)).toEqual(['out'])
     expect(commit.next.edges.map((entry) => entry.id)).toEqual(['e1', 'e2'])
   })

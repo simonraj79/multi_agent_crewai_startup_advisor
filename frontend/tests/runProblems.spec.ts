@@ -133,7 +133,7 @@ describe('the dock renders them under their own heading', () => {
 
   it('groups them separately, with the heading and the aria label', () => {
     const wrapper = mount(ProblemsPanel, {
-      props: { problems: [], phase: 'clean', runProblems, labels: { b: 'Draft' } },
+      props: { problems: [], phase: 'fresh', runProblems, labels: { b: 'Draft' } },
     })
     expect(wrapper.find('[data-testid="problems-run-heading"]').text()).toContain('last run')
     expect(wrapper.find('ul[aria-label="Run problems"]').exists()).toBe(true)
@@ -144,14 +144,14 @@ describe('the dock renders them under their own heading', () => {
 
   it('names the node by its LABEL, so a row is readable without the id', () => {
     const wrapper = mount(ProblemsPanel, {
-      props: { problems: [], phase: 'clean', runProblems, labels: { b: 'Draft' } },
+      props: { problems: [], phase: 'fresh', runProblems, labels: { b: 'Draft' } },
     })
     expect(wrapper.find('[data-testid="problem-run-auth"]').text()).toContain('Draft')
   })
 
   it('does not claim the graph is ready to publish while one is on screen', () => {
     const wrapper = mount(ProblemsPanel, {
-      props: { problems: [], phase: 'clean', runProblems },
+      props: { problems: [], phase: 'fresh', runProblems },
     })
     expect(wrapper.find('[data-testid="problems-headline"]').text()).toBe('1 node failed')
   })
@@ -171,7 +171,7 @@ describe('the dock renders them under their own heading', () => {
             edge_id: null,
           },
         ],
-        phase: 'clean',
+        phase: 'fresh',
         runProblems,
       },
     })
@@ -182,7 +182,7 @@ describe('the dock renders them under their own heading', () => {
 
   it('renders nothing extra when the last run was clean', () => {
     const wrapper = mount(ProblemsPanel, {
-      props: { problems: [], phase: 'clean', runProblems: [] },
+      props: { problems: [], phase: 'fresh', runProblems: [] },
     })
     expect(wrapper.find('[data-testid="problems-run-heading"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="problems-headline"]').text()).toBe('Ready to publish')
@@ -190,7 +190,7 @@ describe('the dock renders them under their own heading', () => {
 
   it('a row emits focus, so one click reaches the node that failed', async () => {
     const wrapper = mount(ProblemsPanel, {
-      props: { problems: [], phase: 'clean', runProblems },
+      props: { problems: [], phase: 'fresh', runProblems },
     })
     await wrapper.find('[data-testid="problem-run-auth"]').trigger('click')
     const emitted = wrapper.emitted('focus')
@@ -200,7 +200,7 @@ describe('the dock renders them under their own heading', () => {
 
   it('is walkable by F8 along with the rest', () => {
     const wrapper = mount(ProblemsPanel, {
-      props: { problems: [], phase: 'clean', runProblems },
+      props: { problems: [], phase: 'fresh', runProblems },
     })
     ;(wrapper.vm as unknown as { next: () => void }).next()
     expect(wrapper.emitted('focus')).toBeTruthy()

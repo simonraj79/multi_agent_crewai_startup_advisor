@@ -294,6 +294,46 @@ def builtin_root() -> pathlib.Path:
     return skills_root() / "builtin"
 
 
+def resolve_stored_path(stored: str) -> pathlib.Path:
+    """The file a stored `user_skills.path` names, under today's root.
+
+    `materialise` returns a directory that is **already rooted** at
+    `skills_root()`, so what `SkillStore.create` writes into the row is absolute
+    when `SKILLS_ROOT` is absolute and root-relative (`data/skills/users/...`)
+    when it is not - which is the shipped default. Prefixing the root onto that
+    second shape is what produced `data\\skills\\data\\skills\\users\\...`, a
+    path that does not exist, whose `OSError` was then swallowed into an empty
+    body. So the join happens only for a path that is not already inside the
+    root.
+
+    No migration and no new column: a row written before this rule existed reads
+    back correctly under both an absolute and a relative root, which is the only
+    reason this is safe to change under a shipped table.
+    """
+
+    path = pathlib.Path(stored)
+    if path.is_absolute():
+        return path
+    root = skills_root()
+    if not root.is_absolute() and _is_rooted(path, root):
+        return path
+    return root / path
+
+
+def _is_rooted(path: pathlib.Path, root: pathlib.Path) -> bool:
+    """Does `path` already begin with `root`? Case-folded, because NTFS is.
+
+    `os.path.normcase` is the platform's own answer rather than `str.lower()`:
+    on POSIX it is the identity and the comparison stays case-sensitive, which
+    is what that filesystem means.
+    """
+
+    import os
+
+    head = tuple(os.path.normcase(part) for part in path.parts[: len(root.parts)])
+    return head == tuple(os.path.normcase(part) for part in root.parts)
+
+
 def pack_directory(pack: SkillPack) -> pathlib.Path:
     """Where this pack's `SKILL.md` lives.
 
@@ -527,6 +567,7 @@ __all__ = [
     "parse_pack",
     "loaded_skill",
     "read_pack_zip",
+    "resolve_stored_path",
     "SKILL_LOAD_ERROR_CLASS",
     "skill_frame_details",
     "skill_problems",

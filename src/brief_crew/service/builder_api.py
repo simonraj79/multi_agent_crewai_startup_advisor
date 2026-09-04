@@ -101,6 +101,7 @@ from brief_crew.service.attachments import (
     CustomToolStore,
     McpServerStore,
     NameTaken,
+    SkillBodyUnreadable,
     SkillStore,
     TooManyRows,
 )
@@ -1815,6 +1816,11 @@ def create_builder_router(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except (CustomToolError, SkillError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except SkillBodyUnreadable as exc:
+            # 500 and it names the path. The alternative - the empty body this
+            # branch used to hand back - is what let a path bug live in a
+            # shipped default behind 2,420 green tests.
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     def _no_store() -> HTTPException:
         return HTTPException(
@@ -2171,7 +2177,13 @@ def create_builder_router(
         owner = owner_of(user)
         if store is None:
             return {"skills": [pack.summary() for pack in builtin_skill_packs()]}
-        return {"skills": [pack.summary() for pack in store.list(owner)]}
+        # Through `_attachment` so an unreadable body answers 500 with its path
+        # rather than an anonymous 500 with nothing an author can act on.
+        return {
+            "skills": [
+                pack.summary() for pack in _attachment(lambda: store.list(owner))
+            ]
+        }
 
     @router.get("/skills/{skill_id}")
     async def get_skill(

@@ -44,6 +44,7 @@ __all__ = [
     "CustomToolStore",
     "McpServerStore",
     "NameTaken",
+    "SkillBodyUnreadable",
     "SkillStore",
     "TooManyRows",
 ]
@@ -66,6 +67,16 @@ class NameTaken(ValueError):
 
 class TooManyRows(ValueError):
     """The per-user ceiling. Carries the ceiling in its sentence."""
+
+
+class SkillBodyUnreadable(RuntimeError):
+    """The row is here and its `SKILL.md` is not readable. Names the path.
+
+    A 500 rather than a 404: the row exists and the caller owns it, so this is
+    the server failing to keep its own promise, not a caller asking for
+    something absent. The path is in the sentence because the one time this
+    fired for real, the path *was* the bug.
+    """
 
 
 def _mint(prefix: str) -> str:
@@ -524,18 +535,28 @@ class SkillStore:
         return packs
 
     def _pack(self, row: Mapping[str, Any]) -> skills_module.SkillPack | None:
-        import pathlib
-
-        path = pathlib.Path(str(row["path"]))
-        if not path.is_absolute():
-            path = skills_module.skills_root() / path
+        path = skills_module.resolve_stored_path(str(row["path"]))
         try:
             body = path.read_text(encoding="utf-8")
-        except OSError:
-            # The disk is a cache that a restart can empty. A row whose file is
-            # gone is reported as a pack with no body rather than dropped, so
-            # the author sees what happened instead of a silently shorter list.
-            body = ""
+        except OSError as exc:
+            # This branch used to blank the body and carry on, on the reasoning
+            # that "the disk is a cache a restart can empty". It is now proven
+            # to have hidden a PATH BUG rather than a missing file for the whole
+            # life of the feature: on the shipped relative `SKILLS_ROOT` every
+            # user pack read back as `body=""` while its 107 bytes sat on disk,
+            # and 2,420 green tests could not see it because every one of them
+            # patches the root to an absolute tempdir.
+            #
+            # So it reports. A row whose file is genuinely gone means the
+            # author's content is gone - there is no `body` column to fall back
+            # to - and telling them that loudly is strictly better than handing
+            # back an empty document they might then save over. The cost is
+            # accepted and named: one unreadable file fails the whole palette
+            # rather than quietly shortening it.
+            raise SkillBodyUnreadable(
+                f"this skill's {skills_module.SKILL_FILENAME} could not be read at "
+                f"{path}"
+            ) from exc
         try:
             parsed = skills_module.parse_pack(body) if body else None
         except skills_module.SkillError:

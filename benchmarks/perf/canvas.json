@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-09-04T13:18:14.633Z",
+  "measuredAt": "2026-09-04T05:45:58.450Z",
   "budget": {
     "meanMs": 16.7,
     "p95Ms": 20,
@@ -8,43 +8,43 @@
   "note": "requestAnimationFrame deltas over 3s of scripted wheel zoom and 3s of Space+drag pan, Chromium at 1440x900 against a local SYNTHETIC=1 backend. One machine, one browser build - a floor under \"obviously broken\", not a comparison against another product. `idle48` is the same canvas doing NOTHING for the same six seconds, and is the control the busy cases are read against. `instrumentCheck` blocks the main thread on purpose, and is what makes a green run mean anything.",
   "cases": {
     "instrumentCheck": {
-      "frames": 28,
-      "meanMs": 26.782142857142862,
-      "p95Ms": 16.799999999999955,
+      "frames": 27,
+      "meanMs": 27.159259259259265,
+      "p95Ms": 16.700000000000045,
       "maxMs": 300,
-      "seconds": 0.7499000000000001,
+      "seconds": 0.7333000000000002,
       "nodes": 48
     },
     "idle48": {
-      "frames": 361,
-      "meanMs": 16.66620498614962,
-      "p95Ms": 16.800000000000182,
+      "frames": 362,
+      "meanMs": 16.66602209944753,
+      "p95Ms": 16.700000000000728,
       "maxMs": 16.800000000000182,
-      "seconds": 6.016500000000013,
+      "seconds": 6.033100000000006,
       "nodes": 48
     },
     "fixture48": {
-      "frames": 372,
-      "meanMs": 16.665860215053804,
+      "frames": 371,
+      "meanMs": 16.665881401617284,
       "p95Ms": 16.700000000000728,
       "maxMs": 16.800000000000182,
-      "seconds": 6.199700000000015,
+      "seconds": 6.183042000000012,
       "nodes": 48
     },
     "client60": {
-      "frames": 376,
-      "meanMs": 16.666164893617047,
+      "frames": 369,
+      "meanMs": 16.6658536585366,
       "p95Ms": 16.700000000000728,
       "maxMs": 16.800000000000182,
-      "seconds": 6.26647800000001,
+      "seconds": 6.149700000000006,
       "nodes": 60
     },
     "gesture1": {
-      "frames": 361,
-      "meanMs": 16.94293628808866,
+      "frames": 369,
+      "meanMs": 16.6657127371274,
       "p95Ms": 16.700000000000728,
-      "maxMs": 100,
-      "seconds": 6.116400000000007,
+      "maxMs": 16.800000000000182,
+      "seconds": 6.149648000000011,
       "nodes": 1
     }
   }

@@ -38,6 +38,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
@@ -46,6 +47,7 @@ import yaml
 
 from brief_crew.builder.gates import gate_decision, gate_payload
 from brief_crew.config import (
+    BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
     AGENT_CREDENTIAL_KIND,
     BUILDER_ROUTER_COMPARISONS,
     BUILDER_ROUTER_OTHERWISE,
@@ -354,6 +356,11 @@ class CrewFactories(Protocol):
         # factory written before the keyword existed keeps satisfying this
         # protocol; one that ignores it must still ACCEPT it.
         api_key: str | None = None,
+        # Plans 06, 07 and 08, defaulted for the same reason: every test double
+        # in this repository predates them and must keep satisfying this
+        # protocol without an edit.
+        attachments: Any = None,
+        tool_failure_policy: str = BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
     ) -> Any: ...
 
     def crew(
@@ -365,6 +372,12 @@ class CrewFactories(Protocol):
         max_iter: int,
         guardrail_max_retries: int,
     ) -> Any: ...
+
+
+def _failure_policy(name: str) -> Any:
+    from crewai.tools.tool_failure import ToolFailurePolicy
+
+    return ToolFailurePolicy(name)
 
 
 def _tool_instance(name: str) -> Any:
@@ -408,15 +421,27 @@ class DefaultCrewFactories:
         max_iter: int,
         guardrail_max_retries: int,
         api_key: str | None = None,
+        attachments: Any = None,
+        tool_failure_policy: str = BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
     ) -> Any:
         from crewai import LLM, Agent, Crew, Process, Task
 
         spec = agent_spec(agent_id)
         agents_config = _yaml_config("agents.yaml")
         tasks_config = _yaml_config("tasks.yaml")
+        bound = attachments or BoundAttachments()
         agent = Agent(
             config=dict(agents_config[spec.agent_key]),
-            tools=[_tool_instance(name) for name in tools],
+            tools=[_tool_instance(name) for name in tools] + list(bound.tools),
+            # `None` rather than `[]` for both, and it is not cosmetic: CrewAI
+            # walks its MCP resolver and its skill loader for an empty list and
+            # skips them for `None`.
+            mcps=list(bound.mcps) or None,
+            skills=list(bound.skills) or None,
+            # `warn` is CrewAI's own default and stays this product's; `raise`
+            # is what makes plan 12's error edge fire, because only a raised
+            # `ToolExecutionFailedError` leaves the step.
+            tool_failure_policy=_failure_policy(tool_failure_policy),
             # The author's own OpenRouter key when the node named one, else the
             # platform key from the environment (plan 01 D7). Passed straight in
             # and dropped: the string lives in this constructor call and nowhere
@@ -620,6 +645,231 @@ def seed_input(
     return _record(flow, node_id, value[:max_chars])
 
 
+#: For the one thing in here that must never fail a run: an attachment that
+#: will not clean up. A leaked client is a defect; a run failed at its last
+#: line by a leaked client is a worse one.
+LOGGER = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------------
+# FD10 for the attachment family - plans 06, 07 and 08
+#
+# Author data reaches an entrypoint as VALUES and OPAQUE IDS, never names,
+# paths or code, and the entrypoint dereferences them against the run's user
+# inside the call. That is the whole rule, and everything below is it applied
+# three times:
+#
+#   tool      tool_id   -> a server-owned catalogue entry -> a BaseTool
+#   mcp       server_id -> the caller's own mcp_servers row -> an MCPServer*
+#   skill     skill_id  -> a built-in or the caller's pack -> a crewai Skill
+#
+# None of the three can name a class, a module, a command or a file. A `tool_id`
+# outside the catalogue is refused, a `server_id` that is not the run owner's is
+# refused, and a stdio server is refused unless a deployment flag AND a command
+# allow-list both admit it.
+# --------------------------------------------------------------------------
+@dataclass(frozen=True)
+class BoundAttachments:
+    """What one agent node's attachments became, plus how to let them go."""
+
+    tools: tuple[Any, ...] = ()
+    mcps: tuple[Any, ...] = ()
+    skills: tuple[Any, ...] = ()
+    closers: tuple[Any, ...] = ()
+
+    def cleanup(self) -> None:
+        for closer in self.closers:
+            try:
+                closer()
+            except Exception:  # noqa: BLE001 - a failed cleanup must not fail a run
+                LOGGER.warning("an attachment failed to clean up", exc_info=True)
+
+
+def _credential_fields(
+    node_id: str, credential_id: Any, *, kind: str | None
+) -> dict[str, str] | None:
+    """The plaintext fields for one attachment, or None when it names no key.
+
+    Imported inside the function for the reason `_agent_api_key` gives:
+    `service/credentials.py` pulls in SQLAlchemy through the persistence module,
+    and compiling or pricing a document must not pay for that. A credential of
+    the wrong KIND is refused here by kind name alone - never by value - so a
+    `github` token on a Firecrawl tool fails this node instead of failing inside
+    somebody's HTTP client after the run has started.
+    """
+
+    if not credential_id:
+        return None
+    from brief_crew.service.credentials import resolve_credential
+
+    resolved = resolve_credential(str(credential_id))
+    if kind is not None and resolved.kind != kind:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} names the credential {credential_id}, which is a "
+            f"{resolved.kind} credential; this attachment needs a {kind} one"
+        )
+    return dict(resolved.fields)
+
+
+def bind_attachments(
+    attachments: Sequence[Mapping[str, Any]],
+    *,
+    node_id: str,
+    failure_policy: str = BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
+) -> "BoundAttachments":
+    """Dereference every attachment for the run's owner. Never before.
+
+    Order is the order the author drew them, which is the order the agent's tool
+    list is rendered in - so two authors who wired the same tools the same way
+    get the same prompt.
+    """
+
+    from brief_crew.builder import mcp as mcp_module
+    from brief_crew.builder import skills as skills_module
+    from brief_crew.builder import tools as tools_module
+
+    tools: list[Any] = []
+    mcps: list[Any] = []
+    skills: list[Any] = []
+    closers: list[Any] = []
+
+    for attachment in attachments:
+        kind = str(attachment.get("kind", ""))
+        if kind == "tool":
+            tool_id = str(attachment.get("tool_id", ""))
+            params = dict(attachment.get("params") or {})
+            entry = tools_module.builtin(tool_id)
+            custom = None
+            if entry is None:
+                custom = _custom_tool_spec(node_id, tool_id)
+                credential_kind = "http_header" if custom.request.header_name else None
+            else:
+                credential_kind = entry.kind_for(params)
+            tools.append(
+                tools_module.resolved_tool(
+                    tool_id,
+                    params=params,
+                    credential=_credential_fields(
+                        node_id, attachment.get("credential_id"), kind=credential_kind
+                    ),
+                    failure_policy=failure_policy,
+                    custom=custom,
+                )
+            )
+        elif kind == "mcp":
+            record = _mcp_record(node_id, str(attachment.get("server_id", "")))
+            header = _credential_fields(
+                node_id, record.header_credential_id, kind="mcp_header"
+            )
+            env = _credential_fields(
+                node_id, record.env_credential_id, kind="mcp_header"
+            )
+            mcps.append(
+                mcp_module.server_config(
+                    record,
+                    tool_names=tuple(attachment.get("tool_names") or ()),
+                    header={header["name"]: header["value"]} if header else None,
+                    env={env["name"]: env["value"]} if env else None,
+                )
+            )
+        elif kind == "skill":
+            skills.append(
+                skills_module.loaded_skill(
+                    _skill_pack(node_id, str(attachment.get("skill_id", "")))
+                )
+            )
+        else:
+            raise BuilderRuntimeError(
+                f"node {node_id!r} carries an attachment of kind {kind!r}; the "
+                "attachment kinds are tool, mcp and skill"
+            )
+    return BoundAttachments(
+        tools=tuple(tools),
+        mcps=tuple(mcps),
+        skills=tuple(skills),
+        closers=tuple(closers),
+    )
+
+
+def _attachment_store(factory_name: str) -> tuple[Any, Any]:
+    """One of the three stores, bound to the run's own persistence and user.
+
+    The vault's ContextVars are the only thing that says whose run this is, and
+    they are set by `service/builder_runner.py` around `kickoff` and `resume` -
+    so an attachment resolves for the run's OWNER and for nobody else, exactly
+    as a credential does, and an unowned run resolves nothing at all.
+    """
+
+    from brief_crew.service import attachments as attachment_stores
+    from brief_crew.service.credentials import _current_store, current_run_user
+
+    vault = _current_store.get()
+    user_id = current_run_user.get()
+    if vault is None or not user_id:
+        return None, None
+    persistence = getattr(vault, "_store", None)
+    if persistence is None:  # pragma: no cover - a vault always carries one
+        return None, None
+    return getattr(attachment_stores, factory_name)(persistence), user_id
+
+
+def _custom_tool_spec(node_id: str, tool_id: str) -> Any:
+    store, user_id = _attachment_store("CustomToolStore")
+    if store is None:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} names the custom tool {tool_id}, and this run has no "
+            "identity to look it up for"
+        )
+    from brief_crew.service.attachments import AttachmentNotYours
+
+    try:
+        return store.get(user_id, tool_id)
+    except AttachmentNotYours as exc:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} names the tool {tool_id}, which is not one of yours"
+        ) from exc
+
+
+def _mcp_record(node_id: str, server_id: str) -> Any:
+    store, user_id = _attachment_store("McpServerStore")
+    if store is None:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} names the MCP server {server_id}, and this run has no "
+            "identity to look it up for"
+        )
+    from brief_crew.service.attachments import AttachmentNotYours
+
+    try:
+        return store.get(user_id, server_id)
+    except AttachmentNotYours as exc:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} names the MCP server {server_id}, which is not one of "
+            "yours"
+        ) from exc
+
+
+def _skill_pack(node_id: str, skill_id: str) -> Any:
+    from brief_crew.builder import skills as skills_module
+
+    for pack in skills_module.load_builtins():
+        if pack.id == skill_id:
+            return pack
+    store, user_id = _attachment_store("SkillStore")
+    if store is None:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} names the skill {skill_id}, and this run has no "
+            "identity to look it up for"
+        )
+    from brief_crew.service.attachments import AttachmentNotYours
+
+    try:
+        return store.get(user_id, skill_id)
+    except AttachmentNotYours as exc:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} names the skill {skill_id}, which is not one of yours"
+        ) from exc
+
+
 def run_agent(
     flow: Any,
     *,
@@ -631,6 +881,8 @@ def run_agent(
     guardrail_max_retries: int = 0,
     prompt_inputs: Mapping[str, Any] | None = None,
     credential_id: str | None = None,
+    attachments: Sequence[Mapping[str, Any]] = (),
+    tool_failure_policy: str = BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
 ) -> str:
     """`agent` - one YAML agent, on one tier, doing its YAML task.
 
@@ -639,6 +891,14 @@ def run_agent(
     for the run's owner and nobody else - and handed to the factory as the one
     keyword argument its constructor takes (plan 01 D5). The definition, the
     trace and the store never see a key.
+
+    `attachments` is FD10 applied to plans 06, 07 and 08: a list of
+    `{kind, tool_id | server_id | skill_id, params, credential_id}` mappings,
+    every one of them an id or a value and never a name, a path or a class.
+    They are dereferenced HERE, against the run's user, by `bind_attachments` -
+    so a foreign credential, a deleted MCP server or somebody else's custom tool
+    fails this node before a model is called rather than after three branches
+    have billed.
     """
 
     checkpoint(node_id)
@@ -659,6 +919,19 @@ def run_agent(
     resolved_key = (
         {"api_key": _agent_api_key(node_id, credential_id)} if credential_id else {}
     )
+    bound = bind_attachments(
+        attachments, node_id=node_id, failure_policy=tool_failure_policy
+    )
+    # Passed ONLY when they say something, exactly as `resolved_key` above is.
+    # Every crew-factory double in this repository predates plans 06 to 08 and
+    # has a fixed signature; handing them a keyword they do not declare turned
+    # 46 green tests red in one edit, which is the measured reason this is a
+    # conditional rather than two more arguments in the call.
+    extra: dict[str, Any] = {}
+    if attachments:
+        extra["attachments"] = bound
+    if tool_failure_policy != BUILDER_DEFAULT_TOOL_FAILURE_POLICY:
+        extra["tool_failure_policy"] = tool_failure_policy
     crew = _factories().agent_crew(
         node_id=node_id,
         agent_id=agent_id,
@@ -666,9 +939,17 @@ def run_agent(
         tools=tuple(tools),
         max_iter=max_iter,
         guardrail_max_retries=guardrail_max_retries,
+        **extra,
         **resolved_key,
     )
-    return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+    try:
+        return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+    finally:
+        # `cleanup()` in a `finally`, always. CrewAI's MCP resolver opens a
+        # client when the agent is constructed, and a client that outlives the
+        # step is a socket this process has forgotten it holds - which on a
+        # stdio transport is also a child process nobody will reap.
+        bound.cleanup()
 
 
 #: The credential kind an agent node's model key must be. An agent's

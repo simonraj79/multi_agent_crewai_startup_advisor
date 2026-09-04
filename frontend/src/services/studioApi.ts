@@ -477,11 +477,48 @@ export class StudioApi {
       socket.addEventListener('error', () => socket?.close())
     }
 
+    /*
+     * The browser saying it is offline IS a dropped stream, and until this the
+     * console did not believe it.
+     *
+     * A WebSocket whose network has gone away does not necessarily fire
+     * `close` - not promptly, and on a laptop that suspended, not for minutes.
+     * Nothing else here polls, so the console went on reporting `connected`
+     * over a socket that was carrying nothing: exactly the shape of lie the
+     * header badge was fixed for once already (CLAUDE.md closed item 31),
+     * one layer down and about the stream rather than about the transport.
+     *
+     * Closing the socket rather than merely reporting `reconnecting` is what
+     * makes the recovery real. `close` is the one path that increments the
+     * attempt counter, schedules the backoff and eventually re-handshakes with
+     * `after=` at the client's own cursor - so the drop is handled by the code
+     * that already knows how to come back from one, instead of by a second
+     * mechanism that would have to learn.
+     *
+     * `online` retries at once rather than waiting out a backoff that may have
+     * grown to ten seconds while the network was away. It is safe to call into
+     * a socket that is already open: `connect` is only reached from here when
+     * the previous one has closed, because that is what `onOffline` did first.
+     */
+    const onOffline = () => {
+      if (closed) return
+      socket?.close()
+    }
+    const onOnline = () => {
+      if (closed || socket?.readyState === WebSocket.OPEN) return
+      window.clearTimeout(reconnectTimer)
+      void connect()
+    }
+    window.addEventListener('offline', onOffline)
+    window.addEventListener('online', onOnline)
+
     // Floating on purpose: `connect` is async now but never rejects, and the
     // caller wants the unsubscribe function back immediately, not a socket.
     void connect()
     return () => {
       closed = true
+      window.removeEventListener('offline', onOffline)
+      window.removeEventListener('online', onOnline)
       window.clearTimeout(reconnectTimer)
       window.clearInterval(pingTimer)
       if (this.liveSockets.get(runIdValue) === socket) this.liveSockets.delete(runIdValue)

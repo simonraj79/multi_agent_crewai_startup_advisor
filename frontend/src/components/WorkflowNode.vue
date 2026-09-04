@@ -506,9 +506,30 @@ const ariaLabel = computed(() => {
 
 /* Small, and deliberately not a `.button`: this is a per-node control on a
    270px card, and the primary action on this screen is Launch. A control that
-   competed with it would be the loudest thing on a canvas full of failures. */
+   competed with it would be the loudest thing on a canvas full of failures.
+
+   `pointer-events: auto` IS THE WHOLE REASON THIS BUTTON WORKS, and it is not
+   defensive. Vue Flow writes `pointer-events: none` INLINE on every
+   `.vue-flow__node` whose node is not draggable, selectable or connectable and
+   carries no handlers - which on this canvas is all fourteen of them
+   (`StudioView.vue` passes `:nodes-draggable="false"`,
+   `:nodes-connectable="false"`, `:elements-selectable="false"`). Measured: the
+   card resolves to `pointer-events: none`, and `elementFromPoint` over the
+   middle of a card answers `.vue-flow__pane`. So a click on this button was
+   intercepted by the pane every time - the control rendered, reported itself
+   visible and enabled, and did nothing.
+
+   Scoped to the BUTTON and not lifted off the card, deliberately. The card
+   being transparent to the pointer is Vue Flow behaving correctly for a node
+   nobody can select: it is what lets an operator pan the canvas by dragging
+   ACROSS a card, and on a fourteen-node graph the cards are most of the
+   surface. Restoring pointer events to the whole card would trade a working
+   button for a canvas that stops panning wherever there is a node. A
+   descendant may re-enable itself under a `none` ancestor - that is what the
+   property is for. */
 .node-rerun {
   display: inline-flex;
+  pointer-events: auto;
   gap: 5px;
   align-items: center;
   margin-top: 8px;

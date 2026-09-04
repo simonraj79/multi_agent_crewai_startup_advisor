@@ -481,11 +481,11 @@ measured on the integrated tree.
 | 3 | done | `tests/service/test_builder_duplicate.py` (18) |
 | 4 | done, run | `frontend/tests/versionBrowser.spec.ts` (31) and the `e2e/builder.spec.ts` step, green in the 33-test run of 2026-09-03 |
 | 5 | done | server `tests/service/test_builder_delete.py` (12); client `frontend/tests/documentLifecycle.spec.ts` (15). Delete cascades `builder_test_inputs` explicitly, because SQLite honours no FK pragma |
-| 6 | done | `tests/builder/test_upgrade.py` (12) — the Stage 1 hook, per S1 ruling 5 |
+| 6 | done; **criterion amended 2026-09-04 (D-15-33)** | `tests/builder/test_upgrade.py` (12 → 19) — the Stage 1 hook, per S1 ruling 5. The v2 half needs `mock.patch.object` and the criterion now says so; cleanliness under that patch is asserted for all four fixtures, not one |
 | 7 | done, one correction | `tests/service/test_additive_migration.py` (24). The criterion said **six** new tables; the DDL and S1 ruling 2 have **five** plus `runs.mode`. The test is right |
 | 8 | done | `docs/tech-stack.md` §6 regenerated at 41 (`52bdc2e`) |
 | 9 | done, **run against PostgreSQL 18.6, 5/5** | `tests/pg/test_two_writers.py`, one throwaway database per test; skips cleanly without `TEST_DATABASE_URL`; CI job `postgres` on `main` only (decision 25) |
-| 10 | done, one scope note | `tests/service/test_isolation_matrix.py` (32). The **test-inputs row is covered at the table level** — `user_id NOT NULL`, owner-scoped SELECT, cascade on delete — because Stage 1 has no route; plan 13 owns it |
+| 10 | done, one scope note | `tests/service/test_isolation_matrix.py` (32 → 36, the credentials row of D-15-34). The **test-inputs row is covered at the table level** — `user_id NOT NULL`, owner-scoped SELECT, cascade on delete — because Stage 1 has no route; plan 13 owns it |
 | 11 | done | `frontend/tests/builderPersistence.spec.ts` 37/37 |
 | D7 | done | `tests/service/test_run_retention.py` (24) — same tick as orphan recovery, after it; never a `waiting` run, never a terminal run with an unanswered gate, never a document |
 
@@ -660,3 +660,94 @@ things, one of which the author did not ask for.
 
 **Decision 25 — on `main` only.** It needs a container and it is slow, and the
 compare-and-set paths it protects are only at risk once something has merged.
+
+### Round 3 build - 2026-09-04
+
+Thirteen D-15 rows, on `wd/r3-fixes` off `9b06e40`. **Every row stays `open`
+with `closed by` empty**: closing is the critic's, after it re-runs each
+command itself. One commit per id; the two count corrections share one commit
+because they are one defect in two plans and neither touches code.
+
+| id | fixing commit(s) | red-then-green |
+| --- | --- | --- |
+| D-15-2 | `b981916`, then `d1a2096` | `builderCanvas.spec.ts` 76 -> 81 and `e2e/builder-layout.spec.ts`. NOT a fourth re-tuning of the fit - the fit is untouched. The minimap says how many nodes are off-pane and offers Fit; the E2E presses it and then asks the DOM independently, getting 0 |
+| D-15-23 | `0610084` | `versionBrowser.spec.ts` 36 -> 38. Red at the base: `versionsCalls` stays at 1 through a publish. The badge was right and the LIST was stale - a version has no status column |
+| D-15-24 | `f60d0d0` | `versionBrowser.spec.ts` 31 -> 36, five tests over a `.version-delta` element that does not exist at the base; `edge_count` is additive on the response and read leniently, so a row the schema refuses still lists |
+| D-15-25 | `1846302` | `versionBrowser.spec.ts` 38 -> 39. `Export head (v2)`, and the menu left-aligned. **Honest limit in the commit and in the CSS**: this moves the overlap off the rows' identity columns, it does not remove it |
+| D-15-26 | `8415706` | `builderShell.spec.ts` 43 -> 44 for the structure; the 16px is measured in `e2e/builder-layout.spec.ts`, because jsdom applies no stylesheet |
+| D-15-27 | `677657f` | CSS; `templates.spec.ts` still green on "verbatim, on exactly one card", which is the property that must NOT change, and the height is measured in the E2E |
+| D-15-28 | - (`d875762`, `e28e0d7`, another session) | **Already fixed at `9b06e40`.** VERIFIED live against 8095 through the routes: `tool EXPORT ok -> IMPORT 201`, `mcp ... 201`, `skill ... 201`, where round 3 measured 422 for the last two |
+| D-15-29 | `b67f8ab` | `test_builder_import.py` 31 -> 36. **Fixed at the SERVER, not at `builderApi.ts` where the row locates it** - see the disagreement below |
+| D-15-30 | `aeaedc9` | `test_export.py` 38 -> 42. Red measured by putting `server_id`/`skill_id` back to REQUIRED: `2 validation errors ... nodes.8.server_id, nodes.9.skill_id` |
+| D-15-31 | `f98ef5e` | docs - criterion 11, 33 -> **37**, struck through in the sentence |
+| D-15-32 | `13ae696` | `tests/test_ci_pg_guard.py` (10). Red: the shim answers **EXIT=1** naming all five skipped tests with no `TEST_DATABASE_URL`; green: **EXIT=0**, `Ran 5 tests in 26.0s / OK` against `pg18-test` |
+| D-15-33 | `9ce52c5` | criterion 6 rewritten, AND `test_upgrade.py` 18 -> 19: cleanliness under the patch for all four fixtures, not one in four |
+| D-15-34 | `b49c45b` | `test_isolation_matrix.py` 32 -> 36, and `grep -c credential` over the file 1 -> 20 |
+
+Plus `8fc03fa`, which fixes no ledger row and is the full suite's own finding:
+`test_builder_versions.py` pins the version row's exact key set and `edge_count`
+broke it, and `scripts/run_without_skips.py` wrote its nested runner's output to
+stderr - so the guard tests printed a deliberate `FAILED (failures=1)` into the
+outer run and the whole suite read red over a green tree.
+
+**Criteria-table counts that moved with this work**, regenerated by running each
+module alone rather than carried forward: row 6 `tests/builder/test_upgrade.py`
+**12 -> 19**, row 10 `tests/service/test_isolation_matrix.py` **32 -> 36**, row
+11 `frontend/tests/builderPersistence.spec.ts` **37** (unchanged by this work,
+corrected in the criterion by D-15-31).
+
+**Two departures from a row's stated fix, both measured.**
+
+*D-15-29 is fixed at the server.* The row points at
+`builderApi.ts:427`'s `readErrorDetail`, and passing a string `detail` through
+unmodified is the DESIGN there - it is what makes every good server sentence
+reach the operator, and item 11 fixed the opposite defect by adding it. A
+client-side rewriter would have to re-derive which node `nodes.3` means from a
+file the client does not hold, while `_first_schema_error` has the payload in
+its hand. The row's own observation is the argument: "the same server on a
+genuinely malformed upload writes `the file is not JSON (Expecting value at
+line 1 column 1)`, so the product knows how to write these sentences."
+`builderApi.ts` gains a comment saying where they are written.
+
+*D-15-25's overlap is reduced, not removed.* Removing it means DISPLACING the
+version browser rather than covering it, which is a change to the shell's grid
+rows - and another agent was editing that file in a sibling worktree while this
+landed. What makes the reduction enough is the other half of the row: the one
+fact the covered rows were being read for is now in the menu itself.
+
+**Measured at `8fc03fa`**, on Windows, in `D:\MultiAgentSystem-wt\s1-15-api`
+with `PYTHONPATH=D:\MultiAgentSystem-wt\s1-15-api\src`:
+
+```text
+Python:        2285 run, 6 skipped, OK - 142.7s   (2243 at 9b06e40)
+PostgreSQL 18: tests.pg.test_two_writers 5, OK - 29.2s, through the new shim
+Frontend unit: 1482 in 74 files                   (1468 in 74 at 9b06e40)
+vue-tsc -b --force: exit 0        npm run build: exit 0, 702 ms
+Playwright:    78 tests in 10 files, 78 GREEN in 4.4 min - builder 22,
+               visual/builder-canvas 16,
+               builder-layout 11 (8 before), studio 7, isolation 5,
+               builder-perf 5, templates 4, mobile 4, visual/run-canvas 3,
+               capture-templates 1; against a SYNTHETIC=1
+               SYNTHETIC_BRANCH_DELAY_SECONDS=5 backend on :8095
+```
+
+**One frontend run in five was red and its identity was NOT captured**, which
+is recorded rather than dropped. It was the first run after the E2E suite, with
+`transform` at 117 s against the 45 s of every run since - one test in one file,
+and the four runs after it, plus four repeats of `versionBrowser.spec.ts`
+alone, were all green at 1482. Most likely one of the timing-sensitive shell
+mounts under load; not proved, and not reproduced.
+
+**Two E2E runs were lost to a machine-wide process kill and are not counted.**
+Six agents share this machine and `Stop-Process -Name serve` kills every
+backend on it; mine on :8095 was hard-killed at about 21:04 by somebody
+following MISSION.md §8's stop recipe, which the Integrator is correcting.
+A run started before that collapsed from test 13 onward at 30-45 ms per test -
+the signature of the dev server going with it. The 78 above is a clean run
+after restarting the backend by hand. Stop only your own, by pid from your
+port.
+
+**Six committed visual snapshots were regenerated** (`d1a2096`) because the
+off-pane strip is a new visible element. `template-16-dark-chromium` is the
+evidence for D-15-2 in one frame: the validator template opened fresh at
+1440x900 with **no dock open at all** reads `7 off-pane · Fit`.

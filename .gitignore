@@ -108,3 +108,8 @@ db/
 
 # Lecture source material - 20 MB binary, not application source.
 *.pdf
+
+# Plan 08 C11: a user's own SKILL.md packs are materialised here as a CACHE of
+# the `user_skills` rows. The committed half is `data/skills/builtin/`, which
+# is this repository's own four and is NOT ignored.
+data/skills/users/

@@ -187,6 +187,15 @@ function pythonProblemCodes(): string[] {
     '../../src/brief_crew/builder/bounds.py',
     '../../src/brief_crew/builder/budget.py',
     '../../src/brief_crew/builder/compiler.py',
+    // Plans 06, 07 and 08 declare their own codes in their own modules, in the
+    // module-level shape this regex can see. SEVEN files now, and the same
+    // seven are named in `tests/builder/test_problem_code_declarations.py`, in
+    // `scripts/emit_builder_fixtures.py` and in `_problem_code_union` - they
+    // move together, or a code exists on the server that this tuple has never
+    // heard of, which is section 14's defect 2.
+    '../../src/brief_crew/builder/tools.py',
+    '../../src/brief_crew/builder/mcp.py',
+    '../../src/brief_crew/builder/skills.py',
     // The fourth, added 2026-09-04 with plan 05. `compiler.py` was missing from
     // this array for a while and twenty-seven codes passed as thirty; the same
     // omission here would hide `model-lacks-capability`, which is the most
@@ -458,7 +467,7 @@ describe('the problem codes are the python problem codes', () => {
     expect([...PROBLEM_CODES].sort()).toEqual(pythonProblemCodes())
   })
 
-  it('finds all forty-one, so an empty read cannot pass as agreement', () => {
+  it('finds all fifty, so an empty read cannot pass as agreement', () => {
     // Without this the assertion above would be satisfied by a regex that
     // matched nothing against a tuple that had lost everything - and, as the
     // 27 that stood here until 2026-09-02 proved, by a file list missing a
@@ -480,19 +489,28 @@ describe('the problem codes are the python problem codes', () => {
     // `model-over-ceiling` and `model-lacks-capability`. That is exactly the
     // four-place edit the `compiler.py` paragraph above predicts, made in one
     // commit rather than discovered three commits later.
-    expect(pythonProblemCodes()).toHaveLength(41)
-    expect(PROBLEM_CODES).toHaveLength(41)
+    //
+    // 41 until 2026-09-04, when plans 06, 07 and 08 added three more declaring
+    // files - `builder/tools.py`, `builder/mcp.py` and `builder/skills.py` -
+    // and nine codes: three about a tool node's id, settings and key, five
+    // about an MCP server and its tools, and one about a skill pack. That is
+    // the same four-place edit again, made in one commit.
+    expect(pythonProblemCodes()).toHaveLength(50)
+    expect(PROBLEM_CODES).toHaveLength(50)
   })
 
-  it('declares the four warnings, and they are codes', () => {
-    // `bounds.py` writes `severity="warning"` at exactly four sites. Every
-    // other code is an error and blocks publish. The fourth is
-    // `attachment-unattached`, which is a warning because it is exactly what a
-    // node looks like the moment it is dropped.
+  it('declares the five warnings, and they are codes', () => {
+    // `bounds.py` writes `severity="warning"` at exactly four sites and
+    // `mcp.py` at one. Every other code is an error and blocks publish. The
+    // fourth is `attachment-unattached`, which is a warning because it is
+    // exactly what a node looks like the moment it is dropped; the fifth is
+    // `mcp-tool-description-suspicious`, which is a warning because the
+    // thirteen injection patterns have false positives by design and PLANS.md
+    // decision 8 rules that the author decides with eyes open.
     for (const code of WARNING_CODES) {
       expect(PROBLEM_CODES).toContain(code)
     }
-    expect(WARNING_CODES).toHaveLength(4)
+    expect(WARNING_CODES).toHaveLength(5)
   })
 
   it('anchors every FIELD_CODES entry to a real code', () => {

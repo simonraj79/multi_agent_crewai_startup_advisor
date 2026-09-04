@@ -33,6 +33,11 @@
     "library-missing-prompt-input",
     "library-unbuildable-crew",
     "library-unknown-id",
+    "mcp-no-tools-selected",
+    "mcp-server-unavailable",
+    "mcp-tool-description-suspicious",
+    "mcp-tool-unknown",
+    "mcp-transport-disallowed",
     "member-agent-has-flow-edges",
     "member-target-not-crew",
     "model-lacks-capability",
@@ -45,7 +50,11 @@
     "router-branch-count",
     "router-branch-unconnected",
     "router-duplicate-branch",
-    "router-otherwise"
+    "router-otherwise",
+    "skill-unknown",
+    "tool-credential-required",
+    "tool-param-invalid",
+    "tool-unknown"
   ],
   "instances": [
     {
@@ -385,6 +394,66 @@
       }
     },
     {
+      "code": "mcp-no-tools-selected",
+      "scenario": "an MCP node that checks no tools",
+      "why": "An incomplete graph rather than an invalid document, so document.py allows it and bounds reports it - the difference between a problem in the dock and a save that fails.",
+      "problem": {
+        "code": "mcp-no-tools-selected",
+        "severity": "error",
+        "message": "hands names a server and checks none of its tools; pick at least one, or the agent gains nothing from the attachment",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "mcp-server-unavailable",
+      "scenario": "an MCP server that is not this caller's",
+      "why": "Absent and foreign are one answer, for the reason above.",
+      "problem": {
+        "code": "mcp-server-unavailable",
+        "severity": "error",
+        "message": "hands names the MCP server ms_ffffffffffff, which is not one of yours; add it in the MCP panel first",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "mcp-tool-description-suspicious",
+      "scenario": "an MCP tool whose description matches an injection pattern",
+      "why": "The fifth warning. PLANS.md decision 8: the tool stays selectable and the author decides, because the thirteen patterns have false positives by design - `act as` is ordinary English.",
+      "problem": {
+        "code": "mcp-tool-description-suspicious",
+        "severity": "warning",
+        "message": "hands checks 'search_docs', whose description matches 'ignore\\\\s+(previous|all|above|prior)\\\\s+instructions?'. That is often innocent - the pattern list has false positives - but the description reaches the agent's prompt, so read it before you ship",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "mcp-tool-unknown",
+      "scenario": "an MCP tool the last discovery does not carry",
+      "why": "The shape a server RENAMING a tool takes. It is a validate problem rather than an exception because `tool_filter` simply fails to match and the agent runs without it.",
+      "problem": {
+        "code": "mcp-tool-unknown",
+        "severity": "error",
+        "message": "hands checks 'renamed' and 'Docs server''s last discovery does not carry it; re-discover the server",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "mcp-transport-disallowed",
+      "scenario": "a stored MCP server whose transport is no longer permitted",
+      "why": "The shape a document takes after MCP_STDIO_ENABLED is turned back off, which is why the transport is checked at validate and not only at create.",
+      "problem": {
+        "code": "mcp-transport-disallowed",
+        "severity": "error",
+        "message": "hands uses 'Local server', and this deployment connects to remote MCP servers only; a stdio server would be a process started on the server by a document, and that is off by default",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
       "code": "member-agent-has-flow-edges",
       "scenario": "an agent that is both a crew member and a step of the flow",
       "why": "It cannot be both. As a member it runs inside its crew in the crew's own order, and as a step it runs again on its own - so nothing downstream could say which of the two outputs it was reading, and the author would be billed for both.",
@@ -537,6 +606,54 @@
         "severity": "error",
         "message": "router 'wide' declares 0 otherwise branches and must declare exactly one. Without it a value that matches no comparison wedges the run at this router; with two, which one takes an unmatched value is a coin toss written into the document",
         "node_id": "wide",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "skill-unknown",
+      "scenario": "a skill pack that is not this caller's",
+      "why": "One code for absent, deleted and foreign. A built-in is checked without an identity and validates clean for everyone, which is why this cannot simply be reject anything you do not own.",
+      "problem": {
+        "code": "skill-unknown",
+        "severity": "error",
+        "message": "hands names the skill sk_ffffffffffff, which is not one of yours and is not a built-in; it may have been deleted",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "tool-credential-required",
+      "scenario": "a tool that needs a key with none named",
+      "why": "A DIFFERENT repair from `credential-missing` - add a key of this kind, rather than that id is not yours - and therefore a different code, which is the rule compiler.py already states for its library codes.",
+      "problem": {
+        "code": "tool-credential-required",
+        "severity": "error",
+        "message": "hands runs 'Search the web (Firecrawl)', which needs a firecrawl key, and names none; add a firecrawl credential and pick it here",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "tool-param-invalid",
+      "scenario": "a tool parameter the catalogue entry refuses",
+      "why": "The gauntlet forbids a parameter rendered in the UI that the compiler ignores; this is the same rule from the other side - a parameter the server refuses has to be reported rather than silently dropped.",
+      "problem": {
+        "code": "tool-param-invalid",
+        "severity": "error",
+        "message": "hands: 'provider' is one of serper, tavily, exa, brave; not 'nope'",
+        "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "tool-unknown",
+      "scenario": "a tool this deployment does not have",
+      "why": "One code for a made-up id and for somebody else's custom tool, the rule `credential-missing` already states: a canvas that told the two apart would be an oracle for other people's ids.",
+      "problem": {
+        "code": "tool-unknown",
+        "severity": "error",
+        "message": "hands names the tool 'no_such_tool', which is not in this deployment's catalogue and is not one of yours; the builtins are research_market_landscape, analyze_community_sentiment, assess_technical_feasibility, firecrawl_scrape, firecrawl_crawl, firecrawl_search, web_search, http_request, scrape_website, postgres_query",
+        "node_id": "hands",
         "edge_id": null
       }
     }
@@ -4849,6 +4966,870 @@
           "source_port": "out",
           "target": "report",
           "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool this deployment does not have": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unknown tool",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "tool",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "no_such_tool",
+            "params": {}
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool parameter the catalogue entry refuses": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "bad provider",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "tool",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "web_search",
+            "params": {
+              "provider": "nope"
+            }
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool that needs a key with none named": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "keyless firecrawl",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "tool",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_search",
+            "params": {}
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an MCP node that checks no tools": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "no tools ticked",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_0123456789ab",
+            "tool_names": []
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an MCP server that is not this caller's": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a stranger's server",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_ffffffffffff",
+            "tool_names": [
+              "search_docs"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an MCP tool the last discovery does not carry": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a renamed tool",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_0123456789ab",
+            "tool_names": [
+              "renamed"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a stored MCP server whose transport is no longer permitted": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a stdio server",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_0123456789ab",
+            "tool_names": [
+              "search_docs"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an MCP tool whose description matches an injection pattern": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a suspicious description",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "server_id": "ms_0123456789ab",
+            "tool_names": [
+              "search_docs"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a skill pack that is not this caller's": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a stranger's pack",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "skill",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "skill_id": "sk_ffffffffffff"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
         }
       ],
       "joins": {},

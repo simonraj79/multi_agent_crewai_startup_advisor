@@ -542,6 +542,29 @@ export const PROBLEM_CODES = [
   // disables the control and the server reports it anyway, so a stale client
   // cannot smuggle in a parameter the compiler would silently drop.
   'model-unknown', 'model-over-ceiling', 'model-lacks-capability',
+  // 06-tool-registry.md, added 2026-09-04 with `builder/tools.py`. A tool node
+  // names a catalogue id and nothing else, so all three are about the id, its
+  // settings, or the key it needs - never about a class or a path, because a
+  // document cannot carry one.
+  //
+  // `tool-credential-required` is deliberately NOT `credential-missing`, which
+  // 06 D4 reuses for both. The repairs differ - "add a key of this kind and
+  // pick it" against "that id is not yours" - and `compiler.py` already states
+  // the rule that a different repair earns a different code.
+  'tool-unknown', 'tool-param-invalid', 'tool-credential-required',
+  // 07-mcp-client.md, added 2026-09-04 with `builder/mcp.py`. The last is the
+  // FIFTH warning: a discovered tool description matching one of thirteen
+  // injection patterns. It warns rather than errors because the list has false
+  // positives by design - `act as` is ordinary English - and PLANS.md decision
+  // 8 rules that the tool stays selectable with the warning shown.
+  'mcp-server-unavailable', 'mcp-tool-unknown', 'mcp-no-tools-selected',
+  'mcp-transport-disallowed', 'mcp-tool-description-suspicious',
+  // 08-skills.md. One code for absent, deleted and foreign; a built-in
+  // validates clean for everyone, so this is not "reject what you do not own".
+  // `skill-contains-scripts` is NOT here: it is an import-time refusal that
+  // never lands on a node, so it is declared in `service/builder_api.py` where
+  // the three greps that build this union cannot sweep it up.
+  'skill-unknown',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 
@@ -558,6 +581,13 @@ export type ProblemCode = (typeof PROBLEM_CODES)[number]
 export const WARNING_CODES = [
   'router-branch-unconnected', 'no-output-node', 'join-single-predecessor',
   'attachment-unattached',
+  // The fifth, added 2026-09-04 with plan 07. A discovered MCP tool whose
+  // description matched one of thirteen injection patterns: it warns rather
+  // than errors because the list has false positives by design, and PLANS.md
+  // decision 8 rules that the tool stays selectable with the warning shown.
+  // Hiding it in the picker would be the quietly-divergent double this
+  // repository keeps warning about.
+  'mcp-tool-description-suspicious',
 ] as const
 
 export interface BuilderProblem {

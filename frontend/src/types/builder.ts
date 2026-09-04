@@ -1659,3 +1659,123 @@ export interface BuilderVersionRow {
 
 /** What a save may declare about itself, for the version browser's `source`. */
 export type SaveSource = 'save' | 'autosave' | 'restore'
+
+/* ======================================================================== *
+ *  The docked test panel - .agent/plans/13-flow-testing.md, contract C7    *
+ * ======================================================================== */
+
+/**
+ * What KIND of run the panel is asking for - C7, `CreateRunRequest.mode`.
+ *
+ * `run` is what Launch has always sent. `test` is an ordinary run that is
+ * LABELLED one: it passes every admission check, the same rate limit, the same
+ * ceiling and the same frames, and it appears in run history (decision 17,
+ * because hiding spend is the failure the cost rules exist to prevent). It is
+ * not a cheaper run, it is a findable one.
+ */
+export type RunMode = 'run' | 'test' | 'dry_run' | 'node_test'
+
+/**
+ * One saved test input - `GET /api/builder/workflows/{id}/test-inputs`.
+ *
+ * `inputs` is the run body: `{<input_field>: string}`. `node_mocks` is the
+ * upstream `out__*` values a single-node test replays into everything above the
+ * node under test, keyed by the AUTHOR's node id rather than by the compiled
+ * state key - the prefix is stripped server-side.
+ *
+ * Two fields and not one nested object, where 13 D3 writes
+ * `{<input_field>: str, mocks: {...}}`: `CreateRunRequest.inputs` is merged
+ * wholesale into the flow's pydantic state by CrewAI, so a `mocks` key inside
+ * `inputs` would arrive as a state field.
+ */
+export interface TestInput {
+  id: string
+  document_id: string
+  label: string
+  inputs: Record<string, unknown>
+  node_mocks: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+/** `POST .../test-inputs`. `from_run_id` is D3's "use last run's outputs as mocks". */
+export interface TestInputDraft {
+  label: string
+  inputs: Record<string, unknown>
+  node_mocks?: Record<string, unknown>
+  /** A finished run of the caller's whose `out__*` slots seed `node_mocks`. */
+  from_run_id?: string
+}
+
+/**
+ * A saved input this build SHIPS, beside the template it belongs to.
+ *
+ * Criterion 11: a template that cannot be run without first inventing a prompt
+ * is a template a cold sign-in cannot run. These are committed constants and
+ * not database rows, deliberately - a row belongs to whoever wrote it, and
+ * "every author gets one" is a property of the build rather than of a user.
+ */
+export interface TemplateTestInput {
+  /** The template's own id, for the test that asserts every one has one. */
+  templateId: string
+  label: string
+  /** The one value, for the template's own `input_field`. */
+  value: string
+}
+
+/**
+ * `POST /api/sessions/{id}/runs` with `mode: dry_run` - 13 D5, 10 D8.
+ *
+ * Parse, bound, price and compile with no kickoff, no run row, no admission
+ * slot and no rate-limit charge. A 200 rather than a 202, because nothing was
+ * accepted for later.
+ *
+ * `budget` is `app.py::_budget_payload`'s SEVEN keys and not the nine
+ * `POST /validate` returns: `over_ceiling` and `ceiling_usd` are absent here.
+ * Typed as what arrives rather than as `BuilderBudget` with two optional
+ * fields, because a panel that read `over_ceiling` off this and got
+ * `undefined` would render "within budget" about a graph nobody priced.
+ */
+export interface DryRunBudget {
+  static_cost_usd: number
+  floor_cost_usd: number
+  modelled_calls: number
+  billable_nodes: number
+  escalation_nodes: number
+  cycles: number
+  unpriced_models: string[]
+}
+
+export interface DryRunResult {
+  valid: boolean
+  problems: BuilderProblem[]
+  budget: DryRunBudget
+  /** The literal declaration `Flow.from_declaration` would have been handed. */
+  definition: Record<string, unknown>
+}
+
+/**
+ * `GET /api/builder/workflows/{id}/compiled` - C7, 09 D8.
+ *
+ * Three renderings of one compiled definition: the YAML is what runs, the
+ * Python is what it means, and the definition is what a client diffs. No secret
+ * reaches any of them - the renderer is handed a labelling function and never
+ * the vault, so `<credential: …>` can only ever be a label.
+ */
+export interface CompiledPreview {
+  document_id: string
+  version: number
+  /** ISO datetime. */
+  generated_at: string
+  yaml: string
+  python: string
+  definition: Record<string, unknown>
+}
+
+/** `GET /api/runs/{id}/state?step=` - C7. The flow state as of one frame. */
+export interface RunStateResult {
+  run_id: string
+  /** The frame `seq` this state was read at; 0 when no step was asked for. */
+  step: number
+  state: Record<string, unknown>
+}

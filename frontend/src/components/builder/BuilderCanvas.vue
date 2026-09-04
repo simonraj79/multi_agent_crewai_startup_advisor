@@ -82,6 +82,29 @@ const props = defineProps<{
    * thing here that measures.
    */
   dock?: HTMLElement | null
+  /**
+   * The docked test panel BELOW this canvas (13 D1).
+   *
+   * A second observed element rather than a second meaning for `dock`, because
+   * the two sit on opposite sides of the graph and only their effect on its
+   * height is shared: opening the test panel takes 260px from the canvas
+   * exactly as opening the version browser does, and the fit is owed for the
+   * same reason. Everything else about the rule - never mid-gesture, only on a
+   * GROW after the author's first gesture - is unchanged and is why this is a
+   * prop here rather than an observer in the panel.
+   */
+  panel?: HTMLElement | null
+  /**
+   * `design` while the author is drawing, `run` while a test run streams into
+   * this canvas (13 D2).
+   *
+   * The handover costs no JavaScript at all - one attribute, and
+   * `builder.css`'s `[data-mode='run']` block outranks the seven kind
+   * gradients by a single extra attribute of specificity. Those rules shipped
+   * with the card and had no writer until now; §5.1 wrote them expecting
+   * exactly this.
+   */
+  mode?: 'design' | 'run'
 }>()
 
 const flow = useVueFlow('builder-flow')
@@ -245,6 +268,7 @@ onMounted(() => {
   })
   layoutObserver.observe(frame.value)
   if (props.dock) layoutObserver.observe(props.dock)
+  if (props.panel) layoutObserver.observe(props.panel)
 })
 
 /*
@@ -263,6 +287,18 @@ watch(
   (dock, previous) => {
     if (previous) layoutObserver?.unobserve(previous)
     if (dock) layoutObserver?.observe(dock)
+  },
+  { flush: 'post' },
+)
+
+/* The test panel arrives the same way and for the same reason - a template ref
+   in the shell, assigned in a post-render effect after this component's own
+   `onMounted` has already run. */
+watch(
+  () => props.panel,
+  (panel, previous) => {
+    if (previous) layoutObserver?.unobserve(previous)
+    if (panel) layoutObserver?.observe(panel)
   },
   { flush: 'post' },
 )
@@ -690,7 +726,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
     class="builder-canvas"
     :class="{ 'is-connecting': isConnecting, 'is-hovering': isHovering, 'is-read-only': readOnly }"
     :[BUILDER_CANVAS_ATTR]="''"
-    data-mode="design"
+    :data-mode="mode ?? 'design'"
     role="application"
     tabindex="0"
     :aria-label="label ? `Flow builder canvas for ${label}` : 'Flow builder canvas'"

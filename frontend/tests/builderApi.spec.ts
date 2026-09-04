@@ -260,16 +260,36 @@ describe('the builder API client', () => {
        * goes green stops being a guard the moment it is raised.
        */
       const planTen = ['GET /workflows/{document_id}/compiled']
+      /*
+       * Plan 13 adds three, and MOVES `compiled` from declared-but-unreached to
+       * reached: the Code tab is the panel plan 10's note said would come, so
+       * `api.compiled` is now walked below with the rest.
+       *
+       * The panel's other two routes are NOT here and cannot be: `dryRun` posts
+       * to `/api/sessions/{id}/runs` and `runState` reads `/api/runs/{id}/state`,
+       * neither of which is under `BUILDER_API_PREFIX`. This test's whole
+       * subject is the builder router, and folding a run route into it would
+       * make the path arithmetic above answer nonsense - `slice(prefix.length)`
+       * on `/api/runs/...` is not a builder path with the prefix removed, it is
+       * a mangled string that happens to compare equal to nothing.
+       */
+      const planThirteen = [
+        'GET /workflows/{document_id}/test-inputs',
+        'POST /workflows/{document_id}/test-inputs',
+        'DELETE /workflows/{document_id}/test-inputs/{test_input_id}',
+      ]
       const modelsLanded = modelRegistryRoutes.every((route) => declared.has(route))
       const attachmentsLanded = attachmentRoutes.every((route) => declared.has(route))
       const planTenLanded = planTen.every((route) => declared.has(route))
+      const planThirteenLanded = planThirteen.every((route) => declared.has(route))
       expect(attachmentRoutes).toHaveLength(16)
       expect(declared.size).toBe(
         8 +
           (planFifteenLanded ? planFifteen.length : 0) +
           (modelsLanded ? modelRegistryRoutes.length : 0) +
           (attachmentsLanded ? attachmentRoutes.length : 0) +
-          (planTenLanded ? planTen.length : 0),
+          (planTenLanded ? planTen.length : 0) +
+          (planThirteenLanded ? planThirteen.length : 0),
       )
 
       /*
@@ -301,11 +321,19 @@ describe('the builder API client', () => {
         await api.listVersions('ug_0a1b2c3d')
         await api.unpublish('ug_0a1b2c3d')
       }
+      if (planTenLanded) await api.compiled('ug_0a1b2c3d')
+      if (planThirteenLanded) {
+        await api.listTestInputs('ug_0a1b2c3d')
+        await api.createTestInput('ug_0a1b2c3d', { label: 'a topic', inputs: { topic: 'x' } })
+        await api.deleteTestInput('ug_0a1b2c3d', 'ti_0123456789ab')
+      }
 
       const asked = fetchMock.mock.calls.map(([url, init]) => {
         const path = String(url).split('?')[0].slice(BUILDER_API_PREFIX.length)
         const method = ((init as RequestInit | undefined)?.method ?? 'GET').toUpperCase()
-        return `${method} ${path.replace('ug_0a1b2c3d', '{document_id}')}`
+        return `${method} ${path
+          .replace('ug_0a1b2c3d', '{document_id}')
+          .replace('ti_0123456789ab', '{test_input_id}')}`
       })
 
       expect(asked).toEqual([
@@ -317,6 +345,8 @@ describe('the builder API client', () => {
         'POST /validate',
         'POST /workflows/{document_id}/publish',
         ...(planFifteenLanded ? planFifteen : []),
+        ...(planTenLanded ? planTen : []),
+        ...(planThirteenLanded ? planThirteen : []),
       ])
       for (const route of asked) expect(declared).toContain(route)
 
@@ -331,7 +361,6 @@ describe('the builder API client', () => {
         vocabularyRoute,
         ...(modelsLanded ? modelRegistryRoutes : []),
         ...(attachmentsLanded ? attachmentRoutes : []),
-        ...(planTenLanded ? planTen : []),
       ])
       expect([...declared].filter((route) => !accountedFor.has(route)).sort()).toEqual([])
       expect(accountedFor.size).toBe(declared.size)

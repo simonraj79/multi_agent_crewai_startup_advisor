@@ -27,12 +27,14 @@ import InspectorRail from './InspectorRail.vue'
 import NodePalette from './NodePalette.vue'
 import PortMenu from './PortMenu.vue'
 import ProblemsPanel from './ProblemsPanel.vue'
+import TestPanel from './TestPanel.vue'
 import PublishDialog from './PublishDialog.vue'
 import SaveChip from './SaveChip.vue'
 import ShortcutSheet from './ShortcutSheet.vue'
 import TemplateGallery from './TemplateGallery.vue'
 import VersionBrowser from './VersionBrowser.vue'
 import { useBuilderCanvas, canvasHasFocus, snapToGrid } from '../../composables/useBuilderCanvas'
+import { useFlowTest } from '../../composables/useFlowTest'
 import { useBuilderClipboard } from '../../composables/useBuilderClipboard'
 import { edgeOptionsFor, useBuilderDocument } from '../../composables/useBuilderDocument'
 import { useBuilderHotkeys } from '../../composables/useBuilderHotkeys'
@@ -170,6 +172,44 @@ const persistence = useBuilderPersistence(store, builderApi, {
   },
 })
 const clipboard = useBuilderClipboard(store)
+
+/**
+ * The docked test panel (plan 13).
+ *
+ * Its getters read the LIVE document and the live persistence state rather
+ * than taking a snapshot, because both move under it: a rename changes the
+ * input field the Run tab edits, and a publish is what turns Run from refused
+ * into available. `published` is `publishedVersion`, not the head's status - a
+ * graph whose head is a draft may still have an older version registered, and
+ * that older version is the one a run resolves.
+ */
+const flowTest = useFlowTest({
+  document: () => doc.value,
+  documentId: () => persistence.documentId.value,
+  published: () => persistence.publishedVersion.value !== null,
+  userId: () => props.user?.id ?? null,
+})
+
+/** The panel's own element, for the canvas's settling re-fit (13 D1). */
+const testPanelRef = ref<{ $el?: HTMLElement } | null>(null)
+const testPanelEl = computed<HTMLElement | null>(() => testPanelRef.value?.$el ?? null)
+
+/**
+ * `run` while a test run has an id, `design` otherwise.
+ *
+ * It stays in run mode after the run FINISHES, deliberately: the completed and
+ * errored cards are the answer the author pressed Run for, and dropping back to
+ * the kind gradients the moment the last frame lands would erase it. The next
+ * document, or a reload, is what returns the canvas to design.
+ */
+const canvasMode = computed<'design' | 'run'>(() =>
+  flowTest.run.runId.value ? 'run' : 'design',
+)
+
+/** Node labels by id, for the test panel's log. `anchorLabels` is a different map. */
+const testNodeLabels = computed<Record<string, string>>(() =>
+  Object.fromEntries(doc.value.nodes.map((node) => [String(node.id), node.label])),
+)
 
 /**
  * True while a connect drag is live, which is the only gesture that can move
@@ -1873,10 +1913,26 @@ watch(
             :stale="validation.phase.value === 'stale'"
           />
 
-          <BuilderCanvas :canvas="canvas" :label="doc.name" :read-only="persistence.viewingVersion.value" :dock="dockEl">
+          <BuilderCanvas
+            :canvas="canvas"
+            :label="doc.name"
+            :read-only="persistence.viewingVersion.value"
+            :dock="dockEl"
+            :panel="testPanelEl"
+            :mode="canvasMode"
+          >
             <template #node="nodeProps">
+              <!--
+                `data` is rebound AFTER `v-bind`, which is what lets a run state
+                reach the card without `useBuilderCanvas` knowing about runs.
+                `BuilderNode` reads `data.runState` and nothing in `src/` wrote
+                it until now - the card, its five classes and the
+                `[data-mode='run']` block have all been there since §5.1,
+                waiting for a writer.
+              -->
               <BuilderNode
                 v-bind="nodeProps"
+                :data="{ ...nodeProps.data, runState: flowTest.run.nodeStates[nodeProps.id] ?? 'idle' }"
                 @rename="onNodeRename"
                 @rename-started="canvas.noteRenameStarted"
                 @toggle-join="onToggleJoin"
@@ -1902,6 +1958,8 @@ watch(
               />
             </template>
           </BuilderCanvas>
+
+          <TestPanel ref="testPanelRef" :test="flowTest" :labels="testNodeLabels" />
 
           <ProblemsPanel
             :problems="validation.problems.value"
@@ -2031,13 +2089,18 @@ watch(
    budget meter took the canvas's `1fr` and the canvas fell into an implicit
    `auto` row. A jsdom mount cannot see that; only a browser can. */
 .graph-workspace {
-  grid-template-rows: 64px auto auto minmax(0, 1fr) auto;
+  grid-template-rows: 64px auto auto minmax(0, 1fr) auto auto;
 }
 .graph-workspace > .document-bar { grid-row: 1; }
 .graph-workspace > .builder-dock { grid-row: 2; }
 .graph-workspace > .budget-meter { grid-row: 3; }
 .graph-workspace > .builder-canvas { grid-row: 4; }
 .graph-workspace > .problems-panel { grid-row: 5; }
+/* Plan 13 D1: the test panel is a REAL track under the problems dock, never
+   an overlay (R15). It is last because it is the thing an author opens on
+   purpose, and a pane between the graph and its problems would put a
+   variable-height strip between a node and the row that names it. */
+.graph-workspace > .test-panel { grid-row: 6; }
 
 .workspace-switch { grid-template-columns: auto auto; padding: 2px; }
 .workspace-switch button { min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }

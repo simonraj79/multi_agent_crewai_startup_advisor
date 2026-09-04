@@ -129,11 +129,34 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --extra service
 
-      # `-v` so the run log names each of the five paths; a skip here would
-      # mean TEST_DATABASE_URL did not reach the process, and the log must
-      # say "ok" five times rather than "skipped" once.
+      # THE GUARD, and it is the whole point of these two steps (D-15-32).
+      # `unittest` exits 0 over a suite it skipped entirely - measured:
+      # with TEST_DATABASE_URL unset, `python -m unittest
+      # tests.pg.test_two_writers -v` answers "Ran 5 tests / OK (skipped=5)"
+      # and exit code 0. So this job was green when it proved nothing, and a
+      # comment saying "the log must say ok five times" closed nothing,
+      # because nothing read the log.
+      #
+      # Two steps because they catch different things. This one catches the
+      # variable not reaching the process, which is the failure the row
+      # measured, and it says so before the suite has a chance to look green.
+      - name: The database URL must have reached this job
+        run: |
+          if [ -z "${TEST_DATABASE_URL}" ]; then
+            echo "TEST_DATABASE_URL is empty; this job would skip all five" \
+                 "paths and still report success" >&2
+            exit 1
+          fi
+          echo "TEST_DATABASE_URL is set"
+
+      # And this one catches every OTHER reason a test can be skipped - a
+      # missing extra, a `skipUnless` added later, an import guard - none of
+      # which the check above would see. `-v` is kept: the run log still names
+      # each of the five paths, and now a "skipped" line fails the job.
       - name: Two writers, five paths
-        run: uv run --no-sync python -m unittest tests.pg.test_two_writers -v
+        run: >-
+          uv run --no-sync python scripts/run_without_skips.py
+          tests.pg.test_two_writers
 
   frontend:
     name: Frontend type-check and build

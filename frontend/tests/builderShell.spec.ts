@@ -502,6 +502,41 @@ describe('the gallery is the empty state and the way back into saved work', () =
       // And the trash icon is still there, still last.
       expect(row.find('.library-delete').exists()).toBe(true)
     })
+
+    it('separates the one irreversible action from the three that are not (D-15-26)', async () => {
+      /*
+       * Round 3: "four unlabelled 28px gallery glyphs, delete 34px from
+       * export". `DocumentBar` had already answered this on its own menu in
+       * round 2 (D-15-6) - a separator, a gap, and the error colour AT REST
+       * rather than only on hover - and this is the same defect on a second
+       * surface, so it gets the same answer rather than a second one.
+       *
+       * The GAP is 18px of CSS and jsdom applies no stylesheet, so what is
+       * asserted here is the structure that carries it: a separator element,
+       * in DOM order between Export and Delete, and the delete button carrying
+       * its own class. The rendered distance is measured in
+       * `e2e/builder-layout.spec.ts`, which is the only place it has a value.
+       */
+      const { wrapper } = await threeRows()
+      const row = wrapper.findAll('.library-row')[0]
+      const separator = row.get('.library-actions-separator')
+      expect(separator.attributes('aria-hidden')).toBe('true')
+
+      const order = [...row.get('.library-actions').element.children].map((child) =>
+        child.getAttribute('data-testid') ?? child.className,
+      )
+      expect(order).toEqual([
+        'library-versions',
+        'library-duplicate',
+        'library-export',
+        'library-actions-separator',
+        'library-delete',
+      ])
+      // The screen reader hears "Delete <name>" either way, so the separator
+      // is hidden from it: the grouping is visual and duplicating it in the
+      // accessibility tree would be noise.
+      expect(row.get('[data-testid="library-delete"]').attributes('aria-label')).toMatch(/^Delete /)
+    })
   })
 
   it('refuses a delete until the graph name is typed back', async () => {

@@ -248,6 +248,31 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
    because round 1 ticked this criterion with its text unchanged and the
    deviation living only in a Status row - which is the process failure the
    critic's dimension 16 exists to catch.
+
+   **Amended 2026-09-04 (round 3, D-01-6 / D-01-10). There is no longer a
+   SECOND exclusion.** Round 3 found one: `tests/service/test_secret_redaction.py`
+   carried its own `HEADER_PAIR = {"name", "value"}` and asserted
+   `is_secret_key(field) == field not in HEADER_PAIR` over
+   `config.CREDENTIAL_FIELDS` - so the file that owns this criterion pinned as
+   NOT secret the very field holding the `http_header` / `mcp_header` secret,
+   with nothing in the plan saying so and nothing in the product declaring it.
+   The row offered two repairs and this is the second one: rather than record
+   the exclusion, **it is gone.** The vault pair is `("name", "header_value")`
+   now; `headervalue` is an exact entry in `SECRET_KEYS`; and which vault
+   fields are public is declared by `config.CREDENTIAL_PUBLIC_FIELDS`
+   (`{"name"}`) in the product, with the test deriving its pin from that
+   constant instead of carrying one of its own.
+
+   **The row's own suggested fix - putting the bare word `value` on the list -
+   was tried first and measured, and it is the wrong repair.** Six tests red
+   across four modules, three of them the gate surface, because every gate
+   `derived` entry is `{"key": name, "value": display, "kind": kind}` and its
+   read-only panel went to `***`; `value` is also a router branch's compare
+   operand, a transform's `args.value` and an output node's body slot, so a
+   global entry redacts a compiled graph's own logic in the persisted state.
+   The field moved instead of the list. Pinned by
+   `ListTests::test_the_header_pair_secret_half_is_covered_and_the_name_half_is_not`
+   and `ListTests::test_no_vault_field_is_excluded_by_a_constant_in_this_file`.
 7. `tests/service/test_synthetic_identity.py`: the header is honoured only under `SYNTHETIC=1` with `AUTH_BASE_URL` unset; with `AUTH_BASE_URL` set it is ignored and the bearer path wins; with neither, the caller is anonymous.
 8. `tests/service/test_validate_identity.py`: `validate` with a user emits `credential-missing` for a foreign id; without a user it emits nothing and returns `identity_checked: false`.
 9. `frontend/tests/builderAccountChip.spec.ts`: `BuilderView` renders the chip from the `user` prop and calls sign-out; with `authenticated: false` and auth configured, the builder shows the sign-in panel, not the gallery.
@@ -277,8 +302,8 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
      unsaved work when they sign out, and that is the intent: the draft holds a
      credential id.
 
-   Pinned by `frontend/tests/authGate.spec.ts` (5),
-   `frontend/tests/identityStorage.spec.ts` (9),
+   Pinned by `frontend/tests/authGate.spec.ts` (~~5~~ **4**),
+   `frontend/tests/identityStorage.spec.ts` (~~9~~ **8**),
    `frontend/tests/builderRunHandoff.spec.ts` (3), the D-01-5 blocks in
    `builderPersistence.spec.ts` (4) and `runRecovery.spec.ts` (4), and end to
    end by `e2e/isolation.spec.ts`'s fifth test, which swaps the synthetic-user
@@ -286,9 +311,50 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
    Google sign-out cannot run here - and asserts an empty console and an empty
    draft for the second person, with Alice's own residue still in place as the
    control that proves it was one browser profile.
+
+   *Amended 2026-09-04 (round 3, D-01-8).* Two of the five counts were wrong,
+   struck through above in this plan's own convention. Re-measured with
+   `npx vitest run tests/<file>.spec.ts`: authGate **4**, identityStorage
+   **8**, builderRunHandoff **3**; and, counted from the verbose reporter,
+   four D-01-5 tests in `builderPersistence.spec.ts` and four in
+   `runRecovery.spec.ts` - those two were right. No `it.skip`, `it.todo` or
+   `.only` in any of them, so the substance is unchanged: the four authGate
+   tests are a complete set for the property and the number was simply wrong.
+   That it was wrong *in an amendment written to repair a text/reality drift*
+   is the whole of the row, and the answer is the same as everywhere else in
+   these two plans - the command is the contract and the figure never is.
 10. `frontend/tests/credentialPicker.spec.ts`: the picker lists `{kind, label}` rows filtered by the field's kind, offers "create new", and never renders a field value even when the fake API returns one.
 11. E2E `e2e/isolation.spec.ts` (synthetic backend, two browser contexts via `X-Synthetic-User`): Alice creates a document, a credential and publishes; Bob's gallery lists neither; deep-linking Bob to `#/build/<alice-id>` lands on the empty builder; Bob's launch of Alice's workflow shows the console's 404 sentence and no run starts. **Rubric 14.**
 12. `docs/tech-stack.md` §6's scan reports the new knob (`CREDENTIALS_MASTER_KEY`) and the count in that file is regenerated, not edited.
+
+    **Amended 2026-09-04 (round 3, D-01-9): this criterion now has a
+    verifier, `tests/test_env_knob_doc.py`.** It read as verified and was
+    not - `grep -rln "tech-stack" tests/` answered nothing, while criterion
+    13 beside it labels itself a review checklist item. Two ways out were
+    available and the better one was taken: criterion 6 already shows the
+    technique, opening the plan file and asserting a note is where it should
+    be, so the manual half became a checked one instead of gaining a label.
+
+    The test runs §1's canonical multiline scan over `config.py` and
+    `service/app.py`, extracts §6's pasted block, and asserts **set equality
+    in both directions** plus the spelled-out count in the heading; it also
+    asserts `CREDENTIALS_MASTER_KEY` is in both, which is this criterion's
+    own literal sentence.
+
+    Two things it deliberately does not do. It does not widen the scan to the
+    five knobs §9 records as living outside those two files - that is a
+    decision for whoever closes that item, and a test should check the scan
+    the document declares rather than a better one it does not. And it cannot
+    check "regenerated, not edited", which is a claim about process: what it
+    checks is that the result is the same either way, which is the part that
+    can be wrong.
+
+    **It will go red when somebody adds a knob without touching the docs**,
+    and that is the point - `docs/tech-stack.md` asks for exactly this check
+    by name ("the scan wired into CI against a committed expected list ... It
+    does not exist"), because that section's count has been published wrong
+    six times, every one of them a knob landing in a commit that did not
+    touch the docs.
 13. `git grep -n "api_key\|token" -- src/brief_crew/service/credentials.py` shows no `print`, no `logging` of a field value; a review checklist item, not a test.
 
 ## References
@@ -321,7 +387,7 @@ measured on the integrated tree, not copied from a branch report.
 | 3 | done | `tests/service/test_credential_crypto.py` (24) — plus a real row re-labelled by SQL `UPDATE` failing to decrypt |
 | 4 | done | `tests/service/test_boot_checks.py` (8) |
 | 5 | done | `tests/builder/test_credential_resolution.py` (15) — a registry run fails with a frame carrying `error_class: credential-not-yours` |
-| 6 | done; **criterion amended 2026-09-03 (D-01-3)** | `tests/service/test_secret_redaction.py` (13 → 23, measured after the suffix-rule tests landed in the same file). **`fields` is NOT on the redaction list**: it is the gate form's own key, and redacting it turned every gate into `***`. Pinned by `test_fields_is_deliberately_not_on_the_list`; the criterion's own text now carries the dated exclusion, and `test_the_plan_records_the_fields_exclusion_beside_the_pin` fails if that note and the pin ever part company |
+| 6 | done; **criterion amended 2026-09-03 (D-01-3)** | `tests/service/test_secret_redaction.py` (13 → 23 → **25**, the last step D-01-6's two new pins). **`fields` is NOT on the redaction list**: it is the gate form's own key, and redacting it turned every gate into `***`. Pinned by `test_fields_is_deliberately_not_on_the_list`; the criterion's own text now carries the dated exclusion, and `test_the_plan_records_the_fields_exclusion_beside_the_pin` fails if that note and the pin ever part company |
 | 7 | done | `tests/service/test_synthetic_identity.py` (14) — also honoured on the `/ws` handshake (4404 for others, 4400 malformed), which D8 did not say |
 | 8 | done | `tests/service/test_validate_identity.py` (18); `credential-missing` is problem code 31, fixtures regenerated, both mirrors agree |
 | 9 | done | `frontend/tests/builderAccountChip.spec.ts` (12) |
@@ -457,3 +523,51 @@ rows; already built on this recommendation.** Rows written before ownership
 existed cannot be given an owner, and refusing them would make deploying this
 destroy the history it organises. D1 and the build above already work this way,
 so the answer and that record agree.
+
+### Round 3 build - 2026-09-04
+
+Five D-01 rows, on `wd/r3-fixes` off `9b06e40`, in the same session as plan
+15's. **Every row stays `open` with `closed by` empty**: closing is the
+critic's. One commit per id, except the two count corrections, which share one
+commit with plan 15's because they are one defect in two plans.
+
+| id | fixing commit(s) | red-then-green |
+| --- | --- | --- |
+| D-01-6 | `70a0e55` | `test_secret_redaction.py` 23 -> 25. The vault pair is `("name", "header_value")`, and `headervalue` is an exact `SECRET_KEYS` entry. **The row's own suggested fix was tried and measured wrong** - see below |
+| D-01-7 | `cd3ce75` | `test_cors.py` 16 -> 26. Red: `test_the_websocket_handshake_is_not_governed_by_cors` errors with a `WebSocketDisconnect`, and that pin is FLIPPED rather than deleted, because the property it documented is now the property that must not hold. CLAUDE.md remaining-work item 13 closes with it |
+| D-01-8 | `f98ef5e` | docs - criterion 9, authGate 5 -> **4** and identityStorage 9 -> **8**, struck through in the sentence; the other three counts re-measured and correct |
+| D-01-9 | `e767dbb` | `tests/test_env_knob_doc.py` (6). Criterion 12 now has a verifier, and it is the check `docs/tech-stack.md` asks for by name |
+| D-01-10 | `ed002d8` | docs - criterion 6's second exclusion is recorded as REMOVED rather than explained, because `70a0e55` removed it |
+
+**The row's suggested fix for D-01-6 is the wrong one, and this is the
+measurement.** Putting the bare word `value` on `SECRET_KEYS` turns six tests
+red across four modules - `test_builder_gates`, `test_builder_runner`,
+`test_gate_fields` and three pins in `test_secret_redaction` - because a gate
+`derived` entry is `{"key": name, "value": display, "kind": kind}` and its
+read-only panel goes to `***`. `value` is also a router branch's compare
+operand, a transform's `args.value` and an output node's body slot, so the
+entry would redact a compiled graph's own logic in the persisted state. The
+FIELD moved instead of the list, and which vault fields are public is now
+declared by `config.CREDENTIAL_PUBLIC_FIELDS` in the product rather than by a
+`HEADER_PAIR` constant inside the test that owns criterion 6.
+
+**And the row's premise is stale in a way that raises its severity.** It says
+the only caller of `resolve_credential` outside its own module refuses any kind
+but `openrouter`. At `9b06e40` there are three more: `builder/runtime.py`
+resolves `http_header` for a custom tool and `mcp_header` for an MCP server's
+header and its env block, and `service/builder_api.py` resolves the same pair
+for discovery. "Unreachable, so pin it" was not available.
+
+**`tests/test_env_knob_doc.py` will go red when somebody adds a knob without
+touching the docs**, and that is what it is for - every one of the six wrong
+figures in `docs/tech-stack.md` §6 was a knob landing in a commit that did not
+touch the docs. Waves C and D are building in sibling worktrees, so the first
+red may be somebody else's commit rather than a rot; the failure names the
+knob, the file and the command to re-run. Flagged for the Integrator rather
+than softened.
+
+**Criteria-table counts that moved with this work**: row 6
+`tests/service/test_secret_redaction.py` **23 -> 25**.
+
+**Measured at `8fc03fa`** - the same run as plan 15's; that table is the one to
+read, and it is not restated here.

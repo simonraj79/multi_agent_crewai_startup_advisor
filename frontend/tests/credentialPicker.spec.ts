@@ -258,9 +258,9 @@ describe('never a field value', () => {
     await flushPromises()
     await wrapper.get('[data-testid="credential-new"]').trigger('click')
     expect(wrapper.get('[data-testid="credential-field-name"]').attributes('type')).toBe('text')
-    expect(wrapper.get('[data-testid="credential-field-value"]').attributes('type')).toBe('password')
+    expect(wrapper.get('[data-testid="credential-field-header_value"]').attributes('type')).toBe('password')
     expect(wrapper.text()).toContain(fieldLabel('name'))
-    expect(wrapper.text()).toContain(fieldLabel('value'))
+    expect(wrapper.text()).toContain(fieldLabel('header_value'))
   })
 })
 

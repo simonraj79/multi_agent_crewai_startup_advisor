@@ -809,10 +809,13 @@ def create_app(
     # CORS_ALLOW_ORIGINS is the default and means no cross-origin caller at
     # all, which leaves local behaviour exactly as it was.
     #
-    # This does NOT cover /ws. A WebSocket handshake is not subject to CORS,
-    # and Starlette's CORSMiddleware passes non-HTTP scopes straight through,
-    # so any page can open the socket. What it cannot do is guess the uuid4
-    # run_id and the session_id that /ws demands before it sends a frame.
+    # The middleware itself does not cover /ws - a handshake is not subject to
+    # CORS and Starlette passes non-HTTP scopes straight through - so `/ws`
+    # asks `config.websocket_origin_allowed` against this SAME captured list
+    # before it accepts anything (D-01-7). Captured, not read live, for the
+    # reason CORSMiddleware captures it: an app built under one policy must not
+    # answer under another.
+    ws_allowed_origins = tuple(project_config.CORS_ALLOW_ORIGINS)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=project_config.CORS_ALLOW_ORIGINS,
@@ -2006,11 +2009,38 @@ def create_app(
         that is already expired by the time anyone reads it. The durable
         session cookie never leaves the auth origin.
 
-        Item 13 in CLAUDE.md's remaining work notes that /ws has no Origin
-        check, because CORS does not apply to a handshake. This does not close
-        that item, but it narrows it considerably: a hostile page could always
-        open the socket, and now it also needs a valid token for the right user.
+        **There IS an Origin check now** (D-01-7; CLAUDE.md remaining-work
+        item 13, which closes with it). It is the first thing asked, before the
+        token and before the run is looked up, because a page this service will
+        not serve should not get as far as trying a credential or learning
+        whether a `run_id` exists. `config.websocket_origin_allowed` carries the
+        three rules and the reason for each; the short form is that a missing
+        header is a non-browser client and is allowed, an origin on
+        `CORS_ALLOW_ORIGINS` is allowed, a same-origin handshake is allowed
+        whatever the list says, and everything else is closed with
+        `WS_ORIGIN_REFUSED_CLOSE_CODE` having sent nothing.
+
+        What this fixes is narrower than "the socket was open to anyone" and
+        worth stating exactly: an OWNED run was already 4404 to everybody but
+        its owner. An UNOWNED one - every run on an auth-off checkout and every
+        run in `SYNTHETIC` mode - had only the `run_id`/`session_id` pair
+        between a hostile page and the stream.
         """
+        if not project_config.websocket_origin_allowed(
+            websocket.headers.get("origin"),
+            host=websocket.headers.get("host"),
+            allowed=ws_allowed_origins,
+        ):
+            # accept-then-close for the same reason as every refusal below: a
+            # handshake rejected outright surfaces in the browser as an opaque
+            # failure indistinguishable from an edge block.
+            await websocket.accept()
+            await websocket.close(
+                code=project_config.WS_ORIGIN_REFUSED_CLOSE_CODE,
+                reason="origin not allowed",
+            )
+            return
+
         ws_user: AuthenticatedUser | None = None
         try:
             if access_token and project_config.AUTH_BASE_URL:

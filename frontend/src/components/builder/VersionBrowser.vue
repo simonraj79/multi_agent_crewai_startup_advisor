@@ -135,6 +135,46 @@ function label(row: BuilderVersionRow): string {
   return parts.join(' · ') || 'unreadable version'
 }
 
+/**
+ * What changed between this row and the one below it - D-15-24.
+ *
+ * The rows differed only by `5 nodes`/`4 nodes` and `1.4 KB`/`1.3 KB` in the
+ * far-right columns, so telling two candidates apart cost two clicks each and
+ * did not scale. A delta answers the question the list is FOR - "what did this
+ * version change?" - without opening anything.
+ *
+ * Computed here rather than served, because it is a property of the list's
+ * ORDER and not of a row: the server answers newest first and nothing re-sorts
+ * (see the class note), so row `i`'s predecessor is `i + 1`. A server field
+ * would have to be recomputed on every insert.
+ *
+ * `null` for the oldest row, which has nothing to be a delta from, and for any
+ * row whose counts could not be read - a version stored under a schema this
+ * service no longer parses lists with whatever it can say, and "no change" is
+ * not something it can say.
+ */
+function delta(index: number): string {
+  const row = props.versions[index]
+  const older = props.versions[index + 1]
+  if (!row || !older) return ''
+  const parts: string[] = []
+  const moved = (now: number | null, before: number | null, noun: string): void => {
+    if (now === null || before === null) return
+    const change = now - before
+    if (change === 0) return
+    // A true minus sign, not a hyphen: these sit in tabular monospace beside
+    // `+`, and the hyphen is visibly shorter at 11px.
+    parts.push(`${change > 0 ? '+' : '\u2212'}${Math.abs(change)} ${noun}${Math.abs(change) === 1 ? '' : 's'}`)
+  }
+  moved(row.node_count, older.node_count, 'node')
+  moved(row.edge_count, older.edge_count, 'edge')
+  if (parts.length) return parts.join(', ')
+  // Both counts readable and both equal: the graph's SHAPE is unchanged, which
+  // is a real answer and a different one from "we cannot tell".
+  if (row.node_count !== null && older.node_count !== null) return 'same shape'
+  return ''
+}
+
 /** `1234` -> `1.2 KB`. Bytes below a kilobyte stay as bytes. */
 function weight(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return ''
@@ -217,7 +257,7 @@ function weight(bytes: number): string {
     <p v-else-if="versions.length === 0" class="version-empty">No versions have been stored.</p>
 
     <ol v-else class="version-list" aria-label="Stored versions">
-      <li v-for="row in versions" :key="row.version">
+      <li v-for="(row, index) in versions" :key="row.version">
         <button
           class="version-row"
           :class="{ 'is-current': row.version === version, 'is-head': row.version === headVersion }"
@@ -235,6 +275,19 @@ function weight(bytes: number): string {
           </span>
           <span class="version-label" :title="label(row)" data-testid="version-label">{{ label(row) }}</span>
           <span class="version-source" data-testid="version-source">{{ row.source }}</span>
+          <!--
+            The delta against the version below (D-15-24). Rendered even when
+            empty so the column keeps its width and the rows stay aligned; a
+            column that appears and disappears per row is a list that jitters
+            as you read down it.
+          -->
+          <span
+            class="version-delta"
+            :class="{ 'is-same': delta(index) === 'same shape' }"
+            :title="delta(index) ? `Against v${versions[index + 1]?.version}` : undefined"
+            :data-testid="`version-delta-${row.version}`"
+            >{{ delta(index) }}</span
+          >
           <span class="version-when" :title="stamp(row.created_at)" data-testid="version-when">
             <Clock3 :size="11" aria-hidden="true" />
             <time :datetime="row.created_at">{{ ago(row.created_at) }}</time>
@@ -303,7 +356,7 @@ function weight(bytes: number): string {
 
 .version-row {
   display: grid;
-  grid-template-columns: 44px auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 44px auto minmax(0, 1fr) auto auto auto auto;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -333,4 +386,15 @@ function weight(bytes: number): string {
 .version-source { color: var(--text-muted); font: 500 var(--fs-11)/1 var(--font-mono); white-space: nowrap; }
 .version-when { display: inline-flex; gap: 4px; align-items: center; color: var(--text-40); font: 500 var(--fs-11)/1 var(--font-mono); white-space: nowrap; }
 .version-bytes { color: var(--text-40); font: 500 var(--fs-11)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+/* The delta reads as a fact about the graph rather than as a warning, so it
+   takes the same quiet monospace as its neighbours - and `same shape` is
+   quieter still, because "nothing moved" is the least interesting row in the
+   list and should not compete with the ones that did. */
+.version-delta {
+  color: var(--text-muted);
+  font: 500 var(--fs-11)/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.version-delta.is-same { color: var(--text-40); }
 </style>

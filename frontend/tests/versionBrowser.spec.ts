@@ -382,9 +382,9 @@ describe('restoreVersion', () => {
 
 describe('VersionBrowser', () => {
   const ROWS: BuilderVersionRow[] = [
-    { version: 7, status: 'draft', created_at: '2026-09-02T10:14:00Z', bytes: 2048, source: 'saved', name: 'Seven', node_count: 5 },
-    { version: 5, status: 'published', created_at: '2026-09-02T09:00:00Z', bytes: 1900, source: 'restored from v3', name: 'Five', node_count: 4 },
-    { version: 3, status: 'draft', created_at: '2026-09-01T18:30:00Z', bytes: 640, source: 'created', name: 'Three', node_count: 1 },
+    { version: 7, status: 'draft', created_at: '2026-09-02T10:14:00Z', bytes: 2048, source: 'saved', name: 'Seven', node_count: 5, edge_count: 4 },
+    { version: 5, status: 'published', created_at: '2026-09-02T09:00:00Z', bytes: 1900, source: 'restored from v3', name: 'Five', node_count: 4, edge_count: 4 },
+    { version: 3, status: 'draft', created_at: '2026-09-01T18:30:00Z', bytes: 640, source: 'created', name: 'Three', node_count: 1, edge_count: 0 },
   ]
   /** Held still, so the relative times below are facts rather than a race. */
   const NOW = Date.parse('2026-09-02T10:15:00Z')
@@ -405,6 +405,63 @@ describe('VersionBrowser', () => {
     })
   }
 
+  /*
+   * D-15-24. Round 3: "version rows carry no diff. Rows differ only by
+   * `5 nodes`/`4 nodes` and `1.4 KB`/`1.3 KB` - two clicks per candidate to
+   * eyeball, and it does not scale."
+   *
+   * The delta is against the row BELOW, because the server answers newest
+   * first and nothing re-sorts; that makes it a property of the list's order,
+   * which is why it is computed here and not served.
+   */
+  it('says what each version changed, against the version below it (D-15-24)', () => {
+    const wrapper = browser()
+    const deltas = wrapper.findAll('.version-delta').map((node) => node.text())
+    // v7 has 5 nodes / 4 edges over v5's 4 / 4; v5 has 4 / 4 over v3's 1 / 0.
+    expect(deltas).toEqual(['+1 node', '+3 nodes, +4 edges', ''])
+  })
+
+  it('counts down as well as up, with a real minus sign', () => {
+    const shrunk: BuilderVersionRow[] = [
+      { ...ROWS[0], version: 9, node_count: 2, edge_count: 1 },
+      { ...ROWS[1], version: 8, node_count: 5, edge_count: 4 },
+    ]
+    const wrapper = browser({ versions: shrunk, version: 9, headVersion: 9 })
+    // U+2212, not a hyphen: these sit in tabular monospace beside `+`.
+    expect(wrapper.findAll('.version-delta')[0].text()).toBe('\u22123 nodes, \u22123 edges')
+  })
+
+  it('says "same shape" rather than nothing when the counts agree', () => {
+    /* A rename or a reposition changes bytes and not shape, and "nothing
+       moved" is a real answer - different from "we cannot tell". */
+    const renamed: BuilderVersionRow[] = [
+      { ...ROWS[0], version: 4, name: 'After', node_count: 3, edge_count: 2 },
+      { ...ROWS[1], version: 3, name: 'Before', node_count: 3, edge_count: 2 },
+    ]
+    const wrapper = browser({ versions: renamed, version: 4, headVersion: 4 })
+    const first = wrapper.findAll('.version-delta')[0]
+    expect(first.text()).toBe('same shape')
+    expect(first.classes()).toContain('is-same')
+  })
+
+  it('says nothing at all for a row whose counts could not be read', () => {
+    /* A version stored under a schema this service no longer parses lists
+       with whatever it can say, and "no change" is not something it can say. */
+    const unreadable: BuilderVersionRow[] = [
+      { ...ROWS[0], version: 2, node_count: null, edge_count: null },
+      { ...ROWS[1], version: 1, node_count: 4, edge_count: 4 },
+    ]
+    const wrapper = browser({ versions: unreadable, version: 2, headVersion: 2 })
+    expect(wrapper.findAll('.version-delta')[0].text()).toBe('')
+  })
+
+  it('keeps the delta column present on every row so the list does not jitter', () => {
+    const wrapper = browser()
+    expect(wrapper.findAll('.version-delta')).toHaveLength(3)
+    // Including the oldest, which has nothing to be a delta from.
+    expect(wrapper.get('[data-testid="version-delta-3"]').text()).toBe('')
+  })
+
   it('tells two versions from the same minute apart by label, source and seconds (D-15-3)', () => {
     /*
      * Round 1's capture: "v2 HEAD DRAFT 3 Sept, 00:19 1.4 KB" over
@@ -412,8 +469,8 @@ describe('VersionBrowser', () => {
      * choose by. The same minute here, and every row differs in three places.
      */
     const twins: BuilderVersionRow[] = [
-      { version: 2, status: 'draft', created_at: '2026-09-02T10:14:48Z', bytes: 1400, source: 'autosaved', name: 'Minimal gated agent', node_count: 5 },
-      { version: 1, status: 'draft', created_at: '2026-09-02T10:14:12Z', bytes: 1200, source: 'created', name: 'Minimal gated agent', node_count: 4 },
+      { version: 2, status: 'draft', created_at: '2026-09-02T10:14:48Z', bytes: 1400, source: 'autosaved', name: 'Minimal gated agent', node_count: 5, edge_count: 4 },
+      { version: 1, status: 'draft', created_at: '2026-09-02T10:14:12Z', bytes: 1200, source: 'created', name: 'Minimal gated agent', node_count: 4, edge_count: 3 },
     ]
     const wrapper = browser({ versions: twins, version: 2, headVersion: 2 })
     const [head, older] = wrapper.findAll('.version-row')
@@ -463,7 +520,7 @@ describe('VersionBrowser', () => {
     const label = wrapper.findAll('[data-testid="version-label"]').map((w) => w.text())
     expect(label).toEqual(['Seven · 5 nodes', 'Five · 4 nodes', 'Three · 1 node'])
     const old = browser({
-      versions: [{ ...ROWS[2], created_at: '2026-08-20T08:00:00Z', name: null, node_count: null }],
+      versions: [{ ...ROWS[2], created_at: '2026-08-20T08:00:00Z', name: null, node_count: null, edge_count: null }],
     })
     expect(old.get('[data-testid="version-when"]').text()).toMatch(/20 Aug/)
     expect(old.get('[data-testid="version-label"]').text()).toBe('unreadable version')
@@ -742,6 +799,7 @@ function stubServer() {
           source: state.sources.get(version) ?? 'created',
           name: (state.versions.get(version) as { name?: string }).name ?? null,
           node_count: ((state.versions.get(version) as { nodes?: unknown[] }).nodes ?? []).length,
+          edge_count: ((state.versions.get(version) as { edges?: unknown[] }).edges ?? []).length,
         }))
       return json(rows)
     }
@@ -798,6 +856,77 @@ async function mountOpen() {
 }
 
 describe('the shell', () => {
+  /*
+   * D-15-23. A version has no status column: `_version_status` derives it from
+   * which version is REGISTERED, so an open browser's rows are computed before
+   * the publish and say `draft` afterwards - including the row for the version
+   * that is now live. The critic caught all three surfaces disagreeing at once:
+   * header `v3 is live`, library row `v3 PUBLISHED`, version row `HEAD DRAFT`.
+   *
+   * `unpublishDocument` had always reloaded the list. `onPublished` had not.
+   */
+  it('re-reads the version rows after a publish, because their status is derived (D-15-23)', async () => {
+    const { wrapper, state } = await mountOpen()
+    expect(state.versionsCalls).toBe(1)
+
+    await wrapper.get('[data-testid="document-publish"]').trigger('click')
+    await settled()
+    const dialog = wrapper.findComponent(PublishDialog)
+    expect(dialog.exists()).toBe(true)
+    dialog.vm.$emit('published', {
+      workflow_id: 'ug_1234abcd',
+      version: 2,
+      input_field: 'idea',
+      name: 'Second',
+    } as unknown as BuilderPublish)
+    await settled()
+
+    expect(state.versionsCalls).toBe(2)
+    wrapper.unmount()
+  })
+
+  it('does not re-read them when the browser is closed, because nothing is on screen', async () => {
+    /* The reload is for the rows an author is LOOKING at; fetching a list
+       nobody has open is a request that buys nothing. `toggleVersions` reads
+       fresh on open, which is the other half of the same rule. */
+    const server = stubServer()
+    const wrapper = mount(BuilderView, {
+      props: { documentId: SHELL_ID as never },
+      global: { stubs: STUBS },
+    })
+    await settled()
+    expect(server.state.versionsCalls).toBe(0)
+
+    await wrapper.get('[data-testid="document-publish"]').trigger('click')
+    await settled()
+    wrapper.findComponent(PublishDialog).vm.$emit('published', {
+      workflow_id: 'ug_1234abcd',
+      version: 2,
+      input_field: 'idea',
+      name: 'Second',
+    } as unknown as BuilderPublish)
+    await settled()
+
+    expect(server.state.versionsCalls).toBe(0)
+    wrapper.unmount()
+  })
+
+  it('names the version the export writes, in the menu that covers the rows (D-15-25)', async () => {
+    /* The menu sits over the version rows it operates on, and the label said
+       `Export .builder.json` - the file format, which the Import item below it
+       already implies, and nothing about WHICH version leaves. */
+    const { wrapper } = await mountOpen()
+    // The menu closes on choosing, which is what makes it a menu; reopen it
+    // over the rows exactly as the critic's capture had it.
+    await wrapper.get('[data-testid="document-menu-button"]').trigger('click')
+    await settled()
+    const label = wrapper.get('[data-testid="menu-export"]').text()
+    expect(label).toContain('Export head')
+    expect(label).toContain('(v2)')
+    expect(label).not.toContain('.builder.json')
+    wrapper.unmount()
+  })
+
   it('lists the stored versions from the menu, newest first as the server answers', async () => {
     const { wrapper, state } = await mountOpen()
 

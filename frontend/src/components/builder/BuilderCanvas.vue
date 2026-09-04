@@ -898,6 +898,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       :viewport="minimapViewport"
       :pane="minimapPane"
       @centre="canvas.centreOn"
+      @fit="canvas.fitView()"
     />
 
     <!-- `PortMenu`, and anything else the shell wants anchored to the canvas. -->

@@ -408,6 +408,10 @@ class BuilderVersionModel(BaseModel):
     name: str | None
     #: How many nodes that version has; None when the row cannot say.
     node_count: int | None
+    #: How many edges that version has; None when the row cannot say. The
+    #: browser subtracts adjacent rows into `+2 nodes, -1 edge` (D-15-24); a
+    #: delta over nodes alone would report a rewiring as no change at all.
+    edge_count: int | None
 
 
 class BuilderValidationModel(BaseModel):
@@ -902,7 +906,7 @@ def create_builder_router(
             return BuilderDocument.model_validate(candidate)
         except Exception as exc:  # pydantic ValidationError, and nothing else
             raise HTTPException(
-                status_code=422, detail=_first_schema_error(exc)
+                status_code=422, detail=_first_schema_error(exc, payload=candidate)
             ) from exc
 
     def judged(
@@ -1503,6 +1507,7 @@ def create_builder_router(
                 source=entry.source or "stored",
                 name=entry.name,
                 node_count=entry.node_count,
+                edge_count=entry.edge_count,
             )
             for entry in history.entries
         ]
@@ -2066,8 +2071,9 @@ def create_builder_router(
     def _mcp_credentials(owner: str, record: Any) -> tuple[Any, Any]:
         """Resolve the header and env credentials, or None for each.
 
-        An `mcp_header` credential's two fields ARE the header's name and its
-        value, so there is no `header_name` column and none is missing. A
+        An `mcp_header` credential's two fields ARE the header's `name` and
+        its `header_value`, so there is no `header_name` column and none is
+        missing. A
         credential that is gone resolves to nothing rather than failing the
         discovery: the row's own `last_error` is a better place for that than a
         500, and `credential-missing` reports it on the canvas.
@@ -2088,9 +2094,13 @@ def create_builder_router(
         header_fields = fields(record.header_credential_id)
         env_fields = fields(record.env_credential_id)
         header = (
-            {header_fields["name"]: header_fields["value"]} if header_fields else None
+            {header_fields["name"]: header_fields["header_value"]}
+            if header_fields
+            else None
         )
-        env = {env_fields["name"]: env_fields["value"]} if env_fields else None
+        env = (
+            {env_fields["name"]: env_fields["header_value"]} if env_fields else None
+        )
         return header, env
 
     def _mcp_body(record: Any) -> dict[str, Any]:
@@ -2296,12 +2306,78 @@ def create_builder_router(
     return router
 
 
-def _first_schema_error(exc: Exception) -> str:
+#: How much of an author's own label a refusal may quote back. Labels are
+#: bounded by `BUILDER_MAX_LABEL_CHARS` already; this is the sentence's bound,
+#: not the schema's, and it is short because the label is the subject of the
+#: sentence rather than its content.
+_REFUSAL_LABEL_CHARS = 48
+
+
+def _named_subject(location: tuple[Any, ...], payload: Mapping[str, Any] | None) -> str:
+    """`nodes.3` -> `the "Docs" mcp node`, when the payload can say so.
+
+    D-15-29. A refusal reading `nodes.3.skill_id: Field required` names an
+    array index for a node the canvas calls Skill, and a field the author never
+    typed. Every other refusal in this feature names something the author can
+    see - the delete 409 says `"Deletable" is live as v1 and cannot be deleted;
+    unpublish it first` - and the location is the one thing standing between
+    this one and the same standard.
+
+    The label is the author's own text and is quoted back deliberately: it is
+    the whole point, it is already bounded by the schema, and it is bounded
+    again here. Nothing else from the payload is echoed - the module's rule
+    against reflecting an uploaded body is unchanged, and the VALUE that failed
+    is still never named.
+
+    Returns "" when the payload cannot identify the entry, which is what puts
+    the raw dotted location back: an ugly location beats an invented one.
+    """
+
+    if not isinstance(payload, Mapping) or len(location) < 2:
+        return ""
+    collection, index = location[0], location[1]
+    if collection not in ("nodes", "edges") or not isinstance(index, int):
+        return ""
+    entries = payload.get(collection)
+    if not isinstance(entries, (list, tuple)) or not 0 <= index < len(entries):
+        return ""
+    entry = entries[index]
+    if not isinstance(entry, Mapping):
+        return ""
+    if collection == "edges":
+        source, target = entry.get("source"), entry.get("target")
+        if isinstance(source, str) and isinstance(target, str):
+            return f"the edge from {_quoted(source)} to {_quoted(target)}"
+        return f"edge {index + 1} of {len(entries)}"
+    label = entry.get("label")
+    kind = entry.get("kind")
+    named = _quoted(label) if isinstance(label, str) and label.strip() else ""
+    kinded = f"{kind} " if isinstance(kind, str) and kind.strip() else ""
+    if named:
+        return f"the {named} {kinded}node".replace("  ", " ")
+    return f"{kinded}node {index + 1} of {len(entries)}".strip()
+
+
+def _quoted(text: str) -> str:
+    """One bounded, control-character-free quotation of author text."""
+
+    cleaned = "".join(character for character in text if character >= " ")
+    return f'"{cleaned[:_REFUSAL_LABEL_CHARS].strip()}"'
+
+
+def _first_schema_error(
+    exc: Exception, *, payload: Mapping[str, Any] | None = None
+) -> str:
     """One location and one message, never the offending input.
 
     The same reasoning as `_validation_detail` in `app.py`: pydantic's full
     error list is unbounded and echoes what was sent, which is the last thing
     to reflect back at a client that may have sent a quarter of a megabyte.
+
+    `payload` is optional and is used only to turn an array index into a name
+    the author can see - see `_named_subject`. Without it the sentence is
+    exactly what it was, which is what every caller that has no payload to hand
+    still gets.
     """
 
     errors = getattr(exc, "errors", None)
@@ -2311,10 +2387,19 @@ def _first_schema_error(exc: Exception) -> str:
     if not reported:
         return "document failed validation"
     first = reported[0]
-    location = ".".join(str(part) for part in first.get("loc", ())) or "document"
+    raw_location = tuple(first.get("loc", ()))
+    location = ".".join(str(part) for part in raw_location) or "document"
+    message = str(first.get("msg", "is invalid"))[:200]
+    subject = _named_subject(raw_location, payload)
+    if subject:
+        # The dotted location is KEPT, in brackets. It is the only thing a
+        # developer reading a bug report can act on, and dropping it would
+        # trade one unreadable audience for another.
+        field = ".".join(str(part) for part in raw_location[2:]) or "this entry"
+        return f"{subject}: {field[:80]} - {message} ({location[:120]})"
     # The location can name a key the CLIENT chose (`extra_forbidden` reports
     # the extra key), so it is bounded like the message is.
-    return f"{location[:120]}: {str(first.get('msg', 'is invalid'))[:200]}"
+    return f"{location[:120]}: {message}"
 
 
 def _import_envelope(raw: bytes) -> "BuilderImportRequest":

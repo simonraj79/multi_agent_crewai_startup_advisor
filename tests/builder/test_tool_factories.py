@@ -55,7 +55,7 @@ FIELDS: dict[str, dict[str, str]] = {
     "brave": {"api_key": SECRET},
     "github": {"token": SECRET},
     "postgres": {"dsn": "postgresql+psycopg://user:pw@db.example.test/app"},
-    "http_header": {"name": "Authorization", "value": SECRET},
+    "http_header": {"name": "Authorization", "header_value": SECRET},
     "e2b": {"api_key": SECRET},
 }
 

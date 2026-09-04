@@ -235,6 +235,33 @@ class V1ToV2MappingTests(unittest.TestCase):
                 self.assertIsInstance(node.config, (LibraryAgentConfig, LibraryCrewConfig))
         self.assertEqual(validate_document(parsed), [])
 
+    def test_every_fixture_upgrades_to_a_v2_document_with_zero_problems(self) -> None:
+        """D-15-33: criterion 6's claim, for all four rather than for one.
+
+        `test_a_v1_document_parses_as_v2_with_no_field_rewritten` above asserts
+        `validate_document(parsed) == []` for the validator template alone, and
+        the criterion says "EVERY committed v1 fixture upgrades to a clean v2
+        document". One in four is not every, and the round-3 critic was right
+        that a criterion ticked over that is a contract nobody can hold anyone
+        to. Measured here: `problems=0 errors=[]` for all four.
+
+        Zero problems of ANY severity, not just zero errors - the unpatched
+        `test_every_committed_fixture_upgrades_to_a_clean_document` already
+        allows warnings, and "clean" in this criterion means the stricter
+        thing, which is what the validator-template test was asserting.
+        """
+
+        for name, raw in committed_fixtures().items():
+            with self.subTest(fixture=name):
+                upgraded = self._upgraded(raw)
+                self.assertEqual(upgraded["schema"], SCHEMA_V2)
+                with mock.patch.object(
+                    document_module, "BUILDER_DOCUMENT_SCHEMA", SCHEMA_V2
+                ):
+                    parsed = parse(upgraded)
+                self.assertEqual(parsed.document_schema, SCHEMA_V2)
+                self.assertEqual(validate_document(parsed), [])
+
     def test_a_document_already_at_v2_is_left_alone(self) -> None:
         raw = straight_line().model_dump(mode="json", by_alias=True)
         raw["schema"] = SCHEMA_V2

@@ -188,8 +188,10 @@ class McpServerRecord:
 
     The row holds the address and REFERENCES to credentials, never a secret.
     `header_credential_id` names an `mcp_header` credential, whose two fields
-    are the header's `name` and `value` - so there is no separate `header_name`
-    column and none is needed. `env_credential_id` is the same pair used as an
+    are the header's `name` and `header_value` - so there is no separate
+    `header_name` column and none is needed. The secret half is spelled
+    `header_value` rather than `value` so that `events/redaction.py` covers it
+    by name (D-01-6). `env_credential_id` is the same pair used as an
     environment key and value for a stdio server.
     """
 

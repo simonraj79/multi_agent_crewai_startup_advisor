@@ -436,6 +436,106 @@ class MalformedFilesEchoNothing(ImportRouteCase):
         self.assertEqual(response.status_code, 422, response.text)
         self.assertNotIn("Internal Server Error", response.text)
 
+
+class SchemaRefusalsNameSomethingVisible(ImportRouteCase):
+    """D-15-29: a refusal for the product's own file is not a JSON array index.
+
+    Every other refusal in this feature names something the author can see -
+    the delete 409 says `"Deletable" is live as v1 and cannot be deleted;
+    unpublish it first, then delete it`. The import's schema refusal said
+    `nodes.3.skill_id: Field required`: an array index, for a node the canvas
+    calls Skill, about a field the author never typed. The same server writes
+    `the file is not JSON (Expecting value at line 1 column 1)` two branches
+    away, so the product already knows how to write these sentences.
+
+    Fixed at the SERVER rather than in `builderApi.ts`'s `readErrorDetail`,
+    where the row locates it, because the client passes a `detail` string
+    through unmodified BY DESIGN - that is what makes the server's good
+    sentences reach the operator at all - and a client-side rewriter would have
+    to re-derive which node an index means from a file it does not hold. The
+    payload is right here.
+    """
+
+    def refuse(self, mutate) -> str:
+        _, envelope = self.exported_by_ada()
+        mutate(envelope["document"])
+        response = self.import_as(ADA_TOKEN, envelope)
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()["detail"]
+        self.assertIsInstance(detail, str)
+        return detail
+
+    def test_the_node_is_named_the_way_the_canvas_names_it(self) -> None:
+        def break_the_output(document):
+            node = next(n for n in document["nodes"] if n["kind"] == "output")
+            node["label"] = "Final report"
+            node["config"] = {}
+
+        detail = self.refuse(break_the_output)
+        self.assertIn('"Final report"', detail)
+        self.assertIn("output node", detail)
+        self.assertIn("body_key", detail)
+        self.assertIn("Field required", detail)
+
+    def test_the_dotted_location_is_kept_for_whoever_reads_a_bug_report(
+        self,
+    ) -> None:
+        """Naming the node must not cost the only thing a developer can act on."""
+
+        def break_the_output(document):
+            node = next(n for n in document["nodes"] if n["kind"] == "output")
+            node["config"] = {}
+
+        detail = self.refuse(break_the_output)
+        self.assertRegex(detail, r"\(nodes\.\d+\.body_key\)")
+
+    def test_an_unlabelled_node_is_counted_rather_than_indexed_from_zero(self) -> None:
+        def break_the_output(document):
+            node = next(n for n in document["nodes"] if n["kind"] == "output")
+            node["label"] = "   "
+            node["config"] = {}
+
+        detail = self.refuse(break_the_output)
+        self.assertIn("output node", detail)
+        # "node 3 of 4", never "nodes.2" as the subject.
+        self.assertRegex(detail, r"output node \d+ of \d+")
+        self.assertFalse(detail.startswith("nodes."), detail)
+
+    def test_the_naming_echoes_the_label_and_nothing_else_of_the_payload(self) -> None:
+        """The naming must not become a hole in the no-reflection rule.
+
+        `_first_schema_error` never quoted the offending INPUT and still does
+        not; the one thing it now quotes is the author's own label, bounded.
+
+        A validator's own message is a separate matter and is unchanged: the
+        `body_key` refusal names the key it is refusing, deliberately, because
+        "unknown result body key 'x'" is the sentence that tells an author
+        which key to change. That is a validator quoting a name it recognised
+        as wrong, not the error handler reflecting a body.
+        """
+
+        def smuggle(document):
+            node = next(n for n in document["nodes"] if n["kind"] == "output")
+            node["label"] = "Final report"
+            # A list, so the refusal is pydantic's own type message rather than
+            # the custom validator's, which would name the key on purpose.
+            node["config"] = {"body_key": ["sk-live-do-not-echo"]}
+
+        detail = self.refuse(smuggle)
+        self.assertIn("Input should be a valid string", detail)
+        self.assertIn('"Final report"', detail)
+        self.assertNotIn("sk-live-do-not-echo", detail)
+
+    def test_a_label_longer_than_the_sentence_allows_is_cut(self) -> None:
+        def shout(document):
+            node = next(n for n in document["nodes"] if n["kind"] == "output")
+            node["label"] = "L" * 80
+            node["config"] = {}
+
+        detail = self.refuse(shout)
+        self.assertNotIn("L" * 60, detail)
+        self.assertIn("L" * 40, detail)
+
     def test_an_anonymous_import_is_refused(self) -> None:
         _, envelope = self.exported_by_ada()
         self.assertEqual(self.import_as(None, envelope).status_code, 401)

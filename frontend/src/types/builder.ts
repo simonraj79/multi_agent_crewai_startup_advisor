@@ -1681,6 +1681,14 @@ export interface BuilderVersionRow {
   name: string | null
   /** How many nodes that version has; null when the row could not say. */
   node_count: number | null
+  /**
+   * How many edges that version has; null when the row could not say.
+   *
+   * Round 3, D-15-24. The browser subtracts adjacent rows into `+2 nodes,
+   * -1 edge`, and a delta over nodes alone would report a version that only
+   * rewired the graph as no change at all.
+   */
+  edge_count: number | null
 }
 
 /** What a save may declare about itself, for the version browser's `source`. */

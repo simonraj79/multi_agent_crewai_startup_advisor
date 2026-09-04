@@ -16,7 +16,8 @@ import type { CredentialKind } from '../types/builder'
  * is the Integrator's call.
  *
  * `secret` names the fields that are credentials rather than names: an
- * `http_header` has a `name` that is fine to see and a `value` that is not.
+ * `http_header` has a `name` that is fine to see and a `header_value` that is
+ * not.
  * The form renders a secret field as `type="password"`, which is a courtesy
  * to whoever is looking over the author's shoulder and nothing more - the
  * value goes to the server in the POST body and is never read back.
@@ -39,8 +40,12 @@ export const CREDENTIAL_KINDS: Record<CredentialKind, CredentialKindSpec> = {
   brave: { label: 'Brave Search', fields: ['api_key'], secret: ['api_key'] },
   github: { label: 'GitHub', fields: ['token'], secret: ['token'] },
   postgres: { label: 'PostgreSQL', fields: ['dsn'], secret: ['dsn'] },
-  http_header: { label: 'HTTP header', fields: ['name', 'value'], secret: ['value'] },
-  mcp_header: { label: 'MCP header', fields: ['name', 'value'], secret: ['value'] },
+  // `header_value`, not `value`: the server renamed the secret half so that
+  // `events/redaction.py` covers it by name (D-01-6). Mirrored here because
+  // this file IS the mirror; `credentialPicker.spec.ts` reads `config.py` and
+  // fails if the two ever part company.
+  http_header: { label: 'HTTP header', fields: ['name', 'header_value'], secret: ['header_value'] },
+  mcp_header: { label: 'MCP header', fields: ['name', 'header_value'], secret: ['header_value'] },
   e2b: { label: 'E2B', fields: ['api_key'], secret: ['api_key'] },
 }
 
@@ -54,7 +59,7 @@ export function fieldLabel(field: string): string {
     token: 'Token',
     dsn: 'Connection string',
     name: 'Header name',
-    value: 'Header value',
+    header_value: 'Header value',
   }
   return named[field] ?? field.replaceAll('_', ' ')
 }

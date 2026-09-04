@@ -11,7 +11,16 @@ with authentication on:
 | save / delete / duplicate | 200 / 204 / 201 | 404  | 401       |
 | import                    | 201, owner A    | 201, owner B, no reference to A's id | 401 |
 | test inputs               | 200             | 404  | 401       |
+| credentials               | 201 / listed / 200 / 204 / probe 200 | 404 on GET, DELETE and the probe; empty list | 401 |
 | launch (published)        | 202             | 404, clean body OR a body carrying A's state names | 401, either body |
+
+The credentials row was missing until 2026-09-04 (round 3, D-15-34) and the
+word appeared once in the whole file, in a comment. Rubric 14's forbidden list
+names credentials explicitly, and the file that owns the isolation claim is
+where a reader looks for it - the coverage existed in
+`tests/service/test_credentials.py`, which is a different claim in a different
+file. `CredentialRoutes` below asserts it here, in the same three-caller shape
+as every other row, and the table now says so.
 
 The "test inputs" row has no route in Stage 1 - plan 13 owns the panel - so it
 is covered here at the level the table can be: `builder_test_inputs.user_id`
@@ -247,6 +256,112 @@ class WriteRoutes(MatrixCase):
 
         self.assertEqual(self.import_as(ANON, envelope).status_code, 401)
         self.assertEqual(len(self.list_ids_as(GRACE_TOKEN)), 1)
+
+
+class CredentialRoutes(MatrixCase):
+    """The vault, in this file's three-caller shape - D-15-34.
+
+    The credential row is the one rubric 14 names by itself ("credentials in
+    flow JSON, exports, or logs"), and it is the one row this matrix did not
+    have. `tests/service/test_credentials.py` covers the vault's own contract
+    exhaustively; what is asserted here is the isolation, beside every other
+    route it has to hold for, so a later route that forgets it fails the file
+    that makes the claim.
+
+    Every refusal is checked for A's plaintext as well as A's status code,
+    exactly as `assert_nothing_of_a_leaks` does for a document: a 404 that
+    carried the label would be a 404 that leaked.
+    """
+
+    #: Obviously fake, and obviously greppable - every refusal below is
+    #: searched for it. The vault never returns a field, so a body containing
+    #: this string is a defect whatever its status code.
+    SECRET = "sk-or-v1-NEVER-ON-THE-WIRE-0123456789"
+    LABEL = "A's OpenRouter key"
+    ROUTE = "/api/builder/credentials"
+
+    def setUp(self) -> None:
+        super().setUp()
+        created = self.request(
+            ADA_TOKEN,
+            "post",
+            self.ROUTE,
+            json={
+                "kind": "openrouter",
+                "label": self.LABEL,
+                "fields": {"api_key": self.SECRET},
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        self.credential = created.json()["id"]
+
+    def assert_nothing_of_as_credential_leaks(self, response: Any) -> None:
+        self.assertNotIn(self.credential, response.text)
+        self.assertNotIn(self.LABEL, response.text)
+        self.assertNotIn(self.SECRET, response.text)
+
+    def test_create_and_list(self) -> None:
+        self.assertNotIn(
+            self.SECRET,
+            self.request(ADA_TOKEN, "get", self.ROUTE).text,
+            "a field never leaves the vault, not even for its owner",
+        )
+        listed = self.request(ADA_TOKEN, "get", self.ROUTE)
+        self.assertEqual([row["id"] for row in listed.json()], [self.credential])
+
+        # B's own list is empty rather than filtered-looking: no count, no
+        # placeholder, nothing that says a row exists somewhere.
+        bs_list = self.request(GRACE_TOKEN, "get", self.ROUTE)
+        self.assertEqual(bs_list.status_code, 200)
+        self.assertEqual(bs_list.json(), [])
+        self.assert_nothing_of_as_credential_leaks(bs_list)
+
+        anonymous = self.request(ANON, "get", self.ROUTE)
+        self.assertEqual(anonymous.status_code, 401)
+        self.assert_nothing_of_as_credential_leaks(anonymous)
+
+    def test_get_delete_and_probe_are_404_for_b_and_401_for_anonymous(self) -> None:
+        """404, not 403, for the reason every other row in this file gives."""
+
+        path = f"{self.ROUTE}/{self.credential}"
+        for method, route in (
+            ("get", path),
+            ("delete", path),
+            ("post", f"{path}/test"),
+        ):
+            with self.subTest(route=f"{method} {route}"):
+                refused = self.request(GRACE_TOKEN, method, route)
+                self.assertEqual(refused.status_code, 404)
+                self.assert_nothing_of_as_credential_leaks(refused)
+                # And indistinguishable from an id that never existed.
+                invented = self.request(
+                    GRACE_TOKEN, method, route.replace(self.credential, "cr_00000000")
+                )
+                self.assertEqual(refused.json(), invented.json())
+
+                anonymous = self.request(ANON, method, route)
+                self.assertEqual(anonymous.status_code, 401)
+                self.assert_nothing_of_as_credential_leaks(anonymous)
+
+    def test_bs_refusals_leave_as_row_exactly_where_it_was(self) -> None:
+        """The DELETE half of the row above, checked from A's side.
+
+        A 404 that had deleted the row would satisfy every assertion in the
+        test above and still be the worst possible outcome.
+        """
+
+        path = f"{self.ROUTE}/{self.credential}"
+        self.assertEqual(self.request(GRACE_TOKEN, "delete", path).status_code, 404)
+        mine = self.request(ADA_TOKEN, "get", path)
+        self.assertEqual(mine.status_code, 200)
+        self.assertEqual(mine.json()["label"], self.LABEL)
+        self.assertNotIn(self.SECRET, mine.text)
+
+    def test_a_owns_the_row_and_can_delete_it(self) -> None:
+        path = f"{self.ROUTE}/{self.credential}"
+        self.assertEqual(self.request(ADA_TOKEN, "delete", path).status_code, 204)
+        self.assertEqual(self.request(ADA_TOKEN, "get", path).status_code, 404)
+        self.assertEqual(self.request(ADA_TOKEN, "get", self.ROUTE).json(), [])
 
 
 class LaunchRoute(MatrixCase):

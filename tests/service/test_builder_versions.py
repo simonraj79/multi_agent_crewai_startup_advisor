@@ -66,11 +66,27 @@ class TheList(VersionsCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(
             set(entries[0]),
-            {"version", "status", "created_at", "bytes", "source", "name", "node_count"},
+            # `edge_count` joined in round 3 (D-15-24): the browser subtracts
+            # adjacent rows into `+2 nodes, -1 edge`, and a delta over nodes
+            # alone would report a rewiring as no change at all.
+            {
+                "version",
+                "status",
+                "created_at",
+                "bytes",
+                "source",
+                "name",
+                "node_count",
+                "edge_count",
+            },
         )
         self.assertEqual(entries[0]["version"], 1)
         self.assertEqual(entries[0]["status"], "draft")
         self.assertGreater(entries[0]["bytes"], 0)
+        # Both counts are read leniently off the raw row, so a document the
+        # schema would refuse still lists; this one parses, so both are numbers.
+        self.assertIsInstance(entries[0]["node_count"], int)
+        self.assertIsInstance(entries[0]["edge_count"], int)
 
     def test_every_save_adds_a_version_and_the_newest_is_first(self) -> None:
         created = self.create_as(ADA_TOKEN)

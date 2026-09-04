@@ -173,7 +173,7 @@ fallback.
                     "router": ["in"], "transform": ["in"], "output": ["in"], "input": [],
                     "tool": [], "mcp": [], "skill": [] },
   "tiers": ["cheap","escalation"],
-  "tier_models": { "cheap": "google/gemini-3.5-flash-lite", "escalation": "google/gemini-3.7-flash" },
+  "tier_models": { "cheap": "google/gemini-3.5-flash-lite", "escalation": "google/gemini-3.8-flash" },
   "models": [ /* C3 entries verbatim, ≤ 10: id, name, provider, context_window,
                  supports_tools, supports_vision, supports_json_mode, supports_reasoning,
                  cost_in, cost_out, cost_in_max_endpoint, speed_tier, recommended_for */ ],

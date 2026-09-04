@@ -433,3 +433,61 @@ from `MCP_INJECTION_PATTERNS`. A fixture whose descriptions were all innocuous
 could not tell decision 8's rule working apart from the sanitiser never having
 run; here the tool comes back `suspicious` with its pattern named **and still
 selectable**, from a description a real server actually sent.
+
+| # | Criterion | | Shown by |
+| ---: | --- | --- | --- |
+| 8 | `MCPConnectionFailedEvent` becomes a `node_error` frame | **met** | `tests/events/test_mcp_frames.py` (6, new) · `tests/builder/test_failure_modes.py::McpUnreachableTests` (3) |
+
+**Both of the "honestly two things" are here.** This Status recorded the
+criterion as not reached and split it: the frame mapping, which it called
+this plan's and *"cut for time rather than for a reason"*, and the error edge,
+which was plan 12's. Plan 10 landed C6 and plan 09 the error router, so both are
+reachable now.
+
+*The mapping* is one additive branch in `_event_drafts`. Before it,
+`MCPConnectionFailedEvent` reached `record_unhandled` — **counted and
+invisible**, which is the failure that counter exists to make findable rather
+than to excuse. Every test asserts the frame **and** that the tally stopped
+moving, because a branch that drafts a frame and falls through anyway would
+satisfy every assertion about the frame alone.
+
+*The edge* is `test_mcp_unreachable`, in `tests/builder/test_failure_modes.py` —
+the file criterion 8 names. **CrewAI raises the event itself**: `MCPClient`
+emits `MCPConnectionFailedEvent` from its own failure path and then raises
+`MCPConnectionError`, so pointing the real `_default_resolver` at a port nothing
+is listening on produces both halves for real — the event that becomes the
+frame, and the exception that reaches `_attempted` and its error port. Nothing
+is hand-raised.
+
+**Two decisions in the frame's shape, both asserted:**
+
+- **`attempt`, `will_retry` and `routed` are deliberately absent.** They are
+  facts about a node's retry loop; this frame is about a connection. The
+  node-level `node_error` frame the runtime writes when the failure propagates
+  carries all three, and both frames appear in the same run — the second says
+  *what happened to the step*, the first says **which server** and why, which
+  the second structurally cannot because by then the failure is just an
+  exception. An author with three servers attached needs the first.
+- **`server_url` is not copied onto the frame.** A hosted MCP server can carry a
+  token in its path — `mask_url` exists for exactly that — so putting the raw
+  URL on a frame would publish a credential to everyone who can see the run
+  console. The server's `name`, `transport`, `error_type` and `status_code`
+  travel; the address does not. Pinned by a test that greps the details for the
+  path.
+
+**One departure: the error class is spelled `mcp_connection_failed`, with
+underscores.** `MCP_CONNECTION_ERROR_CLASS` lives in `builder/mcp.py` beside the
+subsystem it names, and three greps sweep every module-level
+`NAME = "kebab-case"` under `brief_crew/builder/` into the canvas problem-code
+union (`test_problem_code_declarations.py`). A kebab spelling would have
+appeared in the client's `PROBLEM_CODES` mirror as a problem an author can
+repair on a node, which it is not. `skills.SKILL_LOAD_ERROR_CLASS` is spelled
+the same way for the same reason, so the two frame discriminators agree with
+each other. **They do not agree with `credential-not-yours`**, which is kebab —
+a pre-existing inconsistency in `error_class` spellings across the three, and a
+follow-up rather than something to change under this criterion.
+
+**"Under `raise`" is read as the node's `on_error`, not `tool_failure_policy`.**
+An MCP connection failure is raised while an agent's clients are being resolved,
+before any tool runs, so no tool policy is in the path. Both `route` and `fail`
+are asserted, which is what that clause distinguishes.

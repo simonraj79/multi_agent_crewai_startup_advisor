@@ -358,6 +358,15 @@ def server_config(
     raise McpUnavailable(f"{record.transport!r} is not a transport this service speaks")
 
 
+#: The C6 `error_class` on the `node_error` frame a failed CONNECTION produces
+#: (07 D7, criterion 8). Spelled with underscores rather than hyphens, exactly
+#: as `skills.SKILL_LOAD_ERROR_CLASS` is and for the same reason: three greps
+#: sweep every module-level `NAME = "kebab-case"` under `brief_crew/builder/`
+#: into the canvas problem-code union, and this is a FRAME discriminator rather
+#: than a problem an author can repair on a node.
+MCP_CONNECTION_ERROR_CLASS = "mcp_connection_failed"
+
+
 class McpUnavailable(RuntimeError):
     """A server this run cannot reach, with the sentence the author gets."""
 
@@ -590,6 +599,7 @@ def mcp_problems(
 
 
 __all__ = [
+    "MCP_CONNECTION_ERROR_CLASS",
     "MCP_NO_TOOLS_SELECTED",
     "MCP_SERVER_UNAVAILABLE",
     "MCP_TOOL_DESCRIPTION_SUSPICIOUS",

@@ -1,9 +1,10 @@
 """A tool that throws, and where the run ends up - plan 06 criterion 8.
 
 **This file is plan 12's** in the ownership map, and it did not exist. What is
-in it is one case: the one plan 06's own criterion 8 names, which is the only
-one this wave is entitled to write. Plan 12's remaining failure modes (a
-guardrail, a cancel, a cost ceiling) belong to plan 12 and are not here.
+in it is the two cases plan 12's file is named by somebody else's criterion for:
+plan 06 criterion 8 (`tool_failure_policy: raise`) and plan 07 criterion 8
+(`test_mcp_unreachable`). Plan 12's own failure modes - a guardrail, a cancel, a
+cost ceiling - belong to plan 12 and are not here.
 
 The criterion is *"`tool_failure_policy: raise` on an agent with a tool that
 throws makes the paired router emit `error` and the run reach the error edge's
@@ -47,7 +48,9 @@ from crewai.tools import BaseTool
 from crewai.tools.tool_failure import ToolFailurePolicy
 from pydantic import BaseModel, Field
 
+from brief_crew.builder import mcp as mcp_module
 from brief_crew.builder.descriptor import build_builder_workflow
+from brief_crew.builder.mcp import MCP_CONNECTION_ERROR_CLASS
 from brief_crew.builder.runtime import DefaultCrewFactories
 from brief_crew.events import FrameKind
 from brief_crew.events.adapter import StreamSinkAdapter
@@ -62,8 +65,18 @@ from tests.builder.test_compiler import (
     output_node,
 )
 from tests.builder.test_document import document, edge, node as builder_node
+from tests.service import mcp_fixture_server as fixture
 
 IDEA = "a scheduling assistant for clinics"
+
+#: `mcp` ships with CrewAI's MCP support; if it is ever absent the MCP arm skips
+#: rather than fails, because a missing optional package is not a defect here.
+try:  # pragma: no cover
+    import mcp as _mcp  # noqa: F401
+
+    MCP_AVAILABLE = True
+except Exception:  # pragma: no cover
+    MCP_AVAILABLE = False
 
 #: What the tool raises. Distinctive, so a frame carrying it can be identified
 #: as THIS failure rather than as any failure.
@@ -292,6 +305,178 @@ class ToolFailurePolicyRoutingTests(unittest.TestCase):
         self.assertEqual(
             self._errors(buffer), [], "warn emitted a node_error; it should not"
         )
+
+
+
+
+# --------------------------------------------------------------------------
+# Plan 07 criterion 8's second half: `test_mcp_unreachable`.
+# --------------------------------------------------------------------------
+#
+# The criterion is *"`MCPConnectionFailedEvent` during a run produces a
+# `node_error` frame and, under `raise`, the error edge fires"*, and plan 07
+# called it *"honestly two things"*. `tests/events/test_mcp_frames.py` is the
+# mapping - the event to the frame. This is the other thing: that the failure
+# reaches the graph.
+#
+# **CrewAI raises the event itself here.** `MCPClient` emits
+# `MCPConnectionFailedEvent` from its own failure path and then raises
+# `MCPConnectionError`, so pointing the real resolver at a port nothing is
+# listening on produces BOTH halves for real: the event that becomes the frame,
+# and the exception that reaches `_attempted` and its error port. Nothing is
+# simulated and nothing is hand-raised.
+#
+# "Under `raise`" is read as the node's `on_error`, not as
+# `tool_failure_policy`: an MCP connection failure is raised while an agent's
+# clients are being resolved, before any tool runs, so no tool policy is in the
+# path. `on_error: route` and `on_error: fail` are both asserted, which is what
+# that clause distinguishes.
+
+
+class McpUnreachableFactories(SyntheticCrewFactories):
+    """Resolves a REAL MCP config against a dead port, then would kick off.
+
+    The resolver call is `builder/mcp.py`'s own `_default_resolver` - the one
+    the discovery route uses - so this exercises the same code path a run's
+    agent construction does, and CrewAI emits its own connection events on the
+    way through.
+    """
+
+    def __init__(self, node_id: str = "draft") -> None:
+        super().__init__(failures=None)
+        self.node_id = node_id
+        self.attempts = 0
+
+    def authored_agent_crew(self, *, node_id: str, spec: Any) -> Any:
+        if node_id != self.node_id:
+            return super().authored_agent_crew(node_id=node_id, spec=spec)
+        self.attempts += 1
+        record = mcp_module.McpServerRecord(
+            id="mcp_deadbeef1234",
+            user_id="user_alice",
+            label="a server that is not there",
+            transport="http",
+            url=f"http://127.0.0.1:{fixture.free_port()}/mcp",
+        )
+        config = mcp_module.server_config(record)
+        # Raises `MCPConnectionError`, and emits `MCPConnectionFailedEvent` on
+        # the way out. Both are CrewAI's.
+        list(mcp_module._default_resolver(config))
+        raise AssertionError("the dead port answered, which cannot happen")
+
+
+def mcp_graph(*, on_error: str) -> Any:
+    """The same shape as `tool_graph`, with an `mcp` node instead of a `tool`."""
+
+    nodes: list[Any] = [
+        input_node(),
+        authored_agent_node("draft", on_error=on_error),
+        builder_node(
+            "servers",
+            "mcp",
+            {"server_id": "mcp_deadbeef1234", "tool_names": ["search"]},
+        ),
+        output_node(
+            "report",
+            source="${state.out__apology}"
+            if on_error == "route"
+            else "${state.out__draft}",
+        ),
+    ]
+    edges: list[Any] = [
+        edge("e1", "idea", "draft"),
+        edge("e2", "draft", "report"),
+        attach_edge("a1", "servers", "draft"),
+    ]
+    if on_error == "route":
+        nodes.append(authored_agent_node("apology", source="idea"))
+        edges.append(edge("e3", "draft", "apology", source_port="error"))
+        edges.append(edge("e4", "apology", "report"))
+    return document(nodes, edges)
+
+
+@unittest.skipUnless(MCP_AVAILABLE, "the mcp package is not installed")
+class McpUnreachableTests(unittest.TestCase):
+    """`test_mcp_unreachable` - plan 07 criterion 8's error-edge half."""
+
+    def _run(self, graph: Any) -> tuple[Any, FrameBuffer]:
+        workflow = build_builder_workflow(graph)
+        buffer = FrameBuffer(capacity=512)
+        capture = StreamSinkAdapter(
+            run_id="run-mcp-down", buffer=buffer, registry=workflow.node_registry
+        )
+        execution = RunExecution(
+            run_id="run-mcp-down",
+            inputs={"idea": IDEA},
+            capture=capture,
+            flow_id="run-mcp-down",
+            cancel_requested=threading.Event(),
+        )
+        runner = BuilderFlowRunner(
+            workflow, crew_factories=McpUnreachableFactories()
+        )
+        with capture_events(CaptureContext(run_id="run-mcp-down", adapter=capture)):
+            with redirect_stdout(io.StringIO()):
+                try:
+                    return runner(execution), buffer
+                except Exception as exc:  # noqa: BLE001 - the `fail` arm asserts on it
+                    return exc, buffer
+
+    @staticmethod
+    def _errors(buffer: FrameBuffer) -> list[dict[str, Any]]:
+        return [
+            dict(frame.details)
+            for frame in buffer.replay(after=0, limit=500)
+            if frame.kind is FrameKind.ERROR
+        ]
+
+    def test_the_connection_failure_becomes_a_node_error_frame_in_a_real_run(
+        self,
+    ) -> None:
+        """The event is CrewAI's own, raised by its own client, in a real run."""
+
+        _, buffer = self._run(mcp_graph(on_error="route"))
+        classes = [details.get("error_class") for details in self._errors(buffer)]
+        self.assertIn(
+            MCP_CONNECTION_ERROR_CLASS,
+            classes,
+            "no frame named the MCP connection failure; the run's error frames "
+            f"were {classes}",
+        )
+        named = [
+            details
+            for details in self._errors(buffer)
+            if details.get("error_class") == MCP_CONNECTION_ERROR_CLASS
+        ][0]
+        self.assertEqual(named["stage"], "error")
+        self.assertTrue(named["server"], "the frame did not say which server")
+
+    def test_under_route_the_error_edges_target_runs(self) -> None:
+        result, buffer = self._run(mcp_graph(on_error="route"))
+        self.assertNotIsInstance(result, Exception)
+        self.assertIn("Synthetic output for apology", str(result))
+        # The node-level frame beside the connection-level one: the run's own
+        # accounting of the attempt, which the MCP frame deliberately does not
+        # carry because a connection is not an attempt.
+        node_level = [
+            details
+            for details in self._errors(buffer)
+            if "routed" in details
+        ]
+        self.assertTrue(node_level)
+        self.assertTrue(node_level[0]["routed"])
+
+    def test_with_no_error_port_the_run_fails(self) -> None:
+        """The control: without it the arm above could pass on a run that never
+        met the failure at all."""
+
+        raised, buffer = self._run(mcp_graph(on_error="fail"))
+        self.assertIsInstance(raised, Exception)
+        node_level = [
+            details for details in self._errors(buffer) if "routed" in details
+        ]
+        self.assertTrue(node_level)
+        self.assertFalse(node_level[0]["routed"])
 
 
 if __name__ == "__main__":

@@ -422,3 +422,147 @@ Open questions for the owner:
   console. Same for `GET /api/builder/workflows/{id}/compiled`, whose panel is
   11's; `frontend/tests/builderApi.spec.ts` accounts for the route in the
   meantime so it cannot sit declared and unknown to the client.
+
+
+### Gate replay — 2026-09-04
+
+D5 shipped able to replay a chain and unable to replay a **gate**, and the
+launch rule is what makes that the whole product rather than an edge case.
+Found by the plan-12 builder, measured rather than reasoned, recorded there as
+follow-up 1 and fixed here. Criterion 6 is still met and is now met over the
+shapes it was never asked about.
+
+**The mechanism.** 09 D7 says every node above the resume point compiles to
+`runtime:replay_output`. Three node kinds cannot be, because each of them
+**emits an event its successor listens for**: a gate is TWO methods (the pause
+plus the paired deterministic router), an `on_error: route` node is two the
+same way, and a plain `router` IS its own router method. Replacing the pair
+with one `replay_output` emits nothing, so the node below goes on listening for
+a label nothing produces. Reproduced verbatim on `input -> gate -> agent ->
+output`:
+
+```text
+n3_safe listens for 'e2_approve', which no method emits and no method is
+called. A trigger nothing produces is a node that never runs
+```
+
+The router and the error port produce the same sentence with `e2_onward` and
+`e2_ok`. `tests/service/test_replay.py`'s `abc()` fixture has none of the
+three, which is why 2,321 green tests walked past it.
+
+**Why it is not exotic.** `BUILDER_ALLOW_GATELESS_GRAPHS` is off, so a gate
+above the first billable node is the ONLY shape an anonymous author may launch
+— every graph they can launch was one `resume_from` could not resume past, and
+plan 12 D6's "Re-run from here" was a dead button on it.
+
+**The fix, in four parts.**
+
+1. **A replayed gate keeps its router**, and the router routes on what the
+   source run RECORDED. The `replayed` flag travels in the compiled routing
+   table (`state.__builder__.gates`), which is the only place it can: `route_gate`
+   is deliberately compiled with no `with:` block, because `CodeAction.run`
+   calls `handler(**rendered)` whenever one is present and drops the positional
+   `HumanFeedbackResult`. `_replayed_gate_decision` reads the decision out of
+   the replay values — which ARE the source run's last `flow_states` row — and
+   never a hardcoded `approve`. That mattered: a replayed gate is handed no
+   feedback result at all and `gate_decision(None)` IS an approve, so letting
+   the live path run would have been the silent approval `lint_gates` refuses
+   in the compiler, arriving by another door. A gate with no recorded decision
+   raises `ReplayGateUndecided` rather than guessing.
+2. **A revise is re-taken ONCE.** Only the LAST decision at a gate survives in
+   state, so a three-lap source run cannot be reproduced lap by lap from it and
+   honouring the recorded revise on every pass would loop until
+   `max_method_calls` stopped it. One lap is what the record supports: it
+   reaches the node the operator sent the run back to, and the pass after it
+   goes forward — `route_gate`'s own answer at the turn cap, for the same
+   reason.
+3. **A plain `router` is not replayed at all.** It bills nothing and it is a
+   pure function of the state a replay restores, so re-running it reproduces the
+   branch the source run took rather than guessing at it. A stated departure
+   from D7's "every node upstream": what D7 is protecting is money, and a router
+   costs none.
+4. **The replay carries `err__<node>` as well as `out__<node>`.** They are
+   different state prefixes answering different questions — what a node produced
+   and whether it exploded — and an `on_error: route` node's paired router reads
+   the second. `_saved_slices` reads both off the one row; `replay_source` scopes
+   them separately so a router keyed on one cannot read the other. Without it a
+   node that FAILED and took its error port replays as a success and the derived
+   run goes down the branch the author drew for the other outcome, silently, and
+   down a path that bills.
+
+**The invariant that was missing.** `_assert_routers_declare_what_they_emit`
+already ran on every derived plan and is what refused this one — so the
+"every listened-for event is emitted by some method" post-condition existed;
+what it could not do is catch the case DIRECTLY. It fires only when some kept
+method happens to listen for a vanished label, so a routed node at the end of a
+derived plan, or one whose only successor a node test dropped, would have
+disappeared in silence and the run would simply have stopped early.
+`_assert_methods_cover_the_kept_namespace` asks it the other way round: **a node
+the plan keeps emits every method its name reserves.** Reverting the fix in
+memory now answers `the compiled flow is missing n2_route_confirm` — the cause,
+not the symptom.
+
+**Also refused at the door.** A `resume_from` whose replay would cross a gate
+the source run never answered is a **422 naming the gate**, from
+`derived_plan`. Not a correctness fix — `route_gate` raises either way — but the
+alternative is a queue slot, a `runs` row and a failed run to say a thing the
+caller could have been told for nothing. The two states are told apart by
+SHAPE: a decided gate leaves the mapping `route_gate` wrote, and a run that
+paused and stopped leaves the rendered payload, which is a string.
+
+**`replay_ancestors` is now public** in `compiler.py`, because the service has
+to ask the question before it spends a queue slot. `_Plan._ancestors` delegates
+to it, so there is one walk and not two.
+
+### Measured, 2026-09-04, in this worktree
+
+```text
+Python   2340 run · 0 failures · 6 skipped · 179.9 s   (baseline at 69f7f22: 2321 / 0 / 6)
+```
+
+Frontend, type check and E2E were **not run**: nothing under `frontend/` was
+touched, no contract both sides read moved, and no shape reached a route the
+client renders. `BUILDER_ACTION_REFS` is still **eleven** — the fix adds no
+twelfth entrypoint, and `test_compiler.py` asserts every emitted `do.ref` is in
+it, derived plans included.
+
+One committed golden moved by exactly one line:
+`tests/builder/fixtures/rubric11/a_gate.json` gains `"replayed": false` in the
+routing table. Regenerated with `scripts/emit_rubric11_goldens.py`, which the
+failure message names.
+
+### Watched go red, then green
+
+| broken | red |
+| --- | --- |
+| the replayed gate's router (the pre-fix `methods_for`) | `the compiled flow is missing n2_route_confirm` |
+| `route_gate` ignoring the `replayed` flag | `AssertionError: 'redo' not found in ['safe']` — the hardcoded approve skips the revise lap |
+| `replay_output` writing the wrong state prefix | `KeyError: 'err__draft'`, and the error router taking `onward` where the source took the error port |
+| `replay_ancestors` emptied at the 422 door | `202 != 422` |
+
+The second row is the one worth keeping. Every OTHER assertion about a resume
+past a gate passes with a hardcoded `approve`, because the last decision a
+COMPLETED run records is an approve. The only shape that can tell them apart is
+a source run that died **inside** the revise lap, where approve skips the very
+node being resumed from — `test_a_replayed_gate_re_takes_a_REVISE_and_not_a_convenient_approve`.
+
+### Tests
+
+| Module | New | What it pins |
+| --- | ---: | --- |
+| `tests/service/test_replay.py::ResumeFromAGateTests` | 10 | the derived plan over a gate compiles, keeps the router, loses the pause, completes with output, does not ask again, re-takes a recorded revise, runs a `node_test` below a gate off saved mocks, and answers 422 for a gate nobody answered |
+| `tests/service/test_replay.py::ReplayOfARoutedFailureTests` | 3 | `err__` restored beside the output, NOT invented when the node succeeded, and the error router taking the branch the source run took |
+| `tests/builder/test_compiler.py::ReplayPlanRoutedTests` | 6 | all three routed kinds × both modes are whole; the `replayed` flag; the deliberate break of the coverage assertion |
+
+### Not verified
+
+- **No paid run.** Everything here is `SYNTHETIC=1` doubles and stubs; this
+  session spent **$0.00**. Remaining-work item 40 is untouched.
+- **A gated replay is not in the rubric-11 golden set.** `rubric11_documents.py`
+  carries `replay_resume_from` over a chain with no routed node in it, which is
+  exactly the gap this defect lived in. Adding `replay_past_a_gate` there would
+  put a gated derived plan under the determinism harness as well; it is a
+  shared fixture list, so it is left as a follow-up rather than taken here.
+- **A gate answered `revise` more than once cannot be replayed lap by lap**, by
+  construction — state holds one decision. Part 2 above is the accepted answer;
+  the falsifier is an operator who revises twice, resumes, and expects two laps.

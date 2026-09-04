@@ -98,6 +98,39 @@ function outputNode(id: string, x = 0, y = 0): BuilderNode {
   }
 }
 
+/** The second attachment HOST, so "agent or crew" is asserted as both. */
+function crewNode(id: string, x = 0, y = 0): BuilderNode {
+  return {
+    id: nodeId(id),
+    label: id,
+    position: { x, y },
+    kind: 'crew',
+    config: {
+      tier: 'cheap',
+      max_iter: 2,
+      guardrail_max_retries: 2,
+      prompt_inputs: {},
+      crew_id: nodeId('brief'),
+    },
+  }
+}
+
+/** A flow kind that is NOT a host, for the refusal half of the same rule. */
+function gateNode(id: string, x = 0, y = 0): BuilderNode {
+  return {
+    id: nodeId(id),
+    label: id,
+    position: { x, y },
+    kind: 'gate',
+    config: {
+      message: 'Confirm the scope before the branches run.',
+      editable_fields: [],
+      max_turns: 1,
+      expiry_seconds: 1800,
+    },
+  }
+}
+
 function edge(id: string, source: string, target: string): BuilderEdge {
   return {
     id: edgeId(id),
@@ -617,6 +650,88 @@ describe('the number keys drop a kind and connect it to a lone selection', () =>
     canvas.insertKind('agent')
 
     expect(store.commits).toEqual(['addNode'])
+  })
+
+  /* --- the ATTACHMENT half of the same rule (13 follow-up 3) --------------
+   *
+   * `T` / `M` / `K` (decision 18) placed a loose pill at the pointer or the
+   * viewport centre, whatever was selected, because the auto-connect above
+   * ends at `acceptsIncoming` and the three attachment kinds accept nothing.
+   * So the hotkeys were documented and could not attach, and the only working
+   * attach gesture in the product was a pointer drag onto a card.
+   */
+
+  it('ATTACHES an attachment kind to a lone selected agent, in one commit', () => {
+    const { store, canvas } = liveCanvas(document([{ ...agentNode('scoper'), position: { x: 400, y: 300 } }]))
+    canvas.selectNode(nodeId('scoper'))
+
+    canvas.insertKind('tool')
+
+    // One commit carrying both, which is what makes a single Ctrl+Z take them
+    // together - `attachTo` is reused whole rather than reimplemented.
+    expect(store.depth.value).toBe(1)
+    expect(store.undoLabel.value).toBe('Attach tool')
+    expect(store.doc.value.nodes).toHaveLength(2)
+    const [edge] = store.doc.value.edges
+    expect(edge.target).toBe('scoper')
+    expect(edge.target_port).toBe('attach')
+    expect(edge.source).toBe(store.doc.value.nodes[1].id)
+  })
+
+  it('attaches to a lone selected CREW as well as to an agent', () => {
+    const { store, canvas } = liveCanvas(document([{ ...crewNode('brief'), position: { x: 400, y: 300 } }]))
+    canvas.selectNode(nodeId('brief'))
+
+    canvas.insertKind('skill')
+
+    expect(store.doc.value.edges[0]).toMatchObject({ target: 'brief', target_port: 'attach' })
+  })
+
+  it('places it loose when NOTHING is selected, exactly as before', () => {
+    // Deliberately unchanged: `attachment-unattached` is a warning the author
+    // can read, and an author may be laying out before wiring.
+    const { store, canvas } = liveCanvas(document([{ ...agentNode('scoper'), position: { x: 400, y: 300 } }]))
+    canvas.setSelection([])
+
+    canvas.insertKind('tool')
+
+    expect(store.doc.value.nodes).toHaveLength(2)
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('places it loose when the lone selection cannot HAVE an attachment', () => {
+    // Only `agent` and `crew` are hosts. A gate with a tool hanging off it is a
+    // shape the compiler has no node to build from.
+    const { store, canvas } = liveCanvas(document([{ ...gateNode('confirm'), position: { x: 400, y: 300 } }]))
+    canvas.selectNode(nodeId('confirm'))
+
+    canvas.insertKind('tool')
+
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('places it loose when two nodes are selected, like the flow half', () => {
+    const { store, canvas } = liveCanvas(
+      document([
+        { ...agentNode('a'), position: { x: 0, y: 0 } },
+        { ...agentNode('b'), position: { x: 400, y: 300 } },
+      ]),
+    )
+    canvas.setSelection([nodeId('a'), nodeId('b')])
+
+    canvas.insertKind('tool')
+
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('leaves a FLOW kind alone however host-shaped the selection is', () => {
+    const { store, canvas } = liveCanvas(document([{ ...agentNode('scoper'), position: { x: 400, y: 300 } }]))
+    canvas.selectNode(nodeId('scoper'))
+
+    canvas.insertKind('gate')
+
+    // The ordinary auto-connect, arriving at `in` - not an attach edge.
+    expect(store.doc.value.edges[0]).toMatchObject({ target_port: 'in' })
   })
 })
 

@@ -1606,6 +1606,65 @@ test.describe('attachments and the inspector', () => {
     expect(watch.unexpected).toEqual([])
   })
 
+  test('attaches with the T hotkey when an agent is selected, and places it loose when none is', async ({
+    page,
+  }) => {
+    /*
+     * 13 follow-up 3, and decision 18's hotkeys made reachable.
+     *
+     * `T` / `M` / `K` went to `insertKind`, whose auto-connect ends at
+     * `acceptsIncoming` - and the three attachment kinds accept nothing. So the
+     * pill landed loose wherever the pointer happened to be, with
+     * `attachment-unattached` in the dock, and the only attach gesture that
+     * worked in the whole product was a pointer drag onto a card. A hotkey the
+     * shortcut sheet advertises and that cannot do the thing it names is worse
+     * than no hotkey.
+     *
+     * ON THE SELECTION, not on the pointer: a hotkey is a keyboard gesture, and
+     * the keyboard's idea of "here" is what is selected. Both halves are
+     * asserted in one test because the SECOND is what makes the first a rule
+     * rather than an always-attach - an author laying out before wiring keeps
+     * the behaviour they had.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    const agent = await firstOfKind(page, 'agent')
+    const nodesBefore = await nodes(page).count()
+    const edgesBefore = await edges(page).count()
+
+    await agent.card.click()
+    await page.keyboard.press('t')
+
+    await expect(nodes(page)).toHaveCount(nodesBefore + 1)
+    await expect(edges(page)).toHaveCount(edgesBefore + 1)
+    // The host says so on its own face, which is the only place an agent admits
+    // what it is holding without being opened (03 D6).
+    await expect(avatars(page, agent.id)).toHaveCount(1)
+
+    // ONE undo step, exactly as attach-by-drop is: `attachTo` is reused rather
+    // than reimplemented, so the node and its wire go together.
+    await page.keyboard.press('Control+z')
+    await expect(nodes(page)).toHaveCount(nodesBefore)
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+
+    // And with nothing selected it still places a loose pill and says so, which
+    // is the behaviour this change deliberately does not take away.
+    await canvas(page).click({ position: { x: 240, y: 440 } })
+    await page.keyboard.press('t')
+
+    await expect(nodes(page)).toHaveCount(nodesBefore + 1)
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+    await validationSettles(page)
+    await expect(problemRow(page, 'attachment-unattached')).toBeVisible()
+
+    expect(watch.unexpected).toEqual([])
+  })
+
   test('leaves a tool dropped on empty canvas unattached, and says so', async ({ page }) => {
     /*
      * The other half of 03 criterion 10, and a decision rather than an

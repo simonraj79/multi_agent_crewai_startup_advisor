@@ -1472,6 +1472,8 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
    * answer depend on the store applying the write synchronously.
    */
   function insertKind(kind: NodeKind): void {
+    // 13 follow-up 3: the attachment half of the auto-connect below.
+    if (attachToSelection(kind)) return
     const pointer = lastPointer.value
     const position =
       pointer && bridge
@@ -1482,6 +1484,38 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     if (!origin) return
     if (!NODE_KINDS[kind].acceptsIncoming) return
     store.addEdge(origin, node.id)
+  }
+
+  /**
+   * `T` / `M` / `K` with an agent or a crew selected: hang it off that one.
+   *
+   * 13 follow-up 3. Every keyboard and click path into node creation already
+   * had an auto-connect - `insertKind` wires the sole selected node's out-port
+   * to the new node - and the three attachment kinds were the hole in it. They
+   * accept no incoming edge, so `acceptsIncoming` returned early and the pill
+   * landed loose, wherever the pointer or the viewport centre happened to be,
+   * with `attachment-unattached` in the dock. The only working attach gesture
+   * in the product was a pointer drag onto a card, which is decision 18's
+   * hotkeys documented and unreachable.
+   *
+   * ON THE SELECTION, not on the pointer, and the distinction is the ruling
+   * this implements: a hotkey is a keyboard gesture and the keyboard's idea of
+   * "here" is the selection. Hit-testing the pointer would make the same key
+   * do two different things depending on where a mouse the author is not using
+   * happens to be resting.
+   *
+   * `attachTo` is reused whole, so this is ONE commit carrying the node and its
+   * wire, labelled `Attach tool`, exactly as attach-by-drop is - one Ctrl+Z
+   * takes both. Returns the result so a caller can tell "attached" from "carry
+   * on and place it", rather than re-deriving the same condition.
+   */
+  function attachToSelection(kind: NodeKind): DropResult | null {
+    if (NODE_KINDS[kind].family !== 'attachment') return null
+    if (selectedNodeIds.value.size !== 1) return null
+    const [only] = selectedNodeIds.value
+    const host = doc().nodes.find((node) => node.id === only)
+    if (!host || !ATTACH_HOST_KINDS.has(host.kind)) return null
+    return attachTo(kind, host.id)
   }
 
   /** Half a card up and left, so a centre-dropped card is centred on the point. */
@@ -1955,6 +1989,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     connectPreview,
     createAt,
     insertKind,
+    attachToSelection,
     onNodeDragStart,
     onNodeDrag,
     onNodeDragStop,

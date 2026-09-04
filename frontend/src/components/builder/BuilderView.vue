@@ -1484,6 +1484,21 @@ async function onEdgeSelectFromPanel(problem: BuilderProblem): Promise<void> {
  * drop is a hard 422 that arrives on a later save, long after the click.
  */
 function placeKind(kind: Parameters<typeof canvas.insertKind>[0]): void {
+  /*
+   * 13 follow-up 3, on the click path as well as the key path.
+   *
+   * A palette tile is a `<button>`, so Enter and Space on a focused tile arrive
+   * here and `T` / `M` / `K` arrive at `insertKind` - two doors onto one
+   * gesture. An author with an agent selected who reaches the Tool tile by
+   * keyboard and one who presses `T` are asking for the same thing, and a
+   * product where one attaches and the other does not is one an author learns
+   * by discovering the inconsistency.
+   *
+   * The condition lives in `canvas.attachToSelection` rather than being
+   * restated here: a second copy of "which kinds attach, to which kinds" is a
+   * table that drifts, and this file is not where that table lives.
+   */
+  if (canvas.attachToSelection(kind)) return
   const centre = canvas.viewportCentre()
   canvas.dropKind(kind, { x: snapToGrid(centre.x), y: snapToGrid(centre.y) })
 }

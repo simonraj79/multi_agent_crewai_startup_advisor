@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from brief_crew.config import (
     MAX_RUN_INPUT_BYTES,
     MAX_RUN_INPUT_KEYS,
+    MAX_TEST_INPUT_LABEL_CHARS,
+    MAX_TEST_INPUT_MOCK_BYTES,
     declared_reserved_run_input_keys,
 )
 
@@ -282,6 +284,86 @@ class DryRunResponse(BaseModel):
     problems: list[dict[str, Any]] = Field(default_factory=list)
     budget: dict[str, Any] = Field(default_factory=dict)
     definition: dict[str, Any] = Field(default_factory=dict)
+
+
+class TestInputModel(BaseModel):
+    """One saved test input, as `GET /workflows/{id}/test-inputs` returns it.
+
+    13 D3, contract C10. `inputs` is the run body the panel would post -
+    `{<input_field>: str}` - and `node_mocks` the per-node `out__*` values a
+    single-node test replays into everything above the node under test.
+
+    They are two FIELDS and not one nested dict, where D3 writes
+    `{<input_field>: str, mocks: {...}}`. The table already separates them
+    (`inputs` and `node_mocks`, 15 D6), and `CreateRunRequest.inputs` is merged
+    wholesale into the flow's pydantic state by CrewAI - so a `mocks` key
+    smuggled inside `inputs` would arrive as a state field. The nesting the plan
+    describes is a shape the wire must not have.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    document_id: str
+    label: str
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    node_mocks: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class TestInputRequest(BaseModel):
+    """Save one test input against a document.
+
+    `from_run_id` is D3's *"use last run's outputs as mocks"*: rather than the
+    author typing a plausible-looking output for every upstream node, the server
+    copies the `out__*` slots off a finished run's own state. The cheapest way to
+    get realistic mocks is a real run, once.
+
+    It is resolved on the SERVER and not in the browser, and that is the whole
+    reason the field exists: a run's state is only readable by its owner, and
+    the panel has no route that hands it every node's output. `/runs/{id}/state`
+    answers one moment at a time and redacts as it goes.
+
+    Explicit `node_mocks` and `from_run_id` may both be sent; the explicit values
+    win per node, because an author who typed one meant it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=MAX_TEST_INPUT_LABEL_CHARS)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    node_mocks: dict[str, Any] = Field(default_factory=dict)
+    #: A finished run of the caller's whose `out__*` slots seed `node_mocks`.
+    from_run_id: str | None = Field(default=None, max_length=128)
+
+    @field_validator("inputs", "node_mocks")
+    @classmethod
+    def _bounded(cls, value: dict[str, Any], info: ValidationInfo) -> dict[str, Any]:
+        """Both JSON columns, bounded before the INSERT rather than by it.
+
+        `inputs` gets `CreateRunRequest`'s own bounds, because it IS a run body
+        and a saved one that could not be posted would be a row whose only use
+        is failing later. `node_mocks` gets the larger one: a mock is a node's
+        output, which is prose an agent wrote, and 8 KiB of it is one paragraph.
+        """
+
+        try:
+            encoded = json.dumps(value, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{info.field_name} must be JSON-serialisable") from exc
+        ceiling = (
+            MAX_RUN_INPUT_BYTES
+            if info.field_name == "inputs"
+            else MAX_TEST_INPUT_MOCK_BYTES
+        )
+        if len(encoded) > ceiling:
+            raise ValueError(f"{info.field_name} is limited to {ceiling} bytes of JSON")
+        if len(value) > MAX_RUN_INPUT_KEYS:
+            raise ValueError(
+                f"{info.field_name} carries at most {MAX_RUN_INPUT_KEYS} keys"
+            )
+        return value
 
 
 class RunStateResponse(BaseModel):

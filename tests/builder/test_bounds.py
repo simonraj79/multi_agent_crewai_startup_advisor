@@ -736,5 +736,231 @@ class ValidatorShapedTests(unittest.TestCase):
         self.assertIn(bounds.BILLABLE_COUNT, codes(problems))
 
 
+def authored_crew(
+    node_id: str = "team",
+    *,
+    process: str = "sequential",
+    task_order: tuple[str, ...] = (),
+    manager_agent: str | None = None,
+    manager_llm: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """An authored crew - the arm with `process`, `task_order` and a manager.
+
+    The two arms are discriminated by PRESENCE rather than by a tag, so what
+    makes this authored rather than a library node is the absence of `crew_id`
+    and the presence of `process`.
+    """
+
+    config: dict[str, Any] = {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "process": process,
+        "task_order": list(task_order),
+    }
+    if manager_agent is not None:
+        config["manager_agent"] = manager_agent
+    if manager_llm is not None:
+        config["manager_llm"] = manager_llm
+    return node(node_id, "crew", config)
+
+
+def member_edge(edge_id: str, source: str, target: str) -> dict[str, Any]:
+    return {
+        "id": edge_id,
+        "source": source,
+        "source_port": "out",
+        "target": target,
+        "target_port": "member",
+    }
+
+
+def crewed_document(
+    crew: dict[str, Any], *, members: tuple[str, ...] = ("worker",)
+) -> BuilderDocument:
+    """`idea -> crew -> report`, with `members` wired in along `member` edges."""
+
+    return document(
+        [input_node(), crew, *(agent_node(name) for name in members), output_node()],
+        [
+            edge("e1", "idea", crew["id"]),
+            edge("e2", crew["id"], "report"),
+            *(
+                member_edge(f"m{index}", name, crew["id"])
+                for index, name in enumerate(members)
+            ),
+        ],
+    )
+
+
+class CrewTaskOrderTests(unittest.TestCase):
+    """12 D1: an order entry the runtime would silently drop.
+
+    `runtime.py:724` filters `task_order` down to entries that are members of
+    THIS crew and says nothing about what it removed - so the author drags an
+    order and the crew runs a different one. That is the gauntlet's own
+    forbidden "a parameter rendered in the UI that the compiler ignores",
+    reached by clicking: choose an order, then delete that agent's member edge,
+    and `AuthoredCrewForm` hides the stranger it left behind.
+    """
+
+    def test_an_order_over_the_real_members_is_clean(self) -> None:
+        problems = structural_problems(
+            crewed_document(
+                authored_crew(task_order=("worker", "second")),
+                members=("worker", "second"),
+            )
+        )
+        self.assertNotIn(bounds.CREW_TASK_ORDER_MISMATCH, codes(problems))
+
+    def test_an_empty_order_is_clean_because_it_means_member_order(self) -> None:
+        problems = structural_problems(crewed_document(authored_crew()))
+        self.assertNotIn(bounds.CREW_TASK_ORDER_MISMATCH, codes(problems))
+
+    def test_a_partial_order_is_deliberately_not_a_problem(self) -> None:
+        """`runtime.py:725` completes it from `member_ids`.
+
+        Naming two of three members really does mean "these two first", so
+        reporting it would be reporting a shape that works. This is the
+        assertion that stops the check being widened into a nuisance.
+        """
+
+        problems = structural_problems(
+            crewed_document(
+                authored_crew(task_order=("second",)),
+                members=("worker", "second", "third"),
+            )
+        )
+        self.assertNotIn(bounds.CREW_TASK_ORDER_MISMATCH, codes(problems))
+
+    def test_an_order_naming_a_stranger_is_refused_and_names_it(self) -> None:
+        problems = structural_problems(
+            crewed_document(authored_crew(task_order=("worker", "ghost")))
+        )
+        problem = find(problems, bounds.CREW_TASK_ORDER_MISMATCH)
+        self.assertEqual(problem.severity, "error")
+        self.assertEqual(problem.node_id, "team")
+        # `members`, not `task_order`: the read-only member list IS the order
+        # control, and anchoring to a field name no form renders drops the row
+        # to the node strip.
+        self.assertEqual(problem.field, "members")
+        self.assertIn("ghost", problem.message)
+        # Only the stranger is blamed. A message that listed the whole order
+        # would make the author check every row.
+        self.assertNotIn("'worker', 'ghost'", problem.message)
+
+    def test_a_library_crew_is_untouched_by_it(self) -> None:
+        """A registered crew has no `task_order` and cannot be given one."""
+
+        problems = structural_problems(
+            document(
+                [
+                    input_node(),
+                    node("sweep", "crew", {"crew_id": "sweep", "tier": "cheap"}),
+                    output_node(),
+                ],
+                [edge("e1", "idea", "sweep"), edge("e2", "sweep", "report")],
+            )
+        )
+        self.assertNotIn(bounds.CREW_TASK_ORDER_MISMATCH, codes(problems))
+
+
+class CrewManagerTests(unittest.TestCase):
+    """12 D1: the half `document.py`'s cross-field validator cannot see.
+
+    It refuses a hierarchical crew with NEITHER manager set and RAISES, because
+    that is a rule about one object. Whether `manager_agent` names one of THIS
+    crew's members is a question only the `member` edges answer, and with it
+    unresolved `runtime.py:730` falls through to `manager_llm`, finds none, and
+    CrewAI raises at `crew.py:729` - after every node upstream has billed.
+    """
+
+    def test_a_manager_who_is_a_member_is_clean(self) -> None:
+        problems = structural_problems(
+            crewed_document(authored_crew(process="hierarchical", manager_agent="worker"))
+        )
+        self.assertNotIn(bounds.CREW_HIERARCHICAL_NEEDS_MANAGER, codes(problems))
+
+    def test_a_sequential_crew_is_never_asked_about_a_manager(self) -> None:
+        problems = structural_problems(crewed_document(authored_crew()))
+        self.assertNotIn(bounds.CREW_HIERARCHICAL_NEEDS_MANAGER, codes(problems))
+
+    def test_a_stale_manager_reference_is_refused_and_names_the_control(self) -> None:
+        problems = structural_problems(
+            crewed_document(authored_crew(process="hierarchical", manager_agent="ghost"))
+        )
+        problem = find(problems, bounds.CREW_HIERARCHICAL_NEEDS_MANAGER)
+        self.assertEqual(problem.severity, "error")
+        self.assertEqual(problem.node_id, "team")
+        self.assertEqual(problem.field, "manager_agent")
+        self.assertIn("ghost", problem.message)
+        self.assertIn("raise at construction", problem.message)
+
+    def test_a_manager_model_beside_a_stale_agent_is_clean(self) -> None:
+        """The clause that keeps the check narrow, measured rather than assumed.
+
+        `_validate_manager` permits both keys together on a hierarchical crew -
+        it refuses only NEITHER - and `runtime.py:733` falls through to
+        `manager_llm` when the agent does not resolve. So the crew reaches
+        CrewAI with a working manager and there is nothing to report. Reporting
+        it anyway would be a red rim on a graph that runs, which is the failure
+        mode this whole module is written the other way round to avoid.
+
+        `AuthoredCrewForm` nulls one when the other is chosen, so the state is
+        not reachable by clicking either - only by import or by the API.
+        """
+
+        problems = structural_problems(
+            crewed_document(
+                authored_crew(
+                    process="hierarchical",
+                    manager_agent="ghost",
+                    manager_llm={"model": "gemini-3.8-flash"},
+                )
+            )
+        )
+        self.assertNotIn(bounds.CREW_HIERARCHICAL_NEEDS_MANAGER, codes(problems))
+
+
+class CrewFieldPartitionTests(unittest.TestCase):
+    """Neither code fires on anything else - criterion 2's "and on nothing else"."""
+
+    def test_the_validator_shaped_document_carries_neither(self) -> None:
+        found = codes(structural_problems(validator_shaped_document()))
+        self.assertNotIn(bounds.CREW_TASK_ORDER_MISMATCH, found)
+        self.assertNotIn(bounds.CREW_HIERARCHICAL_NEEDS_MANAGER, found)
+
+    def test_each_reproduction_carries_exactly_one_of_them(self) -> None:
+        order = codes(
+            structural_problems(crewed_document(authored_crew(task_order=("ghost",))))
+        )
+        manager = codes(
+            structural_problems(
+                crewed_document(authored_crew(process="hierarchical", manager_agent="ghost"))
+            )
+        )
+        self.assertEqual(
+            [code for code in order if code.startswith("crew-")],
+            [bounds.CREW_TASK_ORDER_MISMATCH],
+        )
+        self.assertEqual(
+            [code for code in manager if code.startswith("crew-")],
+            [bounds.CREW_HIERARCHICAL_NEEDS_MANAGER],
+        )
+
+    def test_error_port_unconnected_is_still_a_warning(self) -> None:
+        """Criterion 2's second clause, asserted where the rest of the table is."""
+
+        payload = agent_node("draft")
+        payload["config"]["on_error"] = "route"
+        problems = structural_problems(
+            document(
+                [input_node(), payload, output_node()],
+                [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+            )
+        )
+        self.assertEqual(find(problems, bounds.ERROR_PORT_UNCONNECTED).severity, "warning")
+
+
 if __name__ == "__main__":
     unittest.main()

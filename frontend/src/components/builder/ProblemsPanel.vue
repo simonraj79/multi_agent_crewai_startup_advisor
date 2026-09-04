@@ -44,6 +44,18 @@ const props = withDefaults(
     problems: readonly BuilderProblem[]
     phase: ValidationPhase
     /**
+     * The run phase's own list - 12 D2, built by `runPhaseProblems` from the
+     * `node_error` frames of the run on screen.
+     *
+     * A SEPARATE GROUP and not merged into the anchored one, because the two
+     * answer different questions. A build-time problem says this graph cannot
+     * run; a run-time one says this graph ran and node `b` failed. Sorting them
+     * together would put "the model declined" above "no output node" on
+     * severity alone, and an author cannot act on the second by fixing the
+     * first. The heading is what separates them and it is the whole feature.
+     */
+    runProblems?: readonly BuilderProblem[]
+    /**
      * A publish 422's problem list. Merged in rather than shown in a dialog,
      * because they are the same `Problem` objects with the same anchors and the
      * author fixes them the same way - the only difference worth rendering is
@@ -72,6 +84,7 @@ const props = withDefaults(
   }>(),
   {
     publishProblems: () => [],
+    runProblems: () => [],
     labels: () => ({}),
     reason: '',
     viewingVersion: null,
@@ -142,13 +155,28 @@ const anchoredRows = computed(() =>
   sorted(merged.value.filter((row) => row.problem.node_id || row.problem.edge_id)),
 )
 
+/**
+ * The run-phase group - 12 D2.
+ *
+ * Rows are built exactly like the others, so a click emits `focus` and
+ * `BuilderView` selects and centres the failed node the same way it does for a
+ * build-time problem. What differs is the heading above them and that they are
+ * NOT counted in the headline: the headline answers "can this publish", and a
+ * failure from a run that has already happened does not change that answer.
+ */
+const runRows = computed(() => props.runProblems.map((problem) => rowFor(problem, false)))
+
 /** Errors first, then warnings; server order preserved inside each group. */
 function sorted(rows: ProblemRow[]): ProblemRow[] {
   return [...rows.filter((row) => isError(row.problem)), ...rows.filter((row) => !isError(row.problem))]
 }
 
 /** The walk order, and the order on screen: document group first, then anchored. */
-const walkable = computed(() => [...documentRows.value, ...anchoredRows.value])
+const walkable = computed(() => [
+  ...documentRows.value,
+  ...anchoredRows.value,
+  ...runRows.value,
+])
 
 const errorCount = computed(() => merged.value.filter((row) => isError(row.problem)).length)
 const warningCount = computed(() => merged.value.length - errorCount.value)
@@ -177,7 +205,12 @@ const readOnly = computed(() => props.viewingVersion !== null)
  * document the author could actually publish. A stored version is neither.
  */
 const clean = computed(
-  () => !merged.value.length && !unchecked.value && !unreachable.value && !readOnly.value,
+  () =>
+    !merged.value.length &&
+    !runRows.value.length &&
+    !unchecked.value &&
+    !unreachable.value &&
+    !readOnly.value,
 )
 
 const headline = computed(() => {
@@ -185,6 +218,10 @@ const headline = computed(() => {
   // fact about what can be done rather than about what was found. The words
   // are the document bar's own, so the two surfaces read as one.
   if (readOnly.value) return `viewing v${props.viewingVersion} · read-only`
+  if (runRows.value.length && !merged.value.length) {
+    const count = runRows.value.length
+    return `${count} ${count === 1 ? 'node' : 'nodes'} failed`
+  }
   if (!merged.value.length && unchecked.value) return 'Not checked yet'
   if (!merged.value.length && unreachable.value) return 'Validation unavailable'
   if (!merged.value.length) return 'Ready to publish'
@@ -252,7 +289,7 @@ defineExpose({ next, previous })
         }"
         data-testid="problems-headline"
       >
-        <Lock v-if="readOnly" :size="13" aria-hidden="true" />
+        <Lock v-if="readOnly && !runRows.length" :size="13" aria-hidden="true" />
         <Check v-else-if="clean" :size="13" aria-hidden="true" />
         {{ headline }}
       </span>
@@ -277,14 +314,14 @@ defineExpose({ next, previous })
         </span>
       </p>
 
-      <p v-else-if="!merged.length && unchecked" class="problems-empty" data-testid="problems-unchecked">
+      <p v-else-if="!merged.length && !runRows.length && unchecked" class="problems-empty" data-testid="problems-unchecked">
         <span class="problems-dot is-unchecked" aria-hidden="true" />
         <span>
           Not checked yet. Nothing has been asked of the compiler, so nothing here is a verdict.
         </span>
       </p>
 
-      <p v-else-if="!merged.length && unreachable" class="problems-empty" data-testid="problems-unreachable">
+      <p v-else-if="!merged.length && !runRows.length && unreachable" class="problems-empty" data-testid="problems-unreachable">
         <span class="problems-dot is-error" aria-hidden="true" />
         <span>
           Validation unavailable.
@@ -292,7 +329,7 @@ defineExpose({ next, previous })
         </span>
       </p>
 
-      <p v-else-if="!merged.length" class="problems-empty">
+      <p v-else-if="!merged.length && !runRows.length" class="problems-empty">
         <span class="problems-dot is-ready" aria-hidden="true" />
         <span>
           Ready to publish.
@@ -301,6 +338,31 @@ defineExpose({ next, previous })
       </p>
 
       <template v-else>
+        <!-- 12 D2's run-phase group. FIRST, because it is about what just
+             happened rather than about what would happen on publish, and an
+             author who has a failed run on screen is looking for that node. -->
+        <template v-if="runRows.length">
+          <p class="problems-heading" data-testid="problems-run-heading">
+            From the last run
+          </p>
+          <ul class="problems-group is-run" aria-label="Run problems">
+            <li v-for="(row, index) in runRows" :key="row.key">
+              <button
+                type="button"
+                class="problem-row"
+                :class="{ 'is-current': current === documentRows.length + anchoredRows.length + index }"
+                :data-testid="`problem-${row.problem.code}`"
+                @click="select(documentRows.length + anchoredRows.length + index)"
+              >
+                <span class="problems-dot is-error" aria-hidden="true" />
+                <span class="problem-code">{{ row.problem.code }}</span>
+                <span class="problem-message">{{ row.problem.message }}</span>
+                <span class="problem-anchor">{{ row.anchor }}</span>
+              </button>
+            </li>
+          </ul>
+        </template>
+
         <ul v-if="documentRows.length" class="problems-group" aria-label="Whole-graph problems">
           <li v-for="(row, index) in documentRows" :key="row.key">
             <button
@@ -373,6 +435,13 @@ defineExpose({ next, previous })
 .problems-empty { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0 0; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
 .problems-empty em { color: var(--text-40); font-style: normal; }
 .problems-group { display: grid; gap: 3px; margin: 0 0 6px; padding: 0; list-style: none; }
+/* 12 D2: the run-phase group's heading. The only heading in the dock, because
+   it is the only group whose rows are about a different question - the other
+   two are both "why this will not publish" and a label on either would be
+   noise. Muted and 10px, so it reads as a divider rather than as a fifth
+   severity. */
+.problems-heading { margin: 2px 0 4px; color: var(--text-muted); font-size: var(--fs-10, 10px); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.problems-group.is-run { margin-bottom: 9px; }
 .problems-dot { width: 7px; height: 7px; flex: 0 0 auto; margin-top: 4px; border-radius: var(--r-full); }
 .problems-dot.is-error { background: var(--err-text); }
 .problems-dot.is-warning { background: var(--warn-text); }

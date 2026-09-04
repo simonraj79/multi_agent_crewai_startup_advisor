@@ -67,10 +67,13 @@ __all__ = [
     "BuilderFlowRunner",
     "BuilderRunnerFactory",
     "SYNTHETIC_FAILURE_REASONS",
+    "SyntheticBadCredential",
     "SyntheticCrewFactories",
+    "SyntheticMalformedOutput",
     "SyntheticNodeFailure",
     "SyntheticRateLimitError",
     "SyntheticRefusal",
+    "SyntheticToolTimeout",
     "parse_synthetic_failures",
     "synthetic_builder_runner",
 ]
@@ -283,6 +286,7 @@ class SyntheticRateLimitError(SyntheticNodeFailure):
     more than exercising the one that is easy to name.
     """
 
+    error_class = "rate_limit"
     status_code = 429
 
 
@@ -294,11 +298,67 @@ class SyntheticRefusal(SyntheticNodeFailure):
     carries no status and no listed name, so `_is_retryable` says no.
     """
 
+    error_class = "refusal"
+
+
+class SyntheticBadCredential(SyntheticNodeFailure):
+    """401. 12 D8's first mode: the key the node names is not accepted.
+
+    NOT retryable, and the status is what says so rather than a rule written
+    here: 401 is absent from `_RETRYABLE_STATUS_CODES` because a rejected
+    credential rejects identically on the second attempt and the only repair is
+    a human changing the key. Its recovery path is the credential picker, then
+    **Re-run from here**.
+
+    Raised from the FACTORY, which is where a real one lands: CrewAI builds the
+    provider client at construction, so a bad key fails before a token is spent.
+    """
+
+    error_class = "auth"
+    status_code = 401
+
+
+class SyntheticToolTimeout(SyntheticNodeFailure):
+    """408. 12 D8's second mode: a tool or MCP call ran past its `timeout`.
+
+    Retryable, by the status rather than by the name, for the reason
+    `SyntheticRateLimitError` already gives: `status_code` is the branch a
+    wrapped provider or transport error actually takes, and exercising the one
+    that will fire in production is worth more than the one that is easy to
+    name. 408 is Request Timeout, which is what a timed-out call is.
+    """
+
+    error_class = "tool_timeout"
+    status_code = 408
+
+
+class SyntheticMalformedOutput(SyntheticNodeFailure):
+    """12 D8's fourth mode: the response failed the node's `output_schema`.
+
+    NOT retryable by the node loop, and this is the one exclusion in
+    `_RETRYABLE_ERROR_NAMES`'s comment that is easiest to get wrong. CrewAI
+    already loops a guardrail with the agent's own llm
+    (`guardrail_max_retries`), so a whole-node retry on top would multiply an
+    answer that has already been asked for twice - and the repair is the
+    schema or the retry count, not another attempt at the same prompt.
+    """
+
+    error_class = "schema"
+
 
 #: `SYNTHETIC_FAILURE` reasons, as the exceptions they raise.
+#:
+#: FIVE of 12 D8's six modes. The sixth, `cyclic_graph`, has no entry here on
+#: purpose: a loop closed by a non-router is refused by `bounds.py` at validate
+#: and again at publish, so it NEVER RUNS and there is no node for a factory to
+#: fail. A reason that produced a run would be a synthetic double diverging from
+#: its subject, which is the one thing this module exists not to do.
 SYNTHETIC_FAILURE_REASONS: Mapping[str, type[SyntheticNodeFailure]] = {
+    "bad_key": SyntheticBadCredential,
+    "malformed_output": SyntheticMalformedOutput,
     "rate_limit": SyntheticRateLimitError,
     "refusal": SyntheticRefusal,
+    "tool_timeout": SyntheticToolTimeout,
 }
 
 
@@ -314,7 +374,9 @@ class _FailurePlan:
         return self.node_id is None or self.node_id == node_id
 
 
-def parse_synthetic_failures(raw: str | None) -> tuple[_FailurePlan, ...]:
+def parse_synthetic_failures(
+    raw: str | None, *, default_node: str | None = None
+) -> tuple[_FailurePlan, ...]:
     """`SYNTHETIC_FAILURE` as plans. Anything unreadable is NO failure.
 
     The grammar is `[node:]reason[:times]`, comma separated:
@@ -324,6 +386,14 @@ def parse_synthetic_failures(raw: str | None) -> tuple[_FailurePlan, ...]:
     * `b:rate_limit:2` - node `b` fails its first two attempts and then works,
       which is the shape that proves a FALLBACK model succeeded rather than
       merely that three attempts happened.
+
+    `default_node` is `SYNTHETIC_FAILURE_NODE` (12 D8), and it applies only to
+    an entry that names no node of its own. It exists because the E2E and a
+    hand-driven browser session set one knob at the shell and want ONE node to
+    fail - on a graph whose ids they did not write, the `node:` prefix is a
+    thing you have to go and look up, and "every billable node fails" makes a
+    six-node template unreadable at exactly the moment a critic is reading it.
+    An entry that does name a node still wins, so nothing already written moves.
 
     Unreadable input yields nothing rather than raising: this is a testing knob
     read on a code path that runs for real, and a typo in it must not be how a
@@ -347,7 +417,13 @@ def parse_synthetic_failures(raw: str | None) -> tuple[_FailurePlan, ...]:
                 times = max(0, int(parts[1]))
             except ValueError:
                 times = None
-        plans.append(_FailurePlan(node_id=node_id, error=error, times=times))
+        plans.append(
+            _FailurePlan(
+                node_id=node_id if node_id is not None else (default_node or None),
+                error=error,
+                times=times,
+            )
+        )
     return tuple(plans)
 
 
@@ -393,10 +469,14 @@ class SyntheticCrewFactories:
     compiled definition, the engine, the gates, the routers, the revise
     counters, the persistence and the cancellation are all the production ones.
 
-    `SYNTHETIC_FAILURE` makes a node fail on demand - see
-    `parse_synthetic_failures`. It is read PER INSTANCE rather than at import,
-    so a test sets it with `patch.dict(os.environ, ...)` and a free backend
-    picks it up on the next publish without a restart.
+    `SYNTHETIC_FAILURE` makes a node fail on demand, and
+    `SYNTHETIC_FAILURE_NODE` says which one when the entry does not - see
+    `parse_synthetic_failures`. BOTH are read PER INSTANCE rather than at
+    import, so a test sets them with `patch.dict(os.environ, ...)` and a free
+    backend picks them up on the next publish without a restart. That per-
+    instance read is what makes 12 criterion 5 possible at all: a critic
+    triggering six failure modes from a browser would otherwise be restarting
+    the backend six times.
 
     `calls` records `(node_id, model)` per built crew, in order. It is the only
     way to see WHICH model an attempt ran on: the fallback is chosen inside the
@@ -405,9 +485,10 @@ class SyntheticCrewFactories:
     fallback.
     """
 
-    def __init__(self, failures: str | None = None) -> None:
+    def __init__(self, failures: str | None = None, *, node: str | None = None) -> None:
         self.plans = parse_synthetic_failures(
-            failures if failures is not None else os.getenv("SYNTHETIC_FAILURE")
+            failures if failures is not None else os.getenv("SYNTHETIC_FAILURE"),
+            default_node=node if node is not None else os.getenv("SYNTHETIC_FAILURE_NODE"),
         )
         self.calls: list[tuple[str, str]] = []
         self._attempts: dict[str, int] = {}

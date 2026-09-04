@@ -15,7 +15,9 @@
     "budget-over-ceiling",
     "budget-unpriced-model",
     "credential-missing",
+    "crew-hierarchical-needs-manager",
     "crew-members-out-of-range",
+    "crew-task-order-mismatch",
     "crew-tier-not-honoured",
     "cycle-count",
     "cycle-iterations",
@@ -183,6 +185,18 @@
       }
     },
     {
+      "code": "crew-hierarchical-needs-manager",
+      "scenario": "a hierarchical crew whose manager is not one of its members",
+      "why": "The half `document.py` cannot see. Its cross-field validator refuses a hierarchical crew with NEITHER manager set and raises, because that is a rule about one object; whether `manager_agent` names one of THIS crew's members is a question only the `member` edges answer. `runtime.py:730` resolves it against the crew's own agents and falls through to `manager_llm`; with neither resolving, `Crew.__init__` raises at `crew.py:729` mid-run - after every node upstream has already billed.",
+      "problem": {
+        "code": "crew-hierarchical-needs-manager",
+        "severity": "error",
+        "message": "the hierarchical crew 'team' names 'ghost' as its manager, and that node is not one of its members. A manager is resolved against the crew's own agents ('worker'), so this crew would reach CrewAI with no manager at all and raise at construction - after every node upstream of it has already billed. Draw a member edge from that agent, name one that is a member, or set a manager model instead",
+        "node_id": "team",
+        "edge_id": null
+      }
+    },
+    {
       "code": "crew-members-out-of-range",
       "scenario": "an authored crew with no members at all",
       "why": "A crew with no members compiles to a Crew with no tasks and hands back nothing - the same silent-empty-result failure `back-edge-not-router` exists for, arrived at from the other direction.",
@@ -190,6 +204,18 @@
         "code": "crew-members-out-of-range",
         "severity": "error",
         "message": "the authored crew 'team' has 0 member agents and a crew takes 1 to 6 (MAX_CREW_MEMBERS, the shipped validator's own six). With none it compiles to a Crew with no tasks and hands back nothing; the ceiling is the largest team this repository has ever run",
+        "node_id": "team",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "crew-task-order-mismatch",
+      "scenario": "an authored crew ordering a task by a node that is not a member",
+      "why": "The gauntlet's own forbidden 'a parameter rendered in the UI that the compiler ignores', found in `runtime.py:724`: an order entry naming something that is not a member of this crew is filtered out with no word to anybody, so the author drags an order and the crew runs a different one. Reachable by clicking - choose an order, then delete that agent's member edge, and `AuthoredCrewForm` hides the stranger it left behind. A PARTIAL order is deliberately NOT reported: the next line completes it from `member_ids`, so naming two of five members really does mean 'these two first'.",
+      "problem": {
+        "code": "crew-task-order-mismatch",
+        "severity": "error",
+        "message": "the crew 'team' orders its tasks by 'ghost', which is not a member of it. Its members are 'worker'. The runtime drops an order entry it cannot resolve, so the crew would run in a different order from the one on screen and nothing would say so",
         "node_id": "team",
         "edge_id": null
       }
@@ -4714,6 +4740,210 @@
           "source_port": "out",
           "target": "report",
           "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an authored crew ordering a task by a node that is not a member": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "order names a stranger",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "sequential",
+            "task_order": [
+              "worker",
+              "ghost"
+            ]
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "worker",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a hierarchical crew whose manager is not one of its members": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "manager outside the team",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "hierarchical",
+            "task_order": [],
+            "manager_agent": "ghost"
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "worker",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
         }
       ],
       "joins": {},

@@ -495,8 +495,21 @@ describe('the problem codes are the python problem codes', () => {
     // and nine codes: three about a tool node's id, settings and key, five
     // about an MCP server and its tools, and one about a skill pack. That is
     // the same four-place edit again, made in one commit.
-    expect(pythonProblemCodes()).toHaveLength(55)
-    expect(PROBLEM_CODES).toHaveLength(55)
+    //
+    // 55 until 2026-09-04, when plan 12 added its two crew codes to `bounds.py`:
+    // `crew-task-order-mismatch` and `crew-hierarchical-needs-manager`. Both are
+    // one defect in two keys - an authored crew field whose value the runtime
+    // silently discards, after every node upstream has already billed.
+    //
+    // 57 is NOT the 57 plan 12's criterion 1 asks for by the route it asks for
+    // it, and the plan's own Status records the arithmetic: its table has 27
+    // rows, 21 of which landed with plans 03-09, two of which are deliberately
+    // not union members (`credential-not-yours` is a run-phase `error_class`,
+    // `skill-contains-scripts` an import-time refusal declared outside the seven
+    // swept files) and two of which are blocked on a C1 schema change
+    // (`prompt-too-long`, `retry-over-max` are parse-time constraints today).
+    expect(pythonProblemCodes()).toHaveLength(57)
+    expect(PROBLEM_CODES).toHaveLength(57)
   })
 
   it('declares the five warnings, and they are codes', () => {

@@ -39,6 +39,9 @@
  * `tier` - `escalation-count`, `billable-count` - has to land on the row that
  * shows it. `attachments` is here for the same reason and is not a field.
  */
+import type { BuilderDocument, BuilderEdge, BuilderNode } from '../../../types/builder'
+import { patchConfig } from '../commit'
+
 export const ESSENTIAL_FIELDS = [
   'role',
   'goal',
@@ -164,3 +167,55 @@ export const AUTHORED_CREW_FIELDS: readonly string[] = [
   ...CREW_ESSENTIAL_FIELDS,
   ...CREW_ADVANCED_FIELDS,
 ]
+
+
+/* --- the error policy, which changes the SHAPE of the card ---------------- */
+
+/**
+ * `on_error` is the second config field whose value grows a port, and the only
+ * one outside `router`.
+ *
+ * `nodeKinds.ts::billableOut` returns `['out', 'error']` while it is `'route'`
+ * and `['out']` otherwise, so turning it back to `'fail'` takes a port away
+ * from a card an author may already have drawn from. Left behind, that edge is
+ * an `edge-unknown-port` error the author did not make, on an edge whose port
+ * they can no longer see - which is exactly the case `RouterForm.removeBranch`
+ * already handles for a deleted branch, and this is that rule applied to the
+ * other field that owns a port.
+ *
+ * ONE document, so ONE undo step restores the policy and every edge together.
+ * The rewrite cannot turn a valid document into an invalid one - it only ever
+ * removes edges that are about to become unreferenced - which is the test this
+ * package applies before rewriting anything on an author's behalf.
+ */
+export function errorPolicyCommit(
+  doc: BuilderDocument,
+  node: BuilderNode,
+  policy: 'fail' | 'route',
+): { next: BuilderDocument; orphaned: BuilderEdge[] } {
+  const withPolicy = patchConfig(doc, node, { on_error: policy } as never)
+  if (policy === 'route') return { next: withPolicy, orphaned: [] }
+
+  const orphaned = doc.edges.filter(
+    (edge) => edge.source === node.id && edge.source_port === 'error',
+  )
+  if (!orphaned.length) return { next: withPolicy, orphaned }
+  return {
+    next: {
+      ...withPolicy,
+      edges: withPolicy.edges.filter(
+        (edge) => !(edge.source === node.id && edge.source_port === 'error'),
+      ),
+    },
+    orphaned,
+  }
+}
+
+/** What the rewrite took with it, in `RouterForm`'s own words. */
+export function errorPolicyNotice(orphaned: readonly BuilderEdge[]): string {
+  if (!orphaned.length) return ''
+  const targets = orphaned.map((edge) => edge.target).join(', ')
+  return orphaned.length === 1
+    ? `Failing the run instead also removed the error edge to ${targets}. One undo restores both.`
+    : `Failing the run instead also removed ${orphaned.length} error edges, to ${targets}. One undo restores them all.`
+}

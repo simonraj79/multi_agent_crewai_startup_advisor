@@ -201,3 +201,79 @@ function worst(index: ReadonlyMap<string, BuilderProblem[]>): ReadonlyMap<string
   }
   return severities
 }
+
+/* --- the run phase (12 D2) ----------------------------------------------- */
+
+/**
+ * The shape a `node_error` frame arrives in, structurally.
+ *
+ * Declared here rather than imported from `types/studio.ts` on purpose: the
+ * builder's problems index has no business depending on the run console's frame
+ * union, and everything this function reads is three keys deep. A frame that
+ * carries more is unaffected; a frame that carries less falls out of the filter.
+ */
+export interface NodeErrorFrameLike {
+  node_id?: string | null
+  details?: {
+    stage?: string | null
+    error_class?: string | null
+    message?: string | null
+    attempt?: number | null
+    will_retry?: boolean | null
+    routed?: boolean | null
+  } | null
+}
+
+/**
+ * C6 `node_error` frames as problems the dock can render - 12 D2.
+ *
+ * WHY THEY ARE PROBLEMS AT ALL. The plan's D2 asks that a failed node say so in
+ * three places at once: on the node, in the log, and in the problems dock. The
+ * dock is the one that makes a failure SURVEYABLE - four nodes red on a
+ * sixteen-node canvas is four rows here and four hunts otherwise - and it
+ * already owns "every reason this graph is not working, all at once, errors
+ * first, each one one click from the thing it is about". A run failure is that
+ * kind of fact.
+ *
+ * THE CODE IS PREFIXED, and the prefix is this module's and not the wire's. C8
+ * is explicit that run-phase classes surface through `node_error.error_class`
+ * and are NOT union members, so `auth` and `rate_limit` are the values the
+ * server really sends. Rendered raw in the code chip they would sit beside
+ * `back-edge-not-router` reading like a build-time code this build had never
+ * heard of; `run-auth` says which phase it came from in the one place a reader
+ * is already looking. Nothing is invented - the suffix is the wire value
+ * verbatim - and the frame is untouched.
+ *
+ * THE LAST ATTEMPT WINS. A retried node emits one frame per attempt, and three
+ * rows saying the same sentence about one node is a dock nobody reads. The one
+ * kept is the last, because that is the one whose `will_retry` is false and
+ * whose message describes the state the run actually ended in; the attempt
+ * count is carried into the sentence so nothing about the earlier ones is lost.
+ */
+export function runPhaseProblems(
+  frames: readonly NodeErrorFrameLike[],
+): BuilderProblem[] {
+  const latest = new Map<string, BuilderProblem>()
+  for (const frame of frames) {
+    const details = frame.details ?? null
+    // `stage: 'error'` alone is not enough: `serializer.py:455` raises one for
+    // CrewAI's own MethodExecutionFailedEvent, and a tool, an llm call and a
+    // crew each raise another. `attempt` is the field only the runtime writes.
+    if (!details || details.stage !== 'error' || typeof details.attempt !== 'number') continue
+    const nodeId = frame.node_id ?? null
+    if (!nodeId) continue
+    const attempt = details.attempt
+    const sentence = (details.message ?? '').trim() || 'the node failed'
+    latest.set(nodeId, {
+      code: `run-${details.error_class || 'error'}`,
+      severity: 'error',
+      message:
+        attempt > 1
+          ? `${sentence} (attempt ${attempt})`
+          : sentence,
+      node_id: nodeId,
+      edge_id: null,
+    })
+  }
+  return [...latest.values()]
+}

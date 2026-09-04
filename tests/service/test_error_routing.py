@@ -105,12 +105,17 @@ class ErrorRoutingRunnerTests(unittest.TestCase):
         # whole of the difference between the two policies as a client sees it.
         self.assertFalse(error["routed"])
         self.assertFalse(error["will_retry"])
-        self.assertEqual(error["error_class"], "synthetic-failure")
+        # `refusal`, not the base class's `synthetic-failure` placeholder: 12 D8
+        # gives each of the five running modes its own C6 `error_class`, because
+        # a client switching on "synthetic-failure" learns nothing about what
+        # happened and the whole point of the table is that the six are told
+        # apart on screen.
+        self.assertEqual(error["error_class"], "refusal")
         self.assertEqual(error["attempt"], 1)
 
     def test_the_error_class_survives_onto_the_frame(self) -> None:
         _, buffer, _ = self._run(routed_graph(), "draft:rate_limit")
-        self.assertEqual(self.errors(buffer)[0]["error_class"], "synthetic-failure")
+        self.assertEqual(self.errors(buffer)[0]["error_class"], "rate_limit")
 
 
 @unittest.skipUnless(FASTAPI_AVAILABLE, "fastapi is not installed")

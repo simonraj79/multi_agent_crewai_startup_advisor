@@ -230,3 +230,193 @@ Open decisions for the owner:
 
 **Decision 16 — no.** A refusal is a decision, and retrying it with a different
 model is asking a second judge until one agrees.
+
+### Built — 2026-09-04
+
+Eight of ten met, one partial, one not reached. What shipped: two crew fields
+the runtime was discarding in silence, five failure modes that now say which
+kind of failure they were, an error port that takes its edges with it, an error
+edge that is a class rather than a tint, a run-phase group in the problems dock,
+and the two E2E files that are the only place three of these questions have an
+answer.
+
+| n | state | evidence |
+| ---: | --- | --- |
+| 1 | **met**, at **57** and not at the criterion's 57 | `test_client_fixtures.py` (14) and `test_problem_code_declarations.py` (4) green; `builderTypes.spec.ts` asserts 57 on both sides. Arithmetic below. |
+| 2 | **met** | `test_bounds.py` 69 (was 57): `CrewTaskOrderTests` (5), `CrewManagerTests` (4), `CrewFieldPartitionTests` (3) — each code on a one-node reproduction, on nothing else, and `error-port-unconnected` asserted `severity="warning"` |
+| 3 | **met** | `test_failure_modes.py::RunningModeTests` (6) and `RecoveryTests` (3): each mode sets `SYNTHETIC_FAILURE`, runs a two-step authored fixture under `SYNTHETIC=1`, asserts D8's `error_class`, the attempt, `will_retry`, a terminal `failed`, and that `resume_from` the failed node completes — plus a clean-run control |
+| 4 | **met** | `SentinelTests::test_no_secret_in_any_failure`: five modes × frames, run row, status payload, NDJSON, ZIP, each preceded by the control that the run really held the key |
+| 5 | **met, with three guarded assertions** | `e2e/failure-modes.spec.ts`, **7 passed** (one console-error exemption declared: a deliberate 429, see below). The five running modes fail with the right class and re-run to completion; one drives the whole person's journey and watches the card turn red; the cyclic mode is refused in the dock with its edge tinted, publish disabled and a second refusal from the server |
+| 6 | **met, with one guarded assertion** | `e2e/stream-failure.spec.ts`, **2 passed**: `page.route` aborts the ws handshake mid-run, the reload keeps every completed node, `seq` does not go backwards, `0 dropped`, and both gates are answered to completion — with a no-drop control |
+| 7 | **met** | `frontend/tests/errorEdge.spec.ts`, **12 passed** |
+| 8 | **met, and one clause is a contradiction** | `frontend/tests/retryField.spec.ts`, **11 passed**. `retry-over-max` cannot arise — see contradiction 2 |
+| 9 | **met** | `docs/tech-stack.md` §6's wider scan lists both, with the regeneration command beside it; the list moved five → seven |
+| 10 | **partial** | Every trigger exists and is one knob; the cause is on the node (`.workflow-node.is-error`, asserted in a browser). NOT DONE: the four-screenshot review at 1440×900 and 390×844 in both themes, and "a path forward one click away" is plan 11's **Re-run from here**, which does not exist in this worktree |
+
+### Criterion 1's arithmetic, which is not the criterion's
+
+The criterion says 57 and was written when the union was 30 and C8's table had
+27 rows. It is 57 now by a different route, and the difference matters because
+two of those 27 rows are deliberately not union members:
+
+```text
+  55   the union at 9b06e40   (scripts/emit_builder_fixtures.py::_declared_codes)
++  2   crew-task-order-mismatch, crew-hierarchical-needs-manager
+----
+  57
+```
+
+Of C8's 27 rows, **21 had already landed** with plans 03, 05, 06, 07, 08 and 09;
+**2 are not union codes and never were** — `credential-not-yours` is a run-phase
+`error_class` (`service/credentials.py:165`), and this plan's own Interfaces
+section lists it in the run-phase set as well as in the table;
+`skill-contains-scripts` is an import-time refusal declared in
+`service/builder_api.py:731`, outside the seven files the mirror greps, and
+three separate files say so deliberately. **2 are blocked** (contradiction 2).
+That leaves 2, and four other plans contributed 4 codes the table never listed
+(`tool-unknown`, `tool-credential-required`, `attachment-reference-missing`,
+`crew-tier-not-honoured`). 30 + 21 + 4 + 2 = 57.
+
+**`WARNING_CODES` is SEVEN, not the six this plan asks for.** Plan 09 took it to
+7 with `crew-tier-not-honoured`, which this plan never knew about; neither new
+code is a warning.
+
+### Measured, 2026-09-04, in this worktree
+
+```text
+Python          2280 run · 0 failures · 9 skipped · 155.0 s   (baseline 2243/6)
+Frontend unit   1505 passed in 77 files                        (baseline 1468 in 74)
+vue-tsc -b --force   exit 0
+npm run build        992 ms, green
+E2E             84 passed in 5.2 min, every file, both projects,
+                zero console errors tolerated                  (baseline 75)
+                E2E_API_TARGET=127.0.0.1:8097, E2E_UI_PORT=5275
+```
+
+The three skips added since baseline (6 → 9) are the MCP arm of the merged
+`test_failure_modes.py`: `McpUnreachableTests` is plan 07's and its fixture
+server lives on `wd/ab-backend`, so it skips here and runs there.
+**This plan spent $0.00**: every billable node is built by the
+double `SYNTHETIC=1` installs, and the two places a real `Agent` is constructed
+call no model.
+
+**The E2E backend needs two extra knobs**, and both are in
+`e2e/failure-modes.spec.ts`'s own docstring:
+
+```text
+SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8097 \
+BUILDER_ALLOW_GATELESS_GRAPHS=1 \
+SYNTHETIC_FAILURE="fm_bad_key:bad_key:1,fm_tool_timeout:tool_timeout:1,\
+fm_refusal:refusal:1,fm_malformed:malformed_output:1,fm_rate_limit:rate_limit:1"
+```
+
+Every entry names a node only that file authors, so the same backend serves
+`builder.spec.ts`, `studio.spec.ts` and `templates.spec.ts` unchanged — measured:
+84/84 on one backend. **Without the line those seven tests SKIP and say so**,
+rather than failing on an environment gap that reads like a product defect,
+which is `SYNTHETIC_BRANCH_DELAY_SECONDS`'s lesson applied before it costs
+anybody an afternoon.
+
+### Three contradictions, each stopped rather than improvised around
+
+**1. C8's `crew-hierarchical-needs-manager` is `document.py`'s raise, not a
+reported problem.** The table gives it to `bounds.py` anchored to crew
+`process`; `AuthoredCrewConfig._validate_manager` already RAISES on a
+hierarchical crew with neither manager set, with a comment saying it is a
+cross-field rule about one object. Both are right, about different states. What
+`document.py` cannot see is whether `manager_agent` names one of THIS crew's
+members, because only the `member` edges answer that — and `runtime.py:730`
+resolves it against the crew's own agents, falls through to `manager_llm`, and
+with neither resolving `Crew.__init__` raises at `crew.py:729` MID-RUN. So the
+code is `bounds.py`'s and it fires on the reachable half: pick a manager, then
+delete that agent's member edge. The raise stays.
+
+**2. `prompt-too-long` and `retry-over-max` are BLOCKED on a C1 change and are
+NOT in the union.** C8 assigns both to `document.py`. At head both are
+parse-time constraints — `Prompt` is
+`StringConstraints(max_length=BUILDER_MAX_PROMPT_CHARS)` and `max_retries` is
+`Field(le=BUILDER_MAX_NODE_RETRIES)` — which refuse the whole document rather
+than reporting a fixable position, and `NumberRow` CLAMPS above the served
+bound so the value cannot be typed either (asserted in `retryField.spec.ts`).
+Reporting them means relaxing the schema so an over-limit document can be
+STORED, which is C1 and the Integrator's, and it weakens `budget.py`'s premise
+that a prompt is bounded before it is priced. `build_problem_codes` refuses to
+emit a fixture for a code with no reachable instance, so this is not a choice
+about tidiness. **Contract need: a ruling on whether C1 relaxes.** What is built
+in the meantime is the half that carries the code the day it exists — the bound
+is served rather than hardcoded, and a problem naming `retry.max_retries`
+reaches that control through C8's `field` key.
+
+**3. `WARNING_CODES` is seven where this plan says six.** Recorded above; no
+action, the plan's figure predates plan 09.
+
+### One defect found, and it is plan 10's
+
+**`compile_replay_plan` cannot replay a GATE.** Resuming past one compiles to a
+flow whose next node listens for a trigger nothing emits — measured verbatim:
+
+```text
+n3_safe listens for 'e2_approve', which no method emits and no method is
+called. A trigger nothing produces is a node that never runs
+```
+
+That collides with the launch rule. A gate above the first billable node is the
+only shape an anonymous caller may launch (`BUILDER_ALLOW_GATELESS_GRAPHS` off,
+measured 403), so **every graph an anonymous author can launch is a graph
+`resume_from` cannot resume past its gate.** The E2E works around it with the
+flag and says so; the fix belongs to plan 10 D5. `tests/service/test_replay.py`
+does not see it because its `abc()` fixture has no gate.
+
+### Contract needs, and what the Integrator does at integration
+
+- **C8 is at 57 and `WARNING_CODES` at 7.** Both new codes carry the optional
+  `field` (`members`, `manager_agent`) and both also have `FIELD_CODES` entries
+  as the fallback for a server that predates the key, which is `model-unknown`'s
+  own pattern.
+- **Un-guard three assertions once plan 11 merges**, each named in a Playwright
+  annotation at its site: `e2e/failure-modes.spec.ts` — `node-error-message`
+  (≤ 120 chars, on the failed card) and `rerun-from-here`;
+  `e2e/stream-failure.spec.ts` — `stream-reconnecting` reading
+  *reconnecting — N steps kept*.
+- **Un-guard one more once plan 13 merges**: `e2e/failure-modes.spec.ts`'s
+  run-phase group step. `ProblemsPanel` is not on the run console today; the
+  group itself is proved by `frontend/tests/runProblems.spec.ts` (14).
+- **`tests/builder/test_failure_modes.py` is now THREE plans' file.**
+  `wd/ab-backend`'s two classes are byte-unchanged; the only edit to their half
+  folds `MCP_CONNECTION_ERROR_CLASS` and `tests/service/mcp_fixture_server` into
+  the `MCP_AVAILABLE` block their own file already used, because at module scope
+  they made the whole file unimportable in a tree that had one branch and not
+  another. **Delete that guard once the branches have met.**
+- **Two files outside the ownership map were touched, and both were required by
+  it:** `tests/service/test_error_routing.py` (two assertions pinned the base
+  class's `"synthetic-failure"` placeholder that D8 replaces) and
+  `scripts/emit_builder_fixtures.py` (every new code needs a scenario, and
+  `test_client_fixtures.py` names that script as the way to regenerate).
+  `frontend/src/assets/styles/builder.css` gained the error-edge dash — the
+  brief grants the stroke class and that is where it lives.
+- **`frontend/tests/runProblems.spec.ts` is a third new spec** beyond the two
+  the map lists, because the brief asks for the run-phase group as a component
+  with a unit test.
+
+### Follow-ups this plan did not take
+
+1. **The gate/replay collision above** — plan 10 D5, and it is the sharpest
+   thing found this session.
+2. **Criterion 10's screenshot review** is not done: four captures per mode at
+   two viewports in two themes, and half of what it would judge is plan 11's.
+   Worth running after plans 11 and 13 merge, not before.
+3. **`benchmarks/perf/canvas.json` is rewritten by every full E2E run**, so a
+   pass on one machine overwrites another's measurement. Restored here; it wants
+   a `.gitignore` entry or a `--record` flag.
+4. **These two files are the first to meet `RUN_RATE_LIMIT_MAX_RUNS`.** They
+   wait out the limiter on the server's own `Retry-After` rather than raising
+   the limit, which would be turning off what makes an unauthenticated Launch
+   survivable. The cost is the one console-error exemption in the suite:
+   `/429 \(Too Many Requests\)/`, declared in both files with its cause, because
+   a refused Launch makes the browser log the response as a failed resource.
+   Narrow on purpose — any other status, any Vue warning and any uncaught
+   exception still fails. **Delete it if the limiter goes or these files stop
+   launching**; an exemption that outlives its cause widens silently, which is
+   what the favicon one did. If the suite grows more launching files, the
+   limiter — not the runner — becomes the bottleneck.
+

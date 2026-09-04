@@ -107,6 +107,28 @@ ATTACHMENTS_OVER_MAX = "attachments-over-max"
 ATTACHMENT_NODES_OVER_MAX = "attachment-nodes-over-max"
 CREW_MEMBERS_OUT_OF_RANGE = "crew-members-out-of-range"
 
+# 12-error-handling.md's two, added 2026-09-04. Both are the same defect in two
+# keys: an authored crew carries a field whose value the RUNTIME silently
+# discards, and the discarding happens after every upstream node has billed.
+#
+# `crew-task-order-mismatch` - `runtime.py:724` is
+# `[node for node in spec.task_order if node in by_id]`, so an entry naming
+# something that is not a member of THIS crew is dropped without a word. The
+# author dragged an order and got a different one. A PARTIAL order is legal and
+# is deliberately not reported: the next line completes it from `member_ids`, so
+# naming two of five members really does mean "these two first".
+#
+# `crew-hierarchical-needs-manager` - `document.py::_validate_manager` already
+# refuses a hierarchical crew with NEITHER manager set, and raises rather than
+# reports because that is a cross-field rule about one object. What it cannot
+# see is whether `manager_agent` names a node that is a member of this crew,
+# because only this module knows the `member` edges. `runtime.py:730` resolves
+# it against the crew's own members and falls through to `manager_llm`; with
+# neither resolving, `Crew.__init__` raises at `crew.py:729` MID-RUN. That is
+# the one shape D1 exists to refuse before anything bills.
+CREW_TASK_ORDER_MISMATCH = "crew-task-order-mismatch"
+CREW_HIERARCHICAL_NEEDS_MANAGER = "crew-hierarchical-needs-manager"
+
 # 09-compiler.md's four, added 2026-09-04 with the authored compile path.
 #
 # The first two are about `document.state` (D6): the compiler OWNS `out__*`,
@@ -957,6 +979,75 @@ def _membership_problems(document: BuilderDocument) -> list[Problem]:
                     node_id=node.id,
                 )
             )
+        if authored:
+            problems += _crew_field_problems(node, tuple(members.get(node.id, ())))
+    return problems
+
+
+def _crew_field_problems(node: BuilderNode, members: tuple[str, ...]) -> list[Problem]:
+    """Two authored-crew fields whose value the runtime would silently discard.
+
+    Both are checked HERE and not in `document.py` for the same reason
+    `task_order`'s own comment already gives: the answer needs the `member`
+    edges, and only this module reads them. Neither is a malformed shape - each
+    is a legal document naming a node that turns out not to be in the team - so
+    each is a fixable position on a canvas rather than a parse refusal.
+    """
+
+    config = node.config
+    if not isinstance(config, AuthoredCrewConfig):  # pragma: no cover - guarded by caller
+        return []
+
+    problems: list[Problem] = []
+    known = set(members)
+
+    strangers = [member for member in config.task_order if member not in known]
+    if strangers:
+        problems.append(
+            Problem(
+                code=CREW_TASK_ORDER_MISMATCH,
+                severity="error",
+                message=(
+                    f"the crew {node.id!r} orders its tasks by "
+                    f"{', '.join(repr(name) for name in strangers)}, which "
+                    f"{'is' if len(strangers) == 1 else 'are'} not "
+                    f"{'a member' if len(strangers) == 1 else 'members'} of it. Its members "
+                    f"are {', '.join(repr(name) for name in members) or 'none yet'}. The "
+                    "runtime drops an order entry it cannot resolve, so the crew would run "
+                    "in a different order from the one on screen and nothing would say so"
+                ),
+                node_id=node.id,
+                # `members`, not `task_order`: the read-only member list IS the
+                # order control on `AuthoredCrewForm` - an author drags rows
+                # there and the form writes `task_order`. Anchoring to a field
+                # name no form renders would drop the row to the node strip.
+                field="members",
+            )
+        )
+
+    if (
+        config.process == "hierarchical"
+        and config.manager_agent is not None
+        and config.manager_agent not in known
+        and config.manager_llm is None
+    ):
+        named = ", ".join(repr(name) for name in members) or "none yet"
+        problems.append(
+            Problem(
+                code=CREW_HIERARCHICAL_NEEDS_MANAGER,
+                severity="error",
+                message=(
+                    f"the hierarchical crew {node.id!r} names {config.manager_agent!r} as its "
+                    "manager, and that node is not one of its members. A manager is resolved "
+                    f"against the crew's own agents ({named}), so this crew would reach CrewAI "
+                    "with no manager at all and raise at construction - after every node "
+                    "upstream of it has already billed. Draw a member edge from that agent, "
+                    "name one that is a member, or set a manager model instead"
+                ),
+                node_id=node.id,
+                field="manager_agent",
+            )
+        )
     return problems
 
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { BUILDER_PROBLEMS } from '../../../composables/useBuilderProblems'
 import { nodeId as toNodeId } from '../../../types/builder'
@@ -21,6 +21,7 @@ import TierRegion from '../fields/TierRegion.vue'
 import LlmFields from './LlmFields.vue'
 import ModelPicker from './ModelPicker.vue'
 import { patchConfig } from '../commit'
+import { errorPolicyCommit, errorPolicyNotice } from './authoredFields'
 import type { InspectorCommit } from '../commit'
 import { CREW_ADVANCED_FIELDS } from './authoredFields'
 
@@ -62,6 +63,13 @@ const emit = defineEmits<{
 }>()
 
 const problems = inject(BUILDER_PROBLEMS)
+
+/**
+ * What the last error-policy change took with it, rendered beside the
+ * control rather than as a floating toast - `RouterForm`'s own argument:
+ * the answer to what just happened to my graph belongs next to the graph.
+ */
+const errorNotice = ref('')
 
 const id = computed(() => props.node.id)
 const config = computed(() => props.node.config)
@@ -205,6 +213,20 @@ function commitPlanning(on: boolean): void {
   // back to the crew's own model - so turning planning on seeds nothing and
   // turning it off leaves the choice alone.
   commit({ planning: on }, on ? 'Turn planning on' : 'Turn planning off')
+}
+
+/**
+ * The error policy, and the edges that leave by the port it owns.
+ *
+ * Turning routing OFF removes the `error` port, so every edge drawn from it is
+ * about to name a port this card no longer has. `errorPolicyCommit` takes them
+ * in the SAME document, which is what makes one undo restore the switch and the
+ * wires together - the rule `RouterForm` already applies to a deleted branch.
+ */
+function commitErrorPolicy(policy: 'fail' | 'route'): void {
+  const { next, orphaned } = errorPolicyCommit(props.doc, props.node, policy)
+  errorNotice.value = errorPolicyNotice(orphaned)
+  emit('commit', { label: 'Set error policy', next })
 }
 
 function patchRetry(patch: Partial<RetryConfig>, label: string): void {
@@ -500,8 +522,9 @@ const advancedForced = computed(() => {
           { value: 'route', word: 'route it' },
         ]"
         help="Routing grows a second source port named error on this card."
-        @commit="commit({ on_error: ($event as 'fail' | 'route') }, 'Set error policy')"
+        @commit="commitErrorPolicy($event as 'fail' | 'route')"
       />
+      <p v-if="errorNotice" class="branch-notice" role="status">{{ errorNotice }}</p>
 
       <slot name="prompt-inputs" />
     </TierRegion>
@@ -522,4 +545,11 @@ const advancedForced = computed(() => {
 .member-btn:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
 
 .empty-note { margin: 0; color: var(--text-40); font-size: var(--fs-11); line-height: 1.5; }
+</style>
+
+<style scoped>
+/* `RouterForm`'s own notice, verbatim: the two say the same kind of thing -
+   what a structural rewrite took with it - and a second colour for one of
+   them would read as a different severity. */
+.branch-notice { margin: 9px 0 0; padding: 8px 9px; color: var(--accent-cyan); font-size: var(--fs-11); line-height: 1.5; background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-cyan) 30%, transparent); border-radius: var(--r-sm); }
 </style>

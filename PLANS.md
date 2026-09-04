@@ -88,6 +88,7 @@ Consolidated from every plan's `Status` section. A decision moves from
 | 24 | Deleting a published document: unpublish automatically or refuse | 15 | refuse | **Refuse**, 2026-09-04 |
 | 25 | PostgreSQL two-writer job on every push or only on `main` | 15 | `main` | **On `main` only**, 2026-09-04 |
 | 26 | Unowned published workflows stay launchable by anyone | 01 D1 | yes, for legacy rows | **Yes, for legacy rows**, 2026-09-04 — already built on this recommendation |
+| 27 | The $1.00 model ceiling: measure it against the headline price or the max endpoint price | 05 D9 | max endpoint | **Max endpoint, 2026-09-04** — and enforced at the API with `provider.max_price`, not only asserted in a test |
 
 ## Log
 

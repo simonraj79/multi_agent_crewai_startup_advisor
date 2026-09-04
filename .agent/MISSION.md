@@ -189,6 +189,51 @@ argument.
   expired — call `mcp__openrouter__authenticate`, which swaps the real tools in
   mid-session with no restart.
 
+## 6a. The price ceiling — owner's ruling, 2026-09-04
+
+**No model above $1.00 per 1M input tokens is reachable anywhere in the
+product, and the ceiling is measured against the MAX ENDPOINT price, not the
+headline.** That is the owner's ruling and it is not open.
+
+It has teeth, because a slug's headline is one of several endpoint prices.
+`google/gemini-3.8-flash` has six endpoints and its two `priority` ones bill
+**$1.35 / $6.75** — over the ceiling. Measured 2026-09-04.
+
+**Why the escalation preset is nevertheless admissible**, and why that is a
+fact rather than a reinterpretation: OpenRouter only considers `flex` and
+`priority` endpoints *when the request asks for them*, by a `:nitro` / `:floor`
+variant, a `service_tier` parameter, or a tier slug named in `provider.order` /
+`provider.only`. `ESCALATION_MODEL` is a plain slug sent with
+`provider: {"sort": "throughput"}`, and **`sort` is not one of those three** —
+which is what the one paid run observed, both escalation calls landing on
+`google-vertex/global` at $0.75. `CHEAP_MODEL` *does* carry `:nitro`, so
+priority endpoints are admissible for it; flash-lite's priority tier is $0.54,
+under the ceiling.
+
+**But that is a property of today's configuration, not a guarantee**, and a
+ceiling that holds because of what nobody happens to have set is not a ceiling.
+So it is now **enforced at the API**: every escalation request carries
+`provider.max_price`, which filters endpoints *before* routing. An over-ceiling
+endpoint cannot be selected regardless of variant, sort, tier, or a catalogue
+change nobody noticed. `config.py::openrouter_price_ceiling_params`.
+
+Three things a later wave must not get wrong:
+
+- **`max_price` and `sort` are one `provider` object.** JSON has no merge, so a
+  second caller writing its own `provider` key silently overwrites the first
+  and nothing raises — the call simply becomes eligible for $1.35 again.
+  `openrouter_escalation_params` assembles it once;
+  `test_crews.py::test_the_price_ceiling_survives_sharing_a_provider_block_with_sort`
+  pins it at every effort including `None`.
+- **There is deliberately no completion ceiling.** The rule is stated in one
+  dimension and inventing a second bound would be inventing a number. It costs
+  nothing, measured: every roster endpoint over $3.75 completion is a priority
+  endpoint whose prompt price the input bound already excludes.
+- **The registry still records `cost_in_max_endpoint`** and the plan 05 ceiling
+  test still reads it. A model whose *cheapest* endpoint is over the ceiling is
+  unusable under this policy and is refused up front — `openai/o4-mini` has
+  exactly one endpoint, at $1.10, and is refused at both doors.
+
 ## 7. The money rule
 
 **Balance: $27.55** — `total_credits` 120, `total_usage` 92.446, measured

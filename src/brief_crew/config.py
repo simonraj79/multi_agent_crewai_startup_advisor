@@ -829,6 +829,85 @@ VALIDATOR_REPORTER_REASONING_EFFORT = "low"
 # serializer records on every model-call frame.
 VALIDATOR_ESCALATION_PROVIDER_SORT = "throughput"
 
+# --------------------------------------------------------------------------
+# The price ceiling, ENFORCED rather than asserted - owner's ruling 2026-09-04
+# --------------------------------------------------------------------------
+#
+# The gauntlet's rule is "no model above $1.00 per 1M INPUT tokens reachable
+# anywhere in the product", and the owner ruled that the ceiling is measured
+# against the MAX endpoint price, not the headline. That ruling has teeth,
+# because a slug's headline is only one of its endpoint prices. Measured
+# 2026-09-04 with `list-model-endpoints`, `google/gemini-3.8-flash` has six:
+#
+#   google-ai-studio/flex           $0.375 / $1.875
+#   google-vertex/global/flex       $0.375 / $1.875
+#   google-ai-studio                $0.75  / $3.75     <- the headline
+#   google-vertex/global            $0.75  / $3.75
+#   google-ai-studio/priority       $1.35  / $6.75     <- OVER THE CEILING
+#   google-vertex/global/priority   $1.35  / $6.75     <- OVER THE CEILING
+#
+# So the escalation tier's max endpoint is $1.35 and the literal ruling
+# excludes it.
+#
+# WHY IT IS NEVERTHELESS ADMISSIBLE, and why that is a fact about routing
+# rather than a reinterpretation of the ruling. OpenRouter's service-tier
+# documentation is explicit: "Non-default tier endpoints (flex, priority) are
+# only considered when your request asks for them", and there are exactly three
+# ways to ask - a `:nitro` / `:floor` model variant, the `service_tier`
+# parameter, or naming a tier endpoint slug in `provider.order` / `provider.only`.
+#
+# `ESCALATION_MODEL` is a plain slug and this file sends `provider: {"sort":
+# "throughput"}`. `sort` is NOT one of the three. The two $1.35 endpoints are
+# therefore not candidates, which is exactly what the one paid run observed:
+# both escalation calls landed on `google-vertex/global` at $0.75.
+#
+# `CHEAP_MODEL` DOES carry `:nitro`, so for the cheap tier priority endpoints
+# ARE admissible - and that is fine, because flash-lite's priority tier is
+# $0.54, comfortably under.
+#
+# THE PROBLEM WITH LEAVING IT THERE is that all of the above is a property of
+# today's configuration. Add `:nitro` to the escalation model, set a
+# `service_tier`, or let a future author name an endpoint slug, and the $1.35
+# endpoint becomes reachable with nothing failing. A ceiling that holds because
+# of what we happen not to have set is not a ceiling.
+#
+# `provider.max_price` makes it one. OpenRouter filters endpoints by price
+# BEFORE routing, so an over-ceiling endpoint cannot be selected regardless of
+# variant, sort, tier or a catalogue change we have not noticed. The bound
+# moves from a test in this repository to the API that does the billing.
+#
+# Failure mode, stated because it is the cost of the guarantee: if a model's
+# CHEAPEST endpoint is over the ceiling, `max_price` filters every candidate
+# and the request fails rather than silently overspending. That is the right
+# direction, and it is also why the registry refuses such a model up front -
+# `openai/o4-mini` has exactly one endpoint at $1.10 and is refused at both
+# doors. Verified 2026-09-04: one endpoint, `openai`, $1.1 / $4.4.
+MODEL_PRICE_CEILING_IN = 1.00
+
+# ⚠️ There is deliberately NO completion ceiling, and the omission is the
+# honest reading rather than an oversight. The gauntlet's rule is stated in one
+# dimension - "$1.00 per 1M INPUT tokens" - and inventing a second bound would
+# be inventing a number, which is the exact failure this whole 2026-09-04 pass
+# exists to correct.
+#
+# It costs nothing in practice, and that is measured rather than assumed: every
+# roster endpoint whose completion price is over $3.75 is a `priority` endpoint
+# whose PROMPT price is $1.35, so the input bound already excludes it. The
+# dearest completion price that survives the input bound is $3.75, the
+# escalation tier's own headline. If a model ever appears with a cheap prompt
+# and a wild completion price, this is where the second bound goes - and it
+# should be added with its own measurement, not by symmetry.
+def openrouter_price_ceiling_params() -> dict[str, float]:
+    """The `provider.max_price` block that enforces the ceiling at the API.
+
+    Returned as the inner mapping rather than a whole `extra_body`, because it
+    has to MERGE with the `sort` this file already sends - two callers each
+    writing their own `provider` key would have one silently overwrite the
+    other, and the one that lost would be whichever ran second.
+    """
+
+    return {"prompt": MODEL_PRICE_CEILING_IN}
+
 
 def openrouter_escalation_params(effort: str | None) -> dict[str, object]:
     """Reasoning effort AND throughput routing, in one ``extra_body``.
@@ -842,8 +921,12 @@ def openrouter_escalation_params(effort: str | None) -> dict[str, object]:
     body: dict[str, object] = {}
     if effort is not None:
         body["reasoning"] = {"effort": effort}
+    # ONE `provider` block, assembled here, because JSON has no merge and two
+    # writers of the same key means the second wins silently.
+    provider: dict[str, object] = {"max_price": openrouter_price_ceiling_params()}
     if VALIDATOR_ESCALATION_PROVIDER_SORT:
-        body["provider"] = {"sort": VALIDATOR_ESCALATION_PROVIDER_SORT}
+        provider["sort"] = VALIDATOR_ESCALATION_PROVIDER_SORT
+    body["provider"] = provider
     return {"extra_body": body} if body else {}
 
 

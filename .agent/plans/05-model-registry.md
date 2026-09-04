@@ -558,3 +558,47 @@ is a measurement for exactly the two Google presets and a guess everywhere
 else, wrong in **both** directions — 1.1× for the three OpenAI first-party
 rows, **9.5×** for `openai/gpt-oss-120b`. That is the argument for measuring
 rather than for the factor, and it is now a number.
+
+
+### Owner's ruling — the ceiling is the MAX ENDPOINT price, 2026-09-04
+
+Asked because this plan's own measurement surfaced it: `google/gemini-3.8-flash`
+bills **$1.35/M input** on its two `priority` endpoints against a $1.00 ceiling,
+while D9's test reads `cost_in`, the headline. The owner ruled: **use the max
+endpoint.**
+
+**Read literally, that excludes the escalation preset**, and this section says
+so rather than quietly routing around it. What makes the model admissible is a
+fact about routing, verified against OpenRouter's service-tier documentation
+and its endpoint list on 2026-09-04:
+
+- `flex` and `priority` endpoints are considered **only when the request asks**
+  — via a `:nitro` / `:floor` variant, `service_tier`, or a tier slug in
+  `provider.order` / `provider.only`.
+- `ESCALATION_MODEL` is a plain slug sent with `provider: {"sort":
+  "throughput"}`. `sort` is **not** one of those three, so the $1.35 endpoints
+  are not candidates. The one paid run agrees: both escalation calls landed on
+  `google-vertex/global` at $0.75.
+- `CHEAP_MODEL` carries `:nitro`, which **does** admit priority endpoints — and
+  flash-lite's priority tier is $0.54, under the ceiling.
+
+**That was luck, and it is now enforcement.** `config.py` sends
+`provider.max_price` on every escalation request, so OpenRouter filters
+over-ceiling endpoints before routing. The bound moved out of a test in this
+repository and into the API that does the billing.
+
+Consequences for this plan, which the build must honour:
+
+1. **D9's ceiling test reads `cost_in_max_endpoint`**, per the ruling. Seed it
+   from the measured max-endpoint column in D5.
+2. **A model is refused when its CHEAPEST endpoint exceeds the ceiling**,
+   because such a model cannot be served at all under `max_price` — the request
+   would fail rather than overspend. `openai/o4-mini` is the worked example:
+   exactly one endpoint, $1.10, refused at both doors.
+3. **The registry keeps both columns.** `cost_in` prices a run; the max-endpoint
+   figure gates admission. Reporting only one of them is what produced the
+   `:batch` mistake this plan already had to correct.
+4. **`NITRO_PRICE_FACTOR` is now a fallback, not the mechanism.** With
+   `max_price` enforced the true bound is the ceiling itself; the factor stays
+   for estimating a run's cost, where the measured per-model ratios (1.0x to
+   9.5x) matter more than any single constant.

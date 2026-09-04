@@ -256,21 +256,165 @@ rubric 10 depends on C6 landing.
 
 ## Status
 
-**Planned · 2026-09-02.** No code.
+**Built · 2026-09-04.** All twelve criteria met. A published graph was already
+runnable; it is now inspectable, testable and recoverable — it says what the
+agent said, which edge it took and what the plan is; it retries what is worth
+retrying and only that; it routes a failure instead of dying of one; and it can
+be started again from the node that failed rather than from node 1.
 
-Contract note for 00: C6's five names are `details.stage` discriminators
-over existing `FrameKind` values, not new kinds — recorded above so 11 and
-12 do not wait for an enum change.
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 1 | `AuthoredAgentTests`: the synthetic factory gets the whole block; a real `Agent` has `llm.model`, `max_tokens`, `temperature`, `stream` | **met** | `test_builder_runner.py::AuthoredAgentTests` (8) |
+| 2 | `max_tokens == GRAPH_BUDGET_CALL_COMPLETION_TOKENS`; cost per registry model, `None` for an unknown one | **met** | `test_run_result_and_cost.py::AuthoredCompletionBoundTests` (3) |
+| 3 | `resolve_credential` under `current_run_user`; `credential-not-yours`; a sentinel in no frame, state, row or export | **met** | `test_credentials_runtime.py` (16) |
+| 4 | retry ×3, the third on the fallback; `max_retries: 0` fails first; cancel between attempts | **met** | `test_retry.py` (13) |
+| 5 | `on_error: route` reaches `completed` with `err__<node>`; `fail` reaches `failed` | **met** | `test_error_routing.py` (5) |
+| 6 | `resume_from` replays `a`, `b`, runs `c`, equals a clean run; 404; `replay-missing-output` | **met** | `test_replay.py` (10) |
+| 7 | `dry_run` 200 and nothing created; `test` writes `mode`; `node_test` 422; `/state?step=` | **met** | `test_run_modes.py` (16) |
+| 8 | `utterance` truncated at 4,096; ≤ 4 chunk frames/s/call; `edge_traversal` before `NODE_START`; `stage` = layer count | **met** | `test_utterance_frames.py` (21) |
+| 9 | `runs.mode` on a shipped table; a pre-existing row reads NULL → `run` | **met** | `test_additive_migration.py` (26, 2 new) |
+| 10 | a v1 row through the upgrade; a v2 row naming a retired model skipped with `model-unknown`, and the process boots | **met, with one stated limit** | `test_builder_rehydration.py::SchemaAndModelDriftTests` (3) |
+| 11 | `test_restart_recovery.py` still passes; a `test`-mode run interrupted mid-method is failed at startup | **met** | `test_restart_recovery.py` (25, 3 new) |
+| 12 | `e2e/visual/run-canvas.spec.ts` still passes | **met** | 3 passed against `SYNTHETIC=1` on 8101 |
 
-Open decisions for the owner:
+### Measured, 2026-09-04, in this worktree
 
-- Chunk coalescing at 250 ms is a judgement about the 2,000-frame ring, not a measurement; the alternative is a larger ring, which costs memory per run.
-- Whether a BYO OpenRouter key should exempt a run from the platform `$10` ceiling. This plan says **no** — the ceiling bounds the process, not the bill.
+```text
+Python          2243 run · 0 failures · 6 skipped · 109.5 s   (this plan's baseline 2119)
+Frontend unit   1468 passed in 74 files                        (baseline 1426 in 73)
+vue-tsc -b --force   exit 0
+npm run build        green
+E2E             73 passed, 2 failed - both in `e2e/visual/builder-canvas.spec.ts`
+                and neither this plan's; see "Not ours" below
+```
 
-### Owner decisions answered — 2026-09-04
+Part of both suite deltas is another agent's uncommitted template work in this
+shared worktree (`tests/builder/test_templates.py`, `frontend/tests/templates.spec.ts`),
+not this plan's. **This plan spent $0.00**: every billable node in every test is
+built by the double `SYNTHETIC=1` installs, and the two tests that need a REAL
+`Agent` construct one, which calls no model.
 
-**Decision 14 — no.** The ceiling bounds a topology somebody else drew; it is not
-a bound on whose card is charged.
+### Two things measured that no plan knew
 
-**Decision 15 — coalesce at 250 ms.** The ring is bounded to make a run
-survivable, and a bigger ring trades a known bound for an unknown one.
+**1. CrewAI persists NOTHING for an ordinary declarative run.** A two-node graph
+published, launched and completed on the service persistence leaves
+`flow_states` EMPTY; the only writer is `save_pending_feedback`, on the pause a
+gate raises. So D5's premise — "the source run's last `flow_states` row" — held
+only for a run that had paused, `GET /state?step=` answered `{}` for every step,
+and `resume_from` had nothing to replay from. Both are this plan's, so the write
+is: `builder_state_sink` checkpoints one row PER NODE from `_record`. Per node
+and not per run, because `?step=` is a question about a MOMENT and a single
+end-of-run row would answer every step with the final state and look exactly as
+if it worked. `test_credentials_runtime.py` asserts the rows exist before
+asserting the sentinel is not in them, so that leg cannot go vacuous either.
+
+**2. An authored node could route past the §6a price ceiling.** The ceiling is
+enforced by `provider.max_price` on the escalation preset; an authored node
+builds its own `LLM` from the author's own registry model and carried no
+`provider` block at all. `openrouter_authored_params` now assembles one —
+`max_price` and, when the author set one, the reasoning effort — in ONE
+`provider` object, because JSON has no merge and a second writer of that key
+wins silently. Deliberately no `sort`: the author chose the model, so this
+module does not also choose the endpoint.
+
+### Four departures, each where the plan and the code disagreed
+
+Stated rather than smoothed over.
+
+1. **`err__<node>` stays a STRING, not D4's `{error_class, message}` mapping.**
+   `runtime.py`'s own docstring records that a flat `${state.x}` is the only
+   reference shape ever measured resolving — nested access into a sub-dict was
+   not — so a mapping here would be a value the error port's successor cannot
+   read, which is the one thing the key exists for. The string is
+   `ClassName: sentence`, and the machine-readable `error_class` is on the
+   `node_error` frame. It also keeps plan 09's `ErrorRouterTests` green rather
+   than rewriting an assertion that was right.
+2. **Criterion 4's "`node_error ×3` … and the run completes" is tested BOTH
+   ways**, because the two clauses cannot both hold of one run under
+   `on_error: fail`: three failed attempts and a completed run only coexist when
+   the node is routed. So the criterion's own numbers are asserted on a
+   `route` node whose three attempts all fail, and a second test asserts the
+   other reading — the fallback attempt SUCCEEDS, two `node_error`s, run
+   completes normally.
+3. **`dry_run` is answered BEFORE the rate limiter**, which is the one place
+   this endpoint's ordering bends. Criterion 7 asks for it and the reason holds:
+   a preview the canvas fires on every edit must not compete with Launch for a
+   launch allowance. The residual is an unthrottled existence oracle for a
+   workflow id, and it is not a NEW one — `workflow_visible_to` answers the same
+   404 that `GET /api/builder/workflows/{id}` already answers unthrottled.
+4. **Criterion 10's "a v1 row rehydrates through the upgrade" is asserted as the
+   SEAM being in the read path, not as a live v1 → v2 walk.** The mapping is
+   registered and inert at head: `config.BUILDER_DOCUMENT_SCHEMA` is still
+   `builder.flow/v1`, and moving it is a two-suite contract change plan 15's own
+   module docstring describes and does not take. `tests/builder/test_upgrade.py`
+   proves the walk under a patched constant. Asserting more here would be
+   asserting a constant nobody has moved.
+
+### Four deliberate breaks, and what each looked like
+
+Each was applied, watched go red, and reverted.
+
+| broken | red |
+| --- | --- |
+| the 250 ms window in `_coalesce_chunk` | `AssertionError: 40 != 1`, and `500 not less than or equal to 4` |
+| `max_tokens` default and `stream=True` | `AssertionError: None != 4253` ×2, `False is not True` |
+| `_state_sink` returning `None` | `'out__scoper' not found in {}`, and the anti-vacuity guard: `[] is not true : the run wrote no state at all; this would be vacuous` |
+| `NodeRegistry.edges` built from the wrong field | `('a', 'b') not found in frozenset({('b', 'b'), ('a', 'a'), ('idea', 'idea')})` |
+
+A fifth lives in the suite permanently:
+`test_retry.py::test_a_deliberate_break_of_the_closed_list_would_be_visible`
+patches `_is_retryable` to say yes to everything and asserts the refusal is then
+tried three times, which is what makes the closed list a mechanism rather than a
+comment.
+
+### Not ours
+
+`e2e/visual/builder-canvas.spec.ts` fails two snapshots — `problem state — dark`
+and `problem state — light`. This plan touched **one** file under `frontend/`
+(`tests/builderApi.spec.ts`, to enumerate the new `compiled` route) and no
+frontend source at all. The failing capture presses `2` to add a node, whose
+card renders a default model out of `frontend/src/data/models.ts` — one of the
+files another agent has uncommitted in this worktree, along with
+`types/builder.ts` and `TemplateGallery.vue`. Their snapshots need regenerating
+with their change.
+
+### For the Integrator
+
+- **C6 and C7 are landed as written**, with the four departures above. No new
+  `FrameKind` member: all five names are `details.stage` discriminators.
+- **`NodeRegistry` gained one field, `edges`** — every `(from, to)` pair the
+  author drew. It is what stops `edge_traversal` inventing an edge on two
+  interleaving branches; an empty set (both hand-written flows) falls back to
+  execution order. Additive, defaulted, and `from_flow_structure` is untouched.
+- **`RunExecution` gained `mode` and `derived`**, both defaulted, both ignored by
+  the four runners that do not read them.
+- **`config.py` gained five names**: `MAX_UTTERANCE_CHARS`,
+  `MAX_FRAME_PREVIEW_CHARS`, `MAX_NODE_ERROR_CHARS`,
+  `STREAM_CHUNK_COALESCE_MS`, and `openrouter_authored_params`.
+- **`SECRET_KEYS` gained `env`** (D2's fourth name). It ends in none of the
+  suffixes, so only an exact entry catches it.
+- **The rehydration skip reason now carries the problem CODES** beside the
+  compiler's sentence. `model-unknown` in a log line is the difference between
+  "some graph broke" and "these three name a model we withdrew".
+- **`BuilderTestInputStore` is a READ-ONLY loader in `builder/store.py`.** Plan
+  13 owns that table and will bring the CRUD; this is the one query C7's
+  `test_input_id` implies, put where the SQL for every other builder table
+  already lives.
+- **`SYNTHETIC_FAILURE`** is a new environment knob on the free factories
+  (`[node:]reason[:times]`, `reason` in `rate_limit` / `refusal`). Nothing reads
+  it in production; it is what makes the retry loop and the error port testable
+  without money, and it is read PER INSTANCE so a test needs no restart.
+- **Item 3's fifth compare-and-set path is untouched** and this plan adds no
+  sixth.
+
+Open questions for the owner:
+
+- **`stream=True` on every authored `LLM` and `Crew` has never met a paid run.**
+  D7 asks for it and the tests prove the flags are set, but what a streaming
+  completion does to an authored task carrying `output_pydantic` is a question
+  only a real call answers. It is the single highest-value thing to watch on the
+  first paid run of a user-authored graph (remaining-work item 40).
+- **`GET /api/runs/{id}/state` has no client**, by design — plan 11 owns the
+  console. Same for `GET /api/builder/workflows/{id}/compiled`, whose panel is
+  11's; `frontend/tests/builderApi.spec.ts` accounts for the route in the
+  meantime so it cannot sit declared and unknown to the client.

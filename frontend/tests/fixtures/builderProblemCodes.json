@@ -7,6 +7,7 @@
   "codes": [
     "attach-target-not-agent",
     "attachment-nodes-over-max",
+    "attachment-reference-missing",
     "attachment-unattached",
     "attachments-over-max",
     "back-edge-not-router",
@@ -15,6 +16,7 @@
     "budget-unpriced-model",
     "credential-missing",
     "crew-members-out-of-range",
+    "crew-tier-not-honoured",
     "cycle-count",
     "cycle-iterations",
     "duplicate-edge-id",
@@ -22,6 +24,7 @@
     "edge-target-refuses-incoming",
     "edge-unknown-endpoint",
     "edge-unknown-port",
+    "error-port-unconnected",
     "escalation-count",
     "fanout-width",
     "ident-collision",
@@ -52,6 +55,8 @@
     "router-duplicate-branch",
     "router-otherwise",
     "skill-unknown",
+    "state-key-reserved",
+    "state-schema-invalid",
     "tool-credential-required",
     "tool-param-invalid",
     "tool-unknown"
@@ -79,6 +84,18 @@
         "message": "this graph has 25 tool, MCP and skill nodes and the ceiling is 24 (MAX_ATTACHMENT_NODES). Attachments are counted separately from steps - they never run and never bill - so this is a bound on the document rather than on what the run costs",
         "node_id": "t24",
         "edge_id": null
+      }
+    },
+    {
+      "code": "attachment-reference-missing",
+      "scenario": "an imported graph whose MCP server reference did not survive",
+      "why": "`export.py` nulls `server_id` deliberately - it names a row in the EXPORTING author's own server list - so this is what a legitimately imported file looks like, and the importer has to be told which node.",
+      "problem": {
+        "code": "attachment-reference-missing",
+        "severity": "error",
+        "message": "'hands' is attached to 'scope' and names no MCP server. An exported graph has this shape on purpose - the reference pointed at a row in the exporting author's own library and could not travel - so pick one of yours before this graph will run",
+        "node_id": "hands",
+        "edge_id": "a1"
       }
     },
     {
@@ -178,6 +195,18 @@
       }
     },
     {
+      "code": "crew-tier-not-honoured",
+      "scenario": "a registered crew whose tier chooses nothing",
+      "why": "Decision 12. A registered crew builds its own LLMs in python, so the word prices and bounds the graph and does not pick a model. A warning rather than an error: the field is required by the schema and does real work twice over.",
+      "problem": {
+        "code": "crew-tier-not-honoured",
+        "severity": "warning",
+        "message": "'team' runs the registered crew 'scope' on the escalation tier, and that word does not choose the crew's models: a registered crew builds its own LLMs in python, from config.py, inside the crew. What the tier does do is price this node and count it against the escalation bound. Author the agents here if you need to choose the model",
+        "node_id": "team",
+        "edge_id": null
+      }
+    },
+    {
       "code": "cycle-count",
       "scenario": "four loops against the cycle ceiling, one of them from a plain agent",
       "why": "`back-edge-not-router` is the measured one: with a plain node closing the loop the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing - no exception, no warning.",
@@ -259,6 +288,18 @@
         "message": "edge 'e2' leaves 'draft' by the port 'approve', and a agent node offers out",
         "node_id": "draft",
         "edge_id": "e2"
+      }
+    },
+    {
+      "code": "error-port-unconnected",
+      "scenario": "an error port with nothing drawn from it",
+      "why": "A WARNING. The author asked for a recovery path and did not draw one, so a failure here still ends the run - which is what `on_error: fail` already does.",
+      "problem": {
+        "code": "error-port-unconnected",
+        "severity": "warning",
+        "message": "'draft' routes its failures out of an `error` port and nothing is drawn from it, so a failure here still ends the run - which is what `on_error: fail` already does. Draw the recovery path, or set the policy back to fail",
+        "node_id": "draft",
+        "edge_id": null
       }
     },
     {
@@ -618,6 +659,30 @@
         "severity": "error",
         "message": "hands names the skill sk_ffffffffffff, which is not one of yours and is not a built-in; it may have been deleted",
         "node_id": "hands",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "state-key-reserved",
+      "scenario": "a declared state key the compiler already owns",
+      "why": "`_Plan.state_default()` writes every `out__*`, `err__*` and `turns__*` key, so a document declaring one would be overwritten by a node's own output - or would overwrite it.",
+      "problem": {
+        "code": "state-key-reserved",
+        "severity": "error",
+        "message": "the state key 'out__draft' is one the compiler owns (__builder__, and anything starting out__, err__, turns__). A declared key under that name would be overwritten by a node's own output, or would overwrite it - rename it",
+        "node_id": null,
+        "edge_id": null
+      }
+    },
+    {
+      "code": "state-schema-invalid",
+      "scenario": "a declared state default of the wrong type",
+      "why": "CrewAI validates a json_schema state at kickoff, so this would fail the run at its first method rather than on the canvas.",
+      "problem": {
+        "code": "state-schema-invalid",
+        "severity": "error",
+        "message": "the state key 'turns' is declared 'integer' and defaults to 'three', which is a str. CrewAI validates a json_schema state at kickoff, so this would fail the run at its first method rather than here",
+        "node_id": null,
         "edge_id": null
       }
     },
@@ -5830,6 +5895,419 @@
           "source_port": "attach",
           "target": "scope",
           "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a declared state key the compiler already owns": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a reserved state key",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "role": "draft specialist",
+            "goal": "do the work",
+            "backstory": "years of it",
+            "task": {
+              "description": "work",
+              "expected_output": "a paragraph"
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash"
+            },
+            "tier": "cheap",
+            "on_error": "fail"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null,
+      "state": {
+        "fields": {
+          "out__draft": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "a declared state default of the wrong type": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a mistyped state default",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "role": "draft specialist",
+            "goal": "do the work",
+            "backstory": "years of it",
+            "task": {
+              "description": "work",
+              "expected_output": "a paragraph"
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash"
+            },
+            "tier": "cheap",
+            "on_error": "fail"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null,
+      "state": {
+        "fields": {
+          "turns": {
+            "type": "integer",
+            "default": "three"
+          }
+        }
+      }
+    },
+    "an error port with nothing drawn from it": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "an unconnected error port",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "role": "draft specialist",
+            "goal": "do the work",
+            "backstory": "years of it",
+            "task": {
+              "description": "work",
+              "expected_output": "a paragraph"
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash"
+            },
+            "tier": "cheap",
+            "on_error": "route"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an imported graph whose MCP server reference did not survive": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a stripped server reference",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "scope",
+          "kind": "agent",
+          "label": "scope",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "hands",
+          "kind": "mcp",
+          "label": "hands",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_names": [
+              "search"
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__scope}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "scope",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "scope",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
+        },
+        {
+          "id": "a1",
+          "source": "hands",
+          "source_port": "attach",
+          "target": "scope",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a registered crew whose tier chooses nothing": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "a library crew",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "crew_id": "scope",
+            "tier": "escalation"
+          }
+        },
+        {
+          "id": "done",
+          "kind": "output",
+          "label": "done",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__team}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "done",
+          "target_port": "in"
         }
       ],
       "joins": {},

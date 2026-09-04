@@ -34,10 +34,11 @@ from __future__ import annotations
 import json
 import re
 import threading
-from collections.abc import Iterator, Mapping, Sequence
+import time
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 import logging
 from functools import lru_cache
 from pathlib import Path
@@ -51,11 +52,13 @@ from brief_crew.config import (
     AGENT_CREDENTIAL_KIND,
     BUILDER_ROUTER_COMPARISONS,
     BUILDER_ROUTER_OTHERWISE,
+    BUILDER_STATE_ERROR_PREFIX,
     BUILDER_STATE_OUTPUT_PREFIX,
     BUILDER_TRANSFORM_OPS,
     CHEAP_MODEL,
     ESCALATION_MODEL,
     MAX_RUN_RESULT_BODY_CHARS,
+    OPENROUTER_MODEL_PREFIX,
     VALIDATOR_BRANCH_MAX_ITER,
 )
 
@@ -74,10 +77,12 @@ __all__ = [
     "missing_prompt_inputs",
     "rejoin",
     "render_gate",
+    "replay_output",
     "route_branch",
     "route_gate",
     "run_agent",
     "run_crew",
+    "replay_source",
     "seed_input",
     "transform",
     "unbuildable_crew_reason",
@@ -373,6 +378,107 @@ class CrewFactories(Protocol):
         guardrail_max_retries: int,
     ) -> Any: ...
 
+    # The two AUTHORED builders (09 D1). Given bodies rather than `...` so
+    # every double written before 09 keeps satisfying this protocol without an
+    # edit - the same reason `api_key`, `attachments` and `tool_failure_policy`
+    # are defaulted above. A double that does not override them falls back to
+    # its own library builder, which is what a test that only cares about
+    # "something ran here" wants; a double that DOES override gets the whole
+    # authored spec and can assert on it.
+    def authored_agent_crew(self, *, node_id: str, spec: "AuthoredAgentSpec") -> Any:
+        return self.agent_crew(
+            node_id=node_id,
+            agent_id=spec.role,
+            tier=spec.tier,
+            tools=(),
+            max_iter=spec.max_iter,
+            guardrail_max_retries=spec.guardrail_max_retries,
+        )
+
+    def authored_crew(self, *, node_id: str, spec: "AuthoredCrewSpec") -> Any:
+        return self.crew(
+            node_id=node_id,
+            crew_id=spec.process,
+            tier=spec.tier,
+            max_iter=spec.max_iter,
+            guardrail_max_retries=spec.guardrail_max_retries,
+        )
+
+
+@dataclass(frozen=True)
+class AuthoredAgentSpec:
+    """One authored agent node's whole `with:` block, as one object.
+
+    A dataclass rather than fourteen keyword arguments because the SAME object
+    is a crew member (09 D2 folds a `member` agent's block into its crew's
+    `members` list), and threading fourteen keywords through two call sites is
+    how the two spellings drift. Every field is a VALUE the author typed or an
+    OPAQUE ID the entrypoint dereferences - never a name, a path or a callable
+    (FD10).
+    """
+
+    role: str
+    goal: str
+    backstory: str
+    task: Mapping[str, Any]
+    llm: Mapping[str, Any]
+    tier: str = "cheap"
+    max_iter: int = VALIDATOR_BRANCH_MAX_ITER
+    guardrail_max_retries: int = 0
+    advanced: Mapping[str, Any] = field(default_factory=dict)
+    expert: Mapping[str, Any] = field(default_factory=dict)
+    tools: tuple[Mapping[str, Any], ...] = ()
+    mcps: tuple[Mapping[str, Any], ...] = ()
+    skills: tuple[str, ...] = ()
+    prompt_inputs: Mapping[str, Any] = field(default_factory=dict)
+    tool_failure_policy: str = BUILDER_DEFAULT_TOOL_FAILURE_POLICY
+    credential_id: str | None = None
+
+    def attachment_list(self) -> tuple[dict[str, Any], ...]:
+        """The three C5 lists as the one discriminated list `bind_attachments` reads.
+
+        C5 spells an authored agent's attachments as three keys and plans 06 to
+        08 shipped `bind_attachments` over one `kind`-discriminated list. Both
+        are the same data; this is the one line that says so, rather than two
+        wire formats nobody reconciles.
+        """
+
+        return (
+            *(
+                {"kind": "tool", **{str(k): v for k, v in dict(entry).items()}}
+                for entry in self.tools
+            ),
+            *(
+                {"kind": "mcp", **{str(k): v for k, v in dict(entry).items()}}
+                for entry in self.mcps
+            ),
+            *({"kind": "skill", "skill_id": str(skill)} for skill in self.skills),
+        )
+
+
+@dataclass(frozen=True)
+class AuthoredCrewSpec:
+    """One authored crew node's `with:` block, members and all."""
+
+    process: str
+    members: tuple[AuthoredAgentSpec, ...] = ()
+    task_order: tuple[str, ...] = ()
+    member_ids: tuple[str, ...] = ()
+    manager_llm: Mapping[str, Any] | None = None
+    manager_agent: str | None = None
+    tier: str = "cheap"
+    max_iter: int = VALIDATOR_BRANCH_MAX_ITER
+    guardrail_max_retries: int = 0
+    memory: bool = False
+    cache: bool = True
+    max_rpm: int | None = None
+    planning: bool = False
+    planning_llm: Mapping[str, Any] | None = None
+    verbose: bool = False
+    prompt_inputs: Mapping[str, Any] = field(default_factory=dict)
+    tools: tuple[Mapping[str, Any], ...] = ()
+    mcps: tuple[Mapping[str, Any], ...] = ()
+
 
 def _failure_policy(name: str) -> Any:
     from crewai.tools.tool_failure import ToolFailurePolicy
@@ -474,6 +580,118 @@ class DefaultCrewFactories:
             verbose=True,
         )
 
+    # ---------------------------------------------------------- authored
+    def authored_agent_crew(self, *, node_id: str, spec: AuthoredAgentSpec) -> Any:
+        """The author's own `Agent`, their own `Task`, one `Crew` around them.
+
+        THE PROMPT IS THE DOCUMENT'S, and that is the one place in this product
+        where that is true. `config/agents.yaml` is where THIS repository's
+        prompts live and the platform rule keeps them there; an authored node's
+        prompt has no YAML to live in, so the document is not a second home for
+        it - it is the only one. Nothing here reads a file.
+        """
+
+        from crewai import Crew, Process
+
+        agent = self._authored_agent(spec, node_id=node_id)
+        task = _authored_task(spec, agent)
+        advanced = dict(spec.advanced)
+        return Crew(
+            agents=[agent],
+            tasks=[task],
+            process=Process.sequential,
+            memory=bool(advanced.get("memory", False)),
+            cache=bool(advanced.get("cache", True)),
+            verbose=False,
+        )
+
+    def _authored_agent(self, spec: AuthoredAgentSpec, *, node_id: str) -> Any:
+        from crewai import Agent
+
+        advanced = dict(spec.advanced)
+        expert = dict(spec.expert)
+        bound = bind_attachments(
+            spec.attachment_list(),
+            node_id=node_id,
+            failure_policy=spec.tool_failure_policy,
+        )
+        planning_config = expert.get("planning_config")
+        return Agent(
+            role=spec.role,
+            goal=spec.goal,
+            backstory=spec.backstory,
+            llm=_authored_llm(spec.llm, credential_id=spec.credential_id, node_id=node_id),
+            tools=list(bound.tools),
+            # `None` rather than `[]` for both: CrewAI walks its MCP resolver
+            # and its skill loader for an empty list and skips them for `None`.
+            mcps=list(bound.mcps) or None,
+            skills=list(bound.skills) or None,
+            max_iter=spec.max_iter,
+            allow_delegation=bool(advanced.get("allow_delegation", False)),
+            memory=bool(advanced.get("memory", False)),
+            cache=bool(advanced.get("cache", True)),
+            respect_context_window=bool(advanced.get("respect_context_window", True)),
+            tool_failure_policy=_failure_policy(spec.tool_failure_policy),
+            # The S9 deprecation ruling, applied at the constructor: `reasoning`
+            # and `max_reasoning_attempts` are NOT passed, `planning` and
+            # `planning_config` are. CrewAI folds the old pair into the new one
+            # and warns; the switch an author sees is the one the package keeps.
+            planning=bool(expert.get("planning", False)),
+            **({"planning_config": dict(planning_config)} if planning_config else {}),
+            **_present(
+                max_rpm=advanced.get("max_rpm"),
+                max_execution_time=advanced.get("max_execution_time"),
+                system_template=expert.get("system_template"),
+                prompt_template=expert.get("prompt_template"),
+                response_template=expert.get("response_template"),
+            ),
+        )
+
+    def authored_crew(self, *, node_id: str, spec: AuthoredCrewSpec) -> Any:
+        """The author's own team: one `Agent` and one `Task` per member.
+
+        `task_order` is the order the tasks run in, which for a sequential
+        process IS the crew's behaviour. A hierarchical crew needs a manager and
+        `document.py` already refuses one without - CrewAI raises at
+        construction, which on a builder graph means after every upstream node
+        has billed.
+        """
+
+        from crewai import Crew, Process
+
+        agents = [
+            self._authored_agent(member, node_id=member_id)
+            for member_id, member in zip(spec.member_ids, spec.members)
+        ]
+        by_id = {
+            member_id: (member, agent)
+            for member_id, member, agent in zip(spec.member_ids, spec.members, agents)
+        }
+        ordered = [node for node in spec.task_order if node in by_id]
+        ordered += [node for node in spec.member_ids if node not in ordered]
+        tasks = [_authored_task(by_id[node][0], by_id[node][1]) for node in ordered]
+
+        extra: dict[str, Any] = {}
+        if spec.process == "hierarchical":
+            manager = by_id.get(str(spec.manager_agent), (None, None))[1]
+            if manager is not None:
+                extra["manager_agent"] = manager
+            elif spec.manager_llm:
+                extra["manager_llm"] = _authored_llm(spec.manager_llm, node_id=node_id)
+        if spec.planning and spec.planning_llm:
+            extra["planning_llm"] = _authored_llm(spec.planning_llm, node_id=node_id)
+        return Crew(
+            agents=agents,
+            tasks=tasks,
+            process=Process.hierarchical if spec.process == "hierarchical" else Process.sequential,
+            memory=spec.memory,
+            cache=spec.cache,
+            planning=spec.planning,
+            verbose=spec.verbose,
+            **({"max_rpm": spec.max_rpm} if spec.max_rpm else {}),
+            **extra,
+        )
+
     def crew(
         self,
         *,
@@ -502,6 +720,116 @@ class DefaultCrewFactories:
         if reason is not None:
             raise BuilderRuntimeError(reason)
         return getattr(validator_crew, class_name)().crew()
+
+
+def _present(**values: Any) -> dict[str, Any]:
+    """Only the keyword arguments that were actually set.
+
+    An authored field left blank must not become an explicit `None` on a CrewAI
+    constructor: several of these have package defaults that are not `None`, and
+    passing one would replace a default with a hole.
+    """
+
+    return {name: value for name, value in values.items() if value is not None}
+
+
+def _authored_llm(
+    spec: Mapping[str, Any] | None,
+    *,
+    credential_id: str | None = None,
+    node_id: str = "",
+) -> Any:
+    """`LlmConfig` -> `crewai.LLM`, with the author's own key when they named one.
+
+    The model is the author's; the KEY is resolved here - inside the entrypoint,
+    for the run's owner and nobody else - exactly as `run_agent`'s library branch
+    resolves it. The price ceiling is not negotiated here either: it is a
+    property of the request `config.py` builds, and a caller's own key does not
+    exempt a run from it (decision 14).
+    """
+
+    from crewai import LLM
+
+    fields = dict(spec or {})
+    model = str(fields.get("model") or "")
+    if not model:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} is an authored node with no model; every authored "
+            "node names one out of the registry"
+        )
+    if not model.startswith(OPENROUTER_MODEL_PREFIX):
+        model = f"{OPENROUTER_MODEL_PREFIX}{model}"
+    optional = _present(
+        temperature=fields.get("temperature"),
+        top_p=fields.get("top_p"),
+        max_tokens=fields.get("max_tokens"),
+        timeout=fields.get("timeout"),
+        response_format=fields.get("response_format"),
+        frequency_penalty=fields.get("frequency_penalty"),
+        presence_penalty=fields.get("presence_penalty"),
+        seed=fields.get("seed"),
+        reasoning_effort=fields.get("reasoning_effort"),
+    )
+    stop = tuple(fields.get("stop") or ())
+    if stop:
+        optional["stop"] = list(stop)
+    key = fields.get("credential_id") or credential_id
+    if key:
+        optional["api_key"] = _agent_api_key(node_id, str(key))
+    return LLM(model=model, **optional)
+
+
+def _authored_task(spec: "AuthoredAgentSpec", agent: Any) -> Any:
+    """The author's own `Task`, with their declared output schema if any.
+
+    `output_schema` is a FLAT map of name to scalar type, turned into a pydantic
+    model here with `create_model`. Flat deliberately: a nested JSON Schema would
+    be a second document format inside the document, and `create_model` over an
+    author-supplied nesting is a place to hide a type nobody looked at.
+    """
+
+    from crewai import Task
+
+    fields = dict(spec.task)
+    schema = fields.get("output_schema") or None
+    extra: dict[str, Any] = {}
+    if schema:
+        extra["output_pydantic"] = _output_model(dict(schema))
+    return Task(
+        description=str(fields.get("description", "")),
+        expected_output=str(fields.get("expected_output", "")),
+        agent=agent,
+        markdown=bool(fields.get("markdown", False)),
+        async_execution=bool(fields.get("async_execution", False)),
+        guardrail_max_retries=spec.guardrail_max_retries,
+        **extra,
+    )
+
+
+#: The four scalar types `TaskConfig.output_schema` admits, as python types.
+_SCALAR_TYPES: Mapping[str, Any] = {
+    "string": str,
+    "number": float,
+    "integer": int,
+    "boolean": bool,
+}
+
+
+def _output_model(schema: Mapping[str, Any]) -> Any:
+    """A pydantic model for one authored task's declared output shape."""
+
+    from pydantic import create_model
+
+    unknown = sorted({str(kind) for kind in schema.values()} - set(_SCALAR_TYPES))
+    if unknown:
+        raise BuilderRuntimeError(
+            f"an output schema names the type(s) {', '.join(unknown)}; the declared "
+            f"types are {', '.join(sorted(_SCALAR_TYPES))}"
+        )
+    return create_model(
+        "AuthoredOutput",
+        **{str(key): (_SCALAR_TYPES[str(kind)], ...) for key, kind in schema.items()},
+    )
 
 
 _FACTORIES: ContextVar[CrewFactories | None] = ContextVar(
@@ -895,21 +1223,107 @@ def _skill_pack(node_id: str, skill_id: str) -> Any:
         ) from exc
 
 
+#: Exceptions a retry loop and an error policy must NEVER swallow. Both are
+#: control flow rather than failure: `HookAborted` is how a cancelled run stops
+#: and `HumanFeedbackPending` is how a gate pauses, and a node that caught
+#: either would turn Cancel into a shrug and a gate into a dropped run.
+def _is_control_flow(exc: BaseException) -> bool:
+    from crewai.flow.async_feedback import HumanFeedbackPending
+    from crewai.hooks import HookAborted
+
+    return isinstance(exc, (HookAborted, HumanFeedbackPending))
+
+
+def _attempted(
+    flow: Any,
+    *,
+    node_id: str,
+    retry: Mapping[str, Any] | None,
+    on_error: str,
+    work: "Callable[[str | None], str]",
+) -> str:
+    """One node's work, under its retry loop and its error policy (09 D3, D4).
+
+    THE LOOP IS HERE AND NOT IN THE FLOW, and that is the measured reason for
+    the shape: a retry that re-entered a Flow method would need CrewAI to re-fire
+    a listener, which is the very mechanism closed item 35 had to work around.
+    Inside one entrypoint call it is an ordinary `for`.
+
+    `fallback_model` is offered to the LAST attempt only, and only when there
+    was an earlier one - a fallback on a node that never retried would silently
+    move the whole graph onto a model the author did not choose. A model REFUSAL
+    is not a failure and never reaches here (decision 16).
+
+    `on_error: 'route'` means this method returns NORMALLY on failure, having
+    written `err__<node>`; its paired router reads that key and takes the error
+    port. Only a `@router` can choose an event, so a step that raised past its
+    own listener would end the run instead of taking the recovery path the
+    author drew.
+    """
+
+    spec = dict(retry or {})
+    attempts = max(1, int(spec.get("max_retries", 0) or 0) + 1)
+    backoff = float(spec.get("backoff_seconds", 0) or 0)
+    fallback = spec.get("fallback_model") or None
+    failure: BaseException | None = None
+
+    for attempt in range(attempts):
+        last_attempt = attempt == attempts - 1
+        try:
+            return work(str(fallback) if fallback and last_attempt and attempt else None)
+        except BaseException as exc:  # noqa: BLE001 - re-raised below unless routed
+            if _is_control_flow(exc):
+                raise
+            failure = exc
+            LOGGER.warning(
+                "builder node %s failed on attempt %s of %s", node_id, attempt + 1, attempts
+            )
+            if not last_attempt and backoff:
+                time.sleep(backoff)
+
+    assert failure is not None  # pragma: no cover - the loop runs at least once
+    if on_error == "route":
+        _state(flow)[f"{BUILDER_STATE_ERROR_PREFIX}{node_id}"] = (
+            f"{type(failure).__name__}: {failure}"
+        )
+        return _record(flow, node_id, "")
+    raise failure
+
+
 def run_agent(
     flow: Any,
     *,
     node_id: str,
-    agent_id: str,
-    tier: str,
-    tools: Sequence[str] = (),
+    agent_id: str | None = None,
+    tier: str = "cheap",
+    tools: Sequence[Any] = (),
     max_iter: int = VALIDATOR_BRANCH_MAX_ITER,
     guardrail_max_retries: int = 0,
     prompt_inputs: Mapping[str, Any] | None = None,
     credential_id: str | None = None,
     attachments: Sequence[Mapping[str, Any]] = (),
     tool_failure_policy: str = BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
+    # --- the AUTHORED arm (09 D1). Present exactly when the author wrote the
+    # prompt themselves; `role` is the discriminator, mirroring the parser's
+    # own exactly-one rule (C1).
+    role: str | None = None,
+    goal: str | None = None,
+    backstory: str | None = None,
+    task: Mapping[str, Any] | None = None,
+    llm: Mapping[str, Any] | None = None,
+    advanced: Mapping[str, Any] | None = None,
+    expert: Mapping[str, Any] | None = None,
+    mcps: Sequence[Mapping[str, Any]] = (),
+    skills: Sequence[str] = (),
+    retry: Mapping[str, Any] | None = None,
+    on_error: str = "fail",
 ) -> str:
-    """`agent` - one YAML agent, on one tier, doing its YAML task.
+    """`agent` - a YAML agent the deployment registered, or one the author wrote.
+
+    ONE ENTRYPOINT, TWO ARMS, and the arm is decided by the presence of
+    `agent_id` versus `role` - the parser's own rule, applied at the other end.
+    Two refs would have doubled `BUILDER_ACTION_REFS` for no security gain: the
+    allowlist bounds what code can run, and both arms run the same code.
 
     `credential_id` is the ONLY thing the compiled definition carries about a
     credential (C5): an opaque `cr_` id, resolved here - inside the entrypoint,
@@ -928,6 +1342,37 @@ def run_agent(
 
     checkpoint(node_id)
     inputs = dict(prompt_inputs or {})
+    if role is not None:
+        return _run_authored_agent(
+            flow,
+            node_id=node_id,
+            spec=AuthoredAgentSpec(
+                role=role,
+                goal=str(goal or ""),
+                backstory=str(backstory or ""),
+                task=dict(task or {}),
+                llm=dict(llm or {}),
+                tier=tier,
+                max_iter=max_iter,
+                guardrail_max_retries=guardrail_max_retries,
+                advanced=dict(advanced or {}),
+                expert=dict(expert or {}),
+                tools=tuple(dict(entry) for entry in tools if isinstance(entry, Mapping)),
+                mcps=tuple(dict(entry) for entry in mcps),
+                skills=tuple(str(skill) for skill in skills),
+                prompt_inputs=inputs,
+                tool_failure_policy=tool_failure_policy,
+                credential_id=credential_id,
+            ),
+            retry=retry,
+            on_error=on_error,
+        )
+    if not agent_id:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} compiled to run_agent with neither an agent_id nor a "
+            "role. One names a registered agent, the other carries the prompt; a "
+            "node with neither has nothing to run"
+        )
     missing = missing_prompt_inputs(agent_id, inputs)
     if missing:
         raise BuilderRuntimeError(
@@ -957,25 +1402,56 @@ def run_agent(
         extra["attachments"] = bound
     if tool_failure_policy != BUILDER_DEFAULT_TOOL_FAILURE_POLICY:
         extra["tool_failure_policy"] = tool_failure_policy
-    crew = _factories().agent_crew(
-        node_id=node_id,
-        agent_id=agent_id,
-        tier=tier,
-        tools=tuple(tools),
-        max_iter=max_iter,
-        guardrail_max_retries=guardrail_max_retries,
-        **extra,
-        **resolved_key,
-    )
-    try:
-        return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
-    finally:
-        # `cleanup()` in a `finally`, always. CrewAI's MCP resolver opens a
-        # client when the agent binds its tools, and a client that outlives the
-        # step is a socket this process has forgotten it holds - which on a
-        # stdio transport is also a child process nobody will reap.
-        bound.cleanup()
-        release_mcp_clients(crew)
+
+    def _once(_fallback_model: str | None) -> str:
+        crew = _factories().agent_crew(
+            node_id=node_id,
+            agent_id=str(agent_id),
+            tier=tier,
+            tools=tuple(str(name) for name in tools),
+            max_iter=max_iter,
+            guardrail_max_retries=guardrail_max_retries,
+            **extra,
+            **resolved_key,
+        )
+        try:
+            return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+        finally:
+            # `cleanup()` in a `finally`, always. CrewAI's MCP resolver opens a
+            # client when the agent binds its tools, and a client that outlives
+            # the step is a socket this process has forgotten it holds - which
+            # on a stdio transport is also a child process nobody will reap.
+            bound.cleanup()
+            release_mcp_clients(crew)
+
+    return _attempted(flow, node_id=node_id, retry=retry, on_error=on_error, work=_once)
+
+
+def _run_authored_agent(
+    flow: Any,
+    *,
+    node_id: str,
+    spec: AuthoredAgentSpec,
+    retry: Mapping[str, Any] | None,
+    on_error: str,
+) -> str:
+    """The authored arm of `run_agent`, under the same retry and error policy."""
+
+    def _once(fallback_model: str | None) -> str:
+        attempt = spec
+        if fallback_model:
+            attempt = replace(spec, llm={**dict(spec.llm), "model": fallback_model})
+        crew = _factories().authored_agent_crew(node_id=node_id, spec=attempt)
+        try:
+            return _record(
+                flow,
+                node_id,
+                _as_text(crew.kickoff(inputs=dict(spec.prompt_inputs))),
+            )
+        finally:
+            release_mcp_clients(crew)
+
+    return _attempted(flow, node_id=node_id, retry=retry, on_error=on_error, work=_once)
 
 
 #: The credential kind an agent node's model key must be. An agent's
@@ -1012,23 +1488,190 @@ def run_crew(
     flow: Any,
     *,
     node_id: str,
-    crew_id: str,
-    tier: str,
+    crew_id: str | None = None,
+    tier: str = "cheap",
     max_iter: int = VALIDATOR_BRANCH_MAX_ITER,
     guardrail_max_retries: int = 0,
     prompt_inputs: Mapping[str, Any] | None = None,
+    # --- the AUTHORED arm (09 D1), discriminated by `process` exactly as the
+    # parser discriminates `crew_id` from `process`.
+    process: str | None = None,
+    members: Sequence[Mapping[str, Any]] = (),
+    task_order: Sequence[str] = (),
+    manager_llm: Mapping[str, Any] | None = None,
+    manager_agent: str | None = None,
+    memory: bool = False,
+    cache: bool = True,
+    max_rpm: int | None = None,
+    planning: bool = False,
+    planning_llm: Mapping[str, Any] | None = None,
+    verbose: bool = False,
+    # A crew may HOLD attachments too - `ATTACH_TARGET_KINDS` is agent and crew
+    # - so the fold reaches here as well, and the entrypoint must accept the
+    # keys the compiler emits or the step raises a bare TypeError at the moment
+    # it runs, after everything upstream has billed.
+    tools: Sequence[Mapping[str, Any]] = (),
+    mcps: Sequence[Mapping[str, Any]] = (),
+    attachments: Sequence[Mapping[str, Any]] = (),
+    retry: Mapping[str, Any] | None = None,
+    on_error: str = "fail",
 ) -> str:
-    """`crew` - one registered `@CrewBase`, run whole, with its own guardrails."""
+    """`crew` - one registered `@CrewBase`, or a team the author assembled.
+
+    **The library arm does NOT honour `tier`** (decision 12). A registered crew
+    builds its own LLMs from `config.py`, inside the crew, and honouring the
+    document's word would mean rebuilding them from outside - the crew library
+    is the one place in the builder where the code is ours and not the author's.
+    The word still prices and bounds the graph, which is what it is for, and
+    `library_problems` says so on the node rather than leaving an author to
+    infer it. `max_iter` IS honoured, and reaches the factory.
+    """
 
     checkpoint(node_id)
-    crew = _factories().crew(
-        node_id=node_id,
-        crew_id=crew_id,
-        tier=tier,
-        max_iter=max_iter,
-        guardrail_max_retries=guardrail_max_retries,
+    inputs = dict(prompt_inputs or {})
+    if process is not None:
+        specs = tuple(_member_spec(member) for member in members)
+        spec = AuthoredCrewSpec(
+            process=process,
+            members=tuple(spec for _, spec in specs),
+            member_ids=tuple(member_id for member_id, _ in specs),
+            task_order=tuple(str(item) for item in task_order),
+            manager_llm=dict(manager_llm) if manager_llm else None,
+            manager_agent=manager_agent,
+            tier=tier,
+            max_iter=max_iter,
+            guardrail_max_retries=guardrail_max_retries,
+            memory=memory,
+            cache=cache,
+            max_rpm=max_rpm,
+            planning=planning,
+            planning_llm=dict(planning_llm) if planning_llm else None,
+            verbose=verbose,
+            prompt_inputs=inputs,
+            tools=tuple(dict(entry) for entry in tools),
+            mcps=tuple(dict(entry) for entry in mcps),
+        )
+
+        def _authored(_fallback_model: str | None) -> str:
+            crew = _factories().authored_crew(node_id=node_id, spec=spec)
+            try:
+                return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+            finally:
+                release_mcp_clients(crew)
+
+        return _attempted(
+            flow, node_id=node_id, retry=retry, on_error=on_error, work=_authored
+        )
+
+    if not crew_id:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} compiled to run_crew with neither a crew_id nor a "
+            "process. One names a registered crew, the other assembles one"
+        )
+
+    def _library(_fallback_model: str | None) -> str:
+        crew = _factories().crew(
+            node_id=node_id,
+            crew_id=str(crew_id),
+            tier=tier,
+            max_iter=max_iter,
+            guardrail_max_retries=guardrail_max_retries,
+        )
+        return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+
+    return _attempted(flow, node_id=node_id, retry=retry, on_error=on_error, work=_library)
+
+
+def _member_spec(member: Mapping[str, Any]) -> tuple[str, AuthoredAgentSpec]:
+    """One folded `member` agent's `with:` block, back into a spec.
+
+    A member carries no `retry` and no `on_error` (C5): it is not a step, so it
+    has no error port to route out of and no listener to re-enter. Its crew owns
+    both.
+    """
+
+    fields = dict(member)
+    return str(fields.get("node_id", "")), AuthoredAgentSpec(
+        role=str(fields.get("role", "")),
+        goal=str(fields.get("goal", "")),
+        backstory=str(fields.get("backstory", "")),
+        task=dict(fields.get("task") or {}),
+        llm=dict(fields.get("llm") or {}),
+        tier=str(fields.get("tier", "cheap")),
+        max_iter=int(fields.get("max_iter", VALIDATOR_BRANCH_MAX_ITER)),
+        guardrail_max_retries=int(fields.get("guardrail_max_retries", 0)),
+        advanced=dict(fields.get("advanced") or {}),
+        expert=dict(fields.get("expert") or {}),
+        tools=tuple(dict(entry) for entry in fields.get("tools") or ()),
+        mcps=tuple(dict(entry) for entry in fields.get("mcps") or ()),
+        skills=tuple(str(skill) for skill in fields.get("skills") or ()),
+        prompt_inputs=dict(fields.get("prompt_inputs") or {}),
+        tool_failure_policy=str(
+            fields.get("tool_failure_policy") or BUILDER_DEFAULT_TOOL_FAILURE_POLICY
+        ),
+        credential_id=fields.get("credential_id"),
     )
-    return _record(flow, node_id, _as_text(crew.kickoff(inputs=dict(prompt_inputs or {}))))
+
+
+#: Where a replayed node's value comes from. Two words and no third: a saved run
+#: (`persistence.load_state`) or a saved test input's mocked values (C7).
+REPLAY_SOURCES: tuple[str, ...] = ("run", "test_input")
+
+#: The replay values for one derived plan, run-scoped so two replays in one
+#: process cannot read each other's. Set by whoever compiled the derived plan -
+#: `10-runtime.md`'s resume endpoint or `13-flow-testing.md`'s node test - and
+#: read by `replay_output` and by nothing else.
+current_replay_values: ContextVar[Mapping[str, Any] | None] = ContextVar(
+    "brief_crew_builder_replay", default=None
+)
+
+
+@contextmanager
+def replay_source(values: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
+    """Scope one derived plan's replayed outputs over a kickoff."""
+
+    resolved = dict(values or {})
+    token = current_replay_values.set(resolved)
+    try:
+        yield resolved
+    finally:
+        current_replay_values.reset(token)
+
+
+def replay_output(
+    flow: Any,
+    *,
+    node_id: str,
+    source: str = "run",
+) -> str:
+    """The ELEVENTH ref (09 D7) - publish a node's saved output without running it.
+
+    A derived replay plan compiles every node UPSTREAM of a resume point or a
+    node under test to this instead of to the entrypoint that would have billed.
+    It writes `out__<node>` from the saved source and returns, so every
+    downstream listener fires exactly as it would after a real run - the flow
+    engine cannot tell the difference, which is the whole point, and no model is
+    called.
+
+    It widens what an entrypoint ACCEPTS and not what the allowlist is FOR:
+    `node_id` and one of two source words, both values, neither a name, a path
+    nor a callable (FD10).
+    """
+
+    checkpoint(node_id)
+    if source not in REPLAY_SOURCES:
+        raise BuilderRuntimeError(
+            f"node {node_id!r} compiles a replay from {source!r}; a replayed value "
+            f"comes from {' or '.join(REPLAY_SOURCES)}"
+        )
+    values = current_replay_values.get() or {}
+    if node_id not in values:
+        raise BuilderRuntimeError(
+            f"the replay plan has no saved output for {node_id!r}. Every node upstream "
+            "of the replay point needs one, or the node downstream would be handed a "
+            "blank with nothing saying why"
+        )
+    return _record(flow, node_id, _as_text(values[node_id]))
 
 
 def render_gate(

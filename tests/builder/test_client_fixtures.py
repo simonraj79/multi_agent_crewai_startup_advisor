@@ -246,6 +246,11 @@ class ProblemCodeFixtureTests(unittest.TestCase):
                 "no-input-node",
                 "no-output-node",
                 "node-count",
+                # 09 D6's two. They carry `field` - the state key - rather than
+                # a node or an edge, because a declared state key is a fact
+                # about the DOCUMENT and there is no node on the canvas to rim.
+                "state-key-reserved",
+                "state-schema-invalid",
             ],
             "the set of problems carrying NO anchor moved; ProblemsPanel's "
             "document-level group is the only surface that renders these",

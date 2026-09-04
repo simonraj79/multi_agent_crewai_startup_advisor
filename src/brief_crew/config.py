@@ -105,6 +105,15 @@ MODEL_REGISTRY_PATH = pathlib.Path(__file__).resolve().parents[2] / "data" / "mo
 #: `load_model_registry` below runs at import and needs it first.
 _OPENROUTER_PREFIX = "openrouter/"
 
+#: The same prefix, publicly, for the modules that must PRODUCE a model id
+#: rather than parse one - `builder/runtime.py` building an authored node's
+#: `LLM`, and `builder/budget.py` pricing it. They may not spell it
+#: themselves: `test_compiler.py::test_no_builder_module_inlines_a_model_name`
+#: asserts the platform rule by scanning those files for the literal, and the
+#: rule is right - a provider prefix is a model fact, and model facts live
+#: here.
+OPENROUTER_MODEL_PREFIX = _OPENROUTER_PREFIX
+
 #: The schema string `data/models.json` must declare. Bumped only with a
 #: migration, the same discipline BUILDER_DOCUMENT_SCHEMA follows.
 MODEL_REGISTRY_SCHEMA = "models/v1"
@@ -2434,6 +2443,18 @@ BUILDER_METHOD_IDENT_PATTERN = r"^n[0-9]{1,2}_[a-z0-9_]{1,40}$"
 BUILDER_EVENT_LABEL_PATTERN = r"^e[0-9]{1,2}_[a-z0-9_]{1,40}$"
 BUILDER_MAX_IDENT_BODY_CHARS = 40
 BUILDER_GATE_ROUTER_PREFIX = "route_"
+# The same trick a second time, for the second thing that needs a router it did
+# not draw. A billable node whose `on_error` is `route` compiles to TWO methods
+# - the step, and a paired deterministic router that reads `err__<node>` and
+# chooses the `out` or the `error` port - because only a `@router` can choose an
+# event, and a step that raised past its own listener would end the run instead
+# of taking the recovery path the author drew (09 D3).
+BUILDER_ERROR_ROUTER_PREFIX = "route_err_"
+# Where a step records the reason it failed, so its paired router can read it.
+# A separate namespace from `out__` deliberately: a failed node's OUTPUT is
+# still null, and folding the two would make "this node produced nothing" and
+# "this node exploded" the same state.
+BUILDER_STATE_ERROR_PREFIX = "err__"
 
 # The ONE expression shape a `with:` value may take besides a JSON literal.
 # Single-key by construction: only `${state.a_value}` was ever measured
@@ -2553,6 +2574,13 @@ BUILDER_ACTION_REFS: frozenset[str] = frozenset(
         "brief_crew.builder.runtime:transform",
         "brief_crew.builder.runtime:rejoin",
         "brief_crew.builder.runtime:emit_output",
+        # The ELEVENTH, added by 09 D7. A derived replay plan compiles every
+        # node upstream of a resume or a node test to this ref instead of to
+        # the entrypoint that would have billed, so the downstream listeners
+        # fire exactly as they would after a real run and nothing calls a
+        # model. It widens what the entrypoints ACCEPT and not what the set is
+        # for: `node_id` and a `source` word, both values, neither a name.
+        "brief_crew.builder.runtime:replay_output",
     }
 )
 

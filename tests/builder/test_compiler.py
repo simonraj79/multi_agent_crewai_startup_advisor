@@ -29,6 +29,7 @@ from brief_crew.builder.compiler import (
     CompiledFlow,
     assert_action_refs,
     compile_document,
+    compile_replay_plan,
     library_problems,
     lint_gates,
 )
@@ -157,6 +158,95 @@ def output_node(node_id: str = "report", *, source: str = "${state.out__merge}")
     return node(node_id, "output", {"body_key": BODY_KEY, "source": source})
 
 
+#: The builder's default authored model, and the one every fixture here names.
+#: A registry id rather than a literal invented in a test: `bounds.py` refuses a
+#: model no roster row carries, so a made-up slug would fail for the wrong
+#: reason and a test would be pinned to that failure.
+AUTHORED_MODEL = "google/gemini-3.8-flash"
+
+
+def authored_agent_node(
+    node_id: str,
+    *,
+    tier: str = "cheap",
+    on_error: str = "fail",
+    retry: dict[str, Any] | None = None,
+    source: str = "idea",
+    **overrides: Any,
+) -> dict[str, Any]:
+    """One agent whose prompt the AUTHOR wrote - the other arm of C1."""
+
+    config: dict[str, Any] = {
+        "role": f"{node_id} specialist",
+        "goal": f"do the {node_id} work",
+        "backstory": "years of it",
+        "task": {
+            "description": "work from ${state.out__" + source + "}",
+            "expected_output": "a paragraph",
+        },
+        "llm": {"model": AUTHORED_MODEL, "temperature": 0.2},
+        "tier": tier,
+        "on_error": on_error,
+    }
+    if retry is not None:
+        config["retry"] = retry
+    config.update(overrides)
+    return node(node_id, "agent", config)
+
+
+def authored_crew_node(
+    node_id: str, *, process: str = "sequential", **overrides: Any
+) -> dict[str, Any]:
+    config: dict[str, Any] = {"process": process, "tier": "cheap"}
+    config.update(overrides)
+    return node(node_id, "crew", config)
+
+
+def tool_node(node_id: str = "search", tool_id: str = "serper_search") -> dict[str, Any]:
+    return node(node_id, "tool", {"tool_id": tool_id, "params": {"n_results": 5}})
+
+
+def mcp_node(node_id: str = "files", server_id: str | None = "mcp_a1b2c3d4") -> dict[str, Any]:
+    config: dict[str, Any] = {"tool_names": ["search", "fetch"]}
+    if server_id is not None:
+        config["server_id"] = server_id
+    return node(node_id, "mcp", config)
+
+
+def skill_node(node_id: str = "style", skill_id: str | None = "sk_house") -> dict[str, Any]:
+    config: dict[str, Any] = {"skill_name": "House style"}
+    if skill_id is not None:
+        config["skill_id"] = skill_id
+    return node(node_id, "skill", config)
+
+
+def attach_edge(edge_id: str, source: str, target: str) -> dict[str, Any]:
+    return {
+        "id": edge_id,
+        "source": source,
+        "source_port": "attach",
+        "target": target,
+        "target_port": "attach",
+    }
+
+
+def member_edge(edge_id: str, source: str, target: str) -> dict[str, Any]:
+    return {
+        "id": edge_id,
+        "source": source,
+        "source_port": "out",
+        "target": target,
+        "target_port": "member",
+    }
+
+
+def with_block(compiled: CompiledFlow, node_id: str) -> dict[str, Any]:
+    """One node's compiled `with:` block, by canvas node id."""
+
+    ident = compiled.method_idents[node_id][0]
+    return dict(compiled.definition["methods"][ident]["do"]["with"])
+
+
 def straight_line() -> BuilderDocument:
     """input -> scoper -> report. The smallest graph that produces something."""
 
@@ -276,8 +366,23 @@ class StubFactories:
         guardrail_max_retries: int,
     ) -> StubCrew:
         self.built.append(
-            {"kind": "crew", "node_id": node_id, "crew_id": crew_id, "tier": tier}
+            {
+                "kind": "crew",
+                "node_id": node_id,
+                "crew_id": crew_id,
+                "tier": tier,
+                "max_iter": max_iter,
+                "guardrail_max_retries": guardrail_max_retries,
+            }
         )
+        return StubCrew(self, node_id)
+
+    def authored_agent_crew(self, *, node_id: str, spec: Any) -> StubCrew:
+        self.built.append({"kind": "authored_agent", "node_id": node_id, "spec": spec})
+        return StubCrew(self, node_id)
+
+    def authored_crew(self, *, node_id: str, spec: Any) -> StubCrew:
+        self.built.append({"kind": "authored_crew", "node_id": node_id, "spec": spec})
         return StubCrew(self, node_id)
 
 
@@ -575,7 +680,7 @@ class ActionRefTests(unittest.TestCase):
     def test_every_allowlisted_ref_resolves_to_something_real(self) -> None:
         # BUILDER_ACTION_REFS is the whole code-execution answer, so a name in
         # it that does not import is a graph that compiles and then dies.
-        self.assertEqual(len(BUILDER_ACTION_REFS), 10)
+        self.assertEqual(len(BUILDER_ACTION_REFS), 11)
         for ref in sorted(BUILDER_ACTION_REFS):
             with self.subTest(ref=ref):
                 self.assertIsNotNone(resolve_ref(ref, field="do"))
@@ -1066,6 +1171,853 @@ class LibraryTests(unittest.TestCase):
         compiled = compile_document(gated_loop())
         flow = Flow.from_declaration(contents=compiled.definition, suppress_flow_events=True)
         self.assertTrue(callable(getattr(flow, "_discard_or_listener", None)))
+
+
+# --------------------------------------------------------------------------
+# The authored arm - 09 D1, criterion 2
+# --------------------------------------------------------------------------
+class AuthoredAgentTests(unittest.TestCase):
+    """The thing the gauntlet is about: an agent the AUTHOR wrote, compiled.
+
+    Until this existed `compile_document` raised `node ... has no compiled
+    shape` on an authored node, so the product drew CrewAI without being CrewAI.
+    What these pin is that the whole of C5 travels - and travels as VALUES,
+    because `assert_action_refs` is only the whole of the code-execution answer
+    while nothing in a `with:` block is a name.
+    """
+
+    def _document(self, **overrides: Any) -> BuilderDocument:
+        return document(
+            [
+                input_node(),
+                authored_agent_node("draft", **overrides),
+                output_node("report", source="${state.out__draft}"),
+            ],
+            [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+        )
+
+    def test_an_authored_agent_compiles_to_one_run_agent_method(self) -> None:
+        compiled = compile_document(self._document())
+        self.assertEqual(len(compiled.method_idents["draft"]), 1)
+        ident = compiled.method_idents["draft"][0]
+        self.assertEqual(
+            compiled.definition["methods"][ident]["do"]["ref"],
+            "brief_crew.builder.runtime:run_agent",
+        )
+
+    def test_the_with_block_carries_every_field_c5_names(self) -> None:
+        compiled = compile_document(self._document())
+        block = with_block(compiled, "draft")
+        for key in (
+            "node_id",
+            "role",
+            "goal",
+            "backstory",
+            "task",
+            "llm",
+            "tier",
+            "max_iter",
+            "guardrail_max_retries",
+            "advanced",
+            "expert",
+            "tools",
+            "mcps",
+            "skills",
+            "prompt_inputs",
+        ):
+            with self.subTest(key=key):
+                self.assertIn(key, block)
+        self.assertEqual(
+            sorted(block["task"]),
+            ["async_execution", "description", "expected_output", "markdown", "output_schema"],
+        )
+        self.assertEqual(block["llm"]["model"], AUTHORED_MODEL)
+        self.assertEqual(
+            sorted(block["advanced"]),
+            [
+                "allow_delegation",
+                "cache",
+                "max_execution_time",
+                "max_rpm",
+                "memory",
+                "respect_context_window",
+            ],
+        )
+        self.assertEqual(
+            sorted(block["expert"]),
+            [
+                "planning",
+                "planning_config",
+                "prompt_template",
+                "response_template",
+                "system_template",
+            ],
+        )
+
+    def test_an_authored_node_carries_no_agent_id(self) -> None:
+        # The two arms do not leak into each other, at the far end of the
+        # compiler rather than only at the parser.
+        self.assertNotIn("agent_id", with_block(compile_document(self._document()), "draft"))
+
+    def test_a_library_node_carries_agent_id_and_no_role(self) -> None:
+        compiled = compile_document(straight_line())
+        block = with_block(compiled, "scoper")
+        self.assertEqual(block["agent_id"], "scoper")
+        self.assertNotIn("role", block)
+
+    def test_a_node_naming_both_never_reaches_the_compiler(self) -> None:
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError) as caught:
+            document([input_node(), node("both", "agent", {"agent_id": "scoper", "role": "x"})])
+        message = str(caught.exception)
+        self.assertIn("agent_id", message)
+        self.assertIn("role", message)
+
+    def test_the_S9_deprecation_ruling_survives_the_compile(self) -> None:
+        """`reasoning` and `multimodal` are cut; `planning` is what travels."""
+
+        block = with_block(compile_document(self._document(planning=True)), "draft")
+        self.assertTrue(block["expert"]["planning"])
+        flattened = json.dumps(block)
+        for cut in ("multimodal", "function_calling_llm", "max_reasoning_attempts"):
+            with self.subTest(field=cut):
+                self.assertNotIn(cut, flattened)
+
+    def test_no_value_in_an_authored_block_is_an_import_path(self) -> None:
+        """The whole of FD10, asserted on the emitted block rather than argued.
+
+        A `with:` value that looked like `module:qualname` would be the one way
+        author data could become a ref, and it is the reason the allowlist is
+        worth anything.
+        """
+
+        compiled = compile_document(self._document())
+        for method in compiled.definition["methods"].values():
+            for value in json.dumps(method.get("do", {}).get("with", {})).split('"'):
+                if ":" in value and value.count(".") >= 2 and " " not in value:
+                    self.fail(f"a with: value reads as an import path: {value!r}")
+
+    def test_an_authored_document_runs_end_to_end(self) -> None:
+        compiled = compile_document(self._document())
+        stub = StubFactories({"draft": "the draft"})
+        result, _ = run(compiled, factories=stub)
+        self.assertEqual(result[BODY_KEY], "the draft")
+        built = [entry for entry in stub.built if entry["kind"] == "authored_agent"]
+        self.assertEqual(len(built), 1)
+        self.assertEqual(built[0]["spec"].role, "draft specialist")
+        self.assertEqual(built[0]["spec"].llm["model"], AUTHORED_MODEL)
+
+
+class AuthoredCrewTests(unittest.TestCase):
+    """A crew the author assembled, and the `tier` decision 12 refuses."""
+
+    def _document(self, *, process: str = "sequential", **overrides: Any) -> BuilderDocument:
+        crew: dict[str, Any] = {"task_order": ("writer", "editor")}
+        crew.update(overrides)
+        return document(
+            [
+                input_node(),
+                authored_crew_node("team", process=process, **crew),
+                authored_agent_node("writer"),
+                authored_agent_node("editor"),
+                output_node("report", source="${state.out__team}"),
+            ],
+            [
+                edge("e1", "idea", "team"),
+                edge("e2", "team", "report"),
+                member_edge("m1", "writer", "team"),
+                member_edge("m2", "editor", "team"),
+            ],
+        )
+
+    def test_members_are_folded_and_are_not_methods(self) -> None:
+        compiled = compile_document(self._document())
+        self.assertNotIn("writer", compiled.method_idents)
+        self.assertNotIn("editor", compiled.method_idents)
+        block = with_block(compiled, "team")
+        self.assertEqual([member["node_id"] for member in block["members"]], ["writer", "editor"])
+        self.assertEqual(block["task_order"], ["writer", "editor"])
+
+    def test_a_member_carries_no_retry_and_no_on_error(self) -> None:
+        block = with_block(compile_document(self._document()), "team")
+        for member in block["members"]:
+            with self.subTest(member=member["node_id"]):
+                self.assertNotIn("retry", member)
+                self.assertNotIn("on_error", member)
+
+    def test_a_hierarchical_crew_carries_its_manager(self) -> None:
+        compiled = compile_document(
+            self._document(process="hierarchical", manager_agent="writer")
+        )
+        self.assertEqual(with_block(compiled, "team")["manager_agent"], "writer")
+
+    def test_a_library_crews_tier_is_refused_with_a_problem(self) -> None:
+        """Decision 12, said on the node rather than by silence.
+
+        A registered crew builds its own LLMs in python, so the word cannot
+        choose a model - and the gauntlet's own forbidden list names a parameter
+        rendered in the UI that the compiler ignores. It is a WARNING because
+        the word is required by the schema and does real work twice over: it
+        prices the node and it counts against the escalation bound.
+        """
+
+        from brief_crew.builder.compiler import CREW_TIER_NOT_HONOURED
+
+        graph = document(
+            [input_node(), crew_node("scope_crew"), output_node("report", source="${state.out__scope_crew}")],
+            [edge("e1", "idea", "scope_crew"), edge("e2", "scope_crew", "report")],
+        )
+        problems = [p for p in library_problems(graph) if p.code == CREW_TIER_NOT_HONOURED]
+        self.assertEqual(len(problems), 1)
+        self.assertEqual(problems[0].severity, "warning")
+        self.assertEqual(problems[0].field, "tier")
+        self.assertEqual(problems[0].node_id, "scope_crew")
+        # And it still compiles: a warning is not a refusal.
+        self.assertIsNotNone(compile_document(graph).definition)
+
+    def test_a_library_crew_still_gets_its_max_iter(self) -> None:
+        graph = document(
+            [input_node(), crew_node("scope_crew"), output_node("report", source="${state.out__scope_crew}")],
+            [edge("e1", "idea", "scope_crew"), edge("e2", "scope_crew", "report")],
+        )
+        compiled = compile_document(graph)
+        stub = StubFactories()
+        run(compiled, factories=stub)
+        built = [entry for entry in stub.built if entry["kind"] == "crew"]
+        self.assertEqual(built[0]["max_iter"], with_block(compiled, "scope_crew")["max_iter"])
+
+
+# --------------------------------------------------------------------------
+# Attachments - 09 D2, criterion 3
+# --------------------------------------------------------------------------
+class AttachmentFoldTests(unittest.TestCase):
+    """`tool`, `mcp` and `skill` are things an agent HAS, not steps it takes.
+
+    The whole family is invisible to `methods`: a possession never runs, so
+    there is no moment at which the flow would move on from it. What these pin
+    is that the data nevertheless ARRIVES - the defect this plan existed to fix
+    was that an author could draw a tool and the agent never saw it.
+    """
+
+    def _document(self, **kwargs: Any) -> BuilderDocument:
+        return document(
+            [
+                input_node(),
+                authored_agent_node("draft"),
+                tool_node(),
+                mcp_node(),
+                skill_node(),
+                output_node("report", source="${state.out__draft}"),
+            ],
+            [
+                edge("e1", "idea", "draft"),
+                edge("e2", "draft", "report"),
+                attach_edge("a1", "search", "draft"),
+                attach_edge("a2", "files", "draft"),
+                attach_edge("a3", "style", "draft"),
+            ],
+            **kwargs,
+        )
+
+    def test_no_attachment_kind_becomes_a_method(self) -> None:
+        compiled = compile_document(self._document())
+        for node_id in ("search", "files", "style"):
+            with self.subTest(node=node_id):
+                self.assertNotIn(node_id, compiled.method_idents)
+        self.assertEqual(sorted(compiled.definition["methods"]), ["n0_idea", "n1_draft", "n2_report"])
+
+    def test_the_data_appears_in_the_target_agents_with_block(self) -> None:
+        block = with_block(compile_document(self._document()), "draft")
+        self.assertEqual(
+            block["tools"],
+            [{"node_id": "search", "tool_id": "serper_search", "params": {"n_results": 5}}],
+        )
+        self.assertEqual(
+            block["mcps"],
+            [{"node_id": "files", "server_id": "mcp_a1b2c3d4", "tool_names": ["search", "fetch"]}],
+        )
+        self.assertEqual(block["skills"], ["sk_house"])
+
+    def test_the_fold_reaches_the_thing_that_gets_built(self) -> None:
+        compiled = compile_document(self._document())
+        stub = StubFactories()
+        run(compiled, factories=stub)
+        spec = [entry for entry in stub.built if entry["kind"] == "authored_agent"][0]["spec"]
+        kinds = [entry["kind"] for entry in spec.attachment_list()]
+        self.assertEqual(kinds, ["tool", "mcp", "skill"])
+
+    def test_an_attachment_whose_reference_did_not_survive_is_a_problem(self) -> None:
+        """`export.py` strips `server_id` on purpose, so this shape is REAL.
+
+        An imported graph legitimately has an mcp node naming no server. The
+        author has to pick one of their own, and being told which node is the
+        whole difference between a fixable graph and a crash inside the
+        compiler.
+        """
+
+        from brief_crew.builder.bounds import ATTACHMENT_REFERENCE_MISSING
+
+        stripped = document(
+            [
+                input_node(),
+                authored_agent_node("draft"),
+                mcp_node("files", server_id=None),
+                output_node("report", source="${state.out__draft}"),
+            ],
+            [
+                edge("e1", "idea", "draft"),
+                edge("e2", "draft", "report"),
+                attach_edge("a1", "files", "draft"),
+            ],
+        )
+        codes = [problem.code for problem in bounds.structural_problems(stripped)]
+        self.assertIn(ATTACHMENT_REFERENCE_MISSING, codes)
+
+    def test_a_member_agent_is_folded_and_is_not_a_method(self) -> None:
+        graph = document(
+            [
+                input_node(),
+                authored_crew_node("team", task_order=("writer",)),
+                authored_agent_node("writer"),
+                output_node("report", source="${state.out__team}"),
+            ],
+            [
+                edge("e1", "idea", "team"),
+                edge("e2", "team", "report"),
+                member_edge("m1", "writer", "team"),
+            ],
+        )
+        compiled = compile_document(graph)
+        self.assertNotIn("writer", compiled.method_idents)
+        block = with_block(compiled, "team")
+        self.assertEqual(block["task_order"], ["writer"])
+        self.assertEqual(block["members"][0]["role"], "writer specialist")
+
+
+# --------------------------------------------------------------------------
+# on_error: route - 09 D3, criterion 4
+# --------------------------------------------------------------------------
+class ErrorRouterTests(unittest.TestCase):
+    """A step that can fail without failing the run.
+
+    Only a `@router` can choose an event, which is the same measured rule a gate
+    already obeys - so an `on_error: route` node compiles to TWO methods and the
+    step never raises past its own router.
+    """
+
+    def _document(self, *, on_error: str = "route", error_edge: bool = True) -> BuilderDocument:
+        edges = [
+            edge("e1", "idea", "draft"),
+            edge("e2", "draft", "report"),
+        ]
+        recovering = error_edge and on_error == "route"
+        nodes = [
+            input_node(),
+            authored_agent_node("draft", on_error=on_error),
+            output_node(
+                "report",
+                source="${state.out__apology}" if recovering else "${state.out__draft}",
+            ),
+        ]
+        if recovering:
+            nodes.append(authored_agent_node("apology", source="idea"))
+            edges.append(edge("e3", "draft", "apology", source_port="error"))
+            edges.append(edge("e4", "apology", "report"))
+        return document(nodes, edges)
+
+    def test_route_emits_exactly_two_methods(self) -> None:
+        compiled = compile_document(self._document())
+        idents = compiled.method_idents["draft"]
+        self.assertEqual(len(idents), 2)
+        self.assertTrue(idents[1].endswith("route_err_draft"))
+        router = compiled.definition["methods"][idents[1]]
+        self.assertTrue(router["router"])
+        self.assertEqual(router["listen"], idents[0])
+        self.assertEqual(len(router["emit"]), 2)
+
+    def test_fail_emits_one(self) -> None:
+        compiled = compile_document(self._document(on_error="fail", error_edge=False))
+        self.assertEqual(len(compiled.method_idents["draft"]), 1)
+
+    def test_the_router_assertion_passes_over_the_new_router(self) -> None:
+        # The guard runs inside `compile_document`; this asserts it covers the
+        # error router with no change, which is D3's claim.
+        from brief_crew.builder.compiler import _assert_routers_declare_what_they_emit
+
+        compiled = compile_document(self._document())
+        _assert_routers_declare_what_they_emit(compiled.definition)
+
+    def test_the_error_state_key_is_seeded(self) -> None:
+        compiled = compile_document(self._document())
+        self.assertIn("err__draft", compiled.definition["state"]["default"])
+
+    def test_an_edge_from_error_on_a_fail_node_is_refused(self) -> None:
+        graph = document(
+            [
+                input_node(),
+                authored_agent_node("draft", on_error="fail"),
+                authored_agent_node("apology", source="idea"),
+                output_node("report", source="${state.out__draft}"),
+            ],
+            [
+                edge("e1", "idea", "draft"),
+                edge("e2", "draft", "report"),
+                edge("e3", "draft", "apology", source_port="error"),
+                edge("e4", "apology", "report"),
+            ],
+        )
+        codes = [problem.code for problem in bounds.structural_problems(graph)]
+        self.assertIn(bounds.EDGE_UNKNOWN_PORT, codes)
+
+    def test_an_unconnected_error_port_is_a_warning_and_not_a_refusal(self) -> None:
+        graph = self._document(error_edge=False)
+        problems = bounds.structural_problems(graph)
+        matching = [p for p in problems if p.code == bounds.ERROR_PORT_UNCONNECTED]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0].severity, "warning")
+        self.assertIsNotNone(compile_document(graph).definition)
+
+    def test_a_failing_step_takes_the_error_port_and_the_run_continues(self) -> None:
+        """The measured claim, run rather than argued."""
+
+        compiled = compile_document(self._document())
+
+        class Exploding(StubFactories):
+            def authored_agent_crew(self, *, node_id: str, spec: Any) -> Any:
+                if node_id == "draft":
+                    raise RuntimeError("the model said no")
+                return super().authored_agent_crew(node_id=node_id, spec=spec)
+
+        result, flow = run(compiled, factories=Exploding({"apology": "sorry"}))
+        self.assertEqual(result[BODY_KEY], "sorry")
+        self.assertIn("the model said no", flow.state["err__draft"])
+
+
+# --------------------------------------------------------------------------
+# or_ joins - 09 D5, criterion 5
+# --------------------------------------------------------------------------
+class OrJoinTests(unittest.TestCase):
+    """`joins: 'any'`, and the listener CrewAI fires once and skips forever."""
+
+    def _fan_in(self, join: str) -> BuilderDocument:
+        return document(
+            [
+                input_node(),
+                authored_agent_node("left"),
+                authored_agent_node("right"),
+                transform_node("merge"),
+                output_node("report", source="${state.out__merge}"),
+            ],
+            [
+                edge("e1", "idea", "left"),
+                edge("e2", "idea", "right"),
+                edge("e3", "left", "merge"),
+                edge("e4", "right", "merge"),
+                edge("e5", "merge", "report"),
+            ],
+            joins={"merge": join},
+        )
+
+    def test_any_compiles_to_listen_or(self) -> None:
+        compiled = compile_document(self._fan_in("any"))
+        listen = compiled.definition["methods"][compiled.method_idents["merge"][0]]["listen"]
+        self.assertEqual(sorted(listen), ["or"])
+        self.assertEqual(len(listen["or"]), 2)
+
+    def test_all_compiles_to_listen_and(self) -> None:
+        compiled = compile_document(self._fan_in("all"))
+        listen = compiled.definition["methods"][compiled.method_idents["merge"][0]]["listen"]
+        self.assertEqual(sorted(listen), ["and"])
+
+    def test_an_any_join_that_closes_a_loop_is_refused(self) -> None:
+        """A loop closer must be a ROUTER, and a joined step is not one.
+
+        The refusal is `back-edge-not-router` and the reason is the same
+        mechanism this class is about: compiled as plain code, the join fires
+        once, the second arrival is suppressed and `kickoff()` returns normally
+        having produced nothing - no exception, no warning.
+        """
+
+        looping = document(
+            [
+                input_node(),
+                authored_agent_node("left"),
+                authored_agent_node("right", source="left"),
+                transform_node("merge"),
+                output_node("report", source="${state.out__merge}"),
+            ],
+            [
+                edge("e1", "idea", "left"),
+                edge("e2", "left", "right"),
+                edge("e3", "left", "merge"),
+                edge("e4", "right", "merge"),
+                edge("e5", "merge", "report"),
+                edge("e6", "merge", "left"),
+            ],
+            joins={"merge": "any"},
+        )
+        codes = [problem.code for problem in bounds.structural_problems(looping)]
+        self.assertIn(bounds.BACK_EDGE_NOT_ROUTER, codes)
+
+    def test_an_or_join_inside_a_cycle_carries_the_rearm_flag(self) -> None:
+        """The router that re-enters the cycle re-arms every or_ ON it.
+
+        Not only the node its own back edge lands on, which is all the rule
+        before 09 D5 covered. `merge` is a multi-event `or_()` two hops inside
+        the same cycle, and a listener CrewAI has already fired is skipped
+        forever after unless something discards it.
+        """
+
+        compiled = compile_document(loop_over_a_join())
+        rearm = with_block(compiled, "decide")["rearm"]
+        self.assertIn(compiled.method_idents["seed"][0], rearm)
+        self.assertIn(compiled.method_idents["merge"][0], rearm)
+
+    def test_a_multi_event_or_is_what_gets_rearmed_and_a_single_one_is_not(self) -> None:
+        compiled = compile_document(loop_over_a_join())
+        rearm = with_block(compiled, "decide")["rearm"]
+        # `left` and `right` each listen for ONE router label, so neither is the
+        # shape CrewAI suppresses and neither needs discarding.
+        self.assertNotIn(compiled.method_idents["left"][0], rearm)
+        self.assertNotIn(compiled.method_idents["right"][0], rearm)
+
+    def test_the_join_inside_a_cycle_fires_on_both_laps(self) -> None:
+        """The closed-item-35 reproduction, run against the COMPILED shape.
+
+        Two laps, and on the second one `merge` has to fire again. Without a
+        re-arm the second arrival is silently suppressed: `kickoff()` returns
+        normally, the output node never runs, and nothing anywhere says so.
+        """
+
+        compiled = compile_document(loop_over_a_join())
+        listen = compiled.definition["methods"][compiled.method_idents["merge"][0]]["listen"]
+        self.assertEqual(sorted(listen), ["or"])
+        self.assertEqual(len(listen["or"]), 2)
+
+        stub = StubFactories()
+        result, flow = run(compiled, factories=stub)
+        visited = [node_id for node_id, _ in stub.kickoffs]
+        self.assertEqual(visited, ["left", "right"], "the loop did not go round twice")
+        self.assertIsInstance(result, dict)
+        self.assertIn(BODY_KEY, result)
+        self.assertIsNotNone(flow.state["out__report"])
+
+    def test_two_parallel_steps_are_a_join_and_not_a_race(self) -> None:
+        """MEASURED, and the reason an undeclared diamond compiles to `and`.
+
+        `{"or": [a, b]}` over two plain method names is a RACING GROUP in CrewAI
+        1.15.18: the pair runs in parallel, the first to finish wins, and the
+        loser is cancelled along with anything its completion had already
+        triggered. On a two-branch diamond that killed the join itself with a
+        `CancelledError` nobody sees.
+        """
+
+        diamond = document(
+            [
+                input_node(),
+                authored_agent_node("left"),
+                authored_agent_node("right"),
+                transform_node("merge"),
+                output_node("report", source="${state.out__merge}"),
+            ],
+            [
+                edge("e1", "idea", "left"),
+                edge("e2", "idea", "right"),
+                edge("e3", "left", "merge"),
+                edge("e4", "right", "merge"),
+                edge("e5", "merge", "report"),
+            ],
+        )
+        compiled = compile_document(diamond)
+        listen = compiled.definition["methods"][compiled.method_idents["merge"][0]]["listen"]
+        self.assertEqual(sorted(listen), ["and"])
+        result, _ = run(compiled)
+        self.assertIsInstance(result, dict, "the join was cancelled with the losing branch")
+
+    def test_two_router_branches_converging_are_still_alternatives(self) -> None:
+        """And they must be: `and` over them waits forever for the branch that
+        was not taken, which is the most ordinary graph anyone draws."""
+
+        compiled = compile_document(loop_over_a_join())
+        listen = compiled.definition["methods"][compiled.method_idents["merge"][0]]["listen"]
+        self.assertEqual(sorted(listen), ["or"])
+
+    def test_the_private_rearm_hook_is_what_this_depends_on(self) -> None:
+        """Decision 13, pinned the way closed item 35 pinned it.
+
+        If this fails, `_discard_or_listener` has gone from CrewAI and the
+        replacement is the ROUTER VARIANT: move each multi-event `or_()` onto a
+        `@router`, which is exempt via `and not is_router`. It costs two
+        pass-through nodes per join carrying no agent, no model and no decision,
+        plus lockstep edits to the overlay, the mock graph and the E2E counts -
+        which is why the private call was accepted instead.
+        """
+
+        compiled = compile_document(loop_over_a_join())
+        flow = Flow.from_declaration(contents=compiled.definition, suppress_flow_events=True)
+        self.assertTrue(
+            callable(getattr(flow, "_discard_or_listener", None)),
+            "CrewAI no longer exposes _discard_or_listener. Replace the re-arm with "
+            "the ROUTER VARIANT: compile every multi-event or_ join as a @router, "
+            "which _find_triggered_methods exempts via `and not is_router`. The cost "
+            "is two pass-through nodes per join and lockstep edits to seven files.",
+        )
+
+
+def loop_over_a_join() -> BuilderDocument:
+    """A fan-in INSIDE a cycle, and not the node the back edge lands on.
+
+    `merge` has two predecessors - the two branch labels of the router `fork` -
+    so it compiles to a multi-event `or_()`. CrewAI adds such a listener to
+    `_fired_or_listeners` on its first fire and skips it forever after
+    (`crewai/flow/runtime/__init__.py:3288-3297`, verified at 1.15.18 - closed
+    item 35), and `merge` is NOT the target of the back edge, so the re-arm that
+    covers a loop's landing node does not reach it. Lap two would end the run
+    silently: no exception, no warning, `kickoff()` returns having produced
+    nothing.
+
+    The predecessors are ROUTER LABELS rather than two parallel steps, and that
+    is deliberate: only one label fires per pass, so the two can never be in one
+    triggered batch and CrewAI's racing group - which cancels the loser and
+    anything its completion had already triggered - cannot form. See
+    `_Plan._is_concurrent_fan_in` for the measurement.
+    """
+
+    lap_one = {"label": "", "op": "eq", "key": "out__decide", "value": None}
+    return document(
+        [
+            input_node(),
+            transform_node("seed", op="default", args={"value": "${state.out__idea}"}),
+            node(
+                "fork",
+                "router",
+                {
+                    "branches": [
+                        # `out__decide` is null until the loop's router has run
+                        # once, and `route_branch` records it AFTER it chooses -
+                        # so this is a lap counter needing no state key of its
+                        # own and no transform to keep it.
+                        {**lap_one, "label": "first"},
+                        {"label": "second", "op": "otherwise"},
+                    ]
+                },
+            ),
+            authored_agent_node("left", source="seed"),
+            authored_agent_node("right", source="seed"),
+            transform_node("merge", op="default", args={"value": "${state.out__seed}"}),
+            node(
+                "decide",
+                "router",
+                {
+                    "branches": [
+                        {**lap_one, "label": "again"},
+                        {"label": "done", "op": "otherwise"},
+                    ]
+                },
+            ),
+            output_node("report", source="${state.out__merge}"),
+        ],
+        [
+            edge("e1", "idea", "seed"),
+            edge("e2", "seed", "fork"),
+            edge("e3", "fork", "left", source_port="first"),
+            edge("e4", "fork", "right", source_port="second"),
+            edge("e5", "left", "merge"),
+            edge("e6", "right", "merge"),
+            edge("e7", "merge", "decide"),
+            edge("e8", "decide", "seed", source_port="again"),
+            edge("e9", "decide", "report", source_port="done"),
+        ],
+    )
+
+
+# --------------------------------------------------------------------------
+# Authored state - 09 D6, criterion 6
+# --------------------------------------------------------------------------
+class StateSchemaTests(unittest.TestCase):
+    """`document.state` becomes CrewAI's `json_schema` state, or is refused."""
+
+    def _document(self, fields: dict[str, Any]) -> BuilderDocument:
+        return document(
+            [input_node(), authored_agent_node("draft"), output_node("report", source="${state.out__draft}")],
+            [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+            state={"fields": fields},
+        )
+
+    def test_a_declared_state_compiles_to_json_schema(self) -> None:
+        compiled = compile_document(self._document({"turns": {"type": "integer", "default": 0}}))
+        state = compiled.definition["state"]
+        self.assertEqual(state["type"], "json_schema")
+        self.assertEqual(state["json_schema"]["properties"]["turns"]["type"], "integer")
+        self.assertEqual(state["default"]["turns"], 0)
+
+    def test_the_json_schema_state_is_what_crewai_accepts(self) -> None:
+        """The plan wrote `schema`; the package's field is `json_schema`.
+
+        `FlowJsonSchemaStateDefinition` is `extra="forbid"`, so the plan's
+        spelling is refused at `Flow.from_declaration` - measured, and the
+        package wins.
+        """
+
+        from crewai.flow.flow_definition import FlowDefinition
+
+        compiled = compile_document(self._document({"turns": {"type": "integer", "default": 0}}))
+        FlowDefinition.model_validate(compiled.definition)
+
+    def test_a_document_declaring_nothing_keeps_the_dict_state(self) -> None:
+        compiled = compile_document(straight_line())
+        self.assertEqual(compiled.definition["state"]["type"], "dict")
+
+    def test_every_reserved_key_is_refused(self) -> None:
+        for key in ("out__draft", "err__draft", "turns__draft", "idea"):
+            with self.subTest(key=key):
+                graph = self._document({key: {"type": "string"}})
+                codes = [
+                    problem.code
+                    for problem in bounds.structural_problems(graph)
+                    if problem.node_id is None
+                ]
+                self.assertIn(bounds.STATE_KEY_RESERVED, codes)
+
+    def test_the_compilers_own_state_key_cannot_even_be_spelled(self) -> None:
+        """`__builder__` is refused one layer earlier, by the id pattern.
+
+        A state key is a `NodeId`, and a leading underscore does not match it -
+        so the routing table a gate reads cannot be named by a document at all.
+        Refused at parse rather than reported, because there is nothing on a
+        canvas to drag.
+        """
+
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            self._document({"__builder__": {"type": "string"}})
+
+    def test_a_default_of_the_wrong_type_is_refused(self) -> None:
+        graph = self._document({"turns": {"type": "integer", "default": "three"}})
+        codes = [problem.code for problem in bounds.structural_problems(graph)]
+        self.assertIn(bounds.STATE_SCHEMA_INVALID, codes)
+
+    def test_a_true_default_is_not_an_integer(self) -> None:
+        # `isinstance(True, int)` is True in python, which is exactly how a
+        # boolean smuggles itself into an integer field.
+        graph = self._document({"turns": {"type": "integer", "default": True}})
+        codes = [problem.code for problem in bounds.structural_problems(graph)]
+        self.assertIn(bounds.STATE_SCHEMA_INVALID, codes)
+
+    def test_a_declared_state_still_runs(self) -> None:
+        compiled = compile_document(self._document({"turns": {"type": "integer", "default": 0}}))
+        result, flow = run(compiled)
+        self.assertIn(BODY_KEY, result)
+        self.assertEqual(flow.state["turns"], 0)
+
+
+# --------------------------------------------------------------------------
+# The derived replay plan - 09 D7, criterion 7
+# --------------------------------------------------------------------------
+class ReplayPlanTests(unittest.TestCase):
+    """A resume and a node test, compiled as the same document with a hole."""
+
+    def _chain(self) -> BuilderDocument:
+        return document(
+            [
+                input_node(),
+                authored_agent_node("a"),
+                authored_agent_node("b", source="a"),
+                authored_agent_node("c", source="b"),
+                output_node("report", source="${state.out__c}"),
+            ],
+            [
+                edge("e1", "idea", "a"),
+                edge("e2", "a", "b"),
+                edge("e3", "b", "c"),
+                edge("e4", "c", "report"),
+            ],
+        )
+
+    def _refs(self, compiled: CompiledFlow) -> dict[str, str]:
+        return {
+            node_id: compiled.definition["methods"][idents[0]]["do"]["ref"].rsplit(":", 1)[-1]
+            for node_id, idents in compiled.method_idents.items()
+        }
+
+    def test_resume_from_replays_the_upstream_and_keeps_the_rest(self) -> None:
+        compiled = compile_replay_plan(self._chain(), node_id="c")
+        refs = self._refs(compiled)
+        self.assertEqual(refs["idea"], "replay_output")
+        self.assertEqual(refs["a"], "replay_output")
+        self.assertEqual(refs["b"], "replay_output")
+        self.assertEqual(refs["c"], "run_agent")
+        self.assertEqual(refs["report"], "emit_output")
+
+    def test_a_node_test_drops_everything_downstream(self) -> None:
+        compiled = compile_replay_plan(self._chain(), node_id="b", mode="node_test")
+        refs = self._refs(compiled)
+        self.assertEqual(refs["a"], "replay_output")
+        self.assertEqual(refs["b"], "run_agent")
+        self.assertNotIn("c", refs)
+        self.assertNotIn("report", refs)
+
+    def test_the_derived_plan_is_named_for_its_target(self) -> None:
+        compiled = compile_replay_plan(self._chain(), node_id="c")
+        self.assertTrue(compiled.definition["name"].endswith("_replay_c"))
+
+    def test_the_derived_plan_passes_all_four_post_emission_assertions(self) -> None:
+        from brief_crew.builder.compiler import (
+            _assert_namespaces_disjoint,
+            _assert_routers_declare_what_they_emit,
+        )
+
+        for mode, target in (("resume_from", "c"), ("node_test", "b")):
+            with self.subTest(mode=mode):
+                compiled = compile_replay_plan(self._chain(), node_id=target, mode=mode)
+                self.assertEqual(lint_gates(compiled.definition), [])
+                assert_action_refs(compiled.definition)
+                _assert_namespaces_disjoint(compiled.node_ids, [])
+                _assert_routers_declare_what_they_emit(compiled.definition)
+
+    def test_every_replayed_ref_is_still_in_the_allowlist(self) -> None:
+        compiled = compile_replay_plan(self._chain(), node_id="c")
+        for method in compiled.definition["methods"].values():
+            self.assertIn(method["do"]["ref"], BUILDER_ACTION_REFS)
+
+    def test_a_replay_runs_without_calling_a_model(self) -> None:
+        from brief_crew.builder.runtime import replay_source
+
+        compiled = compile_replay_plan(self._chain(), node_id="c")
+        stub = StubFactories({"c": "the real c"})
+        flow = Flow.from_declaration(contents=compiled.definition, suppress_flow_events=True)
+        with use_crew_factories(stub), replay_source(
+            {"idea": "an idea", "a": "saved a", "b": "saved b"}
+        ):
+            result = flow.kickoff(inputs={"idea": "an idea"})
+        self.assertEqual(result[BODY_KEY], "the real c")
+        self.assertEqual([node_id for node_id, _ in stub.kickoffs], ["c"])
+        self.assertEqual(flow.state["out__b"], "saved b")
+
+    def test_a_replay_point_that_is_not_a_step_is_refused(self) -> None:
+        graph = document(
+            [
+                input_node(),
+                authored_agent_node("draft"),
+                tool_node(),
+                output_node("report", source="${state.out__draft}"),
+            ],
+            [
+                edge("e1", "idea", "draft"),
+                edge("e2", "draft", "report"),
+                attach_edge("a1", "search", "draft"),
+            ],
+        )
+        with self.assertRaises(BuilderCompileError):
+            compile_replay_plan(graph, node_id="search")
+
+    def test_an_unknown_replay_source_is_refused_at_run_time(self) -> None:
+        from brief_crew.builder.runtime import BuilderRuntimeError, replay_output
+
+        with self.assertRaises(BuilderRuntimeError):
+            replay_output(None, node_id="a", source="somewhere_else")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -1,0 +1,276 @@
+{
+  "budget": {
+    "billable_nodes": 4,
+    "compiled_at": "2026-09-04T00:00:00Z",
+    "cycles": 0,
+    "escalation_nodes": 0,
+    "static_cost_usd": 0.8004015
+  },
+  "definition": {
+    "config": {
+      "max_method_calls": 4
+    },
+    "description": "A long chain",
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:replay_output",
+          "with": {
+            "node_id": "idea",
+            "source": "run"
+          }
+        },
+        "start": true
+      },
+      "n1_one": {
+        "description": "one",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:replay_output",
+          "with": {
+            "node_id": "one",
+            "source": "run"
+          }
+        },
+        "listen": "n0_idea"
+      },
+      "n2_two": {
+        "description": "two",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:replay_output",
+          "with": {
+            "node_id": "two",
+            "source": "run"
+          }
+        },
+        "listen": "n1_one"
+      },
+      "n3_three": {
+        "description": "three",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "advanced": {
+              "allow_delegation": false,
+              "cache": true,
+              "max_execution_time": null,
+              "max_rpm": null,
+              "memory": false,
+              "respect_context_window": true
+            },
+            "backstory": "years of it",
+            "expert": {
+              "planning": false,
+              "planning_config": null,
+              "prompt_template": null,
+              "response_template": null,
+              "system_template": null
+            },
+            "goal": "do the three work",
+            "guardrail_max_retries": 2,
+            "llm": {
+              "frequency_penalty": null,
+              "max_tokens": null,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": null,
+              "seed": null,
+              "stop": [],
+              "temperature": 0.2,
+              "timeout": null,
+              "top_p": null
+            },
+            "max_iter": 2,
+            "mcps": [],
+            "node_id": "three",
+            "prompt_inputs": {},
+            "role": "three specialist",
+            "skills": [],
+            "task": {
+              "async_execution": false,
+              "description": "work from ${state.out__two}",
+              "expected_output": "a paragraph",
+              "markdown": false,
+              "output_schema": null
+            },
+            "tier": "cheap",
+            "tools": []
+          }
+        },
+        "listen": "n2_two"
+      },
+      "n4_four": {
+        "description": "four",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "advanced": {
+              "allow_delegation": false,
+              "cache": true,
+              "max_execution_time": null,
+              "max_rpm": null,
+              "memory": false,
+              "respect_context_window": true
+            },
+            "backstory": "years of it",
+            "expert": {
+              "planning": false,
+              "planning_config": null,
+              "prompt_template": null,
+              "response_template": null,
+              "system_template": null
+            },
+            "goal": "do the four work",
+            "guardrail_max_retries": 2,
+            "llm": {
+              "frequency_penalty": null,
+              "max_tokens": null,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": null,
+              "seed": null,
+              "stop": [],
+              "temperature": 0.2,
+              "timeout": null,
+              "top_p": null
+            },
+            "max_iter": 2,
+            "mcps": [],
+            "node_id": "four",
+            "prompt_inputs": {},
+            "role": "four specialist",
+            "skills": [],
+            "task": {
+              "async_execution": false,
+              "description": "work from ${state.out__three}",
+              "expected_output": "a paragraph",
+              "markdown": false,
+              "output_schema": null
+            },
+            "tier": "cheap",
+            "tools": []
+          }
+        },
+        "listen": "n3_three"
+      },
+      "n5_report": {
+        "description": "report",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "body_key": "markdown_body",
+            "node_id": "report",
+            "source": "${state.out__four}"
+          }
+        },
+        "listen": "n4_four"
+      }
+    },
+    "name": "builder_ug_11111111_v1_replay_three",
+    "schema": "crewai.flow/v1",
+    "state": {
+      "default": {
+        "__builder__": {
+          "document": {
+            "id": "ug_11111111",
+            "input_field": "idea",
+            "version": 1
+          },
+          "gates": {}
+        },
+        "idea": "",
+        "out__four": null,
+        "out__idea": null,
+        "out__one": null,
+        "out__report": null,
+        "out__three": null,
+        "out__two": null
+      },
+      "type": "dict"
+    }
+  },
+  "frames": [
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_START",
+      "FrameKind.RUN_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "one",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "one",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "two",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "two",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "three",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "three",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "four",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "four",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_END",
+      "FrameKind.RUN_STATE"
+    ]
+  ],
+  "result": {
+    "markdown_body": "{\"node_id\": \"four\", \"produced_by\": \"four specialist\", \"prompt_inputs\": {}, \"summary\": \"Synthetic output for four; no model was called.\", \"tier\": \"cheap\"}",
+    "node_id": "report"
+  }
+}

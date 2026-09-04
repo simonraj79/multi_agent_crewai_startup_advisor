@@ -1,0 +1,275 @@
+{
+  "budget": {
+    "billable_nodes": 2,
+    "compiled_at": "2026-09-04T00:00:00Z",
+    "cycles": 0,
+    "escalation_nodes": 0,
+    "static_cost_usd": 0.3140775
+  },
+  "definition": {
+    "config": {
+      "max_method_calls": 4
+    },
+    "description": "An any join",
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:seed_input",
+          "with": {
+            "field": "idea",
+            "max_chars": 2000,
+            "node_id": "idea",
+            "required": true
+          }
+        },
+        "start": true
+      },
+      "n1_fork": {
+        "description": "fork",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:route_branch",
+          "with": {
+            "node_id": "fork",
+            "rearm": [],
+            "rules": [
+              {
+                "key": null,
+                "label": "e1_left",
+                "op": "otherwise",
+                "value": null
+              },
+              {
+                "key": "out__missing",
+                "label": "e1_right",
+                "op": "eq",
+                "value": "x"
+              }
+            ],
+            "source": "${state.out__idea}"
+          }
+        },
+        "emit": [
+          "e1_left",
+          "e1_right"
+        ],
+        "listen": "n0_idea",
+        "router": true
+      },
+      "n2_a": {
+        "description": "a",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "advanced": {
+              "allow_delegation": false,
+              "cache": true,
+              "max_execution_time": null,
+              "max_rpm": null,
+              "memory": false,
+              "respect_context_window": true
+            },
+            "backstory": "years of it",
+            "expert": {
+              "planning": false,
+              "planning_config": null,
+              "prompt_template": null,
+              "response_template": null,
+              "system_template": null
+            },
+            "goal": "do the a work",
+            "guardrail_max_retries": 2,
+            "llm": {
+              "frequency_penalty": null,
+              "max_tokens": null,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": null,
+              "seed": null,
+              "stop": [],
+              "temperature": 0.2,
+              "timeout": null,
+              "top_p": null
+            },
+            "max_iter": 2,
+            "mcps": [],
+            "node_id": "a",
+            "prompt_inputs": {},
+            "role": "a specialist",
+            "skills": [],
+            "task": {
+              "async_execution": false,
+              "description": "work from ${state.out__idea}",
+              "expected_output": "a paragraph",
+              "markdown": false,
+              "output_schema": null
+            },
+            "tier": "cheap",
+            "tools": []
+          }
+        },
+        "listen": "e1_left"
+      },
+      "n3_b": {
+        "description": "b",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "advanced": {
+              "allow_delegation": false,
+              "cache": true,
+              "max_execution_time": null,
+              "max_rpm": null,
+              "memory": false,
+              "respect_context_window": true
+            },
+            "backstory": "years of it",
+            "expert": {
+              "planning": false,
+              "planning_config": null,
+              "prompt_template": null,
+              "response_template": null,
+              "system_template": null
+            },
+            "goal": "do the b work",
+            "guardrail_max_retries": 2,
+            "llm": {
+              "frequency_penalty": null,
+              "max_tokens": null,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": null,
+              "seed": null,
+              "stop": [],
+              "temperature": 0.2,
+              "timeout": null,
+              "top_p": null
+            },
+            "max_iter": 2,
+            "mcps": [],
+            "node_id": "b",
+            "prompt_inputs": {},
+            "role": "b specialist",
+            "skills": [],
+            "task": {
+              "async_execution": false,
+              "description": "work from ${state.out__idea}",
+              "expected_output": "a paragraph",
+              "markdown": false,
+              "output_schema": null
+            },
+            "tier": "cheap",
+            "tools": []
+          }
+        },
+        "listen": "e1_right"
+      },
+      "n4_report": {
+        "description": "report",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "body_key": "markdown_body",
+            "node_id": "report",
+            "source": "${state.out__a}"
+          }
+        },
+        "listen": {
+          "or": [
+            "n2_a",
+            "n3_b"
+          ]
+        }
+      }
+    },
+    "name": "builder_ug_11111111_v1",
+    "schema": "crewai.flow/v1",
+    "state": {
+      "default": {
+        "__builder__": {
+          "document": {
+            "id": "ug_11111111",
+            "input_field": "idea",
+            "version": 1
+          },
+          "gates": {}
+        },
+        "idea": "",
+        "out__a": null,
+        "out__b": null,
+        "out__fork": null,
+        "out__idea": null,
+        "out__report": null
+      },
+      "type": "dict"
+    }
+  },
+  "frames": [
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_START",
+      "FrameKind.RUN_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "a",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "a",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_END",
+      "FrameKind.RUN_STATE"
+    ]
+  ],
+  "result": {
+    "markdown_body": "{\"node_id\": \"a\", \"produced_by\": \"a specialist\", \"prompt_inputs\": {}, \"summary\": \"Synthetic output for a; no model was called.\", \"tier\": \"cheap\"}",
+    "node_id": "report"
+  }
+}

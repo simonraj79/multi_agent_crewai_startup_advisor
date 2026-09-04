@@ -46,10 +46,18 @@ picker a control with no effect on the meter beside it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from brief_crew.builder.bounds import Problem, billable_depths, back_edges, nodes_on_cycles
+from brief_crew.builder.bounds import (
+    Problem,
+    back_edges,
+    billable_depths,
+    member_edges,
+    member_of,
+    nodes_on_cycles,
+)
 from brief_crew.builder.document import (
     AuthoredCrewConfig,
     LibraryAgentConfig,
@@ -59,6 +67,7 @@ from brief_crew.builder.document import (
 )
 from brief_crew.config import (
     CHEAP_MODEL,
+    OPENROUTER_MODEL_PREFIX,
     ESCALATION_MODEL,
     GRAPH_BUDGET_CALL_COMPLETION_TOKENS,
     GRAPH_BUDGET_SEED_PROMPT_TOKENS,
@@ -102,9 +111,31 @@ def node_model(node: BuilderNode) -> str:
         # once and is not what the node's call count multiplies.
         llm = config.manager_llm
     if llm is not None and getattr(llm, "model", None):
-        model = str(llm.model)
-        return model if model.startswith("openrouter/") else f"openrouter/{model}"
+        return _prefixed(str(llm.model))
     return _MODEL_BY_TIER[node.tier or "cheap"]
+
+
+def _prefixed(model: str) -> str:
+    """One model id in the spelling `PRICES` is keyed on."""
+
+    return (
+        model
+        if model.startswith(OPENROUTER_MODEL_PREFIX)
+        else f"{OPENROUTER_MODEL_PREFIX}{model}"
+    )
+
+
+def fallback_model(node: BuilderNode) -> str | None:
+    """The model a node's LAST retry attempt would use, if it declares one.
+
+    09 D4: a fallback is priced at the DEARER of the two, so the static estimate
+    stays a worst case. Pricing it at the named model would under-price exactly
+    the node an author gave a fallback to because they expected it to fail.
+    """
+
+    retry = getattr(node.config, "retry", None)
+    model = getattr(retry, "fallback_model", None)
+    return _prefixed(str(model)) if model else None
 
 
 def _nitro_multiplier(model: str) -> float:
@@ -136,6 +167,15 @@ def _nitro_multiplier(model: str) -> float:
 
 
 @dataclass(frozen=True)
+class NodeCost:
+    """What one billable node contributes to the graph's static price."""
+
+    calls: int
+    usd: float
+    model: str
+
+
+@dataclass(frozen=True)
 class BudgetEstimate:
     """The static price of one graph, and the counts that produced it."""
 
@@ -158,6 +198,12 @@ class BudgetEstimate:
     # graph is free" - the exact confusion that reported a 128,069-token run at
     # $0.00.
     unpriced_models: tuple[str, ...] = ()
+    # Per-node calls and dollars, requested by 04 for the inspector's cost line
+    # (C5). It is the SAME figure the total already sums, exposed rather than
+    # recomputed on the client - R6 stands: the client renders it and never
+    # derives it, because two arithmetics for one number is how a meter and a
+    # refusal come to disagree.
+    per_node: Mapping[str, "NodeCost"] = field(default_factory=dict)
 
     def as_budget(self, *, compiled_at: datetime | None = None) -> BuilderBudget:
         """The block the compiler writes onto the document it priced."""
@@ -171,7 +217,7 @@ class BudgetEstimate:
         )
 
 
-def _calls_for(node: BuilderNode, *, on_cycle: bool) -> int:
+def _calls_for(node: BuilderNode, *, on_cycle: bool, members: int = 0) -> int:
     """The worst-case model calls one billable node makes.
 
     Three multiplied terms, and each is the answer to a real question. Every
@@ -195,6 +241,23 @@ def _calls_for(node: BuilderNode, *, on_cycle: bool) -> int:
     # at $0.00.
     binds_tools = not isinstance(config, LibraryAgentConfig) or bool(config.tools)
     calls = attempts * ((getattr(config, "max_iter", 1) + 1) if binds_tools else 1)
+    # 09 D4: the WHOLE-NODE retry loop multiplies everything above it, because
+    # `run_agent` re-runs the entire step - the agent, its task and every
+    # guardrail attempt inside it. `retry.max_retries` is the builder's own
+    # field and is NOT `Task.max_retries`, which is deprecated at 1.15.18 and
+    # counts guardrail retries; `guardrail_max_retries` above is the one that
+    # means what CrewAI's means.
+    retry = getattr(config, "retry", None)
+    calls *= int(getattr(retry, "max_retries", 0) or 0) + 1
+    if isinstance(config, AuthoredCrewConfig) and members:
+        # An authored crew runs ONE TASK PER MEMBER, so its step is `members`
+        # times what a single agent's is. A hierarchical process adds the
+        # manager, which makes one call per task to delegate it - so a
+        # hierarchical crew of three prices three manager calls that a
+        # sequential crew of three does not.
+        calls *= members
+        if config.process == "hierarchical":
+            calls += members * (1 + MAX_CYCLE_ITERATIONS if on_cycle else 1)
     if on_cycle:
         calls *= 1 + MAX_CYCLE_ITERATIONS
     return calls
@@ -211,7 +274,20 @@ def node_call_count(document: BuilderDocument, node_id: str) -> int:
     node = document.nodes_by_id().get(node_id)
     if node is None:
         return 0
-    return _calls_for(node, on_cycle=node_id in nodes_on_cycles(document))
+    return _calls_for(
+        node,
+        on_cycle=node_id in nodes_on_cycles(document),
+        members=_member_counts(document).get(node_id, 0),
+    )
+
+
+def _member_counts(document: BuilderDocument) -> dict[str, int]:
+    """How many member agents each crew holds - what its task list will be."""
+
+    counted: dict[str, int] = {}
+    for edge in member_edges(document):
+        counted[edge.target] = counted.get(edge.target, 0) + 1
+    return counted
 
 
 def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
@@ -219,6 +295,11 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
 
     depths = billable_depths(document)
     cyclic = nodes_on_cycles(document)
+    members = _member_counts(document)
+    # A member agent is billable INSIDE its crew - the crew's price multiplies
+    # by its membership above - and counting it again would charge the same
+    # agent twice.
+    inside_a_crew = set(member_of(document))
 
     static = 0.0
     floor = 0.0
@@ -226,31 +307,53 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
     billable = 0
     escalation = 0
     unpriced: list[str] = []
+    per_node: dict[str, NodeCost] = {}
 
     for node in document.nodes:
-        if not node.is_billable:
+        if not node.is_billable or node.id in inside_a_crew:
             continue
         billable += 1
         tier = node.tier or "cheap"
         if tier == "escalation":
             escalation += 1
 
-        calls = _calls_for(node, on_cycle=node.id in cyclic)
+        calls = _calls_for(
+            node, on_cycle=node.id in cyclic, members=members.get(node.id, 0)
+        )
         calls_total += calls
 
-        model = node_model(node)
         prompt_tokens = (
             GRAPH_BUDGET_SEED_PROMPT_TOKENS
             + depths.get(node.id, 0) * GRAPH_BUDGET_CALL_COMPLETION_TOKENS
         )
-        per_call = compute_cost_usd(model, prompt_tokens, GRAPH_BUDGET_CALL_COMPLETION_TOKENS)
-        if per_call is None:
-            if model not in unpriced:
-                unpriced.append(model)
+        # The DEARER of the named model and its fallback (09 D4). A fallback is
+        # what the last attempt uses, so a node that declares an expensive one
+        # can cost that much; pricing it at the cheap one it usually uses would
+        # under-price exactly the node the author expected to fail.
+        candidates = [node_model(node)]
+        alternative = fallback_model(node)
+        if alternative and alternative not in candidates:
+            candidates.append(alternative)
+
+        priced: list[tuple[float, float, str]] = []
+        for candidate in candidates:
+            per_call = compute_cost_usd(
+                candidate, prompt_tokens, GRAPH_BUDGET_CALL_COMPLETION_TOKENS
+            )
+            if per_call is None:
+                if candidate not in unpriced:
+                    unpriced.append(candidate)
+                continue
+            priced.append((per_call * _nitro_multiplier(candidate), per_call, candidate))
+        if not priced:
             continue
+        enforced, per_call, model = max(priced)
 
         floor += calls * per_call
-        static += calls * per_call * _nitro_multiplier(model)
+        static += calls * enforced
+        per_node[node.id] = NodeCost(
+            calls=calls, usd=round(calls * enforced, 10), model=model
+        )
 
     return BudgetEstimate(
         static_cost_usd=static,
@@ -260,6 +363,7 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
         escalation_nodes=escalation,
         cycles=len(back_edges(document)),
         unpriced_models=tuple(unpriced),
+        per_node=per_node,
     )
 
 

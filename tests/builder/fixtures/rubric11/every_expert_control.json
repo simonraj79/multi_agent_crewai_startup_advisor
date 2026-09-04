@@ -1,0 +1,176 @@
+{
+  "budget": {
+    "billable_nodes": 1,
+    "compiled_at": "2026-09-04T00:00:00Z",
+    "cycles": 0,
+    "escalation_nodes": 0,
+    "static_cost_usd": 0.15703875
+  },
+  "definition": {
+    "config": {
+      "max_method_calls": 4
+    },
+    "description": "Every expert control",
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:seed_input",
+          "with": {
+            "field": "idea",
+            "max_chars": 2000,
+            "node_id": "idea",
+            "required": true
+          }
+        },
+        "start": true
+      },
+      "n1_draft": {
+        "description": "draft",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "advanced": {
+              "allow_delegation": false,
+              "cache": true,
+              "max_execution_time": 120,
+              "max_rpm": 30,
+              "memory": false,
+              "respect_context_window": true
+            },
+            "backstory": "years of it",
+            "expert": {
+              "planning": true,
+              "planning_config": {
+                "max_attempts": 2,
+                "max_replans": 1,
+                "max_steps": 3,
+                "reasoning_effort": "low"
+              },
+              "prompt_template": "{input}",
+              "response_template": "{output}",
+              "system_template": "You are {role}."
+            },
+            "goal": "do the draft work",
+            "guardrail_max_retries": 2,
+            "llm": {
+              "frequency_penalty": null,
+              "max_tokens": 2048,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": "text",
+              "seed": 7,
+              "stop": [
+                "END"
+              ],
+              "temperature": 0.1,
+              "timeout": null,
+              "top_p": 0.9
+            },
+            "max_iter": 2,
+            "mcps": [],
+            "node_id": "draft",
+            "prompt_inputs": {},
+            "role": "draft specialist",
+            "skills": [],
+            "task": {
+              "async_execution": false,
+              "description": "work from ${state.out__idea}",
+              "expected_output": "a JSON object",
+              "markdown": false,
+              "output_schema": {
+                "headline": "string",
+                "score": "integer"
+              }
+            },
+            "tier": "cheap",
+            "tool_failure_policy": "raise",
+            "tools": []
+          }
+        },
+        "listen": "n0_idea"
+      },
+      "n2_report": {
+        "description": "report",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "body_key": "markdown_body",
+            "node_id": "report",
+            "source": "${state.out__draft}"
+          }
+        },
+        "listen": "n1_draft"
+      }
+    },
+    "name": "builder_ug_11111111_v1",
+    "schema": "crewai.flow/v1",
+    "state": {
+      "default": {
+        "__builder__": {
+          "document": {
+            "id": "ug_11111111",
+            "input_field": "idea",
+            "version": 1
+          },
+          "gates": {}
+        },
+        "idea": "",
+        "out__draft": null,
+        "out__idea": null,
+        "out__report": null
+      },
+      "type": "dict"
+    }
+  },
+  "frames": [
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_START",
+      "FrameKind.RUN_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "draft",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "draft",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_END",
+      "FrameKind.RUN_STATE"
+    ]
+  ],
+  "result": {
+    "markdown_body": "{\"node_id\": \"draft\", \"produced_by\": \"draft specialist\", \"prompt_inputs\": {}, \"summary\": \"Synthetic output for draft; no model was called.\", \"tier\": \"cheap\"}",
+    "node_id": "report"
+  }
+}

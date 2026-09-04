@@ -1,0 +1,125 @@
+{
+  "budget": {
+    "billable_nodes": 1,
+    "compiled_at": "2026-09-04T00:00:00Z",
+    "cycles": 0,
+    "escalation_nodes": 1,
+    "static_cost_usd": 0.15703875
+  },
+  "definition": {
+    "config": {
+      "max_method_calls": 4
+    },
+    "description": "Library crew",
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:seed_input",
+          "with": {
+            "field": "idea",
+            "max_chars": 2000,
+            "node_id": "idea",
+            "required": true
+          }
+        },
+        "start": true
+      },
+      "n1_scope_crew": {
+        "description": "scope_crew",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_crew",
+          "with": {
+            "crew_id": "scope",
+            "guardrail_max_retries": 2,
+            "max_iter": 2,
+            "node_id": "scope_crew",
+            "prompt_inputs": {},
+            "tier": "escalation"
+          }
+        },
+        "listen": "n0_idea"
+      },
+      "n2_report": {
+        "description": "report",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "body_key": "markdown_body",
+            "node_id": "report",
+            "source": "${state.out__scope_crew}"
+          }
+        },
+        "listen": "n1_scope_crew"
+      }
+    },
+    "name": "builder_ug_11111111_v1",
+    "schema": "crewai.flow/v1",
+    "state": {
+      "default": {
+        "__builder__": {
+          "document": {
+            "id": "ug_11111111",
+            "input_field": "idea",
+            "version": 1
+          },
+          "gates": {}
+        },
+        "idea": "",
+        "out__idea": null,
+        "out__report": null,
+        "out__scope_crew": null
+      },
+      "type": "dict"
+    }
+  },
+  "frames": [
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_START",
+      "FrameKind.RUN_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "scope_crew",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "scope_crew",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_END",
+      "FrameKind.RUN_STATE"
+    ]
+  ],
+  "result": {
+    "markdown_body": "{\"node_id\": \"scope_crew\", \"produced_by\": \"scope\", \"prompt_inputs\": {}, \"summary\": \"Synthetic output for scope_crew; no model was called.\", \"tier\": \"escalation\"}",
+    "node_id": "report"
+  }
+}

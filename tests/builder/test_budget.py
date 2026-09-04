@@ -609,5 +609,213 @@ class ValidateDocumentTests(unittest.TestCase):
         self.assertTrue(validate_document(graph, ceiling_usd=10.0))
 
 
+
+
+# --------------------------------------------------------------------------
+# 09 D4 - what retry, a crew's membership and a fallback do to the price
+# --------------------------------------------------------------------------
+AUTHORED_MODEL = "google/gemini-3.8-flash"
+CHEAPER_MODEL = "google/gemini-3.5-flash-lite"
+
+
+def authored_agent(node_id: str, **overrides: Any) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "role": f"{node_id} specialist",
+        "goal": "do the work",
+        "backstory": "years of it",
+        "task": {"description": "work", "expected_output": "a paragraph"},
+        "llm": {"model": AUTHORED_MODEL},
+        "tier": "cheap",
+    }
+    config.update(overrides)
+    return {"id": node_id, "kind": "agent", "label": node_id, "config": config}
+
+
+def one_authored_agent(**overrides: Any) -> BuilderDocument:
+    return document(
+        [
+            input_node("idea"),
+            authored_agent("draft", **overrides),
+            raw_node("report", "output", {"body_key": "markdown_body", "source": "${state.out__draft}"}),
+        ],
+        [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+    )
+
+
+def authored_crew(*, process: str, members: int, **overrides: Any) -> BuilderDocument:
+    member_ids = [f"m{index}" for index in range(members)]
+    config: dict[str, Any] = {
+        "process": process,
+        "tier": "cheap",
+        "task_order": tuple(member_ids),
+    }
+    if process == "hierarchical":
+        config["manager_llm"] = {"model": AUTHORED_MODEL}
+    config.update(overrides)
+    return document(
+        [
+            input_node("idea"),
+            {"id": "team", "kind": "crew", "label": "team", "config": config},
+            *[authored_agent(member_id) for member_id in member_ids],
+            raw_node("report", "output", {"body_key": "markdown_body", "source": "${state.out__team}"}),
+        ],
+        [
+            edge("e1", "idea", "team"),
+            edge("e2", "team", "report"),
+            *[
+                {
+                    "id": f"m{index}",
+                    "source": member_id,
+                    "source_port": "out",
+                    "target": "team",
+                    "target_port": "member",
+                }
+                for index, member_id in enumerate(member_ids)
+            ],
+        ],
+    )
+
+
+class RetryPricingTests(unittest.TestCase):
+    """09 D4: a whole-node retry multiplies everything below it."""
+
+    def test_two_retries_price_three_times_the_calls(self) -> None:
+        once = estimate_budget(one_authored_agent()).modelled_calls
+        thrice = estimate_budget(
+            one_authored_agent(retry={"max_retries": 2, "backoff_seconds": 0})
+        ).modelled_calls
+        self.assertEqual(thrice, once * 3)
+
+    def test_the_multiplier_is_visible_per_node(self) -> None:
+        estimate = estimate_budget(
+            one_authored_agent(retry={"max_retries": 2, "backoff_seconds": 0})
+        )
+        plain = estimate_budget(one_authored_agent())
+        self.assertEqual(estimate.per_node["draft"].calls, plain.per_node["draft"].calls * 3)
+        self.assertGreater(estimate.per_node["draft"].usd, plain.per_node["draft"].usd)
+
+    def test_a_fallback_is_priced_at_the_dearer_of_the_two(self) -> None:
+        """A fallback is what the LAST attempt uses, so it can be what it costs.
+
+        Pricing it at the cheap model it usually runs on would under-price
+        exactly the node whose author expected it to fail - which is the shape
+        of the defect that reported 128,069 real tokens at $0.00.
+        """
+
+        cheap_named = one_authored_agent(llm={"model": CHEAPER_MODEL})
+        with_dear_fallback = one_authored_agent(
+            llm={"model": CHEAPER_MODEL},
+            retry={"max_retries": 1, "fallback_model": AUTHORED_MODEL},
+        )
+        self.assertEqual(
+            estimate_budget(with_dear_fallback).per_node["draft"].model,
+            f"openrouter/{AUTHORED_MODEL}",
+        )
+        self.assertEqual(
+            estimate_budget(cheap_named).per_node["draft"].model,
+            f"openrouter/{CHEAPER_MODEL}",
+        )
+
+    def test_a_cheaper_fallback_does_not_lower_the_price(self) -> None:
+        dear_named = one_authored_agent(
+            llm={"model": AUTHORED_MODEL},
+            retry={"max_retries": 1, "fallback_model": CHEAPER_MODEL},
+        )
+        self.assertEqual(
+            estimate_budget(dear_named).per_node["draft"].model,
+            f"openrouter/{AUTHORED_MODEL}",
+        )
+
+
+class CrewMembershipPricingTests(unittest.TestCase):
+    """An authored crew runs one task per member, and a manager delegates each."""
+
+    def test_a_sequential_crew_prices_one_task_per_member(self) -> None:
+        one = estimate_budget(authored_crew(process="sequential", members=1))
+        three = estimate_budget(authored_crew(process="sequential", members=3))
+        self.assertEqual(three.per_node["team"].calls, one.per_node["team"].calls * 3)
+
+    def test_a_hierarchical_crew_of_three_prices_three_manager_calls(self) -> None:
+        sequential = estimate_budget(authored_crew(process="sequential", members=3))
+        hierarchical = estimate_budget(authored_crew(process="hierarchical", members=3))
+        self.assertEqual(
+            hierarchical.per_node["team"].calls - sequential.per_node["team"].calls,
+            3,
+            "a hierarchical manager makes one call per task it delegates",
+        )
+
+    def test_a_member_agent_is_not_billed_twice(self) -> None:
+        """It bills INSIDE its crew; counting it again would charge it twice."""
+
+        estimate = estimate_budget(authored_crew(process="sequential", members=3))
+        self.assertEqual(estimate.billable_nodes, 1)
+        self.assertEqual(sorted(estimate.per_node), ["team"])
+
+
+class NitroPricingTests(unittest.TestCase):
+    def test_a_nitro_id_is_inflated_and_a_plain_one_is_not(self) -> None:
+        nitro = one_authored_agent(llm={"model": f"{CHEAPER_MODEL}:nitro"})
+        plain = one_authored_agent(llm={"model": CHEAPER_MODEL})
+        inflated = estimate_budget(nitro)
+        published = estimate_budget(plain)
+        self.assertGreater(inflated.static_cost_usd, published.static_cost_usd)
+        self.assertAlmostEqual(inflated.floor_cost_usd, published.floor_cost_usd, places=10)
+        self.assertAlmostEqual(
+            published.static_cost_usd, published.floor_cost_usd, places=10
+        )
+        self.assertGreaterEqual(
+            inflated.static_cost_usd / inflated.floor_cost_usd, NITRO_PRICE_FACTOR
+        )
+
+
+class PerNodeCostTests(unittest.TestCase):
+    """C5's `per_node`: the same figure the total sums, exposed not recomputed."""
+
+    def test_the_per_node_dollars_sum_to_the_total(self) -> None:
+        estimate = estimate_budget(frontier_document(cheap=5, escalation=3))
+        self.assertAlmostEqual(
+            sum(cost.usd for cost in estimate.per_node.values()),
+            estimate.static_cost_usd,
+            places=6,
+        )
+
+    def test_the_per_node_calls_sum_to_modelled_calls(self) -> None:
+        estimate = estimate_budget(frontier_document(cheap=5, escalation=3))
+        self.assertEqual(
+            sum(cost.calls for cost in estimate.per_node.values()), estimate.modelled_calls
+        )
+
+    def test_only_billable_nodes_appear(self) -> None:
+        estimate = estimate_budget(one_authored_agent())
+        self.assertEqual(sorted(estimate.per_node), ["draft"])
+
+
+class FrontierStillRefusedTests(unittest.TestCase):
+    """The bound sweep's own worst case, after 09 changed the model."""
+
+    def test_the_frontier_document_is_still_refused_at_ten_dollars(self) -> None:
+        estimate = estimate_budget(
+            frontier_document(
+                cheap=MAX_BILLABLE_NODES - MAX_ESCALATION_NODES,
+                escalation=MAX_ESCALATION_NODES,
+            )
+        )
+        self.assertEqual(estimate.billable_nodes, MAX_BILLABLE_NODES)
+        self.assertEqual(estimate.escalation_nodes, MAX_ESCALATION_NODES)
+        self.assertEqual(estimate.modelled_calls, 468)
+        self.assertGreater(estimate.static_cost_usd * GRAPH_STATIC_BUDGET_MARGIN, 10.0)
+        codes = [
+            problem.code
+            for problem in budget_problems(
+                frontier_document(
+                    cheap=MAX_BILLABLE_NODES - MAX_ESCALATION_NODES,
+                    escalation=MAX_ESCALATION_NODES,
+                ),
+                ceiling_usd=10.0,
+            )
+        ]
+        self.assertIn("budget-over-ceiling", codes)
+
+
 if __name__ == "__main__":
     unittest.main()

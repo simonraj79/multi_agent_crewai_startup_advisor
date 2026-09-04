@@ -152,8 +152,9 @@ def document(
     *,
     input_field: str = "idea",
     joins: dict[str, str] | None = None,
+    state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "schema": "builder.flow/v1",
         "id": "ug_0a1b2c3d",
         "name": name,
@@ -164,6 +165,12 @@ def document(
         "joins": joins or {},
         "budget": None,
     }
+    # Omitted rather than nulled when a scenario declares nothing: a stored row
+    # that never carried the key round-trips byte-identical, which is the same
+    # rule `upgrade_document` follows for a missing `schema`.
+    if state is not None:
+        payload["state"] = state
+    return payload
 
 
 def input_node(node_id: str = "idea", *, field: str | None = None) -> dict[str, Any]:
@@ -1269,6 +1276,117 @@ PROBLEM_SCENARIOS += [
             "a stranger's pack",
             _attached("skill", {"skill_id": "sk_ffffffffffff"}),
             _attached_edges(),
+        ),
+    },
+]
+
+
+# --------------------------------------------------------------------------
+# 09-compiler.md's five, added 2026-09-04 with the authored compile path
+# --------------------------------------------------------------------------
+def _authored(node_id: str, **overrides: Any) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "role": f"{node_id} specialist",
+        "goal": "do the work",
+        "backstory": "years of it",
+        "task": {"description": "work", "expected_output": "a paragraph"},
+        "llm": {"model": "google/gemini-3.8-flash"},
+        "tier": "cheap",
+    }
+    config.update(overrides)
+    return node(node_id, "agent", config)
+
+
+def _authored_chain(*, on_error: str = "fail") -> tuple[list[Any], list[Any]]:
+    return (
+        [
+            input_node(),
+            _authored("draft", on_error=on_error),
+            node(
+                "done",
+                "output",
+                {"body_key": "markdown_body", "source": "${state.out__draft}"},
+            ),
+        ],
+        [edge("e1", "idea", "draft"), edge("e2", "draft", "done")],
+    )
+
+
+PROBLEM_SCENARIOS += [
+    {
+        "name": "a declared state key the compiler already owns",
+        "expects": ["state-key-reserved"],
+        "why": (
+            "`_Plan.state_default()` writes every `out__*`, `err__*` and "
+            "`turns__*` key, so a document declaring one would be overwritten by "
+            "a node's own output - or would overwrite it."
+        ),
+        "document": document(
+            "a reserved state key",
+            *_authored_chain(),
+            state={"fields": {"out__draft": {"type": "string"}}},
+        ),
+    },
+    {
+        "name": "a declared state default of the wrong type",
+        "expects": ["state-schema-invalid"],
+        "why": (
+            "CrewAI validates a json_schema state at kickoff, so this would fail "
+            "the run at its first method rather than on the canvas."
+        ),
+        "document": document(
+            "a mistyped state default",
+            *_authored_chain(),
+            state={"fields": {"turns": {"type": "integer", "default": "three"}}},
+        ),
+    },
+    {
+        "name": "an error port with nothing drawn from it",
+        "expects": ["error-port-unconnected"],
+        "why": (
+            "A WARNING. The author asked for a recovery path and did not draw "
+            "one, so a failure here still ends the run - which is what "
+            "`on_error: fail` already does."
+        ),
+        "document": document(
+            "an unconnected error port", *_authored_chain(on_error="route")
+        ),
+    },
+    {
+        "name": "an imported graph whose MCP server reference did not survive",
+        "expects": ["attachment-reference-missing"],
+        "why": (
+            "`export.py` nulls `server_id` deliberately - it names a row in the "
+            "EXPORTING author's own server list - so this is what a legitimately "
+            "imported file looks like, and the importer has to be told which node."
+        ),
+        "document": document(
+            "a stripped server reference",
+            _attached("mcp", {"tool_names": ["search"]}),
+            _attached_edges(),
+        ),
+    },
+    {
+        "name": "a registered crew whose tier chooses nothing",
+        "expects": ["crew-tier-not-honoured"],
+        "why": (
+            "Decision 12. A registered crew builds its own LLMs in python, so the "
+            "word prices and bounds the graph and does not pick a model. A "
+            "warning rather than an error: the field is required by the schema "
+            "and does real work twice over."
+        ),
+        "document": document(
+            "a library crew",
+            [
+                input_node(),
+                node("team", "crew", {"crew_id": "scope", "tier": "escalation"}),
+                node(
+                    "done",
+                    "output",
+                    {"body_key": "markdown_body", "source": "${state.out__team}"},
+                ),
+            ],
+            [edge("e1", "idea", "team"), edge("e2", "team", "done")],
         ),
     },
 ]

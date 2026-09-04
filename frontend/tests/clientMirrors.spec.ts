@@ -178,6 +178,10 @@ describe('the problem-code tuple covers what the server can emit', () => {
     // according to what is at BOTH of its ends.
     expect(both).toEqual([
       'attach-target-not-agent',
+      // 09: an attachment whose reference did not survive an export. It is a
+      // fact about the pair, like the others here - which node lost its
+      // reference, and which edge hung it on an agent.
+      'attachment-reference-missing',
       'back-edge-not-router',
       'edge-target-refuses-incoming',
       'edge-unknown-port',
@@ -202,6 +206,11 @@ describe('the problem-code tuple covers what the server can emit', () => {
       'no-input-node',
       'no-output-node',
       'node-count',
+      // 09 D6's two. A declared state key is a fact about the DOCUMENT - there
+      // is no node on the canvas to rim - so both carry `field` (the key) and
+      // neither anchor.
+      'state-key-reserved',
+      'state-schema-invalid',
     ])
   })
 

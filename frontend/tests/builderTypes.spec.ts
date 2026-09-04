@@ -495,8 +495,8 @@ describe('the problem codes are the python problem codes', () => {
     // and nine codes: three about a tool node's id, settings and key, five
     // about an MCP server and its tools, and one about a skill pack. That is
     // the same four-place edit again, made in one commit.
-    expect(pythonProblemCodes()).toHaveLength(50)
-    expect(PROBLEM_CODES).toHaveLength(50)
+    expect(pythonProblemCodes()).toHaveLength(55)
+    expect(PROBLEM_CODES).toHaveLength(55)
   })
 
   it('declares the five warnings, and they are codes', () => {
@@ -510,7 +510,7 @@ describe('the problem codes are the python problem codes', () => {
     for (const code of WARNING_CODES) {
       expect(PROBLEM_CODES).toContain(code)
     }
-    expect(WARNING_CODES).toHaveLength(5)
+    expect(WARNING_CODES).toHaveLength(7)
   })
 
   it('anchors every FIELD_CODES entry to a real code', () => {

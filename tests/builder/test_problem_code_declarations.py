@@ -258,7 +258,7 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             codes |= {match.group(2) for match in DECLARATION.finditer(text)}
         self.assertEqual(
             len(codes),
-            50,
+            55,
             "the number of problem codes moved; frontend/src/types/builder.ts's "
             "PROBLEM_CODES and builderTypes.spec.ts's length assertion both "
             "have to move with it",

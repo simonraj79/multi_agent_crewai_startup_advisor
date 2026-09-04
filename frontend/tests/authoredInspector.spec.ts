@@ -604,6 +604,14 @@ describe('field-anchored problems', () => {
       // carry `field` on the payload (C8) instead of an entry in `FIELD_CODES`.
       'model-lacks-capability',
       'tool-param-invalid',
+      // 09 D6's two carry `field` - the offending STATE KEY - which varies with
+      // the document, so neither can have a `FIELD_CODES` entry either. They
+      // are document-level besides: a declared state key belongs to no node.
+      'state-key-reserved',
+      'state-schema-invalid',
+      // A fact about a pair: the attachment node and the edge that hung it on
+      // an agent, rendered on the edge form rather than on a control.
+      'attachment-reference-missing',
     ])
 
     for (const code of PROBLEM_CODES) {

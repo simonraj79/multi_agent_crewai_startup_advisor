@@ -267,7 +267,115 @@ model not in the snapshot with `model-unknown`, over the ceiling with
 
 ## Status
 
-**Planned · 2026-09-02.** No code.
+**Built · 2026-09-04.** All twelve criteria met. The compiler compiles the thing
+the gauntlet is about: an authored agent, an authored crew, the attachments
+folded into both, an error port, an `or_` join, a declared state schema, a
+derived replay plan, a code preview, and twenty determinism goldens.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 1 | `BUILDER_ACTION_REFS` prints `11`, every emitted ref in it | **met** | `python -c "from brief_crew.config import BUILDER_ACTION_REFS; print(len(BUILDER_ACTION_REFS))"` → `11`; `test_compiler.py::ActionRefTests`, `ReplayPlanTests::test_every_replayed_ref_is_still_in_the_allowlist` |
+| 2 | `AuthoredAgentTests` | **met** | `test_compiler.py::AuthoredAgentTests` (8), `AuthoredCrewTests` (5) |
+| 3 | `AttachmentFoldTests` | **met** | `test_compiler.py::AttachmentFoldTests` (5) |
+| 4 | `ErrorRouterTests` | **met** | `test_compiler.py::ErrorRouterTests` (7) |
+| 5 | `OrJoinTests` | **met** | `test_compiler.py::OrJoinTests` (9) |
+| 6 | `StateSchemaTests` | **met** | `test_compiler.py::StateSchemaTests` (8) |
+| 7 | `ReplayPlanTests` | **met** | `test_compiler.py::ReplayPlanTests` (8) |
+| 8 | `test_budget.py` retry / hierarchy / nitro / frontier | **met** | `test_budget.py::{RetryPricingTests, CrewMembershipPricingTests, NitroPricingTests, PerNodeCostTests, FrontierStillRefusedTests}` (14) |
+| 9 | `test_preview.py` | **met** | `test_preview.py` (16), including the sealed sentinel |
+| 10 | `test_rubric11.py`, **20/20** | **met** | `test_rubric11.py` (10), 22 goldens, three legs |
+| 11 | `test_from_document.py` still never imports `build_graph_descriptor`; validator count unchanged | **met** | `grep -c build_graph_descriptor tests/builder/test_from_document.py` → `0`; `unittest discover -s tests/validator` → **254**, unchanged |
+| 12 | `test_client_fixtures.py` after the union grows | **met** | `test_client_fixtures.py`, `test_problem_code_declarations.py`, and the four TypeScript mirrors |
+
+### Measured, 2026-09-04, in this worktree
+
+```text
+Python          2115 run · 0 failures · 6 skipped · 115.6 s   (baseline 2023)
+Frontend unit   1426 passed in 73 files                        (baseline 1400 in 72)
+vue-tsc -b --force   exit 0
+npm run build        603 ms
+```
+
+**The E2E suite was NOT run**, because nothing here reached a route: plan 10
+owns the `compiled` endpoint and plan 11 the console. Everything above is free -
+every billable node in every test is built by a double, and the money spent by
+this plan is **$0.00**.
+
+### Five assumptions, each where the plan's wording and the code disagreed
+
+Stated rather than smoothed over. In every case the reading taken is the one the
+surrounding code most directly supports, and the package wins over the plan.
+
+1. **The compiled state field is `json_schema`, not `schema`.** D6 writes
+   `state = {type: "json_schema", schema, default}`.
+   `FlowJsonSchemaStateDefinition` is `extra="forbid"` and its field is
+   `json_schema`, so the plan's spelling is refused at `Flow.from_declaration`.
+   Measured, and the package wins.
+2. **A library node's folded attachments travel as `attachments`, not `tools`.**
+   C5 spells an authored agent's three lists `tools` / `mcps` / `skills` and the
+   authored arm emits exactly that. On the LIBRARY arm `tools` already means the
+   research-tool NAMES, and one key with two element types across two arms is
+   the drift these modules exist to prevent - so a library node's canvas
+   attachments use the `kind`-discriminated list `bind_attachments` already
+   reads.
+3. **A frame's third field is `kind`, where D9 says "stage".** `FrameData`
+   carries `seq`, `kind`, `event_type`, `level`, `node_id` and no `stage`. The
+   projection is `(node_id, event_type, kind)`.
+4. **Decision 12 is a WARNING on the node, not a refusal of the document.**
+   `tier` is required by the schema and does real work twice - it prices the
+   node and counts against `MAX_ESCALATION_NODES` - so refusing it would refuse
+   every registered crew. `crew-tier-not-honoured` says on the node that the
+   word does not choose a model, which is the gauntlet's *"a parameter rendered
+   in the UI that the compiler ignores"* answered out loud.
+5. **"An `'any'` join that closes a loop is refused" is `back-edge-not-router`.**
+   A loop closer must be a router and a router is exempt from the suppression,
+   so the dangerous combination cannot arise; the refusal an author meets is the
+   existing one, tested from the join's side.
+
+### Two things measured on a flow that RAN, and neither is in the plan
+
+**A compiled `{"or": [a, b]}` over two plain METHOD names is a RACING GROUP.**
+`crewai/flow/runtime/__init__.py:1098-1144` builds one for every multi-event
+`or_` whose alternatives feed no other listener: the pair runs in parallel, the
+first to finish wins, and **the loser is cancelled along with anything its
+completion had already triggered**. On a two-branch diamond that killed the join
+itself with a `CancelledError` nobody sees - `kickoff()` returned the losing
+branch's own output, the join never ran, and no exception left the flow. That
+was the pre-existing behaviour of an UNDECLARED fan-in, and it is now `and`:
+`_Plan._is_concurrent_fan_in` compiles alternatives only where the arrivals are
+router labels (mutually exclusive by construction) or something upstream chose a
+branch. `joins: "any"` still means alternatives, because that is what the word
+says and an author who typed it has asked for the race.
+
+**The D5 re-arm is defence in depth, and says so.** Every router that closes a
+cycle now discards every multi-event `or_` listener ON that cycle rather than
+only the node its own back edge lands on. Disabling that loop turns the shape
+test red and leaves the execution test green, because
+`_execute_single_listener` calls CrewAI's own `_clear_or_listeners()` when it
+re-enters a completed method. What that does not cover is a cycle re-entered
+without re-running a completed method, and the cost of being wrong is a run that
+ends having produced nothing - so it stays, and the comment at the site says
+which of the two is holding it up.
+
+### For the Integrator
+
+- `BUILDER_ACTION_REFS` moved from ten to **eleven** (C5, owned by this plan).
+  Three other constants are new in `config.py`: `BUILDER_ERROR_ROUTER_PREFIX`,
+  `BUILDER_STATE_ERROR_PREFIX` and the public `OPENROUTER_MODEL_PREFIX` - the
+  last because `test_compiler.py` scans `runtime.py` for the literal
+  `openrouter/`, and the platform rule it enforces is right.
+- **C8 grew by five codes**, 50 → 55: `state-key-reserved`,
+  `state-schema-invalid`, `error-port-unconnected`,
+  `attachment-reference-missing`, `crew-tier-not-honoured`. Two are warnings, so
+  `WARNING_CODES` is 5 → 7.
+- **The `BuilderBudget` RESPONSE gained `per_node`**, requested by 04. The
+  stored `BuilderBudget` on the document is unchanged, deliberately: a new
+  column there would change every stored row.
+- `bounds.py` and `service/builder_api.py` carry this plan's edits but were
+  **committed inside `4d8a054`** (plan 04's commit) by a concurrent session
+  sharing this worktree's index. The content is this plan's and is green; the
+  attribution is not.
+
 
 Contract notes for 00: none new. C5 is spelled out above; C7's `compiled`
 endpoint is named in 10 and consumed here.

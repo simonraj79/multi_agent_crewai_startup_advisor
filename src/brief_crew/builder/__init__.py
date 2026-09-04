@@ -29,6 +29,7 @@ from brief_crew.builder.bounds import (
 )
 from brief_crew.builder.budget import (
     BudgetEstimate,
+    NodeCost,
     budget_problems,
     estimate_budget,
     node_call_count,
@@ -83,6 +84,7 @@ __all__ = [
     "AuthoredAgentConfig",
     "AuthoredCrewConfig",
     "BudgetEstimate",
+    "NodeCost",
     "BuilderBudget",
     "BuilderDocument",
     "BuilderEdge",

@@ -32,6 +32,7 @@ from typing import Any
 
 from brief_crew.builder import BuilderDocument
 from brief_crew.builder.compiler import (
+    CREW_TIER_NOT_HONOURED,
     LIBRARY_UNBUILDABLE,
     LIBRARY_UNKNOWN,
     document_problems,
@@ -186,7 +187,15 @@ class LibraryProblemsTests(unittest.TestCase):
     def test_an_unbuildable_crew_is_an_error_before_anything_bills(self) -> None:
         for crew_id in sorted(UNBUILDABLE_BUILDER_CREWS):
             with self.subTest(crew=crew_id):
-                problems = library_problems(one_crew_document(crew_id))
+                # Errors only. Every library crew node also carries the
+                # `crew-tier-not-honoured` WARNING that decision 12 asked for,
+                # and a test that counted the whole list would go red the next
+                # time an advisory is added rather than when a refusal changes.
+                problems = [
+                    problem
+                    for problem in library_problems(one_crew_document(crew_id))
+                    if problem.severity == "error"
+                ]
                 self.assertEqual(len(problems), 1)
                 self.assertEqual(problems[0].code, LIBRARY_UNBUILDABLE)
                 self.assertEqual(problems[0].severity, "error")
@@ -199,7 +208,18 @@ class LibraryProblemsTests(unittest.TestCase):
     def test_a_buildable_crew_is_accepted(self) -> None:
         for crew_id in sorted(BUILDABLE_BUILDER_CREW_IDS):
             with self.subTest(crew=crew_id):
-                self.assertEqual(library_problems(one_crew_document(crew_id)), [])
+                problems = library_problems(one_crew_document(crew_id))
+                self.assertEqual(
+                    [problem for problem in problems if problem.severity == "error"], []
+                )
+                # Decision 12, said out loud on the node rather than by silence:
+                # a registered crew's `tier` prices and bounds the graph and
+                # does NOT choose its models, and the gauntlet's forbidden list
+                # names a parameter the compiler ignores.
+                self.assertEqual(
+                    [problem.code for problem in problems], [CREW_TIER_NOT_HONOURED]
+                )
+                self.assertEqual(problems[0].field, "tier")
 
     def test_an_unknown_crew_is_still_refused_and_lists_the_buildable_ones(self) -> None:
         problems = library_problems(one_crew_document("nope"))
@@ -259,7 +279,10 @@ class CompileAndPublishTests(unittest.TestCase):
         from brief_crew.builder.compiler import compile_document
 
         graph = one_crew_document("market")
-        self.assertEqual(document_problems(graph), [])
+        self.assertEqual(
+            [problem for problem in document_problems(graph) if problem.severity == "error"],
+            [],
+        )
         self.assertIsNotNone(compile_document(graph).definition)
 
 

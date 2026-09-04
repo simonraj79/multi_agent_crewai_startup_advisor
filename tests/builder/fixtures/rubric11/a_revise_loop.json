@@ -1,0 +1,443 @@
+{
+  "budget": {
+    "billable_nodes": 2,
+    "compiled_at": "2026-09-04T00:00:00Z",
+    "cycles": 1,
+    "escalation_nodes": 0,
+    "static_cost_usd": 1.25631
+  },
+  "definition": {
+    "config": {
+      "max_method_calls": 4
+    },
+    "description": "A revise loop",
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:seed_input",
+          "with": {
+            "field": "idea",
+            "max_chars": 2000,
+            "node_id": "idea",
+            "required": true
+          }
+        },
+        "start": true
+      },
+      "n1_seed": {
+        "description": "seed",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:transform",
+          "with": {
+            "args": {
+              "value": "${state.out__idea}"
+            },
+            "node_id": "seed",
+            "op": "default"
+          }
+        },
+        "listen": {
+          "or": [
+            "n0_idea",
+            "e6_again"
+          ]
+        }
+      },
+      "n2_fork": {
+        "description": "fork",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:route_branch",
+          "with": {
+            "node_id": "fork",
+            "rearm": [],
+            "rules": [
+              {
+                "key": "out__decide",
+                "label": "e2_first",
+                "op": "eq",
+                "value": null
+              },
+              {
+                "key": null,
+                "label": "e2_second",
+                "op": "otherwise",
+                "value": null
+              }
+            ],
+            "source": "${state.out__seed}"
+          }
+        },
+        "emit": [
+          "e2_first",
+          "e2_second"
+        ],
+        "listen": "n1_seed",
+        "router": true
+      },
+      "n3_left": {
+        "description": "left",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "advanced": {
+              "allow_delegation": false,
+              "cache": true,
+              "max_execution_time": null,
+              "max_rpm": null,
+              "memory": false,
+              "respect_context_window": true
+            },
+            "backstory": "years of it",
+            "expert": {
+              "planning": false,
+              "planning_config": null,
+              "prompt_template": null,
+              "response_template": null,
+              "system_template": null
+            },
+            "goal": "do the left work",
+            "guardrail_max_retries": 2,
+            "llm": {
+              "frequency_penalty": null,
+              "max_tokens": null,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": null,
+              "seed": null,
+              "stop": [],
+              "temperature": 0.2,
+              "timeout": null,
+              "top_p": null
+            },
+            "max_iter": 2,
+            "mcps": [],
+            "node_id": "left",
+            "prompt_inputs": {},
+            "role": "left specialist",
+            "skills": [],
+            "task": {
+              "async_execution": false,
+              "description": "work from ${state.out__seed}",
+              "expected_output": "a paragraph",
+              "markdown": false,
+              "output_schema": null
+            },
+            "tier": "cheap",
+            "tools": []
+          }
+        },
+        "listen": "e2_first"
+      },
+      "n4_right": {
+        "description": "right",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_agent",
+          "with": {
+            "advanced": {
+              "allow_delegation": false,
+              "cache": true,
+              "max_execution_time": null,
+              "max_rpm": null,
+              "memory": false,
+              "respect_context_window": true
+            },
+            "backstory": "years of it",
+            "expert": {
+              "planning": false,
+              "planning_config": null,
+              "prompt_template": null,
+              "response_template": null,
+              "system_template": null
+            },
+            "goal": "do the right work",
+            "guardrail_max_retries": 2,
+            "llm": {
+              "frequency_penalty": null,
+              "max_tokens": null,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": null,
+              "seed": null,
+              "stop": [],
+              "temperature": 0.2,
+              "timeout": null,
+              "top_p": null
+            },
+            "max_iter": 2,
+            "mcps": [],
+            "node_id": "right",
+            "prompt_inputs": {},
+            "role": "right specialist",
+            "skills": [],
+            "task": {
+              "async_execution": false,
+              "description": "work from ${state.out__seed}",
+              "expected_output": "a paragraph",
+              "markdown": false,
+              "output_schema": null
+            },
+            "tier": "cheap",
+            "tools": []
+          }
+        },
+        "listen": "e2_second"
+      },
+      "n5_merge": {
+        "description": "merge",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:transform",
+          "with": {
+            "args": {
+              "value": "${state.out__seed}"
+            },
+            "node_id": "merge",
+            "op": "default"
+          }
+        },
+        "listen": {
+          "or": [
+            "n3_left",
+            "n4_right"
+          ]
+        }
+      },
+      "n6_decide": {
+        "description": "decide",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:route_branch",
+          "with": {
+            "node_id": "decide",
+            "rearm": [
+              "n1_seed",
+              "n5_merge"
+            ],
+            "rules": [
+              {
+                "key": "out__decide",
+                "label": "e6_again",
+                "op": "eq",
+                "value": null
+              },
+              {
+                "key": null,
+                "label": "e6_done",
+                "op": "otherwise",
+                "value": null
+              }
+            ],
+            "source": "${state.out__merge}"
+          }
+        },
+        "emit": [
+          "e6_again",
+          "e6_done"
+        ],
+        "listen": "n5_merge",
+        "router": true
+      },
+      "n7_report": {
+        "description": "report",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "body_key": "markdown_body",
+            "node_id": "report",
+            "source": "${state.out__merge}"
+          }
+        },
+        "listen": "e6_done"
+      }
+    },
+    "name": "builder_ug_11111111_v1",
+    "schema": "crewai.flow/v1",
+    "state": {
+      "default": {
+        "__builder__": {
+          "document": {
+            "id": "ug_11111111",
+            "input_field": "idea",
+            "version": 1
+          },
+          "gates": {}
+        },
+        "idea": "",
+        "out__decide": null,
+        "out__fork": null,
+        "out__idea": null,
+        "out__left": null,
+        "out__merge": null,
+        "out__report": null,
+        "out__right": null,
+        "out__seed": null
+      },
+      "type": "dict"
+    }
+  },
+  "frames": [
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_START",
+      "FrameKind.RUN_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "seed",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "seed",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "left",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "left",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "merge",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "merge",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "decide",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "decide",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "decide",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "seed",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "seed",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "fork",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "right",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "right",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "merge",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "merge",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "decide",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "decide",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "decide",
+      "UIEventType.EDGE_PROCESS",
+      "FrameKind.EDGE_TAKEN"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_END",
+      "FrameKind.RUN_STATE"
+    ]
+  ],
+  "result": {
+    "markdown_body": "a scheduling assistant for clinics",
+    "node_id": "report"
+  }
+}

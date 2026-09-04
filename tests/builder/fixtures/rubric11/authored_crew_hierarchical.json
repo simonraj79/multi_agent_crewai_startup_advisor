@@ -1,0 +1,249 @@
+{
+  "budget": {
+    "billable_nodes": 1,
+    "compiled_at": "2026-09-04T00:00:00Z",
+    "cycles": 0,
+    "escalation_nodes": 0,
+    "static_cost_usd": 0.348975
+  },
+  "definition": {
+    "config": {
+      "max_method_calls": 4
+    },
+    "description": "Authored crew, hierarchical",
+    "methods": {
+      "n0_idea": {
+        "description": "idea",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:seed_input",
+          "with": {
+            "field": "idea",
+            "max_chars": 2000,
+            "node_id": "idea",
+            "required": true
+          }
+        },
+        "start": true
+      },
+      "n1_team": {
+        "description": "team",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:run_crew",
+          "with": {
+            "cache": true,
+            "guardrail_max_retries": 2,
+            "manager_agent": null,
+            "manager_llm": {
+              "frequency_penalty": null,
+              "max_tokens": null,
+              "model": "google/gemini-3.8-flash",
+              "presence_penalty": null,
+              "reasoning_effort": null,
+              "response_format": null,
+              "seed": null,
+              "stop": [],
+              "temperature": null,
+              "timeout": null,
+              "top_p": null
+            },
+            "max_iter": 2,
+            "max_rpm": null,
+            "mcps": [],
+            "members": [
+              {
+                "advanced": {
+                  "allow_delegation": false,
+                  "cache": true,
+                  "max_execution_time": null,
+                  "max_rpm": null,
+                  "memory": false,
+                  "respect_context_window": true
+                },
+                "backstory": "years of it",
+                "expert": {
+                  "planning": false,
+                  "planning_config": null,
+                  "prompt_template": null,
+                  "response_template": null,
+                  "system_template": null
+                },
+                "goal": "do the writer work",
+                "guardrail_max_retries": 2,
+                "llm": {
+                  "frequency_penalty": null,
+                  "max_tokens": null,
+                  "model": "google/gemini-3.8-flash",
+                  "presence_penalty": null,
+                  "reasoning_effort": null,
+                  "response_format": null,
+                  "seed": null,
+                  "stop": [],
+                  "temperature": 0.2,
+                  "timeout": null,
+                  "top_p": null
+                },
+                "max_iter": 2,
+                "mcps": [],
+                "node_id": "writer",
+                "prompt_inputs": {},
+                "role": "writer specialist",
+                "skills": [],
+                "task": {
+                  "async_execution": false,
+                  "description": "work from ${state.out__idea}",
+                  "expected_output": "a paragraph",
+                  "markdown": false,
+                  "output_schema": null
+                },
+                "tier": "cheap",
+                "tools": []
+              },
+              {
+                "advanced": {
+                  "allow_delegation": false,
+                  "cache": true,
+                  "max_execution_time": null,
+                  "max_rpm": null,
+                  "memory": false,
+                  "respect_context_window": true
+                },
+                "backstory": "years of it",
+                "expert": {
+                  "planning": false,
+                  "planning_config": null,
+                  "prompt_template": null,
+                  "response_template": null,
+                  "system_template": null
+                },
+                "goal": "do the editor work",
+                "guardrail_max_retries": 2,
+                "llm": {
+                  "frequency_penalty": null,
+                  "max_tokens": null,
+                  "model": "google/gemini-3.8-flash",
+                  "presence_penalty": null,
+                  "reasoning_effort": null,
+                  "response_format": null,
+                  "seed": null,
+                  "stop": [],
+                  "temperature": 0.2,
+                  "timeout": null,
+                  "top_p": null
+                },
+                "max_iter": 2,
+                "mcps": [],
+                "node_id": "editor",
+                "prompt_inputs": {},
+                "role": "editor specialist",
+                "skills": [],
+                "task": {
+                  "async_execution": false,
+                  "description": "work from ${state.out__idea}",
+                  "expected_output": "a paragraph",
+                  "markdown": false,
+                  "output_schema": null
+                },
+                "tier": "cheap",
+                "tools": []
+              }
+            ],
+            "memory": false,
+            "node_id": "team",
+            "planning": false,
+            "planning_llm": null,
+            "process": "hierarchical",
+            "prompt_inputs": {},
+            "task_order": [
+              "writer",
+              "editor"
+            ],
+            "tier": "cheap",
+            "tools": [],
+            "verbose": false
+          }
+        },
+        "listen": "n0_idea"
+      },
+      "n2_report": {
+        "description": "report",
+        "do": {
+          "call": "code",
+          "ref": "brief_crew.builder.runtime:emit_output",
+          "with": {
+            "body_key": "markdown_body",
+            "node_id": "report",
+            "source": "${state.out__team}"
+          }
+        },
+        "listen": "n1_team"
+      }
+    },
+    "name": "builder_ug_11111111_v1",
+    "schema": "crewai.flow/v1",
+    "state": {
+      "default": {
+        "__builder__": {
+          "document": {
+            "id": "ug_11111111",
+            "input_field": "idea",
+            "version": 1
+          },
+          "gates": {}
+        },
+        "idea": "",
+        "out__idea": null,
+        "out__report": null,
+        "out__team": null
+      },
+      "type": "dict"
+    }
+  },
+  "frames": [
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_START",
+      "FrameKind.RUN_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "idea",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "team",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "team",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_START",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "report",
+      "UIEventType.NODE_END",
+      "FrameKind.NODE_STATE"
+    ],
+    [
+      "workflow",
+      "UIEventType.WORKFLOW_END",
+      "FrameKind.RUN_STATE"
+    ]
+  ],
+  "result": {
+    "markdown_body": "{\"node_id\": \"team\", \"produced_by\": \"hierarchical crew of 2\", \"prompt_inputs\": {}, \"summary\": \"Synthetic output for team; no model was called.\", \"tier\": \"cheap\"}",
+    "node_id": "report"
+  }
+}

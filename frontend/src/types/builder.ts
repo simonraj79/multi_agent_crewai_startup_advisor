@@ -824,13 +824,31 @@ export const PROBLEM_CODES = [
   // never lands on a node, so it is declared in `service/builder_api.py` where
   // the three greps that build this union cannot sweep it up.
   'skill-unknown',
+  // 09-compiler.md, added 2026-09-04 with the authored compile path. The first
+  // two are about `document.state`: the compiler owns `out__*`, `err__*`,
+  // `turns__*` and the input field, and a declared key under one of those names
+  // would be overwritten by a node's own output. The third is the `on_error:
+  // route` port with nothing drawn from it - legal, and almost certainly not
+  // what was meant. The fourth is what an IMPORTED graph looks like, because
+  // `export.py` strips `server_id` and `skill_id` on purpose.
+  'state-key-reserved', 'state-schema-invalid', 'error-port-unconnected',
+  'attachment-reference-missing',
+  // The SEVENTH warning, and decision 12 said out loud rather than by silence:
+  // a registered crew builds its own LLMs in python, so the node's `tier` word
+  // prices and bounds the graph and does not choose a model. The gauntlet's own
+  // forbidden list names a parameter rendered in the UI that the compiler
+  // ignores; this is that rule answered on the node.
+  'crew-tier-not-honoured',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 
 /**
- * The ONLY four warnings; everything else is an error and blocks publish.
- * `bounds.py` writes `severity="warning"` at exactly four sites, and all four
- * describe a graph that is legal and probably not what was meant.
+ * The warnings; everything else is an error and blocks publish. Every one of
+ * them describes a graph that is legal and probably not what was meant.
+ *
+ * COUNT IT, never copy it - the list has grown three times and the prose beside
+ * it has been wrong twice:
+ *   grep -c 'severity="warning"' src/brief_crew/builder/*.py
  *
  * `attachment-unattached` is the fourth, added with D2. It is a warning rather
  * than an error for a reason worth keeping: it is exactly what a node looks
@@ -847,6 +865,12 @@ export const WARNING_CODES = [
   // Hiding it in the picker would be the quietly-divergent double this
   // repository keeps warning about.
   'mcp-tool-description-suspicious',
+  // The sixth and seventh, added 2026-09-04 with plan 09. `error-port-
+  // unconnected` is a graph that is legal and probably not what was meant - the
+  // author asked for a recovery path and did not draw one. `crew-tier-not-
+  // honoured` is a control that does real work in two places and not in the
+  // third; refusing the document over it would refuse every registered crew.
+  'error-port-unconnected', 'crew-tier-not-honoured',
 ] as const
 
 export interface BuilderProblem {
@@ -919,6 +943,12 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
   // Plan 01 D10: a `credential_id` the caller's vault does not hold anchors to
   // the picker that chose it (`data-field="credential_id"` in the inspector).
   'credential-missing': 'credential_id',
+  // 09-compiler.md's two with a fixed control. `on_error` is the switch that
+  // grew the `error` port, so an unconnected one belongs beside it; `tier` is
+  // decision 12's whole subject - the word that prices and bounds a registered
+  // crew and does not choose its models.
+  'error-port-unconnected': 'on_error',
+  'crew-tier-not-honoured': 'tier',
 
   /*
    * 04 D7: every FD14 code with a FIXED field. The three whose field varies

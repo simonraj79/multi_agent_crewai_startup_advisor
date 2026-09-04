@@ -221,6 +221,23 @@ class SyntheticCrewFactories:
     ) -> _SyntheticCrew:
         return _SyntheticCrew(node_id=node_id, produced_by=crew_id, tier=tier)
 
+    # The two AUTHORED builders (09 D1). Without them `SYNTHETIC=1` could run a
+    # library graph and not the thing the gauntlet is about - and the E2E suite,
+    # the rubric-11 harness and every free local run would all be exercising the
+    # half of the compiler that was never the hard part.
+    #
+    # `produced_by` is the author's own ROLE rather than a registry id, which is
+    # what makes the synthetic output identify the node the way a real one would.
+    def authored_agent_crew(self, *, node_id: str, spec: Any) -> _SyntheticCrew:
+        return _SyntheticCrew(node_id=node_id, produced_by=spec.role, tier=spec.tier)
+
+    def authored_crew(self, *, node_id: str, spec: Any) -> _SyntheticCrew:
+        return _SyntheticCrew(
+            node_id=node_id,
+            produced_by=f"{spec.process} crew of {len(spec.members)}",
+            tier=spec.tier,
+        )
+
 
 def synthetic_builder_runner(workflow: "BuilderWorkflow") -> BuilderFlowRunner:
     """The factory `create_app(synthetic=True)` installs."""

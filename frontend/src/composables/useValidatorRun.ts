@@ -4,7 +4,7 @@ import { MOCK_GRAPH } from '../data/mockGraph'
 import { scopedKey } from '../data/identityStorage'
 import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
-import { useRunChoreography } from './useRunChoreography'
+import { useRunChoreography, type Handoff } from './useRunChoreography'
 import type {
   RunResult,
   CallChip,
@@ -90,6 +90,15 @@ export interface StudioNodeData extends Record<string, unknown> {
   /** True when this node's output was REPLAYED rather than run (10 D5). */
   replayed: boolean
   /**
+   * True for the ~200ms after a handoff token arrived here, which is what fires
+   * the medallion's one-shot receipt pulse.
+   *
+   * The ARRIVAL and not the node's state, deliberately. A state is a proxy for
+   * an arrival and proxies drift - the crew strip's row-back announcement keyed
+   * on the boat's position and announced a revision on a run that never revised.
+   */
+  receiving: boolean
+  /**
    * This node's position in the descriptor, for the landing stagger's negative
    * delay. Index and not the delay itself, so the 40ms step lives in one place.
    */
@@ -124,6 +133,10 @@ export interface ActiveCall {
 export interface StudioEdgeData extends Record<string, unknown> {
   label?: string
   active: boolean
+  /** The token walking this edge right now, or undefined (plan 11 D3). */
+  handoff?: Handoff
+  /** The SOURCE node's character index, so the token wears the sender's colour. */
+  character?: number
 }
 
 const initialUsage = (): UsageMetrics => ({
@@ -482,6 +495,7 @@ export function useValidatorRun(
         receded: choreography.isReceded(node.id),
         errorMessage: choreography.nodeErrors.value[node.id] ?? '',
         replayed: choreography.replayed.value.has(node.id),
+        receiving: choreography.receiving.value.has(node.id),
         index,
         landing: choreography.landed.value,
         nodeId: node.id,
@@ -500,7 +514,12 @@ export function useValidatorRun(
       source: edge.source,
       target: edge.target,
       type: 'workflow',
-      data: { label: edge.label ?? undefined, active: activeEdgeIds.value.has(edge.id) },
+      data: {
+        label: edge.label ?? undefined,
+        active: activeEdgeIds.value.has(edge.id),
+        handoff: choreography.handoffs.value.find((entry) => entry.edgeId === edge.id),
+        character: choreography.characterIndex(edge.source),
+      },
     })),
   )
 

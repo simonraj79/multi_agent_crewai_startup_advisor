@@ -164,6 +164,7 @@ describe('node card liveness rendering', () => {
     receded: false,
     errorMessage: '',
     replayed: false,
+    receiving: false,
     index: 0,
     landing: false,
     nodeId: 'node',

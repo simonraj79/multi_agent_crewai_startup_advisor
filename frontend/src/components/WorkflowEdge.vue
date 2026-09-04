@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from '@vue-flow/core'
+import HandoffToken from './HandoffToken.vue'
 import type { StudioEdgeData } from '../composables/useValidatorRun'
 
 const props = defineProps<EdgeProps<StudioEdgeData>>()
+
+const emit = defineEmits<{
+  /** The token finished its walk. Carries the edge id (plan 11 D3). */
+  handoffDone: [string]
+}>()
 
 const route = computed(() => getBezierPath({
   sourceX: props.sourceX,
@@ -19,6 +25,20 @@ const route = computed(() => getBezierPath({
   <g class="workflow-edge" :class="{ 'is-active': data?.active }">
     <BaseEdge :id="id" :path="route[0]" class="edge-base" />
     <path v-if="data?.active" :d="route[0]" class="edge-traversal" />
+    <!--
+      The message itself, when the run said one crossed here. The dashed march
+      above stays: it is what a run WITHOUT `edge_traversal` frames still gets,
+      and a backend one version behind must not lose its edge animation to a
+      feature it does not emit.
+    -->
+    <HandoffToken
+      v-if="data?.handoff"
+      :key="data.handoff.startedAt"
+      :path="route[0]"
+      :handoff="data.handoff"
+      :character="data.character ?? 1"
+      @done="emit('handoffDone', $event)"
+    />
     <EdgeLabelRenderer v-if="data?.label">
       <span
         class="edge-label"

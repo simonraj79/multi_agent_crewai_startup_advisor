@@ -30,6 +30,7 @@ function nodeData(overrides: Partial<StudioNodeData> = {}): StudioNodeData {
     receded: false,
     errorMessage: '',
     replayed: false,
+    receiving: false,
     index: 0,
     landing: false,
     nodeId: 'node',

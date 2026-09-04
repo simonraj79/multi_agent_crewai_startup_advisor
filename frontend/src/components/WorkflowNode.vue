@@ -217,7 +217,7 @@ const ariaLabel = computed(() => {
     <div
       v-if="!isQuarantine"
       class="node-character"
-      :class="{ 'is-receiving': data.state === 'running' }"
+      :class="{ 'is-receiving': data.receiving }"
       data-testid="node-character"
       :data-character="data.character"
       :style="characterStyle"

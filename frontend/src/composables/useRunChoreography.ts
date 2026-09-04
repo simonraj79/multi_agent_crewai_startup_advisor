@@ -46,6 +46,14 @@ export const REVEAL_CHARS_PER_SECOND = 120
  */
 export const MAX_PENDING_REVEALS = 2
 
+/**
+ * How long the target medallion carries its receipt class.
+ *
+ * Longer than the 120ms pulse it triggers, so the animation is never cut off,
+ * and short enough that two arrivals a quarter second apart are two pulses.
+ */
+export const RECEIPT_MS = 200
+
 /** Entries older than the last this many collapse to a one-line header. */
 export const EXPANDED_ENTRIES = 3
 
@@ -186,6 +194,9 @@ export function useRunChoreography(options: RunChoreographyOptions) {
   const framesApplied = ref(0)
   /** True from the first frame, so the cards land once and only once. */
   const landed = ref(false)
+  /** Nodes a token has just arrived at, for the one-shot receipt pulse. */
+  const receiving = ref(new Set<string>())
+  const receiptTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   /**
    * Roles and tasks seen on this node's `agent` frames.
@@ -261,6 +272,9 @@ export function useRunChoreography(options: RunChoreographyOptions) {
 
   function reset(): void {
     stopReveal()
+    for (const timer of receiptTimers.values()) clearTimeout(timer)
+    receiptTimers.clear()
+    receiving.value = new Set()
     handoffs.value = []
     dialogue.value = []
     stages.value = []
@@ -337,9 +351,35 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     ]
   }
 
-  /** The token arrived (or was cancelled). Called by `HandoffToken.vue`. */
+  /**
+   * The token arrived (or was cancelled). Called by `HandoffToken.vue`.
+   *
+   * Arrival is also when the TARGET's medallion pulses once, and that pulse is
+   * latched for `RECEIPT_MS` rather than derived from the node's state. Two
+   * reasons, and the second is the one that decides it: a node's state is a
+   * proxy for arrival and proxies drift (this repository has the scar - the
+   * crew strip's row-back announcement keyed on the boat's position and fired
+   * on a run that never revised); and a CSS one-shot only fires when its class
+   * is ADDED, so a flag that never cleared would animate the first handoff into
+   * a node and silently ignore every later one.
+   */
   function endHandoff(edgeId: string): void {
+    const arriving = handoffs.value.find((entry) => entry.edgeId === edgeId)
     handoffs.value = handoffs.value.filter((entry) => entry.edgeId !== edgeId)
+    if (!arriving) return
+    const target = arriving.to
+    receiving.value = new Set(receiving.value).add(target)
+    const timer = receiptTimers.get(target)
+    if (timer) clearTimeout(timer)
+    receiptTimers.set(
+      target,
+      setTimeout(() => {
+        receiptTimers.delete(target)
+        const next = new Set(receiving.value)
+        next.delete(target)
+        receiving.value = next
+      }, RECEIPT_MS),
+    )
   }
 
   function pushStage(details: Record<string, unknown>): void {
@@ -517,6 +557,7 @@ export function useRunChoreography(options: RunChoreographyOptions) {
 
   return {
     handoffs,
+    receiving,
     dialogue,
     stages,
     nodeErrors,

@@ -33,6 +33,7 @@ function nodeData(overrides: Partial<StudioNodeData> = {}): StudioNodeData {
     receded: false,
     errorMessage: '',
     replayed: false,
+    receiving: false,
     index: 0,
     landing: false,
     nodeId: 'research_market',
@@ -69,11 +70,15 @@ describe('the character medallion', () => {
     expect(wrapper.find('[data-testid="node-character"]').exists()).toBe(false)
   })
 
-  it('takes the receipt class only while the node is running', () => {
-    expect(card({ state: 'running' }).get('[data-testid="node-character"]').classes())
+  it('pulses on an ARRIVAL rather than on a state', () => {
+    // The distinction `endHandoff`'s docstring argues: a state is a proxy for
+    // an arrival, and this repository has already shipped one announcement
+    // keyed on a proxy that fired on a run that never revised.
+    expect(card({ receiving: true }).get('[data-testid="node-character"]').classes())
       .toContain('is-receiving')
-    expect(card({ state: 'completed' }).get('[data-testid="node-character"]').classes())
-      .not.toContain('is-receiving')
+    expect(
+      card({ receiving: false, state: 'running' }).get('[data-testid="node-character"]').classes(),
+    ).not.toContain('is-receiving')
   })
 
   it('agrees with the pure function the rail and the token also call', () => {

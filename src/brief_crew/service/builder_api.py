@@ -400,6 +400,10 @@ class BuilderVersionModel(BaseModel):
     name: str | None
     #: How many nodes that version has; None when the row cannot say.
     node_count: int | None
+    #: How many edges that version has; None when the row cannot say. The
+    #: browser subtracts adjacent rows into `+2 nodes, -1 edge` (D-15-24); a
+    #: delta over nodes alone would report a rewiring as no change at all.
+    edge_count: int | None
 
 
 class BuilderValidationModel(BaseModel):
@@ -1348,6 +1352,7 @@ def create_builder_router(
                 source=entry.source or "stored",
                 name=entry.name,
                 node_count=entry.node_count,
+                edge_count=entry.edge_count,
             )
             for entry in history.entries
         ]

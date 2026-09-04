@@ -219,10 +219,14 @@ class VersionSummary:
     schema this service no longer reads must still appear in the history, or
     an author cannot see which version it was that stopped opening.
 
-    `name` and `node_count` are READ off the raw row, not validated out of it
-    (round 2, D-15-3): a mapping with a `name` string and a `nodes` list gives
-    both, anything else gives None, and a row the schema would refuse still
-    lists with whatever it can say. `source` is the column of the same round -
+    `name`, `node_count` and `edge_count` are READ off the raw row, not
+    validated out of it (round 2, D-15-3; `edge_count` round 3, D-15-24): a
+    mapping with a `name` string and `nodes` / `edges` lists gives all three,
+    anything else gives None, and a row the schema would refuse still lists
+    with whatever it can say. The two counts are what the browser turns into a
+    per-row DELTA - `+2 nodes, -1 edge` against the version below - because
+    two rows differing only by `5 nodes`/`4 nodes` and `1.4 KB`/`1.3 KB` cost
+    two clicks per candidate to tell apart and do not scale. `source` is the column of the same round -
     `created`, `saved`, `autosaved`, `restored from v3`, `imported`,
     `duplicated` - and None for a row written before the column existed.
     """
@@ -233,6 +237,7 @@ class VersionSummary:
     source: str | None = None
     name: str | None = None
     node_count: int | None = None
+    edge_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -859,22 +864,30 @@ def _version_source(value: str) -> str:
 
 
 def _lenient_summary(payload: Any) -> dict[str, Any]:
-    """`name` and `node_count` off a raw stored row, or None for each.
+    """`name`, `node_count` and `edge_count` off a raw stored row, or None each.
 
     Read, not validated (D-15-3): the version browser lists every stored row,
     including one the schema no longer parses, and a summary that went through
     `BuilderDocument` would hide exactly the row an author most wants to see.
-    A mapping with a string `name` gives a name; a list under `nodes` gives a
-    count; anything else gives None for that field and the row still lists.
+    A mapping with a string `name` gives a name; a list under `nodes` or
+    `edges` gives that count; anything else gives None for that field and the
+    row still lists.
+
+    `edge_count` joined in round 3 (D-15-24) for the same reason the other two
+    arrived in round 2: the browser subtracts adjacent rows into a delta, and
+    a delta over nodes alone would call a version that only rewired the graph
+    identical to the one below it.
     """
 
     if not isinstance(payload, Mapping):
-        return {"name": None, "node_count": None}
+        return {"name": None, "node_count": None, "edge_count": None}
     name = payload.get("name")
     nodes = payload.get("nodes")
+    edges = payload.get("edges")
     return {
         "name": name if isinstance(name, str) and name else None,
         "node_count": len(nodes) if isinstance(nodes, list) else None,
+        "edge_count": len(edges) if isinstance(edges, list) else None,
     }
 
 

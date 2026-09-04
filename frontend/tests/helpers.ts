@@ -257,10 +257,26 @@ export function vocabularyFixture(
 ): BuilderVocabulary {
   return {
     schema_id: BUILDER_SCHEMA_ID,
-    // Handler order, NOT sorted. `builder_api.py::_vocabulary` writes these as
-    // literals and the palette renders them in the order it is given, so
-    // sorting here would be testing a palette nobody ships.
-    node_kinds: ['input', 'agent', 'crew', 'gate', 'router', 'transform', 'output'],
+    // Handler order, NOT sorted. `builder_api.py::_vocabulary` derives these
+    // from the `NodeKind` union - flow kinds first, attachments last - and the
+    // palette renders them in the order it is given, so sorting here would be
+    // testing a palette nobody ships.
+    //
+    // Ten since 2026-09-04. Seven until then, while `NodeKind` already declared
+    // ten: the fixture was faithful to a handler that had gone stale, which is
+    // the hazard this whole file exists for arriving one layer up.
+    node_kinds: [
+      'input',
+      'agent',
+      'crew',
+      'gate',
+      'router',
+      'transform',
+      'output',
+      'tool',
+      'mcp',
+      'skill',
+    ],
     tiers: ['cheap', 'escalation'],
     agent_ids: [
       'feasibility_analyst',

@@ -247,3 +247,100 @@ Open decision for the owner: whether attachment tiles get letter hotkeys
 **Decision 18 — letters `T`, `M`, `K`.** Digits 1–7 already select node kinds,
 and a second digit row on the same surface is a collision an author discovers
 by pressing one.
+
+### Server half built — 2026-09-04
+
+Criteria **2, 3, 4 and 5**. Measured: Python **1660 → 1742**, 0 failures, 6
+skipped; frontend **1233 → 1316** in 70 files; `vue-tsc -b --force` exit 0;
+`npm run build` green. Criteria 1 (TS half), 6 and 11 were already met by the
+client half (`8129ef8`, `8ff936d`); 7, 8, 9 and 10 are still open and are the
+client's.
+
+**Where FD5 and this file's D3 disagree, FD5 as amended by 00's S9 ruling won,
+and here is the list.** D3's inline field list names `reasoning`,
+`max_reasoning_attempts`, `multimodal` and `function_calling_llm`. All four are
+deprecated at CrewAI 1.15.18, and the ruling cuts the last two outright and
+replaces the first two with `planning` (bool) plus exactly four of
+`planning_config`'s eleven fields — `reasoning_effort`, `max_attempts`,
+`max_steps`, `max_replans`. `AuthoredAgentConfig` is built to the ruling, and
+because `BuilderModel` is `extra="forbid"` all four old spellings are a 422
+naming the key rather than a control that quietly does nothing.
+`tests/builder/test_authored_nodes.py` asserts each refusal by name, and also
+that the seven excluded `planning_config` fields are refused — the three prompt
+overrides on the grounds that a third place for prompts is a third place, and
+`llm` because a planner on a different model from the one the node names is a
+cost surprise with no visible cause. `Task.max_retries` is not rendered;
+`guardrail_max_retries` is, and the builder's own `retry.max_retries` is a
+node-level concept sharing the name.
+
+**Two assumptions, stated rather than hidden.** `on_error` is
+`Literal["fail", "route"]` — the two values D1's conditional `error` port needs
+and the two `nodeKinds.ts::billableOut` already reads; a third value would be
+inventing a behaviour. `task.output_schema` is a FLAT `dict[str, ScalarType]`
+rather than a nested JSON Schema, because a nested schema on a canvas is a
+second document format inside the document, and every argument shape the
+compiler's entrypoints accept is flat for the same reason.
+
+**Criterion 4 is met for the mapping and is BLOCKED on one line that is not
+mine.** `_v1_to_v2` is written, registered in `_UPGRADES` and proved end to end
+— idempotent over every committed fixture, and byte-identical apart from the
+schema string on the first pass. It is **inert**, because `upgrade_document`
+walks `_UPGRADES` only while a document's schema differs from
+`config.BUILDER_DOCUMENT_SCHEMA`, and that constant is still `builder.flow/v1`.
+Moving it is a two-suite contract change outside this brief's surfaces:
+`frontend/src/types/builder.ts` declares `BUILDER_SCHEMA_ID = 'builder.flow/v1'`,
+`builderVocabulary.ts::normalise` refuses a vocabulary whose `schema_id` differs
+from it, and `useBuilderPersistence`, `builderSerialize`, `useBuilderClipboard`
+and three template files all write it. Flipping the server alone disables the
+whole palette with a sentence about a schema the author never typed.
+`V1ToV2MappingTests` patches the constant where `upgrade.py` reads it and proves
+the walk, so the day both halves move there is nothing left to write.
+
+**`models` and `tools` are absent from the vocabulary, and that is a decision.**
+C2 says both are served verbatim from their owning sources — the model registry
+(C3, plan 05) and the tool catalogue (06) — and neither exists in this tree.
+Serving `[]` would tell the console this deployment has no models and no tools,
+which is false; `types/builder.ts` already reads the absence as "the server has
+not got there yet" and renders no sub-list, which is cut-list 17 applied
+honestly. Every other C2 key is served and every one is DERIVED: `node_kinds`
+from `typing.get_args(NodeKind)`, `problem_codes` from the three declaring
+modules, `tier_models` from `CHEAP_MODEL`/`ESCALATION_MODEL` with the provider
+prefix and the `:nitro` variant stripped.
+
+**Bounds constants added to `config.py`, with the arithmetic beside each.**
+`MAX_ATTACHMENT_NODES` 24, `MAX_ATTACHMENTS_PER_NODE` 8, `MAX_CREW_MEMBERS` 6 —
+and only the last is a measurement (the shipped validator's own six `@CrewBase`
+classes). `MAX_ATTACHMENTS_PER_NODE` is C2's figure and **nobody has measured
+it**; it is left where the plan put it for the reason `MAX_FANOUT_WIDTH` was,
+rather than moved on judgement. Four more were needed because the authored
+schema has ceilings and the platform rule forbids a literal at the use site:
+`BUILDER_MAX_PROMPT_CHARS` 4000 (C2), `BUILDER_MAX_NODE_RETRIES` 3 (C2, and
+deliberately equal to `MAX_CYCLE_ITERATIONS` — the two ceilings that multiply
+spend), `BUILDER_MAX_RETRY_BACKOFF_SECONDS` 60 (3 × 60 s is under
+`VALIDATOR_GATE_TIMEOUT_SECONDS`) and `BUILDER_MAX_PLANNING_STEPS` 20 (CrewAI's
+own default for that field).
+
+**The two negative properties were broken deliberately and watched go red.**
+Reverting `bounds.is_flow_edge` to `return True` took
+`test_attachment_bounds.py` from 25 OK to **8 failures**: the clean control
+gained three `member-agent-has-flow-edges`, both fan-out exclusions reported
+`fanout-width`, the member edge became a back edge, and `billable_depths` moved
+2 against 1. Counting attachments against `MAX_GRAPH_NODES` and member agents
+against `MAX_BILLABLE_NODES` took it to **2 failures**, `node-count` and
+`billable-count`. For idempotence, an unconditional normalisation step in
+`upgrade_document` — the most plausible accident — took `test_upgrade.py` to
+**7 failures** naming `test_the_upgrade_is_idempotent` per fixture. Worth
+recording: a break that stamped defaults into every node did **not** fail the
+idempotence test, because the walk runs once; it failed
+`test_the_first_pass_changes_the_schema_STRING_and_nothing_else`. Idempotence is
+necessary and it is not sufficient, and both tests exist for that reason.
+
+**One edit outside the brief's surfaces, forced by this repository's own guard
+test.** The seven new D2 problem codes are contract C8, and
+`tests/builder/test_problem_code_declarations.py` fails with a message naming
+`frontend/src/types/builder.ts`'s `PROBLEM_CODES` and `builderTypes.spec.ts`'s
+length assertion by path. There is no way to add a server code and leave both
+suites green without adding the seven strings to that tuple, and hiding them
+from the mirror is section 14's defect 2 exactly. So `PROBLEM_CODES` gained
+seven entries and `WARNING_CODES` gained `attachment-unattached` — 31 → **38**
+and 3 → **4** — and nothing else in `frontend/src/` was touched.

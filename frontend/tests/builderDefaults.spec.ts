@@ -101,10 +101,22 @@ function pythonFields(className: string): string[] {
 
 const BILLABLE_FIELDS = pythonFields('_BillableConfig')
 
+/*
+ * The LIBRARY arm of each billable kind, and that is the whole of what
+ * `builderDefaults.ts` writes.
+ *
+ * `AgentConfig` and `CrewConfig` stopped being classes on 2026-09-04 and became
+ * unions discriminated by presence - `LibraryAgentConfig | AuthoredAgentConfig`
+ * - so there is no single class to read. The defaults this file checks are the
+ * library ones: `newNode('agent')` writes an `agent_id`, because a fresh node
+ * has to be one arm or the other and only the library arm has a value the
+ * client can supply without asking the author to write a prompt first. The
+ * authored arm's defaults are 04's inspector, not this file's palette.
+ */
 const FIELDS_BY_KIND: Record<NodeKind, string[]> = {
   input: pythonFields('InputConfig'),
-  agent: [...BILLABLE_FIELDS, ...pythonFields('AgentConfig')],
-  crew: [...BILLABLE_FIELDS, ...pythonFields('CrewConfig')],
+  agent: [...BILLABLE_FIELDS, ...pythonFields('LibraryAgentConfig')],
+  crew: [...BILLABLE_FIELDS, ...pythonFields('LibraryCrewConfig')],
   gate: pythonFields('GateConfig'),
   router: pythonFields('RouterConfig'),
   transform: pythonFields('TransformConfig'),
@@ -345,7 +357,18 @@ describe('a new node is one the server would accept', () => {
       // `BuilderModel` is `extra="forbid"`, so a key too many is a 422 naming a
       // field the author never typed - and a key too few is a 422 too, for the
       // required ones. The set has to be exact in both directions.
-      expect(Object.keys(node.config).sort()).toEqual([...FIELDS_BY_KIND[kind]].sort())
+      //
+      // ONE exception, and it is `nodeKinds.ts`'s own documented choice rather
+      // than an omission: `on_error` landed on `_BillableConfig` with D3 and a
+      // fresh node deliberately does not write it. `outPortsOf` reads the
+      // absence as `fail`, which is the schema's default, so writing it would
+      // put a key in every new document that means exactly what leaving it out
+      // means - and the second port it controls would then be one edit away
+      // from appearing on a card nobody has configured.
+      const optionalOnANewNode = ['on_error']
+      expect(Object.keys(node.config).sort()).toEqual(
+        [...FIELDS_BY_KIND[kind]].filter((field) => !optionalOnANewNode.includes(field)).sort(),
+      )
     })
 
     it(`gives a fresh ${kind} a legal id, label and integer position`, () => {

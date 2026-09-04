@@ -66,11 +66,26 @@ function pythonNodeKinds(): string[] {
   return [...(block as RegExpExecArray)[1].matchAll(/"([a-z]+)"/g)].map((kind) => kind[1])
 }
 
-/** The `node_kinds` list `_vocabulary()` serves, in the order it serves them. */
+/**
+ * The `node_kinds` list `_vocabulary()` serves, in the order it serves them.
+ *
+ * It used to be a SEVEN-ELEMENT LITERAL in the handler, and this function read
+ * it back with a regex - which is how the endpoint whose whole job is to stop
+ * the client and the server drifting came to drift inside itself: `NodeKind`
+ * declared ten, `_vocabulary` served seven, and the palette drew seven tiles.
+ *
+ * The handler now DERIVES the list from `NodeKind` itself, so there is no
+ * literal to read and the honest mirror is two assertions rather than one: that
+ * the derivation is still in place, and that what it derives from is the union
+ * this file already parses.
+ */
 function servedNodeKinds(): string[] {
-  const row = /node_kinds=\[([^\]]*)\]/.exec(BUILDER_API_PY)
-  expect(row, 'the node_kinds literal moved in _vocabulary()').not.toBeNull()
-  return [...(row as RegExpExecArray)[1].matchAll(/"([a-z]+)"/g)].map((kind) => kind[1])
+  expect(
+    BUILDER_API_PY,
+    '_vocabulary no longer derives node_kinds from the NodeKind union',
+  ).toContain('node_kinds=list(NODE_KINDS)')
+  expect(BUILDER_API_PY).toContain('NODE_KINDS: tuple[str, ...] = typing.get_args(NodeKind)')
+  return pythonNodeKinds()
 }
 
 /** The string members of a `NAME: frozenset[str] = frozenset({...})` in `document.py`. */

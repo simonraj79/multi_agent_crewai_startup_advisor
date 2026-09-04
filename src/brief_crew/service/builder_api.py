@@ -33,6 +33,8 @@ with the same admission control, the same rate limit and the same ownership.
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 import json
+import re
+import typing
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -50,7 +52,13 @@ from brief_crew.builder.descriptor import (
     builder_graph_descriptor,
     static_cost_over_ceiling,
 )
-from brief_crew.builder.document import BuilderDocument
+from brief_crew.builder.document import (
+    ATTACHMENT_KINDS,
+    BuilderDocument,
+    NodeKind,
+    Tier,
+    _TARGET_PORTS_BY_KIND as TARGET_PORTS_BY_KIND,
+)
 from brief_crew.builder.export import (
     export_content_disposition,
     export_envelope,
@@ -82,6 +90,12 @@ from brief_crew.service.registry import RunRegistry, WorkflowRuntime
 from brief_crew.service.builder_runner import BuilderRunnerFactory
 from brief_crew.service.runner import Runner
 
+
+#: The ten kinds and the two tiers, read off the CLOSED unions themselves.
+#: `typing.get_args` preserves declaration order, which is the order the
+#: palette renders - flow kinds first, attachments last.
+NODE_KINDS: tuple[str, ...] = typing.get_args(NodeKind)
+TIERS: tuple[str, ...] = typing.get_args(Tier)
 
 #: Every route in this module hangs off this, and so does the body-size
 #: exemption in `create_app`. One constant, so the two cannot disagree.
@@ -355,20 +369,40 @@ class BuilderPublishModel(BaseModel):
 
 
 class BuilderVocabularyModel(BaseModel):
-    """Everything the palette and the config panel are allowed to offer.
+    """Everything the palette and the config panel are allowed to offer - C2.
 
     Served rather than duplicated in TypeScript, for the reason
     `data/serverLimits.ts` already documents about `MAX_RUN_INPUT_CHARS`: a
     canvas offering a transform op the compiler does not have is a 422 the
     author cannot act on, and a canvas missing one is a feature nobody can
     reach.
+
+    **Every list here is DERIVED, never a literal.** `node_kinds` was a
+    seven-element literal until 2026-09-04 and the ten-kind vocabulary had
+    already landed in `document.py`, so the palette drew seven tiles against a
+    server that understood ten - the exact class of drift this endpoint exists
+    to remove, committed inside the endpoint itself. Everything below reads its
+    own owning source.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     schema_id: str
     node_kinds: list[str]
+    #: The three kinds that are possessions rather than steps. A subset of
+    #: `node_kinds`, sent separately because "is this an attachment" is the
+    #: first question the canvas asks about a kind and deriving it client-side
+    #: would be a fourth copy of the partition.
+    attachment_kinds: list[str]
+    #: D1's target-port table, per kind. Four kinds map to an empty list, which
+    #: is not the same as absent: `input` starts the run and the three
+    #: attachments refuse an inbound edge.
+    target_ports: dict[str, list[str]]
     tiers: list[str]
+    #: The model each tier resolves to, WITHOUT the `openrouter/` prefix and
+    #: without a `:nitro` variant - the slug a registry entry (C3) is keyed by,
+    #: so `tier_models[t]` can be looked up in `models` once plan 05 lands.
+    tier_models: dict[str, str]
     agent_ids: list[str]
     crew_ids: list[str]
     research_tools: list[str]
@@ -376,14 +410,87 @@ class BuilderVocabularyModel(BaseModel):
     router_comparisons: list[str]
     router_otherwise: str
     result_body_keys: list[str]
+    #: C8's union, read from the three modules that DECLARE the codes rather
+    #: than transcribed. The client mirrors it in `types/builder.ts` and
+    #: `tests/builder/test_problem_code_declarations.py` is what keeps the two
+    #: equal; serving it as well is what lets a runtime check notice a mirror
+    #: that went stale between deploys.
+    problem_codes: list[str]
+    warning_codes: list[str]
     bounds: dict[str, float]
 
 
+def _problem_code_union() -> tuple[list[str], list[str]]:
+    """Every problem code and every warning code, from their owning modules.
+
+    Imported rather than grepped. `test_problem_code_declarations.py` already
+    guarantees the two agree - it parses the same modules with the frontend's
+    own regex and compares against the AST - so importing here is reading the
+    same set by the cheaper route, and it cannot go stale relative to a
+    constant that was renamed.
+    """
+
+    from brief_crew.builder import bounds as bounds_module
+    from brief_crew.builder import budget as budget_module
+    from brief_crew.builder import compiler as compiler_module
+
+    codes: set[str] = set()
+    for module in (bounds_module, budget_module, compiler_module):
+        for name, value in vars(module).items():
+            if name.isupper() and isinstance(value, str) and _PROBLEM_CODE.match(value):
+                codes.add(value)
+    warnings = {
+        bounds_module.ROUTER_BRANCH_UNCONNECTED,
+        bounds_module.NO_OUTPUT_NODE,
+        bounds_module.JOIN_SINGLE_PREDECESSOR,
+        bounds_module.ATTACHMENT_UNATTACHED,
+    }
+    return sorted(codes), sorted(warnings)
+
+
+#: A problem code, by the shape the frontend's own grep looks for. The
+#: `isupper()` filter above would otherwise sweep up every unrelated string
+#: constant in three modules.
+_PROBLEM_CODE = re.compile(r"^[a-z]+(?:-[a-z]+)+$")
+
+
+def _tier_models() -> dict[str, str]:
+    """`cheap` and `escalation` as the REGISTRY spells them (C3).
+
+    Two transformations, and both are the reason this is derived rather than
+    written down: `config.py` carries `openrouter/google/gemini-3.5-flash-lite:nitro`,
+    where `openrouter/` is the provider prefix CrewAI strips for a native
+    provider and `:nitro` is a routing variant rather than a different model.
+    A registry keyed on either spelling would miss.
+    """
+
+    def slug(model: str) -> str:
+        return model.removeprefix("openrouter/").split(":", 1)[0]
+
+    return {
+        "cheap": slug(project_config.CHEAP_MODEL),
+        "escalation": slug(project_config.ESCALATION_MODEL),
+    }
+
+
 def _vocabulary() -> BuilderVocabularyModel:
+    problem_codes, warning_codes = _problem_code_union()
     return BuilderVocabularyModel(
+        # Derived, so the day `BUILDER_DOCUMENT_SCHEMA` becomes v2 the palette
+        # follows without an edit here. The client refuses a `schema_id` it does
+        # not write, which is what makes serving anything but this constant a
+        # console that disables itself.
         schema_id=project_config.BUILDER_DOCUMENT_SCHEMA,
-        node_kinds=["input", "agent", "crew", "gate", "router", "transform", "output"],
-        tiers=["cheap", "escalation"],
+        # `typing.get_args(NodeKind)`, in the ORDER the Python declares - flow
+        # kinds first, attachments last - because the palette renders the list
+        # as it arrives. Never a literal: see the class docstring.
+        node_kinds=list(NODE_KINDS),
+        attachment_kinds=[kind for kind in NODE_KINDS if kind in ATTACHMENT_KINDS],
+        target_ports={kind: list(ports) for kind, ports in TARGET_PORTS_BY_KIND.items()},
+        tiers=list(TIERS),
+        tier_models=_tier_models(),
+        problem_codes=problem_codes,
+        warning_codes=warning_codes,
         agent_ids=sorted(BUILDER_AGENT_LIBRARY),
         # The BUILDABLE ones, not every registered class: `synthesis` and
         # `report` are refused by `library_problems`, so offering them in a
@@ -410,6 +517,20 @@ def _vocabulary() -> BuilderVocabularyModel:
             "max_input_chars": project_config.MAX_RUN_INPUT_CHARS,
             "max_document_bytes": project_config.MAX_BUILDER_DOCUMENT_BYTES,
             "run_cost_ceiling_usd": project_config.MAX_RUN_COST_USD,
+            # C2 v2's five additions. The first three are the attachment
+            # family's own bounds; the last two bound what an AUTHORED node may
+            # write, and both are a document bound rather than a money one -
+            # what a graph costs is `run_cost_ceiling_usd` and it is measured.
+            "max_attachment_nodes": project_config.MAX_ATTACHMENT_NODES,
+            "max_attachments_per_node": project_config.MAX_ATTACHMENTS_PER_NODE,
+            "max_crew_members": project_config.MAX_CREW_MEMBERS,
+            "max_prompt_chars": project_config.BUILDER_MAX_PROMPT_CHARS,
+            "max_retries": project_config.BUILDER_MAX_NODE_RETRIES,
+            # The owner's price ceiling, measured against a model's MAX endpoint
+            # rather than its headline (MISSION §6a). Served so the model picker
+            # can grey out an unusable entry rather than offering one the API
+            # refuses at `provider.max_price`.
+            "ceiling_usd_per_m_input": project_config.MODEL_PRICE_CEILING_IN,
         },
     )
 

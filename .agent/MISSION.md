@@ -441,6 +441,48 @@ or a real regression — and report the number *and* the tail either way.
   is not verified. A verdict reasoned to rather than measured must be labelled
   as such.
 
+## 11a. The paid acceptance run — DONE, 2026-09-04
+
+`CLAUDE.md` remaining-work item 1 has been open since the project began. It is
+now closed, and the evidence is committed under `benchmarks/live/`.
+
+One idea through the six-agent validator against real OpenRouter, Firecrawl, HN
+Algolia and GitHub, both human gates answered, on the PAID backend:
+
+```text
+completed in 34 s   10 calls   31,711 prompt + 7,119 completion   $0.0417
+```
+
+**All three defects the FIRST paid run found are confirmed fixed against real
+money**, which is the thing tests could not establish:
+
+| found 2026-08-30 | now |
+| --- | --- |
+| report truncated at **4096** chars | **8,042**, unclipped |
+| `cost_usd` **0.00** over 128,069 tokens | **$0.0417** over 38,830 |
+| **two of three branches empty** | all three returned: Firecrawl 3, HN 3, GitHub 5 |
+
+The cost figure is a real mix rather than a constant, and the arithmetic says
+so: all-cheap would be $0.0151 and all-escalation $0.0297.
+
+**Citation closure is CLEAN** — 11 URLs cited, 11 in `sources`, **zero
+fabricated and zero unused**. That is the property item 1 actually asked for.
+
+**And the verdict is the proof that rubric finding F1's repair works.** The run
+returned `REJECT` at composite **3.7**, governed by `FLOOR_ALREADY_FREE`,
+because GitHub returned `ellmos-ai/worksheet-generator` — commercially
+licensed, pushed 0 months ago, relevance `SOLVES_ENTIRELY`. F1 was Critical:
+before the repair, a free product that already did the whole job could not
+reach X=0 and scored **VALIDATE at 9.4, confidence 0.90, zero guardrail
+complaints**. It has now fired on live evidence and killed an idea that
+deserved killing.
+
+It also flagged itself honestly: `provisional: true`,
+`thin_dimensions: ['D','C','F','X']`. The ratified rubric — seven changes, four
+Critical — has now scored something for money for the first time.
+
+**Spend to date on this programme: $0.0417 of the $5.00 allowance.**
+
 ## 12. What cannot be closed here
 
 Three things are money and one is a judgement the owner owes:

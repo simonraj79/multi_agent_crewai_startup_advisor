@@ -988,3 +988,29 @@ the branch nobody took.
 A mirror narrower than its source is the same class of defect as one wider: both
 mean the client is reasoning about a different contract than the server
 enforces. This one would have rejected a document the server accepts.
+
+
+### Decision 11 answered, and where today's contract log lives — 2026-09-04
+
+**Decision 11 is no longer *not answerable*: the licence is MIT.** It was the
+one ruling in `PLANS.md`'s table that could not be made rather than had not
+been — it asks for a licence header on the four built-in skill packs, and there
+was no repository licence for a header to name. `LICENSE` is now at the root
+with `license = "MIT"` in `pyproject.toml` and `"license": "MIT"` in
+`frontend/package.json` (`e7dfb86`), and the four packs carry `license: MIT` in
+their frontmatter (`f122322`). `docs/licensing.md` records the decision and its
+scope, including what it deliberately does **not** cover: the vendored MIT
+skills keep their own notices, and the third-party reference captures under
+`benchmarks/reference/` stay uncommitted.
+
+**The Integrator's contract log for today is in [`PLANS.md`](../../PLANS.md)'s
+`## Log`, not here.** Plans 11, 12 and 13 built; the six wave A/B backend
+closers and the six integration closers; the eighteen-row round-3 build; and
+judge round **product-1**, the first whole-product gauntlet — seventeen ledger
+rows verified absent and closed, one (D-15-2) present for the fourth round
+running, four dimensions under the gate. The entry is named here only so a
+reader of this plan is not left to discover it by grep. One contract figure did
+move in the wave and its plan carries it rather than this index: **C8 is at 57
+problem codes and `WARNING_CODES` at 7**, both of plan 12's two new codes
+carrying the optional `field` this Status ratified above
+(`12-error-handling.md`, criterion 1).

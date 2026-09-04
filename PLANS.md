@@ -22,23 +22,67 @@ and it has no open row in `benchmarks/DEFECTS.md`.
 
 | # | Plan | Owner | Gates on | Criteria | Ticked | Round | Open defects | Status | Updated |
 | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
-| 00 | [Architecture](.agent/plans/00-architecture.md) | S1 / S9 | — | 7 | 7 | — | 0 | In build | 2026-09-04 |
-| 01 | [Auth and workspaces](.agent/plans/01-auth-and-workspaces.md) | S1 | 00 | 13 | 13 | 3 | 5 | In judge (round 3) | 2026-09-04 |
-| 02 | [Canvas](.agent/plans/02-canvas.md) | S2 | 00 | 14 | 14 | — | 0 | In build | 2026-09-04 |
-| 03 | [Node library](.agent/plans/03-node-library.md) | S2 | 00 | 11 | 6 | — | 0 | In build | 2026-09-04 |
-| 04 | [Inspector and params](.agent/plans/04-inspector-and-params.md) | S3 | 03, 05 | 11 | 8 | — | 0 | In build | 2026-09-04 |
-| 05 | [Model registry](.agent/plans/05-model-registry.md) | S3 | 00 | 11 | 10 | — | 0 | In build | 2026-09-04 |
-| 06 | [Tool registry](.agent/plans/06-tool-registry.md) | S4 | 01, 03 | 11 | 7 | — | 0 | In build | 2026-09-04 |
-| 07 | [MCP client](.agent/plans/07-mcp-client.md) | S4 | 01, 03 | 10 | 7 | — | 0 | In build | 2026-09-04 |
-| 08 | [Skills](.agent/plans/08-skills.md) | S4 | 01, 03 | 10 | 7 | — | 0 | In build | 2026-09-04 |
-| 09 | [Compiler](.agent/plans/09-compiler.md) | S5 | 03, 05, 06, 07, 08 | 12 | 12 | — | 0 | In build | 2026-09-04 |
-| 10 | [Runtime](.agent/plans/10-runtime.md) | S5 | 09 | 12 | 12 | — | 0 | In build | 2026-09-04 |
-| 11 | [Run visualizer](.agent/plans/11-run-visualizer.md) | S6 | 10 | 15 | 0 | — | 0 | Planned | 2026-09-02 |
-| 12 | [Error handling](.agent/plans/12-error-handling.md) | S7 | 10 | 10 | 0 | — | 0 | Planned | 2026-09-02 |
-| 13 | [Flow testing](.agent/plans/13-flow-testing.md) | S7 | 10 | 11 | 0 | — | 0 | Planned | 2026-09-02 |
-| 14 | [Templates](.agent/plans/14-templates.md) | S8 | 09 | 10 | 9 | — | 0 | In build | 2026-09-04 |
-| 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 11 | 3 | 13 | In judge (round 3) | 2026-09-04 |
-| | **Total** | | | **179** | **123** | | **18** | | |
+| 00 | [Architecture](.agent/plans/00-architecture.md) | S1 / S9 | — | 7 | 7 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 01 | [Auth and workspaces](.agent/plans/01-auth-and-workspaces.md) | S1 | 00 | 13 | 13 | 3 + product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 02 | [Canvas](.agent/plans/02-canvas.md) | S2 | 00 | 14 | 13 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 03 | [Node library](.agent/plans/03-node-library.md) | S2 | 00 | 11 | 11 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 04 | [Inspector and params](.agent/plans/04-inspector-and-params.md) | S3 | 03, 05 | 11 | 11 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 05 | [Model registry](.agent/plans/05-model-registry.md) | S3 | 00 | 11 | 11 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 06 | [Tool registry](.agent/plans/06-tool-registry.md) | S4 | 01, 03 | 11 | 11 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 07 | [MCP client](.agent/plans/07-mcp-client.md) | S4 | 01, 03 | 10 | 10 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 08 | [Skills](.agent/plans/08-skills.md) | S4 | 01, 03 | 10 | 10 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 09 | [Compiler](.agent/plans/09-compiler.md) | S5 | 03, 05, 06, 07, 08 | 12 | 12 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 10 | [Runtime](.agent/plans/10-runtime.md) | S5 | 09 | 12 | 12 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 11 | [Run visualizer](.agent/plans/11-run-visualizer.md) | S6 | 10 | 15 | 14 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 12 | [Error handling](.agent/plans/12-error-handling.md) | S7 | 10 | 10 | 9 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 13 | [Flow testing](.agent/plans/13-flow-testing.md) | S7 | 10 | 11 | 11 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 14 | [Templates](.agent/plans/14-templates.md) | S8 | 09 | 10 | 9 | product-1 | 0 | In judge (product-1) | 2026-09-04 |
+| 15 | [Persistence](.agent/plans/15-persistence.md) | S1 | 01 | 11 | 11 | 3 + product-1 | 1 | In judge (product-1) | 2026-09-04 |
+| | **Total** | | | **179** | ~~123~~ **175** | | ~~18~~ **1** | | |
+
+**Regenerated 2026-09-04 from the sixteen plan files themselves**, criterion by
+criterion, which is defect **P-11**'s fix. `benchmarks/rounds/product-1.md`
+measured this table **85 commits stale** (`git log -1 --format=%H -- PLANS.md`
+→ `5562bd6`; `git log --oneline 5562bd6..HEAD | wc -l` → 85) while twelve plan
+files had changed in that window, and scored dimension 16 at **4/10** for it.
+Method: `Criteria` is the count of numbered items under each plan's
+`## Acceptance criteria`; `Ticked` is that plan's own `## Status` per-criterion
+table with the **latest dated section winning per criterion**, `met` / `met (…)`
+/ `done` / `holds` counting and `partial` / `not reached` / `not done` /
+`not this session's` not.
+
+The four criteria still unticked, named so nobody has to diff for them:
+
+| plan | # | state in its own Status |
+| ---: | ---: | --- |
+| 02 | 8 | **partial** — the 48/60-node frame budget: p95 met with 3.2 ms of headroom, the **mean** missed by 0.01–0.15 ms across five runs, and both assertions are left red rather than the budget widened |
+| 11 | 14 | **not this session's** — the blind reference comparison, which is the Integrator's judge round. Product-1 ran it and **disclosed that it was not blind**, so this does not tick |
+| 12 | 10 | **partial** — every trigger exists and the cause is on the node; the four-screenshot review at 1440×900 is not done |
+| 14 | 9 | **not done — the owner's money** — one paid run per template, MISSION §12 item 2 and decision 22 |
+
+Two of those figures are worth stating plainly because they are the sort this
+repository keeps getting wrong. **The published `123` understated by 52, not by
+the round's estimated 33** — P-11 said "≥ 156 / 179" from the three plans whose
+prose it read, and counting all sixteen answers **175**. And **`Round` is not a
+count of judge rounds for most plans**: only 01 and 15 have had three per-plan
+rounds; every other plan's first judging of any kind was product-1, which is why
+no plan can reach `Built` on the round-count clause alone regardless of its
+score.
+
+**Plan 12's own prose and its own table disagree, and the table was used.** The
+`### Built — 2026-09-04` paragraph opens *"Eight of ten met, one partial, one
+not reached"* over a table whose ten rows are nine `met` and one `partial`. The
+table is the per-criterion record this column is defined against, so 12 reads
+**9**; the sentence above it needs a correction in that plan, which is not this
+file's to make.
+
+**Plan 03 is the one row resting on prose rather than on a table.** Its Wave A/B
+closers table covers criteria 7–10; criteria 1–6 and 11 are recorded only as
+sentences (*"Criteria 1 (TS half), 6 and 11 were already met by the client
+half"*, and *"Criteria 2, 3, 4 and 5"* as the server half's subject). Counted as
+ticked on that prose. It is exactly the shape P-11's second half asks to be
+fixed — one state token per criterion row — and it is recorded here rather than
+invented into the plan.
 
 Build order: S1 (00, 01, 15) → S2 / S3 / S4 in parallel → S5 (09, 10) →
 S6 / S7 / S8 in parallel → S9 integrates, runs the E2E and the final
@@ -53,7 +97,7 @@ Integrator owns every change to one.
 | **A** augment | Done | `docs/crewai-notes.md`, `docs/flowise-notes.md`, `docs/chatdev-notes.md`, `docs/design.md`, `.agent/mcp.json` |
 | **M** map | Done — sixteen plan files, 179 numbered criteria | `.agent/plans/` |
 | **P** prove | Ladder in place: Playwright MCP → `npx playwright test` against the synthetic backend → CLI → screenshots | `benchmarks/README.md` |
-| **J** judge | Scaffolded, no round run | `benchmarks/README.md`, `benchmarks/DEFECTS.md` |
+| **J** judge | **Seven rounds run**, 2026-09-03/04: plans 01 and 15 three each (`rounds/01-1..3`, `rounds/15-1..3`) plus the first whole-product round (`rounds/product-1.md`). 44 ledger rows opened, **43 closed, 1 open** (D-15-2) | `benchmarks/README.md`, `benchmarks/DEFECTS.md` |
 
 ## Decisions for the owner
 
@@ -72,7 +116,7 @@ Consolidated from every plan's `Status` section. A decision moves from
 | 8 | A suspicious MCP tool: selectable with a warning, or shown only | 07 | selectable | Selectable with a warning — **PROVISIONAL, owner to confirm**, 2026-09-04 |
 | 9 | Platform Firecrawl key as the default for every user, with a daily cap | 06 | yes, per-user override | Per-user override built and the daily cap built; the platform default stays OFF — **PROVISIONAL, owner to confirm**, 2026-09-04 |
 | 10 | Skills attachable to library agents, or authored only | 08 | authored only | **Authored only**, 2026-09-04 |
-| 11 | Licence header on the built-in skills; the repo has no `LICENSE` | 08, CLAUDE.md item 17 | settle the repo licence first | **Not answerable** — depends on the repository having no `LICENSE`, 2026-09-04 |
+| 11 | Licence header on the built-in skills; the repo has no `LICENSE` | 08, CLAUDE.md item 17 | settle the repo licence first | **MIT, 2026-09-04** — ~~Not answerable~~. `LICENSE` at the root and `license = "MIT"` in `pyproject.toml` (`e7dfb86`); the four built-in packs carry `license: MIT` in their frontmatter (`f122322`). `docs/licensing.md` records the decision |
 | 12 | Library crew `tier`: refuse it, or honour it by rebuilding the crew's LLMs | 09 | refuse | **Refuse**, 2026-09-04 |
 | 13 | `or_` inside a cycle depends on private `_discard_or_listener` | 09 | accept, as closed item 35 did | **Accept, with a guard test**, 2026-09-04 |
 | 14 | A BYO OpenRouter key exempts a run from the $10 ceiling | 10 | no | **No**, 2026-09-04 |
@@ -94,6 +138,7 @@ Consolidated from every plan's `Status` section. A decision moves from
 
 | Date | What |
 | --- | --- |
+| 2026-09-04 | **Waves C and D, the round-3 build, the product gauntlet and a licence** — `9b06e40..HEAD` (`a3c9a31`), **88 commits**. Plans **11**, **12** and **13** built and merged (`4020d5d`, `69f7f22`, `34a3918`): the run console now says who is speaking, which edge was walked and what phase a run is in for a graph somebody *drew*; five failure modes carry a real error class; and a docked test panel runs a graph in `dry_run` / `test` / `node_test` with saved inputs. The **six wave A/B backend closers** landed in `47dc548` (04-6, 06-3, 06-8, 07-1, 07-8, 08-7) and the E2E half in `12d5030`; six further **integration closers** the merged tree exposed in `5cb7092`. The **18-row round-3 build** merged as `238c967`, one commit per ledger id. Then **judge round product-1** (`a38ef09` / `a3c9a31`, persona design director, the first WHOLE-PRODUCT round): a verifier re-ran all eighteen open rows and found **seventeen ABSENT, one PRESENT** — D-15-2, for the fourth round running and this time with nothing docked. The seventeen are closed in `benchmarks/DEFECTS.md`; **one row is open**. All sixteen dimensions scored in one pass: **6 = 7, 12 = 7, 15 = 6, 16 = 4 are under the gate of 8**, and every engineering dimension is under its reference. The round ranked **P-01 … P-11** rather than filing ledger rows, so they live in `benchmarks/rounds/product-1.md` and in this line — chief among them **P-01** (a user's `SKILL.md` body silently discarded by a double-prefixed relative `SKILLS_ROOT`, invisible to 2,420 green tests because every skill test patches the root to an *absolute* tempdir), **P-02** (the E2E suite red at the round's HEAD) and **P-11** (this table). Measured by the round at `5cb7092`, per product-1: **Python 2420 run · 0 failures · 6 skipped · 152.1 s**; **frontend 1682 passed in 84 files**; `vue-tsc` exit 0; build 772 ms; **E2E 121 passed · 7 failed · 9.0 min** over 128 tests in 23 files. Six of those seven failures are the visual baselines P-02 names and `ea4202f` re-baselined three minutes after the round's HEAD — **the suite has not been re-run since and no green is claimed**. The repository now has a **licence**: MIT, `LICENSE` at the root with `license = "MIT"` in `pyproject.toml` and `"license": "MIT"` in `frontend/package.json` (`e7dfb86`), and the four built-in skill packs carry `license: MIT` (`f122322`) — which answers decision **11**, open since it was raised because it could not be answered. Spend this wave, per the round file and MISSION §11a: **$0.00** in the judge round; the programme total stands at $0.0417 of the $5.00 allowance. |
 | 2026-09-04 | Plan 09 built on `gauntlet/plans`. The compiler compiles the thing the gauntlet is about: an **authored** agent and crew through the same two entrypoints, attachments and crew members folded into their `with:` block, `on_error: route` as a paired router, `or_` joins with the cycle re-arm decision 13 accepted, a `json_schema` state, the eleventh action ref `runtime:replay_output` and the derived plans it serves, a YAML+Python code preview that cannot read a key, and twenty determinism goldens compared three ways. All 12 criteria met. `BUILDER_ACTION_REFS` is **eleven**; C8 grew 50 → 55 codes and `WARNING_CODES` 5 → 7; the budget RESPONSE gained `per_node`. Two things were measured on a flow that ran and are in the plan's Status rather than reasoned from a schema: a compiled `{or: [a, b]}` over two plain method names is a CrewAI **racing group** that cancels the loser and the join with it, so an undeclared diamond now compiles to `and`; and the D5 re-arm is defence in depth, because `_clear_or_listeners()` already covers the topology it was written for. Python 2115 (from 2023) / frontend 1426 in 73 files / `vue-tsc` exit 0 / build 603 ms. E2E not run - nothing here reached a route. $0.00 spent. |
 | 2026-09-04 | All 25 open owner decisions answered. Each answer is in the decision table above and in the `## Status` section of every plan that raised it — 00, 01, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14 and 15. Four are **provisional** and say so in both places: 3, 7, 8 and 9 are built up to the surface, left off, and wait for the owner. Decision 11 is **not answerable** while the repository has no `LICENSE`, so the built-in skills ship with no licence header and the dependency is recorded. Decision 2 was taken in `c9e8521`, which put the rules block at the head of `CLAUDE.md` with two clauses amended — parallel subagents authorized, and a money bound the draft did not carry. No code changed and no criterion moved. |
 | 2026-09-03 | Plan 15 round 3 built on `gauntlet/plans`, `f2a3bb8` → `38d7635`. Twelve open rows built in eleven fixing commits (D-15-19 and D-15-20 share one - they are one defect the critic scored on two dimensions), preceded by two docs commits that fix no defect: `8231966` moves the ten misplaced round-2 rows into the ledger table, and `ca3d4f8` is the OWNER'S RULING closing D-15-8 … D-15-12 on the round-2 verifier's output, which is why 15's open count moved 17 → 12. Every built row is left `open` for the round-3 critic. That ruling also retires this plan's keep-the-earlier-wording convention: criteria 7 and 8 now strike the wrong figure inline, because the critic has scored a ticked criterion whose first sentence is false three times. The plan's per-module counts were regenerated by running each module alone - the verifier had found `test_isolation_matrix` at 32 where the table said 16. Python 1655 / PostgreSQL 18 5/5 / frontend 1195 in 65 files / E2E 37 in 5 files, all green. |

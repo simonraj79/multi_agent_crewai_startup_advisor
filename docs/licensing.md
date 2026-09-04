@@ -1,7 +1,46 @@
-# Licensing — a decision that has not been made
+# Licensing — ~~a decision that has not been made~~ **MIT, decided 2026-09-04**
 
-**There is no `LICENSE` file in this repository, and `pyproject.toml` has no
-`license` field.**
+## The decision — MIT, 2026-09-04
+
+**The owner chose MIT.** It is applied, not merely recorded:
+
+| Where | What it says |
+| --- | --- |
+| `LICENSE` at the repository root | the MIT text, `Copyright (c) 2026 Simon Raj` (`e7dfb86`) |
+| `pyproject.toml` | `license = "MIT"` and `license-files = ["LICENSE"]` (`e7dfb86`) |
+| `frontend/package.json` | `"license": "MIT"` (`e7dfb86`) |
+| the four built-in skill packs | `license: MIT` in each `SKILL.md` frontmatter, under `data/skills/builtin/` (`f122322`) |
+
+That also answers **decision 11** in [`../PLANS.md`](../PLANS.md), which had
+stood as *not answerable* for exactly one reason — it asked for a licence header
+on the built-in skills and there was no repository licence for the header to
+name. There is one now.
+
+**The vendored MIT skills under `.agents/skills/` and `.claude/skills/` keep
+their own notices.** Choosing MIT for this repository does not relicense them
+and does not discharge upstream's notice requirement; the *Attribution for the
+vendored MIT skills* section at the foot of this page is unchanged and still
+describes what is owed.
+
+**The third-party reference captures under `benchmarks/reference/` stay
+uncommitted**, for the reason this page already gives under *Third-party
+material the licence choice does not cover*: applying a licence to this
+repository grants nothing over someone else's material, and a permissive licence
+over material you do not own asserts rights you may not hold. They are captures
+of shipped competitors, and the global `*.png` rule in `.gitignore` already
+excludes them — confirmed with `git check-ignore -v`, not by reading the file.
+`PRD.md` §8 remains the one genuinely open item on this page.
+
+---
+
+> **Everything below was written before this decision and is kept for its
+> reasoning, not for its status.** Where it and the section above disagree, the
+> section above wins. In particular the next sentence is now false, and the
+> *Recommendation* and *How to apply it, once decided* sections describe a
+> choice that has been made.
+
+~~**There is no `LICENSE` file in this repository, and `pyproject.toml` has no
+`license` field.**~~
 
 That is not a neutral state. Under the Berne Convention, copyright attaches
 automatically to everything here the moment it is written. No licence means **all

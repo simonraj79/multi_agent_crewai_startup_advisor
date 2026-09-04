@@ -53,10 +53,29 @@ from brief_crew.config import (
     VALIDATOR_GATE_TIMEOUT_SECONDS,
 )
 
-# The seven kinds, and there is no eighth. Section B of the locked spec derives
-# each one's compiled shape; `gate` is the only kind that compiles to two flow
-# methods, which is a fact `bounds.py` has to know when it generates idents.
-NodeKind = Literal["input", "agent", "crew", "gate", "router", "transform", "output"]
+# TEN kinds in two families, and there is no eleventh (03-node-library.md D1).
+# Section B of the locked spec derives each flow kind's compiled shape; `gate` is
+# the only kind that compiles to two flow methods, which is a fact `bounds.py`
+# has to know when it generates idents.
+#
+# The union is deliberately CLOSED on both sides of the wire, because closing it
+# is what turns "somebody added a kind and forgot the inspector" into a compile
+# error rather than a blank panel at runtime - `InspectorRail.vue`'s
+# `Record<NodeKind, Component>` and `NodePalette.vue`'s tile count both fail to
+# build on an unhandled kind.
+#
+#   FLOW kinds are steps: they take an edge in, they do something, they pass on.
+#   ATTACHMENT kinds are not steps at all. They are things an agent or crew
+#   HAS - a tool, an MCP server, a skill - and they reach it along an `attach`
+#   edge. They never run, never bill, never appear in a cycle, and never count
+#   toward the graph-size bound, because none of those things is true of a
+#   possession.
+NodeKind = Literal[
+    # flow
+    "input", "agent", "crew", "gate", "router", "transform", "output",
+    # attachment
+    "tool", "mcp", "skill",
+]
 
 # Which OpenRouter tier a billable node runs on. The two words are the whole
 # vocabulary because `config.py` declares exactly two models; a node never
@@ -231,6 +250,68 @@ class CrewConfig(_BillableConfig):
     crew_id: NodeId
 
 
+class ToolConfig(BuilderModel):
+    """`tool` - one catalogue tool, attached to an agent or a crew.
+
+    `tool_id` keys into the server-owned tool catalogue. It is an opaque id and
+    never a module path, an import or a callable name: the whole reason a
+    document cannot execute code is that every name it carries is looked up in a
+    closed set the server owns, and a tool id is no exception.
+
+    `params` is the tool's own configuration, flat like every other author-
+    supplied mapping in this file. 06-tool-registry.md owns what a given
+    `tool_id` accepts; this class owns only the shape.
+    """
+
+    tool_id: NodeId
+    params: dict[str, JsonScalar] = Field(default_factory=dict)
+    # The author's own key for tools that need one, by id. As on AgentConfig:
+    # the id travels, the secret never enters a document.
+    credential_id: CredentialId | None = None
+
+    @field_validator("params")
+    @classmethod
+    def _validate_params(cls, value: dict[str, JsonScalar]) -> dict[str, JsonScalar]:
+        return _checked_with_mapping(value, where="params")
+
+
+class McpConfig(BuilderModel):
+    """`mcp` - one MCP server, and WHICH of its tools this node exposes.
+
+    `tool_names` is required to be non-empty by `bounds.py` rather than here,
+    because an author who has added the server and not yet chosen its tools has
+    made an incomplete graph, not an invalid document - and this file raises
+    while `bounds.py` reports. The distinction is the difference between a
+    problem you can see in the dock and a save that fails.
+
+    07-mcp-client.md owns discovery, transports and which servers a deployment
+    may reach at all.
+    """
+
+    server_id: NodeId
+    tool_names: tuple[str, ...] = ()
+    credential_id: CredentialId | None = None
+
+    @field_validator("tool_names")
+    @classmethod
+    def _validate_tool_names(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("the same MCP tool is selected twice; list each once")
+        return value
+
+
+class SkillConfig(BuilderModel):
+    """`skill` - one SKILL.md pack attached to an agent.
+
+    A skill is knowledge, not hands: its name and description load at run start
+    and its body loads only when a task matches, which is what lets an agent
+    carry domain knowledge without carrying it in every prompt. 08-skills.md
+    owns storage and the progressive-disclosure mechanism.
+    """
+
+    skill_id: NodeId
+
+
 class GateConfig(BuilderModel):
     """`gate` - the pause an operator answers. Compiles to TWO flow methods.
 
@@ -381,6 +462,9 @@ NodeConfig = (
     | RouterConfig
     | TransformConfig
     | OutputConfig
+    | ToolConfig
+    | McpConfig
+    | SkillConfig
 )
 
 _CONFIG_BY_KIND: dict[str, type[BuilderModel]] = {
@@ -391,6 +475,9 @@ _CONFIG_BY_KIND: dict[str, type[BuilderModel]] = {
     "router": RouterConfig,
     "transform": TransformConfig,
     "output": OutputConfig,
+    "tool": ToolConfig,
+    "mcp": McpConfig,
+    "skill": SkillConfig,
 }
 
 # Which ports each kind offers, in the order the canvas draws them. `gate`'s
@@ -403,6 +490,14 @@ _OUT_PORTS_BY_KIND: dict[str, tuple[str, ...]] = {
     "gate": ("approve", "revise"),
     "transform": ("out",),
     "output": (),
+    # An attachment has exactly one port and it is a SOURCE, which is the whole
+    # asymmetry: the tool reaches toward the agent, never the other way. Drawing
+    # it this way means `attach` is a property of the edge's TARGET port and the
+    # edge class is a pure function of it - no second rule, no lookup of what the
+    # source happened to be.
+    "tool": ("attach",),
+    "mcp": ("attach",),
+    "skill": ("attach",),
 }
 
 # Kinds whose compiled form IS a router, and so the only kinds a back edge may
@@ -412,6 +507,20 @@ _OUT_PORTS_BY_KIND: dict[str, tuple[str, ...]] = {
 # closing a loop was MEASURED to end the run silently (the join never fires a
 # second time, no exception, no warning).
 ROUTING_KINDS: frozenset[str] = frozenset({"gate", "router"})
+
+# The two families of `NodeKind`. Every kind is in exactly one, and
+# `test_document.py` asserts that partition is total rather than trusting this
+# comment - an eleventh kind added to only one set is the defect these exist to
+# make impossible.
+ATTACHMENT_KINDS: frozenset[str] = frozenset({"tool", "mcp", "skill"})
+FLOW_KINDS: frozenset[str] = frozenset(
+    {"input", "agent", "crew", "gate", "router", "transform", "output"}
+)
+
+# What an edge may arrive at. `in` is the flow itself; `attach` hangs a tool, an
+# MCP server or a skill off an agent or crew; `member` puts an agent inside a
+# crew. Only `in` existed before 03-node-library.md D1.
+TARGET_PORTS: frozenset[str] = frozenset({"in", "attach", "member"})
 
 # Kinds that call a model, and so the ones MAX_BILLABLE_NODES counts.
 BILLABLE_KINDS: frozenset[str] = frozenset({"agent", "crew"})
@@ -470,9 +579,15 @@ class BuilderNode(BuilderModel):
 
     @property
     def accepts_incoming(self) -> bool:
-        """Whether an edge may arrive here at all. Only `input` refuses one."""
+        """Whether an edge may arrive here at all.
 
-        return self.kind != "input"
+        Four kinds refuse one, for two different reasons. `input` refuses because
+        it is where the run starts. The three ATTACHMENT kinds refuse because
+        nothing flows INTO a possession - an author who could draw an edge into a
+        tool would be describing a step, and a tool is not a step.
+        """
+
+        return self.kind != "input" and self.kind not in ATTACHMENT_KINDS
 
 
 class BuilderEdge(BuilderModel):
@@ -488,7 +603,16 @@ class BuilderEdge(BuilderModel):
     # Every kind that accepts an edge accepts it on one port. A second inbound
     # port would be a join semantics this document deliberately does not have -
     # `joins` says how the arrivals combine, and the answer is always "all".
-    target_port: Literal["in"] = "in"
+    # `in` is the flow edge every kind had before 03-node-library.md D1. `attach`
+    # and `member` are structural: they say what a node HAS, not what happens
+    # next. `bounds.py` excludes both from fan-out counting, from cycle detection
+    # and from billable depth, because an agent holding three tools has not
+    # branched three ways and a tool cannot be part of a loop.
+    #
+    # Edge CLASS is a pure function of this field and of nothing else, which is
+    # what keeps the canvas's stroke rules and the server's bounds rules from
+    # needing to agree about anything but one string.
+    target_port: Literal["in", "attach", "member"] = "in"
 
 
 class BuilderBudget(BuilderModel):

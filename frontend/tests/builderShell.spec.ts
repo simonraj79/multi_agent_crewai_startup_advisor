@@ -324,6 +324,19 @@ describe('the document bar says what happened to the work', () => {
     expect(behind.find('.live-note').classes()).not.toContain('is-current')
   })
 
+  /**
+   * Critic round product-1, P-05. The chip used to disappear exactly when it
+   * starts mattering: `save` returns the head to `draft`, and the composable
+   * read `status` alone and nulled `publishedVersion`. The bar's own rendering
+   * was always right - `useBuilderPersistence` was handing it the wrong fact -
+   * so this pins the render for the state the fix now produces.
+   */
+  it('keeps the live chip on a DRAFT head whose older version is serving (P-05)', () => {
+    const behind = bar({ publishedVersion: 1, publishedHere: false, status: 'draft', version: 2 })
+    expect(behind.find('.live-note').text()).toBe('v1 is live · you are on v2')
+    expect(behind.find('.live-note').classes()).not.toContain('is-current')
+  })
+
   it('reports a stored publish this process is not serving', () => {
     // `status` is a stored fact and `publishedHere` is a fact about this
     // process's registration maps; a restart makes them disagree, and picking
@@ -422,6 +435,40 @@ describe('the gallery is the empty state and the way back into saved work', () =
     expect(wrapper.find('.status-pill').text()).toBe('published')
     await wrapper.find('.library-open').trigger('click')
     expect(wrapper.emitted('open')?.[0]).toEqual([id])
+  })
+
+  /**
+   * Critic round product-1, P-04. `status` is derived from HEAD, and `save`
+   * returns a published head to `draft` while the service keeps serving the
+   * older version whose budget was priced - so this row was drawn identically
+   * to a graph that had never been published, while it was answering runs. The
+   * gallery is the only place an author sees all their graphs.
+   */
+  it('says which version is live when head has been saved past it (P-04)', async () => {
+    const api = new FakeBuilderApi()
+    api.seed(IDEA_VALIDATOR.document, 2, 'draft', undefined, 1)
+    const { wrapper } = await gallery(api)
+    expect(wrapper.find('.status-pill').text()).toBe('draft')
+    expect(wrapper.find('.library-version').text()).toBe('v2')
+    const live = wrapper.find('.live-pill')
+    expect(live.exists()).toBe(true)
+    expect(live.text()).toBe('v1 live')
+    expect(live.attributes('title')).toContain('answering launches')
+  })
+
+  it('does not repeat itself when the live version IS the head', async () => {
+    const api = new FakeBuilderApi()
+    api.seed(IDEA_VALIDATOR.document, 4, 'published')
+    const { wrapper } = await gallery(api)
+    expect(wrapper.find('.status-pill').text()).toBe('published')
+    expect(wrapper.find('.live-pill').exists()).toBe(false)
+  })
+
+  it('shows no live chip on a graph that was never published', async () => {
+    const api = new FakeBuilderApi()
+    api.seed(IDEA_VALIDATOR.document, 2, 'draft')
+    const { wrapper } = await gallery(api)
+    expect(wrapper.find('.live-pill').exists()).toBe(false)
   })
 
   it('carries the whole name in the row title, so a clipped tail is one hover away (D-15-4)', async () => {

@@ -1328,7 +1328,18 @@ export interface BuilderDocumentSummary {
   id: string
   name: string
   version: number
+  /** The HEAD's status, and only the head's. See `live_version`. */
   status: DocumentStatus
+  /**
+   * The version this service is actually serving, or `null` when none is.
+   *
+   * `status` is derived from the head, and `save` returns a published head to
+   * `draft` while the registered workflow keeps the older version whose budget
+   * was priced. So a row reading `draft v2` can be answering launches from v1,
+   * and without this field the gallery cannot tell it from a graph that was
+   * never published.
+   */
+  live_version: number | null
   created_at: string
   updated_at: string
 }
@@ -1362,6 +1373,15 @@ export interface BuilderDocumentModel {
    * and both are honest.
    */
   published: boolean
+  /**
+   * WHICH version this process is registered to run, or `null` when none is.
+   *
+   * `published` answers "is it this one", which stops being enough the moment
+   * the author saves past a published version: `store.save` returns the head to
+   * `draft`, `published` goes false, and the bar had nothing left telling the
+   * author that v1 was still answering launches while they edited v2.
+   */
+  live_version: number | null
 }
 
 export interface BuilderValidation {

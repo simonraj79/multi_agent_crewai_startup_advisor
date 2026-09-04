@@ -125,6 +125,36 @@ async function animationsOn(target: Locator): Promise<string[]> {
   )
 }
 
+/**
+ * The same animations WITH their period and their curve.
+ *
+ * Names alone were what this audit checked, and a name is the half a
+ * regression is least likely to touch: `node-pulse` ran at `ease-in-out` where
+ * `docs/chatdev-notes.md` §2 records the reference (`vueflow.css:81-125`) at
+ * `ease-out`, and every assertion in this file passed for the whole time it
+ * did (critic round product-1, P-09). Rubric 8 is *the reference's curves and
+ * periods*, so the curve has to be in the measurement or the criterion is
+ * being asserted by its title.
+ *
+ * Read from `getComputedStyle` rather than from `getAnimations()`, which
+ * exposes an `effect.getTiming()` whose `easing` is the KEYFRAME easing and
+ * reads `linear` whatever the shorthand said. The two lists are index-aligned
+ * by the shorthand's own order, and the names are re-read here rather than
+ * reused so a mismatch cannot be hidden by a stale sort.
+ */
+async function animationTimings(target: Locator): Promise<string[]> {
+  return target.evaluate((el) => {
+    const style = window.getComputedStyle(el)
+    const split = (value: string) => value.split(',').map((part) => part.trim()).filter(Boolean)
+    const names = split(style.animationName).map((name) => name.replace(/-[0-9a-f]{8}$/, ''))
+    const durations = split(style.animationDuration)
+    const easings = split(style.animationTimingFunction)
+    return names
+      .map((name, index) => `${name} ${durations[index] ?? '?'} ${easings[index] ?? '?'}`)
+      .sort()
+  })
+}
+
 async function openStudio(page: Page): Promise<void> {
   await page.goto('/')
   await expect(page.locator('.vue-flow__node').first()).toBeVisible()
@@ -265,6 +295,12 @@ test.describe('the run canvas survives the node-card extraction', () => {
        * competing with a five-second branch for the same window.
        */
       expect(await animationsOn(running)).toEqual(['node-glowing', 'node-pulse'])
+      // Rubric 8's actual subject: the reference's curves and PERIODS, quoted
+      // in `docs/chatdev-notes.md` §2 from `vueflow.css:81-125`.
+      expect(await animationTimings(running)).toEqual([
+        'node-glowing 4s linear',
+        'node-pulse 2s ease-out',
+      ])
       expect(await animationsOn(running.locator('.state-dot'))).toEqual(['dot-pulse'])
       expect(await animationsOn(running.locator('.node-crew-oar').first()))
         .toEqual(['node-oar-stroke'])

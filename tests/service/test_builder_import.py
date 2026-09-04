@@ -48,6 +48,10 @@ CREATE_KEYS = {
     "budget",
     "graph",
     "published",
+    # `published` answers "is THIS version live"; `live_version` answers WHICH
+    # one is, which is the fact the gallery and the document bar were missing
+    # (critic round product-1, P-04/P-05).
+    "live_version",
 }
 
 

@@ -1662,6 +1662,72 @@ describe('the minimap is coloured by problems before anything else', () => {
     expect(Number(box.attributes('y'))).toBeGreaterThanOrEqual(0)
   })
 
+  /**
+   * Critic round product-1, P-07. The panel sits bottom-right at
+   * `z-index: var(--z-control)` and covered 30.2% of a node placed there,
+   * including its model pill and its meta line. jsdom reports 0 for every
+   * `offset*`, so the panel's own box has to be declared here - the geometry
+   * under test is the OVERLAP, and asserting it against a 0x0 panel would pass
+   * for the wrong reason. `builder-layout.spec.ts` asks the same question of a
+   * real browser, which is the only place a layout question has an answer.
+   */
+  function placePanel(
+    wrapper: ReturnType<typeof mountMap>,
+    box = { left: 902, top: 558, width: 186, height: 158 },
+  ) {
+    const element = wrapper.element as HTMLElement
+    for (const [key, value] of [
+      ['offsetLeft', box.left],
+      ['offsetTop', box.top],
+      ['offsetWidth', box.width],
+      ['offsetHeight', box.height],
+    ] as const) {
+      Object.defineProperty(element, key, { configurable: true, value })
+    }
+  }
+
+  it('yields to a node placed underneath it (P-07)', async () => {
+    const wrapper = mountMap([{ ...base, id: 'under', x: 940, y: 600 }])
+    placePanel(wrapper)
+    // Re-run the measurement now the panel has a size: `flush: 'post'` reads
+    // the DOM, and the DOM only became measurable a line ago.
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 1 } })
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 0.999 } })
+    expect(wrapper.classes()).toContain('is-yielding')
+    expect(wrapper.attributes('data-yielding')).toBe('true')
+  })
+
+  it('stays put for a graph that is nowhere near it', async () => {
+    const wrapper = mountMap([{ ...base, id: 'far', x: 0, y: 0 }])
+    placePanel(wrapper)
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 0.999 } })
+    expect(wrapper.classes()).not.toContain('is-yielding')
+  })
+
+  /**
+   * The rule is COVERAGE, not intersection, and this is the measurement that
+   * made it so: on the one-node visual capture a 240x96 card clipped the
+   * panel's corner by about 11x3 px - 0.14% of the card - and a bare
+   * intersection test faded the map, changing a committed baseline for
+   * something no author would ever see. The defect being fixed is 30.2%.
+   */
+  it('ignores a corner nick that hides nothing worth hiding', async () => {
+    // The card's bottom-right corner overlaps the panel's top-left by 11x3.
+    const wrapper = mountMap([{ ...base, id: 'nick', x: 902 + 11 - 240, y: 558 + 3 - 96 }])
+    placePanel(wrapper)
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 0.999 } })
+    expect(wrapper.classes()).not.toContain('is-yielding')
+  })
+
+  it('follows the pan: the same node stops overlapping once it is scrolled away', async () => {
+    const wrapper = mountMap([{ ...base, id: 'under', x: 940, y: 600 }])
+    placePanel(wrapper)
+    await wrapper.setProps({ viewport: { x: 0, y: 0, zoom: 0.999 } })
+    expect(wrapper.classes()).toContain('is-yielding')
+    await wrapper.setProps({ viewport: { x: -900, y: -600, zoom: 1 } })
+    expect(wrapper.classes()).not.toContain('is-yielding')
+  })
+
   it('collapses to its toggle and says so to a screen reader', async () => {
     const wrapper = mountMap([base])
     expect(wrapper.find('[data-testid="minimap-surface"]').exists()).toBe(true)

@@ -468,3 +468,46 @@ tool` / `MCP server` / `knowledge an agent carries`), and all three carrying
 rejects shows the parser's own sentence and stores NOTHING — the second half is
 what a message alone does not prove. The 422 that provokes it is forgiven in a
 console allowance declared beside the line that causes it, never at file level.
+
+### Critic round product-1 fixes — 2026-09-04
+
+**P-01 — a user's `SKILL.md` body was discarded on every read, on the shipped
+default root.** D1 says the disk is the store and the row is the index. The
+index and the disk disagreed. `SkillStore.create` writes what `materialise`
+returned, which is **already rooted** at `skills_root()`; `SkillStore._pack`
+then prefixed the root onto any non-absolute stored path, so on
+`SKILLS_ROOT = "data/skills"` — relative, and what production, a fresh checkout
+and the E2E backend all run on — the read went to
+`data\skills\data\skills\users\…`. Measured in this worktree before the fix:
+
+```text
+create   -> size_bytes 142   body len 142
+get      -> size_bytes 0     body len 0
+list     -> size_bytes 0
+stored path   data\skills\users\e2e-user\e2e-probe-style\SKILL.md   exists: True (152 bytes)
+re-prefixed   data\skills\data\skills\users\…\SKILL.md              exists: False
+```
+
+Two changes, and the second is the one that matters more:
+
+- `skills.resolve_stored_path` joins the root **only onto a path that is not
+  already inside it**, so both shapes a row can hold read back correctly under
+  both an absolute and a relative root. No migration and no new column — which
+  is the only reason this is safe to change under a shipped table (trap 10).
+- The `except OSError: body = ""` fall-through is gone. It was written for "the
+  disk is a cache a restart can empty" and is now proven to have hidden a path
+  bug for the life of the feature, so it raises `SkillBodyUnreadable` and the
+  route answers **500 naming the path**. The cost is accepted and named: one
+  unreadable file now fails the whole palette rather than quietly shortening it.
+  A row whose file is gone means the author's content is gone — there is no
+  `body` column to fall back to — and an empty document they might save over is
+  the worse of the two answers.
+
+**Why 2,420 green tests could not see it, and what now can.** Every existing
+skill test patches `SKILLS_ROOT` to a `tempfile` directory, which is
+**absolute**, so the prefixing branch never executed on any of them —
+`test_skills_materialise.py:60`, `test_skills_endpoint.py:95`,
+`test_skills_import.py:73`, `test_skills_isolation.py:80`.
+`tests/service/test_skills_relative_root.py` (**8 tests**) is the first that
+`chdir`s into a checkout-shaped tempdir and leaves the root at its relative
+default; its docstring says so, because the blindness is the finding.

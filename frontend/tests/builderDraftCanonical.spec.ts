@@ -110,6 +110,7 @@ function model(document: BuilderDocument, version: number): BuilderDocumentModel
     budget: BUDGET,
     graph: { id: DOC_ID, name: 'Template-born', version: 'abc', start_nodes: [], nodes: [], edges: [] },
     published: false,
+    live_version: null,
   }
 }
 

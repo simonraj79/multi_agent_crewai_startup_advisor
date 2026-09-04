@@ -1100,3 +1100,177 @@ test.describe('the saved-graphs library (D-15-4)', () => {
     expect(watch.unexpected).toEqual([])
   })
 })
+
+/**
+ * Critic round product-1, P-06 and P-07 — two things that are only measurable
+ * with real layout and real paint, which is why they are here.
+ *
+ * Both were invisible to the unit suite for the reason the header already
+ * gives: a jsdom mount asserts structure and never asks how wide anything
+ * ended up, or what ended up on top of what.
+ */
+test.describe('the canvas stays legible at the zooms it picks for itself', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  /**
+   * The device-pixel width of an edge, and the zoom it was measured at.
+   *
+   * An SVG `stroke-width` is in USER space and the viewport multiplies it by
+   * the zoom, so the rendered width is `computed stroke-width x zoom`. The
+   * critic measured the 1.5px flow edge at **1.10 px** on the validator
+   * template's own opening fit (0.733), **0.65 px** after `Fit` (0.436) and
+   * **0.56 px** with the Versions panel open (0.376) - all zooms the PRODUCT
+   * chose, none an author asked for. Flowise v2's worst case is 1.0 px.
+   */
+  async function edgeMetrics(page: Page): Promise<{ zoom: number; user: number; device: number }[]> {
+    return page.evaluate(() => {
+      // The zoom is measured from a NODE - its painted width over its laid-out
+      // width - rather than read off the `--canvas-zoom` the fix publishes.
+      // Reading the fix's own variable would make this guard unfalsifiable:
+      // against the pre-fix build it would default to 1 and the test would fail
+      // on its own premise instead of on the 0.56px stroke it exists to catch.
+      // It is also independent of which element Vue Flow happens to transform.
+      const sample = document.querySelector('.vue-flow__node') as HTMLElement | null
+      const zoom =
+        sample && sample.offsetWidth > 0
+          ? sample.getBoundingClientRect().width / sample.offsetWidth
+          : 1
+      const out: { zoom: number; user: number; device: number }[] = []
+      for (const path of document.querySelectorAll('.builder-edge-path')) {
+        const user = Number.parseFloat(getComputedStyle(path).strokeWidth)
+        out.push({ zoom, user, device: user * zoom })
+      }
+      return out
+    })
+  }
+
+  /** Vue Flow's own zoom-out control, so the zooms are the product's own. */
+  async function zoomOut(page: Page, times: number): Promise<void> {
+    for (let i = 0; i < times; i += 1) {
+      await page.locator('.vue-flow__controls-zoomout').click()
+      await page.waitForTimeout(120)
+    }
+  }
+
+  test('no edge is ever thinner than the design width in DEVICE pixels (P-06)', async ({ page }) => {
+    const watch = watchConsole(page)
+    await openValidatorTemplate(page)
+    await page.waitForTimeout(600)
+
+    // The premise: this template really does draw a lot of wires, and the fit
+    // really does take the canvas below 1. Without both, the assertion could
+    // pass over an empty graph at zoom 1.
+    const opening = await edgeMetrics(page)
+    expect(opening.length, 'the validator template draws edges').toBeGreaterThan(10)
+    expect(opening[0].zoom, 'the opening fit is below 1').toBeLessThan(1)
+
+    const samples = [opening]
+    await zoomOut(page, 2)
+    samples.push(await edgeMetrics(page))
+    await zoomOut(page, 3)
+    samples.push(await edgeMetrics(page))
+
+    // Three distinct zooms, all under 1, and the last well under - or the three
+    // measurements are one measurement repeated.
+    const zooms = samples.map((sample) => sample[0].zoom)
+    expect(new Set(zooms.map((z) => z.toFixed(3))).size, `zooms ${zooms}`).toBe(3)
+    expect(Math.min(...zooms)).toBeLessThan(0.5)
+
+    for (const sample of samples) {
+      for (const edge of sample) {
+        // 1.45 rather than 1.5: `--edge-width-flow` is 1.5px and the browser
+        // rounds `calc(1.5px / 0.436)` before multiplying it back.
+        expect.soft(
+          edge.device,
+          `an edge rendered at ${edge.device.toFixed(2)} device px at zoom ${edge.zoom}`,
+        ).toBeGreaterThanOrEqual(1.45)
+      }
+    }
+
+    // And the floor is actually the thing doing the work at the bottom end: at
+    // the lowest zoom the user-space width has grown past the token. A test
+    // that only checked the device width would pass on a build that had simply
+    // made every edge 4px, which is the fix this one is NOT asserting.
+    const deepest = samples[samples.length - 1]
+    expect(deepest[0].user, 'the max() branch engaged').toBeGreaterThan(1.5)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+
+  test('the minimap gets out of the way of a node underneath it (P-07)', async ({ page }) => {
+    const watch = watchConsole(page)
+    await page.goto('/#/build')
+    await page.locator('.template-card', { hasText: 'Sequential pipeline' }).click()
+    await expect(page.locator('.vue-flow__node').first()).toBeVisible()
+    await page.waitForTimeout(600)
+
+    const minimap = page.locator('.builder-minimap')
+    await expect(minimap).toBeVisible()
+    const panel = (await minimap.boundingBox())!
+
+    // Drag an agent from the palette into the minimap's own box - `2` is the
+    // agent tile's hotkey and `dragTo` drives the same HTML5 drag the author
+    // does. Its centre is the point the critic measured 30.2% coverage at.
+    const frame = page.locator('.builder-canvas')
+    const frameBox = (await frame.boundingBox())!
+    const target = { x: panel.x + panel.width / 2, y: panel.y + panel.height / 2 }
+    const before = await page.locator('.vue-flow__node').count()
+    await page.locator('.builder-tile[aria-keyshortcuts="2"]').dragTo(frame, {
+      targetPosition: { x: target.x - frameBox.x, y: target.y - frameBox.y },
+    })
+    await expect(page.locator('.vue-flow__node')).toHaveCount(before + 1)
+    // `dragTo` leaves the pointer on the panel, and a browser does not
+    // recompute `:hover` until the pointer moves - so without this the panel is
+    // legitimately lit by the author's own cursor and the measurement below is
+    // about where the mouse was parked rather than about the rule.
+    await page.mouse.move(24, 24)
+    await page.waitForTimeout(400)
+
+    // The premise: something really is under the panel. Without it the two
+    // assertions below would be true of a canvas with nothing on it.
+    const overlap = await page.evaluate(() => {
+      const map = document.querySelector('.builder-minimap')!.getBoundingClientRect()
+      let worst = 0
+      for (const node of document.querySelectorAll('.vue-flow__node')) {
+        const rect = node.getBoundingClientRect()
+        const wide = Math.min(rect.right, map.right) - Math.max(rect.left, map.left)
+        const tall = Math.min(rect.bottom, map.bottom) - Math.max(rect.top, map.top)
+        if (wide > 0 && tall > 0) worst = Math.max(worst, (wide * tall) / (rect.width * rect.height))
+      }
+      return worst
+    })
+    expect(overlap, 'a node really is under the minimap').toBeGreaterThan(0.1)
+
+    // It yields: nearly transparent, and no longer taking the pointer, so the
+    // node underneath is both visible and clickable.
+    await expect(minimap).toHaveAttribute('data-yielding', 'true')
+    // Polled, because the fade is a transition and `getComputedStyle` reports
+    // the interpolated value: reading it the instant the class lands measures
+    // the animation rather than the rule.
+    await expect
+      .poll(() => minimap.evaluate((el) => Number(getComputedStyle(el).opacity)))
+      .toBeLessThanOrEqual(0.2)
+    expect(await minimap.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none')
+
+    // The load-bearing half: what is actually under the pointer at the covered
+    // node's centre is the node, not the map.
+    const hit = await page.evaluate((point) => {
+      const element = document.elementFromPoint(point.x, point.y)
+      return {
+        inNode: Boolean(element?.closest('.vue-flow__node')),
+        inMap: Boolean(element?.closest('.builder-minimap')),
+      }
+    }, target)
+    expect(hit.inMap, 'the minimap still swallows the click').toBe(false)
+    expect(hit.inNode, 'the node underneath takes the pointer').toBe(true)
+
+    // And it comes back: the toggle keeps its pointer events for exactly this.
+    await minimap.locator('.minimap-toggle').hover()
+    await expect
+      .poll(() => minimap.evaluate((el) => Number(getComputedStyle(el).opacity)))
+      .toBeGreaterThan(0.9)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})

@@ -101,6 +101,7 @@ from brief_crew.service.attachments import (
     CustomToolStore,
     McpServerStore,
     NameTaken,
+    SkillBodyUnreadable,
     SkillStore,
     TooManyRows,
 )
@@ -306,7 +307,22 @@ class BuilderDocumentRequest(BaseModel):
 
 
 class BuilderDocumentSummaryModel(BaseModel):
-    """One row of the sidebar: enough to pick a graph, nothing to parse."""
+    """One row of the sidebar: enough to pick a graph, nothing to parse.
+
+    `status` describes the HEAD, and only the head, because that is the version
+    the row's `version` names and the one a click opens. That is not enough on
+    its own: `store.save` returns a published head to `draft` while the
+    registered workflow keeps serving the older version whose budget was
+    priced, so a document with `status: "draft"` can be answering launches this
+    minute. Until `live_version` existed the gallery could not tell that
+    document from one that was never published — the version rows had been made
+    honest (D-15-23) and the summary above them had not.
+
+    A second field rather than a compound `status`, for the reason
+    `_version_status` gives from the other side: head-published and
+    older-version-live are two independent facts, and collapsing them into one
+    string means every reader has to parse it back apart.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -314,6 +330,10 @@ class BuilderDocumentSummaryModel(BaseModel):
     name: str
     version: int
     status: str
+    #: The version this service is actually serving, or `None` when nothing of
+    #: this document is registered. Equal to `version` when the head itself is
+    #: live; BELOW it when the author has saved past a published version.
+    live_version: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -340,6 +360,12 @@ class BuilderDocumentModel(BaseModel):
     graph: GraphDescriptor
     #: True when this exact version is the one registered on this service.
     published: bool
+    #: WHICH version is registered, or `None` when none is. `published` answers
+    #: "is it this one", which stops being enough the moment the author saves
+    #: past a published version: the head returns to `draft`, `published` goes
+    #: false, and the canvas had nothing left telling it v1 was still serving
+    #: traffic. Both, because they are two facts and the bar shows both.
+    live_version: int | None = None
 
 
 class BuilderImportedDocumentModel(BuilderDocumentModel):
@@ -939,6 +965,7 @@ def create_builder_router(
                 live is not None
                 and live.document.version == stored.document.version
             ),
+            live_version=live.document.version if live is not None else None,
         )
 
     @router.get("/vocabulary", response_model=BuilderVocabularyModel)
@@ -999,6 +1026,11 @@ def create_builder_router(
                 name=row.name,
                 version=row.version,
                 status=row.status,
+                # One dict lookup per row against the process-local registry -
+                # the same source `list_versions` and `_document` already read,
+                # so the gallery cannot disagree with the canvas about which
+                # version is live. No query: `BUILDER_WORKFLOWS` is a mapping.
+                live_version=_live_version(row.id),
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
@@ -1496,8 +1528,7 @@ def create_builder_router(
 
         store = require_store()
         history = _guarded(lambda: store.history(document_id, user_id=owner_of(user)))
-        live = registered_workflow(document_id)
-        live_version = live.document.version if live is not None else None
+        live_version = _live_version(document_id)
         return [
             BuilderVersionModel(
                 version=entry.version,
@@ -1815,6 +1846,11 @@ def create_builder_router(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except (CustomToolError, SkillError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except SkillBodyUnreadable as exc:
+            # 500 and it names the path. The alternative - the empty body this
+            # branch used to hand back - is what let a path bug live in a
+            # shipped default behind 2,420 green tests.
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     def _no_store() -> HTTPException:
         return HTTPException(
@@ -2171,7 +2207,13 @@ def create_builder_router(
         owner = owner_of(user)
         if store is None:
             return {"skills": [pack.summary() for pack in builtin_skill_packs()]}
-        return {"skills": [pack.summary() for pack in store.list(owner)]}
+        # Through `_attachment` so an unreadable body answers 500 with its path
+        # rather than an anonymous 500 with nothing an author can act on.
+        return {
+            "skills": [
+                pack.summary() for pack in _attachment(lambda: store.list(owner))
+            ]
+        }
 
     @router.get("/skills/{skill_id}")
     async def get_skill(
@@ -2532,6 +2574,18 @@ def _version_source(request: BuilderDocumentRequest) -> str:
     if request.source == "autosave":
         return "autosaved"
     return "saved"
+
+
+def _live_version(document_id: str) -> int | None:
+    """The version of this document the service is registered to run, if any.
+
+    One place, three readers: the gallery summary, the version list and the
+    document response. They were three separate expressions of the same
+    question until the gallery was found calling a published document a draft.
+    """
+
+    live = registered_workflow(document_id)
+    return live.document.version if live is not None else None
 
 
 def _version_status(version: int, history: VersionHistory, live_version: int | None) -> str:

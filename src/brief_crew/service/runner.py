@@ -10,7 +10,7 @@ import time
 from threading import Event
 from typing import Any, Mapping, Protocol
 
-from brief_crew.config import CHEAP_MODEL
+from brief_crew.config import CHEAP_MODEL, compute_cost_usd
 from brief_crew.events import (
     FrameKind,
     FrameLevel,
@@ -651,6 +651,18 @@ class SyntheticValidatorRunner:
         )
         call_id = f"{execution.run_id}:{node_id}"
         model = CHEAP_MODEL.split("/", 1)[-1]
+        # `before` and `after` bracket the call, and they are not decoration:
+        # `RunRecord._track_llm_timing` keys `(node_id, call_id)` off exactly
+        # these two stages, and `_record_usage` then pops the difference as the
+        # call's `elapsed_ms`. Without them the registry accumulates tokens
+        # against a zero clock.
+        execution.capture.emit(
+            kind=FrameKind.LLM,
+            event_type=UIEventType.MODEL_CALL,
+            node_id=node_id,
+            message=f"{model} call started",
+            details={"stage": "before", "call_id": call_id, "model": model},
+        )
         for chunk in _chunks(text, 3):
             execution.capture.emit(
                 kind=FrameKind.LLM,
@@ -659,6 +671,23 @@ class SyntheticValidatorRunner:
                 message="Model stream chunk",
                 details={"stage": "chunk", "call_id": call_id, "chunk": chunk},
             )
+        # `after` BEFORE `utterance`, because that is the order
+        # `events/serializer.py:525-527` returns its three-frame tuple in, and a
+        # double whose ordering differs teaches a client a sequence production
+        # will never produce.
+        execution.capture.emit(
+            kind=FrameKind.LLM,
+            event_type=UIEventType.MODEL_CALL,
+            node_id=node_id,
+            message=f"{model} call completed",
+            details={
+                "stage": "after",
+                "call_id": call_id,
+                "model": model,
+                "finish_reason": "stop",
+                "response_id": None,
+            },
+        )
         execution.capture.emit(
             kind=FrameKind.LLM,
             event_type=UIEventType.MODEL_CALL,
@@ -672,6 +701,72 @@ class SyntheticValidatorRunner:
                 "prompt_tokens": 640,
                 "completion_tokens": len(text) // 4,
                 "model": model,
+            },
+        )
+        SyntheticValidatorRunner._token_usage(execution, node_id, call_id, model, text)
+
+    @staticmethod
+    def _token_usage(
+        execution: RunExecution,
+        node_id: str,
+        call_id: str,
+        model: str,
+        text: str,
+    ) -> None:
+        """The TOKEN frame that makes the console's spend surface real.
+
+        THE THIRD TIME THIS SHAPE OF DEFECT HAS LANDED HERE, and the argument is
+        the one `_tool_call` and `_utterance` already make one layer up. This
+        runner emitted an `utterance` carrying `prompt_tokens` - which the
+        dialogue rail reads and rendered as `640 in · 78 out` - and **no TOKEN
+        frame at all**. The client's `applyTokenUsage` fires on `kind === 'token'`
+        and nothing else, so the status panel read `CALLS 0 · TOKENS 0 ·
+        $0.0000` beside a rail showing real numbers, on a completed run. That
+        panel is what an operator watches while a graph somebody else drew
+        spends against `MAX_RUN_COST_USD`, and it was the one surface no free
+        path could exercise (critic round product-1, P-08).
+
+        Emitting TOKEN here also gets the METRICS frames for free: `_on_frames`
+        routes a TOKEN frame into `_record_usage`, which is what marks the run's
+        usage dirty and what `metrics_frame` snapshots. So the panel's `CALLS`
+        and `ELAPSED` come back too, through the production path rather than a
+        second one written for the double.
+
+        The shape mirrors `events/serializer.py:527` field for field -
+        `{call_id, model, usage, cost_usd}` with the cost NESTED inside `usage`
+        as well, which is the fix CLAUDE.md section 8 records: the client reads
+        `details.usage.cost_usd` and narrows to `usage` the moment that key is
+        an object, so a cost written only beside it totals `$0.0000` with every
+        token frame present.
+
+        `compute_cost_usd` rather than a literal: the numbers are then a real
+        function of `PRICES` and the model, so a synthetic run prices the same
+        way a paid one does and a price table change moves both. It returns
+        `None` for a model with no price on file, which is not `0.0` - the same
+        distinction the real path draws.
+        """
+
+        prompt_tokens = 640
+        completion_tokens = len(text) // 4
+        cost_usd = compute_cost_usd(model, prompt_tokens, completion_tokens)
+        usage: dict[str, Any] = {
+            "successful_requests": 1,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "call_count": 1,
+            "cost_usd": cost_usd,
+        }
+        execution.capture.emit(
+            kind=FrameKind.TOKEN,
+            event_type=UIEventType.MODEL_CALL,
+            node_id=node_id,
+            message="Token usage recorded",
+            details={
+                "call_id": call_id,
+                "model": model,
+                "usage": usage,
+                "cost_usd": cost_usd,
             },
         )
 

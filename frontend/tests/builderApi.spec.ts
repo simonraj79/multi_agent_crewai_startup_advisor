@@ -214,7 +214,52 @@ describe('the builder API client', () => {
         'POST /workflows/{document_id}/unpublish',
       ]
       const planFifteenLanded = planFifteen.every((route) => declared.has(route))
-      expect(declared.size).toBe(planFifteenLanded ? 13 : 8)
+
+      /*
+       * Plan 05's model registry adds one, and plans 06, 07 and 08 add sixteen
+       * between them. They are ENUMERATED rather than counted, and the
+       * distinction is the whole point of this test: a number raised until the
+       * suite goes green stops being a guard the moment it is raised, while a
+       * list still says which routes anybody intended.
+       *
+       * `BuilderApi` has no method for any of them - they belong to the model
+       * picker, the tool catalogue, the MCP panel and the skills panel, each of
+       * which owns its own client - so they are accounted for here the way
+       * `GET /vocabulary` already is: named, and proved declared. The property
+       * this test exists for stays TOTAL either way, which is that no route can
+       * appear on the server with nothing on this side that knows about it.
+       */
+      const modelRegistryRoutes = ['GET /models']
+      const attachmentRoutes = [
+        // 06 - the tool catalogue and the declarative custom HTTP tool
+        'GET /tools',
+        'POST /tools/custom',
+        'PUT /tools/custom/{tool_id}',
+        'DELETE /tools/custom/{tool_id}',
+        'POST /tools/custom/{tool_id}/test',
+        // 07 - MCP servers and discovery
+        'GET /mcp/servers',
+        'POST /mcp/servers',
+        'PUT /mcp/servers/{server_id}',
+        'DELETE /mcp/servers/{server_id}',
+        'POST /mcp/servers/{server_id}/discover',
+        // 08 - skill packs
+        'GET /skills',
+        'GET /skills/{skill_id}',
+        'POST /skills',
+        'PUT /skills/{skill_id}',
+        'DELETE /skills/{skill_id}',
+        'POST /skills/import',
+      ]
+      const modelsLanded = modelRegistryRoutes.every((route) => declared.has(route))
+      const attachmentsLanded = attachmentRoutes.every((route) => declared.has(route))
+      expect(attachmentRoutes).toHaveLength(16)
+      expect(declared.size).toBe(
+        8 +
+          (planFifteenLanded ? planFifteen.length : 0) +
+          (modelsLanded ? modelRegistryRoutes.length : 0) +
+          (attachmentsLanded ? attachmentRoutes.length : 0),
+      )
 
       /*
        * Seven of the eight are this class's. The eighth - `GET /vocabulary` -
@@ -263,7 +308,21 @@ describe('the builder API client', () => {
         ...(planFifteenLanded ? planFifteen : []),
       ])
       for (const route of asked) expect(declared).toContain(route)
-      expect(new Set([...asked, vocabularyRoute]).size).toBe(declared.size)
+
+      /*
+       * Totality, and it names the offender rather than reporting a number.
+       * `expect(size).toBe(size)` was the older form and its failure message
+       * said `30 !== 13`, which tells a reader that something moved and
+       * nothing about what.
+       */
+      const accountedFor = new Set([
+        ...asked,
+        vocabularyRoute,
+        ...(modelsLanded ? modelRegistryRoutes : []),
+        ...(attachmentsLanded ? attachmentRoutes : []),
+      ])
+      expect([...declared].filter((route) => !accountedFor.has(route)).sort()).toEqual([])
+      expect(accountedFor.size).toBe(declared.size)
     })
 
     it('passes limit and version as the query parameters the handlers take', async () => {

@@ -232,15 +232,21 @@ two of which are controls:
 
 | case | mean | p95 | max | frames |
 | --- | ---: | ---: | ---: | ---: |
-| `idle48` — 48 nodes, no gesture | 16.85 | 16.70 | 83.30 | 358 |
-| `gesture1` — ONE node, same gesture | 16.76 | 16.80 | 33.40 | 366 |
-| `fixture48` — 48 nodes, the gesture | **16.85** | **16.80** | 33.40 | 373 |
-| `client60` — 60 nodes, the gesture | **16.71** | **16.80** | 33.30 | 368 |
+| `idle48` — 48 nodes, no gesture | 16.666 | 16.70 | 16.80 | 361 |
+| `gesture1` — ONE node, same gesture | 16.849 | 16.80 | 33.40 | 365 |
+| `fixture48` — 48 nodes, the gesture | **16.846** | **16.80** | 33.40 | 370 |
+| `client60` — 60 nodes, the gesture | **16.846** | **16.70** | 33.40 | 370 |
 | budget | ≤ 16.70 | ≤ 20 | | |
 
 **p95 is met on both cases with 3.2ms of headroom. The mean is missed, by
-0.01ms to 0.15ms depending on the run**, and the budget is NOT widened and the
-test is NOT tuned: both mean assertions are red.
+0.15ms on this run and by 0.01ms to 0.15ms across five**, and the budget is NOT
+widened and the test is NOT tuned: both mean assertions are red.
+
+Read the three middle rows together, because they are the finding. An IDLE
+48-node canvas sits on the floor exactly - 16.666, max 16.80, not one late
+frame. The same gesture over ONE node reports 16.849. The same gesture over 48
+reports 16.846 and over 60 reports 16.846. **Graph size contributes nothing
+measurable**; the whole of the overrun is the scripted input.
 
 Where the time goes, which is the part worth having. A 60Hz display makes the
 floor 1000/60 = **16.667ms**, so a 16.7 budget allows 0.033ms per frame — over

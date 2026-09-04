@@ -829,3 +829,42 @@ Consequences for this plan, which the build must honour:
    `max_price` enforced the true bound is the ceiling itself; the factor stays
    for estimating a run's cost, where the measured per-model ratios (1.0x to
    9.5x) matter more than any single constant.
+
+### Wave A/B closers — 2026-09-04
+
+**Criterion 10 closes, and the blocker it named is gone.** Its Status recorded
+*"`llm.model` exists only on the AUTHORED arm, and the client has no authored
+arm"*; plan 04 shipped that arm in `4d8a054`, so the test the criterion named
+could finally be written.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 10 | Playwright: change an agent's model off the cheap preset; the enforced figure falls; a `supports_reasoning: false` row is disabled with a tooltip | **met** | `frontend/e2e/builder-models.spec.ts`, **2 tests**, both green against a local `SYNTHETIC=1` backend; captures in `benchmarks/ours/05/` |
+
+Two properties, and they are different kinds of claim.
+
+**The ENFORCED figure is the one that has to move.** The meter shows two dollar
+amounts and only one of them is the ceiling's: `floor_cost_usd` is the
+comparable, and `static_cost_usd` × `NITRO_PRICE_FACTOR` is what
+`budget_problems` refuses a publish against. A test watching the floor would
+pass while the number that governs anything sat still. The fan-out template is
+opened, one agent converted, its model moved from the cheap preset
+(`google/gemini-3.5-flash-lite`, $0.30/M in) to `qwen/qwen3.7-flash` ($0.03/M) —
+an order of magnitude, so the decrease is not a rounding artefact — and the
+card's model pill is asserted to move in the same tick, which is 04 D4.
+
+**A capability the model lacks is disabled with a tooltip naming the model.**
+Asserted in both directions: the `high` button is ENABLED on the cheap preset
+and DISABLED on `openai/gpt-4.1-nano`, so "disabled" cannot be a control that is
+always disabled. `gpt-4.1-nano` genuinely publishes `supports_reasoning: false`
+in the committed registry, so this is the roster's own row rather than a fixture
+invented to make the point. The picker's own capability chip carries
+`aria-disabled="true"` and the sentence
+*"openai/gpt-4.1-nano does not support reasoning, so reasoning_effort is
+disabled."*
+
+**Assumption stated:** the criterion's *"disabled-with-tooltip state … on a
+`supports_reasoning: false` fixture row"* is read as the roster row rather than
+as a separate fixture file, because the registry already contains two such
+models and a second copy would be the client mirror R7 admits only under a
+byte-comparison.

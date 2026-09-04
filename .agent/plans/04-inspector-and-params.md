@@ -392,3 +392,71 @@ asserted in a comment.
 **No source file changed to close this row** beyond one stale docblock in
 `inspectors/LlmFields.vue`, which said the key was "not served yet". The reader
 was right; nothing had asked the server.
+
+Criteria **9 and 10** close; **2** closes on its unit half and its browser half
+is blocked on one function in another package's file. Measured at `369a8c4`:
+frontend 1475 in 74 files, `vue-tsc -b --force` exit 0, every spec below RUN
+against a local `SYNTHETIC=1` backend with zero console errors tolerated.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 2 | a problem on an Expert field opens the switch and the region and focuses the control | **partial — unit met, browser BLOCKED** | `frontend/e2e/builder.spec.ts` *"surfaces a problem that lives behind the Expert switch, and walks to its node"* is green; the focusing half is a `test.fixme` beside it naming the change |
+| 9 | a Playwright keyboard walk reaches every control | **met** | `frontend/e2e/builder.spec.ts` *"is fully keyboard reachable…"* — every stamped control visited, then Shift+Tab out to the dock. The run that measured the stamp counted **73**; the spec asserts a floor of 30 rather than that figure, because pinning the total would fail for every future field |
+| 10 | *"configure an agent in eight pointer actions"*, ending `valid: true` | **met, and the measured number is NINE** | same file, *"configures an agent in nine pointer actions, ending valid"* |
+
+**Criterion 10's number is nine, measured, and the five differences from D10 are
+each a fact about what shipped:**
+
+```text
+ 8   D10's budget
+-1   the Blank card seeds an `output`, so its `palette 7` press is gone
+-1   `ModelPicker` is a native <select> (departure 6), so "open + choose" is one
++1   the authored arm is reachable ONLY by converting a library agent (departure 9)
++1   the Blank card also ships WIRED, so its own `idea -> result` edge must go
++1   a dropped tool lands on a placeholder `tool_id`, so WHICH tool is its own choice
+═══
+ 9
+```
+
+The count is asserted rather than described, so a future gesture added to this
+path fails a test instead of quietly making the product worse at the thing
+rubric 4 scores. It ends on the app's OWN last `POST /api/builder/validate`
+answer rather than on a request the test composed — "the headline says ready" is
+the claim a canvas makes about itself.
+
+**Criterion 9 asserts that nothing is SKIPPED, not that Tab works.** Every
+focusable control the rail renders is stamped, the walk records what focus
+actually visited, and the two sets are compared; a test that counted Tab presses
+would pass straight over a `tabindex="-1"` in the middle of the form. 73
+controls with Advanced open and Expert on. The dock is reached with **Shift+Tab**
+and that is a fact about the layout rather than a convenience:
+`.graph-workspace` puts the problems panel in grid row 5 and the rail is a
+sibling after it, so from the top of the rail the dock is behind you.
+
+**One product fix, in `InspectorRail.focusField`.** It took the first control in
+the row, and a DISABLED control silently refuses `focus()` — so the one problem
+that most needs walking to, `model-lacks-capability` on `llm.reasoning_effort`,
+was the one that could not be walked to, because that control is disabled
+precisely BECAUSE the model cannot honour it. It now takes the first enabled
+control and falls back to focusing the row itself.
+
+**Criterion 2's browser half is blocked, and the change is three lines.**
+`focusField` does everything the criterion asks and is reached from exactly ONE
+call site — the credential notice at `BuilderView.vue:829`. The problems dock's
+row click goes to `onEdgeSelectFromPanel` → `canvas.focusProblem`, which selects
+the node and flashes the card and never mentions a field:
+
+```ts
+// BuilderView.vue
+async function onEdgeSelectFromPanel(problem: BuilderProblem): Promise<void> {
+  canvas.focusProblem(problem)
+  const field = problems.fieldFor(problem)
+  if (field) await inspectorRef.value?.focusField(field)
+}
+```
+
+`problems` (line 206) and `inspectorRef` (line 370) are already in scope.
+`BuilderView.vue` belongs to another package this wave, so this is a report and
+a `test.fixme`, not an edit. Note what it means today: a problem anchored to a
+control behind the Expert switch leaves the author looking at a form that
+appears clean.

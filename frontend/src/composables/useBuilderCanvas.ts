@@ -392,6 +392,34 @@ export interface BuilderNodeData {
    * the author learns that the canvas is broken rather than that the edge was.
    */
   refused: boolean
+  /**
+   * What hangs off this node's `attach` port, in document order - 03 D6.
+   *
+   * PROJECTED, not computed on the card, for the reason every other field here
+   * is: an attachment is a fact about an EDGE and a card is handed one node.
+   * `BuilderNode` would otherwise have to be given the whole document to answer
+   * "what are this agent's hands", which is the second opinion this file exists
+   * to prevent.
+   *
+   * D6 asks for the avatars to appear on the agent as well as for the pill to
+   * stay on the canvas, and says why: the pill is where you configure, the
+   * avatar is where you see the agent's hands. A dropdown inside the form is
+   * the Flowise `agentTools` anti-pattern, and the thing it cannot show is that
+   * two agents share one tool - which the canvas can.
+   *
+   * Optional, so a fixture that predates it still type-checks and reads as "no
+   * attachments" rather than as a lie about a node that has some.
+   */
+  attachments?: readonly NodeAttachment[]
+}
+
+/** One thing wired into a node's `attach` port, as the card draws it. */
+export interface NodeAttachment {
+  id: NodeId
+  /** `tool`, `mcp` or `skill` - the avatar's glyph and its accent. */
+  kind: NodeKind
+  /** The attachment node's own label, which is what its pill reads. */
+  label: string
 }
 
 /** What `BuilderEdge.vue` receives as `data`. */
@@ -504,6 +532,8 @@ export interface DropResult {
   attachedTo: NodeId | null
 }
 const NO_PROBLEMS: readonly BuilderProblem[] = []
+/** One frozen empty array, so a card with no attachments re-renders as itself. */
+const NO_ATTACHMENTS: readonly NodeAttachment[] = []
 
 /** Rounds to the visible grid, and to an integer. Both, always, in that order. */
 export function snapToGrid(value: number): number {
@@ -682,6 +712,26 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     // be O(N*E) on a projection that rebuilds on every selection change.
     const inbound = new Map<string, number>()
     for (const edge of document.edges) inbound.set(edge.target, (inbound.get(edge.target) ?? 0) + 1)
+    /*
+     * What hangs off each `attach` port, in ONE pass rather than per card.
+     *
+     * Built off the node index rather than off the edge alone, because the
+     * avatar draws the attachment's KIND and its LABEL and an edge carries
+     * neither. A dangling source - an edge whose attachment was deleted in the
+     * same tick the projection ran - is skipped rather than drawn as a blank,
+     * which is the only failure mode this lookup has.
+     */
+    const byId = new Map(document.nodes.map((entry) => [entry.id as string, entry]))
+    const attachments = new Map<string, NodeAttachment[]>()
+    for (const edge of document.edges) {
+      if (edge.target_port !== 'attach') continue
+      const source = byId.get(edge.source)
+      if (!source) continue
+      const list = attachments.get(edge.target)
+      const entry: NodeAttachment = { id: source.id, kind: source.kind, label: source.label }
+      if (list) list.push(entry)
+      else attachments.set(edge.target, [entry])
+    }
 
     return document.nodes.map((node, index) => {
       const problems = nodeProblems.get(node.id) ?? NO_PROBLEMS
@@ -720,6 +770,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
         inbound: inbound.get(node.id) ?? 0,
         landing: landingIds.value.has(node.id),
         refused: refused === node.id,
+        attachments: attachments.get(node.id) ?? NO_ATTACHMENTS,
       }
       return {
         id: node.id,

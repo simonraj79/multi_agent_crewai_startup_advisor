@@ -572,3 +572,49 @@ exists with one class in it. Plan 12 should add its cases beside
 and takes the failing node id as a constructor argument. Plan 07's criterion 8
 (`test_mcp_unreachable`) deliberately did **not** go in here — see plan 07's
 own closer for where it went and why.
+
+Criteria **9 and 10** — the browser half this plan's Status said was *"not
+reached and is not approximated"*. Both green against a local `SYNTHETIC=1`
+backend with `CREDENTIALS_MASTER_KEY` set, zero console errors tolerated.
+Captures in `benchmarks/ours/06/`.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 9 | drag a tool onto an agent: one node, one edge, a chip, Ctrl+Z removes both; the drop on a non-host | **met, with one departure and one `fixme`** | `frontend/e2e/builder-tools.spec.ts`, **4 tests** |
+| 10 | the amber *"no key"* chip and the dock row, both cleared by adding a credential | **met, under the code the server actually emits** | same file, *"shows the amber no-key chip and the dock row until a credential is chosen"* |
+
+**Departure — a tool dropped on a `transform` is NOT refused.** The criterion
+asks for *"nothing is created and the tooltip reads tools attach to agents"*.
+`dropKind` deliberately creates an UNATTACHED node instead and says why: an
+author may be laying out before wiring, and `bounds.py` reporting
+`attachment-unattached` is a sentence they can read where a refused drop is
+silent. No such tooltip exists anywhere in `frontend/src`. The test asserts the
+shipped decision — a node, NO edge (`attach` is refused on a transform by the
+port table, which is why the drop could not have wired it), and the warning in
+the dock — rather than a behaviour nobody built.
+
+**Correction — the code is `tool-credential-required`, not
+`credential-missing`.** Both are in the served union; the tool path emits the
+first (`builder/tools.py`) and `credential-missing` belongs to the MCP and skill
+paths. Criterion 10's prose predates that split, and the test names what the
+server says.
+
+**Criterion 10 asserts that the two surfaces clear TOGETHER.** A chip that
+stayed amber after the key was chosen would be worse than no chip. The key is
+created from inside the inspector, and *"Create new"* being docked rather than
+modal is asserted as an ABSENCE (`role=dialog` count is 0), because "no modal"
+is a property a screenshot cannot show.
+
+**A test-hygiene finding worth recording, because it is the shape MISSION.md §9
+warns about.** The credential test passed in isolation and failed in the full
+suite: the vault is durable and per-user, `CredentialPicker` selects the only
+key of a kind by itself, and a key left behind by the previous run made *"the
+amber chip appears"* false for a reason nothing on screen explained. The spec
+now clears `/api/builder/credentials` before and after each test.
+
+**One `fixme`, with the exact change.** `NodePalette.onToolDragStart` writes
+BOTH mime entries and `nodePalette.spec.ts` pins it; nothing reads the second.
+`BuilderCanvas.onDrop` reads only `BUILDER_DND_MIME`, so *"drag Web search onto
+an agent"* lands the generic placeholder tool. The read is one line in
+`BuilderCanvas.vue` — another package's file this wave — and the diff is in the
+spec's own footer.

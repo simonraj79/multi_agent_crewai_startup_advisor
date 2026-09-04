@@ -416,3 +416,55 @@ file.
   sake, since the free path is the only one most people will ever watch, but it
   is a **fabricated** frame rather than an observed one and should say so where
   it is written.
+
+**Criterion 9 closes.** `frontend/e2e/builder-skills.spec.ts` pastes a
+`SKILL.md`, sees it stored and listed under *mine*, opens its body through the
+escape-first renderer, attaches it, and reads the version, the owner and the
+body back off the form. Three tests, all green at `369a8c4` against a local
+`SYNTHETIC=1` backend with zero console errors tolerated; capture in
+`benchmarks/ours/08/`.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 9 | paste, list, drag, see `v1` and the body; the palette's three headings | **met, with the "card" read as the inspector's** | `frontend/e2e/builder-skills.spec.ts`, **3 tests** |
+
+**Where the `v1` and *mine* chips live, and why it is not the canvas pill.**
+`SkillConfig` carries `skill_id` and `skill_name` and nothing else, and the
+export drops the id deliberately — so a version and an owner on the pill would
+be facts about the AUTHOR's library rather than about the document, and an
+imported graph could not draw them. The card that does carry all three is the
+inspector's summary (`[data-testid="skill-summary"]`), which is what the test
+asserts. Stated rather than glossed, because it is a departure from the
+criterion's wording.
+
+**Two product defects, both found by running it rather than by reading it.**
+
+1. **`commitSkillId` never wrote `skill_name`, and `export.py` drops
+   `skill_id`** on the stated grounds that *"the skill is re-resolved by
+   `skill_name`, which passes through as an ordinary key"*. Nothing kept that
+   promise: an exported graph's skill node carried neither an id nor a name, so
+   **every export silently lost its skills** and `BuilderNode` rendered
+   `no reference` for a pack the author had definitely chosen. The same absence
+   is why an attached pack's pill read `sk_9f2c0a1b3d4e` on the canvas rather
+   than what it is. The name is now written beside the id, and null when the
+   roster does not know it.
+2. **`loadBody` fetched the placeholder id a fresh skill node is born with**, so
+   every skill node an author created logged a 404 in a console this suite
+   tolerates none of. The `catch` swallowed the exception; the browser logged the
+   request regardless. The list has already said what exists, so a request whose
+   answer is known is no longer made — and a pack that is genuinely gone still
+   says so through `skill-unknown` on the node.
+
+`adopt` now refreshes the list BEFORE committing. Committing first showed an
+author a card with no version, no owner and no body for the pack they had
+written a second earlier.
+
+**The palette clause is asserted separately**, because it is about the three
+families staying distinct: one blurb each from `nodeKinds.ts` (`catalogue
+tool` / `MCP server` / `knowledge an agent carries`), and all three carrying
+`is-family-attachment`, which is the palette's half of D5's silhouette channel.
+
+**And the refusal path.** A `SKILL.md` whose frontmatter the package's parser
+rejects shows the parser's own sentence and stores NOTHING — the second half is
+what a message alone does not prove. The 422 that provokes it is forgiven in a
+console allowance declared beside the line that causes it, never at file level.

@@ -573,8 +573,30 @@ async function focusField(field: string): Promise<boolean> {
   // the same row adds a class the element already has and nothing plays.
   void row.offsetWidth
   row.classList.add('problem-anchor')
-  const control = row.querySelector<HTMLElement>('input, select, textarea, button')
-  control?.focus()
+  /*
+   * The first ENABLED control, and the row itself when there is none.
+   *
+   * A disabled control silently refuses `focus()`, so the unqualified query
+   * left the author teleported to a region they cannot type in with the caret
+   * still down in the problems dock - the exact half-arrival R15's docked
+   * inspector exists to avoid. It is not a hypothetical: `model-lacks-capability`
+   * anchors to `llm.reasoning_effort`, and that control is disabled precisely
+   * BECAUSE the model cannot honour it, so the one problem that most needs
+   * walking to is the one that could not be walked to.
+   *
+   * Focusing the row rather than giving up: the sentence's repair is elsewhere
+   * (`llm.model`, which it names), so the honest landing is the row that
+   * carries the sentence. `tabIndex = -1` makes it programmatically focusable
+   * without adding it to the tab order, so a keyboard walk is unchanged.
+   */
+  const control = row.querySelector<HTMLElement>(
+    'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])',
+  )
+  if (control) control.focus()
+  else {
+    row.tabIndex = -1
+    row.focus()
+  }
   return true
 }
 

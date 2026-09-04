@@ -68,7 +68,22 @@ async function load(): Promise<void> {
 
 async function loadBody(): Promise<void> {
   const id = config.value.skill_id
-  if (!id) {
+  /*
+   * Only ask for a pack the LIST says exists.
+   *
+   * A fresh skill node lands on `nodeKinds`' placeholder id, and asking the
+   * server for it is a guaranteed 404. The `catch` below swallows the
+   * exception, but the BROWSER logs the failed request regardless - so every
+   * skill node an author created wrote a console error, on a suite whose rule
+   * is that it tolerates none. The list has already told us what exists; a
+   * request whose answer is known is not a request worth making.
+   *
+   * A pack that is genuinely gone falls here too, and says so through
+   * `skill-unknown` on the node, which `FieldRow` renders from the server's own
+   * index. Repeating it here would say one thing twice in two wordings, and the
+   * second would be ours.
+   */
+  if (!id || !rows.value.some((row) => row.id === id)) {
     detail.value = null
     return
   }
@@ -76,10 +91,6 @@ async function loadBody(): Promise<void> {
   try {
     detail.value = await props.api.getSkill(id)
   } catch {
-    // A pack that is not this caller's answers 404, and the PROBLEM for that is
-    // `skill-unknown` on the node - which `FieldRow` already renders from the
-    // server's own index. Repeating it here would say the same thing twice in
-    // two wordings, and the second would be ours.
     detail.value = null
   }
 }
@@ -94,18 +105,43 @@ watch(() => config.value.skill_id, loadBody)
 /** The rendered pack. Escape-first; never `v-html` over raw input. */
 const bodyHtml = computed(() => (detail.value ? renderMarkdown(detail.value.body) : ''))
 
-/** A pack written or picked in the panel becomes this node's pack. */
-function adopt(id: string): void {
+/**
+ * A pack written or picked in the panel becomes this node's pack.
+ *
+ * The list is refreshed BEFORE the commit, not after. A pack pasted a moment
+ * ago is not in `rows` yet, and both the summary chips and `loadBody` are
+ * keyed on finding it there - so committing first showed an author a card with
+ * no version, no owner and no body for the pack they had just written.
+ */
+async function adopt(id: string): Promise<void> {
   managing.value = false
+  await load()
   commitSkillId(id)
-  void load()
 }
 
+/**
+ * Write the NAME beside the id, always.
+ *
+ * `export.py` drops `skill_id` on the way out - it names a row in the exporting
+ * author's own library - and its comment says the pack is "re-resolved by
+ * `skill_name`, which passes through as an ordinary key". Nothing wrote that
+ * key, so the promise was never kept: an exported graph's skill node carried
+ * neither an id nor a name, and `BuilderNode` rendered `no reference` for a
+ * pack the author had definitely chosen. The same absence is why an attached
+ * skill's pill read `sk_9f2c0a1b3d4e` on the canvas rather than what it is.
+ *
+ * Null when the roster does not know the id - which is the honest answer, and
+ * is what the `<input>` fallback produces on a build whose list would not load.
+ */
 function commitSkillId(value: string): void {
   if (value === config.value.skill_id) return
+  const name = rows.value.find((row) => row.id === value)?.name ?? null
   emit('commit', {
     label: 'Set skill',
-    next: patchConfig(props.doc, props.node, { skill_id: toNodeId(value) as NodeId }),
+    next: patchConfig(props.doc, props.node, {
+      skill_id: toNodeId(value) as NodeId,
+      skill_name: name,
+    }),
   })
 }
 </script>

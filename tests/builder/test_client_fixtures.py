@@ -56,11 +56,15 @@ if str(REPO) not in sys.path:  # pragma: no cover - import bootstrap
 
 from scripts.emit_builder_fixtures import (  # noqa: E402
     BACK_EDGES_PATH,
+    COMPILED_PREVIEW_PATH,
     MODELS_PATH,
+    PREVIEW_CREDENTIAL_ID,
+    PREVIEW_CREDENTIAL_LABEL,
     PROBLEM_CODES_PATH,
     PROBLEM_SCENARIOS,
     TEMPLATE_DOCUMENTS_PATH,
     build_back_edges,
+    build_compiled_preview,
     build_models,
     build_problem_codes,
     build_templates,
@@ -392,3 +396,54 @@ class TemplateFixtureTests(unittest.TestCase):
                 budget = payload["validation"]["budget"]
                 self.assertEqual(budget["unpriced_models"], [])
                 self.assertFalse(budget["over_ceiling"])
+
+
+class CompiledPreviewFixtureTests(unittest.TestCase):
+    """`builderCompiledPreview.json` still says what `render_preview` says.
+
+    Plan 13 criterion 5. The Code tab renders `yaml` and `python` VERBATIM - it
+    generates neither - so what a TypeScript test can usefully assert is that
+    the strings it renders are the strings this build produces. A hand-written
+    fixture would drift the first time `_render_python` changed a line, and the
+    tab's test would go on passing over a rendering nobody ships.
+    """
+
+    def test_the_committed_fixture_is_what_the_generator_produces_now(self) -> None:
+        self.assertEqual(
+            committed(COMPILED_PREVIEW_PATH),
+            render(build_compiled_preview()),
+            "frontend/tests/fixtures/builderCompiledPreview.json is stale, so "
+            "the Code tab is being checked against a rendering this build no "
+            "longer produces. Regenerate with:" + NEWLINE + "    " + REGENERATE,
+        )
+
+    def test_the_python_rendering_labels_the_credential_and_never_names_a_key(
+        self,
+    ) -> None:
+        """The one substitution in the whole preview, pinned from this end too.
+
+        `test_preview.py` proves the renderer cannot read a key, against a real
+        vault with a real sentinel. This proves the FIXTURE carries the shape
+        that proof is about - a fixture whose graph named no credential would
+        leave the tab's only security-relevant assertion vacuous, and would do
+        it silently.
+        """
+
+        payload = json.loads(COMPILED_PREVIEW_PATH.read_text(encoding="utf-8"))
+        self.assertIn(f"<credential: {PREVIEW_CREDENTIAL_LABEL}>", payload["python"])
+        # The YAML is the literal declaration and carries the ID, which is the
+        # asymmetry `builder_api.py` documents: the reference is what runs, the
+        # label is what a person reads.
+        self.assertIn(PREVIEW_CREDENTIAL_ID, payload["yaml"])
+        self.assertNotIn(PREVIEW_CREDENTIAL_ID, payload["python"])
+
+    def test_the_timestamp_is_pinned_rather_than_normalised_away(self) -> None:
+        """A generated_at from `now()` would make this fixture unpinnable.
+
+        `render_preview` takes it as a parameter for exactly this reason, and
+        stripping the field instead would be a field the byte-compare stopped
+        checking.
+        """
+
+        payload = json.loads(COMPILED_PREVIEW_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(payload["generated_at"], "2026-01-01T00:00:00+00:00")

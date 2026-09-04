@@ -3335,3 +3335,31 @@ BUILTIN_SKILL_NAMES: tuple[str, ...] = (
     "evidence-citation",
     "report-writing",
 )
+
+
+# ---------------------------------------------------------------------------
+# The docked test panel's saved inputs - .agent/plans/13-flow-testing.md D3,
+# contract C10's `builder_test_inputs`.
+#
+# An author's own row: the one input field this graph reads, plus the per-node
+# `out__*` values a single-node test replays into the node above it. The table
+# shipped with plan 15 and its read query with plan 10; these are the bounds
+# the CRUD needed and had nowhere to be.
+# ---------------------------------------------------------------------------
+
+#: A saved test input's id. `ti_` + 12 hex, the shape `ut_` and `mcp_` already
+#: use, so one regex family covers every row a builder author owns.
+TEST_INPUT_ID_PATTERN = r"^ti_[0-9a-f]{12}$"
+#: The label column is String(80) (15 D6); restated here because the refusal has
+#: to happen before the INSERT, where a dialect that truncates silently would
+#: otherwise decide it.
+MAX_TEST_INPUT_LABEL_CHARS = 80
+#: 12 saved inputs per document. Past a dozen the panel's picker is a list to
+#: search rather than a set to choose from, and the honest answer at that point
+#: is a second document. The POST answers 422 over it.
+MAX_TEST_INPUTS_PER_DOCUMENT = 12
+#: `node_mocks` is one `out__*` value per node, and a node's output is prose an
+#: agent wrote. Bounded at the same 64 KiB as MAX_RUN_RESULT_BODY_CHARS, for the
+#: same reason: `_sanitize_json` RAISES over MAX_STRING_LENGTH rather than
+#: truncating, so a larger bound here loses the whole row at write time.
+MAX_TEST_INPUT_MOCK_BYTES = 65536

@@ -48,7 +48,11 @@ from sqlalchemy import delete, func, insert, select, update
 
 from brief_crew.builder.document import BuilderDocument
 from brief_crew.builder.upgrade import upgrade_document
-from brief_crew.config import BUILDER_VERSION_SOURCE_MAX_CHARS, MAX_BUILDER_DOCUMENT_BYTES
+from brief_crew.config import (
+    BUILDER_VERSION_SOURCE_MAX_CHARS,
+    MAX_BUILDER_DOCUMENT_BYTES,
+    MAX_TEST_INPUTS_PER_DOCUMENT,
+)
 from brief_crew.service.persistence import (
     PostgresFlowPersistence,
     bounded_json,
@@ -290,18 +294,82 @@ def _checked_size(document_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-class BuilderTestInputStore:
-    """READ ONE saved test input, for the caller and nobody else.
+class TestInputNotFound(BuilderStoreError, LookupError):
+    """No saved test input with this id belongs to this caller.
 
-    Read-only and deliberately minimal. `13-flow-testing.md` owns this table and
-    will bring the create, list and delete with it; what plan 10 needs is the
-    one query C7's `test_input_id` implies, and writing that here rather than
-    inlining a `select` in `service/app.py` is what keeps the SQL for this table
-    in the module that already holds the SQL for every other builder table.
+    One exception for "no such row" and "not yours", the same conflation
+    `DocumentNotFound` makes and for the same reason: the transport answers 404
+    for both, and a caller who can tell them apart has the oracle that
+    distinction exists to remove.
+    """
+
+    def __init__(self, test_input_id: str) -> None:
+        super().__init__(f"test input {test_input_id} was not found")
+        self.test_input_id = test_input_id
+
+
+class TestInputLimitReached(BuilderStoreError):
+    """This document already holds MAX_TEST_INPUTS_PER_DOCUMENT saved inputs."""
+
+    def __init__(self, document_id: str, count: int) -> None:
+        super().__init__(
+            f"document {document_id} already has {count} saved test inputs and "
+            f"the ceiling is {MAX_TEST_INPUTS_PER_DOCUMENT}; delete one first"
+        )
+        self.document_id = document_id
+        self.count = count
+
+
+@dataclass(frozen=True, slots=True)
+class TestInput:
+    """One saved run input, as the panel and the transport both read it."""
+
+    id: str
+    document_id: str
+    label: str
+    inputs: dict[str, Any]
+    node_mocks: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+#: The owner written for a caller with no identity.
+#:
+#: `user_id` is NOT NULL on this table (15 D6: these rows never existed before
+#: authentication did), so an anonymous caller has to be written as SOMETHING
+#: and the choice is between a sentinel and refusing them outright. A sentinel,
+#: for the reason `_writable_by` already gives about unowned documents: where
+#: identity does not exist - `SYNTHETIC=1` with no auth server, a bare local
+#: checkout - the anonymous caller IS the author, and refusing them would make
+#: the panel untestable on the one backend the E2E suite is allowed to use.
+#:
+#: It is a sentinel and not a wildcard: an anonymous caller matches rows written
+#: anonymously and nothing else, so this widens nobody's reach into a signed-in
+#: author's saved inputs. That is the property plan 10's `load` was protecting
+#: when it matched nothing at all; the sentinel keeps it and stops matching
+#: nothing.
+ANONYMOUS_OWNER = ""
+
+
+def new_test_input_id() -> str:
+    """`ti_` + 12 hex - `config.TEST_INPUT_ID_PATTERN`."""
+
+    return f"ti_{secrets.token_hex(6)}"
+
+
+class BuilderTestInputStore:
+    """The saved test inputs of one document, for their owner and nobody else.
+
+    `13-flow-testing.md` D3 owns this table's behaviour; plan 10 landed the one
+    read query C7's `test_input_id` implies and left the rest here, which is
+    where the SQL for every other builder table already lives.
 
     Ownership is a WHERE clause and not a check after the fact, so a row that
     belongs to somebody else and a row that does not exist are the same `None` -
     which is the 404-not-403 rule every other builder route already follows.
+    The DOCUMENT's visibility is a separate question and is deliberately not
+    asked here: the route asks it first, through `BuilderDocumentStore.load`, so
+    somebody else's document 404s before this store is reached at all.
     """
 
     __slots__ = ("_store",)
@@ -319,15 +387,121 @@ class BuilderTestInputStore:
             builder_test_inputs.c.inputs,
             builder_test_inputs.c.node_mocks,
         ).where(builder_test_inputs.c.id == str(test_input_id))
-        # `user_id` is NOT NULL on this table (15 D6: these rows never existed
-        # before authentication did), so an unauthenticated caller matches
-        # nothing rather than matching everything.
         statement = statement.where(
-            builder_test_inputs.c.user_id == str(user_id or "\x00")
+            builder_test_inputs.c.user_id == _test_input_owner(user_id)
         )
         with self._store.connect() as connection:
             row = connection.execute(statement).mappings().first()
         return dict(row) if row is not None else None
+
+    def list(self, document_id: str, *, user_id: str | None) -> list[TestInput]:
+        """This caller's saved inputs for one document, newest first.
+
+        Ordered by `updated_at` descending, which is what
+        `ix_builder_test_inputs_document_updated` was declared for, with the id
+        as the tiebreak so two rows saved inside one clock tick have an order at
+        all rather than whichever the dialect happens to return.
+        """
+
+        with self._store.connect() as connection:
+            rows = (
+                connection.execute(
+                    select(builder_test_inputs)
+                    .where(
+                        builder_test_inputs.c.document_id == str(document_id),
+                        builder_test_inputs.c.user_id == _test_input_owner(user_id),
+                    )
+                    .order_by(
+                        builder_test_inputs.c.updated_at.desc(),
+                        builder_test_inputs.c.id,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [_test_input(row) for row in rows]
+
+    def create(
+        self,
+        document_id: str,
+        *,
+        user_id: str | None,
+        label: str,
+        inputs: Mapping[str, Any],
+        node_mocks: Mapping[str, Any] | None = None,
+    ) -> TestInput:
+        """Save one input set against a document. Refuses over the ceiling.
+
+        The count is read and the insert made in two statements rather than one,
+        which is a race a second browser could win - and the cost of losing it
+        is one row over a soft ceiling, not a lost edit. The compare-and-set
+        shape is reserved for the thing that actually matters, which next door
+        is somebody's work and here is a saved prompt.
+        """
+
+        owner = _test_input_owner(user_id)
+        with self._store.connect() as connection:
+            existing = connection.execute(
+                select(func.count())
+                .select_from(builder_test_inputs)
+                .where(
+                    builder_test_inputs.c.document_id == str(document_id),
+                    builder_test_inputs.c.user_id == owner,
+                )
+            ).scalar_one()
+        if int(existing) >= MAX_TEST_INPUTS_PER_DOCUMENT:
+            raise TestInputLimitReached(str(document_id), int(existing))
+
+        now = utcnow()
+        row: dict[str, Any] = {
+            "id": new_test_input_id(),
+            "user_id": owner,
+            "document_id": str(document_id),
+            "label": str(label),
+            "inputs": dict(inputs),
+            "node_mocks": dict(node_mocks or {}),
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self._store.begin() as connection:
+            connection.execute(insert(builder_test_inputs).values(**row))
+        return _test_input(row)
+
+    def delete(self, test_input_id: str, *, user_id: str | None) -> None:
+        """Remove one saved input. Raises when it is not this caller's."""
+
+        with self._store.begin() as connection:
+            result = connection.execute(
+                delete(builder_test_inputs).where(
+                    builder_test_inputs.c.id == str(test_input_id),
+                    builder_test_inputs.c.user_id == _test_input_owner(user_id),
+                )
+            )
+        if not result.rowcount:
+            raise TestInputNotFound(str(test_input_id))
+
+
+def _test_input_owner(user_id: str | None) -> str:
+    return str(user_id) if user_id else ANONYMOUS_OWNER
+
+
+def _test_input(row: Mapping[str, Any]) -> TestInput:
+    """One stored row as a `TestInput`, with both JSON columns defaulted.
+
+    `node_mocks` is nullable and a row written before the panel could set one
+    reads NULL; every reader wants a mapping, so the default is here rather
+    than at four call sites.
+    """
+
+    return TestInput(
+        id=str(row["id"]),
+        document_id=str(row["document_id"]),
+        label=str(row["label"]),
+        inputs=dict(row["inputs"] or {}),
+        node_mocks=dict(row["node_mocks"] or {}),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
 
 
 class BuilderDocumentStore:

@@ -694,10 +694,15 @@ test.describe('Flow builder', () => {
     expect(watch.unexpected).toEqual([])
   })
 
-  test('walks to a problem from the panel, fixes it, publishes, and the graph launches', async ({
-    page,
-    request,
-  }) => {
+  test(
+    'walks to a problem from the panel, fixes it, publishes, and the graph launches',
+    // 13 D6: every test that presses Launch carries the tag, so
+    // `--grep-invert @launch` against a deployed origin presses nothing. This
+    // one launches through `request` rather than a button, and the tag is about
+    // what the test DOES, not about which control it uses - `AGENTS.md` called
+    // the untagged version a live hole for exactly that reason.
+    { tag: '@launch' },
+    async ({ page, request }) => {
     /*
      * The whole arc, and the only test here that ends in a real run.
      *
@@ -824,7 +829,8 @@ test.describe('Flow builder', () => {
     await expect(page.locator('textarea#idea')).toBeVisible()
 
     expect(watch.unexpected).toEqual([])
-  })
+    },
+  )
 
   test('never presents an unchecked document as ready to publish', async ({ page }) => {
     /*

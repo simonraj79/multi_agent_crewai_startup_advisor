@@ -107,6 +107,7 @@ from brief_crew.service.attachments import (
 from brief_crew.builder.store import (
     BuilderDocumentStore,
     BuilderStoreError,
+    BuilderTestInputStore,
     DEFAULT_LIST_LIMIT,
     DocumentNotFound,
     DocumentReadOnly,
@@ -114,6 +115,9 @@ from brief_crew.builder.store import (
     DocumentVersionConflict,
     STATUS_PUBLISHED,
     StoredDocument,
+    TestInput,
+    TestInputLimitReached,
+    TestInputNotFound,
     VersionHistory,
     new_document_id,
 )
@@ -123,7 +127,11 @@ from brief_crew.service.graph import (
     register_builder_workflow,
     unregister_builder_workflow,
 )
-from brief_crew.service.models import GraphDescriptor
+from brief_crew.service.models import (
+    GraphDescriptor,
+    TestInputModel,
+    TestInputRequest,
+)
 from brief_crew.service.registry import RunRegistry, WorkflowRuntime
 from brief_crew.service.builder_runner import BuilderRunnerFactory
 from brief_crew.service.runner import Runner
@@ -1293,6 +1301,153 @@ def create_builder_router(
             return str(credential_id)
 
         return label
+
+    # ----------------------------------------------------------------------
+    # Saved test inputs - .agent/plans/13-flow-testing.md D3, contract C10.
+    #
+    # Three routes over `builder_test_inputs`. They hang off the DOCUMENT and
+    # not off a workflow id, deliberately: an author saves an input while
+    # drawing, long before anything is published, and a route keyed on the
+    # published workflow would be unreachable at exactly the moment the panel
+    # is most useful. The two ids happen to be the same string
+    # (`builder_workflow_id` returns the document's own id) and that is a fact
+    # about registration, not a licence to key a draft's rows on it.
+    #
+    # Visibility is asked ONCE, of the document, through the same `store.load`
+    # every other route on this router uses - so somebody else's document is
+    # the same 404 as an id that does not exist, and the rows underneath it are
+    # never queried at all.
+    # ----------------------------------------------------------------------
+    def _test_input_store() -> BuilderTestInputStore:
+        persistence = _persistence()
+        if persistence is None:
+            raise HTTPException(
+                status_code=503,
+                detail="this service has no store, so it has no saved test inputs",
+            )
+        return BuilderTestInputStore(persistence)
+
+    def _visible_document(document_id: str, user: Any) -> StoredDocument:
+        """The document these rows belong to, or 404. Head version only.
+
+        Head and not a named version, because a saved input is a fact about the
+        GRAPH rather than about one of its versions: an author who saves a topic
+        for their pipeline means it for the pipeline, and pinning it to v7 would
+        lose it on the next save.
+        """
+
+        store = require_store()
+        return _guarded(lambda: store.load(document_id, user_id=owner_of(user)))
+
+    def _test_input_payload(row: TestInput) -> TestInputModel:
+        return TestInputModel(
+            id=row.id,
+            document_id=row.document_id,
+            label=row.label,
+            inputs=row.inputs,
+            node_mocks=row.node_mocks,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    def _mocks_from_run(run_id: str, user: Any) -> dict[str, Any]:
+        """A finished run's `out__*` slots, keyed by the author's own node id.
+
+        D3's *"use last run's outputs as mocks"*. Read off the last `flow_states`
+        row rather than off the run's result, for `app.py::_saved_outputs`'s own
+        reason: the result is ONE node's output and a replay needs every node's.
+
+        The run must be the caller's. The refusal is 404 rather than 403, the
+        same rule `require_own_run` states: a 403 confirms the run exists.
+        """
+
+        try:
+            record = registry.require(run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        owner = owner_of(user)
+        if record.user_id is not None and record.user_id != owner:
+            raise HTTPException(status_code=404, detail="run not found")
+        persistence = _persistence()
+        if persistence is None or not record.flow_id:
+            return {}
+        state = persistence.load_state(record.flow_id) or {}
+        prefix = project_config.BUILDER_STATE_OUTPUT_PREFIX
+        return {
+            key[len(prefix):]: value
+            for key, value in state.items()
+            if isinstance(key, str) and key.startswith(prefix)
+        }
+
+    @router.get(
+        "/workflows/{document_id}/test-inputs",
+        response_model=list[TestInputModel],
+    )
+    async def list_test_inputs(
+        document_id: str,
+        user: Any = Depends(current_user),
+    ) -> list[TestInputModel]:
+        """This caller's saved inputs for one document, newest first."""
+
+        stored = _visible_document(document_id, user)
+        rows = _test_input_store().list(stored.id, user_id=owner_of(user))
+        return [_test_input_payload(row) for row in rows]
+
+    @router.post(
+        "/workflows/{document_id}/test-inputs",
+        response_model=TestInputModel,
+        status_code=201,
+    )
+    async def create_test_input(
+        document_id: str,
+        request: TestInputRequest,
+        user: Any = Depends(current_user),
+    ) -> TestInputModel:
+        """Save one input set, optionally seeded from a finished run's state.
+
+        A saved input is NOT validated against the document's `input_field`, and
+        that is a decision rather than an omission. The two move independently -
+        an author renames the field, or saves the input before the input node
+        exists - and a row refused for naming yesterday's field would be a row
+        the author cannot repair from the panel. The run endpoint is where an
+        input meets a workflow, and it already answers for a key that does not
+        fit.
+        """
+
+        stored = _visible_document(document_id, user)
+        mocks = dict(request.node_mocks)
+        if request.from_run_id:
+            # The explicit values win: an author who typed one meant it.
+            mocks = {**_mocks_from_run(request.from_run_id, user), **mocks}
+        try:
+            row = _test_input_store().create(
+                stored.id,
+                user_id=owner_of(user),
+                label=request.label,
+                inputs=request.inputs,
+                node_mocks=mocks,
+            )
+        except TestInputLimitReached as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _test_input_payload(row)
+
+    @router.delete(
+        "/workflows/{document_id}/test-inputs/{test_input_id}",
+        status_code=204,
+    )
+    async def delete_test_input(
+        document_id: str,
+        test_input_id: str,
+        user: Any = Depends(current_user),
+    ) -> Response:
+        """Gone, for this caller's own row and nobody else's."""
+
+        _visible_document(document_id, user)
+        try:
+            _test_input_store().delete(test_input_id, user_id=owner_of(user))
+        except TestInputNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return Response(status_code=204)
 
     @router.get("/workflows/{document_id}/export")
     async def export_document(

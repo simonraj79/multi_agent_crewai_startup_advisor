@@ -751,3 +751,42 @@ port.
 off-pane strip is a new visible element. `template-16-dark-chromium` is the
 evidence for D-15-2 in one frame: the validator template opened fresh at
 1440x900 with **no dock open at all** reads `7 off-pane · Fit`.
+
+### Integration closers — 2026-09-04
+
+**D-15-25 is closed by displacement, which is what its own round-2 comment said
+the answer had to be.** The `⋮` menu is `position: absolute` inside
+`DocumentBar`, and the dock — the grid row holding the version browser, the
+restore bar, the import notice and the delete confirm — sits directly beneath
+it, so an open menu hung over the very rows it operates on. Round 1 shrank the
+overlap. Round 2 left-aligned the menu, which moved it off the rows' identity
+columns onto their time and size columns and said so honestly: *"removing it
+means DISPLACING the browser rather than covering it, which is a change to the
+shell's grid rows."*
+
+`DocumentBar` now measures its open menu and emits `menu-extent`; `BuilderView`
+applies it to the dock as `padding-top`. **Padding rather than a margin**,
+because padding grows the row itself, so `.graph-workspace`'s `auto` row grows
+with it, the canvas gives up exactly those pixels, and `dockEl`'s existing
+observer re-fits the graph against the new pane — a margin would collapse
+against the bar and change nothing. **Measured rather than a constant**, because
+the menu is five to eight items depending on whether the document is stored and
+whether it is published, so a constant would be right for one shape.
+**Conditional on the dock having something in it**, by the same four conditions
+its own `v-if`s use: an empty dock is 0px tall and pushing it down would move
+the graph for no benefit at all. **Not transitioned**, so the version rows are
+not in motion at the moment the author is reading them to choose an item, and so
+the guard below cannot pass because it waited.
+
+`e2e/builder-layout.spec.ts` measures both bounding boxes at 1440×900 and
+asserts the rectangles do not intersect, that the panel sits below the menu,
+that no listed row was pushed off screen, and that closing the menu puts the
+dock back. **Proved by breaking it**, which is this file's own standard: with
+the padding reverted the failure reads `the menu (925-1137, 106-367) meets the
+version panel (236-1100, 116-217) by 175x101px`.
+
+What is asserted is the INTERSECTION rather than the alignment rule, and that is
+the difference from round 2: *"the menu is left-aligned"* is a rule that
+happened to reduce an overlap on one viewport, where *"these two rectangles do
+not meet"* is the thing the author experiences. The row's other half — labelling
+the item `Export head (vN)` — landed in round 2 and is unchanged.

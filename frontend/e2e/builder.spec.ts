@@ -1549,6 +1549,122 @@ test.describe('attachments and the inspector', () => {
     expect(watch.unexpected).toEqual([])
   })
 
+  test('attaches a tool by DRAGGING its port onto the agent, not only by dropping', async ({
+    page,
+  }) => {
+    /*
+     * 13 follow-up 1, and the second of the two ways an attachment is made.
+     *
+     * Drop-on-card goes through `addNode`'s third argument. This gesture - drag
+     * the tool's own `attach` port onto the agent's - goes through `onConnect`
+     * -> `addEdge`, and that path wrote `target_port: 'in'` unconditionally:
+     * `EdgeEnds.target_port` was declared, documented, and then overwritten by
+     * a literal one line below its own spread.
+     *
+     * Every surface agreed with the wrong answer, which is why it needed a
+     * browser to see. `isValidConnection` reads `targetHandle`, so the drag
+     * painted GREEN (the test above measures that mint disc). The commit landed.
+     * The edge appeared. And it appeared as a FLOW edge, because `edgeClassOf`
+     * reads `target_port` - so the canvas drew a step in the pipeline where the
+     * author had drawn a possession, and the server answered
+     * `attach-target-not-agent` about a shape nobody had drawn.
+     *
+     * The three assertions are the three places that lie, in the order an
+     * author meets them: the edge's own class, the host card's avatar, and the
+     * dock.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    // A tool on empty canvas, so nothing is attached by the drop itself and the
+    // only thing that can attach it is the drag under test.
+    await canvas(page).click({ position: { x: 260, y: 430 } })
+    await page.keyboard.press('t')
+    const tool = await firstOfKind(page, 'tool')
+    const agent = await firstOfKind(page, 'agent')
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+    const edgesBefore = await edges(page).count()
+
+    await dragTo(page, port(page, tool.id, 'attach'), targetPort(page, agent.id, 'attach'))
+
+    await expect(edges(page)).toHaveCount(edgesBefore + 1)
+    // Drawn as an ATTACH edge. `is-class-attach` is `edgeClassOf`'s answer
+    // rendered, and `edgeClassOf` reads `target_port` - so this class is a
+    // direct reading of the field that was being overwritten.
+    await expect(page.locator('.vue-flow__edge .builder-edge.is-class-attach')).toHaveCount(1)
+    // And the host admits it, which drop-on-card already did and this did not.
+    await expect(avatars(page, agent.id)).toHaveCount(1)
+
+    // The server agrees, which is the whole point: the two problems this used
+    // to raise are the two an attach edge written as a flow edge produces.
+    await validationSettles(page)
+    await expect(problemRow(page, 'attach-target-not-agent')).toHaveCount(0)
+    await expect(problemRow(page, 'attachment-unattached')).toHaveCount(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('attaches with the T hotkey when an agent is selected, and places it loose when none is', async ({
+    page,
+  }) => {
+    /*
+     * 13 follow-up 3, and decision 18's hotkeys made reachable.
+     *
+     * `T` / `M` / `K` went to `insertKind`, whose auto-connect ends at
+     * `acceptsIncoming` - and the three attachment kinds accept nothing. So the
+     * pill landed loose wherever the pointer happened to be, with
+     * `attachment-unattached` in the dock, and the only attach gesture that
+     * worked in the whole product was a pointer drag onto a card. A hotkey the
+     * shortcut sheet advertises and that cannot do the thing it names is worse
+     * than no hotkey.
+     *
+     * ON THE SELECTION, not on the pointer: a hotkey is a keyboard gesture, and
+     * the keyboard's idea of "here" is what is selected. Both halves are
+     * asserted in one test because the SECOND is what makes the first a rule
+     * rather than an always-attach - an author laying out before wiring keeps
+     * the behaviour they had.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    await validationSettles(page)
+
+    const agent = await firstOfKind(page, 'agent')
+    const nodesBefore = await nodes(page).count()
+    const edgesBefore = await edges(page).count()
+
+    await agent.card.click()
+    await page.keyboard.press('t')
+
+    await expect(nodes(page)).toHaveCount(nodesBefore + 1)
+    await expect(edges(page)).toHaveCount(edgesBefore + 1)
+    // The host says so on its own face, which is the only place an agent admits
+    // what it is holding without being opened (03 D6).
+    await expect(avatars(page, agent.id)).toHaveCount(1)
+
+    // ONE undo step, exactly as attach-by-drop is: `attachTo` is reused rather
+    // than reimplemented, so the node and its wire go together.
+    await page.keyboard.press('Control+z')
+    await expect(nodes(page)).toHaveCount(nodesBefore)
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+
+    // And with nothing selected it still places a loose pill and says so, which
+    // is the behaviour this change deliberately does not take away.
+    await canvas(page).click({ position: { x: 240, y: 440 } })
+    await page.keyboard.press('t')
+
+    await expect(nodes(page)).toHaveCount(nodesBefore + 1)
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    await expect(avatars(page, agent.id)).toHaveCount(0)
+    await validationSettles(page)
+    await expect(problemRow(page, 'attachment-unattached')).toBeVisible()
+
+    expect(watch.unexpected).toEqual([])
+  })
+
   test('leaves a tool dropped on empty canvas unattached, and says so', async ({ page }) => {
     /*
      * The other half of 03 criterion 10, and a decision rather than an
@@ -1653,34 +1769,25 @@ test.describe('attachments and the inspector', () => {
   })
 
   /*
-   * The other half of 04 criterion 2, and it is blocked on one function this
-   * package does not own.
+   * The other half of 04 criterion 2, and it is CLOSED - the integration
+   * closer of 2026-09-04 wired the dock's row click to the rail.
    *
-   * `InspectorRail.focusField` does everything the criterion asks - it turns
-   * the global switch on for an Expert field, awaits the tick that renders the
-   * region, flashes the row and focuses the control - and it is reached from
-   * exactly ONE call site: `BuilderView`'s credential notice (D-15-19,
-   * `BuilderView.vue:829`). The problems dock's row click goes to
+   * `InspectorRail.focusField` always did everything the criterion asks: it
+   * turns the global switch on for an Expert field, awaits the tick that
+   * renders the region, flashes the row and focuses the control. What it
+   * lacked was a second caller. The dock's row click went to
    * `onEdgeSelectFromPanel` -> `canvas.focusProblem`, which selects the node
-   * and flashes the card and never mentions a field. So the walk stops at the
-   * node, and a problem anchored to a control behind the switch leaves the
-   * author looking at a form that appears clean.
+   * and flashes the card and never mentions a field, so the walk stopped at
+   * the node and a problem anchored behind the switch left the author looking
+   * at a form that appears clean. `onEdgeSelectFromPanel` now asks
+   * `problems.fieldFor(problem)` and hands the answer to the rail.
    *
-   * THE CHANGE, in `frontend/src/components/builder/BuilderView.vue`:
-   *
-   *   async function onEdgeSelectFromPanel(problem: BuilderProblem): Promise<void> {
-   *     canvas.focusProblem(problem)
-   *     const field = problems.fieldFor(problem)
-   *     if (field) await inspectorRef.value?.focusField(field)
-   *   }
-   *
-   * `problems` (line 206) and `inspectorRef` (line 370) are both already in
-   * scope; nothing else moves. `focusField` was made to fall back to the ROW
-   * when every control in it is disabled, which is this exact problem's state -
-   * `llm.reasoning_effort` is disabled BECAUSE the model cannot honour it, so
-   * without that fallback the landing would be silent.
+   * `focusField` falls back to the ROW when every control in it is disabled,
+   * which is this exact problem's state - `llm.reasoning_effort` is disabled
+   * BECAUSE the model cannot honour it - so without that fallback the landing
+   * would be silent. This test asserts the landing, not the mechanism.
    */
-  test.fixme(
+  test(
     'turns the Expert switch on and focuses the control a hidden problem blames',
     async ({ page }) => {
       const watch = watchConsole(page)

@@ -32,6 +32,7 @@ import type {
   TestInput,
   TestInputDraft,
 } from '../src/types/builder'
+import type { FrameData } from '../src/types/studio'
 import compiledPreviewFixture from './fixtures/builderCompiledPreview.json'
 
 /**
@@ -929,6 +930,154 @@ describe('the run transport refuses a demonstration', () => {
 
     expect(harness.fetchMock).not.toHaveBeenCalled()
     expect(harness.test.problem.value).toContain('demonstration')
+
+    harness.app.unmount()
+  })
+})
+
+/* ── the problems dock's run group (12 D2's third surface) ────────────── */
+
+/**
+ * The wire that was missing, and why it needed one at all.
+ *
+ * `ProblemsPanel`'s `runProblems` group and `runPhaseProblems` were both built
+ * and both unit-proved (`runProblems.spec.ts`), and NOTHING FED EITHER. A node
+ * that failed a test run said so on its card and in the log and not in the one
+ * place that makes four failures surveyable at once.
+ *
+ * It could not simply read what the console already keeps. `useValidatorRun`
+ * holds no frame list - it applies each frame and keeps the derived state - and
+ * the only place a `node_error` survives is `useRunChoreography.nodeErrors`,
+ * which keeps the SENTENCE and drops `error_class`, `attempt` and `will_retry`.
+ * `attempt` is the load-bearing one: `runPhaseProblems` filters on it because
+ * it is written only by `runtime.py::_node_error_frame`, and without it the
+ * four frames CrewAI raises about one failure become four rows.
+ *
+ * So `useFlowTest` taps the transport, and these tests drive the tap.
+ */
+describe('a failed test run reaches the problems dock', () => {
+  function errorFrame(
+    build: ReturnType<typeof frameFactory>,
+    details: Record<string, unknown>,
+  ): FrameData {
+    return build('error', {
+      level: 'ERROR',
+      node_id: (details.node_id as string) ?? 'draft',
+      details: { stage: 'error', attempt: 1, will_retry: false, routed: false, ...details },
+    })
+  }
+
+  it('turns a node_error frame into a run-phase problem', async () => {
+    const harness = makeTest()
+    harness.test.inputValue.value = 'clinic scheduling'
+    await harness.test.startRun()
+    await flush(4)
+    expect(harness.test.runProblems.value).toEqual([])
+
+    const build = frameFactory('run-under-test')
+    harness.studio.emit(
+      errorFrame(build, {
+        node_id: 'draft',
+        error_class: 'refusal',
+        message: 'the model declined the task',
+      }),
+    )
+    await flush(2)
+
+    expect(harness.test.runProblems.value).toEqual([
+      {
+        code: 'run-refusal',
+        severity: 'error',
+        message: 'the model declined the task',
+        node_id: 'draft',
+        edge_id: null,
+      },
+    ])
+
+    harness.app.unmount()
+  })
+
+  it('ignores the frames CrewAI raises about the same failure', async () => {
+    // Each carries `stage: 'error'` and no `attempt`. Tapping on stage alone
+    // would render one failed node as several rows.
+    const harness = makeTest()
+    harness.test.inputValue.value = 'clinic scheduling'
+    await harness.test.startRun()
+    await flush(4)
+
+    const build = frameFactory('run-under-test')
+    harness.studio.emit(
+      build('error', { node_id: 'draft', details: { stage: 'error', message: 'n1_draft failed' } }),
+    )
+    harness.studio.emit(
+      build('error', { node_id: 'draft', details: { stage: 'error', message: 'Crew failed' } }),
+    )
+    await flush(2)
+
+    expect(harness.test.runProblems.value).toEqual([])
+
+    harness.app.unmount()
+  })
+
+  it('picks the run up on a REPLAY as well as on the socket', async () => {
+    // A reload comes back through `getFrames`, not through the socket, and a
+    // dock that only heard one of the two would go blank on the refresh an
+    // author makes precisely because something went wrong. `launch` saves the
+    // run pointer, so `initialize` restores it exactly as a page load does.
+    const harness = makeTest()
+    harness.test.inputValue.value = 'clinic scheduling'
+    await harness.test.startRun()
+    await flush(4)
+    expect(harness.test.runProblems.value).toEqual([])
+
+    const build = frameFactory('run-under-test')
+    harness.studio.snapshot = { ...harness.studio.snapshot, run_id: 'run-under-test' }
+    harness.studio.storedFrames = [
+      errorFrame(build, { node_id: 'draft', error_class: 'bad_key', message: 'key rejected' }),
+    ]
+    await harness.test.run.initialize()
+    await flush(6)
+
+    expect(harness.test.runProblems.value.map((problem) => problem.code)).toEqual(['run-bad_key'])
+
+    harness.app.unmount()
+  })
+
+  it('clears the last run’s failures when a new run starts', async () => {
+    // The group's whole claim is "this just happened". Carrying a previous
+    // run's rows into the next one is the stale-verdict failure §6.2 names.
+    const harness = makeTest()
+    harness.test.inputValue.value = 'clinic scheduling'
+    await harness.test.startRun()
+    await flush(4)
+    harness.studio.emit(
+      errorFrame(frameFactory('run-under-test'), { error_class: 'refusal', message: 'no' }),
+    )
+    await flush(2)
+    expect(harness.test.runProblems.value).toHaveLength(1)
+
+    await harness.test.startRun()
+    await flush(4)
+
+    expect(harness.test.runProblems.value).toEqual([])
+
+    harness.app.unmount()
+  })
+
+  it('still delivers every frame to the console it wrapped', async () => {
+    // The tap is a decorator and must be invisible: a run whose node states
+    // stopped updating because something was watching the frames would be a
+    // strictly worse panel than the one with no dock group at all.
+    const harness = makeTest()
+    harness.test.inputValue.value = 'clinic scheduling'
+    await harness.test.startRun()
+    await flush(4)
+
+    const build = frameFactory('run-under-test')
+    harness.studio.emit(build('node_state', { event_type: 'START', node_id: 'draft' }))
+    await flush(4)
+
+    expect(harness.test.run.nodeStates.draft).toBe('running')
 
     harness.app.unmount()
   })

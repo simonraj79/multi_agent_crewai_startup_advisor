@@ -460,3 +460,35 @@ async function onEdgeSelectFromPanel(problem: BuilderProblem): Promise<void> {
 a `test.fixme`, not an edit. Note what it means today: a problem anchored to a
 control behind the Expert switch leaves the author looking at a form that
 appears clean.
+
+### Integration closers — 2026-09-04
+
+**Criterion 2's browser half is closed, and the row above should read `met`
+rather than `met (unit)`.** The change is the four lines this Status already
+wrote out, applied: `onEdgeSelectFromPanel` in `BuilderView.vue` asks
+`problems.fieldFor(problem)` and hands the answer to
+`inspectorRef.value?.focusField(field)`.
+
+`InspectorRail.focusField` always did everything the criterion asks — turn the
+global Expert switch on (decision 19, so the rest of an author's expert settings
+stay where they left them), await the tick that renders the region, flash the
+row, and focus the first ENABLED control or the row itself when every control in
+it is disabled. What it lacked was a second caller. The dock's row click went to
+`canvas.focusProblem`, which selects the node and flashes the card and never
+mentions a field, so the walk stopped at the node — and for the one tier that is
+ABSENT FROM THE DOM rather than merely collapsed, that left the author looking
+at a form that appears clean while the dock insists something is wrong.
+
+The disabled-control fallback is not defensive: `model-lacks-capability` anchors
+to `llm.reasoning_effort`, and that control is disabled precisely BECAUSE the
+model cannot honour it, so the one problem that most needs walking to is the one
+that could not be walked to.
+
+`F8` / `⇧F8` route through the same function, so the field walk is not something
+only the mouse gets — and `walkProblems`' own comment, which already claimed to
+take "the same path a `ProblemsPanel` row click takes", is true again.
+
+Shown by `e2e/builder.spec.ts`'s *"turns the Expert switch on and focuses the
+control a hidden problem blames"*, whose `test.fixme` is now a `test`: the
+switch is checked, `[data-tier="expert"]` is visible, the row carries
+`problem-anchor`, and focus is inside it.

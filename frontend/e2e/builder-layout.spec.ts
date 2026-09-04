@@ -775,6 +775,100 @@ test.describe('a docked strip never makes the graph unreadable (D-15-2)', () => 
   })
 })
 
+test.describe('the document menu clears the rows it operates on (D-15-25)', () => {
+  /*
+   * Three rounds on one row, and this is the one that measures the property
+   * rather than reducing it.
+   *
+   * The `⋮` menu is `position: absolute` inside `DocumentBar`, and the dock -
+   * the grid row that holds the version browser, the restore bar, the import
+   * notice and the delete confirm - is directly beneath it. So an open menu hung
+   * over the very rows it operates on; the critic measured the menu at
+   * (730-940, 108-365) covering `restored from v1` at (836-930, 184-198).
+   *
+   * Round 1 shrank it. Round 2 left-aligned the menu, which moved the overlap
+   * off the rows' identity columns onto their time and size columns, and said
+   * so in its own comment: removing it means DISPLACING the dock rather than
+   * covering it. Round 3 does that - the dock takes `padding-top` equal to the
+   * bar's own measurement of the open menu, but only while it has something in
+   * it, since an empty dock is 0px tall and pushing it down would move the
+   * graph for nothing.
+   *
+   * WHAT IS ASSERTED IS THE INTERSECTION, in pixels, which is the only form of
+   * this claim a test can make. "The menu is left-aligned" is a rule that
+   * happened to reduce an overlap on one viewport; "these two rectangles do not
+   * meet" is the thing the author experiences.
+   */
+  test('opens the menu clear of the version panel at 1440x900', async ({ page }) => {
+    const watch = watchConsole(page)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await stubEmptyLibrary(page)
+    await page.goto('/#/build')
+    await page.locator('.template-card', { hasText: 'Minimal gated agent' }).click()
+    await expect(page.locator('.vue-flow__node').first()).toBeVisible()
+
+    // Stored, so the version browser has a row to list and the dock is occupied.
+    await page.locator('.builder-flow').click({ position: { x: 30, y: 30 } })
+    await page.keyboard.press('Control+s')
+    await expect(page.locator('[data-testid="save-chip"]')).toContainText(/saved/i)
+
+    await page.locator('[data-testid="document-menu-button"]').click()
+    await page.locator('[data-testid="menu-versions"]').click()
+    const browser = page.locator('[data-testid="version-browser"], .version-browser')
+    await expect(browser).toBeVisible()
+    const rows = page.locator('[data-testid^="version-row-"]')
+    expect(await rows.count(), 'the version browser listed nothing to be covered').toBeGreaterThan(0)
+
+    // Open it again, this time over the panel - which is the state the row is
+    // about and the one nothing had ever measured.
+    await page.locator('[data-testid="document-menu-button"]').click()
+    const menu = page.locator('[data-testid="document-menu"]')
+    await expect(menu).toBeVisible()
+
+    const menuBox = (await menu.boundingBox())!
+    const panelBox = (await browser.boundingBox())!
+
+    const overlapX =
+      Math.min(menuBox.x + menuBox.width, panelBox.x + panelBox.width) -
+      Math.max(menuBox.x, panelBox.x)
+    const overlapY =
+      Math.min(menuBox.y + menuBox.height, panelBox.y + panelBox.height) -
+      Math.max(menuBox.y, panelBox.y)
+    const intersects = overlapX > 0 && overlapY > 0
+
+    expect(
+      intersects,
+      `the menu (${Math.round(menuBox.x)}-${Math.round(menuBox.x + menuBox.width)}, `
+        + `${Math.round(menuBox.y)}-${Math.round(menuBox.y + menuBox.height)}) meets the version `
+        + `panel (${Math.round(panelBox.x)}-${Math.round(panelBox.x + panelBox.width)}, `
+        + `${Math.round(panelBox.y)}-${Math.round(panelBox.y + panelBox.height)}) `
+        + `by ${Math.round(overlapX)}x${Math.round(overlapY)}px`,
+    ).toBe(false)
+
+    // The menu is BELOW the bar and the panel below the menu, which is the
+    // arrangement that makes the sentence above true for a reason rather than
+    // by luck of a narrow viewport.
+    expect(panelBox.y).toBeGreaterThanOrEqual(menuBox.y + menuBox.height)
+
+    // And every listed row is readable, not merely un-intersected: a panel
+    // pushed off the bottom of the window would satisfy the rectangles too.
+    for (const row of await rows.all()) {
+      const box = (await row.boundingBox())!
+      expect.soft(box.y + box.height, 'a version row was pushed off screen').toBeLessThanOrEqual(900)
+    }
+
+    // Closing it puts the dock back where it was - the displacement lasts one
+    // menu, not the rest of the session.
+    const displaced = panelBox.y
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+    const settled = (await browser.boundingBox())!
+    expect(settled.y).toBeLessThan(displaced)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})
+
 test.describe('what the pane cannot show, it says (D-15-2, round 4)', () => {
   /*
    * Three rounds turned the same dial - hidden, then unreadable, then legible

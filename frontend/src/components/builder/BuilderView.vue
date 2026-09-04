@@ -259,8 +259,17 @@ const canvas = useBuilderCanvas({
     doc: store.doc,
     addNode: (node, connectFrom, attachTo) =>
       store.addNode(node, edgeOptionsFor(node, connectFrom ?? null, attachTo ?? null)),
-    addEdge: (origin, target) =>
-      store.addEdge({ source: origin.source, source_port: origin.source_port, target }),
+    addEdge: (origin, target, targetPort) =>
+      store.addEdge({
+        source: origin.source,
+        source_port: origin.source_port,
+        target,
+        // Carried, not defaulted here: `useBuilderDocument.addEdge` owns the
+        // `'in'` fallback, and a second spelling of that default in the adapter
+        // is how the canvas's validated port and the document's written port
+        // came apart in the first place (13 follow-up 1).
+        target_port: targetPort,
+      }),
     moveNodes: (moves, coalesceKey) => store.moveNodes(moves, { coalesce: coalesceKey !== undefined }),
     deleteSelection: (nodes, edges) => store.deleteSelection(nodes, edges),
     setEdgePort: (edge, port) => store.setEdgePort(edge, port),
@@ -417,6 +426,45 @@ const importNoticeShown = computed(
 
 /** The dock row's element, handed to the canvas so a strip opening re-fits the graph (D-15-2). */
 const dockEl = ref<HTMLElement | null>(null)
+
+/**
+ * How far the open `⋮` menu reaches below the bar, as the bar measured it.
+ *
+ * D-15-25, third and last round. The menu is absolutely positioned inside the
+ * bar and the dock is the grid row directly beneath it, so an open menu hung
+ * over the very rows it operates on - the critic measured it covering
+ * `restored from v1`. Round 1 shrank the overlap; round 2 left-aligned the menu
+ * and moved it off the identity columns onto the time and size ones, and said
+ * in its own comment that removing it needs DISPLACING the dock rather than
+ * covering it. This is that displacement.
+ */
+const menuExtent = ref(0)
+
+function onMenuExtent(px: number): void {
+  menuExtent.value = px
+}
+
+/**
+ * Whether the dock has anything in it, by the same four conditions its own
+ * `v-if`s use.
+ *
+ * The dock is 0px tall when empty and the canvas takes the difference, so
+ * displacing it unconditionally would shove the graph down every time an author
+ * opened the menu over a canvas with nothing docked - trading a real occlusion
+ * for a gratuitous reflow. Derived from the conditions rather than measured off
+ * `dockEl`, because a height read in a computed is not reactive and would be a
+ * frame behind the strip that changed it.
+ */
+const dockOccupied = computed(
+  () =>
+    versionsOpen.value ||
+    deleteAsk.value ||
+    importNoticeShown.value ||
+    persistence.restoreOffer.value !== null,
+)
+
+/** The padding the dock takes while the menu is open over something. */
+const dockDisplacement = computed(() => (dockOccupied.value ? menuExtent.value : 0))
 
 /** The docked delete confirm (plan 15 D3, R15: no dialog). */
 const deleteAsk = ref(false)
@@ -1404,7 +1452,9 @@ function walkProblems(step: 1 | -1): void {
   const list = problems.ordered.value
   if (list.length === 0) return
   problemCursor = (problemCursor + step + list.length) % list.length
-  canvas.focusProblem(list[problemCursor])
+  // Literally the same path, so the field walk below is not a thing only the
+  // mouse gets. Declared after this function; hoisting makes the order legal.
+  void onEdgeSelectFromPanel(list[problemCursor])
 }
 
 /* ── what the cards and edges hand back ────────────────────────────────── */
@@ -1437,8 +1487,31 @@ function onDeleteEdge(payload: { edgeId: string }): void {
   store.deleteSelection([], [payload.edgeId as EdgeId])
 }
 
-function onEdgeSelectFromPanel(problem: BuilderProblem): void {
+/**
+ * A problems-dock row click: walk to the node AND to the control it blames.
+ *
+ * 04 criterion 2. `canvas.focusProblem` selects the node and flashes the card,
+ * which is where the walk used to stop - and stopping there is worse than it
+ * looks for the one tier that is not merely collapsed. `llm.reasoning_effort`
+ * lives behind the global Expert switch, which renders its region ABSENT FROM
+ * THE DOM rather than hidden, so a `model-lacks-capability` anchored there left
+ * the author staring at a form that appears clean while the dock insists
+ * something is wrong.
+ *
+ * `focusField` owns the rest: it turns the switch on (globally - decision 19,
+ * so the other expert settings stay where the author left them), awaits the
+ * tick that renders the region, flashes the row, and focuses the first ENABLED
+ * control or the row itself when every control in it is disabled. That
+ * fallback is this exact problem's state - the control is disabled BECAUSE the
+ * model cannot honour it - so without it the landing would be silent.
+ *
+ * The node selection comes first and is not awaited past it: `focusField`
+ * queries the rail, and the rail renders the node `focusProblem` just selected.
+ */
+async function onEdgeSelectFromPanel(problem: BuilderProblem): Promise<void> {
   canvas.focusProblem(problem)
+  const field = problems.fieldFor(problem)
+  if (field) await inspectorRef.value?.focusField(field)
 }
 
 /**
@@ -1450,6 +1523,21 @@ function onEdgeSelectFromPanel(problem: BuilderProblem): void {
  * drop is a hard 422 that arrives on a later save, long after the click.
  */
 function placeKind(kind: Parameters<typeof canvas.insertKind>[0]): void {
+  /*
+   * 13 follow-up 3, on the click path as well as the key path.
+   *
+   * A palette tile is a `<button>`, so Enter and Space on a focused tile arrive
+   * here and `T` / `M` / `K` arrive at `insertKind` - two doors onto one
+   * gesture. An author with an agent selected who reaches the Tool tile by
+   * keyboard and one who presses `T` are asking for the same thing, and a
+   * product where one attaches and the other does not is one an author learns
+   * by discovering the inconsistency.
+   *
+   * The condition lives in `canvas.attachToSelection` rather than being
+   * restated here: a second copy of "which kinds attach, to which kinds" is a
+   * table that drifts, and this file is not where that table lives.
+   */
+  if (canvas.attachToSelection(kind)) return
   const centre = canvas.viewportCentre()
   canvas.dropKind(kind, { x: snapToGrid(centre.x), y: snapToGrid(centre.y) })
 }
@@ -1670,6 +1758,7 @@ watch(
             @duplicate="duplicateDocument"
             @unpublish="unpublishDocument"
             @delete="askDelete"
+            @menu-extent="onMenuExtent"
           >
             <template #save-chip>
               <SaveChip
@@ -1693,7 +1782,13 @@ watch(
             moment the restore bar appeared. R15: nothing here covers the graph
             it is about.
           -->
-          <div ref="dockEl" class="builder-dock" data-testid="builder-dock">
+          <div
+            ref="dockEl"
+            class="builder-dock"
+            :class="{ 'is-displaced': dockDisplacement > 0 }"
+            :style="{ '--dock-displacement': `${dockDisplacement}px` }"
+            data-testid="builder-dock"
+          >
             <VersionBrowser
               v-if="versionsOpen"
               :versions="versions"
@@ -1969,11 +2064,20 @@ watch(
 
           <TestPanel ref="testPanelRef" :test="flowTest" :labels="testNodeLabels" />
 
+          <!--
+            `run-problems` is 12 D2's third surface, finally wired: the
+            `node_error` frames of the run in the panel above, as rows under
+            their own heading. The renderer (`ProblemsPanel`'s run group) and the
+            builder (`runPhaseProblems`) were both unit-proved and NOTHING FED
+            EITHER, so a node that failed said so on its card and in the log and
+            not in the one place that makes four failures surveyable at once.
+          -->
           <ProblemsPanel
             :problems="validation.problems.value"
             :phase="validation.phase.value"
             :reason="validation.unreachableReason.value"
             :publish-problems="publishProblems"
+            :run-problems="flowTest.runProblems.value"
             :labels="anchorLabels"
             :viewing-version="readOnlyVersion"
             @focus="onEdgeSelectFromPanel"

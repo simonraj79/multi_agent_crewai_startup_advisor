@@ -18,11 +18,17 @@ export const BUILDER_KIND_MIME = 'application/x-builder-kind'
  * A drag from the tool sub-list sets BOTH - `BUILDER_KIND_MIME` says "make a
  * `tool` node" and this says "make it that one" - so a canvas that has never
  * heard of the sub-list still makes the right KIND of node from the same drop,
- * and one that has reads the id off the second entry. Two keys rather than one
- * compound value, because a drop handler that had to parse `tool:firecrawl` is
- * a drop handler that can get the split wrong.
+ * and one that has reads the id off the second entry.
+ *
+ * MOVED to `useBuilderCanvas` on 2026-09-04, when the canvas finally grew a
+ * reader for it, and re-exported here so every existing importer keeps
+ * resolving. One binding rather than two equal strings: this constant is now a
+ * contract with two ends, and the copy that would have lived here is the drift
+ * `BUILDER_KIND_MIME` above is still an example of.
  */
-export const BUILDER_TOOL_ID_MIME = 'application/x-builder-tool-id'
+import { BUILDER_TOOL_ID_MIME } from '../../composables/useBuilderCanvas'
+
+export { BUILDER_TOOL_ID_MIME }
 
 /**
  * How long the tool sub-list's filter trails the box.

@@ -76,7 +76,7 @@ from a generic "Researcher", and it costs nothing.
 
 | Setting | Value |
 |---|---|
-| `llm` | `openrouter/z-ai/glm-5.3-flash` |
+| `llm` | `openrouter/google/gemini-3.5-flash-lite:nitro` |
 | `tools` — **Track A** | `retrieve_and_rerank`, `FirecrawlSearchTool(config={"limit": 5})`, `FirecrawlScrapeWebsiteTool()` |
 | `tools` — **Track B** | `FirecrawlSearchTool(config={"limit": 5})`, `FirecrawlScrapeWebsiteTool()` — see §“Which track are you building?” |
 | `max_iter` | `15` |
@@ -98,12 +98,26 @@ description is underspecified, not that the cap is too low.
 `max_rpm=10` is set here and nowhere else in the crew — this is the only agent
 making bursty, tool-driven calls. The other agents make one call each.
 
-The model is chosen on price: `glm-5.3-flash` costs $0.075/Mtok input against
-`gemini-3.7-flash`'s $0.75 — ten times cheaper — with a larger context window
-(1,310,720) and confirmed `tools` support. This agent's context is dominated by
+The model is chosen on price: `gemini-3.5-flash-lite:nitro` costs $0.30/Mtok
+input against `gemini-3.8-flash`'s $0.75 — **2.5× cheaper** — with the **same**
+1,048,576 context window and confirmed `tools` support. This agent's context is dominated by
 scraped markdown, so input price is the dominant term. If the tool loop turns
-unreliable, escalating to `openrouter/google/gemini-3.7-flash` is the first thing
+unreliable, escalating to `openrouter/google/gemini-3.8-flash` is the first thing
 to try; it is the only escalation tier in the stack.
+
+> **Both tiers were corrected on 2026-09-04, prices measured live.** Escalation
+> moved `gemini-3.7-flash` → `gemini-3.8-flash` (`f19a2c6`) at the same
+> $0.75 / $3.75. The cheap tier had been recorded as `z-ai/glm-5.3-flash` at
+> $0.075 / $0.250 and is really `gemini-3.5-flash-lite:nitro` at
+> **$0.30 / $2.50**.
+>
+> 🛑 **Two premises of the paragraph above changed, and neither conclusion has
+> been re-argued.** The price advantage is **2.5×**, not ten-fold; and the
+> *context* advantage is **gone** — both tiers are 1,048,576, where this
+> paragraph claimed 1,310,720 against 1,048,576. "The model is chosen on
+> price" still holds directionally, but on a much narrower margin for an agent
+> whose context is dominated by scraped markdown. `:nitro` also routes on
+> speed, not price, so $0.30 is a floor.
 
 ---
 

@@ -233,6 +233,17 @@ CrewAI's default of 3 → up to 4 attempts, each re-running the whole task.
 **No drift. Both models exist and every price in `config.py` matches what
 OpenRouter advertises right now.**
 
+> **⚠️ This check is dated 2026-08-29, and is deliberately NOT rewritten.** The
+> table below records what the live catalogue said on that day, against the
+> constants as they stood then. `ESCALATION_MODEL` has since moved
+> `gemini-3.7-flash` → **`gemini-3.8-flash`** (`f19a2c6`, 2026-09-04, same
+> $0.75 / $3.75), and `CHEAP_MODEL` has moved as well. The figures are left
+> verbatim because a measurement of `gemini-3.7-flash` remains a true
+> measurement of `gemini-3.7-flash`; renaming the model inside one would
+> fabricate a check nobody ran. **Re-run the check, do not read it.** The same
+> applies to the `Gemini 3.7 Flash` reasoning-token estimate further down under
+> *Where the uncertainty actually is*.
+
 | | `CHEAP_MODEL` | `ESCALATION_MODEL` |
 | --- | --- | --- |
 | Config id | `openrouter/z-ai/glm-5.3-flash` | `openrouter/google/gemini-3.7-flash` |

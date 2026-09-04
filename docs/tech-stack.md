@@ -253,10 +253,35 @@ any agent LLM whose model string lacks the `openrouter/` prefix is rejected
 
 | Constant | Value | Price (prompt / completion, per M) |
 | --- | --- | --- |
-| `CHEAP_MODEL` | `openrouter/z-ai/glm-5.3-flash` | $0.075 / $0.250 |
-| `ESCALATION_MODEL` | `openrouter/google/gemini-3.7-flash` | $0.75 / $3.75 |
+| `CHEAP_MODEL` | `openrouter/google/gemini-3.5-flash-lite:nitro` | $0.30 / $2.50 |
+| `ESCALATION_MODEL` | `openrouter/google/gemini-3.8-flash` | $0.75 / $3.75 |
 | `EMBED_MODEL` | `google/gemini-embedding-2`, 768 dims | not in `PRICES` |
 | `RERANK_MODEL` | `rerank-v4.0-fast` (Cohere) | not in `PRICES` |
+
+> **Both model rows were corrected on 2026-09-04, and every price was
+> re-measured with `mcp__openrouter__get-model` rather than carried across.**
+>
+> - `ESCALATION_MODEL` moved `gemini-3.7-flash` → **`gemini-3.8-flash`**
+>   (`f19a2c6`; `src/brief_crew/config.py` carries the reasoning). Identical
+>   $0.75 / $3.75, identical 1,048,576 context, higher on all three Artificial
+>   Analysis indices (58.7 / 76.3 / 50.0 against 56.0 / 76.1 / 45.1).
+> - `CHEAP_MODEL` had been **stale by a whole model**: this row read
+>   `z-ai/glm-5.3-flash` at $0.075 / $0.250, while `config.py:49` has read
+>   `openrouter/google/gemini-3.5-flash-lite:nitro` for some time. Measured
+>   live: **$0.30 / $2.50**, 1,048,576 context, AA 37.4 / 49.3 / 27.2.
+>
+> ⚠️ **`:nitro` routes on speed, not price**, so $0.30 / $2.50 is a *published
+> floor* and the effective rate can be higher — `config.py:44-47` says the same,
+> and §9 below measures the spread across the endpoints that serve this slug.
+> The half-price `:batch` variant ($0.15 / $1.25) is not usable here: batch is a
+> queued lane, and a run with streaming frames and a human at a gate cannot be
+> queued.
+>
+> **Consequence worth carrying:** the two tiers are **2.5× apart on prompt and
+> 1.5× on completion**, not the 10× / 15× the `agents/` specifications were
+> written against, and their context windows are now **equal**. Documents that
+> reason from the old gap are flagged where they sit; none of those arguments
+> has been re-made.
 
 All four live in `src/brief_crew/config.py` and **nowhere else** — a targeted
 grep for `openrouter/`, model-id literals and price literals across `src/`

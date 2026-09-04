@@ -66,7 +66,7 @@ analyst:
 
 | Setting | Value |
 |---|---|
-| `llm` | `openrouter/google/gemini-3.7-flash` |
+| `llm` | `openrouter/google/gemini-3.8-flash` |
 | `tools` | *(none - deliberate)* |
 | `max_iter` | `10` |
 | `max_execution_time` | `300` |
@@ -78,14 +78,29 @@ only over text it was handed, so neither buys anything. Both are set on the
 Researcher, which needs them.
 
 **This is the one agent for which the escalation tier is non-negotiable.** The
-Writer and the retired Manager also run on `gemini-3.7-flash`, but the Writer is
+Writer and the retired Manager also run on `gemini-3.8-flash`, but the Writer is
 the crew's designated A/B candidate for dropping to the cheap tier
 (`03-writer.md`) and the Manager is not built. Only the Researcher and the
-Evaluator are unambiguously on `glm-5.3-flash`. Selection and framing is where
-the brief's quality is actually decided, so this is the one place the cheap
+Evaluator are unambiguously on `gemini-3.5-flash-lite:nitro`. Selection and
+framing is where the brief's quality is actually decided, so this is the one place the cheap
 default is a false economy — and the one agent that should *not* be A/B'd
 down. Note there is no tier above this one in the current stack —
 "trade up if the brief reads thin" has no destination.
+
+> **Both tiers were corrected on 2026-09-04, prices measured live.** Escalation
+> moved `gemini-3.7-flash` → `gemini-3.8-flash` (`f19a2c6`) at the same
+> $0.75 / $3.75. The cheap tier had been recorded as `z-ai/glm-5.3-flash` at
+> $0.075 / $0.250 and is really `gemini-3.5-flash-lite:nitro` at
+> **$0.30 / $2.50**.
+>
+> 🛑 **This page's central claim rests on a gap four times smaller than it was
+> written against, and it has NOT been re-argued.** "The one agent for which
+> the escalation tier is non-negotiable" and "the cheap default is a false
+> economy" were written when escalation cost 10× the input and 15× the output.
+> The real figures are **2.5×** and **1.5×**, and the two context windows are
+> now equal. A 1.5× completion premium is a materially weaker reason to keep
+> this agent off the cheap tier than a 15× one. Somebody should decide this
+> deliberately; nobody has.
 
 ⚠️ **A retrieval tool now exists in this codebase. Do not give it to this agent.**
 The temptation to "let it re-check one fact" is live in a way it was not before,

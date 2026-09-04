@@ -6,7 +6,8 @@
 > `markdown: true` and `output_file: output/brief.md` set in YAML.
 >
 > **The A/B this file nominates is a parameter, not an edit:**
-> `BriefCrew(writer_model=CHEAP_MODEL)` runs the Writer on `glm-5.3-flash`.
+> `BriefCrew(writer_model=CHEAP_MODEL)` runs the Writer on
+> `gemini-3.5-flash-lite:nitro`.
 > Everything else is held constant, so the comparison is clean.
 >
 > The optional word-count guardrail is **built and active** —
@@ -65,7 +66,7 @@ writer:
 
 | Setting | Value |
 |---|---|
-| `llm` | `openrouter/google/gemini-3.7-flash` |
+| `llm` | `openrouter/google/gemini-3.8-flash` |
 | `tools` | *(none)* |
 | `max_iter` | `10` |
 | `max_execution_time` | `300` |
@@ -75,10 +76,25 @@ writer:
 This agent is the **best A/B candidate for the cheap tier**. Its task is more
 heavily templated than any other in the crew — fixed structure, hard word
 ceiling, explicit constraints — so most of the difficulty is already solved by
-task design rather than model capability. Try `openrouter/z-ai/glm-5.3-flash`
-here and compare before assuming the escalation tier is needed. That is a **fifteen-fold**
-difference on completion tokens ($3.75 vs $0.250/Mtok) — ten-fold on input —
-applied to the crew's most output-heavy agent.
+task design rather than model capability. Try
+`openrouter/google/gemini-3.5-flash-lite:nitro` here and compare before
+assuming the escalation tier is needed. That is a **1.5×** difference on
+completion tokens ($3.75 vs $2.50/Mtok) — 2.5× on input — applied to the
+crew's most output-heavy agent.
+
+> **Both tiers were corrected on 2026-09-04, prices measured live.** Escalation
+> moved `gemini-3.7-flash` → `gemini-3.8-flash` (`f19a2c6`) at the same
+> $0.75 / $3.75. The cheap tier had been recorded as `z-ai/glm-5.3-flash` at
+> $0.075 / $0.250 and is really `gemini-3.5-flash-lite:nitro` at
+> **$0.30 / $2.50**.
+>
+> 🛑 **This page nominates the Writer as the crew's A/B candidate because the
+> saving was fifteen-fold. It is 1.5×.** The arithmetic above is corrected; the
+> nomination is not, and has not been re-argued. Whether a 1.5× completion
+> saving still justifies risking prose quality on the crew's most output-heavy
+> agent is a judgement somebody needs to make with these numbers in front of
+> them. `:nitro` also routes on speed, not price, so $2.50 is a floor and the
+> real gap can be narrower still.
 
 Set on the **task**, not the agent:
 

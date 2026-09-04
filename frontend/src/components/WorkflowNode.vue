@@ -421,7 +421,13 @@ const ariaLabel = computed(() => {
   background-image: none;
   background-color: var(--surface-well);
   border: 1px dashed var(--border-default);
-  opacity: 0.6;
+  /* `--recede-opacity`, not a third number. Plan 11 criterion 3 names exactly
+     two levels on a card - receded 0.55 and present 1.0 - and a run measured
+     THREE, because this rule carried its own 0.6 (critic P-09). An empty
+     quarantine node is a card that is stepped back, which is what
+     `--recede-opacity` already means, so the vocabulary is one value rather
+     than two that happen to look similar. */
+  opacity: var(--recede-opacity);
 }
 
 .is-quiet .node-icon { color: var(--text-40); background: transparent; border-color: var(--border-default); }

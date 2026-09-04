@@ -127,6 +127,24 @@ test.describe('the idle recede', () => {
     expect(Number(await styleOf(idle, 'opacity'))).toBeCloseTo(0.55, 2)
     expect(Number(await styleOf(gateNode, 'opacity'))).toBe(1)
 
+    /*
+     * Criterion 3 says TWO levels, and naming two cards cannot show that there
+     * are only two. A run measured `{0.55, 0.6, 1.0}` (critic round product-1,
+     * P-09): the empty quarantine card carried an `opacity: 0.6` of its own,
+     * which is a third step-back nobody declared and which reads on the canvas
+     * as a fourth node state. The whole SET is the assertion now.
+     */
+    const levels = await page.evaluate(() =>
+      [
+        ...new Set(
+          [...document.querySelectorAll('.workflow-node')].map((card) =>
+            Number(Number(window.getComputedStyle(card).opacity).toFixed(2)),
+          ),
+        ),
+      ].sort((left, right) => left - right),
+    )
+    expect(levels, 'exactly the two levels criterion 3 names').toEqual([0.55, 1])
+
     await page.locator('.gate-card').getByRole('button', { name: /^Approve/ }).click()
     await expect(page.locator('.gate-card h2')).toHaveText('Review verdict', { timeout: 60_000 })
     await page.locator('.gate-card').getByRole('button', { name: /^Approve/ }).click()

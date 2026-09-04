@@ -671,6 +671,14 @@ def _vocabulary() -> BuilderVocabularyModel:
     )
 
 
+#: The refusal a zip carrying a `scripts/` entry is answered with (plan 08 C8).
+#: Declared HERE rather than in `builder/skills.py` on purpose: every kebab-case
+#: module-level constant in the builder package is swept into the canvas
+#: problem-code union by three separate greps, and this is not a canvas problem
+#: - it never lands on a node and the problems dock has nothing to anchor it to.
+SKILL_IMPORT_SCRIPTS_CODE = "skill-contains-scripts"
+
+
 def create_builder_router(
     *,
     store_factory: Callable[[], BuilderDocumentStore | None],
@@ -1944,7 +1952,26 @@ def create_builder_router(
         if store is None:
             raise _no_store()
         raw = await _archive_bytes(request)
-        body = _attachment(lambda: read_pack_zip(raw))
+        try:
+            body = read_pack_zip(raw)
+        except SkillError as exc:
+            # The scripts refusal carries a CODE as well as a sentence, because
+            # plan 08's C8 request names one and a client that wants to say
+            # something specific about it needs to recognise it. It is not a
+            # canvas problem code and is deliberately not declared beside them:
+            # an import-time refusal never lands on a node, so the problems dock
+            # has nothing to anchor it to and the client mirror nothing to draw.
+            code = (
+                SKILL_IMPORT_SCRIPTS_CODE
+                if "scripts directory" in str(exc)
+                else None
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    {"code": code, "message": str(exc)} if code else str(exc)
+                ),
+            ) from exc
         return _attachment(lambda: store.create(owner, body)).detail()
 
     async def _archive_bytes(request: Request) -> bytes:

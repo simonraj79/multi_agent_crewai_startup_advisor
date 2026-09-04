@@ -201,11 +201,29 @@ def bumped(body: str) -> str:
 
 
 def _first_sentence(exc: BaseException) -> str:
-    text = str(exc).strip().splitlines()
-    for line in text[1:]:
-        if line.strip() and not line.strip().startswith("For further information"):
-            return f"{text[0]} - {line.strip()}"
-    return text[0] if text else type(exc).__name__
+    """One line an author can act on, out of pydantic's four.
+
+    A pydantic error is a header, a field name, an indented message and a
+    documentation link. The useful sentence is the third - it names the pattern
+    the value missed - and it is what this returns, prefixed by the field.
+
+    The `[type=..., input_value=..., input_type=...]` tail is CUT, and that is
+    not tidiness: it echoes the offending value back into an HTTP response body,
+    and a route that echoes its input is the shape
+    `service/credentials_api.py` parses by hand specifically to avoid.
+    """
+
+    lines = [line.rstrip() for line in str(exc).strip().splitlines()]
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not line.startswith("  ") or not stripped:
+            continue
+        if stripped.startswith("For further information"):
+            continue
+        message = stripped.split(" [type=", 1)[0]
+        field = lines[index - 1].strip() if index else ""
+        return f"{field}: {message}" if field else message
+    return lines[0] if lines else type(exc).__name__
 
 
 # --------------------------------------------------------------------------
@@ -407,6 +425,52 @@ BUILTIN_SKILL_IDS: tuple[str, ...] = tuple(
 
 
 # --------------------------------------------------------------------------
+# Events - D6
+#
+# `skill_frame_details` is the mapping and nothing more: it takes one of
+# CrewAI's four skill events and answers with the `details` a frame carries.
+# Registering it on the event bus is `events/serializer.py`'s work and that
+# module is C6's, owned by plan 10 - so this side is written, tested against
+# REAL event objects, and left for the wave that owns the sink to call. A
+# mapping with no caller is a smaller debt than a mapping written twice.
+# --------------------------------------------------------------------------
+#: CrewAI's three integer levels, as the word a console renders. Derived from
+#: the package's own constants rather than written down, so a fourth level
+#: appearing upstream is a KeyError here rather than a frame that says nothing.
+def _disclosure_words() -> dict[int, str]:
+    from crewai.skills.models import INSTRUCTIONS, METADATA, RESOURCES
+
+    return {METADATA: "metadata", INSTRUCTIONS: "instructions", RESOURCES: "resources"}
+
+
+#: `SkillLoadFailedEvent` is the one that also produces a `node_error` frame
+#: (C6). It does NOT fail the step: a missing skill degrades an agent - it
+#: carries less knowledge - where a missing tool removes a capability it was
+#: told it had.
+SKILL_LOAD_ERROR_CLASS = "skill_load"
+
+
+def skill_frame_details(event: Any) -> dict[str, Any]:
+    """One skill event as the `details` of an AGENT frame.
+
+    `skill` and `disclosure` are what the run console shows on the agent's card
+    at the one moment a skill is visibly doing something - "activated skill
+    hn-signal-reading". `error_class` appears only on a failure, which is what
+    lets 12 route it without a second event type.
+    """
+
+    details: dict[str, Any] = {"skill": str(getattr(event, "skill_name", "") or "")}
+    level = getattr(event, "disclosure_level", None)
+    if level is not None:
+        details["disclosure"] = _disclosure_words().get(int(level), str(level))
+    error = getattr(event, "error", None)
+    if error:
+        details["error_class"] = SKILL_LOAD_ERROR_CLASS
+        details["error"] = str(error)[:500]
+    return details
+
+
+# --------------------------------------------------------------------------
 # Validation over a document
 # --------------------------------------------------------------------------
 #: `(skill_id) -> SkillPack | None`, scoped to the caller with built-ins always
@@ -463,6 +527,8 @@ __all__ = [
     "parse_pack",
     "loaded_skill",
     "read_pack_zip",
+    "SKILL_LOAD_ERROR_CLASS",
+    "skill_frame_details",
     "skill_problems",
     "search_path",
     "skills_root",

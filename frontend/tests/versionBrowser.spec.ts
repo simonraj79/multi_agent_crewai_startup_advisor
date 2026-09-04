@@ -911,6 +911,22 @@ describe('the shell', () => {
     wrapper.unmount()
   })
 
+  it('names the version the export writes, in the menu that covers the rows (D-15-25)', async () => {
+    /* The menu sits over the version rows it operates on, and the label said
+       `Export .builder.json` - the file format, which the Import item below it
+       already implies, and nothing about WHICH version leaves. */
+    const { wrapper } = await mountOpen()
+    // The menu closes on choosing, which is what makes it a menu; reopen it
+    // over the rows exactly as the critic's capture had it.
+    await wrapper.get('[data-testid="document-menu-button"]').trigger('click')
+    await settled()
+    const label = wrapper.get('[data-testid="menu-export"]').text()
+    expect(label).toContain('Export head')
+    expect(label).toContain('(v2)')
+    expect(label).not.toContain('.builder.json')
+    wrapper.unmount()
+  })
+
   it('lists the stored versions from the menu, newest first as the server answers', async () => {
     const { wrapper, state } = await mountOpen()
 

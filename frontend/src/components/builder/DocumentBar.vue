@@ -498,7 +498,15 @@ function cancelRename(): void {
             @click="choose(() => emit('export'))"
           >
             <Download :size="14" aria-hidden="true" />
-            Export .builder.json
+            <!--
+              `Export head`, not `Export .builder.json` (D-15-25). The old
+              label named the FILE FORMAT, which the author already knows from
+              the Import item below it, and said nothing about which version
+              leaves - the one question the menu covers the version rows to
+              ask. The server exports the head; the number is here so the
+              answer does not depend on reading a row the menu is over.
+            -->
+            {{ headVersion > 0 ? `Export head (v${headVersion})` : 'Export head' }}
           </button>
           <button
             class="document-menu-item"
@@ -659,12 +667,30 @@ function cancelRename(): void {
 
 /* Anchored under its button, above the bar's own z-index. It is a MENU: it
    lasts one choice, and the only thing it can cover is the top-right corner of
-   the canvas for as long as it takes to read five lines. */
+   the canvas for as long as it takes to read five lines.
+
+   D-15-25: that reasoning held while the canvas was underneath and stopped
+   holding when the VERSION BROWSER is. Right-aligned to the button, the menu
+   opened back across the rows' identity columns - the critic measured it over
+   `restored from v1`. It is left-aligned to the button now, so it opens into
+   the bar's own right-hand region instead of over the rows' label and source.
+   `min()` keeps it inside the viewport when the bar is narrow enough for the
+   button to sit near the right edge, which right-alignment gave for free and
+   this has to ask for.
+
+   HONEST LIMIT: at 1440 this moves the menu off the identity columns and onto
+   the time and size columns; it does not remove the overlap. Removing it means
+   DISPLACING the browser rather than covering it, which is a change to the
+   shell's grid rows - and `Export head (vN)` above is the other half of the
+   answer: the one fact the covered rows were being read for is now in the
+   menu itself. */
 .document-menu {
   position: absolute;
   z-index: 3;
   top: calc(100% + 6px);
-  right: 0;
+  left: 0;
+  right: auto;
+  max-width: min(260px, calc(100vw - 24px));
   display: grid;
   gap: 2px;
   min-width: 212px;

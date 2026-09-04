@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
 
 /**
  * 05 criterion 10 - the model registry, in the browser it is chosen from.
@@ -82,6 +84,20 @@ async function enforcedUsd(page: Page): Promise<number> {
   return Number(match![1])
 }
 
+/**
+ * One capture for the judge, into `benchmarks/ours/05/`.
+ *
+ * PNGs are gitignored and the spec is not: `benchmarks/README.md` says why -
+ * they are pictures of a build, regenerated on demand, and a round's defects
+ * live in the ledger rather than in its pixels. Taken at the END of a passing
+ * test, so a capture can never be of a state the assertions rejected.
+ */
+async function capture(page: Page, name: string): Promise<void> {
+  const out = path.resolve(process.cwd(), '..', 'benchmarks', 'ours', '05')
+  mkdirSync(out, { recursive: true })
+  await page.screenshot({ path: path.join(out, `05-${name}-1440x900-dark.png`) })
+}
+
 test.describe('the model registry, from the picker', () => {
   test.beforeEach(async ({ page }) => {
     await clearLibrary(page)
@@ -149,6 +165,8 @@ test.describe('the model registry, from the picker', () => {
     // the number a publish is actually refused against.
     await expect(page.locator('[data-testid="budget-floor"]')).toBeVisible()
 
+await capture(page, 'picker-cheaper-model')
+
     expect(errors).toEqual([])
   })
 
@@ -207,6 +225,8 @@ test.describe('the model registry, from the picker', () => {
       'title',
       /openai\/gpt-4\.1-nano does not support reasoning/i,
     )
+
+await capture(page, 'picker-capability-disabled')
 
     expect(errors).toEqual([])
   })

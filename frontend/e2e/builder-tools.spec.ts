@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
 
 /**
  * 06 criteria 9 and 10 - the tool catalogue, in the browser.
@@ -74,6 +76,23 @@ async function clearLibrary(page: Page): Promise<void> {
   }
 }
 
+/**
+ * Every key this caller owns, deleted before and after.
+ *
+ * The vault is durable and per-user, so a key written by the last test in this
+ * file is still there for the first test in the next run - and `CredentialPicker`
+ * selects the only key of a kind by itself, which is the right behaviour and
+ * makes "the amber chip appears" false for a reason nothing on screen explains.
+ * It passed in isolation and failed in the full suite, which is the signature.
+ */
+async function clearCredentials(page: Page): Promise<void> {
+  const listed = await page.request.get('/api/builder/credentials')
+  if (!listed.ok()) return
+  for (const entry of (await listed.json()) as { id: string }[]) {
+    await page.request.delete(`/api/builder/credentials/${entry.id}`)
+  }
+}
+
 /** Open the smallest launchable template: input -> gate -> agent -> output. */
 async function startFromMinimalTemplate(page: Page): Promise<void> {
   await page.goto('/#/build')
@@ -85,13 +104,29 @@ async function startFromMinimalTemplate(page: Page): Promise<void> {
 const agentCard = (page: Page): Locator =>
   page.locator('.vue-flow__node:has(.workflow-node.is-kind-agent)').first()
 
+/**
+ * One capture for the judge, into `benchmarks/ours/06/`.
+ *
+ * PNGs are gitignored and the spec is not: `benchmarks/README.md` says why -
+ * they are pictures of a build, regenerated on demand, and a round's defects
+ * live in the ledger rather than in its pixels. Taken at the END of a passing
+ * test, so a capture can never be of a state the assertions rejected.
+ */
+async function capture(page: Page, name: string): Promise<void> {
+  const out = path.resolve(process.cwd(), '..', 'benchmarks', 'ours', '06')
+  mkdirSync(out, { recursive: true })
+  await page.screenshot({ path: path.join(out, `06-${name}-1440x900-dark.png`) })
+}
+
 test.describe('the tool catalogue, on the canvas', () => {
   test.beforeEach(async ({ page }) => {
     await clearLibrary(page)
+    await clearCredentials(page)
   })
 
   test.afterEach(async ({ page }) => {
     await clearLibrary(page)
+    await clearCredentials(page)
   })
 
   test('names every catalogue entry in a sub-list under the tool tile', async ({ page }) => {
@@ -121,6 +156,8 @@ test.describe('the tool catalogue, on the canvas', () => {
     // Named by their LABEL, never their id: an author picked "Web search" from
     // a list and should see that word again.
     await expect(rows.filter({ hasText: 'Web search' })).toHaveCount(1)
+
+await capture(page, 'catalogue-sublist')
 
     expect(errors).toEqual([])
   })
@@ -256,6 +293,8 @@ test.describe('the tool catalogue, on the canvas', () => {
     await expect(inspector(page).locator('[data-testid="tool-no-key"]')).toHaveCount(0)
     await validationSettles(page)
     await expect(problemRow(page, 'tool-credential-required')).toHaveCount(0)
+
+await capture(page, 'no-key-chip-cleared')
 
     expect(errors).toEqual([])
   })

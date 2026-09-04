@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
 
 /**
  * 08 criterion 9 - a skill pack, from paste to attached, in the browser.
@@ -110,6 +112,20 @@ async function clearMySkills(page: Page): Promise<void> {
   }
 }
 
+/**
+ * One capture for the judge, into `benchmarks/ours/08/`.
+ *
+ * PNGs are gitignored and the spec is not: `benchmarks/README.md` says why -
+ * they are pictures of a build, regenerated on demand, and a round's defects
+ * live in the ledger rather than in its pixels. Taken at the END of a passing
+ * test, so a capture can never be of a state the assertions rejected.
+ */
+async function capture(page: Page, name: string): Promise<void> {
+  const out = path.resolve(process.cwd(), '..', 'benchmarks', 'ours', '08')
+  mkdirSync(out, { recursive: true })
+  await page.screenshot({ path: path.join(out, `08-${name}-1440x900-dark.png`) })
+}
+
 test.describe('skills, from paste to attached', () => {
   test.beforeEach(async ({ page }) => {
     await clearDocuments(page)
@@ -213,6 +229,8 @@ test.describe('skills, from paste to attached', () => {
     // The canvas pill carries the one fact a document CAN carry across an
     // export: the pack's name.
     await expect(page.locator('.workflow-node.is-kind-skill')).toContainText('e2e-house-style')
+
+await capture(page, 'pack-pasted-attached')
 
     expect(watch.unexpected).toEqual([])
   })

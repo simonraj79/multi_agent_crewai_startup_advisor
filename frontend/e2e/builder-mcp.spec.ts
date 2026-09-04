@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
 
 /**
  * 07 criterion 9 - an MCP server added, discovered and attached, in the browser.
@@ -87,6 +89,20 @@ async function clearServers(page: Page): Promise<void> {
   for (const server of body.servers) {
     await page.request.delete(`/api/builder/mcp/servers/${server.id}`)
   }
+}
+
+/**
+ * One capture for the judge, into `benchmarks/ours/07/`.
+ *
+ * PNGs are gitignored and the spec is not: `benchmarks/README.md` says why -
+ * they are pictures of a build, regenerated on demand, and a round's defects
+ * live in the ledger rather than in its pixels. Taken at the END of a passing
+ * test, so a capture can never be of a state the assertions rejected.
+ */
+async function capture(page: Page, name: string): Promise<void> {
+  const out = path.resolve(process.cwd(), '..', 'benchmarks', 'ours', '07')
+  mkdirSync(out, { recursive: true })
+  await page.screenshot({ path: path.join(out, `07-${name}-1440x900-dark.png`) })
 }
 
 test.describe('an MCP server, added and discovered for real', () => {
@@ -206,6 +222,8 @@ test.describe('an MCP server, added and discovered for real', () => {
         `.vue-flow__node[data-id="${agentId}"] .builder-attach-avatar[data-attachment-kind="mcp"]`,
       ),
     ).toHaveCount(1)
+
+await capture(page, 'server-discovered-attached')
 
     expect(errors).toEqual([])
   })

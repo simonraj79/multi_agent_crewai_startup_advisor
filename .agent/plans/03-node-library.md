@@ -344,3 +344,56 @@ suites green without adding the seven strings to that tuple, and hiding them
 from the mirror is section 14's defect 2 exactly. So `PROBLEM_CODES` gained
 seven entries and `WARNING_CODES` gained `attachment-unattached` — 31 → **38**
 and 3 → **4** — and nothing else in `frontend/src/` was touched.
+
+### Wave A/B closers — 2026-09-04
+
+Criteria **7, 8, 9 and 10** — the four the server half left open, and the three
+that had no answer outside a real browser. Measured in this worktree at
+`369a8c4`: frontend **1468 → 1475** in 74 files, `vue-tsc -b --force` exit 0,
+`npm run build` green, and every spec below RUN against a local `SYNTHETIC=1`
+backend on 8094 with zero console errors tolerated.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 7 | rubric 2: ten kinds at zoom 0.5, silhouette / accent / eyebrow per kind | **met** | `frontend/e2e/visual/node-grammar.spec.ts`, **2 tests**, both green; captures in `benchmarks/ours/03/` |
+| 8 | three attachments → model pill + three avatars; five → four plus `+1`; `hier` + manager pill | **met** | `frontend/tests/builderNode.spec.ts`, **7 new tests** (59 in the file) |
+| 9 | ten tiles in server order, `T`/`M`/`K`, the 250 ms filter, both MIME entries | **met** | `frontend/tests/nodePalette.spec.ts`, **13 tests**, all four clauses; landed with `8ff936d` and verified green here, not written this pass |
+| 10 | attach a tool by dropping it on an agent; the empty-canvas drop reports `attachment-unattached` | **met** | `frontend/e2e/builder.spec.ts`, two tests in *attachments and the inspector* |
+
+**Criterion 8 needed the product, not only a test.** D6 asks an authored node to
+say three things the summary line cannot, and none of the three was drawn: the
+model was a slice of a `·`-joined sentence, a hierarchical crew read the word
+`hierarchical` and ellipsised, and an agent's attachments appeared nowhere on
+the agent — only as pills elsewhere on the canvas, which answers "there is a
+tool here" and never "whose". `BuilderNodeData` gained `attachments`, projected
+in one pass over the `attach` edges in `useBuilderCanvas` rather than computed
+on the card, because an attachment is a fact about an EDGE and a card is handed
+one node. The card renders a model pill, a `seq`/`hier` chip, a dashed manager
+pill on a hierarchical crew, and up to four 20 px avatars plus `+N`. A library
+agent and a library crew render none of it — their identity is their id and
+their model is the tier's. `summariseConfig` is untouched, so every existing
+assertion about the mono summary still holds.
+
+**Criterion 7 asserts the accent as a RESOLVED colour**, read off the live
+element, not as the `--kind-accent` custom property written into it: a property
+no rule consumes passes the second reading and fails the eye. D5's table is
+transcribed into the spec rather than imported from `nodeKinds.ts` — importing
+it would assert that the card renders whatever that file currently says, which
+is true by construction and proves nothing about D5. The eyebrow assertion
+matches `NN · KIND`, because §5.2 prefixes the kind with the node's document
+order.
+
+**Criterion 10's second half is a decision, and the test says so.** A drop on
+empty canvas is legal and creates an unattached node; `bounds.py` reports
+`attachment-unattached` as a WARNING. That is `dropKind`'s documented reasoning
+— an author may be laying out before wiring — and it is asserted rather than
+worked around.
+
+**One thing criterion 9 pins that nothing downstream honours.** The palette
+writes BOTH mime entries on a named tool's drag and `nodePalette.spec.ts` proves
+it; `BuilderCanvas.onDrop` reads only `BUILDER_DND_MIME`, so a tool dragged from
+the sub-list lands on `nodeKinds`' placeholder `tool_id` exactly as the generic
+tile does. The two gestures are meant to be distinguishable. The change is one
+line in `BuilderCanvas.vue` — another package's file this wave — and is carried
+as a named `test.fixme` in `frontend/e2e/builder-tools.spec.ts` with the exact
+diff.

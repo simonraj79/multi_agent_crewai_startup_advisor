@@ -363,3 +363,59 @@ argument against it is in the code: the thirteen patterns have false positives
 by design, `act as` is ordinary English, and
 `test_the_list_has_false_positives_and_that_is_why_it_only_WARNS` is the case
 that would have to be deleted.
+
+### Wave A/B closers — 2026-09-04
+
+**Criterion 9 closes, against a REAL server.** `frontend/e2e/builder-mcp.spec.ts`
+adds a server by URL in the docked panel, discovers it over a live loopback MCP
+connection, sees both tools, checks them, reads the read-only parameter preview
+for each, attaches, and finds the server chip on the form and the avatar on the
+agent card. Green at `369a8c4`; capture in `benchmarks/ours/07/`.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 9 | add, discover, drag, check two tools, see the preview | **met** | `frontend/e2e/builder-mcp.spec.ts`, 1 test, real discovery |
+
+**No stub, and that distinction earned its keep immediately.** Every other test
+in this plan injects a `Resolver`, which is the seam's whole purpose and is also
+exactly why nothing had ever constructed the real one: `_default_resolver`
+called `MCPToolResolver()` with no arguments, and discovery against ANY real
+server answered `status: error` carrying a Python `TypeError` in the sentence
+where an author expected to read why their server would not connect. The fix is
+`wd/ab-backend@604a4e5` and was taken verbatim into this worktree on the
+Integrator's instruction; it is not this package's file and was not edited here.
+A stubbed `page.route` discovery would have passed over that defect, which is
+the argument for not writing one.
+
+**The fixture server is a second process and the spec says so.** It is
+`tests/service/mcp_fixture_server.py` — two tools over streamable HTTP on
+loopback, one of them carrying an injection phrase on purpose, so the
+`suspicious` rule is tested against the real pattern list rather than a phrase
+invented for the test. `playwright.config.ts` deliberately starts no Python, so
+the URL arrives as `E2E_MCP_URL` and the file **skips** when it is absent rather
+than falling back to a stub. Run as measured:
+
+```text
+python -c "import sys; sys.path.insert(0,'tests/service'); from mcp_fixture_server \
+  import build_server; build_server(port=8791).run(transport='streamable-http')"
+SYNTHETIC=1 PORT=8094 MCP_ALLOW_INSECURE_LOCAL=1 CREDENTIALS_MASTER_KEY=... serve.exe
+E2E_MCP_URL=http://127.0.0.1:8791/mcp npx playwright test e2e/builder-mcp.spec.ts
+```
+
+`MCP_ALLOW_INSECURE_LOCAL` is not optional and its absence does not read like a
+missing flag: `refuse_private_target` answers *"is not https, and only https
+targets are dialled"*, which sounds like a rule about the fixture rather than
+about the deployment.
+
+**What the browser confirmed that the unit tests could not.** Discovery returned
+`authorized` with two tools whose names CrewAI prefixes with the server's own
+address (`127_0_0_1_8791_mcp_search`), so the spec reads the names off the panel
+rather than writing them; the injection-phrase tool is marked AND its checkbox
+is still enabled, which is decision 8 seen from the pointer; the URL is masked
+in the list; and the parameter preview appears per CHECKED tool in both the
+panel and the form.
+
+**One idiom worth recording for the next author.** `McpForm` opens its own
+docked panel when the caller has no servers yet — correct behaviour, and exactly
+the state this test starts in, so a blind click on *"Manage servers"* SHUT it and
+the failure read as a missing component. The spec opens rather than toggles.

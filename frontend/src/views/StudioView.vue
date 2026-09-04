@@ -337,7 +337,16 @@ function backToValidator(): void {
     </header>
 
     <main class="studio-main">
-      <ChatRail :entries="chatEntries" :collapsed="chatCollapsed" @toggle="chatCollapsed = !chatCollapsed" />
+      <ChatRail :entries="chatEntries" :collapsed="chatCollapsed" @toggle="chatCollapsed = !chatCollapsed">
+        <template #above>
+          <DialogueRail
+            :entries="dialogue"
+            :collapsed="dialogueCollapsed"
+            :character-of="characterIndex"
+            @toggle="dialogueCollapsed = !dialogueCollapsed"
+          />
+        </template>
+      </ChatRail>
 
       <section id="workflow-canvas" class="graph-workspace" aria-labelledby="graph-title" tabindex="-1">
         <div class="canvas-heading">
@@ -419,13 +428,6 @@ function backToValidator(): void {
           -->
           <Controls position="bottom-left" :show-interactive="false" />
         </VueFlow>
-
-        <DialogueRail
-          :entries="dialogue"
-          :collapsed="dialogueCollapsed"
-          :character-of="characterIndex"
-          @toggle="dialogueCollapsed = !dialogueCollapsed"
-        />
 
         <ReportPanel
           :report="report"

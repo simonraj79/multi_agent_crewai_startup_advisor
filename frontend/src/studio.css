@@ -198,11 +198,14 @@ h3 {
   z-index: var(--z-base);
   display: grid;
   /*
-   * Five rows, and every one of the four that carry something is `auto` or
-   * `minmax(0, 1fr)` rather than a fixed height, because three of them come and
-   * go: the reconnect strip only exists while the socket is re-making itself,
-   * the crew strip only while there is a voyage to narrate, and the dialogue
-   * rail's list is capped rather than free-growing.
+   * FOUR rows now, and the two that come and go are both `auto`: the reconnect
+   * strip exists only while the socket is re-making itself, and the crew strip
+   * only while there is a voyage to narrate.
+   *
+   * The dialogue rail was a fifth row here and is not any more. Measured: it
+   * opened on the first utterance and took the Vue Flow container from 626px to
+   * 462px, mid-run, on the canvas the gauntlet captures. It lives in the
+   * activity column now, where it costs the graph nothing.
    *
    * `minmax(0, 1fr)` on the canvas and not `1fr`, for the reason recorded on
    * `.studio-main`: a grid item's automatic minimum size is its CONTENT, so a
@@ -210,7 +213,7 @@ h3 {
    * rails below it get pushed off the page. That defect shipped once here
    * already, at 1894px inside an 848px container.
    */
-  grid-template-rows: 64px auto auto minmax(0, 1fr) auto;
+  grid-template-rows: 64px auto auto minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
   background: var(--canvas-bg);
@@ -219,7 +222,6 @@ h3 {
 .graph-workspace > .stream-reconnecting { grid-row: 2; }
 .graph-workspace > .crew-progress { grid-row: 3; }
 .graph-workspace > .validator-flow { grid-row: 4; }
-.graph-workspace > .dialogue-rail { grid-row: 5; }
 
 /*
  * The socket is re-making itself, said where the graph is.

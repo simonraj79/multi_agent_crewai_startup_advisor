@@ -206,13 +206,9 @@ function clock(at: number): string {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  margin: 4px 40px 8px;
   overflow: hidden;
-  background: var(--surface-overlay);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-2xl);
-  -webkit-backdrop-filter: var(--blur-panel);
-  backdrop-filter: var(--blur-panel);
+  background: var(--surface-well);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .dialogue-head {
@@ -244,10 +240,20 @@ function clock(at: number): string {
 /* Capped rather than free-growing: this shares a grid row with the canvas, and
    a rail that grew with the transcript would squeeze the graph out of the page
    over the course of a long run. */
+/*
+ * Capped, and the cap is a judgement about the column rather than about the
+ * transcript. This shares a 330px rail with the trace, and a dialogue that grew
+ * with the run would push the trace off the bottom - which is the same defect
+ * one level down from the one that moved this rail out of the canvas.
+ *
+ * `40vh` and not a pixel value, because the two things sharing this column
+ * scale with the window and a fixed cap that is generous at 1440 tall is most
+ * of the rail at 800.
+ */
 .dialogue-list {
-  max-height: 232px;
+  max-height: 40vh;
   min-height: 0;
-  flex: 1;
+  flex: 0 1 auto;
   overflow: auto;
   padding: 4px 14px 12px;
   scrollbar-color: rgba(153, 234, 249, 0.3) transparent;
@@ -312,7 +318,6 @@ function clock(at: number): string {
 .dialogue-tokens { margin: 4px 0 0; color: var(--text-40); font: 500 10px/1.2 var(--font-mono); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 860px) {
-  .dialogue-rail { margin: 4px 16px 8px; }
-  .dialogue-list { max-height: 160px; }
+  .dialogue-list { max-height: 30vh; }
 }
 </style>

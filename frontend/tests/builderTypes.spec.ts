@@ -452,30 +452,35 @@ describe('the problem codes are the python problem codes', () => {
     expect([...PROBLEM_CODES].sort()).toEqual(pythonProblemCodes())
   })
 
-  it('finds all thirty-one, so an empty read cannot pass as agreement', () => {
+  it('finds all thirty-eight, so an empty read cannot pass as agreement', () => {
     // Without this the assertion above would be satisfied by a regex that
     // matched nothing against a tuple that had lost everything - and, as the
     // 27 that stood here until 2026-09-02 proved, by a file list missing a
     // whole module against a tuple missing the same three codes.
     //
-    // 31 is not this figure copied forward. It was re-derived by parsing every
-    // `Problem(...)` call under `src/brief_crew/builder/` - 33 sites, 31
-    // distinct codes: 26 in bounds.py (two of them raised through a loop
-    // variable at `_identity_problems`, so they have no literal to grep), 2 in
-    // budget.py, 5 in compiler.py - the fifth being `credential-missing`,
-    // plan 01 D10's, emitted only when `validate` has an identity to check
-    // against.
-    expect(pythonProblemCodes()).toHaveLength(31)
-    expect(PROBLEM_CODES).toHaveLength(31)
+    // 31 until 2026-09-04, when 03-node-library.md D2 landed the seven
+    // edge-class codes in `bounds.py`: `attach-target-not-agent`,
+    // `member-target-not-crew`, `member-agent-has-flow-edges`,
+    // `attachment-unattached`, `attachments-over-max`,
+    // `attachment-nodes-over-max` and `crew-members-out-of-range`. The
+    // Python-side twin of this assertion is
+    // `tests/builder/test_problem_code_declarations.py`, whose failure message
+    // names this line and the tuple by path - which is the only mechanism that
+    // makes a server-side code addition break a TypeScript test in the same
+    // commit rather than three commits later.
+    expect(pythonProblemCodes()).toHaveLength(38)
+    expect(PROBLEM_CODES).toHaveLength(38)
   })
 
-  it('declares the three warnings, and they are codes', () => {
-    // `bounds.py` writes `severity="warning"` at exactly three sites. Every
-    // other code is an error and blocks publish.
+  it('declares the four warnings, and they are codes', () => {
+    // `bounds.py` writes `severity="warning"` at exactly four sites. Every
+    // other code is an error and blocks publish. The fourth is
+    // `attachment-unattached`, which is a warning because it is exactly what a
+    // node looks like the moment it is dropped.
     for (const code of WARNING_CODES) {
       expect(PROBLEM_CODES).toContain(code)
     }
-    expect(WARNING_CODES).toHaveLength(3)
+    expect(WARNING_CODES).toHaveLength(4)
   })
 
   it('anchors every FIELD_CODES entry to a real code', () => {

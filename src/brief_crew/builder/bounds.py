@@ -32,10 +32,17 @@ from dataclasses import dataclass
 from typing import Literal
 
 from brief_crew.builder.document import (
+    ATTACH_SOURCE_KINDS,
+    ATTACH_TARGET_KINDS,
+    ATTACHMENT_KINDS,
     BILLABLE_KINDS,
+    MEMBER_SOURCE_KINDS,
+    MEMBER_TARGET_KINDS,
     ROUTING_KINDS,
+    AuthoredCrewConfig,
     BuilderDocument,
     BuilderEdge,
+    BuilderNode,
     GateConfig,
     InputConfig,
     RouterConfig,
@@ -44,7 +51,10 @@ from brief_crew.config import (
     BUILDER_EVENT_LABEL_PATTERN,
     BUILDER_GATE_ROUTER_PREFIX,
     BUILDER_METHOD_IDENT_PATTERN,
+    MAX_ATTACHMENT_NODES,
+    MAX_ATTACHMENTS_PER_NODE,
     MAX_BILLABLE_NODES,
+    MAX_CREW_MEMBERS,
     MAX_CYCLE_ITERATIONS,
     MAX_CYCLES,
     MAX_ESCALATION_NODES,
@@ -84,6 +94,13 @@ NODE_UNREACHABLE = "node-unreachable"
 NO_OUTPUT_NODE = "no-output-node"
 JOIN_UNKNOWN_NODE = "join-unknown-node"
 JOIN_SINGLE_PREDECESSOR = "join-single-predecessor"
+ATTACH_TARGET_NOT_AGENT = "attach-target-not-agent"
+MEMBER_TARGET_NOT_CREW = "member-target-not-crew"
+MEMBER_AGENT_HAS_FLOW_EDGES = "member-agent-has-flow-edges"
+ATTACHMENT_UNATTACHED = "attachment-unattached"
+ATTACHMENTS_OVER_MAX = "attachments-over-max"
+ATTACHMENT_NODES_OVER_MAX = "attachment-nodes-over-max"
+CREW_MEMBERS_OUT_OF_RANGE = "crew-members-out-of-range"
 
 _METHOD_IDENT = re.compile(BUILDER_METHOD_IDENT_PATTERN)
 _EVENT_LABEL = re.compile(BUILDER_EVENT_LABEL_PATTERN)
@@ -114,32 +131,90 @@ def has_errors(problems: Iterable[Problem]) -> bool:
 # --------------------------------------------------------------------------
 # Graph analysis - shared with budget.py, which prices what these find
 # --------------------------------------------------------------------------
+def is_flow_edge(edge: BuilderEdge) -> bool:
+    """Whether this edge is the FLOW - the thing that happens next.
+
+    `attach` and `member` edges are structural: they say what a node HAS, not
+    where the run goes. **Every graph question in this module asks it through
+    here**, and 03-node-library.md D2 is a list of the consequences: an agent
+    holding three tools has not fanned out three ways, a tool cannot be part of
+    a cycle, and a crew's members are not three more steps between its input
+    and its output.
+
+    Getting this wrong is not a wrong number, it is a wrong SHAPE - a
+    fan-out-width error on a well-drawn agent, a `back-edge-not-router` on a
+    tool, and a `billable_depths` that charges an author for their own
+    attachments. Edge class is a pure function of `target_port` and of nothing
+    else, which is what keeps this one line the whole rule.
+    """
+
+    return edge.target_port == "in"
+
+
+def flow_edges(document: BuilderDocument) -> tuple[BuilderEdge, ...]:
+    """Just the edges the run travels along."""
+
+    return tuple(edge for edge in document.edges if is_flow_edge(edge))
+
+
+def attachment_edges(document: BuilderDocument) -> tuple[BuilderEdge, ...]:
+    """Just the `attach` edges - what each agent or crew HAS."""
+
+    return tuple(edge for edge in document.edges if edge.target_port == "attach")
+
+
+def member_edges(document: BuilderDocument) -> tuple[BuilderEdge, ...]:
+    """Just the `member` edges - which agents are inside which crew."""
+
+    return tuple(edge for edge in document.edges if edge.target_port == "member")
+
+
+def member_agent_ids(document: BuilderDocument) -> frozenset[str]:
+    """Agents that are inside a crew, and so are not steps of their own.
+
+    A member agent is billable INSIDE its crew - the crew's price multiplies by
+    its membership (09) - and counting it again against MAX_BILLABLE_NODES
+    would charge the same agent twice against a bound that is about shape.
+    """
+
+    return frozenset(edge.source for edge in member_edges(document))
+
+
 def _edges_by_source(document: BuilderDocument) -> dict[str, list[BuilderEdge]]:
-    """Outgoing edges per node id, in document order (so results are stable)."""
+    """Outgoing FLOW edges per node id, in document order (so results are stable)."""
 
     grouped: dict[str, list[BuilderEdge]] = defaultdict(list)
     for edge in document.edges:
-        grouped[edge.source].append(edge)
+        if is_flow_edge(edge):
+            grouped[edge.source].append(edge)
     return grouped
 
 
 def _indexed_edges_by_source(
     document: BuilderDocument,
 ) -> dict[str, list[tuple[int, BuilderEdge]]]:
-    """Outgoing edges per node id, each paired with its document position."""
+    """Outgoing FLOW edges per node id, each paired with its document position.
+
+    The position is into `document.edges` - the WHOLE list, attachments and all
+    - because `back_edge_indices` publishes positions and `budget.py` removes
+    exactly those to be left with a DAG. Filtering during the walk rather than
+    re-indexing a filtered list is what keeps those positions meaningful.
+    """
 
     grouped: dict[str, list[tuple[int, BuilderEdge]]] = defaultdict(list)
     for position, edge in enumerate(document.edges):
-        grouped[edge.source].append((position, edge))
+        if is_flow_edge(edge):
+            grouped[edge.source].append((position, edge))
     return grouped
 
 
 def _edges_by_target(document: BuilderDocument) -> dict[str, list[BuilderEdge]]:
-    """Incoming edges per node id, in document order."""
+    """Incoming FLOW edges per node id, in document order."""
 
     grouped: dict[str, list[BuilderEdge]] = defaultdict(list)
     for edge in document.edges:
-        grouped[edge.target].append(edge)
+        if is_flow_edge(edge):
+            grouped[edge.target].append(edge)
     return grouped
 
 
@@ -241,7 +316,12 @@ def nodes_on_cycles(document: BuilderDocument) -> frozenset[str]:
     backward: dict[str, list[str]] = defaultdict(list)
     closing = {position for position, _ in loops}
     for position, edge in enumerate(document.edges):
-        if position in closing or edge.source not in known or edge.target not in known:
+        if (
+            position in closing
+            or not is_flow_edge(edge)
+            or edge.source not in known
+            or edge.target not in known
+        ):
             continue
         forward[edge.source].append(edge.target)
         backward[edge.target].append(edge.source)
@@ -271,7 +351,12 @@ def billable_depths(document: BuilderDocument) -> dict[str, int]:
     outgoing: dict[str, list[str]] = defaultdict(list)
     indegree: dict[str, int] = {node_id: 0 for node_id in known}
     for position, edge in enumerate(document.edges):
-        if position in loops or edge.source not in known or edge.target not in known:
+        if (
+            position in loops
+            or not is_flow_edge(edge)
+            or edge.source not in known
+            or edge.target not in known
+        ):
             continue
         outgoing[edge.source].append(edge.target)
         indegree[edge.target] += 1
@@ -351,6 +436,8 @@ def structural_problems(document: BuilderDocument) -> list[Problem]:
     problems += _count_problems(document)
     problems += _identity_problems(document)
     problems += _edge_problems(document)
+    problems += _attachment_problems(document)
+    problems += _membership_problems(document)
     problems += _router_problems(document)
     problems += _cycle_problems(document)
     problems += _input_output_problems(document)
@@ -360,16 +447,41 @@ def structural_problems(document: BuilderDocument) -> list[Problem]:
 
 
 def _count_problems(document: BuilderDocument) -> list[Problem]:
-    """The three node counts: total, billable, escalation."""
+    """The node counts: total, attachments, billable, escalation.
+
+    **`MAX_GRAPH_NODES` counts FLOW nodes only** (D2). The 24 is derived from
+    the frame ring - 24 nodes at the production rate of ~7 frames each is ~175
+    frames against a 2,000-frame ring - and an attachment emits no frames at
+    all, so counting one against that ceiling would be applying an arithmetic
+    to a thing it was not about. Attachments have their own count below.
+    """
 
     problems: list[Problem] = []
-    if len(document.nodes) > MAX_GRAPH_NODES:
+    flow_nodes = [node for node in document.nodes if node.kind not in ATTACHMENT_KINDS]
+    attachments = [node for node in document.nodes if node.kind in ATTACHMENT_KINDS]
+
+    if len(attachments) > MAX_ATTACHMENT_NODES:
+        problems.append(
+            Problem(
+                code=ATTACHMENT_NODES_OVER_MAX,
+                severity="error",
+                message=(
+                    f"this graph has {len(attachments)} tool, MCP and skill nodes and the "
+                    f"ceiling is {MAX_ATTACHMENT_NODES} (MAX_ATTACHMENT_NODES). Attachments "
+                    "are counted separately from steps - they never run and never bill - so "
+                    "this is a bound on the document rather than on what the run costs"
+                ),
+                node_id=attachments[MAX_ATTACHMENT_NODES].id,
+            )
+        )
+
+    if len(flow_nodes) > MAX_GRAPH_NODES:
         problems.append(
             Problem(
                 code=NODE_COUNT,
                 severity="error",
                 message=(
-                    f"this graph has {len(document.nodes)} nodes and the ceiling is "
+                    f"this graph has {len(flow_nodes)} nodes and the ceiling is "
                     f"{MAX_GRAPH_NODES} (MAX_GRAPH_NODES); above that a single pass of the "
                     "graph no longer fits comfortably in the 2,000-frame replay ring, and a "
                     "reconnecting client would receive an incomplete run with nothing saying so"
@@ -377,7 +489,15 @@ def _count_problems(document: BuilderDocument) -> list[Problem]:
             )
         )
 
-    billable = [node for node in document.nodes if node.kind in BILLABLE_KINDS]
+    # A MEMBER agent is billable inside its crew, not as a node of its own: the
+    # crew's price multiplies by its membership (09), so counting the agent
+    # again here would charge one agent twice against a bound about shape.
+    members = member_agent_ids(document)
+    billable = [
+        node
+        for node in document.nodes
+        if node.kind in BILLABLE_KINDS and node.id not in members
+    ]
     if len(billable) > MAX_BILLABLE_NODES:
         problems.append(
             Problem(
@@ -478,14 +598,22 @@ def _edge_problems(document: BuilderDocument) -> list[Problem]:
                 )
             )
         if target is not None and not target.accepts_incoming:
+            # Four kinds refuse an inbound edge, for two different reasons, and
+            # the sentence has to give the right one - "an input node starts the
+            # run" said about a tool is a message an author cannot act on.
+            because = (
+                "an input node starts the run and has nothing upstream of it"
+                if target.kind == "input"
+                else (
+                    f"a {target.kind} node is something an agent HAS, not a step: it is "
+                    "reached by attaching it to an agent, and nothing ever flows into it"
+                )
+            )
             problems.append(
                 Problem(
                     code=EDGE_TARGET_REFUSES_INCOMING,
                     severity="error",
-                    message=(
-                        f"edge {edge.id!r} arrives at {edge.target!r}, which is the graph's "
-                        "input: an input node starts the run and has nothing upstream of it"
-                    ),
+                    message=f"edge {edge.id!r} arrives at {edge.target!r}, and {because}",
                     node_id=target.id,
                     edge_id=edge.id,
                 )
@@ -504,6 +632,204 @@ def _edge_problems(document: BuilderDocument) -> list[Problem]:
                         f"{MAX_FANOUT_WIDTH} (MAX_FANOUT_WIDTH), the validator's own measured "
                         "maximum. What this bounds is concurrent branches, and the real "
                         "constraint behind it is GitHub's 10 requests a minute per IP"
+                    ),
+                    node_id=node.id,
+                )
+            )
+    return problems
+
+
+def _attachment_problems(document: BuilderDocument) -> list[Problem]:
+    """The `attach` class: who may reach whom, how many, and who is left hanging.
+
+    Three rules, and the first is the one that carries the family's whole
+    meaning: an attachment reaches an agent, never the other way round and
+    never as a step. Drawing it that way is what makes the edge class a pure
+    function of `target_port` - there is no second rule about what the source
+    happened to be, only this check that the pair agrees.
+    """
+
+    problems: list[Problem] = []
+    nodes = document.nodes_by_id()
+
+    for edge in document.edges:
+        source = nodes.get(edge.source)
+        target = nodes.get(edge.target)
+        if source is None or target is None:
+            # `edge-unknown-endpoint` has already said so, and a second sentence
+            # about an edge one of whose ends does not exist is noise.
+            continue
+
+        if not target.accepts_incoming:
+            # `edge-target-refuses-incoming` has already named this one, and it
+            # names it for the right reason - two rows in the dock for one
+            # dropped edge is how a problems panel becomes unreadable.
+            continue
+
+        if edge.target_port == "attach":
+            if source.kind not in ATTACH_SOURCE_KINDS or target.kind not in ATTACH_TARGET_KINDS:
+                problems.append(
+                    Problem(
+                        code=ATTACH_TARGET_NOT_AGENT,
+                        severity="error",
+                        message=(
+                            f"edge {edge.id!r} attaches a {source.kind} node to a "
+                            f"{target.kind} node. An attach edge runs from a tool, an MCP "
+                            "server or a skill TO an agent or a crew, and only that way: it "
+                            "says what that agent has, so there is nothing for it to mean "
+                            "in any other direction"
+                        ),
+                        node_id=source.id,
+                        edge_id=edge.id,
+                    )
+                )
+        elif is_flow_edge(edge) and source.kind in ATTACHMENT_KINDS:
+            problems.append(
+                Problem(
+                    code=ATTACH_TARGET_NOT_AGENT,
+                    severity="error",
+                    message=(
+                        f"edge {edge.id!r} leaves the {source.kind} node {source.id!r} as a "
+                        "flow edge, and an attachment is not a step: it never runs, so there "
+                        f"is no moment at which the run would move on from it. Drop it onto "
+                        f"{edge.target!r}'s attach port instead"
+                    ),
+                    node_id=source.id,
+                    edge_id=edge.id,
+                )
+            )
+
+    held: dict[str, int] = defaultdict(int)
+    attached: set[str] = set()
+    for edge in attachment_edges(document):
+        held[edge.target] += 1
+        attached.add(edge.source)
+    for node_id, count in held.items():
+        if count > MAX_ATTACHMENTS_PER_NODE:
+            problems.append(
+                Problem(
+                    code=ATTACHMENTS_OVER_MAX,
+                    severity="error",
+                    message=(
+                        f"{node_id!r} holds {count} attachments and the ceiling is "
+                        f"{MAX_ATTACHMENTS_PER_NODE} (MAX_ATTACHMENTS_PER_NODE). What this "
+                        "bounds is the agent's system prompt rather than the run's price: "
+                        "every attachment contributes a tool schema or a skill preamble, and "
+                        "past some width an agent stops choosing between them well"
+                    ),
+                    node_id=node_id,
+                )
+            )
+
+    for node in document.nodes:
+        if node.kind in ATTACHMENT_KINDS and node.id not in attached:
+            problems.append(
+                Problem(
+                    code=ATTACHMENT_UNATTACHED,
+                    severity="warning",
+                    message=(
+                        f"{node.id!r} is a {node.kind} node attached to nothing, so nothing "
+                        "in this graph can use it. That is legal - it is what a node looks "
+                        "like the moment it is dropped - but a run would never reach it"
+                    ),
+                    node_id=node.id,
+                )
+            )
+    return problems
+
+
+def _membership_problems(document: BuilderDocument) -> list[Problem]:
+    """The `member` class: who may be inside a crew, and how many.
+
+    A member agent is a crew's agent and not a step of the flow, which is why
+    the third rule exists: an agent that is BOTH - inside a crew and wired into
+    the flow - would run twice, once as itself and once as part of its crew,
+    and nothing downstream could tell which output it was reading.
+    """
+
+    problems: list[Problem] = []
+    nodes = document.nodes_by_id()
+    members: dict[str, list[str]] = defaultdict(list)
+
+    for edge in member_edges(document):
+        source = nodes.get(edge.source)
+        target = nodes.get(edge.target)
+        if source is None or target is None:
+            continue
+        if source.kind not in MEMBER_SOURCE_KINDS or target.kind not in MEMBER_TARGET_KINDS:
+            problems.append(
+                Problem(
+                    code=MEMBER_TARGET_NOT_CREW,
+                    severity="error",
+                    message=(
+                        f"edge {edge.id!r} makes a {source.kind} node a member of a "
+                        f"{target.kind} node. Membership runs from an agent TO a crew: a "
+                        "crew is a team of agents, and nothing else can be one of them"
+                    ),
+                    node_id=source.id,
+                    edge_id=edge.id,
+                )
+            )
+            continue
+        members[target.id].append(source.id)
+
+    flow_touched: dict[str, list[str]] = defaultdict(list)
+    for edge in document.edges:
+        if not is_flow_edge(edge):
+            continue
+        for node_id in (edge.source, edge.target):
+            flow_touched[node_id].append(edge.id)
+
+    for agent_id in sorted(member_agent_ids(document)):
+        drawn = flow_touched.get(agent_id, [])
+        if not drawn:
+            continue
+        problems.append(
+            Problem(
+                code=MEMBER_AGENT_HAS_FLOW_EDGES,
+                severity="error",
+                message=(
+                    f"{agent_id!r} is a member of a crew and also carries "
+                    f"{len(drawn)} flow edge(s). It cannot be both: as a member it runs "
+                    "inside its crew, in the crew's own order, and as a step it runs again "
+                    "on its own - so nothing downstream could say which of the two outputs "
+                    "it was reading. Remove the flow edges, or the member edge"
+                ),
+                node_id=agent_id,
+                edge_id=drawn[0],
+            )
+        )
+
+    for node in document.nodes:
+        if node.kind != "crew":
+            continue
+        count = len(members.get(node.id, ()))
+        authored = isinstance(node.config, AuthoredCrewConfig)
+        if authored and not 1 <= count <= MAX_CREW_MEMBERS:
+            problems.append(
+                Problem(
+                    code=CREW_MEMBERS_OUT_OF_RANGE,
+                    severity="error",
+                    message=(
+                        f"the authored crew {node.id!r} has {count} member agents and a crew "
+                        f"takes 1 to {MAX_CREW_MEMBERS} (MAX_CREW_MEMBERS, the shipped "
+                        "validator's own six). With none it compiles to a Crew with no tasks "
+                        "and hands back nothing; the ceiling is the largest team this "
+                        "repository has ever run"
+                    ),
+                    node_id=node.id,
+                )
+            )
+        elif not authored and count:
+            problems.append(
+                Problem(
+                    code=CREW_MEMBERS_OUT_OF_RANGE,
+                    severity="error",
+                    message=(
+                        f"{node.id!r} names a registered crew and has {count} member agents "
+                        "drawn into it. A registered crew declares its own agents in Python, "
+                        "and members drawn here would be silently ignored - which is why "
+                        "they are refused instead"
                     ),
                     node_id=node.id,
                 )
@@ -713,10 +1039,25 @@ def _input_output_problems(document: BuilderDocument) -> list[Problem]:
 
     if inputs:
         adjacency: dict[str, list[str]] = defaultdict(list)
-        for edge in document.edges:
+        for edge in flow_edges(document):
             adjacency[edge.source].append(edge.target)
         reached = _reachable([node.id for node in inputs], adjacency)
+        members = member_agent_ids(document)
         for node in document.nodes:
+            # Two families are reachable along something OTHER than a flow edge,
+            # and asking this question of them gets the wrong answer for both.
+            #
+            # An ATTACHMENT is never reachable from an input and never should
+            # be: nothing flows into a possession. Whether it is attached at all
+            # is `attachment-unattached`'s question, and answering it twice -
+            # once as a warning about the thing and once as an error about the
+            # graph - would put two rows in the dock for one omission.
+            #
+            # A MEMBER agent is reached through its crew, which is a step and is
+            # checked here in its own right. If the crew is unreachable the crew
+            # says so, and one row is the right number.
+            if node.kind in ATTACHMENT_KINDS or node.id in members:
+                continue
             if node.id not in reached:
                 problems.append(
                     Problem(

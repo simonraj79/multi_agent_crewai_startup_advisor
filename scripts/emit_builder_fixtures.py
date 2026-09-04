@@ -98,14 +98,33 @@ def node(
     }
 
 
-def edge(edge_id: str, source: str, target: str, *, port: str = "out") -> dict[str, Any]:
+def edge(
+    edge_id: str,
+    source: str,
+    target: str,
+    *,
+    port: str = "out",
+    target_port: str = "in",
+) -> dict[str, Any]:
     return {
         "id": edge_id,
         "source": source,
         "source_port": port,
         "target": target,
-        "target_port": "in",
+        "target_port": target_port,
     }
+
+
+def attach_edge(edge_id: str, source: str, target: str) -> dict[str, Any]:
+    """A tool, MCP server or skill hung off an agent or a crew."""
+
+    return edge(edge_id, source, target, port="attach", target_port="attach")
+
+
+def member_edge(edge_id: str, source: str, target: str) -> dict[str, Any]:
+    """An agent placed inside a crew."""
+
+    return edge(edge_id, source, target, target_port="member")
 
 
 def document(
@@ -202,6 +221,28 @@ def transform_node(node_id: str) -> dict[str, Any]:
 
 def output_node(node_id: str = "report") -> dict[str, Any]:
     return node(node_id, "output", {"body_key": "markdown_body", "source": None})
+
+
+def tool_node(node_id: str, *, tool_id: str = "firecrawl_scrape") -> dict[str, Any]:
+    return node(node_id, "tool", {"tool_id": tool_id, "params": {}})
+
+
+def authored_crew_node(node_id: str, *, tier: str = "cheap") -> dict[str, Any]:
+    """A crew the AUTHOR assembled, whose members are `member` edges."""
+
+    return node(
+        node_id,
+        "crew",
+        {
+            "tier": tier,
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "sequential",
+            "task_order": [],
+        },
+    )
 
 
 # --------------------------------------------------------------------------
@@ -760,6 +801,137 @@ PROBLEM_SCENARIOS: list[dict[str, Any]] = [
             "unpriced",
             [input_node(), agent_node("draft"), output_node()],
             [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+        ),
+    },
+    {
+        "name": "a tool dropped onto a gate instead of onto an agent",
+        "expects": ["attach-target-not-agent"],
+        "why": (
+            "An attach edge runs from a tool, an MCP server or a skill TO an agent or a "
+            "crew, and only that way: it says what that agent HAS, so there is nothing "
+            "for it to mean pointing anywhere else. This is the most likely wrong drop "
+            "on a canvas where a gate sits between two agents."
+        ),
+        "document": document(
+            "attached to a gate",
+            [input_node(), gate_node("confirm"), tool_node("scraper"), output_node()],
+            [
+                edge("e1", "idea", "confirm"),
+                edge("e2", "confirm", "report", port="approve"),
+                edge("e3", "confirm", "report", port="revise"),
+                attach_edge("e4", "scraper", "confirm"),
+            ],
+        ),
+    },
+    {
+        "name": "a tool node nobody attached to anything",
+        "expects": ["attachment-unattached"],
+        "why": (
+            "A WARNING and not an error, because it is exactly what a node looks like "
+            "the moment it is dropped - refusing it would mean an author cannot put a "
+            "tool on the canvas before deciding whose it is. It is also why an "
+            "attachment is exempt from `node-unreachable`: that would be a second, "
+            "louder row about the same omission."
+        ),
+        "document": document(
+            "unattached tool",
+            [input_node(), agent_node("draft"), tool_node("scraper"), output_node()],
+            [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+        ),
+    },
+    {
+        "name": "one agent holding more attachments than the per-node ceiling",
+        "expects": ["attachments-over-max"],
+        "document": document(
+            "too many hands",
+            [
+                input_node(),
+                agent_node("draft"),
+                *[tool_node(f"t{index}") for index in range(9)],
+                output_node(),
+            ],
+            [
+                edge("e1", "idea", "draft"),
+                edge("e2", "draft", "report"),
+                *[attach_edge(f"a{index}", f"t{index}", "draft") for index in range(9)],
+            ],
+        ),
+    },
+    {
+        "name": "more attachment nodes than the document ceiling",
+        "expects": ["attachment-nodes-over-max"],
+        "why": (
+            "Counted SEPARATELY from MAX_GRAPH_NODES, because that bound's 24 comes "
+            "from the 2,000-frame replay ring and an attachment emits no frames at all "
+            "- applying the ring's arithmetic to a thing it was not about would be a "
+            "number that happens to be right for the wrong reason."
+        ),
+        "document": document(
+            "too many attachments",
+            [
+                input_node(),
+                *[tool_node(f"t{index}") for index in range(25)],
+                output_node(),
+            ],
+            [edge("e1", "idea", "report")],
+        ),
+    },
+    {
+        "name": "an agent made a member of a transform",
+        "expects": ["member-target-not-crew"],
+        "why": (
+            "Membership runs from an agent TO a crew. A crew is a team of agents and "
+            "nothing else can be one of them, so the pair is checked rather than only "
+            "the port - the port alone would let an author draw a transform into a "
+            "crew and find out at the first paid run."
+        ),
+        "document": document(
+            "member of nothing",
+            [input_node(), agent_node("worker"), transform_node("step"), output_node()],
+            [
+                edge("e1", "idea", "step"),
+                edge("e2", "step", "report"),
+                member_edge("e3", "worker", "step"),
+            ],
+        ),
+    },
+    {
+        "name": "an agent that is both a crew member and a step of the flow",
+        "expects": ["member-agent-has-flow-edges"],
+        "why": (
+            "It cannot be both. As a member it runs inside its crew in the crew's own "
+            "order, and as a step it runs again on its own - so nothing downstream "
+            "could say which of the two outputs it was reading, and the author would "
+            "be billed for both."
+        ),
+        "document": document(
+            "member wired into the flow",
+            [
+                input_node(),
+                authored_crew_node("team"),
+                agent_node("worker"),
+                output_node(),
+            ],
+            [
+                edge("e1", "idea", "team"),
+                edge("e2", "team", "report"),
+                edge("e3", "idea", "worker"),
+                member_edge("e4", "worker", "team"),
+            ],
+        ),
+    },
+    {
+        "name": "an authored crew with no members at all",
+        "expects": ["crew-members-out-of-range"],
+        "why": (
+            "A crew with no members compiles to a Crew with no tasks and hands back "
+            "nothing - the same silent-empty-result failure `back-edge-not-router` "
+            "exists for, arrived at from the other direction."
+        ),
+        "document": document(
+            "empty crew",
+            [input_node(), authored_crew_node("team"), output_node()],
+            [edge("e1", "idea", "team"), edge("e2", "team", "report")],
         ),
     },
     {

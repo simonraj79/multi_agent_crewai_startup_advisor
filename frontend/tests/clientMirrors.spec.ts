@@ -173,7 +173,17 @@ describe('the problem-code tuple covers what the server can emit', () => {
       )
       .map((instance) => instance.code)
       .sort()
-    expect(both).toEqual(['back-edge-not-router', 'edge-target-refuses-incoming', 'edge-unknown-port'])
+    // Six since 2026-09-04. The three that arrived with D2's edge classes are
+    // pairs by construction: an `attach` or `member` edge is legal or not
+    // according to what is at BOTH of its ends.
+    expect(both).toEqual([
+      'attach-target-not-agent',
+      'back-edge-not-router',
+      'edge-target-refuses-incoming',
+      'edge-unknown-port',
+      'member-agent-has-flow-edges',
+      'member-target-not-crew',
+    ])
 
     const neither = instances
       .filter(
@@ -211,6 +221,7 @@ describe('the problem-code tuple covers what the server can emit', () => {
 const CONFIG = pythonSource('../../src/brief_crew/config.py')
 const BUILDER_API = pythonSource('../../src/brief_crew/service/builder_api.py')
 const RUNTIME = pythonSource('../../src/brief_crew/builder/runtime.py')
+const DOCUMENT = pythonSource('../../src/brief_crew/builder/document.py')
 
 /**
  * The value of a module-level constant in `config.py`.
@@ -269,9 +280,39 @@ describe('the vocabulary fixture is what this build would serve', () => {
 
   it('carries every bound the handler publishes, at the value config.py declares', () => {
     const mapping = boundsMapping()
-    expect(mapping.size, 'the bounds block moved shape').toBe(15)
+    expect(mapping.size, 'the bounds block moved shape').toBe(21)
+
+    /*
+     * SIX of the twenty-one are served and not yet read, and naming them is the
+     * point rather than an omission.
+     *
+     * C2 v2 grew the bounds block on 2026-09-04 with the attachment family's
+     * three counts and the authored node's two ceilings, plus the owner's price
+     * ceiling. `BuilderBounds` in `types/builder.ts` still declares fifteen, so
+     * `readBounds()` drops these on ingest and the palette's attachment counter
+     * has nothing to read - which is the client half of plan 03 D7, not this
+     * one's. Enumerating them here means the gap is a list a reader can close
+     * rather than a silent difference between two numbers.
+     *
+     * The assertion below is deliberately still TOTAL over the mapping: a bound
+     * the client does not read is checked against `config.py` all the same, so
+     * the day the six are wired there is nothing here to remember.
+     */
+    const notYetReadByTheClient = [
+      'max_attachment_nodes',
+      'max_attachments_per_node',
+      'max_crew_members',
+      'max_prompt_chars',
+      'max_retries',
+      'ceiling_usd_per_m_input',
+    ]
+    for (const key of notYetReadByTheClient) {
+      expect(mapping.has(key), `${key} is no longer served`).toBe(true)
+      expect(served.bounds).not.toHaveProperty(key)
+    }
 
     for (const [key, constant] of mapping) {
+      if (notYetReadByTheClient.includes(key)) continue
       expect(
         served.bounds[key as keyof typeof served.bounds],
         `${key} is ${constant} in config.py`,
@@ -280,8 +321,12 @@ describe('the vocabulary fixture is what this build would serve', () => {
 
     // Both directions. A bound the handler stopped publishing would otherwise
     // sit in the fixture forever, and a test reading it would be asserting
-    // against a key no response carries.
-    expect(Object.keys(served.bounds).sort()).toEqual([...mapping.keys()].sort())
+    // against a key no response carries. Minus the six above, which the handler
+    // publishes and `BuilderBounds` does not yet declare - that gap is named,
+    // not silent, and this is the assertion that would otherwise hide it.
+    expect(Object.keys(served.bounds).sort()).toEqual(
+      [...mapping.keys()].filter((key) => !notYetReadByTheClient.includes(key)).sort(),
+    )
   })
 
   it('offers exactly the registered agents', () => {
@@ -329,12 +374,22 @@ describe('the vocabulary fixture is what this build would serve', () => {
     /*
      * The palette renders `node_kinds` in the order it is served (§2, WP-D), so
      * a fixture that sorted them would test a palette nobody ships - `agent`
-     * first, `input` third. The handler writes the seven as literals; this reads
-     * that literal list back.
+     * first, `input` third.
+     *
+     * The handler used to write the kinds as a literal list and this read that
+     * literal back. It DERIVES them now, from the `NodeKind` union in
+     * `document.py`, because the literal is what went stale: it served seven
+     * while the union already declared ten, inside the one endpoint that exists
+     * to stop exactly that. So the mirror reads the union, and separately
+     * asserts the derivation is still in place - a regex over a literal that no
+     * longer exists would otherwise pass by matching nothing.
      */
-    const declared = /node_kinds=\[([^\]]+)\]/.exec(BUILDER_API)
-    expect(declared, '_vocabulary no longer writes node_kinds as a literal list').toBeTruthy()
-    expect([...declared![1].matchAll(/"([a-z]+)"/g)].map((match) => match[1])).toEqual(
+    expect(BUILDER_API, '_vocabulary no longer derives node_kinds').toContain(
+      'node_kinds=list(NODE_KINDS)',
+    )
+    const union = /^NodeKind = Literal\[([\s\S]*?)\n\]/m.exec(DOCUMENT)
+    expect(union, 'the NodeKind Literal moved or changed shape').toBeTruthy()
+    expect([...union![1].matchAll(/"([a-z]+)"/g)].map((match) => match[1])).toEqual(
       served.node_kinds,
     )
   })

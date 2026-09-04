@@ -527,16 +527,30 @@ export const PROBLEM_CODES = [
   'budget-over-ceiling', 'budget-unpriced-model',
   'library-unknown-id', 'library-missing-prompt-input', 'library-unbuildable-crew',
   'credential-missing',
+  // 03-node-library.md D2's edge classes, added 2026-09-04 with the ten-kind
+  // vocabulary's server half. `attach` and `member` edges say what a node HAS
+  // rather than what happens next, so every one of these is about a pair the
+  // author drew rather than about a count they exceeded - which is why six of
+  // the seven anchor to a node AND an edge.
+  'attach-target-not-agent', 'member-target-not-crew', 'member-agent-has-flow-edges',
+  'attachment-unattached', 'attachments-over-max', 'attachment-nodes-over-max',
+  'crew-members-out-of-range',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 
 /**
- * The ONLY three warnings; everything else is an error and blocks publish.
- * `bounds.py` writes `severity="warning"` at exactly three sites, and all three
+ * The ONLY four warnings; everything else is an error and blocks publish.
+ * `bounds.py` writes `severity="warning"` at exactly four sites, and all four
  * describe a graph that is legal and probably not what was meant.
+ *
+ * `attachment-unattached` is the fourth, added with D2. It is a warning rather
+ * than an error for a reason worth keeping: it is exactly what a node looks
+ * like the moment it is dropped, and refusing it would mean an author cannot
+ * put a tool on the canvas before deciding whose it is.
  */
 export const WARNING_CODES = [
   'router-branch-unconnected', 'no-output-node', 'join-single-predecessor',
+  'attachment-unattached',
 ] as const
 
 export interface BuilderProblem {

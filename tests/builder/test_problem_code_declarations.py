@@ -198,14 +198,24 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             )
 
     def test_the_three_files_carry_every_code_the_frontend_lists(self) -> None:
-        """Thirty-one, and the arithmetic is stated so a change has to face it.
+        """Thirty-eight, and the arithmetic is stated so a change has to face it.
 
-        Twenty-five, two and four. The compiler's first three were absent from
+        Thirty-two, two and four. The compiler's first three were absent from
         the TypeScript tuple for a while precisely because that file was not in
         the frontend's source list, and one of them -
         `library-missing-prompt-input` - is the most common problem in the
         whole builder. The fourth is `credential-missing` (plan 01 D10), the
         first code that is emitted only when `validate` has an identity.
+
+        **Thirty-one until 2026-09-04**, when 03-node-library.md D2 added the
+        seven edge-class codes: `attach-target-not-agent`,
+        `member-target-not-crew`, `member-agent-has-flow-edges`,
+        `attachment-unattached` (the fourth warning), `attachments-over-max`,
+        `attachment-nodes-over-max` and `crew-members-out-of-range`. That is a
+        C8 change, which is why this assertion's failure message names both
+        client files rather than merely reporting a number - it is the only
+        thing standing between a server that emits a code and a canvas that
+        renders it nowhere.
         """
 
         codes: set[str] = set()
@@ -214,7 +224,7 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             codes |= {match.group(2) for match in DECLARATION.finditer(text)}
         self.assertEqual(
             len(codes),
-            31,
+            38,
             "the number of problem codes moved; frontend/src/types/builder.ts's "
             "PROBLEM_CODES and builderTypes.spec.ts's length assertion both "
             "have to move with it",

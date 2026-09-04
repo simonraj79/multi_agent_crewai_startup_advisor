@@ -5,11 +5,16 @@
   "ceiling_usd": 10.0,
   "note": "One real instance of every problem code, produced by running the named function over a document that provokes it. The `message` strings are verbatim: the canvas renders them unaltered, so a client test asserting against a paraphrase would be asserting about a fiction.",
   "codes": [
+    "attach-target-not-agent",
+    "attachment-nodes-over-max",
+    "attachment-unattached",
+    "attachments-over-max",
     "back-edge-not-router",
     "billable-count",
     "budget-over-ceiling",
     "budget-unpriced-model",
     "credential-missing",
+    "crew-members-out-of-range",
     "cycle-count",
     "cycle-iterations",
     "duplicate-edge-id",
@@ -28,6 +33,8 @@
     "library-missing-prompt-input",
     "library-unbuildable-crew",
     "library-unknown-id",
+    "member-agent-has-flow-edges",
+    "member-target-not-crew",
     "no-input-node",
     "no-output-node",
     "node-count",
@@ -38,6 +45,54 @@
     "router-otherwise"
   ],
   "instances": [
+    {
+      "code": "attach-target-not-agent",
+      "scenario": "a tool dropped onto a gate instead of onto an agent",
+      "why": "An attach edge runs from a tool, an MCP server or a skill TO an agent or a crew, and only that way: it says what that agent HAS, so there is nothing for it to mean pointing anywhere else. This is the most likely wrong drop on a canvas where a gate sits between two agents.",
+      "problem": {
+        "code": "attach-target-not-agent",
+        "severity": "error",
+        "message": "edge 'e4' attaches a tool node to a gate node. An attach edge runs from a tool, an MCP server or a skill TO an agent or a crew, and only that way: it says what that agent has, so there is nothing for it to mean in any other direction",
+        "node_id": "scraper",
+        "edge_id": "e4"
+      }
+    },
+    {
+      "code": "attachment-nodes-over-max",
+      "scenario": "more attachment nodes than the document ceiling",
+      "why": "Counted SEPARATELY from MAX_GRAPH_NODES, because that bound's 24 comes from the 2,000-frame replay ring and an attachment emits no frames at all - applying the ring's arithmetic to a thing it was not about would be a number that happens to be right for the wrong reason.",
+      "problem": {
+        "code": "attachment-nodes-over-max",
+        "severity": "error",
+        "message": "this graph has 25 tool, MCP and skill nodes and the ceiling is 24 (MAX_ATTACHMENT_NODES). Attachments are counted separately from steps - they never run and never bill - so this is a bound on the document rather than on what the run costs",
+        "node_id": "t24",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "attachment-unattached",
+      "scenario": "a tool node nobody attached to anything",
+      "why": "A WARNING and not an error, because it is exactly what a node looks like the moment it is dropped - refusing it would mean an author cannot put a tool on the canvas before deciding whose it is. It is also why an attachment is exempt from `node-unreachable`: that would be a second, louder row about the same omission.",
+      "problem": {
+        "code": "attachment-unattached",
+        "severity": "warning",
+        "message": "'scraper' is a tool node attached to nothing, so nothing in this graph can use it. That is legal - it is what a node looks like the moment it is dropped - but a run would never reach it",
+        "node_id": "scraper",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "attachments-over-max",
+      "scenario": "one agent holding more attachments than the per-node ceiling",
+      "why": "",
+      "problem": {
+        "code": "attachments-over-max",
+        "severity": "error",
+        "message": "'draft' holds 9 attachments and the ceiling is 8 (MAX_ATTACHMENTS_PER_NODE). What this bounds is the agent's system prompt rather than the run's price: every attachment contributes a tool schema or a skill preamble, and past some width an agent stops choosing between them well",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
     {
       "code": "back-edge-not-router",
       "scenario": "four loops against the cycle ceiling, one of them from a plain agent",
@@ -99,6 +154,18 @@
       }
     },
     {
+      "code": "crew-members-out-of-range",
+      "scenario": "an authored crew with no members at all",
+      "why": "A crew with no members compiles to a Crew with no tasks and hands back nothing - the same silent-empty-result failure `back-edge-not-router` exists for, arrived at from the other direction.",
+      "problem": {
+        "code": "crew-members-out-of-range",
+        "severity": "error",
+        "message": "the authored crew 'team' has 0 member agents and a crew takes 1 to 6 (MAX_CREW_MEMBERS, the shipped validator's own six). With none it compiles to a Crew with no tasks and hands back nothing; the ceiling is the largest team this repository has ever run",
+        "node_id": "team",
+        "edge_id": null
+      }
+    },
+    {
       "code": "cycle-count",
       "scenario": "four loops against the cycle ceiling, one of them from a plain agent",
       "why": "`back-edge-not-router` is the measured one: with a plain node closing the loop the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing - no exception, no warning.",
@@ -153,7 +220,7 @@
       "problem": {
         "code": "edge-target-refuses-incoming",
         "severity": "error",
-        "message": "edge 'e2' arrives at 'idea', which is the graph's input: an input node starts the run and has nothing upstream of it",
+        "message": "edge 'e2' arrives at 'idea', and an input node starts the run and has nothing upstream of it",
         "node_id": "idea",
         "edge_id": "e2"
       }
@@ -312,6 +379,30 @@
         "message": "draft names the agent 'nobody'; the registered agents are feasibility_analyst, market_analyst, reporter, scoper, sentiment_analyst, synthesist",
         "node_id": "draft",
         "edge_id": null
+      }
+    },
+    {
+      "code": "member-agent-has-flow-edges",
+      "scenario": "an agent that is both a crew member and a step of the flow",
+      "why": "It cannot be both. As a member it runs inside its crew in the crew's own order, and as a step it runs again on its own - so nothing downstream could say which of the two outputs it was reading, and the author would be billed for both.",
+      "problem": {
+        "code": "member-agent-has-flow-edges",
+        "severity": "error",
+        "message": "'worker' is a member of a crew and also carries 1 flow edge(s). It cannot be both: as a member it runs inside its crew, in the crew's own order, and as a step it runs again on its own - so nothing downstream could say which of the two outputs it was reading. Remove the flow edges, or the member edge",
+        "node_id": "worker",
+        "edge_id": "e3"
+      }
+    },
+    {
+      "code": "member-target-not-crew",
+      "scenario": "an agent made a member of a transform",
+      "why": "Membership runs from an agent TO a crew. A crew is a team of agents and nothing else can be one of them, so the pair is checked rather than only the port - the port alone would let an author draw a transform into a crew and find out at the first paid run.",
+      "problem": {
+        "code": "member-target-not-crew",
+        "severity": "error",
+        "message": "edge 'e3' makes a agent node a member of a transform node. Membership runs from an agent TO a crew: a crew is a team of agents, and nothing else can be one of them",
+        "node_id": "worker",
+        "edge_id": "e3"
       }
     },
     {
@@ -3308,6 +3399,1097 @@
         {
           "id": "e2",
           "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool dropped onto a gate instead of onto an agent": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "attached to a gate",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "confirm",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "message": "Confirm before spending.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "scraper",
+          "kind": "tool",
+          "label": "scraper",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "confirm",
+          "source_port": "revise",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "scraper",
+          "source_port": "attach",
+          "target": "confirm",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a tool node nobody attached to anything": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unattached tool",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "scraper",
+          "kind": "tool",
+          "label": "scraper",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "one agent holding more attachments than the per-node ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too many hands",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "t0",
+          "kind": "tool",
+          "label": "t0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t1",
+          "kind": "tool",
+          "label": "t1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t2",
+          "kind": "tool",
+          "label": "t2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t3",
+          "kind": "tool",
+          "label": "t3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t4",
+          "kind": "tool",
+          "label": "t4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t5",
+          "kind": "tool",
+          "label": "t5",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t6",
+          "kind": "tool",
+          "label": "t6",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t7",
+          "kind": "tool",
+          "label": "t7",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t8",
+          "kind": "tool",
+          "label": "t8",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "a0",
+          "source": "t0",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a1",
+          "source": "t1",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a2",
+          "source": "t2",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a3",
+          "source": "t3",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a4",
+          "source": "t4",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a5",
+          "source": "t5",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a6",
+          "source": "t6",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a7",
+          "source": "t7",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        },
+        {
+          "id": "a8",
+          "source": "t8",
+          "source_port": "attach",
+          "target": "draft",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "more attachment nodes than the document ceiling": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "too many attachments",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "t0",
+          "kind": "tool",
+          "label": "t0",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t1",
+          "kind": "tool",
+          "label": "t1",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t2",
+          "kind": "tool",
+          "label": "t2",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t3",
+          "kind": "tool",
+          "label": "t3",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t4",
+          "kind": "tool",
+          "label": "t4",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t5",
+          "kind": "tool",
+          "label": "t5",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t6",
+          "kind": "tool",
+          "label": "t6",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t7",
+          "kind": "tool",
+          "label": "t7",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t8",
+          "kind": "tool",
+          "label": "t8",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t9",
+          "kind": "tool",
+          "label": "t9",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t10",
+          "kind": "tool",
+          "label": "t10",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t11",
+          "kind": "tool",
+          "label": "t11",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t12",
+          "kind": "tool",
+          "label": "t12",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t13",
+          "kind": "tool",
+          "label": "t13",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t14",
+          "kind": "tool",
+          "label": "t14",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t15",
+          "kind": "tool",
+          "label": "t15",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t16",
+          "kind": "tool",
+          "label": "t16",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t17",
+          "kind": "tool",
+          "label": "t17",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t18",
+          "kind": "tool",
+          "label": "t18",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t19",
+          "kind": "tool",
+          "label": "t19",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t20",
+          "kind": "tool",
+          "label": "t20",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t21",
+          "kind": "tool",
+          "label": "t21",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t22",
+          "kind": "tool",
+          "label": "t22",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t23",
+          "kind": "tool",
+          "label": "t23",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "t24",
+          "kind": "tool",
+          "label": "t24",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tool_id": "firecrawl_scrape",
+            "params": {}
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an agent made a member of a transform": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "member of nothing",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "step",
+          "kind": "transform",
+          "label": "step",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.idea}",
+              "key": "idea"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "step",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "step",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "worker",
+          "source_port": "out",
+          "target": "step",
+          "target_port": "member"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an agent that is both a crew member and a step of the flow": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "member wired into the flow",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "sequential",
+            "task_order": []
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "human_override": "",
+              "idea": "${state.idea}"
+            },
+            "agent_id": "scoper",
+            "tools": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "idea",
+          "source_port": "out",
+          "target": "worker",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "worker",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an authored crew with no members at all": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "empty crew",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "sequential",
+            "task_order": []
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
           "source_port": "out",
           "target": "report",
           "target_port": "in"

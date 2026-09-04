@@ -107,14 +107,22 @@ describe('a problem is indexed under every anchor it carries, not one of them', 
       .map(([code]) => code)
       .sort()
 
-    // Three, and each is a fact about a PAIR: an edge naming a port its source
-    // does not have, an edge arriving at a kind that accepts none, and a back
-    // edge whose source is not a routing kind. An author looking at either end
-    // has to see it, which is why both maps get an entry.
+    // SIX, and each is a fact about a PAIR - which is exactly why both maps get
+    // an entry: an author looking at either end has to see it.
+    //
+    // The first three are the originals: an edge naming a port its source does
+    // not have, an edge arriving at a kind that accepts none, and a back edge
+    // whose source is not a routing kind. The last three arrived with
+    // 03-node-library.md D2's edge classes on 2026-09-04, and every one of them
+    // is a pair by construction - an `attach` or `member` edge is legal or not
+    // according to what is at BOTH of its ends, never according to one.
     expect(both).toEqual([
+      'attach-target-not-agent',
       'back-edge-not-router',
       'edge-target-refuses-incoming',
       'edge-unknown-port',
+      'member-agent-has-flow-edges',
+      'member-target-not-crew',
     ])
     // A sanity check on the scan itself, because a regex that matched nothing
     // would satisfy the assertion above by accident: it has to have found the

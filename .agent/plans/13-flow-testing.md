@@ -172,3 +172,167 @@ Open decisions for the owner:
 
 **Decision 17 — yes, labelled `test`.** Hiding them means an author cannot find
 the run they just made.
+
+### Built — 2026-09-04
+
+**Eleven of eleven criteria met.** The panel is the first thing in this
+repository that runs a graph from inside the builder, and the `[data-mode='run']`
+block `builder.css` has carried since §5.1 has a writer for the first time.
+
+Two things the plan assumed turned out not to be true; both are recorded as
+contradictions rather than worked around. Three defects outside this plan's
+files were found by building it, and all three are follow-ups rather than
+fixes.
+
+| # | State | Shown by |
+| ---: | --- | --- |
+| 1 | **met** | `frontend/tests/testPanel.spec.ts` (36): mounts collapsed to a 36 px strip, five tabs, clamps 160 px–60 % ON READ, no `role="dialog"` on any tab, and a driven stub `ResizeObserver` proving the canvas observes the panel and re-fits when it GROWS |
+| 2 | **met** | same file: the Run tab posts `mode: test` with the chosen `test_input_id`, and `node_state` frames become the `is-running` / `is-completed` / `is-error` classes `builder.css:74-77` draws |
+| 3 | **met** | same file: flow kinds only, `missingMocks` names every absent `out__*` before a request is made, `mode: node_test` posted with the node and the input once they are there |
+| 4 | **met** | same file: `mode: dry_run` through a `FakeBuilderApi`, both budget figures, the modelled call count, the problem list, *"no tokens were spent"*, and `runId` still `''` |
+| 5 | **met** | `scripts/emit_builder_fixtures.py` gains `builderCompiledPreview.json`, rendered by the real `render_preview`; `tests/builder/test_client_fixtures.py` (14 → 17) byte-compares it and pins `<credential: …>` in the Python against the bare id in the YAML |
+| 6 | **met** | same file: the slider calls `GET /state?step=` with the frame `seq`, and `out__` / `err__` / `turns__` / `__builder__` group apart from the author's own keys |
+| 7 | **met** | `tests/service/test_test_inputs.py` (21): the three routes, owner scoping on the DOCUMENT and on the ROW, 404-not-403, and the `from_run_id` copy reading `out__*` off a real run's `flow_states` |
+| 8 | **met, by a different measurement** | `e2e/builder.spec.ts`'s launch test is tagged (`80` listed, `63` under `--grep-invert @launch`, so **17 are `@launch`**); the no-launch suite ran **63 passed** against a freshly started backend and `GET /api/runs` answered `{"runs":[]}` afterwards. The criterion's own knob does not work — see below |
+| 9 | **met** | `e2e/test-panel.spec.ts` (4): Run completes and renders a body inline, Node runs one node and leaves every descendant idle, Dry run prices with no run in the history, Code renders a DRAFT |
+| 10 | **met** | `e2e/journey.spec.ts`: the seven-step journey in **3.5 s** and **5.8 s** on two runs, against a 240 s budget, zero console errors tolerated |
+| 11 | **met** | `frontend/src/data/templates/testInputs.ts` + `testPanel.spec.ts`: every gallery template's field has a committed sample, the map agrees with the real documents, and the Run tab seeds from it |
+
+### Measured, 2026-09-04, in this worktree
+
+```text
+Python          2267 run · 0 failures · 6 skipped · 134.8 s   (baseline 2243)
+Frontend unit   1504 passed in 75 files                        (baseline 1468 in 74)
+vue-tsc -b --force   exit 0
+npm run build        2,068 modules · 676 ms
+E2E             80 passed in 12 files, 4.6 min, zero console errors tolerated
+                (`E2E_API_TARGET=http://127.0.0.1:8096`, `SYNTHETIC=1`,
+                 `SYNTHETIC_BRANCH_DELAY_SECONDS=5`, `E2E_UI_PORT=5276`)
+E2E, no-launch  63 passed under `--grep-invert @launch`, and `GET /api/runs`
+                answered `{"runs":[]}` on the backend afterwards
+```
+
+**Twelve visual baselines were regenerated**, and they are this plan's change
+rather than a rebase artefact: the collapsed panel is a real 36 px grid row, so
+`one node`, `sixteen-node template` and `problem state` are each 36 px shorter
+in both themes and both viewports. The four `gallery` captures did not move,
+which is the corroboration - the gallery renders no panel
+(`.graph-workspace.is-gallery`). Regenerated with the command the spec's own
+header names.
+
+**This plan spent $0.00.** Every run in every test is served by the crew
+factories `SYNTHETIC=1` installs; the four @launch tests here press Run against
+a local free backend and nothing else.
+
+### Three contradictions, against the plan, C7, and criterion 8's own recipe
+
+Stated rather than smoothed over.
+
+**1. An author still has to PUBLISH before they can test.** 13's Problem section
+says the panel means an author "cannot try a change without publishing it" is no
+longer true. It is still true. C7 as built resolves every run mode — `dry_run`
+included — against `BUILDER_WORKFLOWS` (`app.py::dry_run_payload`, `create_run`),
+and only a publish writes that map. So Run, Node and Dry run say so on screen in
+a sentence naming the button, and **Code is the one tab a draft can use**,
+because `GET /workflows/{id}/compiled` reads the document store instead. Against
+13's Problem section and C7; the compiler and the run endpoint are 09's and
+10's.
+
+**2. Criterion 8's verification knob is a DISABLE switch.** The criterion asks
+for a run `with RUN_RATE_LIMIT_MAX_RUNS=0, which would 429 any launch`.
+`config.py:1591` reads that name with `minimum=0` and the comment beside it says
+**`RUN_RATE_LIMIT_MAX_RUNS=0` to disable it, which is the intended escape hatch
+for load testing**, so the recipe would have removed the only thing standing in
+a launch's way. `MAX_QUEUED_RUNS=0` is the knob that does 429 everything, and it
+refuses 0 at import (`_env_positive_int` defaults `minimum=1`). So the property
+is measured directly instead: a freshly started backend, the no-launch suite,
+and `GET /api/runs` before and after. Zero runs existed afterwards, which is a
+stronger statement than "the launches were refused" - it is that none was
+attempted. Against criterion 8's recipe, not its property.
+
+**3. `node_test` cannot test a node BELOW A GATE.** Measured against this
+backend, not reasoned:
+
+```text
+n3_research listens for 'e2_approve', which no method emits and no method
+is called. A trigger nothing produces is a node that never runs
+```
+
+A gate compiles to two methods — the pause and its paired router — and the
+derived plan replaces the gate node with `runtime:replay_output`, which removes
+the router that emits `<edge>_approve`. Its successor is then listening for a
+trigger nobody produces and the run fails before a frame is emitted. All four
+pattern templates gate above their first billable node, so on those documents
+the gate is the only node whose ancestors carry none — which is what
+`e2e/test-panel.spec.ts` therefore tests. Against 09 D7 and 10 D5.
+
+### Three defects outside this plan's files
+
+Each was found by building the journey, and each is reported rather than fixed:
+they are 02's and 03's surfaces, and this wave has other agents in them.
+
+1. **A tool cannot be attached by dragging its port.**
+   `useBuilderDocument.addEdge` hardcodes `target_port: 'in'` — its comment
+   still says *"there is always `'in'`; there is no other"*, which was true
+   before the attachment ports existed. So a drag from a tool's `attach` port to
+   an agent's `attach` port paints the handle green, `vue-flow__handle-valid`,
+   and then writes a FLOW edge, which the server refuses with
+   `attach-target-not-agent`. Measured twice, once with `hover()` and once with
+   an explicit bounding-box centre.
+2. **The palette's tool drawer puts a tool id on the wire and the canvas throws
+   it away.** `NodePalette.onToolDragStart` sets `BUILDER_TOOL_ID_MIME` — D7's
+   whole point is reaching a NAMED tool in one gesture — and
+   `BuilderCanvas.onDrop` reads only `BUILDER_DND_MIME`. Dragging *Community
+   sentiment* onto an agent lands a node with the default `tool_id: 'tool'` and
+   a `tool-unknown` that blocks Publish.
+3. **The palette HOTKEY never attaches.** `BuilderView.placeKind` drops at
+   `canvas.viewportCentre()`, so pressing `t` while pointing at an agent card
+   never reaches `dropKind`'s attach-by-drop hit test. Not a bug on its own —
+   the hotkey is documented as placing a node — but it means the only working
+   attach gesture in the product today is a palette drag, and that one lands
+   the wrong tool id.
+
+### For the Integrator
+
+- **Two files outside this plan's ownership were edited**, both because a change
+  here made them wrong. `frontend/tests/builderApi.spec.ts`'s route enumeration
+  is total by construction, so three new routes and a `compiled` that is now
+  REACHED rather than merely declared are failures until it says so;
+  `src/brief_crew/builder/store.py` gained the test-input CRUD, which plan 10's
+  own handoff assigned here ("Plan 13 owns that table and will bring the CRUD").
+- **`config.py` gained four names**: `TEST_INPUT_ID_PATTERN`,
+  `MAX_TEST_INPUT_LABEL_CHARS`, `MAX_TEST_INPUTS_PER_DOCUMENT` (12) and
+  `MAX_TEST_INPUT_MOCK_BYTES` (64 KiB).
+- **`service/models.py` gained `TestInputModel` and `TestInputRequest`.** The
+  request carries `from_run_id`, which is D3's "use last run's outputs as mocks"
+  resolved on the SERVER — a run's state is readable only by its owner and no
+  route hands the browser every node's output at once.
+- **`BuilderTestInputStore` gained an anonymous owner sentinel, `""`.**
+  `user_id` is NOT NULL, so an anonymous caller had to be written as something
+  or refused; refusing makes the panel untestable on the one backend the E2E
+  suite may use. It is a sentinel and not a wildcard.
+- **`BuilderCanvas.vue` gained two props**, `panel` and `mode`. `panel` is
+  observed by the same settling observer the dock uses; `mode` is one attribute
+  and no JavaScript.
+- **`StudioApi.startRun` needs an options bag**, and until it has one
+  `TestRunTransport` (in `builderApi.ts`) wraps it. The exact change: a sixth
+  parameter `{ mode?, node_id?, test_input_id? }` folded into the posted body.
+  Plan 11 owns that file this wave, so the wrapper is the seam that already
+  existed — `useValidatorRun` takes its transport as an argument precisely for
+  this.
+- **`RESERVED_STATE_PREFIXES` is a client mirror of two `config.py` constants**
+  (`BUILDER_STATE_OUTPUT_PREFIX`, `BUILDER_STATE_ERROR_PREFIX`) plus `turns__`
+  and `__builder__`. It only GROUPS — the server is what strips — so a prefix
+  that moved shows as an ungrouped key rather than as a wrong answer. It has no
+  generated fixture; the honest degradation is why it does not need one.
+
+### Open decisions for the owner
+
+- **The Run tab answers a gate with the forward option and nothing else.** The
+  console keeps the editable fields and the revise route; a second full gate card
+  here would be a second surface over a compare-and-set that accepts one reply.
+  If an author should be able to revise from the panel, that is a decision, and
+  it is not this plan's to take.
+- **The 240 s budget is still the gauntlet's figure and not a measurement of any
+  real journey.** 3.5 s here is a synthetic backend with no model in it. The
+  first paid journey should be timed once and recorded beside it.

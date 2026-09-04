@@ -24,7 +24,7 @@ const run = props.test.run
 </script>
 
 <template>
-  <div class="test-tab" data-testid="test-tab-node">
+  <div class="test-tab" data-testid="test-body-node">
     <label class="test-node-pick">
       <span class="test-input-legend">Node</span>
       <select

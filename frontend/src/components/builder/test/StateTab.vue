@@ -35,7 +35,7 @@ function preview(value: unknown): string {
 </script>
 
 <template>
-  <div class="test-tab" data-testid="test-tab-state">
+  <div class="test-tab" data-testid="test-body-state">
     <p v-if="!runId" class="test-note" data-testid="test-state-empty">
       Run this graph once, and every step of it can be inspected here.
     </p>

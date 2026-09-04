@@ -20,10 +20,21 @@ const props = defineProps<{ test: FlowTest; labels: Record<string, string> }>()
 const run = props.test.run
 const body = computed(() => run.report.value?.markdown_body ?? '')
 const rendered = computed(() => (body.value ? renderMarkdown(body.value) : ''))
+
+/**
+ * The gate outcome that means "carry on", read off the gate rather than typed.
+ *
+ * The SERVER decides how many options a gate has and in what order, and the
+ * first is the forward one by construction - `GateCard` already renders the
+ * list in the order it arrives for that reason. Hard-coding `approve` would be
+ * this panel's own opinion about an author's gate, and a builder gate's
+ * outcomes are the author's to name.
+ */
+const forwardOption = computed(() => run.pendingGate.value?.options[0]?.id ?? 'approve')
 </script>
 
 <template>
-  <div class="test-tab" data-testid="test-tab-run">
+  <div class="test-tab" data-testid="test-body-run">
     <TestInputPicker
       :inputs="test.testInputs.value"
       :selected-id="test.selectedInputId.value"
@@ -70,13 +81,33 @@ const rendered = computed(() => (body.value ? renderMarkdown(body.value) : ''))
     </p>
 
     <!--
-      A gate parks the run and this panel does not answer it. The console owns
-      the gate card (plans 11 and 12), and a second one here would be a second
-      place to reply to a compare-and-set that accepts exactly one answer.
+      A gate parks the run, and the panel offers the FORWARD answer only.
+
+      The console owns the gate card, with the editable fields and the revise
+      route; duplicating that here would be a second surface over a
+      compare-and-set that accepts exactly one reply, and a second place to get
+      the fields/derived split wrong. What a test run needs is different and
+      smaller: an author checking that their graph moves needs to say "carry
+      on", and anything they want to CHANGE is a change to the document they are
+      looking at, not to one run's inputs. The other options are named in the
+      sentence, so nobody has to guess where they went.
     -->
-    <p v-if="run.pendingGate.value" class="test-note" data-testid="test-run-gate">
-      Waiting at “{{ run.pendingGate.value.title }}”. Gates are answered in the run console.
-    </p>
+    <div v-if="run.pendingGate.value" class="test-gate" data-testid="test-run-gate">
+      <p class="test-gate-copy">
+        <strong>{{ run.pendingGate.value.title }}</strong>
+        — {{ run.pendingGate.value.summary }}
+      </p>
+      <button
+        type="button"
+        class="test-run"
+        data-testid="test-gate-approve"
+        :disabled="run.gateSubmitting.value"
+        @click="void run.submitGate(forwardOption)"
+      >
+        Approve and continue
+      </button>
+      <span class="test-note">Editing a reply, or sending it back, is the run console.</span>
+    </div>
 
     <RunLog
       :entries="run.chatEntries.value"
@@ -115,6 +146,18 @@ const rendered = computed(() => (body.value ? renderMarkdown(body.value) : ''))
 .test-status { color: var(--text-muted); font: 500 var(--fs-11)/1.4 var(--font-mono); }
 .test-cost { color: var(--accent-mint); font: 500 var(--fs-11)/1.4 var(--font-mono); }
 .test-note { margin: 0; color: var(--text-muted); font: 400 var(--fs-12)/1.5 var(--font-body); }
+
+.test-gate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-sm);
+  background: var(--warn-bg);
+}
+.test-gate-copy { flex: 1 1 200px; margin: 0; min-width: 0; color: var(--text-title); font: 400 var(--fs-12)/1.5 var(--font-body); }
 
 .test-result { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .test-result-title {

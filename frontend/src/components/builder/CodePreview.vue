@@ -44,7 +44,7 @@ async function copy(which: 'yaml' | 'python'): Promise<void> {
 </script>
 
 <template>
-  <div class="test-tab" data-testid="test-tab-code">
+  <div class="test-tab" data-testid="test-body-code">
     <div class="test-actions">
       <button
         type="button"

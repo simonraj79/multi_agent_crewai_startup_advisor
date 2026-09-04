@@ -158,13 +158,34 @@ export function useFlowTest(options: FlowTestOptions) {
     height.value = Math.min(Math.max(Math.round(next), PANEL_MIN_PX), maxHeight.value)
   }
 
+  /**
+   * The document the saved inputs were last read for, or null.
+   *
+   * Loading is LAZY and keyed on this rather than on a watcher, because the
+   * panel is collapsed on arrival and a request fired for a panel nobody opened
+   * is a request that competes with the validation loop the author IS watching.
+   * Re-reading when the id changes is what makes "open, edit, save as a new
+   * document, open again" show the new document's rows rather than the old
+   * one's.
+   */
+  const loadedFor = ref<string | null>(null)
+
+  function ensureLoaded(): void {
+    const id = options.documentId()
+    if (loadedFor.value === id) return
+    loadedFor.value = id
+    void loadTestInputs()
+  }
+
   function toggle(next = !open.value): void {
     open.value = next
+    if (next) ensureLoaded()
   }
 
   function selectTab(next: TestTab): void {
     tab.value = next
     open.value = true
+    ensureLoaded()
     if (next === 'code') void loadCompiled()
   }
 

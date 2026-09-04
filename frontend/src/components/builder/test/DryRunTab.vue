@@ -53,7 +53,7 @@ const planSteps = computed<string[]>(() => {
 </script>
 
 <template>
-  <div class="test-tab" data-testid="test-tab-dry">
+  <div class="test-tab" data-testid="test-body-dry">
     <div class="test-actions">
       <button
         type="button"

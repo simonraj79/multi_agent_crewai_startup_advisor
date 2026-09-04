@@ -55,6 +55,8 @@ from tests.builder.test_document import document, edge, node
 
 BODY_KEY = RUN_RESULT_BODY_KEYS[0]
 MARKET_TOOL = "research_market_landscape"
+#: The eleventh entrypoint, spelled once so a rename fails here loudly.
+_REPLAY_REF = "brief_crew.builder.runtime:replay_output"
 
 
 # --------------------------------------------------------------------------
@@ -2018,6 +2020,171 @@ class ReplayPlanTests(unittest.TestCase):
 
         with self.assertRaises(BuilderRuntimeError):
             replay_output(None, node_id="a", source="somewhere_else")
+
+
+class ReplayPlanRoutedTests(unittest.TestCase):
+    """A derived plan whose replay point sits BELOW a routed node.
+
+    The defect plan 12 measured, and the reason it was not caught: 09 D7 says
+    every upstream node is emitted as `runtime:replay_output`, and a gate, a
+    router and an `on_error: route` node are each the one thing that cannot be,
+    because each of them EMITS an event its successor listens for. The chain
+    fixture the replay tests were written against has none of the three.
+    """
+
+    def _gated(self) -> BuilderDocument:
+        return document(
+            [
+                input_node(),
+                gate_node("confirm"),
+                authored_agent_node("safe", source="confirm"),
+                output_node("report", source="${state.out__safe}"),
+            ],
+            [
+                edge("e1", "idea", "confirm"),
+                edge("e2", "confirm", "safe", source_port="approve"),
+                edge("e3", "safe", "report"),
+            ],
+        )
+
+    def _error_routed(self) -> BuilderDocument:
+        return document(
+            [
+                input_node(),
+                authored_agent_node("draft", on_error="route"),
+                authored_agent_node("apology", source="idea"),
+                authored_agent_node("safe", source="draft"),
+                output_node("report", source="${state.out__safe}"),
+            ],
+            [
+                edge("e1", "idea", "draft"),
+                edge("e2", "draft", "safe", source_port="out"),
+                edge("e3", "draft", "apology", source_port="error"),
+                edge("e4", "safe", "report"),
+                edge("e5", "apology", "report"),
+            ],
+        )
+
+    def _branched(self) -> BuilderDocument:
+        return document(
+            [
+                input_node(),
+                authored_agent_node("a"),
+                router_node("pick", key="out__a", value="never"),
+                authored_agent_node("safe", source="a"),
+                authored_agent_node("other", source="a"),
+                output_node("report", source="${state.out__safe}"),
+            ],
+            [
+                edge("e1", "idea", "a"),
+                edge("e2", "a", "pick"),
+                edge("e3", "pick", "safe", source_port="retry"),
+                edge("e4", "pick", "other", source_port="onward"),
+                edge("e5", "safe", "report"),
+            ],
+        )
+
+    def _plans(self) -> list[tuple[str, CompiledFlow]]:
+        made: list[tuple[str, CompiledFlow]] = []
+        for name, graph, target in (
+            ("gate", self._gated(), "safe"),
+            ("error router", self._error_routed(), "safe"),
+            ("router", self._branched(), "safe"),
+        ):
+            for mode in ("resume_from", "node_test"):
+                made.append(
+                    (
+                        f"{name}/{mode}",
+                        compile_replay_plan(graph, node_id=target, mode=mode),
+                    )
+                )
+        return made
+
+    def test_every_derived_plan_is_whole(self) -> None:
+        """The general post-condition, over every routed shape and both modes.
+
+        Both halves are asserted: nothing listens for an event no method
+        produces, and no node keeps a reserved method name with no method
+        behind it.
+        """
+
+        from brief_crew.builder.compiler import (
+            _assert_methods_cover_the_kept_namespace,
+            _assert_routers_declare_what_they_emit,
+        )
+
+        for name, compiled in self._plans():
+            with self.subTest(plan=name):
+                _assert_routers_declare_what_they_emit(compiled.definition)
+                _assert_methods_cover_the_kept_namespace(
+                    compiled.definition, compiled.method_idents, frozenset()
+                )
+
+    def test_a_replayed_gate_keeps_its_router_and_loses_its_pause(self) -> None:
+        compiled = compile_replay_plan(self._gated(), node_id="safe")
+        methods = compiled.definition["methods"]
+        self.assertEqual(methods["n1_confirm"]["do"]["ref"], _REPLAY_REF)
+        self.assertNotIn("human_feedback", methods["n1_confirm"])
+        self.assertTrue(methods["n2_route_confirm"]["router"])
+        self.assertEqual(methods["n2_route_confirm"]["emit"], ["e2_approve", "e2_revise"])
+
+    def test_a_replayed_gate_router_is_told_it_is_replayed(self) -> None:
+        """The flag travels in the routing table, because `route_gate` takes no `with:`.
+
+        Without it the router is handed no `HumanFeedbackResult` at all and
+        `gate_decision(None)` is an approve - the silent approval `lint_gates`
+        exists to refuse, arriving by a different door.
+        """
+
+        compiled = compile_replay_plan(self._gated(), node_id="safe")
+        table = compiled.definition["state"]["default"]["__builder__"]["gates"]
+        self.assertTrue(table["n2_route_confirm"]["replayed"])
+        clean = compile_document(self._gated())
+        self.assertFalse(
+            clean.definition["state"]["default"]["__builder__"]["gates"][
+                "n2_route_confirm"
+            ]["replayed"]
+        )
+
+    def test_a_replayed_error_node_keeps_its_error_router(self) -> None:
+        compiled = compile_replay_plan(self._error_routed(), node_id="safe")
+        methods = compiled.definition["methods"]
+        self.assertEqual(methods["n1_draft"]["do"]["ref"], _REPLAY_REF)
+        self.assertEqual(methods["n2_route_err_draft"]["emit"], ["e2_ok", "e2_error"])
+
+    def test_a_router_above_the_resume_point_is_not_replayed_at_all(self) -> None:
+        """It bills nothing and it is a pure function of the state a replay restores.
+
+        Replacing it with `replay_output` is what removed the label its
+        successor listens for; re-running it reproduces the branch the source
+        run took, for free.
+        """
+
+        compiled = compile_replay_plan(self._branched(), node_id="safe")
+        method = compiled.definition["methods"]["n2_pick"]
+        self.assertEqual(
+            method["do"]["ref"], "brief_crew.builder.runtime:route_branch"
+        )
+        self.assertTrue(method["router"])
+
+    def test_dropping_a_gates_router_is_caught_by_the_coverage_assertion(self) -> None:
+        """The deliberate break, so the post-condition is a mechanism and not a comment."""
+
+        from brief_crew.builder.compiler import _assert_methods_cover_the_kept_namespace
+
+        compiled = compile_replay_plan(self._gated(), node_id="safe")
+        broken = dict(compiled.definition)
+        broken["methods"] = {
+            name: method
+            for name, method in compiled.definition["methods"].items()
+            if name != "n2_route_confirm"
+        }
+        with self.assertRaises(BuilderCompileError) as caught:
+            _assert_methods_cover_the_kept_namespace(
+                broken, compiled.method_idents, frozenset()
+            )
+        self.assertIn("n2_route_confirm", str(caught.exception))
+
 
 
 if __name__ == "__main__":  # pragma: no cover

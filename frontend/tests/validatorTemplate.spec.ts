@@ -205,11 +205,12 @@ describe('the gallery ships four templates and no half-drawn ones', () => {
       const first = template.document.edges.find((edge) => edge.source === 'idea')
       expect(first?.target, template.id).toBe('confirm')
     }
-    // BLANK seeds ONE input node and nothing else (02-canvas.md D7). It has
-    // nothing to gate because it has nothing that bills: an input node is not a
-    // step, it is where the run's own request lands.
-    expect(BLANK.document.nodes.map((node) => node.kind)).toEqual(['input'])
-    expect(BLANK.document.edges).toEqual([])
+    // BLANK seeds the run's two ENDS and nothing between them (02-canvas.md
+    // D7). It has nothing to gate because it has nothing that bills: neither an
+    // input nor an output is a step, they are where the request lands and where
+    // the body comes back.
+    expect(BLANK.document.nodes.map((node) => node.kind)).toEqual(['input', 'output'])
+    expect(BLANK.document.edges).toHaveLength(1)
   })
 
   it('hands out a fresh copy so two sessions cannot share one document', () => {

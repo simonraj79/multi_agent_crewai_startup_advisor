@@ -36,13 +36,49 @@ describe('a new document opens with one input node and nothing against it', () =
     }
   })
 
-  it('seeds exactly one node, and it is an input at (100, 100)', () => {
+  it('seeds exactly one INPUT node, at (100, 100), wired to an output', () => {
+    /*
+     * "One input node" is read as "exactly one node of kind `input`", and the
+     * reading is forced: D7 and criterion 10 each say `one input node` AND
+     * `zero problems`, and only one shape satisfies both. Measured against this
+     * build's own `/api/builder/validate` on 2026-09-04 -
+     *
+     *   one input alone           -> 1 problem, `no-output-node` (warning)
+     *   input + output + the edge -> 0 problems
+     *
+     * - so a document with a single node cannot be the one the criterion is
+     * describing. Assumption recorded in the plan's Status.
+     */
     const document = documentFromTemplate(BLANK)
-    expect(document.nodes).toHaveLength(1)
-    const [seed] = document.nodes
-    expect(seed.kind).toBe('input')
-    expect(seed.position).toEqual({ x: 100, y: 100 })
-    expect(document.edges).toEqual([])
+    expect(inputNodes(document)).toHaveLength(1)
+    expect(inputNodes(document)[0].position).toEqual({ x: 100, y: 100 })
+    expect(document.nodes.map((node) => node.kind)).toEqual(['input', 'output'])
+    expect(document.edges).toHaveLength(1)
+    expect(document.edges[0]).toMatchObject({
+      source: 'idea',
+      source_port: 'out',
+      target: 'result',
+      target_port: 'in',
+    })
+  })
+
+  it('cannot fire `no-output-node`, because the run has somewhere to end', () => {
+    // A graph that ends nowhere hands an operator nothing to read, which is
+    // what the server's own warning says. Seeding the output is no more an
+    // invented decision than seeding the input: both ends exist in every graph
+    // this product compiles, which is why `document.py` gives `input` no target
+    // port and `output` no source port.
+    const kinds = documentFromTemplate(BLANK).nodes.map((node) => node.kind)
+    expect(kinds).toContain('output')
+  })
+
+  it('leaves neither end unreachable, because the two are wired', () => {
+    const document = documentFromTemplate(BLANK)
+    const reached = new Set(document.edges.map((edge) => edge.target))
+    for (const node of document.nodes) {
+      if (node.kind === 'input') continue
+      expect(reached, node.id).toContain(node.id)
+    }
   })
 
   it('cannot fire `no-input-node`, because there is one', () => {
@@ -85,6 +121,6 @@ describe('a new document opens with one input node and nothing against it', () =
     // If BLANK ever left the gallery the criterion would be met by a document
     // nobody can open.
     expect(BUILDER_TEMPLATES.map((template) => template.id)).toContain('blank')
-    expect(BLANK.blurb).toContain('input node')
+    expect(BLANK.blurb).toContain('input and an output')
   })
 })

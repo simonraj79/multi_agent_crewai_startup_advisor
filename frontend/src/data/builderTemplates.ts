@@ -238,7 +238,7 @@ export interface BuilderTemplate {
 }
 
 /**
- * One input node at (100, 100), and ZERO problems (02-canvas.md D7).
+ * The run's beginning and its end, wired, and ZERO problems (02-canvas.md D7).
  *
  * It opened with nothing drawn and two errors against it until 2026-09-04 -
  * `no-input-node` and `input-field-undeclared` - on the argument that a draft
@@ -262,6 +262,21 @@ export interface BuilderTemplate {
  * which is the problem that means something: two candidates and no statement of
  * which one the run reads.
  *
+ * WHY TWO NODES AND NOT ONE. D7 and criterion 10 each say "one `input` node"
+ * AND "zero problems", and only one shape satisfies both - which is why the
+ * reading here is "exactly one node OF KIND input", not "exactly one node".
+ * Measured against this build's own `/api/builder/validate` on 2026-09-04:
+ *
+ *   one input alone                -> 1 problem, `no-output-node` (warning)
+ *   input + output + the edge      -> 0 problems
+ *
+ * `no-output-node` is the server saying a completed run would hand back no
+ * body, and it is right: a graph that ends nowhere produces nothing an operator
+ * can read. Seeding the output is not inventing a decision any more than
+ * seeding the input was - every graph this product compiles has both ends, and
+ * `document.py` gives `input` no target port and `output` no source port
+ * precisely because they ARE the ends.
+ *
  * Landing to first node placed is now ONE click - the template card.
  */
 const BLANK_INPUT_FIELD = nodeId('idea')
@@ -269,7 +284,7 @@ const BLANK_INPUT_FIELD = nodeId('idea')
 export const BLANK: BuilderTemplate = {
   id: 'blank',
   title: 'Blank canvas',
-  blurb: 'One input node, ready to build on. Drag a kind from the palette, or press 1–7.',
+  blurb: 'An input and an output, wired and clean. Drag a kind from the palette, or press 1–7.',
   document: {
     schema: BUILDER_SCHEMA_ID,
     id: UNSAVED,
@@ -297,8 +312,32 @@ export const BLANK: BuilderTemplate = {
           required: true,
         },
       },
+      {
+        id: nodeId('result'),
+        label: 'Result',
+        // Directly below the input, on the 20 grid, so the first kind an author
+        // drops between them has somewhere obvious to land.
+        position: { x: 100, y: 300 },
+        kind: 'output',
+        config: {
+          // `RUN_RESULT_BODY_KEYS[0]`. A body written under any other key comes
+          // back clipped by the streaming frame serializer rather than by
+          // `MAX_RUN_RESULT_BODY_CHARS`, which is how the first paid run's
+          // report was lost mid-link.
+          body_key: 'markdown_body',
+          source: null,
+        },
+      },
     ],
-    edges: [],
+    edges: [
+      {
+        id: edgeId('e1'),
+        source: nodeId('idea'),
+        source_port: 'out',
+        target: nodeId('result'),
+        target_port: 'in',
+      },
+    ],
     joins: {},
     budget: null,
   },

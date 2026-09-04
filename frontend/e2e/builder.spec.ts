@@ -160,16 +160,26 @@ function port(page: Page, nodeId: string, portId: string): Locator {
 }
 
 /**
- * A node's single inbound handle.
+ * A node's inbound FLOW handle - the `in` port at the top of the card.
  *
  * An edge lands on a PORT, not on a card: Vue Flow completes a connection only
  * when the pointer is released on a handle (or inside `connectionRadius` of
- * one), and the centre of a 240px card is nowhere near the 9px handle at its
- * top edge. Dragging to `.workflow-node` therefore never connected anything -
- * it just held the gesture open until the hover timed out.
+ * one), and the centre of a 240px card is nowhere near the 12px disc at its top
+ * edge. Dragging to `.workflow-node` therefore never connected anything - it
+ * just held the gesture open until the hover timed out.
+ *
+ * `data-handleid` is now load-bearing and was not before 2026-09-04: a card no
+ * longer has ONE target handle. 02-canvas.md D1 puts `attach` on an agent's and
+ * a crew's left edge and `member` on a crew's, so an unqualified
+ * `.target[data-nodeid=...]` is a strict-mode violation on every agent - which
+ * is the right failure, because the two ports mean categorically different
+ * things and a test that took whichever came first would be asserting about
+ * whichever the card happened to render first.
  */
-function targetPort(page: Page, nodeId: string): Locator {
-  return page.locator(`.vue-flow__handle.target[data-nodeid="${nodeId}"]`)
+function targetPort(page: Page, nodeId: string, portId = 'in'): Locator {
+  return page.locator(
+    `.vue-flow__handle.target[data-nodeid="${nodeId}"][data-handleid="${portId}"]`,
+  )
 }
 
 /** Drag from one locator's centre to another's, the way a person draws an edge. */
@@ -255,6 +265,30 @@ async function clearLibrary(request: APIRequestContext): Promise<void> {
   if (!listed.ok()) return
   const documents = (await listed.json()) as { id: string }[]
   for (const entry of documents) await request.delete(`/api/builder/workflows/${entry.id}`)
+}
+
+/* ─── the three token colours these tests read back off the pixels ────────── */
+
+/** `--accent-mint: #aaffcd`, resolved. A handle the drag will land on. */
+const MINT = 'rgb(170, 255, 205)'
+/** `--err-text: #ffcccc`, resolved. A handle that will refuse it. */
+const ERR = 'rgb(255, 204, 204)'
+/** `--warn-text: #ffe082`, resolved. A gate's `revise` branch. */
+const WARN = 'rgb(255, 224, 130)'
+
+/**
+ * The colour of the VISIBLE disc, which is the handle's `::after`.
+ *
+ * 02-canvas.md D1 splits the port into two elements - a transparent 24x24 hit
+ * target and a 12px disc drawn by `::after` - so the handle's own background is
+ * `rgba(0, 0, 0, 0)` by design and reading it would answer the wrong question.
+ * This is also the read jsdom cannot make at all: it logs "Not implemented" for
+ * a pseudo-element and hands back the element's own style, which would pass.
+ */
+async function discColour(handle: Locator): Promise<string> {
+  return handle.evaluate(
+    (el) => window.getComputedStyle(el, '::after').backgroundColor,
+  )
 }
 
 test.describe('Flow builder', () => {
@@ -801,9 +835,22 @@ test.describe('Flow builder', () => {
      * and ZERO `/api/builder/validate` requests were sent - measured with a
      * request spy. Over that the dock read `Ready to publish`, the publish
      * checklist ticked `Validation is current` and `No errors`, and the server
-     * answers the same bytes with `no-input-node`. Every other template differs
-     * from the seed and validated by accident, which is why this was invisible
+     * answered the same bytes with two errors. Every other template differs from
+     * the seed and validated by accident, which is why this was invisible
      * anywhere except the one card a first-time visitor is most likely to click.
+     *
+     * REWRITTEN 2026-09-04, because the DOCUMENT changed and the defect did
+     * not. 02-canvas.md D7 seeds the blank canvas with the run's two ends wired,
+     * so it is now genuinely clean and "ready to publish" is the TRUE answer for
+     * it - which means the old assertion would now pass for the wrong reason on
+     * a build where the loop was broken again.
+     *
+     * So the test drives the loop instead of reading one frame of it: the
+     * request has to fire on the very first show, and then deleting the output
+     * node has to make the SERVER's own `no-output-node` appear and the headline
+     * stop saying ready. Nothing in that chain can be satisfied by a client that
+     * never asked - `no-output-node` is `bounds._input_output_problems`, and the
+     * client computes no problem of any kind (§6.1 tier 2).
      */
     const watch = watchConsole(page)
     const validates: string[] = []
@@ -816,17 +863,26 @@ test.describe('Flow builder', () => {
     await page.locator('.template-card').filter({ hasText: 'Blank canvas' }).click()
     await expect(canvas(page)).toBeVisible()
 
+    // The premise: choosing the card really sends the seed to the server. This
+    // is the assertion the original defect failed, and it is unchanged.
     await expect.poll(() => validates.length).toBeGreaterThan(before)
     await validationSettles(page)
-    await expect(headline(page)).not.toContainText(/ready to publish/i)
-    await expect(problemRow(page, 'no-input-node')).toBeVisible()
 
-    // And the dialog refuses it, with the server's count rather than a tick.
-    await page.keyboard.press('Control+Shift+P')
-    const publish = page.locator('[aria-labelledby="publish-title"]')
-    await expect(publish).toBeVisible()
-    await expect(publish).toContainText(/error must be fixed|errors must be fixed/)
-    await expect(publish.getByRole('button', { name: /^Publish$/ })).toBeDisabled()
+    // D7 and criterion 10: a new graph opens clean, with one input node.
+    await expect(nodes(page)).toHaveCount(2)
+    await expect(page.locator('.workflow-node.is-kind-input')).toHaveCount(1)
+    await expect(page.locator('.problem-row')).toHaveCount(0)
+    await expect(headline(page)).toContainText(/ready to publish/i)
+
+    // Now break it, and the answer has to come back from the server.
+    const output = page.locator('.vue-flow__node:has(.workflow-node.is-kind-output)').first()
+    await output.locator('.workflow-node').click()
+    await page.keyboard.press('Delete')
+    await expect(nodes(page)).toHaveCount(1)
+
+    await validationSettles(page)
+    await expect(problemRow(page, 'no-output-node')).toBeVisible()
+    await expect(headline(page)).not.toContainText(/ready to publish/i)
 
     expect(watch.unexpected).toEqual([])
   })
@@ -1072,5 +1128,281 @@ test.describe('Flow builder', () => {
     expect(new URL(page.url()).hash).toContain(id)
 
     expect(watch.unexpected).toEqual([])
+  })
+})
+
+/* ─── ports and edges in a real browser (02-canvas.md criteria 2, 3, 4) ───── */
+
+/**
+ * These four tests are the half of plan 02 that a jsdom mount cannot reach.
+ *
+ * `frontend/tests/builderPorts.spec.ts` proves the RULES - which connections
+ * `isValidConnection` accepts, what `builder.css` declares - and it does that by
+ * reading the real stylesheet, because jsdom does not implement
+ * `getComputedStyle(el, '::after')` at all and would silently hand back the
+ * element's own style instead. What it cannot ask is the question the rubric
+ * actually scores: how big is the target, does the drag land, and what colour is
+ * the disc under the pointer right now. Those have an answer only here.
+ */
+
+/** The pane's current zoom, off the transform matrix Vue Flow writes. */
+async function zoomLevel(page: Page): Promise<number> {
+  return page
+    .locator('.builder-flow .vue-flow__transformationpane')
+    .evaluate((el) => new DOMMatrixReadOnly(window.getComputedStyle(el).transform).a)
+}
+
+/**
+ * Wheel the pane to a target zoom and report what it actually reached.
+ *
+ * d3-zoom's wheel handler scales by `2 ** (-deltaY / 500)`, so the delta for a
+ * ratio is `-500 * log2(ratio)`. It is computed rather than hunted for by
+ * clicking the `+` button, because the zoom-in control steps by a fixed factor
+ * that has nothing to do with 50% or 150% and would land somewhere near them.
+ * The number is READ BACK and asserted rather than assumed: a wheel that the
+ * zoom limits clamped is exactly the failure criterion 7 exists for.
+ */
+async function zoomTo(page: Page, target: number): Promise<number> {
+  const from = await zoomLevel(page)
+  const box = (await canvas(page).boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(0, -500 * Math.log2(target / from))
+  await expect.poll(() => zoomLevel(page)).toBeCloseTo(target, 1)
+  return zoomLevel(page)
+}
+
+test.describe('the canvas, in a browser', () => {
+  test.afterEach(async ({ request }) => {
+    await clearLibrary(request)
+  })
+
+  test('connects at 50 / 100 / 150 % zoom, ten times out of ten', async ({ page }) => {
+    /*
+     * Criterion 2, and rubric 3's whole subject.
+     *
+     * The port was a 9px disc with a 9px hit target until 2026-09-04 - hit
+     * target equal to the visual, which is the shape of defect the rubric names
+     * by example, and below Flowise's own 10px floor. At 50% zoom that is four
+     * and a half pixels of target, and "the first attempt" stops being a
+     * reasonable thing to ask for. It is now a 24px box around a 12px disc, so
+     * the target survives the zoom the mark does not.
+     *
+     * TEN drags rather than one, because a hit target is a probability and a
+     * single success proves nothing about it. Each one is followed by a Ctrl+Z,
+     * so every attempt starts from the same document and the tenth is not
+     * quietly easier than the first.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    const gate = await firstOfKind(page, 'gate')
+    const agent = await firstOfKind(page, 'agent')
+    // The `revise` port is free on the template; `approve` already carries the
+    // edge into the agent, and a duplicate triple is a Tier-1 refusal.
+    const before = await edges(page).count()
+
+    for (const target of [1, 0.5, 1.5]) {
+      const reached = await zoomTo(page, target)
+      for (let attempt = 1; attempt <= 10; attempt += 1) {
+        await dragTo(page, port(page, gate.id, 'revise'), targetPort(page, agent.id))
+        await expect(
+          edges(page),
+          `zoom ${reached.toFixed(2)}, attempt ${attempt}: the drag did not land`,
+        ).toHaveCount(before + 1)
+        await page.keyboard.press('Control+z')
+        await expect(edges(page)).toHaveCount(before)
+      }
+    }
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('paints the target handle green when it will take the edge and red when it will not', async ({
+    page,
+  }) => {
+    /*
+     * Criterion 3, and it is the FD4 class rules seen from the pointer's end.
+     *
+     * Vue Flow sets `vue-flow__handle-connecting` on whatever the pointer is
+     * over and adds `vue-flow__handle-valid` when `isValidConnection` said yes -
+     * exactly as React Flow does, which is why Flowise's two CSS rules
+     * (`views/canvas/index.css:41-49`) transfer verbatim. Agentflow v2 dropped
+     * its type check and its cycle rejection is SILENT: the drop just does
+     * nothing. That is the failure this test exists to keep out.
+     *
+     * A tool is the sharpest case available. Its one port is a SOURCE, an agent
+     * offers two target ports, and exactly one of them will take it: `attach`
+     * yes, `in` no - because nothing an agent HAS is a step in the flow, and
+     * `in` is the big obvious port at the top of every card.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    await canvas(page).click({ position: { x: 260, y: 430 } })
+    await page.keyboard.press('t')
+    await expect(page.locator('.workflow-node.is-kind-tool')).toHaveCount(1)
+    const tool = await firstOfKind(page, 'tool')
+    const agent = await firstOfKind(page, 'agent')
+
+    const attach = targetPort(page, agent.id, 'attach')
+    const flow = targetPort(page, agent.id, 'in')
+
+    // Hold one drag open across both hovers, so the two answers are the same
+    // gesture rather than two gestures that happened to agree.
+    await port(page, tool.id, 'attach').hover()
+    await page.mouse.down()
+
+    await attach.hover()
+    await attach.hover()
+    await expect(attach).toHaveClass(/vue-flow__handle-valid/)
+    // POLLED, not read once. The disc carries `transition: background
+    // var(--motion-fast)`, so a single read lands mid-ramp: this assertion
+    // first failed at `rgb(190, 98, 98)`, which is 70% of the way from the
+    // node's own fill to the refusal red. The end state is the claim.
+    await expect.poll(() => discColour(attach)).toBe(MINT)
+
+    await flow.hover()
+    await flow.hover()
+    await expect(flow).toHaveClass(/vue-flow__handle-connecting/)
+    await expect(flow).not.toHaveClass(/vue-flow__handle-valid/)
+    await expect.poll(() => discColour(flow)).toBe(ERR)
+
+    await page.mouse.up()
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('says no to a refused drop, and commits nothing when it does', async ({ page }) => {
+    /*
+     * The other half of criterion 3: "a refused drop leaves
+     * `useBuilderDocument.depth` unchanged".
+     *
+     * `depth` is not reachable from a browser, so what is read is the thing the
+     * author reads - the Undo button's own tooltip, which is `Undo: <the label
+     * of the command at the top of the history>`. A commit lands first, so the
+     * assertion is about the top of a NON-EMPTY history: a refusal that quietly
+     * pushed an entry would change that string, and a disabled-button check
+     * would not have noticed.
+     *
+     * And the refusal has to be VISIBLE. Flowise v2's does nothing at all, which
+     * teaches an author that the canvas is broken rather than that the edge was.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    await canvas(page).click({ position: { x: 260, y: 430 } })
+    await page.keyboard.press('t')
+    const tool = await firstOfKind(page, 'tool')
+    const agent = await firstOfKind(page, 'agent')
+
+    const undo = page.getByRole('button', { name: 'Undo' })
+    const label = await undo.getAttribute('title')
+    expect(label).toMatch(/^Undo: /)
+    const edgesBefore = await edges(page).count()
+
+    // Onto the agent's `in` port, which refuses an attachment.
+    await dragTo(page, port(page, tool.id, 'attach'), targetPort(page, agent.id, 'in'))
+
+    await expect(edges(page)).toHaveCount(edgesBefore)
+    expect(await undo.getAttribute('title')).toBe(label)
+    // No `PortMenu`: it offers to CREATE a node, which is not the question the
+    // author asked, and it would hide the refusal behind a menu.
+    await expect(page.locator('.builder-portmenu')).toHaveCount(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('shows the port name on the dangling line while a gate branch is dragged', async ({
+    page,
+  }) => {
+    /*
+     * Criterion 4. Flowise previews the branch label and colour on its own
+     * connection line and its notes say why: a drag from a two-branch node then
+     * never lands on the wrong branch. A router here can have four ports and
+     * they are four identical discs along one edge, so without this the author
+     * finds out which one they grabbed by releasing.
+     *
+     * The label is read while the button is still DOWN, which is the only moment
+     * it exists - and is why no unit test can ask this question.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+
+    const gate = await firstOfKind(page, 'gate')
+    const line = page.locator('.builder-connection-line')
+
+    await port(page, gate.id, 'revise').hover()
+    await page.mouse.down()
+    const box = (await canvas(page).boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 80)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 90)
+
+    await expect(line).toBeVisible()
+    await expect(line.locator('.builder-connection-label')).toHaveText('revise')
+    // Tinted by the port's class, not by a default: `revise` is `--warn-text`.
+    // The project pins `colorScheme: 'dark'`, which is why a token value can be
+    // written down here at all - see `playwright.config.ts`.
+    await expect
+      .poll(() => line.evaluate((el) => window.getComputedStyle(el).color))
+      .toBe(WARN)
+
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('places the first node of a new graph in one click from the landing page', async ({
+    page,
+  }) => {
+    /*
+     * Criterion 10, rubric 1: landing -> first node placed is ONE click.
+     *
+     * The click is the gallery card, and what it opens is no longer empty. The
+     * blank canvas used to open with nothing drawn and two errors against it,
+     * so the first thing a new author saw was a red problems dock about a graph
+     * they had not touched. It now opens with the run's two ends wired and the
+     * dock silent - measured against this build's own validator, which answers
+     * zero problems for exactly this document.
+     */
+    const watch = watchConsole(page)
+    await openBuilder(page)
+
+    await page.locator('.template-card').filter({ hasText: 'Blank canvas' }).click()
+
+    await expect(nodes(page)).toHaveCount(2)
+    await expect(page.locator('.workflow-node.is-kind-input')).toHaveCount(1)
+    await validationSettles(page)
+    await expect(page.locator('.problem-row')).toHaveCount(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('keeps the zoom limits the plan sets, and the port target inside them', async ({ page }) => {
+    /*
+     * Criterion 7's first half. The ceiling rose from 1.4 to Vue Flow's own
+     * default 2.0, matching Flowise, so a 390px viewport can read an 11px port
+     * label at 22px. The floor stays 0.2: the 16-node validator template fits at
+     * 0.466 in a settled container, so a 48-node document needs roughly 0.3 and
+     * the floor has to be under it.
+     *
+     * Asserted by driving the wheel PAST each limit and reading where it
+     * stopped, because a `min-zoom` prop nobody exercises is a prop that can be
+     * wrong.
+     */
+    await openBuilder(page)
+    await startFromMinimalTemplate(page)
+    const box = (await canvas(page).boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+
+    await page.mouse.wheel(0, -6000)
+    await expect.poll(() => zoomLevel(page)).toBeCloseTo(2, 2)
+
+    await page.mouse.wheel(0, 12000)
+    await expect.poll(() => zoomLevel(page)).toBeCloseTo(0.2, 2)
   })
 })

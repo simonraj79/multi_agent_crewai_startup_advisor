@@ -933,3 +933,30 @@ It is **`verbose`**, on three grounds:
 
 So: **build fifteen, with `verbose` as the fifteenth.** If a later pass finds a
 better candidate, the number is not the thing to preserve — the enumeration is.
+
+
+### S9 ratification — C8's optional `field` is implemented, not changed, 2026-09-04
+
+Plan 04's build added `field: str | None = None` to `bounds.Problem` and
+`BuilderProblemModel`, set it on the three model codes in `registry.py`, and had
+`useBuilderProblems.fieldFor` prefer it over `FIELD_CODES`. It flagged the change
+rather than making it silently, because `bounds.py` is S2's and
+`service/builder_api.py` is the Integrator's. **Ratified**, on two grounds.
+
+**It implements a frozen contract.** C8's own index row above already reads
+*"an optional `field` on the payload"*, and the `field` payload key is named in
+this plan's list of contract requests integrated during plan-writing. Nothing
+was widened; something specified was finally built.
+
+**Criterion 3 is unreachable without it, and the reason generalises.**
+`FIELD_CODES` maps a problem CODE to a control. Plan 04 criterion 3 needs
+`model-lacks-capability` to anchor at `llm.response_format` on one node and at
+`llm.reasoning_effort` on the next — and **one string per code cannot say two
+different things**. A code-keyed map answers "which control does this KIND of
+problem belong to"; the payload answers "which control does THIS problem belong
+to". Only the second can carry a problem an author can click.
+
+`FIELD_CODES` stays as the fallback rather than being deleted: a code with a
+fixed field needs no payload, and criterion 7's total partition over
+`PROBLEM_CODES` is what proves the fallback still covers everything the payload
+does not.

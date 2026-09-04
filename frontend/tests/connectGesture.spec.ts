@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import { describe, expect, it } from 'vitest'
 import BuilderNode from '../src/components/builder/BuilderNode.vue'
-import { useBuilderCanvas } from '../src/composables/useBuilderCanvas'
+import { targetPortsOf, useBuilderCanvas } from '../src/composables/useBuilderCanvas'
 import { NODE_KINDS, outPortsOf } from '../src/data/nodeKinds'
 import { MINIMAL_GATED_AGENT, documentFromTemplate } from '../src/data/builderTemplates'
 import type { BuilderNodeData } from '../src/composables/useBuilderCanvas'
@@ -180,6 +180,7 @@ describe('a node title that is not being edited consumes no keys', () => {
       index: 3,
       ports: outPortsOf(node),
       acceptsIncoming: NODE_KINDS[node.kind].acceptsIncoming,
+      targetPorts: targetPortsOf(node.kind),
       problems: [],
       severity: null,
       joined: false,
@@ -190,6 +191,7 @@ describe('a node title that is not being edited consumes no keys', () => {
       flashing: false,
       inbound: 0,
       landing: false,
+      refused: false,
       ...overrides,
     }
   }

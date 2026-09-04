@@ -23,6 +23,7 @@ import BuilderEdge, { type BuilderEdgeData } from '../src/components/builder/Bui
 import NodePalette, { BUILDER_KIND_MIME, isBillableKind } from '../src/components/builder/NodePalette.vue'
 import PortMenu, { titleiseId, type PortMenuCreation } from '../src/components/builder/PortMenu.vue'
 import { resetVocabulary, vocabulary } from '../src/data/builderVocabulary'
+import { edgeClassOf, targetPortsOf } from '../src/composables/useBuilderCanvas'
 import { NODE_KINDS, outPortsOf } from '../src/data/nodeKinds'
 import {
   nodeId,
@@ -197,6 +198,7 @@ function nodeData(node: DocumentNode, overrides: Partial<BuilderNodeData> = {}):
     index: 3,
     ports: outPortsOf(node),
     acceptsIncoming: NODE_KINDS[node.kind].acceptsIncoming,
+    targetPorts: targetPortsOf(node.kind),
     problems,
     severity: problems.some((entry) => entry.severity === 'error')
       ? 'error'
@@ -212,6 +214,7 @@ function nodeData(node: DocumentNode, overrides: Partial<BuilderNodeData> = {}):
     runState: 'idle',
     inbound: 0,
     landing: false,
+    refused: false,
     ...overrides,
   }
 }
@@ -636,6 +639,11 @@ function edgeData(overrides: Partial<BuilderEdgeData> = {}): BuilderEdgeData {
     portLabel: null,
     portRole: null,
     joinTarget: false,
+    // Derived from the fixture's own edge rather than defaulted, so an override
+    // that moves `target_port` cannot leave the class saying something else.
+    edgeClass: edgeClassOf(overrides.edge ?? { source_port: 'approve', target_port: 'in' }),
+    sourceAccent: NODE_KINDS.gate.accent,
+    targetAccent: NODE_KINDS.agent.accent,
     active: false,
     ...overrides,
   }

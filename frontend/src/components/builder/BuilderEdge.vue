@@ -32,13 +32,26 @@ export interface BuilderEdgeData extends CanvasEdgeData {
 <script setup lang="ts">
 import { computed, inject } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from '@vue-flow/core'
+import { X } from 'lucide-vue-next'
 import { BUILDER_HOVERED_NODE } from '../../composables/useBuilderCanvas'
+
+/**
+ * How far BELOW the midpoint the delete button sits.
+ *
+ * The port chip is already at the midpoint, and on a gate's `revise` edge the
+ * two would land on top of each other - the one edge where the label matters
+ * most. Offsetting the button rather than the chip keeps the chip where every
+ * other edge draws it.
+ */
+const DELETE_OFFSET_PX = 16
 
 const props = defineProps<EdgeProps<BuilderEdgeData>>()
 
 const emit = defineEmits<{
   /** The port chip was activated: select the router that owns this branch. */
   (event: 'select-branch', payload: { nodeId: string; port: string }): void
+  /** The hover-only delete button was pressed. One commit, one undo step. */
+  (event: 'delete', payload: { edgeId: string }): void
 }>()
 
 const route = computed(() =>
@@ -55,6 +68,65 @@ const route = computed(() =>
 const path = computed(() => route.value[0])
 const labelX = computed(() => route.value[1])
 const labelY = computed(() => route.value[2])
+
+/* ─── class, paint and marker (§5.4, 02-canvas.md D4) ────────────────────── */
+
+/**
+ * Exactly one of the four, decided by `edgeClassOf` and projected in `data`.
+ *
+ * Not recomputed here. The class is a fact about the DOCUMENT's edge - which
+ * port it left by and which it arrived at - and `useBuilderCanvas` is where
+ * the document is read. A second derivation in the renderer would be a second
+ * opinion about a string `bounds.py` also has an opinion about, which is three
+ * copies of one rule.
+ */
+const edgeClass = computed(() => props.data?.edgeClass ?? 'flow')
+
+/** Only a FLOW edge is painted by a gradient; the other three are one token each. */
+const isFlow = computed(() => edgeClass.value === 'flow')
+
+/**
+ * A gradient per edge, source kind accent to target kind accent.
+ *
+ * Flowise v2 does exactly this (`AgentFlowEdge.jsx`) and it is the single best
+ * thing about its canvas: the wire says where it came FROM at the end you are
+ * looking at, so following a fan-in backwards is reading rather than tracing.
+ * `userSpaceOnUse` with the real endpoint coordinates rather than the default
+ * bounding-box units, so the ramp follows the edge's actual direction - in
+ * object-bounding-box units a wire that runs right-to-left has its colours
+ * reversed and says the opposite of what it means.
+ */
+const gradientId = computed(() => `edge-gradient-${props.id}`)
+const markerId = computed(() => `edge-arrow-${props.id}`)
+
+/**
+ * `--edge-paint`, published on the group for `builder.css` to pick up.
+ *
+ * An inline `stroke` would be the obvious way and is the wrong one: it outranks
+ * every stylesheet rule, so `has-error`, `is-lit-in`, `is-selected` and the
+ * problem tints would all stop working on exactly the edges that carry a
+ * gradient. A custom property is a VALUE the stylesheet chooses to use, so the
+ * cascade still decides.
+ */
+const paintStyle = computed(() =>
+  isFlow.value ? { '--edge-paint': `url(#${gradientId.value})` } : {},
+)
+
+/**
+ * Flow and error edges carry an arrowhead; attach and member do not (D4).
+ *
+ * Because an arrow means "and then this happens". An attachment is a
+ * possession, not a next step, and pointing an arrow at it would say the run
+ * goes there. The marker is minted here rather than through Vue Flow's
+ * `MarkerType`, so that it can be tinted with the target's own accent - the
+ * arrow sits at the target end and any other colour would be a third thing to
+ * explain.
+ */
+const hasArrow = computed(() => edgeClass.value === 'flow' || edgeClass.value === 'error')
+const markerColor = computed(() =>
+  edgeClass.value === 'error' ? 'var(--err-text)' : props.data?.targetAccent ?? 'currentColor',
+)
+const markerUrl = computed(() => (hasArrow.value ? `url(#${markerId.value})` : undefined))
 
 /* ─── the hovered field (§5.4) ───────────────────────────────────────────── */
 
@@ -142,7 +214,9 @@ const bracket = computed(() => {
 <template>
   <g
     class="workflow-edge builder-edge"
+    :style="paintStyle"
     :class="[
+      `is-class-${edgeClass}`,
       {
         'is-dim': dim,
         'is-lit': lit !== null,
@@ -162,10 +236,59 @@ const bracket = computed(() => {
       pointer target is a target nobody hits on the first try - which is how an
       editor teaches people that edges cannot be re-routed at all.
     -->
+    <defs>
+      <linearGradient
+        v-if="isFlow"
+        :id="gradientId"
+        gradientUnits="userSpaceOnUse"
+        :x1="sourceX"
+        :y1="sourceY"
+        :x2="targetX"
+        :y2="targetY"
+      >
+        <stop offset="0%" :stop-color="data?.sourceAccent" />
+        <stop offset="100%" :stop-color="data?.targetAccent" />
+      </linearGradient>
+      <marker
+        v-if="hasArrow"
+        :id="markerId"
+        markerWidth="9"
+        markerHeight="9"
+        refX="8"
+        refY="4.5"
+        orient="auto-start-reverse"
+        markerUnits="strokeWidth"
+      >
+        <path d="M 0 1 L 8 4.5 L 0 8 z" :fill="markerColor" />
+      </marker>
+    </defs>
+
     <path class="builder-edge-hit" :d="path" />
-    <BaseEdge :id="id" :path="path" :marker-end="markerEnd" class="builder-edge-path" />
+    <BaseEdge :id="id" :path="path" :marker-end="markerUrl" class="builder-edge-path" />
     <path v-if="data?.active" :d="path" class="builder-edge-traversal" />
     <path v-if="data?.joinTarget" :d="bracket" class="builder-edge-bracket" />
+
+    <!--
+      The hover-only delete affordance (D4). Flowise v2 shows its delete button
+      only on hover for the reason that applies here too: the validator template
+      has 22 edges, and 22 always-visible buttons is a canvas of buttons rather
+      than a graph. Keyboard users are unaffected - select the edge and press
+      Delete - and the button is focusable, so it is reachable that way as well
+      rather than being a pointer-only control.
+    -->
+    <EdgeLabelRenderer>
+      <button
+        type="button"
+        class="builder-edge-delete nodrag nopan"
+        :aria-label="`Delete edge ${id}`"
+        :style="{
+          transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY + DELETE_OFFSET_PX}px)`,
+        }"
+        @click.stop="emit('delete', { edgeId: id })"
+      >
+        <X :size="11" :stroke-width="2.5" aria-hidden="true" />
+      </button>
+    </EdgeLabelRenderer>
 
     <EdgeLabelRenderer v-if="chipText">
       <component

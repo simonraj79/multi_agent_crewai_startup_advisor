@@ -238,19 +238,71 @@ onBeforeUnmount(() => {
 const portOffsets = computed<number[]>(() => {
   const ports = props.data.ports
   if (node.value.kind === 'gate' && ports.length === 2) return [30, 70]
+  // `out` then `error`, on a node whose `on_error` is `route`. D1 puts the
+  // error exit bottom-RIGHT rather than at the formula's 25/75, because the two
+  // are not siblings: one is where the run goes and the other is where it goes
+  // when it did not. Symmetry would say they were alternatives of equal weight.
+  if (ports.length === 2 && ports[1] === 'error') return [40, 82]
   return ports.map((_port, index) => ((index + 0.5) / ports.length) * 100)
 })
 
-/** Which colour a source port and its label take. Gate and router only. */
+/**
+ * The target ports drawn on the LEFT edge - `attach`, then `member`.
+ *
+ * `in` is excluded because it is drawn on the top edge, where the flow arrives.
+ * D1 puts these two on the left so attachment wires run horizontally against
+ * the flow's vertical, which is the thing that keeps a wired agent readable
+ * once it has three tools and a skill hanging off it.
+ */
+const sideTargetPorts = computed(() => props.data.targetPorts.filter((port) => port !== 'in'))
+
+const sideTargetOffsets = computed<number[]>(() =>
+  sideTargetPorts.value.map((_port, index) => ((index + 0.5) / sideTargetPorts.value.length) * 100),
+)
+
+/**
+ * Which class a source port and its label take.
+ *
+ * One function for both, because the port and its label must never disagree
+ * about what they are - a mint disc under an amber word is a port that reads as
+ * two different things depending on which half you looked at.
+ */
 function portTone(port: string): string {
+  if (port === 'error') return 'is-port-error'
+  // An attachment's one port is a SOURCE and it is the square, not a disc: the
+  // shape is what survives 50% zoom and deuteranopia, where the violet does not.
+  if (port === 'attach') return 'is-port-attach'
   if (node.value.kind === 'gate') return port === 'approve' ? 'is-approve' : 'is-revise'
   if (node.value.kind !== 'router') return ''
   const branch = node.value.config.branches.find((candidate) => candidate.label === port)
   return branch?.op === 'otherwise' ? 'is-otherwise' : 'is-branch'
 }
 
-/** Gate and router ports carry a permanently visible label. Nothing else does. */
-const labelledPorts = computed(() => node.value.kind === 'gate' || node.value.kind === 'router')
+/** The class a left-edge target port takes. Two ports, two shapes, no overlap. */
+function targetTone(port: string): string {
+  return port === 'member' ? 'is-port-member' : 'is-port-attach'
+}
+
+/**
+ * Whether a source port carries a permanently visible label.
+ *
+ * Gate and router ports always do - which of a gate's two exits an edge leaves
+ * by is the single fact the canvas exists to show. `error` does too, and for a
+ * sharper reason: an unlabelled red disc beside an unlabelled grey one is a
+ * decoration, and the whole point of an error exit is that a reader can tell it
+ * from the ordinary one without opening anything.
+ */
+function portLabelled(port: string): boolean {
+  if (port === 'error') return true
+  if (port === 'attach') return false
+  return node.value.kind === 'gate' || node.value.kind === 'router'
+}
+
+/** True when ANY source port on this card is labelled, so the footer lane is reserved. */
+const labelledPorts = computed(() => props.data.ports.some((port) => portLabelled(port)))
+
+/** An attachment's one port sits on the right edge, not along the bottom. */
+const portsOnRight = computed(() => NODE_KINDS[node.value.kind].family === 'attachment')
 
 /* ─── inline rename (§4.4) ───────────────────────────────────────────────── */
 
@@ -478,6 +530,9 @@ const ariaLabel = computed(() => {
         // shape of the graph an author is searching inside.
         'is-filter-match': data.filterMatch,
         'is-filter-dimmed': data.filterDimmed,
+        // D2: a connect drag was released over this card and refused. One shot,
+        // cleared by the canvas on a `--motion-medium` timer.
+        'is-refused': data.refused,
       },
     ]"
     role="group"
@@ -517,12 +572,35 @@ const ariaLabel = computed(() => {
       `isValidConnection` will accept.
     -->
     <Handle
-      v-if="data.acceptsIncoming"
+      v-if="data.targetPorts.includes('in')"
       id="in"
       class="builder-port is-port-in"
       :class="{ 'is-port-ready': data.connectable }"
       type="target"
       :position="Position.Top"
+    />
+
+    <!--
+      The STRUCTURAL target ports, on the left edge (D1): `attach` on an agent
+      or a crew, `member` on a crew. Drawn from `data.targetPorts`, which the
+      canvas projects from the same table `isValidConnection` refuses against -
+      so a port that exists here is a port the pointer will accept, and there is
+      no second opinion to drift.
+
+      They carry no `is-port-ready`: that pulse is the answer to "could the edge
+      you are currently dragging land here", and the canvas computes it for the
+      flow port. An attach drag is a different question and gets Vue Flow's own
+      red/green under the pointer instead, which is the more direct answer.
+    -->
+    <Handle
+      v-for="(port, index) in sideTargetPorts"
+      :id="port"
+      :key="`target-${port}`"
+      class="builder-port"
+      :class="targetTone(port)"
+      type="target"
+      :position="Position.Left"
+      :style="{ top: `${sideTargetOffsets[index]}%` }"
     />
 
     <span class="node-eyebrow-row builder-eyebrow-row">
@@ -672,16 +750,23 @@ const ariaLabel = computed(() => {
     -->
     <footer v-if="data.ports.length > 0" class="builder-ports" :class="{ 'is-labelled': labelledPorts }">
       <template v-for="(port, index) in data.ports" :key="port">
+        <!--
+          An attachment's one port goes on the RIGHT edge and every flow port
+          along the bottom. Same element, same classes, one different side -
+          because that one difference is what makes attachment wires horizontal
+          and flow wires vertical, which is the whole of D1's argument about a
+          wired agent staying readable.
+        -->
         <Handle
           :id="port"
           class="builder-port is-port-out"
           :class="portTone(port)"
           type="source"
-          :position="Position.Bottom"
-          :style="{ left: `${portOffsets[index]}%` }"
+          :position="portsOnRight ? Position.Right : Position.Bottom"
+          :style="portsOnRight ? { top: '50%' } : { left: `${portOffsets[index]}%` }"
         />
         <span
-          v-if="labelledPorts"
+          v-if="portLabelled(port)"
           class="builder-port-label"
           :class="portTone(port)"
           :style="{ left: `${portOffsets[index]}%` }"

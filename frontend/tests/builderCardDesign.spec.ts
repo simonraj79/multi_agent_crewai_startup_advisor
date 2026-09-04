@@ -14,6 +14,7 @@ import BuilderNode, {
   summaryLines,
 } from '../src/components/builder/BuilderNode.vue'
 import type { BuilderNodeData } from '../src/components/builder/BuilderNode.vue'
+import { targetPortsOf } from '../src/composables/useBuilderCanvas'
 import { NODE_KINDS, outPortsOf } from '../src/data/nodeKinds'
 import { nodeId } from '../src/types/builder'
 import type { BuilderNode as DocumentNode } from '../src/types/builder'
@@ -47,6 +48,7 @@ function nodeData(node: DocumentNode): BuilderNodeData {
     index: 3,
     ports: outPortsOf(node),
     acceptsIncoming: NODE_KINDS[node.kind].acceptsIncoming,
+    targetPorts: targetPortsOf(node.kind),
     problems: [],
     severity: null,
     joined: false,
@@ -59,6 +61,7 @@ function nodeData(node: DocumentNode): BuilderNodeData {
     flashing: false,
     inbound: 0,
     landing: false,
+    refused: false,
   }
 }
 

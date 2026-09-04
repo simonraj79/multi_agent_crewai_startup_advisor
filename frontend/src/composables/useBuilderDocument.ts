@@ -14,6 +14,7 @@ import type {
   NodePosition,
   OutputConfig,
   RouterConfig,
+  TargetPort,
   TransformConfig,
 } from '../types/builder'
 import { renameCascade } from '../utils/builderGraph'
@@ -120,6 +121,15 @@ export interface EdgeEnds {
   source: NodeId
   source_port: string
   target: NodeId
+  /**
+   * `'in'` when absent, which is every flow edge and so almost every caller.
+   *
+   * Optional rather than required because the canvas's attach-by-drop
+   * (02-canvas.md D8) is the ONE gesture that mints an edge arriving anywhere
+   * else, and making the field mandatory would have every other call site
+   * restate the default - which is how a default stops being one.
+   */
+  target_port?: TargetPort
 }
 
 /**
@@ -362,7 +372,7 @@ export function useBuilderDocument(initial: BuilderDocument) {
           {
             ...options.edge,
             id: mintEdgeId(new Set(doc.value.edges.map((edge) => edge.id as string))),
-            target_port: 'in' as const,
+            target_port: options.edge.target_port ?? ('in' as const),
           },
         ]
       : doc.value.edges

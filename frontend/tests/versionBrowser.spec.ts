@@ -601,6 +601,8 @@ describe('read-only on the palette and on the card', () => {
       index: 1,
       ports: [],
       acceptsIncoming: false,
+      targetPorts: [],
+      refused: false,
       problems: [],
       severity: null,
       joined: false,

@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { shallowRef } from 'vue'
-import { describe, expect, it } from 'vitest'
-import { useBuilderCanvas } from '../src/composables/useBuilderCanvas'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { targetPortsOf, useBuilderCanvas } from '../src/composables/useBuilderCanvas'
+import { useBuilderDocument } from '../src/composables/useBuilderDocument'
 import type {
   CanvasDocumentStore,
   EdgeOrigin,
@@ -93,6 +96,32 @@ function routerNode(id: string, labels: string[]): BuilderNode {
           : { label: nodeId(label), op: 'eq' as const, key: nodeId('decision'), value: label },
       ),
     },
+  }
+}
+
+function crewNode(id: string): BuilderNode {
+  return {
+    id: nodeId(id),
+    label: id,
+    position: { x: 0, y: 0 },
+    kind: 'crew',
+    config: {
+      tier: 'cheap',
+      max_iter: 2,
+      guardrail_max_retries: 2,
+      prompt_inputs: {},
+      crew_id: nodeId('brief'),
+    },
+  }
+}
+
+function toolNode(id: string): BuilderNode {
+  return {
+    id: nodeId(id),
+    label: id,
+    position: { x: 0, y: 0 },
+    kind: 'tool',
+    config: { tool_id: nodeId('tool'), params: {}, credential_id: null },
   }
 }
 
@@ -540,6 +569,303 @@ describe('dragging an edge endpoint keeps the edge rather than replacing it', ()
     })
 
     expect(store.commits).toEqual([])
+  })
+})
+
+/* --- the port table on the other side of the edge -------------------------- */
+
+describe('a target port exists only on the kinds that offer it', () => {
+  it('gives every flow kind `in`, and the two billable ones the structural ports', () => {
+    // The mirror `TARGET_PORTS_BY_KIND` states, read back through the one
+    // function `isValidConnection` and the card both call. `document.py` has
+    // `TARGET_PORTS` - the three legal strings - and does not yet say which
+    // kind offers which; when `/vocabulary` starts serving `target_ports` this
+    // table is deleted and read from there.
+    expect(targetPortsOf('agent')).toEqual(['in', 'attach'])
+    expect(targetPortsOf('crew')).toEqual(['in', 'attach', 'member'])
+    expect(targetPortsOf('gate')).toEqual(['in'])
+  })
+
+  it('gives an input node and all three attachments no target port at all', () => {
+    // `input` because it is where the run starts; the attachments because
+    // nothing flows INTO a possession. An author who could draw an edge into a
+    // tool would be describing a step, and a tool is not a step.
+    expect(targetPortsOf('input')).toEqual([])
+    expect(targetPortsOf('tool')).toEqual([])
+    expect(targetPortsOf('mcp')).toEqual([])
+    expect(targetPortsOf('skill')).toEqual([])
+  })
+
+  it('publishes the same list on the projection the card draws from', () => {
+    const { canvas } = canvasOver(document([crewNode('research'), toolNode('search')]))
+    const byId = new Map(canvas.nodes.value.map((node) => [node.id, node.data]))
+    expect(byId.get('research')?.targetPorts).toEqual(['in', 'attach', 'member'])
+    expect(byId.get('search')?.targetPorts).toEqual([])
+  })
+})
+
+describe('the three FD4 class rules are refusals, not counts', () => {
+  it('lets a tool attach to an agent and to a crew', () => {
+    const { canvas } = canvasOver(
+      document([toolNode('search'), agentNode('scoper'), crewNode('research')]),
+    )
+    for (const target of ['scoper', 'research']) {
+      expect(
+        canvas.isValidConnection({
+          source: 'search',
+          sourceHandle: 'attach',
+          target,
+          targetHandle: 'attach',
+        }),
+      ).toBe(true)
+    }
+  })
+
+  it('refuses an `attach` edge whose source is not an attachment kind', () => {
+    // A gate cannot be a possession. Only a tool, an MCP server or a skill can.
+    const { canvas } = canvasOver(document([gateNode('confirm'), agentNode('scoper')]))
+    expect(
+      canvas.isValidConnection({
+        source: 'confirm',
+        sourceHandle: 'approve',
+        target: 'scoper',
+        targetHandle: 'attach',
+      }),
+    ).toBe(false)
+  })
+
+  it('refuses `member` from anything but an agent, and accepts it from one', () => {
+    const { canvas } = canvasOver(
+      document([agentNode('scoper'), crewNode('research'), crewNode('other')]),
+    )
+    expect(
+      canvas.isValidConnection({
+        source: 'scoper',
+        sourceHandle: 'out',
+        target: 'research',
+        targetHandle: 'member',
+      }),
+    ).toBe(true)
+    // A crew inside a crew is a nesting the compiler has no shape for.
+    expect(
+      canvas.isValidConnection({
+        source: 'other',
+        sourceHandle: 'out',
+        target: 'research',
+        targetHandle: 'member',
+      }),
+    ).toBe(false)
+  })
+
+  it('refuses an attachment reaching an `in` port, the accident an author makes', () => {
+    // `in` is the big obvious port at the top of every card, so this is the
+    // wrong drop somebody really makes - and nothing an agent HAS is a step.
+    const { canvas } = canvasOver(document([toolNode('search'), agentNode('scoper')]))
+    expect(
+      canvas.isValidConnection({
+        source: 'search',
+        sourceHandle: 'attach',
+        target: 'scoper',
+        targetHandle: 'in',
+      }),
+    ).toBe(false)
+  })
+
+  it('refuses `attach` and `member` on a kind that offers neither', () => {
+    const { canvas } = canvasOver(document([toolNode('search'), gateNode('confirm')]))
+    expect(
+      canvas.isValidConnection({
+        source: 'search',
+        sourceHandle: 'attach',
+        target: 'confirm',
+        targetHandle: 'attach',
+      }),
+    ).toBe(false)
+  })
+})
+
+/* --- a refused drop says so and commits nothing ---------------------------- */
+
+/** A pointer event whose `target` is inside Vue Flow's own node wrapper. */
+function overCard(id: string): MouseEvent {
+  const card = window.document.createElement('div')
+  card.className = 'vue-flow__node'
+  card.setAttribute('data-id', id)
+  window.document.body.appendChild(card)
+  const event = new MouseEvent('mouseup', { clientX: 40, clientY: 40 })
+  Object.defineProperty(event, 'target', { value: card })
+  return event
+}
+
+describe('a drop released over a card that refused it flashes and does not commit', () => {
+  it('leaves the undo depth exactly where it was', () => {
+    // The real store, not the recording double, because the criterion is about
+    // `depth` - and a double that reports its own idea of depth would certify
+    // nothing. `depth` is 0 before and 0 after: no commit was made to undo.
+    const store = useBuilderDocument(document([toolNode('search'), agentNode('scoper')]))
+    const canvas = useBuilderCanvas({
+      document: {
+        doc: store.doc,
+        addNode: (node, connectFrom) =>
+          store.addNode(node, connectFrom ? { edge: { ...connectFrom, target: node.id } } : undefined),
+        addEdge: (origin, target) => store.addEdge({ ...origin, target }),
+        moveNodes: (moves) => store.moveNodes(moves),
+        deleteSelection: (nodes, edges) => store.deleteSelection(nodes, edges),
+        setEdgePort: (edge, port) => store.setEdgePort(edge, port),
+        retargetEdge: () => undefined,
+        setJoin: (node, join) => store.setJoin(node, join === 'all'),
+      },
+    })
+
+    expect(store.depth.value).toBe(0)
+    canvas.onConnectStart({ nodeId: 'search', handleId: 'attach' })
+    canvas.onConnectEnd(overCard('scoper'))
+
+    expect(store.depth.value).toBe(0)
+    expect(store.doc.value.edges).toEqual([])
+  })
+
+  it('does not open the port menu, because the author was pointing at a node', () => {
+    // `PortMenu` offers to CREATE a node. Opening it here would answer a
+    // question nobody asked and hide the refusal behind a menu, which is the
+    // Flowise v2 failure - its cycle rejection does nothing at all.
+    const { store, canvas } = canvasOver(document([toolNode('search'), agentNode('scoper')]))
+    canvas.onConnectStart({ nodeId: 'search', handleId: 'attach' })
+    canvas.onConnectEnd(overCard('scoper'))
+
+    expect(canvas.portMenuRequest.value).toBeNull()
+    expect(store.commits).toEqual([])
+  })
+
+  it('marks the card refused, so the canvas says no out loud', () => {
+    const { canvas } = canvasOver(document([toolNode('search'), agentNode('scoper')]))
+    canvas.onConnectStart({ nodeId: 'search', handleId: 'attach' })
+    canvas.onConnectEnd(overCard('scoper'))
+
+    const scoper = canvas.nodes.value.find((node) => node.id === 'scoper')
+    expect(scoper?.data.refused).toBe(true)
+  })
+
+  it('still opens the port menu when the drop really was on the background', () => {
+    const { canvas } = canvasOver(document([agentNode('scoper'), agentNode('writer')]))
+    canvas.onConnectStart({ nodeId: 'scoper', handleId: 'out' })
+    const onPane = new MouseEvent('mouseup', { clientX: 12, clientY: 12 })
+    Object.defineProperty(onPane, 'target', { value: window.document.createElement('div') })
+    canvas.onConnectEnd(onPane)
+
+    expect(canvas.portMenuRequest.value?.origin).toEqual({ source: 'scoper', source_port: 'out' })
+  })
+})
+
+/* --- the pixels (criterion 1) ---------------------------------------------- */
+
+/**
+ * `builder.css`, parsed by jsdom, and read two different ways.
+ *
+ * The handle itself is asked through `getComputedStyle`, which is the real
+ * cascade over a real element. The disc has to be read off the CSSOM rule
+ * instead, because jsdom does not implement `getComputedStyle(el, '::after')`
+ * at all - it logs "Not implemented" and hands back the element's own style,
+ * which would silently pass. A rule read out of the real file is still the
+ * single source of truth; what it is not is a layout, and MISSION.md's trap 13
+ * is that a jsdom mount never asks how wide anything ended up. The BROWSER
+ * answer is `e2e/builder.spec.ts`, which measures the bounding box.
+ */
+describe('the hit target is 24px and the disc inside it is 12px', () => {
+  let sheet: CSSStyleSheet
+
+  beforeAll(() => {
+    const css = readFileSync(path.resolve(process.cwd(), 'src/assets/styles/builder.css'), 'utf8')
+    const style = window.document.createElement('style')
+    style.textContent = css
+    window.document.head.appendChild(style)
+    sheet = style.sheet as CSSStyleSheet
+  })
+
+  function ruleFor(selector: string): CSSStyleDeclaration {
+    const rule = Array.from(sheet.cssRules)
+      .filter((entry): entry is CSSStyleRule => entry instanceof CSSStyleRule)
+      .find((entry) => entry.selectorText.replace(/\s+/g, ' ').trim() === selector)
+    expect(rule, 'builder.css has no rule for ' + selector).toBeDefined()
+    return (rule as CSSStyleRule).style
+  }
+
+  it('computes the handle at 24 by 24 with nothing drawn on it', () => {
+    const handle = window.document.createElement('div')
+    handle.className = 'builder-port vue-flow__handle is-port-out'
+    window.document.body.appendChild(handle)
+    const computed = window.getComputedStyle(handle)
+
+    expect(computed.width).toBe('24px')
+    expect(computed.height).toBe('24px')
+    // Transparent, because the 24px box is the TARGET. A 24px block of accent
+    // would read as a button rather than as a port.
+    expect(computed.backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(computed.borderTopWidth).toBe('0px')
+  })
+
+  it('draws the visible disc at 12px, centred inside that box', () => {
+    const disc = ruleFor('.builder-port.vue-flow__handle::after')
+    expect(disc.width).toBe('12px')
+    expect(disc.height).toBe('12px')
+    expect(disc.borderRadius).toBe('var(--r-full)')
+    expect(disc.transform).toBe('translate(-50%, -50%)')
+  })
+
+  it('keeps twice the target it draws, which is the whole point', () => {
+    const handle = ruleFor('.builder-port.vue-flow__handle')
+    const disc = ruleFor('.builder-port.vue-flow__handle::after')
+    expect(Number.parseFloat(handle.width)).toBe(2 * Number.parseFloat(disc.width))
+    // Flowise v1 is 10px hit on a 10px visual and v2 is a 20px hit target that
+    // is INVISIBLE until the node is hovered. This is large and visible at once.
+    expect(Number.parseFloat(handle.width)).toBeGreaterThan(10)
+    expect(Number.parseFloat(disc.width)).toBeGreaterThanOrEqual(10)
+  })
+
+  it('restates the per-side offset in all four hover transforms', () => {
+    // A hover rule that writes only `scale()` drops Vue Flow's centring offset,
+    // and the port jumps half its own height the moment the pointer arrives -
+    // which reads as the target running away, on the one control where that is
+    // fatal. All four sides, because D1 puts ports on all four.
+    expect(ruleFor('.builder-node:hover .builder-port.vue-flow__handle-bottom').transform).toBe(
+      'translate(-50%, 50%) scale(1.33)',
+    )
+    expect(ruleFor('.builder-node:hover .builder-port.vue-flow__handle-top').transform).toBe(
+      'translate(-50%, -50%) scale(1.33)',
+    )
+    expect(ruleFor('.builder-node:hover .builder-port.vue-flow__handle-left').transform).toBe(
+      'translate(-50%, -50%) scale(1.33)',
+    )
+    expect(ruleFor('.builder-node:hover .builder-port.vue-flow__handle-right').transform).toBe(
+      'translate(50%, -50%) scale(1.33)',
+    )
+  })
+
+  it('gives the two structural ports a shape rather than only a colour', () => {
+    // At 50% zoom the disc is six pixels across, and six pixels of violet
+    // against six of mint is not a distinction. A square still reads as a
+    // square, and a diamond as a diamond, in print and under deuteranopia too.
+    const attach = ruleFor('.builder-port.is-port-attach::after')
+    expect(attach.borderRadius).toBe('1px')
+    expect(attach.borderColor).toBe('var(--accent-attach)')
+
+    const member = ruleFor('.builder-port.is-port-member::after')
+    expect(member.borderRadius).toBe('1px')
+    expect(member.transform).toBe('translate(-50%, -50%) rotate(45deg)')
+  })
+
+  it('paints the connect-drag answer on the disc, green for yes and red for no', () => {
+    expect(ruleFor('.builder-port.vue-flow__handle-valid::after').background).toBe(
+      'var(--accent-mint)',
+    )
+    expect(ruleFor('.builder-port.vue-flow__handle-valid').cursor).toBe('crosshair')
+    const refused = ruleFor(
+      '.builder-port.vue-flow__handle-connecting:not(.vue-flow__handle-valid)::after',
+    )
+    expect(refused.background).toBe('var(--err-text)')
+    expect(
+      ruleFor('.builder-port.vue-flow__handle-connecting:not(.vue-flow__handle-valid)').cursor,
+    ).toBe('not-allowed')
   })
 })
 

@@ -14,6 +14,7 @@ import type {
   NodeKind,
   NodePosition,
   Severity,
+  TargetPort,
 } from '../types/builder'
 
 /**
@@ -121,6 +122,75 @@ export type DistributeAxis = (typeof DISTRIBUTE_AXES)[number]
 /** The kinds that may legally close a loop, per `bounds.py`'s `back-edge-not-router`. */
 const LOOP_CLOSING_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['gate', 'router'])
 
+/**
+ * Which target ports each kind offers, in the order the card draws them.
+ *
+ * `document.py:TARGET_PORTS` is the set of THREE strings an edge may arrive at;
+ * what it does not yet say is which kind offers which, because `/vocabulary`
+ * does not serve `target_ports` until C2 v2 lands (02-canvas.md Interfaces).
+ * So this is a client-side mirror of a server table that does not exist yet,
+ * and it is written here - beside `isValidConnection`, the one function that
+ * consumes it - rather than in `nodeKinds.ts`, which is plan 03's and whose
+ * mirror `nodeKinds.spec.ts` proves against the Python at run time. Putting an
+ * unprovable table in the provable file is how a mirror stops being a mirror.
+ *
+ * The three rows are not arbitrary and each one is `document.py`'s own sentence
+ * read from the other end:
+ *
+ *   `in`      - every kind whose `accepts_incoming` is true. The flow itself.
+ *   `attach`  - `agent` and `crew`, the two kinds that can HAVE a possession.
+ *   `member`  - `crew` alone, because membership is of a crew.
+ *
+ * REPORT rather than invent when this moves: the moment `vocabulary` carries
+ * `target_ports`, this constant should be deleted and read from there, and the
+ * test that guards it should read the Python the way `nodeKinds.spec.ts` does.
+ */
+const TARGET_PORTS_BY_KIND: Readonly<Record<NodeKind, readonly TargetPort[]>> = {
+  input: [],
+  agent: ['in', 'attach'],
+  crew: ['in', 'attach', 'member'],
+  gate: ['in'],
+  router: ['in'],
+  transform: ['in'],
+  output: ['in'],
+  tool: [],
+  mcp: [],
+  skill: [],
+}
+
+/** The target ports a kind draws, and the ones `isValidConnection` will accept. */
+export function targetPortsOf(kind: NodeKind): readonly TargetPort[] {
+  return TARGET_PORTS_BY_KIND[kind]
+}
+
+/** The four ways an edge can be drawn, and the only four (02-canvas.md D4). */
+export type EdgeClass = 'flow' | 'attach' | 'member' | 'error'
+
+/**
+ * Which class an edge is, from the edge's own two port fields and nothing else.
+ *
+ * THE RULE, and it is the reason this is four lines rather than a lookup: an
+ * edge's class is decided by strings the EDGE carries, never by what kind the
+ * source node happened to be. `bounds.py` decides the same question from the
+ * same two fields, so there is one string for the two sides to agree about
+ * instead of a table of ten kinds each side maintains separately - which is
+ * exactly the shape of drift `nodeKinds.ts`'s docblock is written against.
+ *
+ * `target_port` answers three of the four. The fourth, `error`, is the one
+ * departure from "`target_port` alone" that `types/builder.ts` states, and
+ * D4's own table marks it as such: an error exit arrives at an ordinary `in`
+ * port and what makes it different is that it LEFT by `error`. That is still a
+ * field of the edge, so the rule the settled contract is protecting - do not
+ * look at the source node - holds exactly. Assumption recorded in the plan's
+ * Status.
+ */
+export function edgeClassOf(edge: { source_port: string; target_port: TargetPort }): EdgeClass {
+  if (edge.target_port === 'attach') return 'attach'
+  if (edge.target_port === 'member') return 'member'
+  if (edge.source_port === 'error') return 'error'
+  return 'flow'
+}
+
 /* --- what the canvas needs from the packages either side of it ------------ */
 
 /**
@@ -166,7 +236,19 @@ export interface EdgeOrigin {
  */
 export interface CanvasDocumentStore {
   readonly doc: ValueOf<BuilderDocument>
-  addNode(node: BuilderNode, connectFrom?: EdgeOrigin | null): void
+  /**
+   * `attachTo` is the third argument because an attachment edge points the
+   * OTHER WAY: the tool is the source and the agent is the target, so
+   * `connectFrom` - which names the fixed end of a flow edge that reaches the
+   * new node - cannot express it. Both are optional and at most one is ever
+   * passed; a drop that attaches is still ONE commit, which is what makes a
+   * single Ctrl+Z remove the tool AND its wire (criterion 11).
+   */
+  addNode(
+    node: BuilderNode,
+    connectFrom?: EdgeOrigin | null,
+    attachTo?: { target: NodeId; target_port: TargetPort } | null,
+  ): void
   addEdge(origin: EdgeOrigin, target: NodeId): void
   moveNodes(moves: readonly NodeMove[], coalesceKey?: string): void
   deleteSelection(nodes: readonly NodeId[], edges: readonly EdgeId[]): void
@@ -228,6 +310,13 @@ export interface BuilderNodeData {
   index: number
   ports: readonly string[]
   acceptsIncoming: boolean
+  /**
+   * The target ports this card draws, in canvas order - `in`, then `attach`,
+   * then `member`. Projected rather than computed on the card for the same
+   * reason `ports` is: a drawn port that `isValidConnection` refuses is the
+   * silent disagreement §6.1 exists to prevent.
+   */
+  targetPorts: readonly TargetPort[]
   problems: readonly BuilderProblem[]
   severity: Severity | null
   /** `joins[id] === 'all'` - the card's `Σ` glyph and the edges' AND bracket. */
@@ -295,6 +384,14 @@ export interface BuilderNodeData {
    * sixteen arrivals at once.
    */
   landing: boolean
+  /**
+   * A connect drag was just released over this card and refused (D2).
+   *
+   * One-shot, cleared on a timer for `--motion-medium`, and it exists because
+   * the alternative is Flowise Agentflow v2's: the drop does nothing at all and
+   * the author learns that the canvas is broken rather than that the edge was.
+   */
+  refused: boolean
 }
 
 /** What `BuilderEdge.vue` receives as `data`. */
@@ -309,6 +406,19 @@ export interface BuilderEdgeData {
   portRole: 'approve' | 'revise' | 'branch' | 'otherwise' | null
   /** `joins[target] === 'all'`, so the inbound edges draw into the AND bracket. */
   joinTarget: boolean
+  /** Exactly one of the four, from `edgeClassOf`. Drives `is-class-*` and the stroke. */
+  edgeClass: EdgeClass
+  /**
+   * The source and target KIND accents, for the flow gradient (D4).
+   *
+   * Resolved here rather than in the edge, because the edge is handed two node
+   * ids and looking a node up from inside a renderer that mounts once per wire
+   * is O(N) per edge per frame. They are `nodeKinds.ts`'s `accent` values
+   * verbatim - the same string the minimap dot and the card squircle use - so a
+   * gradient stop can never be a colour the node itself is not.
+   */
+  sourceAccent: string
+  targetAccent: string
 }
 
 /**
@@ -364,6 +474,24 @@ export interface BuilderCanvasOptions {
 }
 
 const EMPTY_PROBLEMS: ReadonlyMap<string, readonly BuilderProblem[]> = new Map()
+/** The gradient stop for an endpoint that is not in the document. See the edge projection. */
+const ACCENT_FALLBACK = '#777a7c'
+/** `--motion-medium`, in milliseconds, for the refused-drop flash (D2). */
+const REFUSED_FLASH_MS = 260
+/** `.builder-node.is-pill`'s declared width, for the hit test's fallback box. */
+export const ATTACHMENT_NODE_WIDTH = 160
+/** Two grid steps between an attachment and the card it hangs off. */
+const ATTACH_GAP = GRID * 2
+/** How far down the next attachment on the same host is parked. */
+const ATTACH_ROW_STEP = GRID * 3
+/** The two kinds that can HAVE an attachment, per `TARGET_PORTS_BY_KIND`. */
+const ATTACH_HOST_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['agent', 'crew'])
+
+/** What `dropKind` reports back: the node it made, and what it hung it off. */
+export interface DropResult {
+  nodeId: NodeId
+  attachedTo: NodeId | null
+}
 const NO_PROBLEMS: readonly BuilderProblem[] = []
 
 /** Rounds to the visible grid, and to an integer. Both, always, in that order. */
@@ -435,6 +563,9 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
    */
   const announcement = ref('')
   const flashingId = shallowRef<string | null>(null)
+  /** The card a connect drag was just refused over, for `--motion-medium` (D2). */
+  const refusedId = shallowRef<string | null>(null)
+  let refusedTimer: ReturnType<typeof setTimeout> | null = null
   /** Which node `R` most recently asked to rename. Cleared by the card. */
   const renamingId = shallowRef<NodeId | null>(null)
   /**
@@ -533,6 +664,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
       : null
     const linkCurrentId = link ? (link.candidates[link.index] as string | undefined) ?? null : null
     const renaming = renamingId.value
+    const refused = refusedId.value
     // Trimmed and lower-cased once per recompute rather than once per node.
     const filter = filterQuery.value.trim().toLowerCase()
     // One pass over the edges rather than `inboundCount` per node, which would
@@ -549,6 +681,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
         index: index + 1,
         ports: outPortsOf(node),
         acceptsIncoming: meta.acceptsIncoming,
+        targetPorts: targetPortsOf(node.kind),
         problems,
         severity: worst(problems),
         joined: document.joins[node.id] === 'all',
@@ -575,6 +708,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
           !(node.label.toLowerCase().includes(filter) || node.id.toLowerCase().includes(filter)),
         inbound: inbound.get(node.id) ?? 0,
         landing: landingIds.value.has(node.id),
+        refused: refused === node.id,
       }
       return {
         id: node.id,
@@ -598,6 +732,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     return document.edges.map((edge, index) => {
       const problems = edgeProblems.get(edge.id) ?? NO_PROBLEMS
       const source = byId.get(edge.source)
+      const target = byId.get(edge.target)
       const data: BuilderEdgeData = {
         edge,
         problems,
@@ -606,6 +741,12 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
         portLabel: portLabelFor(source, edge),
         portRole: portRoleFor(source, edge),
         joinTarget: document.joins[edge.target] === 'all',
+        edgeClass: edgeClassOf(edge),
+        // `--edge-inactive` for an endpoint the document does not contain: that
+        // is an `edge-unknown-endpoint` the problems panel has to be able to
+        // point at a DRAWN wire, so it is painted plainly rather than dropped.
+        sourceAccent: source ? NODE_KINDS[source.kind].accent : ACCENT_FALLBACK,
+        targetAccent: target ? NODE_KINDS[target.kind].accent : ACCENT_FALLBACK,
       }
       return {
         id: edge.id,
@@ -760,14 +901,38 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     const target = document.nodes.find((node) => node.id === connection.target)
     if (!source || !target) return false
 
-    // `in` is the only target port the schema has ever had, and a node that
-    // refuses incoming edges renders none at all - so this pair is a parse
-    // refusal twice over.
-    if (!NODE_KINDS[target.kind].acceptsIncoming) return false
-    if ((connection.targetHandle ?? 'in') !== 'in') return false
+    // The target port has to be one the TARGET KIND offers. `input` and the
+    // three attachment kinds offer none at all and render none at all, so that
+    // pair is a parse refusal twice over; `attach` on a gate and `member` on an
+    // agent are refusals of the same kind, a `target_port` the schema will not
+    // accept for that node.
+    const targetPort = (connection.targetHandle ?? 'in') as TargetPort
+    if (!targetPortsOf(target.kind).includes(targetPort)) return false
 
     const port = connection.sourceHandle ?? 'out'
     if (!outPortsOf(source).includes(port)) return false
+
+    /*
+     * The three class rules of 03-node-library.md FD4.
+     *
+     * Each one is a shape the SCHEMA refuses rather than a count the server
+     * reports, which is the only test for belonging in this function: a tool
+     * wired into an agent's `in` port is not a step that happens to be badly
+     * ordered, it is a category error the compiler has no node to build from.
+     * They are stated on the SOURCE's family and kind because the target port
+     * has already been established, so between them the two ends of the edge
+     * are pinned by two independent facts rather than by one inference.
+     */
+    const sourceFamily = NODE_KINDS[source.kind].family
+    // Only a tool, an MCP server or a skill may hang off something.
+    if (targetPort === 'attach' && sourceFamily !== 'attachment') return false
+    // Only an agent can be a member of a crew. A crew inside a crew is a
+    // nesting the compiler has no shape for.
+    if (targetPort === 'member' && source.kind !== 'agent') return false
+    // And nothing an agent HAS is a step in the flow. This is the mirror of the
+    // rule above and it is the one an author reaches by accident, because the
+    // `in` port is the big obvious one at the top of every card.
+    if (targetPort === 'in' && sourceFamily === 'attachment') return false
 
     const triple = tripleOf(source.id, port, target.id)
     const drag = connectDrag.value
@@ -820,10 +985,54 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
       return
     }
     if (!drag || !event || !('clientX' in event)) return
+
+    /*
+     * A drop that landed ON A CARD and was refused is not a drop on empty
+     * canvas, and opening `PortMenu` for it would be the wrong answer twice
+     * over: it offers to create a NEW node when the author was pointing at an
+     * existing one, and it hides the refusal behind a menu. So the card flashes
+     * (D2) and the menu stays shut. Everything genuinely released over the
+     * background still opens the menu, which is §4.1's gesture and is
+     * unchanged.
+     *
+     * The hit test is the DOM's, not ours (R2): whatever the pointer was over
+     * carries `data-id` on its `.vue-flow__node` ancestor, and Vue Flow put it
+     * there. Recomputing it from coordinates would be a second opinion about a
+     * question the browser has already answered.
+     */
+    const overNode = nodeIdUnder(event.target)
+    if (overNode !== null) {
+      flashRefused(overNode)
+      return
+    }
     portMenuRequest.value = {
       origin: { source: drag.source, source_port: drag.port },
       at: { x: event.clientX, y: event.clientY },
     }
+  }
+
+  /** The id of the card the pointer was over, or null for the background. */
+  function nodeIdUnder(target: EventTarget | null): string | null {
+    if (!(target instanceof Element)) return null
+    const card = target.closest('.vue-flow__node')
+    return card?.getAttribute('data-id') ?? null
+  }
+
+  /**
+   * Mark a card refused for `--motion-medium`, then stop.
+   *
+   * A timer rather than `animationend`, for the reason `flash` already gives:
+   * under `prefers-reduced-motion` the animation is `none`, so `animationend`
+   * never fires and the class would sit on the card for the rest of the
+   * session.
+   */
+  function flashRefused(id: string): void {
+    if (refusedTimer) clearTimeout(refusedTimer)
+    refusedId.value = id
+    refusedTimer = setTimeout(() => {
+      refusedId.value = null
+      refusedTimer = null
+    }, REFUSED_FLASH_MS)
   }
 
   function onConnect(connection: {
@@ -934,9 +1143,99 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
    * `document.py`, pydantic coerces `120.0` but refuses `120.5`, and the refusal
    * arrives as a 422 on a save minutes after the drop that caused it.
    */
-  function dropKind(kind: NodeKind, at: XYPosition, connectFrom: EdgeOrigin | null = null): void {
-    if (!bridge) return
-    createAt(kind, bridge.screenToFlowCoordinate(at), connectFrom)
+  function dropKind(
+    kind: NodeKind,
+    at: XYPosition,
+    connectFrom: EdgeOrigin | null = null,
+  ): DropResult | null {
+    if (!bridge) return null
+    const point = bridge.screenToFlowCoordinate(at)
+
+    /*
+     * ATTACH-BY-DROP (D8). Dropping a tool, an MCP server or a skill INSIDE an
+     * agent or crew card is the gesture, and it is one commit: the node and the
+     * `attach` edge together, labelled `Attach tool`, so one Ctrl+Z removes
+     * both. Two commits would leave an author who pressed undo once looking at
+     * a pill they never placed, hanging off nothing.
+     *
+     * A drop on empty canvas is deliberately still legal and creates an
+     * unattached node - the author may be laying out before wiring, and
+     * `bounds.py` reporting `attachment-unattached` is a sentence they can read
+     * where a refused drop is not. Contract request in the plan's Status.
+     */
+    if (NODE_KINDS[kind].family === 'attachment') {
+      const host = hitTestNode(point, ATTACH_HOST_KINDS)
+      if (host) return attachTo(kind, host)
+    }
+
+    const node = createAt(kind, point, connectFrom)
+    return { nodeId: node.id, attachedTo: null }
+  }
+
+  /**
+   * Which card contains a flow-space point, or null.
+   *
+   * LAST match wins, because document order is paint order: the card an author
+   * sees on top of a stack is the one the drop belongs to. Sizes come from the
+   * mounted instance where it has measured one, and from the §5.2 defaults
+   * where it has not - the same fallback `align` and the minimap already use,
+   * so a card that has not painted yet is a slightly wrong box rather than a
+   * zero-area one that can never be hit.
+   */
+  function hitTestNode(point: NodePosition, kinds?: ReadonlySet<NodeKind>): NodeId | null {
+    let found: NodeId | null = null
+    for (const node of doc().nodes) {
+      if (kinds && !kinds.has(node.kind)) continue
+      const measured = bridge?.getNodeSize(node.id) ?? null
+      const width = measured?.width || defaultWidthOf(node.kind)
+      const height = measured?.height || DEFAULT_NODE_HEIGHT
+      if (point.x < node.position.x || point.x > node.position.x + width) continue
+      if (point.y < node.position.y || point.y > node.position.y + height) continue
+      found = node.id
+    }
+    return found
+  }
+
+  /**
+   * The new attachment, parked to the LEFT of its host, wired in one commit.
+   *
+   * Left, because D1 puts the host's `attach` port on its left edge and an
+   * attachment's own `attach` port on its right - so the wire runs horizontally
+   * and a wired agent stays readable against the vertical flow. Dropped ON the
+   * card, the pill would land under the thing it is attached to and the author
+   * would have to move it before they could read either.
+   *
+   * The vertical stagger counts the attachments the host ALREADY has, so
+   * dropping three tools on one agent produces three legible rows rather than
+   * three pills in one place. It is a starting position and nothing more: the
+   * author drags it wherever they like and that is an ordinary move.
+   */
+  function attachTo(kind: NodeKind, host: NodeId): DropResult {
+    const document = doc()
+    const target = document.nodes.find((node) => node.id === host)
+    if (!target) return { nodeId: host, attachedTo: null }
+    const already = document.edges.filter(
+      (edge) => edge.target === host && edge.target_port === 'attach',
+    ).length
+    const node = newNode(
+      kind,
+      {
+        x: snapToGrid(target.position.x - ATTACHMENT_NODE_WIDTH - ATTACH_GAP),
+        y: snapToGrid(target.position.y + already * ATTACH_ROW_STEP),
+      },
+      document.nodes.map((existing) => existing.id),
+    )
+    store.addNode(node, null, { target: host, target_port: 'attach' })
+    setSelection([node.id], [])
+    anchorId.value = node.id
+    return { nodeId: node.id, attachedTo: host }
+  }
+
+  /** A pill is 160px wide and a card 240; the hit test needs to know which. */
+  function defaultWidthOf(kind: NodeKind): number {
+    return NODE_KINDS[kind].family === 'attachment'
+      ? ATTACHMENT_NODE_WIDTH
+      : DEFAULT_NODE_WIDTH
   }
 
   /** The same, at a point already in flow coordinates. */
@@ -1465,6 +1764,7 @@ export function useBuilderCanvas(options: BuilderCanvasOptions) {
     clearSelection,
     setSelection,
     dropKind,
+    hitTestNode,
     createAt,
     insertKind,
     onNodeDragStart,

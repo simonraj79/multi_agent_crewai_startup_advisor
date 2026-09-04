@@ -34,6 +34,16 @@
   --kind-tool: #c3a6ff;
   --kind-mcp: #d5b8ff;
   --kind-skill: #e0ccff;
+  /* The ATTACHMENT EDGE and PORT colour (02-canvas.md D1, D4).
+
+     Deliberately the same hex as `--kind-tool` today and deliberately NOT an
+     alias of it, because the two are different facts that only happen to agree:
+     `--kind-tool` says "this node is a tool", while this says "this wire hangs
+     a possession off an agent" - and an `attach` edge from an `mcp` node is
+     still this colour, not `--kind-mcp`. Aliasing them would make a later
+     re-hue of the tool tile silently re-hue every attachment edge in the graph,
+     including the ones that have nothing to do with tools. */
+  --accent-attach: #c3a6ff;
   --gradient-brand: linear-gradient(135deg, #aaffcd, #99eaf9, #a0c4ff);
   --gradient-danger: linear-gradient(135deg, #e07152, #dc5d4c, #bd4a4a);
   --link-cyan: #7dc6ff;
@@ -49,6 +59,14 @@
   --dot-size: 1px;
   --edge-stroke: #f2f2f2;
   --edge-width: 1.2px;
+  /* The two design-time edge weights (02-canvas.md D4). `--edge-width` itself
+     is NOT touched: `WorkflowEdge.vue` reads the same token in the run console,
+     and re-weighting a wire in a view this plan does not own is exactly the
+     kind of change that lands as an unexplained visual diff three plans later.
+     A flow edge is the load-bearing one and is heavier than the structural
+     wires, which say what a node HAS rather than what happens next. */
+  --edge-width-flow: 1.5px;
+  --edge-width-attach: 1px;
   --edge-inactive: #777a7c;
   --edge-label-bg: rgba(10, 10, 10, 0.92);
   --edge-label-brd: rgba(242, 242, 242, 0.72);

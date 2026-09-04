@@ -476,35 +476,97 @@
    §5.3 - ports
    ===========================================================================
 
-   9px at rest. Hover scales by TRANSFORM and not by width, so a port growing
-   under the pointer never reflows the footer or nudges its neighbour - the
-   thing that makes a small target feel like it is running away. */
+   THE HIT TARGET IS 24px AND THE DISC IS 12px, and they are two elements
+   (02-canvas.md D1). The handle itself is a transparent 24x24 box and the thing
+   an author can see is its `::after`, so the pointer target is twice the width
+   of the mark it is aiming at without the canvas looking like plumbing. It was
+   9px/9px until 2026-09-04 - hit target equal to the visual - which is the
+   shape of defect rubric 3 names by example, and below Flowise's own 10px floor
+   at rest. Flowise v2 goes the other way and hides its 20px output port until
+   you hover the node, so the target is large and INVISIBLE; here it is large
+   and the mark is small, which is the same affordance without the guessing.
+
+   Hover scales by TRANSFORM and not by width, so a port growing under the
+   pointer never reflows the footer or nudges its neighbour - the thing that
+   makes a small target feel like it is running away. Scaling the HANDLE rather
+   than the disc means the hit target grows with the mark (24 -> 32, 12 -> 16),
+   which is the direction that helps. */
 .builder-port.vue-flow__handle {
-  width: 9px;
-  height: 9px;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  opacity: 1;
+  transition: transform var(--motion-fast) ease, opacity var(--motion-fast) ease;
+}
+/* The visible disc. Every colour, shape and border rule below lands HERE and
+   not on the handle, because the handle is the hit target and a 24px block of
+   accent would read as a button rather than as a port. */
+.builder-port.vue-flow__handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
   background: var(--bg-node);
   border: 1.5px solid var(--accent-cyan);
   border-radius: var(--r-full);
-  opacity: 1;
-  transition: transform var(--motion-fast) ease, opacity var(--motion-fast) ease,
-    border-color var(--motion-fast) ease, background var(--motion-fast) ease;
+  transform: translate(-50%, -50%);
+  transition: border-color var(--motion-fast) ease, background var(--motion-fast) ease;
 }
 /* The per-side offset has to be RESTATED in the hover transform, not replaced.
    Vue Flow centres a handle on the card's edge with `translate(-50%, 50%)` at
-   the bottom and `translate(-50%, -50%)` at the top; a hover rule that writes
-   only `scale()` drops that offset and the port jumps half its own height the
-   moment the pointer arrives - which reads as the target running away, on the
-   one control where that is fatal. */
+   the bottom, `translate(-50%, -50%)` at the top and at the left, and
+   `translate(50%, -50%)` at the right; a hover rule that writes only `scale()`
+   drops that offset and the port jumps half its own height the moment the
+   pointer arrives - which reads as the target running away, on the one control
+   where that is fatal. All four sides are named now, because D1 puts `attach`
+   and `member` on the left edge and an attachment's own `attach` on the right,
+   so that attachment wires run horizontally and flow wires run vertically. */
 .builder-node:hover .builder-port.vue-flow__handle-bottom { transform: translate(-50%, 50%) scale(1.33); }
 .builder-node:hover .builder-port.vue-flow__handle-top { transform: translate(-50%, -50%) scale(1.33); }
+.builder-node:hover .builder-port.vue-flow__handle-left { transform: translate(-50%, -50%) scale(1.33); }
+.builder-node:hover .builder-port.vue-flow__handle-right { transform: translate(50%, -50%) scale(1.33); }
 
-.builder-port.is-approve  { border-color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 30%, var(--bg-node)); }
-.builder-port.is-revise   { border-color: var(--warn-text);   background: color-mix(in srgb, var(--warn-text) 30%, var(--bg-node)); }
-.builder-port.is-branch   { border-color: var(--link-cyan);   background: color-mix(in srgb, var(--link-cyan) 30%, var(--bg-node)); }
+.builder-port.is-approve::after  { border-color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 30%, var(--bg-node)); }
+.builder-port.is-revise::after   { border-color: var(--warn-text);   background: color-mix(in srgb, var(--warn-text) 30%, var(--bg-node)); }
+.builder-port.is-branch::after   { border-color: var(--link-cyan);   background: color-mix(in srgb, var(--link-cyan) 30%, var(--bg-node)); }
 /* The `otherwise` port is what happens when every declared comparison missed,
    so it is drawn as the fallback it is: dashed and muted, never the same weight
    as a branch somebody wrote a condition for. */
-.builder-port.is-otherwise { border-style: dashed; border-color: var(--text-40); background: var(--bg-node); }
+.builder-port.is-otherwise::after { border-style: dashed; border-color: var(--text-40); background: var(--bg-node); }
+
+/* SHAPE CARRIES CLASS WHERE COLOUR IS LOST (D1). At 50% zoom the disc is six
+   pixels across, and six pixels of violet against six pixels of mint is a
+   distinction nobody makes - in print or under deuteranopia it is not a
+   distinction at all. A square is still a square at six pixels, and a diamond
+   is still a diamond, so the port's CLASS survives every channel its colour
+   does not. */
+.builder-port.is-port-attach::after {
+  width: 11px;
+  height: 11px;
+  border-radius: 1px;
+  border-color: var(--accent-attach);
+  background: color-mix(in srgb, var(--accent-attach) 30%, var(--bg-node));
+}
+.builder-port.is-port-member::after {
+  width: 10px;
+  height: 10px;
+  border-radius: 1px;
+  border-color: var(--accent-mint);
+  background: color-mix(in srgb, var(--accent-mint) 30%, var(--bg-node));
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+/* The error exit of a node whose `on_error` is `route`. A disc, because it is
+   a flow port like `out` and the thing that separates it is that it is red and
+   permanently labelled - a second shape here would say it was a different KIND
+   of connection, which it is not. */
+.builder-port.is-port-error::after {
+  border-color: var(--err-text);
+  background: color-mix(in srgb, var(--err-text) 30%, var(--bg-node));
+}
 
 /* Permanently visible port labels. NEVER hover-only: which of a gate's two
    exits an edge leaves by is the single fact the canvas exists to show, and
@@ -523,6 +585,7 @@
 .builder-port-label.is-revise    { color: var(--warn-text); }
 .builder-port-label.is-branch    { color: var(--link-cyan); }
 .builder-port-label.is-otherwise { color: var(--text-40); font-style: italic; }
+.builder-port-label.is-port-error { color: var(--err-text); }
 
 /* The connect-drag affordance.
 
@@ -541,9 +604,41 @@
    holding. */
 .builder-canvas.is-connecting .builder-port.is-port-in:not(.is-port-ready) { opacity: 0.25; }
 .builder-canvas.is-connecting .builder-port.is-port-out { opacity: 0.25; }
-.builder-port.is-port-ready {
+.builder-port.is-port-ready::after { border-color: var(--accent-mint); }
+.builder-port.is-port-ready { animation: builder-port-ready 1.2s ease-in-out infinite; }
+
+/* RED AND GREEN UNDER THE POINTER (D2), and Vue Flow sets both classes itself -
+   `vue-flow__handle-connecting` on whatever the pointer is over during a drag,
+   `vue-flow__handle-valid` on it as well when `isValidConnection` said yes.
+   Flowise has exactly these two rules (`views/canvas/index.css:41-49`) and they
+   are the reason its refusals are legible; Agentflow v2 dropped the type check
+   and its cycle rejection is SILENT - the drop just does nothing, which is the
+   failure this pair exists to avoid.
+
+   `is-port-ready` is the answer BEFORE the pointer arrives and these two are
+   the answer once it has, so they are allowed to win: both are more specific
+   than the pulse rule above and both come after it. */
+.builder-port.vue-flow__handle-valid { cursor: crosshair; }
+.builder-port.vue-flow__handle-valid::after {
   border-color: var(--accent-mint);
-  animation: builder-port-ready 1.2s ease-in-out infinite;
+  background: var(--accent-mint);
+}
+.builder-port.vue-flow__handle-connecting:not(.vue-flow__handle-valid) { cursor: not-allowed; }
+.builder-port.vue-flow__handle-connecting:not(.vue-flow__handle-valid)::after {
+  border-color: var(--err-text);
+  background: var(--err-text);
+}
+
+/* A refused drop says so on the CARD, for `--motion-medium`, and then stops.
+
+   The alternative is what Flowise v2 does - nothing at all - and it teaches an
+   author that the canvas is broken rather than that the edge was wrong. The
+   flash is on the card and not on the port because a drop that missed every
+   handle has no port to flash, and "you cannot connect to THAT node" is the
+   fact either way. `useBuilderCanvas` clears the id on a timer, so this is a
+   one-shot and the canvas is still at rest a quarter of a second later. */
+.builder-node.is-refused {
+  animation: builder-node-refused var(--motion-medium) ease-out 1;
 }
 
 /* ===========================================================================
@@ -578,6 +673,79 @@
   cursor: pointer;
 }
 
+/* ─── the four edge CLASSES (D4) ──────────────────────────────────────────
+   Exactly one of these is on every edge, and `edgeClassOf` in
+   `useBuilderCanvas.ts` is the one function that decides which. It reads
+   `target_port` and, for the error exit, `source_port` - two fields of the EDGE
+   - and never looks up what kind the source node happened to be. That is the
+   whole reason the rule cannot drift from `document.py`'s: there is one string
+   to agree about rather than a table of kinds each side maintains.
+
+   These four come BEFORE `.has-warning`, `.has-error`, `.is-lit-*`,
+   `.is-back-edge` and `.is-selected` on purpose. All of them are (0,2,1)
+   specificity, so source order is what decides, and a problem, a hover or a
+   selection has to be able to repaint a wire whatever class it carries.
+
+   A FLOW EDGE IS PAINTED BY A GRADIENT it cannot name here. `BuilderEdge.vue`
+   mints one `<linearGradient>` per edge - source kind accent to target kind
+   accent, exactly Flowise v2's `AgentFlowEdge.jsx` - and publishes the
+   `url(#…)` as `--edge-paint` on the group, because a CSS file cannot write a
+   per-element id and an inline `stroke` would outrank every override above. */
+.builder-edge.is-class-flow .builder-edge-path {
+  stroke: var(--edge-paint, var(--edge-inactive));
+  stroke-width: var(--edge-width-flow);
+  opacity: 0.75;
+}
+.builder-edge.is-class-flow.is-selected .builder-edge-path { opacity: 1; }
+/* Dashed and thin, and it runs sideways because its ports do. An attachment is
+   a possession, not a step, and it must never read as the run's next move. */
+.builder-edge.is-class-attach .builder-edge-path {
+  stroke: var(--accent-attach);
+  stroke-width: var(--edge-width-attach);
+  stroke-dasharray: 2 3;
+}
+/* The same argument with a longer dash: membership of a crew is structural too,
+   and the two dash rhythms are what tell them apart at 50% zoom where the mint
+   and the violet are both a smear. */
+.builder-edge.is-class-member .builder-edge-path {
+  stroke: var(--accent-mint);
+  stroke-width: var(--edge-width-attach);
+  stroke-dasharray: 6 3;
+}
+.builder-edge.is-class-error .builder-edge-path {
+  stroke: var(--err-text);
+  stroke-width: var(--edge-width-flow);
+}
+
+/* Hover-only, 20px, at the midpoint - Flowise v2's affordance, and the reason
+   it is hover-only there and here is the same: an always-visible delete button
+   on every wire is 22 buttons on the validator template, and a canvas of
+   buttons is a canvas nobody reads. Keyboard deletion is unaffected and stays
+   select + `Delete`, which is the path that does not need a pointer at all. */
+.builder-edge-delete {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: var(--edge-label-bg);
+  border: 1px solid var(--edge-label-brd);
+  border-radius: var(--r-full);
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: all;
+  transition: opacity var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.builder-edge:hover .builder-edge-delete,
+.builder-edge.is-selected .builder-edge-delete,
+.builder-edge-delete:focus-visible { opacity: 1; }
+.builder-edge-delete:hover { color: var(--err-text); border-color: var(--err-border); }
+.builder-edge-delete:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
+
 .builder-edge.has-warning .builder-edge-path { stroke: var(--warn-border); }
 .builder-edge.has-error   .builder-edge-path { stroke: var(--err-border); }
 
@@ -585,7 +753,14 @@
    a back edge drawn identically to a forward edge makes that a count you infer
    from the topology rather than one you can see. Styling only (R7): the mirror
    that decides this is pinned against a Python-generated fixture. */
-.builder-edge.is-back-edge .builder-edge-path { stroke-dasharray: 5 4; stroke: var(--link-cyan); }
+/* D4 makes a back edge "as flow, PLUS a dash", so the cyan override this rule
+   used to carry is gone: overpainting the gradient made every loop in the graph
+   one colour and threw away the source-to-target reading on exactly the edges
+   whose direction is hardest to follow. The dash is what says loop, and the `↺`
+   on the chip says it again in a channel that survives 50% zoom. An attach or
+   member edge is already dashed and can never be a back edge anyway - neither
+   is a step, so neither is in the cycle `bounds.py` counts. */
+.builder-edge.is-back-edge .builder-edge-path { stroke-dasharray: 5 4; }
 
 .builder-edge.is-lit-in  .builder-edge-path { stroke: var(--accent-blue); stroke-width: 2; }
 .builder-edge.is-lit-out .builder-edge-path { stroke: var(--accent-mint); stroke-width: 2; }
@@ -1120,6 +1295,11 @@
 }
 
 @keyframes builder-edge-march { to { stroke-dashoffset: -20; } }
+@keyframes builder-node-refused {
+  0%   { box-shadow: 0 0 0 0 var(--err-border); }
+  40%  { box-shadow: 0 0 0 3px var(--err-border); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
 
 /* ---------------------------------------------------------------------------
    Reduced motion, and exactly what survives.
@@ -1137,6 +1317,10 @@
   .builder-port.is-port-ready,
   .builder-edge.is-selected .builder-edge-path,
   .builder-edge-traversal { animation: none; }
+  /* Not `animation: none` alone: the refusal flash is the ONLY thing that says
+     a drop was refused, so taking the motion away has to leave the statement
+     behind. A static ring for the same quarter second says the same thing. */
+  .builder-node.is-refused { animation: none; box-shadow: 0 0 0 2px var(--err-border); }
   /* The traversal overlay would otherwise sit as a static dashed line on top of
      the edge it is meant to be sweeping, which reads as a rendering fault. */
   .builder-edge-traversal { stroke-dasharray: none; }

@@ -52,12 +52,20 @@ import type {
   BuilderDocumentModel,
   BuilderDocumentSummary,
   BuilderExportEnvelope,
+  // The COMPONENT `BuilderNode` is imported above, so the node TYPE is aliased
+  // here rather than shadowing it. Same name, two different things, and the one
+  // a template reads has to win.
+  BuilderNode as BuilderDocumentNode,
   BuilderProblem,
   BuilderPublish,
   BuilderVersionRow,
   DocumentId,
+  EdgeId,
   NodeId,
+  TargetPort,
 } from '../../types/builder'
+import type { EdgeOrigin } from '../../composables/useBuilderCanvas'
+import type { EdgeEnds } from '../../composables/useBuilderDocument'
 
 /**
  * The builder shell: the one place that knows every other builder package
@@ -202,22 +210,52 @@ const problems = useBuilderProblems(validation.problems)
  * both files honest: the canvas cannot reach a method it was not handed, and
  * the store is not reshaped to suit one caller.
  */
+/**
+ * The one commit a node-creating gesture becomes, in either direction.
+ *
+ * Two shapes reach `addNode` and they are not symmetrical. A FLOW edge is drawn
+ * from something that already exists TO the new node - the number keys'
+ * auto-connect, `PortMenu`, a keyboard link - so the origin is the fixed end.
+ * An ATTACH edge points the other way: the tool is the source and the agent it
+ * hangs off is the target (03-node-library.md's `ATTACH_OUT`), which is what
+ * makes an edge's class a pure function of its own `target_port`. Either way it
+ * is one commit, because two would be two undo steps forever and the second
+ * undo would leave something dangling that nobody asked for.
+ */
+function edgeOptionsFor(
+  node: BuilderDocumentNode,
+  connectFrom: EdgeOrigin | null,
+  attachTo: { target: NodeId; target_port: TargetPort } | null,
+): { edge?: EdgeEnds; label?: string } | undefined {
+  if (attachTo) {
+    return {
+      edge: {
+        source: node.id,
+        source_port: 'attach',
+        target: attachTo.target,
+        target_port: attachTo.target_port,
+      },
+      label: `Attach ${node.kind}`,
+    }
+  }
+  if (connectFrom) {
+    return {
+      edge: {
+        source: connectFrom.source,
+        source_port: connectFrom.source_port,
+        target: node.id,
+      },
+      label: `Add ${node.label.toLowerCase()}`,
+    }
+  }
+  return undefined
+}
+
 const canvas = useBuilderCanvas({
   document: {
     doc: store.doc,
-    addNode: (node, connectFrom) =>
-      store.addNode(
-        node,
-        connectFrom
-          ? {
-              // One commit carrying the node AND the edge. Two commits would be
-              // two undo steps forever, and the second would leave a node
-              // dangling where nobody had asked for one.
-              edge: { source: connectFrom.source, source_port: connectFrom.source_port, target: node.id },
-              label: `Add ${node.label.toLowerCase()}`,
-            }
-          : undefined,
-      ),
+    addNode: (node, connectFrom, attachTo) =>
+      store.addNode(node, edgeOptionsFor(node, connectFrom ?? null, attachTo ?? null)),
     addEdge: (origin, target) =>
       store.addEdge({ source: origin.source, source_port: origin.source_port, target }),
     moveNodes: (moves, coalesceKey) => store.moveNodes(moves, { coalesce: coalesceKey !== undefined }),
@@ -1354,6 +1392,18 @@ function onSelectBranch(payload: { nodeId: string }): void {
   canvas.selectNode(payload.nodeId as NodeId)
 }
 
+/**
+ * The edge's own hover-only delete button (02-canvas.md D4).
+ *
+ * Straight to `deleteSelection` with one edge id rather than "select it, then
+ * delete the selection": the button names the edge it is drawn on, and routing
+ * it through the selection would make the author's current selection collateral
+ * damage of clicking an X they were pointing at. One commit, so one Ctrl+Z.
+ */
+function onDeleteEdge(payload: { edgeId: string }): void {
+  store.deleteSelection([], [payload.edgeId as EdgeId])
+}
+
 function onEdgeSelectFromPanel(problem: BuilderProblem): void {
   canvas.focusProblem(problem)
 }
@@ -1837,7 +1887,11 @@ watch(
               />
             </template>
             <template #edge="edgeProps">
-              <BuilderEdge v-bind="edgeProps" @select-branch="onSelectBranch" />
+              <BuilderEdge
+                v-bind="edgeProps"
+                @select-branch="onSelectBranch"
+                @delete="onDeleteEdge"
+              />
             </template>
             <template #overlay>
               <PortMenu

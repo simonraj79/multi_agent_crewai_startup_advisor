@@ -7,6 +7,7 @@ import { nodeId as toNodeId } from '../../../types/builder'
 import { attachmentsApi } from '../../../services/attachmentsApi'
 import type { AttachmentsApiLike } from '../../../services/attachmentsApi'
 import FieldRow from '../fields/FieldRow.vue'
+import McpServerPanel from '../McpServerPanel.vue'
 import { patchConfig } from '../commit'
 import type { InspectorCommit } from '../commit'
 
@@ -51,6 +52,19 @@ const config = computed(() => props.node.config)
 const control = (name: string) => `insp-${props.node.id}-${name}`
 const selected = computed(() => config.value.tool_names)
 
+/**
+ * The manage-servers panel, docked under the form rather than beside it.
+ *
+ * An author who selects an `mcp` node and has no servers has nowhere to go, and
+ * a separate rail for a list they will visit twice is a rail. So the panel
+ * lives HERE, closed by default, and opens in place - which is R15 applied to
+ * the one surface that genuinely needs a second view: the graph stays visible
+ * and the panel is inside the same inspector column.
+ *
+ * It opens by itself when there is nothing to pick, because an empty select
+ * over an empty list is a dead end an author has to guess their way out of.
+ */
+const managing = ref(false)
 const servers = ref<McpServerRow[]>([])
 const loadProblem = ref('')
 const discovering = ref(false)
@@ -64,9 +78,23 @@ async function load(): Promise<void> {
   loadProblem.value = ''
   try {
     servers.value = await props.api.listMcpServers()
+    if (servers.value.length === 0) managing.value = true
   } catch (error) {
     loadProblem.value = error instanceof Error ? error.message : String(error)
   }
+}
+
+/** A server added or picked in the panel becomes this node's server. */
+function adopt(payload: { serverId: string; toolNames: string[] }): void {
+  managing.value = false
+  emit('commit', {
+    label: 'Set MCP server',
+    next: patchConfig(props.doc, props.node, {
+      server_id: toNodeId(payload.serverId) as NodeId,
+      tool_names: payload.toolNames,
+    }),
+  })
+  void load()
 }
 
 onMounted(load)
@@ -243,6 +271,17 @@ function parameters(
       `bounds.py` reports - so an author who has added a server and not yet
       chosen its tools has an incomplete graph rather than a save that fails.
     -->
+    <button
+      type="button"
+      class="is-quiet mcp-manage"
+      data-testid="mcp-manage"
+      :aria-expanded="managing"
+      @click="managing = !managing"
+    >
+      {{ managing ? 'Hide servers' : 'Manage servers' }}
+    </button>
+    <McpServerPanel v-if="managing" class="mcp-docked" :api="api" @choose="adopt" />
+
     <p v-if="selected.length === 0" class="mcp-note is-error" data-testid="mcp-tools">
       No tools selected yet, so this server exposes nothing to the agent it attaches to.
     </p>
@@ -265,5 +304,7 @@ function parameters(
 .mcp-tool-head { display: flex; align-items: center; gap: 5px; }
 .mcp-tool-name { color: var(--text-body); font: 500 var(--fs-11)/1.3 var(--font-mono); }
 .mcp-tool-desc { margin: 2px 0 0 18px; color: var(--text-40); font: 400 var(--fs-11)/1.4 var(--font-body); }
+.mcp-manage { margin-top: 8px; }
+.mcp-docked { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-default); }
 .mcp-params { margin: 2px 0 0 18px; display: flex; flex-wrap: wrap; gap: 8px; color: var(--text-40); font: 400 10px/1.4 var(--font-mono); }
 </style>

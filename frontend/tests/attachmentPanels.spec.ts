@@ -584,6 +584,48 @@ describe('McpForm renders the last discovery, without contacting anything', () =
     expect((node.config as { tool_names: string[] }).tool_names).toEqual([])
   })
 
+  it('docks the manage-servers panel, and opens it when there is nothing to pick', async () => {
+    /*
+     * An empty select over an empty list is a dead end an author has to guess
+     * their way out of, so the panel opens itself. With servers present it
+     * stays closed - a panel that opened every time would bury the form it is
+     * attached to.
+     */
+    const empty = mountForm(mcpNode(), [])
+    await flushPromises()
+    expect(empty.findComponent({ name: 'McpServerPanel' }).exists()).toBe(true)
+
+    const stocked = mountForm()
+    await flushPromises()
+    expect(stocked.findComponent({ name: 'McpServerPanel' }).exists()).toBe(false)
+    await stocked.get('[data-testid="mcp-manage"]').trigger('click')
+    expect(stocked.findComponent({ name: 'McpServerPanel' }).exists()).toBe(true)
+  })
+
+  it('adopts a server picked in the docked panel', async () => {
+    /*
+     * Asserted through the panel's own `choose` event rather than by clicking
+     * inside it. With servers present BOTH the form and the panel render a
+     * checkbox for the same tool, so a `get` would silently pick whichever
+     * comes first in the DOM - a test that passes for a reason it does not
+     * state. The wiring under test is the form's handler, and this drives
+     * exactly that.
+     */
+    const form = mountForm()
+    await flushPromises()
+    await form.get('[data-testid="mcp-manage"]').trigger('click')
+    form
+      .findComponent({ name: 'McpServerPanel' })
+      .vm.$emit('choose', { serverId: 'ms_ffffffffffff', toolNames: ['search_docs'] })
+    await flushPromises()
+    const commits = form.emitted('commit') as [InspectorCommit][]
+    const node = commits.at(-1)![0].next.nodes.find((row) => row.id === 'servers')!
+    expect((node.config as { server_id: string }).server_id).toBe('ms_ffffffffffff')
+    expect((node.config as { tool_names: string[] }).tool_names).toEqual(['search_docs'])
+    // And the panel closes: an author who has picked is done with the list.
+    expect(form.findComponent({ name: 'McpServerPanel' }).exists()).toBe(false)
+  })
+
   it('offers re-discover for a stale server', async () => {
     const form = mountForm(mcpNode(), [server({ stale: true, status: 'pending', tools: [] })])
     await flushPromises()
@@ -714,6 +756,14 @@ describe('SkillForm shows what the pack actually says', () => {
     await flushPromises()
     expect(form.get('[data-testid="skill-form-version"]').text()).toBe('v1')
     expect(form.get('[data-testid="skill-form-owner"]').text()).toBe('built-in')
+  })
+
+  it('docks the manage-packs panel behind a disclosure', async () => {
+    const form = mountForm()
+    await flushPromises()
+    expect(form.findComponent({ name: 'SkillPanel' }).exists()).toBe(false)
+    await form.get('[data-testid="skill-manage"]').trigger('click')
+    expect(form.findComponent({ name: 'SkillPanel' }).exists()).toBe(true)
   })
 
   it('keeps an unknown stored id in the select rather than rendering blank', async () => {

@@ -6,6 +6,7 @@ import { nodeId as toNodeId } from '../../../types/builder'
 import { attachmentsApi } from '../../../services/attachmentsApi'
 import type { AttachmentsApiLike } from '../../../services/attachmentsApi'
 import FieldRow from '../fields/FieldRow.vue'
+import SkillPanel from '../SkillPanel.vue'
 import { patchConfig } from '../commit'
 import type { InspectorCommit } from '../commit'
 import { renderMarkdown } from '../../../utils/markdown'
@@ -48,6 +49,8 @@ const emit = defineEmits<{ commit: [change: InspectorCommit] }>()
 const config = computed(() => props.node.config)
 const control = (name: string) => `insp-${props.node.id}-${name}`
 
+/** The write-and-manage panel, docked under the form. See `McpForm` for why. */
+const managing = ref(false)
 const rows = ref<SkillSummary[]>([])
 const detail = ref<SkillDetail | null>(null)
 const problem = ref('')
@@ -90,6 +93,13 @@ watch(() => config.value.skill_id, loadBody)
 
 /** The rendered pack. Escape-first; never `v-html` over raw input. */
 const bodyHtml = computed(() => (detail.value ? renderMarkdown(detail.value.body) : ''))
+
+/** A pack written or picked in the panel becomes this node's pack. */
+function adopt(id: string): void {
+  managing.value = false
+  commitSkillId(id)
+  void load()
+}
 
 function commitSkillId(value: string): void {
   if (value === config.value.skill_id) return
@@ -151,6 +161,17 @@ function commitSkillId(value: string): void {
       <span class="skill-desc">{{ summary.description }}</span>
     </div>
 
+    <button
+      type="button"
+      class="is-quiet skill-manage"
+      data-testid="skill-manage"
+      :aria-expanded="managing"
+      @click="managing = !managing"
+    >
+      {{ managing ? 'Hide packs' : 'Manage packs' }}
+    </button>
+    <SkillPanel v-if="managing" class="skill-docked" :api="api" @choose="adopt" />
+
     <div
       v-if="detail"
       class="markdown-body skill-body"
@@ -167,5 +188,7 @@ function commitSkillId(value: string): void {
 .skill-summary { display: flex; align-items: baseline; gap: 6px; margin: 6px 0 0; flex-wrap: wrap; }
 .skill-chip { padding: 1px 5px; border-radius: 3px; background: var(--surface-well); color: var(--text-40); font: 500 10px/1.4 var(--font-mono); }
 .skill-desc { color: var(--text-40); font: 400 var(--fs-11)/1.4 var(--font-body); }
+.skill-manage { margin-top: 8px; }
+.skill-docked { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-default); }
 .skill-body { margin: 8px 0 0; max-height: 260px; overflow: auto; }
 </style>

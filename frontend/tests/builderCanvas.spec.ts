@@ -813,7 +813,7 @@ describe('the binding table is the shortcut sheet and the dispatcher at once', (
     for (const kind of NODE_KIND_ORDER) {
       const binding = HOTKEY_BINDINGS.find((entry) => entry.id === `insert-${kind}`)
       expect(binding, `no binding for ${kind}`).toBeDefined()
-      expect(binding?.chords[0].key).toBe(String(NODE_KINDS[kind].paletteOrder + 1))
+      expect(binding?.chords[0].key).toBe(NODE_KINDS[kind].hotkey)
     }
   })
 

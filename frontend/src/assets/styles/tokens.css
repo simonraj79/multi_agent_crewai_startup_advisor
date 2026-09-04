@@ -17,6 +17,23 @@
   --accent-mint: #aaffcd;
   --accent-cyan: #99eaf9;
   --accent-blue: #a0c4ff;
+  /* The three ATTACHMENT accents (03-node-library.md D5).
+
+     Tokens, where the seven FLOW accents are literals in `builder.css`'s S5.1
+     block, and the asymmetry is deliberate rather than sloppy: the spec writes
+     the seven out one per kind, while these three are one family - one hue at
+     three lightnesses - and a family is a thing worth being able to restyle in
+     one place. They are also the only new colours this repository has added
+     since `tokens.css` was written, and the rule is that a new colour is a
+     token.
+
+     `nodeKinds.ts` restates each as the kind's `accent`, because a minimap dot
+     is an SVG `fill` attribute and cannot read a custom property from here.
+     `tests/nodeKinds.spec.ts` asserts the two agree, so the duplication is a
+     failing test rather than a canvas whose dots and cards disagree. */
+  --kind-tool: #c3a6ff;
+  --kind-mcp: #d5b8ff;
+  --kind-skill: #e0ccff;
   --gradient-brand: linear-gradient(135deg, #aaffcd, #99eaf9, #a0c4ff);
   --gradient-danger: linear-gradient(135deg, #e07152, #dc5d4c, #bd4a4a);
   --link-cyan: #7dc6ff;

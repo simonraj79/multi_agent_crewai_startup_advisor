@@ -108,16 +108,68 @@ export const documentId = (v: string): DocumentId => {
  * compiler never looks at. */
 export type JsonScalar = string | number | boolean | null
 
+/**
+ * `document.py:NodeKind` - TEN kinds in two families, in the Python's own order.
+ *
+ * FLOW kinds are steps: an edge arrives, something happens, it passes on.
+ * ATTACHMENT kinds are not steps at all - they are things an agent or a crew
+ * HAS, and they reach it along an `attach` edge. They never run, never bill,
+ * never sit in a cycle and never count toward the graph-size bound, because
+ * none of that is true of a possession.
+ *
+ * The union is CLOSED on both sides of the wire, and closing it is what turns
+ * "somebody added a kind and forgot the inspector" into a build failure rather
+ * than a blank pane: `nodeKinds.ts`'s `NODE_KINDS` is a mapped type over this
+ * union, `InspectorRail.vue`'s `INSPECTORS` is a `Record<NodeKind, Component>`,
+ * `builderDefaults.ts::newNode` switches exhaustively over it, and
+ * `BuilderNode.vue`'s `KIND_EYEBROW` and `summariseConfig` are total over it.
+ * Five compile errors from one added word.
+ */
 export type NodeKind =
+  // flow
   | 'input' | 'agent' | 'crew' | 'gate' | 'router' | 'transform' | 'output'
+  // attachment
+  | 'tool' | 'mcp' | 'skill'
+
+/**
+ * `document.py:ATTACHMENT_KINDS`, and the two families it partitions the union
+ * into. Restated here rather than derived, because the client needs the set at
+ * RUN time (a pill is not a card) and TypeScript's unions do not survive to
+ * run time; `tests/nodeKinds.spec.ts` reads the frozenset out of `document.py`
+ * and asserts the two agree, and that the two families partition the union.
+ */
+export const ATTACHMENT_KINDS = ['tool', 'mcp', 'skill'] as const
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number]
+export type FlowKind = Exclude<NodeKind, AttachmentKind>
+/** Which family a kind belongs to - the one fact a card-versus-pill decision reads. */
+export const isAttachmentKind = (kind: NodeKind): kind is AttachmentKind =>
+  (ATTACHMENT_KINDS as readonly string[]).includes(kind)
+
 export type Tier = 'cheap' | 'escalation'
 export type Severity = 'error' | 'warning'
 /** `store.py:STATUS_DRAFT` / `STATUS_PUBLISHED`. */
 export type DocumentStatus = 'draft' | 'published'
 
-/** `document.py:_OUT_PORTS_BY_KIND`. `in` is the ONLY target port, for every kind. */
-export type TargetPort = 'in'
+/**
+ * `document.py:BuilderEdge.target_port` - what an edge may ARRIVE at.
+ *
+ * `in` is the flow itself and was the only value before the ten-kind
+ * vocabulary. `attach` hangs a tool, an MCP server or a skill off an agent or a
+ * crew; `member` puts an agent inside a crew. Neither is a step: `bounds.py`
+ * excludes both from fan-out counting, from cycle detection and from billable
+ * depth, because an agent holding three tools has not branched three ways and a
+ * tool cannot be part of a loop.
+ *
+ * EDGE CLASS IS A PURE FUNCTION OF THIS FIELD AND OF NOTHING ELSE. That is the
+ * whole reason an attachment's single port is a SOURCE - the tool reaches
+ * toward the agent, never the reverse - so the canvas's stroke rules and the
+ * server's bounds rules need to agree about one string rather than each
+ * independently deciding what the source happened to be.
+ */
+export type TargetPort = 'in' | 'attach' | 'member'
 export type GatePort = 'approve' | 'revise'
+/** An attachment's one source port. `_OUT_PORTS_BY_KIND` gives all three `('attach',)`. */
+export type AttachPort = 'attach'
 
 /* --- per-kind configs -------------------------------------------------- */
 
@@ -143,9 +195,30 @@ export interface InputConfig {
  * than adds: CrewAI counts guardrail retries PER GUARDRAIL, so the unset
  * default of 3 permits eight full regenerations of a two-guardrail task.
  */
+/**
+ * What a billable node does when its step raises - 03 D3's `on_error`.
+ *
+ * `fail` (the absence, and the only behaviour the runtime has today) ends the
+ * run. `route` sends the failure out of a SECOND source port named `error`, so
+ * an author can draw the recovery path instead of losing the run to it.
+ *
+ * OPTIONAL, and it stays optional until the Python half of D3 lands. Today's
+ * `_BillableConfig` has no such field and `BuilderModel` is `extra="forbid"`,
+ * so a document that carried the key would be a 422 rather than a feature -
+ * which is why `nodeKinds.ts` never writes one into a fresh node and why
+ * `outPortsOf` reads it as "absent means `fail`".
+ */
+export type NodeErrorPolicy = 'fail' | 'route'
+
 export interface AgentConfig {
   /** REQUIRED, no default. */
   tier: Tier
+  /**
+   * D1's conditional port. `'route'` grows an `error` source port on the card;
+   * anything else, including the absence, does not. See `NodeErrorPolicy` for
+   * why this is optional rather than defaulted.
+   */
+  on_error?: NodeErrorPolicy
   /** int, 1..`BUILDER_MAX_AGENT_ITER` (8). default `VALIDATOR_BRANCH_MAX_ITER` = 2. */
   max_iter: number
   /** int, 0..`BUILDER_MAX_GUARDRAIL_RETRIES` (2). default 2. */
@@ -175,6 +248,8 @@ export interface CrewConfig {
    * budget prices, on that word alone, even though `run_crew` ignores it.
    */
   tier: Tier
+  /** D1's conditional port, exactly as on an agent. See `NodeErrorPolicy`. */
+  on_error?: NodeErrorPolicy
   /** Accepted by the schema, IGNORED at runtime - `run_crew` runs the crew whole. */
   max_iter: number
   /** Accepted by the schema, IGNORED at runtime. */
@@ -264,9 +339,52 @@ export interface OutputConfig {
   source: JsonScalar
 }
 
+/* --- the three attachment configs ---------------------------------------
+ * `document.py:ToolConfig`, `McpConfig`, `SkillConfig`. Each carries only its
+ * SHAPE: 06 owns what a `tool_id` accepts, 07 owns MCP discovery and 08 owns
+ * skill storage. Every id here is an OPAQUE key into a server-owned closed set
+ * - never a module path, an import or a callable name. That is the whole reason
+ * a document cannot execute code, and these are no exception. */
+
+export interface ToolConfig {
+  /** REQUIRED. Keys the server-owned tool catalogue (`vocabulary.tools[].tool_id`). */
+  tool_id: NodeId
+  /**
+   * default {}. The tool's own configuration, flat like every other
+   * author-supplied mapping - each value a JsonScalar or the one resolvable
+   * state ref.
+   */
+  params: Record<string, JsonScalar>
+  /** The author's own key for tools that need one, by id. The id travels; the secret never does. */
+  credential_id?: string | null
+}
+
+export interface McpConfig {
+  /** REQUIRED. One MCP server, by id. */
+  server_id: NodeId
+  /**
+   * WHICH of the server's tools this node exposes. default []. Emptiness is a
+   * `bounds.py` PROBLEM rather than a parse refusal, because an author who has
+   * added a server and not chosen its tools has made an incomplete graph and
+   * not an invalid document - the difference between a row in the dock and a
+   * save that fails.
+   */
+  tool_names: string[]
+  credential_id?: string | null
+}
+
+export interface SkillConfig {
+  /**
+   * REQUIRED. One SKILL.md pack. A skill is knowledge, not hands: its name and
+   * description load at run start and its body only when a task matches.
+   */
+  skill_id: NodeId
+}
+
 export type BuilderNodeConfig =
   | InputConfig | AgentConfig | CrewConfig
   | GateConfig | RouterConfig | TransformConfig | OutputConfig
+  | ToolConfig | McpConfig | SkillConfig
 
 /* --- discriminated node --------------------------------------------------
  * The union is what makes `node.config.branches` narrow only on 'router' and
@@ -296,6 +414,9 @@ export type BuilderNode =
   | (BuilderNodeBase & { kind: 'router';    config: RouterConfig })
   | (BuilderNodeBase & { kind: 'transform'; config: TransformConfig })
   | (BuilderNodeBase & { kind: 'output';    config: OutputConfig })
+  | (BuilderNodeBase & { kind: 'tool';      config: ToolConfig })
+  | (BuilderNodeBase & { kind: 'mcp';       config: McpConfig })
+  | (BuilderNodeBase & { kind: 'skill';     config: SkillConfig })
 
 export interface BuilderEdge {
   id: EdgeId
@@ -309,9 +430,11 @@ export interface BuilderEdge {
   source_port: string
   target: NodeId
   /**
-   * The literal `'in'` is the ONLY legal value. A second inbound port would be
-   * a join semantics this document deliberately does not have: `joins` says how
-   * arrivals combine, and the answer is always "all".
+   * `'in'` for a flow edge, `'attach'` for a tool/MCP/skill hanging off an
+   * agent or crew, `'member'` for an agent inside a crew. Default `'in'`.
+   *
+   * This field ALONE decides the edge's class. Nothing may re-derive it from
+   * what the source node happened to be - see `TargetPort`.
    */
   target_port: TargetPort
 }
@@ -548,10 +671,51 @@ export interface BuilderBounds {
  * is a 422 the author cannot act on, and a canvas missing one is a feature
  * nobody can reach.
  */
+/**
+ * One row of C2 v2's `tools` - 06's catalogue, verbatim, served rather than
+ * duplicated.
+ *
+ * The palette's tool sub-list searches `label`, the pill renders it, and a
+ * `credential_kind` is what tells an author this tool needs a key before it
+ * will do anything. `params` is the tool's argument shape; the inspector that
+ * renders it is 04's and 06's, not this plan's.
+ */
+export interface BuilderToolParam {
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'json'
+  required: boolean
+  default?: JsonScalar
+  min?: number
+  max?: number
+  enum?: JsonScalar[]
+  description?: string
+}
+
+export interface BuilderToolCatalogueEntry {
+  tool_id: string
+  /** What the palette's sub-list searches and what the pill shows. */
+  label: string
+  category: string
+  description: string
+  /** `config.py:CREDENTIAL_KINDS`, or null when the tool needs no key. */
+  credential_kind: CredentialKind | null
+  /** Which kinds this tool may hang off. */
+  attaches_to: NodeKind[]
+  params: BuilderToolParam[]
+}
+
 export interface BuilderVocabulary {
   schema_id: string
   /** ORDERED literals in the handler, deliberately not sorted. Render in this order. */
   node_kinds: NodeKind[]
+  /**
+   * C2 v2's tool catalogue, 06's to fill. OPTIONAL because this build's server
+   * still serves the v1 envelope: the palette renders the sub-list when the key
+   * is there and renders nothing extra when it is not, which is cut-list 17
+   * applied honestly - a client-side catalogue would be a list of tools the
+   * compiler has never heard of.
+   */
+  tools?: BuilderToolCatalogueEntry[]
   /** Ordered: cheap, then escalation. */
   tiers: Tier[]
   agent_ids: string[]

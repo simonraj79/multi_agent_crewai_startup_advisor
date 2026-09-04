@@ -109,6 +109,13 @@ const FIELDS_BY_KIND: Record<NodeKind, string[]> = {
   router: pythonFields('RouterConfig'),
   transform: pythonFields('TransformConfig'),
   output: pythonFields('OutputConfig'),
+  // The three attachments, read out of the same Python. `ToolConfig`,
+  // `McpConfig` and `SkillConfig` extend `BuilderModel` directly rather than a
+  // shared base - they have nothing in common but being possessions - so unlike
+  // the billable pair there is no parent list to union in.
+  tool: pythonFields('ToolConfig'),
+  mcp: pythonFields('McpConfig'),
+  skill: pythonFields('SkillConfig'),
 }
 
 /**

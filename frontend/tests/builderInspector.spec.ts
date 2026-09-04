@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import InspectorRail from '../src/components/builder/InspectorRail.vue'
 import { NODE_KIND_ORDER } from '../src/data/nodeKinds'
+import { nodeId } from '../src/types/builder'
 import type { BuilderDocument, BuilderNode, NodeKind } from '../src/types/builder'
 import type { InspectorCommit } from '../src/components/builder/commit'
 import {
@@ -32,7 +33,7 @@ import {
  * keep a rule like that is to assert it: nothing this rail renders is a dialog.
  *
  * TWO. Dispatch is `Record<NodeKind, Component>`, so a kind with no form is a
- * COMPILE error. That is checked here by mounting all seven and asserting each
+ * COMPILE error. That is checked here by mounting all TEN and asserting each
  * one produced the form that belongs to it - which is stronger than reading the
  * record's keys, because it also catches a record that is total and WRONG.
  *
@@ -51,6 +52,9 @@ const SIGNATURE: Record<NodeKind, string> = {
   router: '[data-field="branches"]',
   transform: '[data-field="op"]',
   output: '[data-field="body_key"]',
+  tool: '[data-field="tool_id"]',
+  mcp: '[data-field="server_id"]',
+  skill: '[data-field="skill_id"]',
 }
 
 function nodeOfKind(kind: NodeKind): BuilderNode {
@@ -69,6 +73,45 @@ function nodeOfKind(kind: NodeKind): BuilderNode {
       return transformNode()
     case 'output':
       return outputNode()
+    case 'tool':
+      return toolNode()
+    case 'mcp':
+      return mcpNode()
+    case 'skill':
+      return skillNode()
+  }
+}
+
+/* The three attachments, built here rather than in the shared fixture module:
+ * they carry no problems, no edges and no identity anybody else's spec needs,
+ * and the rail only ever asks them which form they got. */
+function toolNode(): BuilderNode {
+  return {
+    id: nodeId('scrape'),
+    kind: 'tool',
+    label: 'Scrape',
+    position: { x: 0, y: 0 },
+    config: { tool_id: nodeId('firecrawl_scrape'), params: {}, credential_id: null },
+  }
+}
+
+function mcpNode(): BuilderNode {
+  return {
+    id: nodeId('sandbox'),
+    kind: 'mcp',
+    label: 'Sandbox',
+    position: { x: 0, y: 0 },
+    config: { server_id: nodeId('sandbox'), tool_names: [], credential_id: null },
+  }
+}
+
+function skillNode(): BuilderNode {
+  return {
+    id: nodeId('house_style'),
+    kind: 'skill',
+    label: 'House style',
+    position: { x: 0, y: 0 },
+    config: { skill_id: nodeId('house_style') },
   }
 }
 
@@ -117,7 +160,7 @@ describe('the inspector is docked and dispatches over every kind', () => {
     expect(wrapper.find('.modal-overlay').exists()).toBe(false)
   })
 
-  it('has a form for each of the seven kinds, and the RIGHT one', () => {
+  it('has a form for each of the ten kinds, and the RIGHT one', () => {
     for (const kind of NODE_KIND_ORDER) {
       const node = nodeOfKind(kind)
       const doc = documentFixture([node], [], { input_field: inputNode().config.field })
@@ -126,11 +169,25 @@ describe('the inspector is docked and dispatches over every kind', () => {
     }
   })
 
-  it('covers exactly the kinds the vocabulary offers', () => {
-    // The type-level half is `Record<NodeKind, Component>` in the rail itself,
-    // where a missing key does not compile. This is the runtime half: the set
-    // this build can DRAW equals the set the server offers.
-    expect([...NODE_KIND_ORDER].sort()).toEqual([...vocabularyFixture().node_kinds].sort())
+  it('covers every kind the vocabulary offers, and can draw more than it offers', () => {
+    /*
+     * The type-level half is `Record<NodeKind, Component>` in the rail itself,
+     * where a missing key does not compile. This is the runtime half - and it is
+     * now a CONTAINMENT rather than an equality, which is a weakening the
+     * ten-kind vocabulary forced and which is worth stating rather than hiding.
+     *
+     * `_vocabulary()` still serves the v1 seven (C2 v2 is plan 03 criterion 5,
+     * on the Python side), while `NodeKind` is already ten. Equality would
+     * therefore fail on a difference that is the plan's own sequencing rather
+     * than a defect. The direction that MATTERS is unchanged and is what is
+     * asserted: every kind the server offers has a form, so no served kind can
+     * open a blank pane. The other direction - a kind this build can draw that
+     * the server does not offer - is refused earlier and elsewhere, by
+     * `builderVocabulary.normalise()`.
+     */
+    for (const kind of vocabularyFixture().node_kinds) {
+      expect(NODE_KIND_ORDER, `${kind} is served and has no record`).toContain(kind)
+    }
   })
 
   it('sends an agent and a crew to one form, because they extend one config', () => {

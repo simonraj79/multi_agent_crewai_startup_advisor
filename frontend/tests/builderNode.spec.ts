@@ -159,6 +159,27 @@ const NODES: { [K in NodeKind]: DocumentNode } = {
     position: { x: 0, y: 0 },
     config: { body_key: 'markdown_body', source: null },
   },
+  tool: {
+    id: nodeId('scrape'),
+    kind: 'tool',
+    label: 'Scrape',
+    position: { x: 0, y: 0 },
+    config: { tool_id: nodeId('firecrawl_scrape'), params: {}, credential_id: null },
+  },
+  mcp: {
+    id: nodeId('sandbox'),
+    kind: 'mcp',
+    label: 'Sandbox',
+    position: { x: 0, y: 0 },
+    config: { server_id: nodeId('sandbox'), tool_names: ['run', 'read'], credential_id: null },
+  },
+  skill: {
+    id: nodeId('house_style'),
+    kind: 'skill',
+    label: 'House style',
+    position: { x: 0, y: 0 },
+    config: { skill_id: nodeId('house_style') },
+  },
 }
 
 /**
@@ -332,12 +353,149 @@ describe('the config summary answers "what is this set to" without a click', () 
     expect(summariseConfig(NODES.output)).toBe('markdown_body')
   })
 
+  it('answers "which one is this" for each of the three attachments', () => {
+    // The only question a 160px pill can be asked without opening it. An author
+    // looking at a canvas of eight tools needs to tell them apart, not to read
+    // their parameters.
+    expect(summariseConfig(NODES.tool)).toBe('firecrawl_scrape')
+    expect(summariseConfig(NODES.mcp)).toBe('sandbox · 2 tools')
+    expect(summariseConfig(NODES.skill)).toBe('house_style')
+  })
+
+  it('says an MCP node with nothing selected exposes nothing', () => {
+    // Nought is worth saying out loud. `McpConfig` does not require `tool_names`
+    // to be non-empty at parse time - `document.py` raises where `bounds.py`
+    // reports - so this is a node an author can really have, and the card must
+    // not read like one that is finished.
+    const empty: DocumentNode = {
+      ...NODES.mcp,
+      config: { ...NODES.mcp.config, tool_names: [] },
+    } as DocumentNode
+    expect(summariseConfig(empty)).toBe('sandbox · 0 tools')
+  })
+
   it('counts tools rather than listing them, so the line never wraps', () => {
     const armed: DocumentNode = {
       ...NODES.agent,
       config: { ...NODES.agent.config, tools: ['market_research'] },
     } as DocumentNode
     expect(summariseConfig(armed)).toBe('escalation · scoper · 2 iter · 1 tool')
+  })
+})
+
+/* ─── identity: silhouette, squircle, accent (D5) ────────────────────────── */
+
+describe('a node says what it is three ways before a word of it is read', () => {
+  it('draws a flow node as a card and an attachment as a pill', () => {
+    /*
+     * D5's third channel, and the one that survives the zoom the other two do
+     * not: at 0.5 an 11px eyebrow is 5.5px and two violets eight points of
+     * lightness apart are one colour, while a 160px pill beside a 240px card is
+     * still unmistakably a different sort of object. A pill can never be
+     * mistaken for a step.
+     *
+     * `is-card` is asserted as a POSITIVE class rather than as the absence of
+     * `is-pill`, because a stylesheet and a capture both need something to name.
+     */
+    for (const kind of Object.keys(NODES) as NodeKind[]) {
+      const wrapper = mountNode(nodeData(NODES[kind]))
+      const attachment = NODE_KINDS[kind].family === 'attachment'
+      expect(wrapper.classes(), kind).toContain(attachment ? 'is-pill' : 'is-card')
+      expect(wrapper.classes(), kind).not.toContain(attachment ? 'is-card' : 'is-pill')
+    }
+  })
+
+  it('puts every kind icon in a squircle filled with that kind accent', () => {
+    // Criterion 7 captures this in a real browser; this is the structural half.
+    // The fill is passed as `--kind-accent` rather than as a `background`, so
+    // the radius, the size and the one contrast decision stay in the stylesheet
+    // and the COLOUR provably comes from `nodeKinds.ts` - the same value the
+    // minimap dot and the inspector kicker read.
+    for (const kind of Object.keys(NODES) as NodeKind[]) {
+      const wrapper = mountNode(nodeData(NODES[kind]))
+      const squircle = wrapper.find('.builder-kind-squircle')
+      expect(squircle.exists(), `${kind} has no squircle`).toBe(true)
+      expect(squircle.attributes('style')).toContain(`--kind-accent: ${NODE_KINDS[kind].accent}`)
+    }
+  })
+
+  it('gives every kind its own eyebrow word, and the same index either way', () => {
+    // The pill keeps the card's eyebrow CONTENT - only the type scale shrinks -
+    // because an author walking the problems dock needs the same number on both
+    // silhouettes.
+    const words = (Object.keys(NODES) as NodeKind[]).map((kind) =>
+      mountNode(nodeData(NODES[kind])).find('.builder-eyebrow').text(),
+    )
+    expect(words).toEqual([
+      '03 · INPUT',
+      '03 · AGENT',
+      '03 · CREW',
+      '03 · GATE',
+      '03 · ROUTER',
+      '03 · TRANSFORM',
+      '03 · OUTPUT',
+      '03 · TOOL',
+      '03 · MCP',
+      '03 · SKILL',
+    ])
+    expect(new Set(words).size).toBe(words.length)
+  })
+
+  it('renders an attachment config as chips and a flow config as the mono line', () => {
+    // D6. A 160px pill ellipsises a comma-separated sentence to nothing, and a
+    // truncated fact is worse than a shorter one because it invites the click
+    // into a modal R15 bans.
+    const pill = mountNode(nodeData(NODES.mcp))
+    expect(pill.find('.builder-summary').exists()).toBe(false)
+    expect(pill.findAll('.builder-chip').map((chip) => chip.text())).toEqual([
+      'sandbox',
+      '2 tools',
+    ])
+
+    const card = mountNode(nodeData(NODES.agent))
+    expect(card.findAll('.builder-chip')).toHaveLength(0)
+    expect(card.find('.builder-summary').exists()).toBe(true)
+  })
+
+  it('flags a tool that carries a key, and only when it carries one', () => {
+    // Whether a tool needs a key is a yes/no an author scans a canvas for.
+    // WHICH key is an inspector question, so the chip says "key" and never the
+    // credential's id - the id is the one thing on the card that would be worth
+    // nothing to read and something to leak.
+    expect(mountNode(nodeData(NODES.tool)).findAll('.builder-chip.is-key')).toHaveLength(0)
+
+    const keyed: DocumentNode = {
+      ...NODES.tool,
+      config: { ...NODES.tool.config, credential_id: 'cr_0123abcd' },
+    } as DocumentNode
+    const chips = mountNode(nodeData(keyed)).findAll('.builder-chip.is-key')
+    expect(chips).toHaveLength(1)
+    expect(chips[0].text()).toBe('key')
+    expect(chips[0].text()).not.toContain('cr_')
+  })
+
+  it('shows a tool the catalogue LABEL once the server serves one, and the id until then', () => {
+    // An author picked "Firecrawl scrape" from a list and should see that, not
+    // `firecrawl_scrape`. The fallback is the id and never a guess: this build's
+    // `/vocabulary` does not serve `tools` yet, so today every pill reads its id
+    // and that is honest rather than a placeholder.
+    expect(mountNode(nodeData(NODES.tool)).find('.builder-chip').text()).toBe('firecrawl_scrape')
+
+    vocabulary.value = {
+      ...VOCABULARY,
+      tools: [
+        {
+          tool_id: 'firecrawl_scrape',
+          label: 'Firecrawl scrape',
+          category: 'web',
+          description: 'Fetch one page as markdown.',
+          credential_kind: 'firecrawl',
+          attaches_to: ['agent'],
+          params: [],
+        },
+      ],
+    }
+    expect(mountNode(nodeData(NODES.tool)).find('.builder-chip').text()).toBe('Firecrawl scrape')
   })
 })
 
@@ -412,7 +570,7 @@ describe('a drawn port cannot disagree with an accepted port', () => {
     expect(labels[0].classes()).toContain('is-branch')
   })
 
-  it('agrees with nodeKinds.outPorts for all seven kinds', () => {
+  it('agrees with nodeKinds.outPorts for all ten kinds', () => {
     for (const kind of Object.keys(NODES) as NodeKind[]) {
       const wrapper = mountNode(nodeData(NODES[kind]))
       const drawn = handles(wrapper)

@@ -25,6 +25,9 @@ import GateForm from './inspectors/GateForm.vue'
 import RouterForm from './inspectors/RouterForm.vue'
 import TransformForm from './inspectors/TransformForm.vue'
 import OutputForm from './inspectors/OutputForm.vue'
+import ToolForm from './inspectors/ToolForm.vue'
+import McpForm from './inspectors/McpForm.vue'
+import SkillForm from './inspectors/SkillForm.vue'
 import GraphSettings from './inspectors/GraphSettings.vue'
 import { coalesceKeyFor, inboundCount, patchConfig, replaceNode } from './commit'
 import type { InspectorCommit } from './commit'
@@ -42,7 +45,7 @@ import type { InspectorCommit } from './commit'
  * zero modals in the editing path.
  *
  * DISPATCH IS A TOTAL RECORD, NOT A SWITCH. `INSPECTORS` is typed
- * `Record<NodeKind, Component>`, so an eighth kind is a COMPILE error in this
+ * `Record<NodeKind, Component>`, so an eleventh kind is a COMPILE error in this
  * file rather than a blank pane in front of an author. `agent` and `crew` map to
  * the same component on purpose: they extend one `_BillableConfig` in
  * `document.py`, so one form is the truthful modelling of what the schema says
@@ -61,7 +64,7 @@ import type { InspectorCommit } from './commit'
  * `Record<NodeKind, Component>` is what the spec asks for and what the
  * exhaustiveness argument needs: a missing key fails to compile. It does not
  * check that each key got the RIGHT form - `<component :is>` erases props - so
- * `builderInspector.spec.ts` asserts the pairing by mounting all seven and
+ * `builderInspector.spec.ts` asserts the pairing by mounting all TEN and
  * looking for a control only the right form renders.
  */
 const INSPECTORS: Record<NodeKind, Component> = {
@@ -72,6 +75,18 @@ const INSPECTORS: Record<NodeKind, Component> = {
   router: RouterForm,
   transform: TransformForm,
   output: OutputForm,
+  /*
+   * The three ATTACHMENT kinds get one form each, and they are deliberately NOT
+   * folded into one the way `agent` and `crew` are. That pair shares a form
+   * because they extend one `_BillableConfig` in `document.py` - two thirds of
+   * their controls are literally the same field. `ToolConfig`, `McpConfig` and
+   * `SkillConfig` share nothing: three ids into three different catalogues,
+   * owned by three different plans (06, 07, 08). One form over them would be a
+   * switch wearing a component's name.
+   */
+  tool: ToolForm,
+  mcp: McpForm,
+  skill: SkillForm,
 }
 
 /**
@@ -91,6 +106,9 @@ const INSPECTOR_FIELDS: Record<NodeKind, readonly string[]> = {
   router: ['branches'],
   transform: ['op', 'args'],
   output: ['body_key', 'source'],
+  tool: ['tool_id'],
+  mcp: ['server_id'],
+  skill: ['skill_id'],
 }
 
 const props = defineProps<{

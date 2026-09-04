@@ -52,6 +52,18 @@
 .builder-node.is-kind-transform { --node-gradient: linear-gradient(135deg, #8892a0, #b3b3b3); --node-shadow-color: rgba(179, 179, 179, 0.30); }
 .builder-node.is-kind-output    { --node-gradient: linear-gradient(135deg, #aaffcd, #7bdff2); --node-shadow-color: rgba(170, 255, 205, 0.42); }
 
+/* The three ATTACHMENT kinds share a hue and separate by lightness, which is
+   the opposite of the rule above them and is the point of D5's third channel.
+   The seven flow accents must be mutually distinguishable, because a minimap
+   dot whose router and transform are one colour tells an author nothing. Here
+   the first question is "is that an attachment?" - answered by the silhouette
+   and by the family hue together - and the second is "which one", answered by
+   the glyph. Three violets that read as siblings are the right answer to the
+   first question and a good enough one to the second. */
+.builder-node.is-kind-tool      { --node-gradient: linear-gradient(135deg, var(--kind-tool), var(--kind-mcp));   --node-shadow-color: rgba(195, 166, 255, 0.42); }
+.builder-node.is-kind-mcp       { --node-gradient: linear-gradient(135deg, var(--kind-mcp), var(--kind-skill));  --node-shadow-color: rgba(213, 184, 255, 0.42); }
+.builder-node.is-kind-skill     { --node-gradient: linear-gradient(135deg, var(--kind-skill), var(--kind-tool)); --node-shadow-color: rgba(224, 204, 255, 0.42); }
+
 /* Problem tenancy OUTRANKS kind - an invalid node is red before you read a
    word. Same specificity as the block above and written after it, which is the
    whole mechanism: `is-kind` and `has-error` are independent classes on one
@@ -104,6 +116,98 @@
    card's own box and a positioned footer would anchor them to itself - lifting
    every port off the bottom edge by exactly the height of the label row. */
 .builder-node.has-port-labels { padding-bottom: 22px; }
+
+/* ---------------------------------------------------------------------------
+   D5's SILHOUETTE channel: a flow node is a card, an attachment is a pill.
+
+   Everything below re-lays the same `.workflow-node` box - the gradient border,
+   the double clip, the fill and the shadow all still come from `node-card.css`,
+   exactly as the card above does. A pill is 160px against the card's 240px and
+   fully rounded against its 12px, and those two differences are what survive
+   the 0.5 zoom at which the 11px eyebrow is 5.5px and the accents are a smear.
+
+   No node COUNT and no bound is expressed here. A pill is a pill because of its
+   kind's family, full stop; how many of them a graph may hold is `bounds.py`'s
+   answer and arrives as a problem. */
+.builder-node.is-pill {
+  width: 160px;
+  padding: 7px 10px 9px;
+  border-radius: var(--r-pill);
+}
+/* The pill keeps the same eyebrow CONTENT as the card - the index and the kind
+   - because an author walking the problems dock needs the same number on both
+   silhouettes. It is the type scale that shrinks, not what is said. */
+.builder-node.is-pill .builder-eyebrow { font-size: 10px; letter-spacing: 0.04em; }
+.builder-node.is-pill .builder-title { font-size: var(--fs-12); }
+/* An attachment has one port and it is a source, so there is never a port
+   label lane and never a target handle to leave room for. */
+.builder-node.is-pill .builder-ports { justify-content: center; }
+
+/* The 28px colour-filled squircle every kind's icon now sits in (D5).
+
+   Flowise v2's own node icon is a filled rounded square, and that is the one
+   thing its card does better than ours did: a 13px stroke-only glyph in a light
+   accent is a thin line that disappears at working zoom, while a filled block
+   of the kind's colour is legible at any size the canvas can be at. The radius
+   is `--r-fab` (16px) rather than the spec's literal 15px, because 15 is not a
+   token here and one pixel of corner is not worth a new one.
+
+   `--kind-accent` is written by the card from `nodeKinds.ts`, so the fill, the
+   minimap dot and the inspector kicker are provably one value. The glyph is
+   `--bg-app` because every accent is a light tint - a light glyph on it would
+   be invisible, and this is the only contrast decision on the card. */
+.builder-kind-squircle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--bg-app);
+  background: var(--kind-accent, var(--text-muted));
+  border-radius: var(--r-fab);
+}
+.builder-node.is-pill .builder-kind-squircle { width: 22px; height: 22px; border-radius: var(--r-lg); }
+/* The eyebrow row grows to hold it. `node-card.css` sized this lane for a
+   13px glyph; 20px would clip a 28px block and the clipping would be silent. */
+.builder-eyebrow-row { min-height: 28px; }
+.builder-node.is-pill .builder-eyebrow-row { min-height: 22px; }
+
+/* D6's chips, which replace the mono summary line on an attachment.
+
+   A 160px pill cannot hold `firecrawl_scrape - limit, formats`: it ellipsises
+   to `firecrawl_scra...`, which is a truncated fact, and a truncated fact is
+   worse than a shorter one because it invites the click into a modal R15 bans.
+   Chips wrap instead, and each one stays whole. */
+.builder-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 3px;
+}
+.builder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 2px 6px;
+  overflow: hidden;
+  color: var(--text-body);
+  font: 500 10px/1.3 var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
+/* The key chip is the one an author scans for rather than reads, so it is the
+   one that gets a colour. Amber, not mint: a key is a thing to check, not a
+   thing that is finished. */
+.builder-chip.is-key {
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+}
 
 /* 1. Eyebrow row: icon left, `03 · AGENT` right. `node-card.css` reserves a
       62px right lane for the run card's absolutely-positioned state chip; the

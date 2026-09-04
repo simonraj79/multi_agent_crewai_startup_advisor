@@ -144,19 +144,27 @@ function arrowChords(shift: boolean): HotkeyChord[] {
 }
 
 /**
- * One binding per kind rather than one binding matching seven digits.
+ * One binding per kind rather than one binding matching ten keys.
  *
  * The sheet has to be able to say `3 — Insert crew`; a single row reading
  * "1-7 inserts a kind" would leave an author counting tiles to find the one
- * they want, which is the thing a shortcut sheet exists to stop. The digit is
- * `paletteOrder + 1` and is not written down twice - `nodeKinds.ts` owns the
- * order, the palette renders it, and this reads it.
+ * they want, which is the thing a shortcut sheet exists to stop. The key is
+ * `NODE_KINDS[kind].hotkey` and is not written down twice - `nodeKinds.ts` owns
+ * it, the palette prints it, and this binds it.
+ *
+ * The three ATTACHMENT kinds answer to `T`, `M` and `K` rather than to `8`,
+ * `9` and `0` (owner's decision 18, 2026-09-04): the digits `1`-`7` already
+ * select a kind on the same surface, and a second digit row is a collision an
+ * author discovers by pressing one.
+ *
+ * `key` is matched case-insensitively by `matches()` below, so the letters are
+ * declared in the case the SHEET should print them in.
  */
 const INSERT_BINDINGS: readonly HotkeyBinding[] = NODE_KIND_ORDER.map((kind) => ({
   id: `insert-${kind}`,
   group: 'create' as const,
   label: `Insert ${kind}`,
-  chords: [{ key: String(NODE_KINDS[kind].paletteOrder + 1) }],
+  chords: [{ key: NODE_KINDS[kind].hotkey }],
   allowInTextEntry: false,
   run: (actions: HotkeyActions) => actions.insertKind(kind),
 }))

@@ -1,5 +1,16 @@
 import type { Component } from 'vue'
-import { Bot, Cog, FileText, Inbox, ShieldCheck, Split, Users } from 'lucide-vue-next'
+import {
+  BookOpen,
+  BookUser,
+  Flag,
+  GitFork,
+  Hand,
+  PlugZap,
+  TextCursorInput,
+  UsersRound,
+  Wand2,
+  Wrench,
+} from 'lucide-vue-next'
 import { nodeId } from '../types/builder'
 import type {
   AgentConfig,
@@ -8,10 +19,13 @@ import type {
   CrewConfig,
   GateConfig,
   InputConfig,
+  McpConfig,
   NodeId,
   NodeKind,
   OutputConfig,
   RouterConfig,
+  SkillConfig,
+  ToolConfig,
   TransformConfig,
 } from '../types/builder'
 
@@ -48,10 +62,23 @@ interface ConfigForKind {
   router: RouterConfig
   transform: TransformConfig
   output: OutputConfig
+  tool: ToolConfig
+  mcp: McpConfig
+  skill: SkillConfig
 }
 
 export interface NodeKindMeta<K extends NodeKind = NodeKind> {
   readonly kind: K
+  /**
+   * Which of `document.py`'s two families this kind is in (03 D1).
+   *
+   * The ONE fact the silhouette reads: a flow node is a card, an attachment is
+   * a pill. That is D5's third identity channel and it is the one that survives
+   * the zoom the other two do not - at 50% the 11px eyebrow is 5.5px and the
+   * accent is a smear, while a 160px pill beside a 240px card is still two
+   * different objects. A pill can never be mistaken for a step.
+   */
+  readonly family: 'flow' | 'attachment'
   /** Lucide, rendered `:size="17" :stroke-width="1.8"` the way the run card does. */
   readonly icon: Component
   /** The card class the design tenancy hangs `--node-gradient` off (§5.1). */
@@ -59,16 +86,32 @@ export interface NodeKindMeta<K extends NodeKind = NodeKind> {
   /** One sentence on the palette tile. What this kind DOES, not what it is called. */
   readonly blurb: string
   /**
-   * Position in the canonical kind order, which is also the number hotkey:
-   * `paletteOrder + 1` is the `1`-`7` key that drops this kind.
+   * Position in the canonical kind order: `0`-`6` for the flow kinds, `7`-`9`
+   * for the three attachments. It is NOT the hotkey any more - `hotkey` is,
+   * below - because decision 18 gave the attachments letters and a derived
+   * `paletteOrder + 1` would have printed `8`, `9` and `10` on those tiles.
    *
    * The palette itself renders `vocabulary.node_kinds` in the server's order and
-   * does not sort by this - the two agree because `_vocabulary()` lists the same
-   * seven literals in the same order, and `tests/nodeKinds.spec.ts` reads that
-   * list out of `service/builder_api.py` and asserts it. If they ever diverge,
-   * the hotkey would drop a different kind from the tile above it.
+   * does not sort by this; `tests/nodeKinds.spec.ts` reads the Python's own
+   * `NodeKind` union and asserts this order against it. If the two ever diverge,
+   * a tile and the key printed on it would be about different kinds.
    */
   readonly paletteOrder: number
+  /**
+   * The key that inserts this kind, as the palette prints it and as
+   * `useBuilderHotkeys` binds it.
+   *
+   * `paletteOrder + 1` for the seven FLOW kinds, which is where `1`-`7` comes
+   * from - and for the three attachments it is a LETTER: `T`, `M`, `K` (owner's
+   * decision 18, 2026-09-04). Not `8`/`9`/`0`, because digits `1`-`7` already
+   * select a kind on this same surface and a second digit row is a collision an
+   * author discovers by pressing one; `0` also reads as "none".
+   *
+   * Written here rather than derived, because it is now two rules and a derived
+   * value would have to encode the family split anyway - and the palette, the
+   * shortcut sheet and the binding table must all print the same character.
+   */
+  readonly hotkey: string
   /** The label a fresh node is born with, before its `1`-based suffix. */
   readonly defaultLabel: string
   /**
@@ -91,7 +134,13 @@ export interface NodeKindMeta<K extends NodeKind = NodeKind> {
    * branch grows a port on the same tick.
    */
   readonly outPorts: (node: BuilderNode) => readonly string[]
-  /** `document.py:accepts_incoming` - only `input` refuses an inbound edge. */
+  /**
+   * `document.py:accepts_incoming` - FOUR kinds refuse an inbound edge, for two
+   * different reasons. `input` refuses because it is where the run starts. The
+   * three ATTACHMENT kinds refuse because nothing flows INTO a possession: an
+   * author who could draw an edge into a tool would be describing a step, and a
+   * tool is not a step.
+   */
   readonly acceptsIncoming: boolean
   /**
    * The one colour that identifies this kind away from the card - the minimap
@@ -108,18 +157,47 @@ export interface NodeKindMeta<K extends NodeKind = NodeKind> {
 
 /** `document.py:_OUT_PORTS_BY_KIND` - every single-output kind, verbatim. */
 const SINGLE_OUT: readonly string[] = ['out']
+/** The same kind, once `on_error` is `'route'` - see `billableOut`. */
+const SINGLE_OUT_ROUTED: readonly string[] = ['out', 'error']
 /** `document.py:_OUT_PORTS_BY_KIND["gate"]`, in that canvas order. */
 const GATE_OUT: readonly string[] = ['approve', 'revise']
 /** `document.py:_OUT_PORTS_BY_KIND["output"]` - an output node ends the run. */
 const NO_OUT: readonly string[] = []
+/**
+ * `document.py:_OUT_PORTS_BY_KIND["tool"|"mcp"|"skill"]` - all three, verbatim.
+ *
+ * ONE port, and it is a SOURCE. The tool reaches toward the agent, never the
+ * reverse, and giving the agent an `attach` INPUT instead would have cost more
+ * than it looks: with the arrow this way round the edge's class is a pure
+ * function of `target_port` and of nothing else, so this file's stroke rules and
+ * `bounds.py`'s edge rules agree about one string rather than each deciding
+ * independently what the source happened to be.
+ */
+const ATTACH_OUT: readonly string[] = ['attach']
+
+/**
+ * The source ports of a billable node: `out`, and `error` when it routes.
+ *
+ * D1's one conditional row in the port table, and the only place in this file
+ * where a port depends on a CONFIG field rather than on the kind. `on_error` is
+ * optional and absent by default (see `NodeErrorPolicy`), so a node that has
+ * never been told otherwise has exactly the one port it has always had - which
+ * is what keeps every existing document's edges legal.
+ */
+function billableOut(node: BuilderNode): readonly string[] {
+  if (node.kind !== 'agent' && node.kind !== 'crew') return SINGLE_OUT
+  return node.config.on_error === 'route' ? SINGLE_OUT_ROUTED : SINGLE_OUT
+}
 
 export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
   input: {
     kind: 'input',
-    icon: Inbox,
+    family: 'flow',
+    icon: TextCursorInput,
     className: 'is-kind-input',
     blurb: 'Seeds the run from one named request input.',
     paletteOrder: 0,
+    hotkey: '1',
     defaultLabel: 'Input',
     defaultConfig: (_vocabulary, id) => ({
       /*
@@ -148,10 +226,21 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
   },
   agent: {
     kind: 'agent',
-    icon: Bot,
+    family: 'flow',
+    /*
+     * D5 names two glyphs for this kind - `user-round` for an AUTHORED agent
+     * and `book-user` for a LIBRARY one - and only one of those two shapes
+     * exists in this build. `AgentConfig` carries `agent_id`, which keys the
+     * YAML registry, so every agent a document can express today IS a library
+     * agent; `book-user` is therefore the truthful icon for all of them, and
+     * `user-round` arrives with D3's `AuthoredAgentConfig` on the Python side.
+     * Picking the icon per NODE rather than per kind is that change's work.
+     */
+    icon: BookUser,
     className: 'is-kind-agent',
     blurb: 'One allowlisted YAML agent, on one tier, with bound tools.',
     paletteOrder: 1,
+    hotkey: '2',
     defaultLabel: 'Agent',
     defaultConfig: (vocabulary, _id) => ({
       /*
@@ -181,16 +270,18 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
       // of their own vault rows (plan 01 D7; the picker is 04's).
       credential_id: null,
     }),
-    outPorts: () => SINGLE_OUT,
+    outPorts: billableOut,
     acceptsIncoming: true,
     accent: '#99eaf9',
   },
   crew: {
     kind: 'crew',
-    icon: Users,
+    family: 'flow',
+    icon: UsersRound,
     className: 'is-kind-crew',
     blurb: 'One registered crew, run whole, with its own tools.',
     paletteOrder: 2,
+    hotkey: '3',
     defaultLabel: 'Crew',
     defaultConfig: (vocabulary, _id) => ({
       tier: 'cheap',
@@ -221,16 +312,18 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
        */
       crew_id: nodeId(vocabulary.crew_ids[0]),
     }),
-    outPorts: () => SINGLE_OUT,
+    outPorts: billableOut,
     acceptsIncoming: true,
     accent: '#a0c4ff',
   },
   gate: {
     kind: 'gate',
-    icon: ShieldCheck,
+    family: 'flow',
+    icon: Hand,
     className: 'is-kind-gate',
     blurb: 'Pauses for a person, who approves it or sends it back.',
     paletteOrder: 3,
+    hotkey: '4',
     defaultLabel: 'Gate',
     defaultConfig: () => ({
       /*
@@ -254,10 +347,12 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
   },
   router: {
     kind: 'router',
-    icon: Split,
+    family: 'flow',
+    icon: GitFork,
     className: 'is-kind-router',
     blurb: 'A deterministic fork over one state key. No model, no expression.',
     paletteOrder: 4,
+    hotkey: '5',
     defaultLabel: 'Router',
     defaultConfig: () => ({
       /*
@@ -290,10 +385,12 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
   },
   transform: {
     kind: 'transform',
-    icon: Cog,
+    family: 'flow',
+    icon: Wand2,
     className: 'is-kind-transform',
     blurb: 'One of six fixed operations over the data between two nodes.',
     paletteOrder: 5,
+    hotkey: '6',
     defaultLabel: 'Transform',
     defaultConfig: () => ({
       /*
@@ -315,10 +412,12 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
   },
   output: {
     kind: 'output',
-    icon: FileText,
+    family: 'flow',
+    icon: Flag,
     className: 'is-kind-output',
     blurb: 'What the run hands back, under the one key that escapes the clip.',
     paletteOrder: 6,
+    hotkey: '7',
     defaultLabel: 'Output',
     defaultConfig: (vocabulary) => ({
       /*
@@ -338,14 +437,108 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
     acceptsIncoming: true,
     accent: '#7bdff2',
   },
+
+  /* --- the three attachments ---------------------------------------------
+   * Not steps. An agent or a crew HAS one, and it reaches them along an
+   * `attach` edge - so all three share one port, refuse every inbound edge,
+   * and are drawn as pills rather than as cards.
+   *
+   * Their three accents share a hue and differ only in lightness, which is
+   * deliberate and is the opposite of the rule the seven flow kinds follow:
+   * there, every accent must be distinguishable, because a minimap dot whose
+   * router and transform are one colour tells an author nothing. Here the
+   * first question is "is that an attachment?" and the second is "which one",
+   * so reading as a family beats reading as three strangers. `mcp` also
+   * carries its own plug glyph, which answers the second question without
+   * relying on 8% of lightness.
+   *
+   * The DEFAULTS below are the one place these differ from the seven above:
+   * `tool_id`, `server_id` and `skill_id` are required ids into catalogues
+   * that 06, 07 and 08 own and that `/vocabulary` does not serve yet. A
+   * placeholder is NOT a hardcoded fallback list (cut-list 17) - it is one
+   * obviously-unset value that the author replaces in the inspector, and the
+   * server answers `library-unknown-id` for it until they do, which is the
+   * honest state of a node that has been placed and not configured.
+   */
+  tool: {
+    kind: 'tool',
+    family: 'attachment',
+    icon: Wrench,
+    className: 'is-kind-tool',
+    blurb: 'One catalogue tool, hung off an agent or a crew.',
+    paletteOrder: 7,
+    hotkey: 'T',
+    defaultLabel: 'Tool',
+    defaultConfig: () => ({
+      // A placeholder id, legal against `BUILDER_ID_PATTERN` so the node is
+      // parseable the moment it lands, and obviously unset so the inspector's
+      // first control is the one that matters.
+      tool_id: nodeId('tool'),
+      params: {},
+      // The platform key until the author picks one of their own (plan 01 D7).
+      credential_id: null,
+    }),
+    outPorts: () => ATTACH_OUT,
+    acceptsIncoming: false,
+    accent: '#c3a6ff',
+  },
+  mcp: {
+    kind: 'mcp',
+    family: 'attachment',
+    icon: PlugZap,
+    className: 'is-kind-mcp',
+    blurb: 'One MCP server, and which of its tools this node exposes.',
+    paletteOrder: 8,
+    hotkey: 'M',
+    defaultLabel: 'MCP',
+    defaultConfig: () => ({
+      server_id: nodeId('server'),
+      /*
+       * Empty, and that is a PROBLEM rather than an invalid document.
+       * `McpConfig` deliberately does not require this to be non-empty at parse
+       * time: an author who has added a server and not yet chosen its tools has
+       * made an incomplete graph, and `document.py` raises where `bounds.py`
+       * reports. Seeding a tool name here would invent a selection they never
+       * made, from a server nobody has contacted.
+       */
+      tool_names: [],
+      credential_id: null,
+    }),
+    outPorts: () => ATTACH_OUT,
+    acceptsIncoming: false,
+    accent: '#d5b8ff',
+  },
+  skill: {
+    kind: 'skill',
+    family: 'attachment',
+    icon: BookOpen,
+    className: 'is-kind-skill',
+    blurb: 'Knowledge an agent carries, loaded only when a task matches it.',
+    paletteOrder: 9,
+    hotkey: 'K',
+    defaultLabel: 'Skill',
+    defaultConfig: () => ({ skill_id: nodeId('skill') }),
+    outPorts: () => ATTACH_OUT,
+    acceptsIncoming: false,
+    accent: '#e0ccff',
+  },
 }
 
 /**
- * The seven kinds in canonical order - the order the hotkeys `1`-`7` follow.
+ * The TEN kinds in canonical order - flow first, attachments last.
  *
- * Derived from `paletteOrder` rather than written twice. The palette renders
- * `vocabulary.node_kinds` (the server's order) and this agrees with it, which is
- * asserted rather than assumed.
+ * Derived from `paletteOrder` rather than written twice, and the order is
+ * `document.py:NodeKind`'s own: the seven flow kinds in the order the digits
+ * `1`-`7` follow, then `tool`, `mcp`, `skill` on `T`, `M`, `K`.
+ *
+ * The palette renders `vocabulary.node_kinds` (the SERVER's order) rather than
+ * this, and `tests/nodeKinds.spec.ts` reads the Python union at run time and
+ * asserts the two agree. What that test can no longer assert is that the served
+ * vocabulary lists all ten: this build's `_vocabulary()` still serves the v1
+ * seven, so the palette draws seven tiles until C2 v2 lands (criterion 5, the
+ * Python half). It asserts the weaker true thing instead - that everything
+ * served is known here, in this relative order - which holds on both sides of
+ * that change.
  */
 export const NODE_KIND_ORDER: readonly NodeKind[] = (
   Object.values(NODE_KINDS) as NodeKindMeta[]

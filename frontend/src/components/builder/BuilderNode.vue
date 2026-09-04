@@ -84,6 +84,30 @@ export function summariseConfig(node: BuilderDocumentNode): string {
     }
     case 'output':
       return node.config.body_key
+    /*
+     * The three attachments (03 D6). Each answers "which one is this", which is
+     * the only question a pill can be asked without opening it: an author looks
+     * at a canvas of eight tools and needs to tell them apart, not to read their
+     * parameters.
+     *
+     * A key glyph is NOT in this string. `credential_id` is rendered as its own
+     * chip in the template, because a sentence saying "key" would be one more
+     * token competing for a 160px pill, and because whether a tool has a key is
+     * a yes/no an author scans for rather than reads.
+     */
+    case 'tool': {
+      const names = Object.keys(node.config.params)
+      return names.length === 0 ? node.config.tool_id : `${node.config.tool_id} · ${names.join(', ')}`
+    }
+    case 'mcp': {
+      const count = node.config.tool_names.length
+      // Nought is worth saying out loud: an MCP node with no tools selected
+      // exposes nothing, and `bounds.py` reports it. The card should not read
+      // like a node that is finished.
+      return `${node.config.server_id} · ${count} tool${count === 1 ? '' : 's'}`
+    }
+    case 'skill':
+      return node.config.skill_id
   }
 }
 
@@ -122,15 +146,19 @@ export const KIND_EYEBROW: Record<NodeKind, string> = {
   router: 'ROUTER',
   transform: 'TRANSFORM',
   output: 'OUTPUT',
+  tool: 'TOOL',
+  mcp: 'MCP',
+  skill: 'SKILL',
 }
 </script>
 
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { Lock } from 'lucide-vue-next'
+import { KeyRound, Lock } from 'lucide-vue-next'
 import { BUILDER_HOVERED_NODE, BUILDER_READ_ONLY } from '../../composables/useBuilderCanvas'
 import { NODE_KINDS } from '../../data/nodeKinds'
+import { vocabulary } from '../../data/builderVocabulary'
 import type { BuilderProblem } from '../../types/builder'
 
 const props = defineProps<{
@@ -345,6 +373,54 @@ const lines = computed(() => summaryLines(node.value))
  * on the ones where somebody had already switched it on from the inspector.
  */
 const showsJoin = computed(() => props.data.inbound >= 2 || props.data.joined)
+
+/* ─── the two silhouettes (§5.1, 03 D5) ─────────────────────────────── */
+
+/**
+ * A flow node is a CARD; an attachment is a PILL. One class, read off
+ * `nodeKinds.ts`'s `family`, and the third identity channel D5 asks for.
+ *
+ * Colour and icon both stop working before the shape does. At the 0.5 zoom
+ * criterion 7 captures at, an 11px eyebrow is 5.5px and two violet accents
+ * eight points of lightness apart are one colour - but a 160px pill beside a
+ * 240px card is still unmistakably a different sort of object. That is the
+ * whole argument for spending a channel on silhouette rather than on a fourth
+ * shade.
+ */
+const isAttachment = computed(() => meta.value.family === 'attachment')
+
+/**
+ * The three chips an attachment shows instead of a summary line (D6).
+ *
+ * The catalogue LABEL rather than the id where the server has served one: an
+ * author picked "Firecrawl scrape" from a list and should see that, not
+ * `firecrawl_scrape`. The fallback is the id, never a guess - this build's
+ * `/vocabulary` does not serve `tools` yet (C2 v2 is criterion 5's, on the
+ * Python side), so today every pill reads its id and that is honest.
+ */
+const attachmentChips = computed<{ text: string; key: boolean }[]>(() => {
+  const current = node.value
+  if (current.kind === 'tool') {
+    const entry = vocabulary.value?.tools?.find((row) => row.tool_id === current.config.tool_id)
+    return [
+      { text: entry?.label ?? current.config.tool_id, key: false },
+      // A KEY, not the credential's label or id: which key a tool uses is an
+      // inspector question, and whether it needs one at all is the thing an
+      // author scans a canvas for.
+      ...(current.config.credential_id ? [{ text: 'key', key: true }] : []),
+    ]
+  }
+  if (current.kind === 'mcp') {
+    const count = current.config.tool_names.length
+    return [
+      { text: current.config.server_id, key: false },
+      { text: `${count} tool${count === 1 ? '' : 's'}`, key: false },
+      ...(current.config.credential_id ? [{ text: 'key', key: true }] : []),
+    ]
+  }
+  if (current.kind === 'skill') return [{ text: current.config.skill_id, key: false }]
+  return []
+})
 const showsBadges = computed(
   () => props.data.severity !== null || showsJoin.value || isEscalation.value,
 )
@@ -371,6 +447,9 @@ const ariaLabel = computed(() => {
     :class="[
       meta.className,
       `is-${runState}`,
+      // D5's silhouette channel. `is-card` is written out rather than left as
+      // the absence of `is-pill`, so a test and a stylesheet can both name it.
+      isAttachment ? 'is-pill' : 'is-card',
       {
         'has-error': data.severity === 'error',
         'has-warning': data.severity === 'warning',
@@ -447,13 +526,25 @@ const ariaLabel = computed(() => {
     />
 
     <span class="node-eyebrow-row builder-eyebrow-row">
-      <component
-        :is="meta.icon"
-        class="builder-kind-icon"
-        :size="13"
-        :stroke-width="2"
+      <!--
+        D5: a 28px colour-FILLED squircle, not a bare 13px glyph on the panel.
+        Flowise v2 draws its node icon this way and it is the reason its cards
+        read at a glance; a stroke-only icon in the accent colour is a thin line
+        that disappears at the zoom an author actually works at.
+
+        The fill is `meta.accent` - the same value the minimap dot and the
+        inspector's kicker use - passed as a custom property rather than as a
+        `background` so the stylesheet keeps the radius, the size and the
+        contrast rule in one place. The glyph is `--bg-app` on top, because
+        every accent is a light tint and a light glyph on it would vanish.
+      -->
+      <span
+        class="builder-kind-squircle"
+        :style="{ '--kind-accent': meta.accent }"
         aria-hidden="true"
-      />
+      >
+        <component :is="meta.icon" :size="15" :stroke-width="2" />
+      </span>
       <span class="node-eyebrow builder-eyebrow">{{ eyebrow }}</span>
       <!--
         Round 2, D-15-1: a stored version on the canvas is read-only, and the
@@ -498,7 +589,25 @@ const ariaLabel = computed(() => {
       >{{ node.label }}</strong
     >
 
-    <span class="builder-summary" :title="summary">
+    <!--
+      D6: an attachment's config is CHIPS, a flow node's is the mono summary
+      line. Not a style choice - a pill is 160px and a comma-separated sentence
+      in it ellipsises to nothing, while three chips wrap and each one still
+      reads. The `title` carries the whole sentence either way, so nothing is
+      lost to the shorter form.
+    -->
+    <span v-if="isAttachment" class="builder-chips" :title="summary">
+      <span
+        v-for="chip in attachmentChips"
+        :key="chip.text"
+        class="builder-chip"
+        :class="{ 'is-key': chip.key }"
+      >
+        <KeyRound v-if="chip.key" :size="10" :stroke-width="2.2" aria-hidden="true" />
+        {{ chip.text }}
+      </span>
+    </span>
+    <span v-else class="builder-summary" :title="summary">
       <span v-for="line in lines" :key="line" class="builder-summary-line">{{ line }}</span>
     </span>
 

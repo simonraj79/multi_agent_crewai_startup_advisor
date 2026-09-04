@@ -48,7 +48,7 @@ const FALLBACK_SLUG = 'node'
  * - so an unrounded drop is a hard 422 arriving on a later save, long after the
  * gesture that caused it.
  *
- * THROWS when the vocabulary has not loaded. Three of the seven kinds have
+ * THROWS when the vocabulary has not loaded. Three of the ten kinds have
  * REQUIRED fields whose legal values only the server knows (`agent_id`,
  * `crew_id`, `body_key`), and inventing them is cut list item 17: a hardcoded
  * fallback is how a client starts drawing graphs the compiler rejects. Every
@@ -86,7 +86,9 @@ export function newNode(
    * only a per-case construction proves that an `agent` node carries an
    * `AgentConfig`. An eighth kind is then a compile error here - the same
    * argument `InspectorRail`'s `Record<NodeKind, Component>` makes - rather than
-   * a node with the wrong config shape that fails at the server.
+   * a node with the wrong config shape that fails at the server. Ten cases now,
+   * and the three attachments are here for the same reason the seven are: an
+   * `mcp` node must carry an `McpConfig` and nothing else.
    */
   switch (kind) {
     case 'input':
@@ -103,6 +105,12 @@ export function newNode(
       return { ...base, kind, config: NODE_KINDS.transform.defaultConfig(served, id) }
     case 'output':
       return { ...base, kind, config: NODE_KINDS.output.defaultConfig(served, id) }
+    case 'tool':
+      return { ...base, kind, config: NODE_KINDS.tool.defaultConfig(served, id) }
+    case 'mcp':
+      return { ...base, kind, config: NODE_KINDS.mcp.defaultConfig(served, id) }
+    case 'skill':
+      return { ...base, kind, config: NODE_KINDS.skill.defaultConfig(served, id) }
   }
 }
 

@@ -503,6 +503,9 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
        */
       tool_names: [],
       credential_id: null,
+      // `document.py::McpConfig` carries this so an EXPORTED graph parses;
+      // a fresh node has no hint because it has a real `server_id`.
+      server_hint: null,
     }),
     outPorts: () => ATTACH_OUT,
     acceptsIncoming: false,
@@ -517,7 +520,11 @@ export const NODE_KINDS: { readonly [K in NodeKind]: NodeKindMeta<K> } = {
     paletteOrder: 9,
     hotkey: 'K',
     defaultLabel: 'Skill',
-    defaultConfig: () => ({ skill_id: nodeId('skill') }),
+    defaultConfig: () => ({ skill_id: nodeId('skill'),
+      // Survives an export where `skill_id` cannot, and is what an importing
+      // author's own library resolves against.
+      skill_name: null,
+    }),
     outPorts: () => ATTACH_OUT,
     acceptsIncoming: false,
     accent: '#e0ccff',

@@ -104,12 +104,28 @@ export function summariseConfig(node: BuilderDocumentNode): string {
       // Nought is worth saying out loud: an MCP node with no tools selected
       // exposes nothing, and `bounds.py` reports it. The card should not read
       // like a node that is finished.
-      return `${node.config.server_id} · ${count} tool${count === 1 ? '' : 's'}`
+      const server = node.config.server_id ?? node.config.server_hint?.label ?? UNRESOLVED
+      return `${server} · ${count} tool${count === 1 ? '' : 's'}`
     }
     case 'skill':
-      return node.config.skill_id
+      return node.config.skill_name ?? node.config.skill_id ?? UNRESOLVED
   }
 }
+
+/**
+ * What an attachment card says when its reference did not survive an export.
+ *
+ * `export.py` strips `server_id` and `skill_id` deliberately — they name rows in
+ * the EXPORTING author's lists — so an imported graph genuinely contains an
+ * `mcp` node with no server and a `skill` node with no id. The card has to say
+ * something, and the honest something is that the reference is missing rather
+ * than a blank, an `undefined`, or a guess at what it used to be.
+ *
+ * A skill keeps its `skill_name` across an export, so it can still say WHICH
+ * skill it wants; only the resolvable id is gone. An MCP node falls back to its
+ * hint label for the same reason.
+ */
+const UNRESOLVED = 'no reference'
 
 /**
  * The summary, split into the lines the card actually draws.
@@ -465,12 +481,19 @@ const attachmentChips = computed<{ text: string; key: boolean }[]>(() => {
   if (current.kind === 'mcp') {
     const count = current.config.tool_names.length
     return [
-      { text: current.config.server_id, key: false },
+      {
+        text: current.config.server_id ?? current.config.server_hint?.label ?? UNRESOLVED,
+        key: false,
+      },
       { text: `${count} tool${count === 1 ? '' : 's'}`, key: false },
       ...(current.config.credential_id ? [{ text: 'key', key: true }] : []),
     ]
   }
-  if (current.kind === 'skill') return [{ text: current.config.skill_id, key: false }]
+  if (current.kind === 'skill') {
+    return [
+      { text: current.config.skill_name ?? current.config.skill_id ?? UNRESOLVED, key: false },
+    ]
+  }
   return []
 })
 const showsBadges = computed(

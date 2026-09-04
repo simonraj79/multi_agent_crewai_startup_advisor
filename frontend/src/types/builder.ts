@@ -359,9 +359,33 @@ export interface ToolConfig {
   credential_id?: string | null
 }
 
+/**
+ * What survives an export when the server reference itself cannot.
+ * `document.py::ServerHint`. Every field is optional because the export nulls
+ * whatever it could not safely carry, and a hint with nothing in it is still a
+ * truthful hint.
+ */
+export interface ServerHint {
+  label?: string | null
+  transport?: string | null
+  /** Masked by `export.mask_url` before it is written: a real MCP url can carry
+   *  `user:password@` and `?token=`, so the raw one never leaves. */
+  url?: string | null
+}
+
 export interface McpConfig {
-  /** REQUIRED. One MCP server, by id. */
-  server_id: NodeId
+  /**
+   * One MCP server, by id — and OPTIONAL, which cost a production defect to
+   * learn (D-15-28). `export.py` NULLS this key on the way out, because it
+   * names a row in the exporting author's own server list and a different
+   * author importing that file must not end up pointing at it. While it was
+   * required, an exported graph could not be re-imported by anyone, its own
+   * author included.
+   */
+  server_id?: NodeId | null
+  /** What the export leaves in `server_id`'s place. Present here because the
+   *  export WRITES it and the server model is `extra="forbid"`. */
+  server_hint?: ServerHint | null
   /**
    * WHICH of the server's tools this node exposes. default []. Emptiness is a
    * `bounds.py` PROBLEM rather than a parse refusal, because an author who has
@@ -375,10 +399,16 @@ export interface McpConfig {
 
 export interface SkillConfig {
   /**
-   * REQUIRED. One SKILL.md pack. A skill is knowledge, not hands: its name and
+   * One SKILL.md pack. A skill is knowledge, not hands: its name and
    * description load at run start and its body only when a task matches.
+   *
+   * OPTIONAL for the same reason as `McpConfig.server_id`: the export strips
+   * it, leaving `skill_name` behind as the thing an importing author's own
+   * library resolves against.
    */
-  skill_id: NodeId
+  skill_id?: NodeId | null
+  /** The human name, which survives an export where the id cannot. */
+  skill_name?: string | null
 }
 
 export type BuilderNodeConfig =

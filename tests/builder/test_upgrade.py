@@ -23,9 +23,16 @@ import json
 from pathlib import Path
 from typing import Any
 import unittest
+from unittest import mock
 
 from brief_crew.builder import validate_document
-from brief_crew.builder.document import BuilderDocument
+from brief_crew.builder import upgrade as upgrade_module
+from brief_crew.builder import document as document_module
+from brief_crew.builder.document import (
+    BuilderDocument,
+    LibraryAgentConfig,
+    LibraryCrewConfig,
+)
 from brief_crew.builder.upgrade import (
     KNOWN_SCHEMAS,
     SCHEMA_V1,
@@ -92,9 +99,18 @@ class CommittedFixtureTests(unittest.TestCase):
                 once = upgrade_document(raw)
                 self.assertEqual(upgrade_document(once), once)
 
-    def test_stage_one_passes_v1_through_unchanged(self) -> None:
-        """S1 ruling 5. When the mapping lands this assertion goes with it."""
+    def test_v1_passes_through_while_the_service_still_compiles_v1(self) -> None:
+        """The mapping is registered and INERT, and this is what says so.
 
+        `upgrade_document` walks `_UPGRADES` only while the document's schema
+        differs from `config.BUILDER_DOCUMENT_SCHEMA`, which is still
+        `builder.flow/v1` because moving it is a two-suite contract change the
+        client half has not made. `V1ToV2MappingTests` below proves the walk
+        with the constant patched, so this assertion is about today's wiring
+        rather than about the mapping's correctness.
+        """
+
+        self.assertEqual(BUILDER_DOCUMENT_SCHEMA, SCHEMA_V1)
         for name, raw in committed_fixtures().items():
             with self.subTest(fixture=name):
                 self.assertEqual(upgrade_document(raw), raw)
@@ -148,6 +164,89 @@ class HookTests(unittest.TestCase):
         with self.assertRaises(TypeError) as caught:
             upgrade_document(["nodes"])  # type: ignore[arg-type]
         self.assertIn("list", str(caught.exception))
+
+
+class V1ToV2MappingTests(unittest.TestCase):
+    """03 D4's mapping, run as it will run the day the constant moves.
+
+    `BUILDER_DOCUMENT_SCHEMA` is patched where `upgrade.py` READ it - the module
+    does `from ... import BUILDER_DOCUMENT_SCHEMA`, so patching `config` would
+    change nothing and this test would pass by not running the walk at all. The
+    control for that is `test_the_walk_really_ran`, which asserts the schema
+    actually moved rather than merely that two dicts are equal.
+
+    **Idempotence is tested by running it TWICE**, which is the criterion's own
+    wording and not a formality: a mapping that filled in fields the model would
+    default - `"state": null` on every document, `"on_error": "fail"` on every
+    node - differs from its input on the first pass and agrees with itself on
+    the second, so a one-pass test would pass while a stored row silently
+    stopped round-tripping.
+    """
+
+    def _upgraded(self, raw: dict[str, Any]) -> dict[str, Any]:
+        with mock.patch.object(upgrade_module, "BUILDER_DOCUMENT_SCHEMA", SCHEMA_V2):
+            return upgrade_document(raw)
+
+    def test_the_walk_really_ran(self) -> None:
+        for name, raw in committed_fixtures().items():
+            with self.subTest(fixture=name):
+                self.assertEqual(raw.get("schema", SCHEMA_V1), SCHEMA_V1)
+                self.assertEqual(self._upgraded(raw)["schema"], SCHEMA_V2)
+
+    def test_every_committed_fixture_is_byte_identical_after_a_SECOND_pass(self) -> None:
+        for name, raw in committed_fixtures().items():
+            with self.subTest(fixture=name):
+                once = self._upgraded(raw)
+                twice = self._upgraded(once)
+                self.assertEqual(
+                    json.dumps(twice, sort_keys=True), json.dumps(once, sort_keys=True)
+                )
+
+    def test_the_first_pass_changes_the_schema_STRING_and_nothing_else(self) -> None:
+        """The property idempotence alone would not catch (see the class note)."""
+
+        for name, raw in committed_fixtures().items():
+            with self.subTest(fixture=name):
+                once = self._upgraded(raw)
+                self.assertEqual(
+                    {key: value for key, value in once.items() if key != "schema"},
+                    {key: value for key, value in raw.items() if key != "schema"},
+                )
+
+    def test_a_v1_document_parses_as_v2_with_no_field_rewritten(self) -> None:
+        """D4's reason the mapping is one line: v2 grew by ADDITION only.
+
+        A v1 agent carries `agent_id`, so presence-discrimination puts it on the
+        library arm - the arm it always was. Nothing needed a value it did not
+        already have.
+        """
+
+        raw = self._upgraded(committed_fixtures()["builderValidatorTemplate.json"])
+        # `_validate_schema` reads the name out of `document.py`'s own module
+        # namespace at call time, which is the only thing that has to move for
+        # a v2 document to parse. The model's FIELD default is irrelevant here
+        # because this document spells its schema.
+        with mock.patch.object(document_module, "BUILDER_DOCUMENT_SCHEMA", SCHEMA_V2):
+            parsed = parse(raw)
+        self.assertEqual(parsed.document_schema, SCHEMA_V2)
+        self.assertIsNone(parsed.state)
+        for node in parsed.nodes:
+            if node.kind in ("agent", "crew"):
+                self.assertIsInstance(node.config, (LibraryAgentConfig, LibraryCrewConfig))
+        self.assertEqual(validate_document(parsed), [])
+
+    def test_a_document_already_at_v2_is_left_alone(self) -> None:
+        raw = straight_line().model_dump(mode="json", by_alias=True)
+        raw["schema"] = SCHEMA_V2
+        self.assertEqual(self._upgraded(raw), raw)
+
+    def test_the_mapping_never_mutates_or_shares_its_input(self) -> None:
+        raw = committed_fixtures()["straight_line"]
+        before = deepcopy(raw)
+        upgraded = self._upgraded(raw)
+        self.assertEqual(raw, before)
+        upgraded["nodes"][0]["id"] = "tampered"
+        self.assertEqual(raw, before)
 
 
 class StoreIntegrationTests(unittest.TestCase):

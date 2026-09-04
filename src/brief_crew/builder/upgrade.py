@@ -1,4 +1,4 @@
-"""The `builder.flow/v1 -> v2` upgrade on read. In Stage 1, the hook.
+"""The `builder.flow/v1 -> v2` upgrade on read. The seam, and now the mapping.
 
 Plan 15 D5 puts one pure, idempotent function between a stored row and
 `BuilderDocument.model_validate`, so that every row written under an older
@@ -6,19 +6,25 @@ schema parses as the current one without a rewrite: the next save writes the
 current schema, the row before it is left exactly as it was, and no migration
 ever has to touch `builder_document_versions`.
 
-**This module carries the seam and not the mapping - S1 ruling 5.** The v2
-schema (contract C1) is owned by plan 03, which is Stage 2, and
-`BUILDER_DOCUMENT_SCHEMA` is still `builder.flow/v1`, so there is nothing to
-upgrade *to*. What exists today is the place the mapping lands, the two schema
-strings the importer accepts (ruling 4), and the property every later mapping
-has to keep: `upgrade_document(upgrade_document(x)) == upgrade_document(x)`,
-pinned by `tests/builder/test_upgrade.py` over every committed v1 fixture.
+**Stage 1 carried the seam and not the mapping (S1 ruling 5). Plan 03 D4
+landed the mapping**, `_v1_to_v2` below, registered in `_UPGRADES` and nowhere
+else - which is what the seam existed for.
 
-Why a hook that does nothing is still worth wiring now rather than the day it
-has work to do: the two call sites - `store._parse` and the import route - are
-the two doors a stored or uploaded document comes through, and a mapping that
-lands with C1 must not have to find and edit both. It lands in `_UPGRADES`
-below and nowhere else.
+> **One step is still outstanding and it is not this module's to take.**
+> `upgrade_document` walks `_UPGRADES` only while the document's schema differs
+> from `config.BUILDER_DOCUMENT_SCHEMA`, and that constant is still
+> `builder.flow/v1`. So the mapping is registered, tested and inert. Moving the
+> constant is a TWO-SUITE contract change: `frontend/src/types/builder.ts`
+> declares `BUILDER_SCHEMA_ID = 'builder.flow/v1'` and
+> `builderVocabulary.ts::normalise` refuses a vocabulary whose `schema_id` does
+> not equal it, so flipping one side alone disables the whole palette with a
+> sentence about a schema the author never typed. `tests/builder/test_upgrade.py`
+> proves the walk end to end with the constant patched, so the day both halves
+> move there is nothing here left to write.
+
+The two call sites - `store._parse` and the import route - are the two doors a
+stored or uploaded document comes through, and the mapping had to land in one
+place rather than in both.
 
 A document whose `schema` this service does not know is passed through
 UNCHANGED, on purpose. `BuilderDocument._validate_schema` refuses it with a
@@ -45,21 +51,53 @@ SCHEMA_V2 = "builder.flow/v2"
 #: What the import route accepts as an envelope's `export` value - ruling 4.
 KNOWN_SCHEMAS: tuple[str, ...] = (SCHEMA_V1, SCHEMA_V2)
 
+def _v1_to_v2(document: dict[str, Any]) -> dict[str, Any]:
+    """A `builder.flow/v1` document at `builder.flow/v2` - 03 D4, FD2.
+
+    **It sets the schema string and touches nothing else, and that is the whole
+    mapping.** Not an oversight, and worth reading before anybody "completes"
+    it: v2 grew the schema by ADDITION only, and every addition is either a new
+    union arm or an optional field.
+
+    * An agent carries `agent_id`, so it parses as the LIBRARY arm - which is
+      the arm it always was. `role` is the other arm's discriminator and a v1
+      document has none, so presence-discrimination gives the right answer with
+      nothing to rewrite. Same for a crew on `crew_id` / `process`.
+    * `state` is `None` when absent, `on_error` defaults to `fail`, `joins`
+      keeps its `"all"` values, and `target_port` was already defaulted to `in`
+      by `BuilderEdge` before v2 existed.
+    * `budget`, `positions` and every id are untouched. A stored budget is
+      still the price of this exact graph - the upgrade changed no node.
+
+    **Nothing is filled in that the model would default**, which is what makes
+    the second pass byte-identical: a mapping that wrote `"state": null` or
+    `"on_error": "fail"` into every node would produce a dict that differs from
+    its own input on the first pass and then agrees with itself on the second,
+    and the idempotence test would pass while the purity claim - a stored row
+    round-trips unchanged except for the schema string - quietly stopped being
+    true. Idempotence is necessary and it is not sufficient.
+
+    An earlier note in this module anticipated `llm: {model: <tier preset>}`
+    being added here. It is deliberately NOT: the tier presets live in
+    `config.py`, they move (3.7-flash -> 3.8-flash on 2026-09-04), and baking
+    one into every upgraded document would freeze each row at whatever the
+    preset was on the day it was read. A library node names a tier and resolves
+    the model at compile time, which is the behaviour it already had.
+    """
+
+    return {**document, "schema": SCHEMA_V2}
+
+
 #: One step per schema: `from` -> a function producing the document at the
 #: NEXT schema. `upgrade_document` walks this until the document is at
 #: `BUILDER_DOCUMENT_SCHEMA`, so a v1 row still upgrades the day v3 exists.
 #:
-#: Empty in Stage 1. The v1 -> v2 mapping from 15 D5 - `tier` kept and
-#: `llm: {model: <tier preset>}` added, `target_port` defaulted to `in`,
-#: `joins` unchanged, `budget` dropped - is registered here by plan 03 when C1
-#: lands and `BUILDER_DOCUMENT_SCHEMA` becomes SCHEMA_V2:
-#:
-#:     _UPGRADES[SCHEMA_V1] = _v1_to_v2
-#:
 #: Every mapping must return a NEW dict carrying its target `schema`, and must
 #: be a no-op on a document already at that target, or the idempotence test
 #: fails - which is the test doing its job.
-_UPGRADES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+_UPGRADES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    SCHEMA_V1: _v1_to_v2,
+}
 
 
 def is_known_schema(value: Any) -> bool:

@@ -209,6 +209,79 @@
   border-color: var(--warn-border);
 }
 
+/* D6's authored row: the model pill, the crew's process chip, and the avatars
+   of whatever is wired into this node's `attach` port.
+
+   It sits BELOW the summary rather than replacing a line of it, because the two
+   answer different questions - the summary says what this node is set to, and
+   this says what it is made of. Nothing here introduces a colour, a radius or a
+   type scale that is not already a token; the avatar's fill is the attachment
+   kind's own `accent`, the same value its pill's squircle and its minimap dot
+   use, passed in as `--kind-accent` so one string reaches all three. */
+.builder-node-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+}
+/* The loudest token on the card, because `llm.model` is the single fact that
+   changes what a node costs and what it can do. Mono, so two models of similar
+   length are comparable down the canvas rather than merely both present. */
+.builder-model-pill {
+  max-width: 100%;
+  padding: 2px 7px;
+  overflow: hidden;
+  color: var(--text-title);
+  font: 600 10px/1.4 var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--surface-well);
+  border: 1px solid var(--border-avatar);
+  border-radius: var(--r-pill);
+}
+/* The manager's model is quieter than the crew's own: it is a second model on
+   one card, and equal weight would read as a choice between them. */
+.builder-model-pill.is-manager {
+  color: var(--text-muted);
+  font-weight: 500;
+  border-style: dashed;
+}
+.builder-process-chip {
+  padding: 2px 6px;
+  color: var(--text-muted);
+  font: 600 10px/1.4 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
+.builder-attachments {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+/* 20px, per D6. A filled disc in the attachment's own accent rather than a
+   stroke glyph, for the reason the kind squircle is filled: at the zoom an
+   author works at, a thin line in a light tint is not there. */
+.builder-attach-avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--bg-app);
+  background: var(--kind-accent, var(--text-muted));
+  border-radius: var(--r-full);
+}
+.builder-attach-more {
+  color: var(--text-40);
+  font: 600 10px/1.4 var(--font-mono);
+}
+
 /* 1. Eyebrow row: icon left, `03 · AGENT` right. `node-card.css` reserves a
       62px right lane for the run card's absolutely-positioned state chip; the
       design card has no state chip, so the lane is given back. */

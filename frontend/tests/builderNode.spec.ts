@@ -25,12 +25,15 @@ import PortMenu, { titleiseId, type PortMenuCreation } from '../src/components/b
 import { resetVocabulary, vocabulary } from '../src/data/builderVocabulary'
 import { isAuthoredAgent } from '../src/types/builder'
 import { edgeClassOf, targetPortsOf } from '../src/composables/useBuilderCanvas'
+import type { NodeAttachment } from '../src/composables/useBuilderCanvas'
+import { authoredAgentNode, authoredCrewNode } from './builderInspectorFixtures'
 import { NODE_KINDS, outPortsOf } from '../src/data/nodeKinds'
 import {
   nodeId,
   type BuilderNode as DocumentNode,
   type BuilderProblem,
   type BuilderVocabulary,
+  type LlmConfig,
   type NodeKind,
 } from '../src/types/builder'
 
@@ -389,6 +392,153 @@ describe('the config summary answers "what is this set to" without a click', () 
       config: { ...NODES.agent.config, tools: ['market_research'] },
     } as DocumentNode
     expect(summariseConfig(armed)).toBe('escalation · scoper · 2 iter · 1 tool')
+  })
+})
+
+/* ─── D6: what an AUTHORED node is made of (criterion 8) ─────────────────── */
+
+/**
+ * The card's second job, which the summary line cannot do.
+ *
+ * `summariseConfig` answers "what is this set to". These chips answer "what is
+ * this made of" - the model, the crew's process and manager, and the hands. The
+ * two are separate elements rather than one longer sentence because D6 asks for
+ * three different behaviours out of the model fact alone: it is the loudest
+ * token on the card, it carries the full slug in a `title`, and 04 D4 wants it
+ * to move in the same tick the picker writes `llm.model`. A slice of a
+ * `·`-joined string can do none of the three.
+ *
+ * The avatars are DRAWN ON THE HOST while the pills stay on the canvas, which
+ * is deliberate duplication (D6): the pill is where an attachment is
+ * configured, the avatar is where you see whose hands it is. A dropdown inside
+ * the form - Flowise's `agentTools` - cannot show that two agents share one
+ * tool, and the canvas can.
+ */
+describe("an authored card shows what it is MADE of, not only what it is set to", () => {
+  /** One `LlmConfig`, so the manager pill's fixture is a real one. */
+  const MANAGER_LLM: LlmConfig = {
+    model: 'google/gemini-3.8-flash',
+    temperature: null,
+    top_p: null,
+    max_tokens: null,
+    timeout: null,
+    response_format: null,
+    frequency_penalty: null,
+    presence_penalty: null,
+    stop: [],
+    seed: null,
+    reasoning_effort: null,
+  }
+
+  const TOOL = (id: string, label: string): NodeAttachment => ({
+    id: nodeId(id),
+    kind: 'tool',
+    label,
+  })
+
+  it('renders a model pill and one avatar per attachment', () => {
+    const wrapper = mountNode(
+      nodeData(authoredAgentNode('writer'), {
+        attachments: [TOOL('scrape', 'Scrape'), TOOL('search', 'Search'), TOOL('repo', 'Repos')],
+      }),
+    )
+
+    const pill = wrapper.get('[data-testid="node-model-pill"]')
+    // The half after the slash, because `google/gemini-3.5-flash-lite` clips at
+    // this type size and the provider is the roster's business, not the canvas's.
+    expect(pill.text()).toBe('gemini-3.5-flash-lite')
+    expect(pill.attributes('title')).toBe('google/gemini-3.5-flash-lite')
+
+    expect(wrapper.findAll('.builder-attach-avatar')).toHaveLength(3)
+    expect(wrapper.find('[data-testid="node-attachments-more"]').exists()).toBe(false)
+  })
+
+  it('draws four avatars and a +1 when a fifth is attached', () => {
+    /*
+     * FOUR, per D6, and the fifth becomes a count rather than a fifth disc:
+     * `NODE_W` is 240px and five 20px avatars plus the model pill do not fit
+     * beside each other. `+1` rather than `4 of 5` because the question an
+     * author answers at a glance is "is there more than I can see".
+     */
+    const wrapper = mountNode(
+      nodeData(authoredAgentNode('writer'), {
+        attachments: [
+          TOOL('a', 'A'),
+          TOOL('b', 'B'),
+          { id: nodeId('c'), kind: 'mcp', label: 'Sandbox' },
+          { id: nodeId('d'), kind: 'skill', label: 'House style' },
+          TOOL('e', 'E'),
+        ],
+      }),
+    )
+
+    expect(wrapper.findAll('.builder-attach-avatar')).toHaveLength(4)
+    expect(wrapper.get('[data-testid="node-attachments-more"]').text()).toBe('+1')
+  })
+
+  it('gives each avatar its own kind, glyph and accent rather than one badge', () => {
+    // Three attachments that all looked alike would answer "there are three"
+    // and never "which three", which is the whole difference between an avatar
+    // and a counter.
+    const wrapper = mountNode(
+      nodeData(authoredAgentNode('writer'), {
+        attachments: [
+          TOOL('a', 'Scrape'),
+          { id: nodeId('b'), kind: 'mcp', label: 'Sandbox' },
+          { id: nodeId('c'), kind: 'skill', label: 'House style' },
+        ],
+      }),
+    )
+    const avatars = wrapper.findAll('.builder-attach-avatar')
+    expect(avatars.map((node) => node.attributes('data-attachment-kind'))).toEqual([
+      'tool',
+      'mcp',
+      'skill',
+    ])
+    // The accent is `nodeKinds.ts`'s, passed as the same custom property the
+    // kind squircle and the minimap dot read, so one string dresses all three.
+    expect(avatars[1].attributes('style')).toContain(NODE_KINDS.mcp.accent)
+    expect(avatars.map((node) => node.attributes('title'))).toEqual([
+      'Scrape',
+      'Sandbox',
+      'House style',
+    ])
+  })
+
+  it('shows nothing of the sort on a LIBRARY agent, whose model it did not choose', () => {
+    // Its identity is `agent_id` and its model is the tier's. A pill naming a
+    // model the author never picked would invite an edit with no control behind
+    // it.
+    const wrapper = mountNode(nodeData(NODES.agent))
+    expect(wrapper.find('[data-testid="node-model-pill"]').exists()).toBe(false)
+    expect(wrapper.find('.builder-node-chips').exists()).toBe(false)
+  })
+
+  it('marks a hierarchical crew `hier` and names its manager model', () => {
+    const wrapper = mountNode(
+      nodeData(
+        authoredCrewNode('team', {
+          process: 'hierarchical',
+          manager_llm: { ...MANAGER_LLM, model: 'google/gemini-3.8-flash' },
+        }),
+      ),
+    )
+    expect(wrapper.get('[data-testid="node-process-chip"]').text()).toBe('hier')
+    const manager = wrapper.get('[data-testid="node-manager-pill"]')
+    expect(manager.text()).toBe('gemini-3.8-flash')
+    expect(manager.attributes('title')).toBe('Manager · google/gemini-3.8-flash')
+  })
+
+  it('marks a sequential crew `seq` and shows no manager, because it has none', () => {
+    // `Crew.__init__` refuses a manager on a sequential crew, so an empty slot
+    // here would be a slot that can never fill.
+    const wrapper = mountNode(nodeData(authoredCrewNode('team')))
+    expect(wrapper.get('[data-testid="node-process-chip"]').text()).toBe('seq')
+    expect(wrapper.find('[data-testid="node-manager-pill"]').exists()).toBe(false)
+  })
+
+  it('says nothing about a LIBRARY crew, which has no process to name', () => {
+    expect(mountNode(nodeData(NODES.crew)).find('.builder-node-chips').exists()).toBe(false)
   })
 })
 

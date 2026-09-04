@@ -201,6 +201,9 @@ import { BUILDER_HOVERED_NODE, BUILDER_READ_ONLY } from '../../composables/useBu
 import { NODE_KINDS } from '../../data/nodeKinds'
 import { vocabulary } from '../../data/builderVocabulary'
 import type { BuilderProblem } from '../../types/builder'
+// `isAuthoredAgent` / `isAuthoredCrew` come from the module `<script>` block
+// above, whose bindings share this module's scope. Importing them again here
+// would be a redeclaration.
 
 const props = defineProps<{
   id: string
@@ -521,6 +524,94 @@ const attachmentChips = computed<{ text: string; key: boolean }[]>(() => {
   }
   return []
 })
+/* ─── D6's authored chips: the model pill, the process chip, the hands ───── */
+
+/**
+ * The model an AUTHORED node names, short, or null.
+ *
+ * The pill is a separate element from the summary line rather than a slice of
+ * it, because D6 asks for three different things from one fact: it is the
+ * loudest token on the card, it carries the whole slug in a `title` for a
+ * reader who needs the provider, and 04 D4 asks for it to move in the same tick
+ * the picker writes `llm.model`. A substring of a `·`-joined sentence can do
+ * none of the three.
+ *
+ * A LIBRARY agent gets none. Its identity is `agent_id`, the model is the
+ * tier's, and a pill naming a model the author did not choose would invite an
+ * edit there is no control for.
+ */
+const modelPill = computed<{ short: string; full: string } | null>(() => {
+  const current = node.value
+  if (current.kind !== 'agent') return null
+  const config = current.config
+  if (!isAuthoredAgent(config)) return null
+  return { short: shortModel(config.llm.model), full: config.llm.model }
+})
+
+/**
+ * `seq` or `hier` on an authored crew - D6's process chip.
+ *
+ * ABBREVIATED, and that is the point rather than a saving: `hierarchical`
+ * spelled out is the widest token any card carries and it ellipsises at
+ * `NODE_W` 240 into `hierarchi…`, which is a truncated fact. The full word is
+ * in the summary's `title`, where it always was.
+ */
+const processChip = computed<string | null>(() => {
+  const current = node.value
+  if (current.kind !== 'crew') return null
+  const config = current.config
+  if (!isAuthoredCrew(config)) return null
+  return config.process === 'hierarchical' ? 'hier' : 'seq'
+})
+
+/**
+ * The MANAGER's model, on a hierarchical crew only - D6.
+ *
+ * `Crew.__init__` raises unless a hierarchical crew names a manager, so this is
+ * a fact about the run that the card can state without qualification. A
+ * sequential crew has no manager by construction and shows nothing, rather than
+ * an empty slot.
+ */
+const managerPill = computed<{ short: string; full: string } | null>(() => {
+  const current = node.value
+  if (current.kind !== 'crew') return null
+  const config = current.config
+  if (!isAuthoredCrew(config) || config.process !== 'hierarchical') return null
+  const model = config.manager_llm?.model
+  return model ? { short: shortModel(model), full: model } : null
+})
+
+/**
+ * Up to four attachment avatars plus the overflow count - D6.
+ *
+ * FOUR, because the fifth is where a 240px card stops holding 20px discs and a
+ * label beside them; beyond that the honest thing is a count. The overflow chip
+ * says `+1`, not `4 of 5`, because the question an author is answering at a
+ * glance is "is there more than I can see".
+ *
+ * The avatars are drawn on the HOST, and the pills stay on the canvas. That
+ * duplication is deliberate (D6): the pill is where an attachment is
+ * configured, the avatar is where you see whose hands it is - and the canvas is
+ * the only surface that can show one tool wired to two agents.
+ */
+const AVATAR_LIMIT = 4
+const attachmentAvatars = computed(() => (props.data.attachments ?? []).slice(0, AVATAR_LIMIT))
+const attachmentOverflow = computed(() =>
+  Math.max(0, (props.data.attachments ?? []).length - AVATAR_LIMIT),
+)
+const showsAuthoredChips = computed(
+  () =>
+    modelPill.value !== null ||
+    processChip.value !== null ||
+    managerPill.value !== null ||
+    attachmentAvatars.value.length > 0,
+)
+
+/** `google/gemini-3.8-flash` -> `gemini-3.8-flash`. The half that identifies it. */
+function shortModel(model: string): string {
+  return model.split('/').pop() ?? model
+}
+
 const showsBadges = computed(
   () => props.data.severity !== null || showsJoin.value || isEscalation.value,
 )
@@ -735,6 +826,58 @@ const ariaLabel = computed(() => {
     </span>
     <span v-else class="builder-summary" :title="summary">
       <span v-for="line in lines" :key="line" class="builder-summary-line">{{ line }}</span>
+    </span>
+
+    <!--
+      D6's authored row: the model pill, the crew's process chip and manager,
+      and the avatars of whatever is wired to this node's `attach` port.
+
+      Rendered only when there is something in it, so a library agent's card is
+      exactly the card it was. Every value here is read off the projection or
+      off the node's own config - nothing is looked up, nothing is computed
+      twice, and an attachment that is not on the canvas cannot appear here.
+    -->
+    <span v-if="showsAuthoredChips" class="builder-node-chips">
+      <span
+        v-if="modelPill"
+        class="builder-model-pill"
+        data-testid="node-model-pill"
+        :title="modelPill.full"
+        >{{ modelPill.short }}</span
+      >
+      <span v-if="processChip" class="builder-process-chip" data-testid="node-process-chip">{{
+        processChip
+      }}</span>
+      <span
+        v-if="managerPill"
+        class="builder-model-pill is-manager"
+        data-testid="node-manager-pill"
+        :title="`Manager · ${managerPill.full}`"
+        >{{ managerPill.short }}</span
+      >
+      <span
+        v-if="attachmentAvatars.length"
+        class="builder-attachments"
+        data-testid="node-attachments"
+      >
+        <span
+          v-for="attachment in attachmentAvatars"
+          :key="attachment.id"
+          class="builder-attach-avatar"
+          :class="`is-kind-${attachment.kind}`"
+          :style="{ '--kind-accent': NODE_KINDS[attachment.kind].accent }"
+          :title="attachment.label"
+          :data-attachment-kind="attachment.kind"
+        >
+          <component :is="NODE_KINDS[attachment.kind].icon" :size="11" :stroke-width="2.2" />
+        </span>
+        <span
+          v-if="attachmentOverflow"
+          class="builder-attach-more"
+          data-testid="node-attachments-more"
+          >+{{ attachmentOverflow }}</span
+        >
+      </span>
     </span>
 
     <div v-if="showsBadges" class="builder-badges">

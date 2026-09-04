@@ -306,6 +306,7 @@ def compile_document(
         )
     assert_action_refs(definition)
     _assert_namespaces_disjoint(plan.node_ids, plan.all_labels())
+    _assert_methods_cover_the_kept_namespace(definition, plan.method_idents, plan.dropped)
     _assert_routers_declare_what_they_emit(definition)
 
     # A DROPPED node has no methods, so it has no entry in any of these maps.
@@ -379,6 +380,45 @@ def compile_replay_plan(
         credential_check=credential_check,
         replay=ReplayPlan(node_id=node_id, mode=mode, source=source),
     )
+
+
+def replay_ancestors(
+    document: BuilderDocument,
+    node_id: str,
+    *,
+    step_ids: frozenset[str] | None = None,
+) -> frozenset[str]:
+    """Every step node a derived plan would REPLAY for `node_id` - 09 D7.
+
+    Public because the question is asked outside the compiler too: the service
+    has to know, before it spends a queue slot, whether the replay it is about
+    to compile needs something the source run never recorded - a gate's
+    decision, most of all.
+
+    Attachment and member edges are excluded, which is the whole reason this
+    walks the flow edges rather than `document.edges`: a tool is not upstream of
+    the agent that holds it, and replaying one would be replaying a possession.
+    """
+
+    ids = step_ids if step_ids is not None else frozenset(
+        node.id for node in step_nodes(document)
+    )
+    incoming: dict[str, list[str]] = {}
+    for edge in document.edges:
+        if edge.target_port != "in":
+            continue
+        if edge.source not in ids or edge.target not in ids:
+            continue
+        incoming.setdefault(edge.target, []).append(edge.source)
+    seen: set[str] = set()
+    queue = list(incoming.get(node_id, ()))
+    while queue:
+        current = queue.pop()
+        if current in seen or current == node_id:
+            continue
+        seen.add(current)
+        queue.extend(incoming.get(current, ()))
+    return frozenset(seen)
 
 
 # --------------------------------------------------------------------------
@@ -483,6 +523,47 @@ def _assert_namespaces_disjoint(
         raise BuilderCompileError(
             "compiled flow method names and router event labels share "
             + ", ".join(collisions)
+        )
+
+
+def _assert_methods_cover_the_kept_namespace(
+    definition: Mapping[str, Any],
+    method_idents: Mapping[str, tuple[str, ...]],
+    dropped: frozenset[str],
+) -> None:
+    """A node the plan KEEPS emits every method its name reserves.
+
+    The invariant a derived plan broke, stated directly. A gate reserves TWO
+    idents - the pause and the paired deterministic router - and a replay that
+    emitted only the first left the router's labels produced by nothing at all.
+
+    `_assert_routers_declare_what_they_emit` below catches that too, but from
+    the other side and only by luck: it fires when some kept method happens to
+    listen for one of the vanished labels. A routed node at the END of a
+    derived plan, or one whose only successor was dropped by a node test, would
+    disappear in silence and the run would simply stop early. This asks the
+    question the other way round, so the next shape that loses a method fails a
+    compile rather than a run.
+
+    `dropped` is the node test's own answer to "compile only the target and its
+    ancestors" and is exempt by construction - those nodes have no methods
+    because the plan deliberately did not emit them.
+    """
+
+    methods = set(definition.get("methods", {}))
+    missing = sorted(
+        ident
+        for node_id, idents in method_idents.items()
+        if node_id not in dropped
+        for ident in idents
+        if ident not in methods
+    )
+    if missing:
+        raise BuilderCompileError(
+            "the compiled flow is missing "
+            + ", ".join(missing)
+            + ". Every node this plan keeps reserves its own method names, and a "
+            "reserved name with no method is a router whose labels nothing produces"
         )
 
 
@@ -743,22 +824,7 @@ class _Plan:
         possession.
         """
 
-        incoming: dict[str, list[str]] = {}
-        for edge in self.document.edges:
-            if edge.target_port != "in":
-                continue
-            if edge.source not in self.step_ids or edge.target not in self.step_ids:
-                continue
-            incoming.setdefault(edge.target, []).append(edge.source)
-        seen: set[str] = set()
-        queue = list(incoming.get(node_id, ()))
-        while queue:
-            current = queue.pop()
-            if current in seen or current == node_id:
-                continue
-            seen.add(current)
-            queue.extend(incoming.get(current, ()))
-        return frozenset(seen)
+        return replay_ancestors(self.document, node_id, step_ids=self.step_ids)
 
     def attachments_for(self, node_id: str) -> dict[str, list[Any]]:
         """One node's folded attachments, as C5's three lists.
@@ -845,10 +911,33 @@ class _Plan:
             method["listen"] = listen
 
         config = node.config
-        if node.id in self.replayed:
+        if node.id in self.replayed and not isinstance(config, RouterConfig):
             # 09 D7: everything upstream of a replay point publishes its SAVED
             # output and returns. The listeners downstream fire exactly as they
             # would after a real run, and nothing calls a model.
+            #
+            # EXCEPT THE ROUTER HALF, and getting that wrong made every derived
+            # plan below a routed node uncompilable. A gate is TWO methods - the
+            # pause and the paired deterministic router that turns the reply
+            # into an event - and an `on_error: route` node is two the same way.
+            # Replacing the pair with one `replay_output` emits no event at all,
+            # so the node below goes on listening for `e2_approve` while nothing
+            # produces it. Measured verbatim, on `input -> gate -> agent ->
+            # output`: `n3_safe listens for 'e2_approve', which no method emits`.
+            #
+            # It is not an exotic shape. `BUILDER_ALLOW_GATELESS_GRAPHS` is off,
+            # so a gate above the first billable node is the ONLY shape an
+            # anonymous author may launch - which made every graph they can
+            # launch one that `resume_from` could not resume past.
+            #
+            # So the router survives the replay, and it routes on what the
+            # source run recorded: `route_gate` reads the decision out of the
+            # replay values (its `replayed` flag travels in the compiled routing
+            # table below), and an error router reads `err__<node>`, which
+            # `replay_output` restores. A plain `router` node is not replayed at
+            # all - it bills nothing and it is a pure function of the state a
+            # replay restores, so re-running it reproduces the branch the source
+            # run took rather than guessing at it.
             method["do"] = self._action(
                 _REPLAY_OUTPUT,
                 {
@@ -856,6 +945,10 @@ class _Plan:
                     "source": self.replay.source if self.replay else "run",
                 },
             )
+            if isinstance(config, GateConfig):
+                return {ident: method, **self._gate_router(node, config)}
+            if routes_errors(node) and node.kind not in ROUTING_KINDS:
+                return {ident: method, **self._error_router(node)}
             return {ident: method}
         if isinstance(config, InputConfig):
             method["do"] = self._action(
@@ -1471,6 +1564,13 @@ class _Plan:
                     "revise": self._label(node.id, "revise"),
                     "max_turns": node.config.max_turns,
                     "rearm": self.rearm.get(node.id, []),
+                    # A replayed gate does not pause, so its router is never
+                    # handed a `HumanFeedbackResult`; without this flag it would
+                    # route on `None`, and `gate_decision(None)` is an approve.
+                    # Silently approving on behalf of an operator is the exact
+                    # failure `lint_gates` exists to refuse, so the replay says
+                    # so out loud and `route_gate` reads the recorded decision.
+                    "replayed": node.id in self.replayed,
                 }
                 for node in self.steps
                 if isinstance(node.config, GateConfig) and node.id not in self.dropped

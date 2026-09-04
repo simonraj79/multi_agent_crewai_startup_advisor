@@ -133,6 +133,25 @@ class ReplayMissingOutput(BuilderRuntimeError):
     error_class = "replay-missing-output"
 
 
+class ReplayGateUndecided(BuilderRuntimeError):
+    """A derived plan replayed a gate the source run never got an answer at.
+
+    Its own class for `ReplayMissingOutput`'s reason - the operator's next move
+    is different from every other refusal. Here it is: answer the gate on the
+    source run, or resume from a node above it. The service refuses this at the
+    door with a 422 naming the gate, so reaching it means somebody called the
+    runtime directly or mocked a gate without a decision.
+
+    It exists at all because the alternative is worse than an error. A replayed
+    gate is handed no `HumanFeedbackResult`, `gate_decision(None)` is an
+    approve, and approving on an operator's behalf because their run stopped
+    before they could answer is the silent-approval failure `lint_gates`
+    refuses in the compiler.
+    """
+
+    error_class = "replay-gate-undecided"
+
+
 # --------------------------------------------------------------------------
 # Cancellation - blocker 7's per-node checkpoint
 # --------------------------------------------------------------------------
@@ -1947,15 +1966,37 @@ current_replay_values: ContextVar[Mapping[str, Any] | None] = ContextVar(
 )
 
 
+#: The `err__<node>` slots of the same source, for the nodes that FAILED and
+#: routed. Separate from the values above because they are a different state
+#: prefix answering a different question - `out__` is what a node produced and
+#: `err__` is whether it exploded - and an error router keyed on one must not
+#: be able to read the other.
+current_replay_errors: ContextVar[Mapping[str, Any] | None] = ContextVar(
+    "brief_crew_builder_replay_errors", default=None
+)
+
+
 @contextmanager
-def replay_source(values: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
-    """Scope one derived plan's replayed outputs over a kickoff."""
+def replay_source(
+    values: Mapping[str, Any] | None,
+    errors: Mapping[str, Any] | None = None,
+) -> Iterator[Mapping[str, Any]]:
+    """Scope one derived plan's replayed outputs, and failures, over a kickoff.
+
+    `errors` is what makes an `on_error: route` node replayable. Its paired
+    router reads `err__<node>`, which is a state key the step method writes and
+    `out__<node>` does not carry; without it a node that FAILED and took its
+    error port on the source run replays as a success and the derived run takes
+    the branch the author drew for the other outcome.
+    """
 
     resolved = dict(values or {})
     token = current_replay_values.set(resolved)
+    error_token = current_replay_errors.set(dict(errors or {}))
     try:
         yield resolved
     finally:
+        current_replay_errors.reset(error_token)
         current_replay_values.reset(token)
 
 
@@ -2007,6 +2048,12 @@ def replay_output(
         message=f"{node_id} replayed from a saved {source}",
         details={"stage": "before", "replayed": True, "source": source},
     )
+    # A node that FAILED and routed left two keys behind, not one, and its
+    # paired error router reads the second. Restored before the output so the
+    # router downstream sees the same pair the source run left it.
+    failure = (current_replay_errors.get() or {}).get(node_id)
+    if failure is not None:
+        _state(flow)[f"{BUILDER_STATE_ERROR_PREFIX}{node_id}"] = failure
     recorded = _record(flow, node_id, value)
     _emit_frame(
         FrameKind.NODE_STATE,
@@ -2077,6 +2124,8 @@ def route_gate(flow: Any, *args: Any, **_: Any) -> str:
     entry = _routing_entry(flow, current_flow_method_name.get())
     node_id = str(entry["node_id"])
     checkpoint(node_id)
+    if entry.get("replayed"):
+        return _replayed_gate_decision(flow, entry, node_id)
 
     result = args[0] if args else None
     decision, reply = gate_decision(getattr(result, "feedback", result))
@@ -2103,6 +2152,46 @@ def route_gate(flow: Any, *args: Any, **_: Any) -> str:
             **reply,
         },
     )
+    if honoured:
+        _rearm(flow, entry)
+        return str(entry["revise"])
+    return str(entry["approve"])
+
+
+def _replayed_gate_decision(flow: Any, entry: Mapping[str, Any], node_id: str) -> str:
+    """The branch the SOURCE run took at this gate, taken again - 10 D5.
+
+    Read out of the replay values rather than out of `out__<node>`, and the two
+    are the same thing said twice: the values map IS the source run's last
+    `flow_states` row, and `replay_output` has just written the same value into
+    state as text. The mapping is the shape `route_gate` left there, so reading
+    it here needs no parsing and cannot mistake a rendered gate PAYLOAD - which
+    is what `out__<node>` holds if the run stopped before the reply - for a
+    decision.
+
+    A revise is honoured ONCE. Only the LAST decision at a gate survives in
+    state, so a source run with three laps cannot be reproduced lap by lap from
+    it, and honouring the recorded revise on every pass would loop until
+    `max_method_calls` stopped it. One lap is what the recorded decision
+    supports: it reaches the node the operator sent the run back to, and the
+    pass after it goes forward - which is `route_gate`'s own answer at the turn
+    cap, for the same reason.
+    """
+
+    recorded = (current_replay_values.get() or {}).get(node_id)
+    if not isinstance(recorded, Mapping) or "decision" not in recorded:
+        raise ReplayGateUndecided(
+            f"the replay has no recorded decision for the gate {node_id!r}. A resume "
+            "replays what an operator already answered; a run that stopped at this "
+            "gate never produced one, so answer it there or resume from a node above it"
+        )
+    state = _state(flow)
+    turns_key = f"{BUILDER_STATE_TURNS_PREFIX}{node_id}"
+    used = max(0, int(state.get(turns_key, 0) or 0))
+    honoured = bool(recorded.get("honoured")) and used < 1
+    if honoured:
+        state[turns_key] = used + 1
+    _record(flow, node_id, {**dict(recorded), "honoured": honoured, "replayed": True})
     if honoured:
         _rearm(flow, entry)
         return str(entry["revise"])

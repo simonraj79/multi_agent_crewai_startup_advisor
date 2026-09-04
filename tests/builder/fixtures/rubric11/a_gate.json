@@ -153,6 +153,7 @@
               "max_turns": 1,
               "node_id": "confirm",
               "rearm": [],
+              "replayed": false,
               "revise": "e2_revise"
             }
           }

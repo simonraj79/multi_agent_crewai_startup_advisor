@@ -75,6 +75,7 @@ __all__ = [
     "CrewFactories",
     "DefaultCrewFactories",
     "builder_cancellation",
+    "builder_state_sink",
     "checkpoint",
     "current_cancel_flag",
     "emit_output",
@@ -145,6 +146,38 @@ class ReplayMissingOutput(BuilderRuntimeError):
 current_cancel_flag: ContextVar[threading.Event | None] = ContextVar(
     "brief_crew_builder_cancel", default=None
 )
+
+
+#: Where a node's state is checkpointed after it writes its output, or None.
+#:
+#: **CrewAI persists NOTHING for an ordinary declarative run**, and that was
+#: measured rather than assumed: a two-node graph published, launched and
+#: completed on the service persistence leaves `flow_states` EMPTY. The only
+#: writer is `save_pending_feedback`, on the pause a gate raises. So a run that
+#: never met a gate had no state to read afterwards - which makes C7's
+#: `GET /state?step=` answer `{}` for every step, and makes 10 D5's `resume_from`
+#: have nothing to replay from. Both of those are this plan's, so the write is
+#: this plan's too.
+#:
+#: A ContextVar rather than an argument, for the reason `current_cancel_flag`
+#: gives one line down: the entrypoints are called by CrewAI, not by us, and
+#: the context is copied into every worker thread a fan-out starts.
+current_state_sink: ContextVar["Callable[[str, Mapping[str, Any]], None] | None"] = (
+    ContextVar("brief_crew_builder_state_sink", default=None)
+)
+
+
+@contextmanager
+def builder_state_sink(
+    sink: "Callable[[str, Mapping[str, Any]], None] | None",
+) -> Iterator[None]:
+    """Checkpoint every node's state through `sink` for the length of this run."""
+
+    token = current_state_sink.set(sink)
+    try:
+        yield
+    finally:
+        current_state_sink.reset(token)
 
 
 @contextmanager
@@ -925,10 +958,28 @@ def _state(flow: Any) -> dict[str, Any]:
     return state
 
 
+def _checkpoint_state(flow: Any, node_id: str) -> None:
+    """Write this flow's state as of `node_id`, if anybody is listening.
+
+    Best effort and never fatal: a run whose state could not be checkpointed
+    still runs, and the alternative - a node that fails because its telemetry
+    did - is strictly worse than a `?step=` that answers coarsely.
+    """
+
+    sink = current_state_sink.get()
+    if sink is None:
+        return
+    try:
+        sink(node_id, _state(flow))
+    except Exception:  # noqa: BLE001 - see the docstring
+        LOGGER.debug("could not checkpoint state after %s", node_id, exc_info=True)
+
+
 def _record(flow: Any, node_id: str, value: Any) -> Any:
     """Publish one node's result under the flat key downstream nodes reference."""
 
     _state(flow)[f"{BUILDER_STATE_OUTPUT_PREFIX}{node_id}"] = value
+    _checkpoint_state(flow, node_id)
     return value
 
 

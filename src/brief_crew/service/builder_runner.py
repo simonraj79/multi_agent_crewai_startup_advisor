@@ -53,6 +53,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from brief_crew.builder.runtime import (
     DefaultCrewFactories,
     builder_cancellation,
+    builder_state_sink,
     replay_source,
     use_crew_factories,
 )
@@ -126,8 +127,9 @@ class BuilderFlowRunner:
                 # empty mapping, which is what makes `replay_output` fail loudly
                 # rather than quietly if a plain plan ever compiled one.
                 with replay_source(derived.get("values")):
-                    with use_crew_factories(self._factories()):
-                        return flow.kickoff(inputs=inputs)
+                    with builder_state_sink(self._state_sink(execution)):
+                        with use_crew_factories(self._factories()):
+                            return flow.kickoff(inputs=inputs)
 
     def _definition_for(self, derived: Mapping[str, Any]) -> Any:
         """This graph's declaration, or the DERIVED plan when one was asked for.
@@ -202,8 +204,40 @@ class BuilderFlowRunner:
             with credential_scope(
                 user_id=execution.user_id, persistence=execution.persistence
             ):
-                with use_crew_factories(self._factories()):
-                    return flow.resume(feedback)
+                with builder_state_sink(self._state_sink(execution)):
+                    with use_crew_factories(self._factories()):
+                        return flow.resume(feedback)
+
+    def _state_sink(self, execution: RunExecution) -> Any:
+        """Checkpoint each node's state to the run's own store, or nothing.
+
+        **CrewAI persists nothing for an ordinary declarative run.** Measured:
+        a two-node graph published, launched and completed on the service
+        persistence leaves `flow_states` empty - the only writer is
+        `save_pending_feedback`, on the pause a gate raises. So a run that never
+        met a gate had no state at all afterwards, which is what
+        `GET /api/runs/{id}/state?step=` reads and what a `resume_from` replays
+        from. Both are plan 10's, so the write is.
+
+        One row per node rather than one per run, deliberately: `?step=` is a
+        question about a MOMENT, and a single end-of-run row would answer every
+        step with the final state and look exactly as if it worked.
+
+        `method_name` is the AUTHOR's node id, not the compiled identifier. This
+        table's other writer stores a CrewAI method name and nothing joins the
+        two columns, so the useful value here is the one a person asking "what
+        did the state look like after `scoper`" already has.
+        """
+
+        persistence = execution.persistence
+        flow_uuid = execution.flow_id or execution.run_id
+        if persistence is None or not hasattr(persistence, "save_state"):
+            return None
+
+        def sink(node_id: str, state: Mapping[str, Any]) -> None:
+            persistence.save_state(flow_uuid, node_id, dict(state))
+
+        return sink
 
     def _flow_definition(self) -> Any:
         """This graph's declaration, parsed once and shared by both paths.

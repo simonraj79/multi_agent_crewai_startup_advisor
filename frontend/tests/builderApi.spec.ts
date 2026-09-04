@@ -251,14 +251,25 @@ describe('the builder API client', () => {
         'DELETE /skills/{skill_id}',
         'POST /skills/import',
       ]
+      /*
+       * Plan 10 adds one: C7's compiled preview. `preview.py` shipped with the
+       * compiler and had no route at all, which is why it is here rather than
+       * on `BuilderApi` - the panel that renders it is plan 11's, and this
+       * list is how a declared route stays accounted for in the meantime.
+       * ENUMERATED, like the seventeen above: a number raised until the suite
+       * goes green stops being a guard the moment it is raised.
+       */
+      const planTen = ['GET /workflows/{document_id}/compiled']
       const modelsLanded = modelRegistryRoutes.every((route) => declared.has(route))
       const attachmentsLanded = attachmentRoutes.every((route) => declared.has(route))
+      const planTenLanded = planTen.every((route) => declared.has(route))
       expect(attachmentRoutes).toHaveLength(16)
       expect(declared.size).toBe(
         8 +
           (planFifteenLanded ? planFifteen.length : 0) +
           (modelsLanded ? modelRegistryRoutes.length : 0) +
-          (attachmentsLanded ? attachmentRoutes.length : 0),
+          (attachmentsLanded ? attachmentRoutes.length : 0) +
+          (planTenLanded ? planTen.length : 0),
       )
 
       /*
@@ -320,6 +331,7 @@ describe('the builder API client', () => {
         vocabularyRoute,
         ...(modelsLanded ? modelRegistryRoutes : []),
         ...(attachmentsLanded ? attachmentRoutes : []),
+        ...(planTenLanded ? planTen : []),
       ])
       expect([...declared].filter((route) => !accountedFor.has(route)).sort()).toEqual([])
       expect(accountedFor.size).toBe(declared.size)

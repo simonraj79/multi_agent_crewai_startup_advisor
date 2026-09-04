@@ -8,6 +8,7 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from contextlib import asynccontextmanager
+from datetime import datetime
 from io import BytesIO
 import json
 import os
@@ -1698,14 +1699,20 @@ def create_app(
         moment = None
         resolved_step = step or 0
         if step is not None:
+            # `replay_frames` answers DICTS - the ring's `to_dict()` and the
+            # stored row are one shape on purpose - so the timestamp arrives as
+            # the ISO string the client sees rather than as a datetime.
             frames = registry.replay_frames(run_id, after=step - 1, limit=1)
-            if not frames:
+            if not frames or int(frames[0]["seq"]) != step:
                 raise HTTPException(
                     status_code=404,
                     detail=f"run {run_id} has no frame {step}",
                 )
-            moment = frames[0].ts
-            resolved_step = frames[0].seq
+            resolved_step = int(frames[0]["seq"])
+            try:
+                moment = datetime.fromisoformat(str(frames[0]["ts"]))
+            except ValueError:
+                moment = None
         state = registry.persistence.load_state_at(record.flow_id, moment) or {}
         return RunStateResponse(
             run_id=run_id,

@@ -183,6 +183,33 @@ class GauntletSchemaTests(AdditiveMigrationTests):
         self.assertEqual(row.id, "old-run")
         self.assertIsNone(row.mode)
 
+    def test_a_null_mode_reads_back_as_run_through_the_service_layer(self) -> None:
+        """C7's half of it, and 10 criterion 9's second clause.
+
+        The ALTER cannot backfill and a DEFAULT would not reach the rows that
+        already exist, so the mapping has to be a READ. `run_mode` is the one
+        place it happens, and `_run_dict` is the one caller - which is why a
+        row from before the column and a row from an ordinary run are
+        indistinguishable rather than merely similar.
+        """
+
+        from brief_crew.service.persistence import DEFAULT_RUN_MODE, run_mode
+
+        self.upgrade()
+        self.assertEqual(run_mode(None), "run")
+        self.assertEqual(run_mode(""), "run")
+        self.assertEqual(run_mode("   "), "run")
+        self.assertEqual(run_mode("test"), "test")
+        self.assertEqual(DEFAULT_RUN_MODE, "run")
+
+    def test_the_upgraded_row_is_readable_and_says_run(self) -> None:
+        """End to end over the ACTUAL legacy row, not over the mapper alone."""
+
+        self.upgrade()
+        store = PostgresFlowPersistence(self.engine, initialize=False)
+        self.addCleanup(store.close)
+        self.assertEqual(store.get_run("old-run")["mode"], "run")
+
     def test_all_five_tables_arrive_with_their_indexes_and_constraints(self) -> None:
         self.upgrade()
         inspector = inspect(self.engine)

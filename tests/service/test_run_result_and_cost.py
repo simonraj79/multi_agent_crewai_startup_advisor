@@ -408,6 +408,66 @@ class PriceResolutionTests(unittest.TestCase):
         self.assertIsNone(compute_cost_usd("", 1_000, 1_000))
 
 
+class AuthoredCompletionBoundTests(unittest.TestCase):
+    """10 criterion 2: the priced call and the real call finally agree.
+
+    `budget.py` prices every model call at `GRAPH_BUDGET_CALL_COMPLETION_TOKENS`
+    completion tokens, and until 10 D1 nothing capped a completion at all - so
+    the one bound the $10 ceiling was measured against did not exist at run
+    time. Constructing an `LLM` calls no model, so this costs nothing.
+    """
+
+    def _llm(self, **fields: object) -> object:
+        from brief_crew.builder.runtime import _authored_llm
+
+        return _authored_llm(
+            {"model": "google/gemini-3.8-flash", **fields}, node_id="draft"
+        )
+
+    def test_the_default_is_the_number_the_budget_priced_with(self) -> None:
+        from brief_crew.config import GRAPH_BUDGET_CALL_COMPLETION_TOKENS
+
+        self.assertEqual(
+            self._llm().max_tokens, GRAPH_BUDGET_CALL_COMPLETION_TOKENS
+        )
+
+    def test_the_estimate_and_the_cap_are_ONE_constant(self) -> None:
+        """Not two numbers that happen to match - the same name in both places.
+
+        A restated figure is how this repository has published a wrong count six
+        times; here the two would drift into an estimate that no longer bounds
+        anything.
+        """
+
+        import brief_crew.builder.budget as budget_module
+        import brief_crew.builder.runtime as runtime_module
+        from brief_crew.config import GRAPH_BUDGET_CALL_COMPLETION_TOKENS
+
+        self.assertIs(
+            runtime_module.GRAPH_BUDGET_CALL_COMPLETION_TOKENS,
+            GRAPH_BUDGET_CALL_COMPLETION_TOKENS,
+        )
+        self.assertIs(
+            budget_module.GRAPH_BUDGET_CALL_COMPLETION_TOKENS,
+            GRAPH_BUDGET_CALL_COMPLETION_TOKENS,
+        )
+
+    def test_an_authored_model_is_priced_from_the_registry_table(self) -> None:
+        """Per registry model, and `None` - never `0.0` - for one not in it."""
+
+        from brief_crew.builder.registry import registry_document
+
+        priced = [
+            model["id"]
+            for model in registry_document()["models"]
+        ]
+        self.assertTrue(priced)
+        for model_id in priced:
+            with self.subTest(model=model_id):
+                self.assertIsNotNone(compute_cost_usd(model_id, 1_000, 1_000))
+        self.assertIsNone(compute_cost_usd("acme/model-that-was-retired", 1_000, 1_000))
+
+
 class RunCostAccumulationTests(unittest.TestCase):
     def _run(self, runner: object) -> tuple[RunRegistry, str]:
         registry = _registry(runner)

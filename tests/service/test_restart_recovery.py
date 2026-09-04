@@ -133,6 +133,7 @@ class RestartRecoveryTestCase(unittest.TestCase):
         run_id: str,
         status: str,
         age: timedelta = timedelta(0),
+        mode: str | None = None,
     ) -> dict[str, object]:
         """Write the durable row a dead process leaves behind.
 
@@ -149,6 +150,7 @@ class RestartRecoveryTestCase(unittest.TestCase):
             flow_id=run_id,
             status=status,
             created_at=datetime.now(timezone.utc) - age,
+            mode=mode,
         )
 
     def _waiting_run(self, registry: RunRegistry) -> RunRecord:
@@ -288,6 +290,52 @@ class InterruptedRunTests(RestartRecoveryTestCase):
             any("interrupted by a service restart" in line for line in logs.output),
             logs.output,
         )
+
+
+class TestModeRunTests(RestartRecoveryTestCase):
+    """10 criterion 11: a `test`-mode run is failed at startup like any other.
+
+    Decision 17 says a test run is FINDABLE, not privileged: it holds an
+    admission slot, it bills, it streams, and when the process that was running
+    it dies it is an orphan exactly like a `run`. A sweep that skipped one -
+    because "it was only a test" - would leave the one shape of row this whole
+    mechanism exists to clear.
+    """
+
+    def test_a_test_mode_run_interrupted_mid_method_is_failed_at_startup(self) -> None:
+        store = self._store()
+        self._seed_run(store, run_id="orphan-test", status="running", mode="test")
+
+        registry = self._registry(store, orphan_grace=0)
+
+        payload = registry.status_payload("orphan-test")
+        self.assertEqual(payload["status"], RunStatus.FAILED)
+        self.assertIn("interrupted by a service restart", str(payload["error"]))
+        row = store.get_run("orphan-test")
+        self.assertEqual(row["status"], "failed")
+        # And it is still a test run afterwards: the sweep changes the STATUS
+        # and never the kind.
+        self.assertEqual(row["mode"], "test")
+
+    def test_a_test_run_and_an_ordinary_one_are_swept_together(self) -> None:
+        store = self._store()
+        self._seed_run(store, run_id="orphan-plain", status="running")
+        self._seed_run(store, run_id="orphan-test-2", status="running", mode="test")
+
+        registry = self._registry(store, orphan_grace=0)
+
+        self.assertEqual(registry.maintenance_status()["interrupted_runs"], 2)
+        for run_id in ("orphan-plain", "orphan-test-2"):
+            with self.subTest(run_id=run_id):
+                self.assertEqual(store.get_run(run_id)["status"], "failed")
+
+    def test_a_row_written_with_no_mode_reads_back_as_run(self) -> None:
+        """The additive column's contract, at the one place recovery reads a row."""
+
+        store = self._store()
+        self._seed_run(store, run_id="orphan-null-mode", status="running")
+        self._registry(store, orphan_grace=0)
+        self.assertEqual(store.get_run("orphan-null-mode")["mode"], "run")
 
 
 class LiveRunIsNeverTouchedTests(RestartRecoveryTestCase):

@@ -98,6 +98,13 @@ SECRET_KEYS: frozenset[str] = frozenset(
         # against the constructors that feed it instead of reading it.
         "dburi",
         "dsn",
+        # An MCP stdio server's whole environment block (plan 07), and
+        # 10 D2's fourth name. It ends in none of SECRET_KEY_SUFFIXES, so
+        # nothing but an exact entry would have caught it - and the thing
+        # inside it is a GITHUB_TOKEN in a shape the suffix rule cannot see,
+        # because the rule reads the OUTER key. `headers` is here for the
+        # same reason one line down.
+        "env",
         "headers",
         "nonce",
         "password",

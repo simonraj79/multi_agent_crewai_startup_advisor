@@ -1011,9 +1011,10 @@ reply.
   comma-separated origins, **empty default, so it fails closed**; a malformed
   entry is refused *at import* with the corrected string in the message rather
   than normalised away; `CORS_ALLOW_CREDENTIALS` is a fixed `False`, which is
-  what makes the `"*"` escape hatch survivable. **It does not govern `/ws`** —
-  browsers do not apply CORS to a WebSocket handshake and Starlette passes
-  non-HTTP scopes straight through. See remaining-work item 13.
+  what makes the `"*"` escape hatch survivable. The **middleware** still does
+  not govern `/ws` — browsers do not apply CORS to a WebSocket handshake and
+  Starlette passes non-HTTP scopes straight through — but since 2026-09-04 the
+  handshake asks the same list itself, before it accepts. See closed item 13.
   `CORS_EXPOSE_HEADERS` is `("ETag", "Retry-After")`: neither is
   CORS-safelisted, and the static site is a separate origin, so without the
   second entry a rate-limited browser client cannot read the one header that
@@ -2673,11 +2674,27 @@ closed** and re-verified twice; what the builder added is items 40-42.
     correction. Its own small lesson: a remaining-work list decays like any
     other prose, and "re-verified open" is only as good as the date beside it.
 
-13. **`/ws` has no `Origin` check.** `CORS_ALLOW_ORIGINS` does not reach it:
-    browsers do not apply CORS to a WebSocket handshake and Starlette passes
-    non-HTTP scopes through. The socket does require a `run_id` that exists and
-    a matching `session_id`, so an attacker needs a run identifier to get
-    anything, but nothing stops a page on any origin from opening the socket.
+13. ~~**`/ws` has no `Origin` check.**~~ **FIXED 2026-09-04 (D-01-7).**
+    `config.websocket_origin_allowed` is asked on the handshake, before the
+    token and before the run is looked up, against the SAME
+    `CORS_ALLOW_ORIGINS` the HTTP middleware captured. Three rules and each is
+    a decision rather than a default: a **missing** `Origin` is a non-browser
+    client and is allowed, because a browser always sends one and anything that
+    can omit a header can forge one; an origin **on the list** is allowed,
+    `*` included; and a **same-origin** handshake is allowed whatever the list
+    says, which is what keeps the empty default from meaning "no console" for
+    local development and the E2E harness, both of which reach this service
+    through a Vite proxy that forwards the page's own `Host`. Everything else
+    is closed with `WS_ORIGIN_REFUSED_CLOSE_CODE` (4406) having sent nothing.
+
+    What it fixes is narrower than "the socket was open to anyone", and the
+    row that found it says so: an **owned** run was already 4404 to everybody
+    but its owner. An **unowned** one - every run on an auth-off checkout and
+    every run in `SYNTHETIC` mode - had only the `run_id`/`session_id` pair
+    between a hostile page and the stream.
+    `tests/service/test_cors.py::WebsocketOriginTests` (6) and
+    `WebsocketOriginPredicateTests` (5); the pin that said `/ws` was **not**
+    covered is flipped rather than deleted.
 14. ~~**The graph `ETag` is set and never honoured.**~~ **FIXED 2026-08-31.**
     `get_graph` now takes an `If-None-Match` header and answers **304** with an
     empty body and the tag repeated (RFC 9110 requires the repeat, so a cache

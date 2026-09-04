@@ -2765,6 +2765,89 @@ CORS_ALLOW_ORIGINS: tuple[str, ...] = _parse_cors_allow_origins(
     os.getenv("CORS_ALLOW_ORIGINS", "")
 )
 
+
+#: The close code `/ws` answers a handshake from an origin it will not serve.
+#: In the 4000-4999 application range like the four already in `service/app.py`
+#: (4400 malformed, 4401 unauthorized, 4403 session mismatch, 4404 not found),
+#: and deliberately its own number rather than reusing 4403: "your session id
+#: does not match this run" and "this page may not open this socket" are
+#: different repairs.
+WS_ORIGIN_REFUSED_CLOSE_CODE = 4406
+
+
+def websocket_origin_allowed(
+    origin: str | None,
+    *,
+    host: str | None,
+    allowed: Iterable[str] | None = None,
+) -> bool:
+    """May a handshake carrying this `Origin` be served? (CLAUDE.md item 13.)
+
+    CORS does not reach a WebSocket: a browser sends no preflight for one and
+    Starlette's `CORSMiddleware` passes every non-HTTP scope straight through,
+    so until 2026-09-04 any page anywhere could open `/ws` and stream any run
+    whose `run_id` and `session_id` it could name - and an UNOWNED run, which
+    is every run on an auth-off checkout and every run in `SYNTHETIC` mode,
+    has no second gate behind that. This is the check that was missing (D-01-7).
+
+    Three rules, in the order they are asked:
+
+    * **No `Origin` header at all is allowed.** A browser always sends one on a
+      handshake, even same-origin, so its absence means the caller is not a
+      page: a Python client, `websocat`, a server-side relay, the probe
+      CLAUDE.md documents. Refusing those would break every non-browser
+      consumer to defend against a threat none of them is, and it buys nothing
+      - anything that can omit a header can forge one.
+    * **An origin on `CORS_ALLOW_ORIGINS` is allowed**, `*` included. This is
+      the same list, deliberately: an operator who has already named the
+      console's origin for the HTTP API has named the origin of the page that
+      opens this socket, and a second knob would be a second thing to get
+      wrong.
+    * **A SAME-origin handshake is allowed whatever the list says**, because a
+      same-origin request is not what a cross-origin list governs. This is what
+      keeps the empty default - "no cross-origin access configured" - from
+      meaning "no console at all": local development and the E2E harness reach
+      this service through a Vite proxy that forwards the page's own `Host`, so
+      `Origin` and `Host` agree and the socket opens with no configuration.
+      Production does not benefit: the SPA is a separate origin there, which is
+      exactly why `render.yaml` sets `CORS_ALLOW_ORIGINS`.
+
+    Compared on host and port, not scheme, because `Host` carries no scheme and
+    the proxy in front of a deployment is where the TLS ends. `Origin: null` -
+    a sandboxed iframe, a `file://` page, some redirect chains - matches
+    nothing and is refused, which is the answer it should get.
+
+    `allowed` exists so the caller can pass the list it CAPTURED at
+    construction, which is what `CORSMiddleware` does with the same value. Read
+    live, this predicate and the HTTP middleware would disagree in exactly the
+    configuration a test sets up - and did, on the first run of the new tests.
+    """
+
+    origins = (
+        CORS_ALLOW_ORIGINS if allowed is None else tuple(allowed)
+    )
+    if origin is None:
+        return True
+    candidate = origin.strip()
+    if not candidate or candidate.lower() == "null":
+        return False
+    if CORS_WILDCARD in origins:
+        return True
+    try:
+        normalised = _normalise_cors_origin(candidate)
+    except ValueError:
+        # Not an origin at all. Nothing on the list can equal it and it cannot
+        # be compared with a Host, so there is no reading under which it is
+        # allowed.
+        return False
+    if normalised in origins:
+        return True
+    if not host:
+        return False
+    parts = urlsplit(normalised)
+    origin_authority = parts.netloc.lower()
+    return origin_authority == host.strip().lower()
+
 # Deliberately a constant and NOT an env var. Access-Control-Allow-Credentials
 # is what makes "*" dangerous, because it turns every page on the internet into
 # an authenticated caller. This service has no ambient credential to abuse: no

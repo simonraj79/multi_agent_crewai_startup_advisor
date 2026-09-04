@@ -29,7 +29,25 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
  * origin that spends money.
  */
 
-const ALLOWED_CONSOLE_ERROR: RegExp | null = null
+/**
+ * ONE exemption, and it names its cause - the same shape, for the same reason,
+ * that `e2e/failure-modes.spec.ts` declares.
+ *
+ * `RUN_RATE_LIMIT_MAX_RUNS` is ten per sixty seconds per client, and this file
+ * launches three times immediately after `failure-modes.spec.ts` has spent
+ * eleven. `pressRun` below waits out the window on the server's own terms
+ * rather than raising the limit - which would be turning off what makes an
+ * unauthenticated Launch button survivable - and a refused Launch makes the
+ * browser log the 429 as a failed resource. That console error is THE LIMITER
+ * WORKING, provoked by a test that then waits and launches again.
+ *
+ * Narrow on purpose: only 429, only the words the browser uses for it. Any
+ * other status, any Vue warning and any uncaught exception still fails the
+ * test. **Delete this if the limiter goes or this file stops launching** - an
+ * exemption that outlives its cause widens silently, which is what the favicon
+ * one did before it was retired.
+ */
+const ALLOWED_CONSOLE_ERROR: RegExp | null = /429 \(Too Many Requests\)/
 
 interface ConsoleWatch {
   unexpected: string[]
@@ -118,6 +136,55 @@ async function openAndPublish(page: Page): Promise<string> {
 async function openTab(page: Page, tab: string): Promise<void> {
   await page.locator(`[data-testid="test-tab-${tab}"]`).click()
   await expect(panel(page)).toHaveAttribute('data-open', 'true')
+}
+
+/**
+ * Press Run, and wait out the admission limiter if it is what answers.
+ *
+ * `RUN_RATE_LIMIT_MAX_RUNS` is ten per sixty seconds per client, and this file
+ * is not the only one in the suite that launches: `e2e/failure-modes.spec.ts`
+ * spends eleven launches immediately before this file runs, and waits out the
+ * limiter itself on the server's own `Retry-After`. It does not wait for
+ * anybody else, so the window is still partly spent when this file's first Run
+ * lands.
+ *
+ * MEASURED, not guessed. Running `failure-modes.spec.ts test-panel.spec.ts` in
+ * one invocation on 2026-09-04 produced a 429 on this file's first
+ * `POST /api/sessions/.../runs` - in the serve log - while each file alone
+ * passes. The panel then sits at `idle` with the server's sentence in
+ * `test-panel-problem`, and the assertion that fails is whichever one was
+ * waiting for the run to start, which reads like a product defect and is not.
+ *
+ * WAITING IS THE CORRECT BEHAVIOUR, and raising the limit is not: the limiter
+ * is what makes an unauthenticated Launch button survivable, and turning it
+ * down for a test would be turning off the thing under test everywhere else.
+ * Sixty-one seconds is the window plus a second; three attempts is the bound,
+ * so a genuinely broken backend fails rather than hanging out the timeout.
+ *
+ * The refusal is matched on the SERVER's own sentence (`app.py:1428`), so a
+ * different failure - a 403 for a gateless graph, a compile refusal - is not
+ * silently retried into a timeout.
+ */
+const RATE_LIMITED = /too many runs from this client/i
+const LIMITER_WINDOW_MS = 61_000
+
+async function pressRun(page: Page, testid = 'test-run'): Promise<void> {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.locator(`[data-testid="${testid}"]`).click()
+    const refused = await page
+      .locator('[data-testid="test-panel-problem"]')
+      .filter({ hasText: RATE_LIMITED })
+      .waitFor({ state: 'visible', timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!refused) return
+    test.info().annotations.push({
+      type: 'rate-limited',
+      description: `attempt ${attempt} was refused by the admission limiter; waiting out the window`,
+    })
+    await page.waitForTimeout(LIMITER_WINDOW_MS)
+  }
+  throw new Error('the admission limiter refused three launches a minute apart')
 }
 
 /* --- a graph that fails on purpose (12 D2's third surface) -----------------
@@ -237,7 +304,7 @@ test.describe('The docked test panel', () => {
       const value = page.locator('[data-testid="test-input-value"]')
       await expect(value).not.toHaveValue('')
 
-      await page.locator('[data-testid="test-run"]').click()
+      await pressRun(page)
 
       // The canvas hands over to run tenancy with one attribute, and the
       // `[data-mode='run']` block in `builder.css` - dormant since §5.1 - is
@@ -343,7 +410,7 @@ test.describe('The docked test panel', () => {
       await select.selectOption({ value: gate.id })
       await expect(missing).toHaveCount(0)
 
-      await page.locator('[data-testid="test-node-run"]').click()
+      await pressRun(page, 'test-node-run')
       // The panel's own refusal is quoted into the failure: a node test that is
       // refused says why, and a poll reporting only "error" would send the next
       // reader to the wrong layer.
@@ -464,7 +531,7 @@ test.describe('The docked test panel', () => {
       // Not a gallery template, so nothing seeds the box - the author types.
       const value = page.locator('[data-testid="test-input-value"]')
       await value.fill('clinic scheduling software')
-      await page.locator('[data-testid="test-run"]').click()
+      await pressRun(page)
 
       /*
        * SKIP RATHER THAN FAIL when the backend was started without the two

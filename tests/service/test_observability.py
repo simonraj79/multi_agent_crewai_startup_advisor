@@ -364,10 +364,20 @@ class MetricsFrameTests(RegistryTestCase):
         registry.wait(record.run_id, timeout=10)
         self.assertEqual(record.status, RunStatus.WAITING)
 
-        # The synthetic validator spends no tokens, so there is nothing to
-        # snapshot and no frame is pushed...
-        self.assertEqual(_metrics_frames(record), [])
-        # ...but once usage exists, the gate transition reports it.
+        # The synthetic validator DOES spend tokens now, so the pause has
+        # something to report and reports it. This assertion used to read
+        # `self.assertEqual(_metrics_frames(record), [])` on the stated grounds
+        # that "the synthetic validator spends no tokens" - which was true, and
+        # was the defect: the runner emitted no TOKEN frame, so the console's
+        # entire spend surface read `CALLS 0 · TOKENS 0 · $0.0000` on a
+        # completed run and no free path could exercise it (critic round
+        # product-1, P-08). The test was asserting the bug.
+        parked = _metrics_frames(record)
+        self.assertEqual([entry["reason"] for entry in parked], ["gate_open"])
+        self.assertGreater(parked[0]["usage"]["total_tokens"], 0)
+        already = int(parked[0]["usage"]["total_tokens"])
+        # A second call on top of it still reports, and reports the SUM - which
+        # is the property this test was always about.
         record.capture.emit(
             kind=FrameKind.TOKEN,
             event_type=UIEventType.MODEL_CALL,
@@ -388,10 +398,14 @@ class MetricsFrameTests(RegistryTestCase):
         registry.wait(record.run_id, timeout=10)
 
         snapshots = _metrics_frames(record)
-        self.assertEqual([entry["reason"] for entry in snapshots], ["gate_open"])
-        self.assertEqual(
-            snapshots[0]["usage"]["total_tokens"],
-            PROMPT_TOKENS + COMPLETION_TOKENS,
+        self.assertEqual(snapshots[0]["reason"], "gate_open")
+        # `assertGreaterEqual`, not `assertEqual`: approving the gate lets the
+        # rest of the pipeline run, and every node past it now bills too. The
+        # property under test is that the injected call is INCLUDED in the
+        # total, not that it is the whole of it.
+        self.assertGreaterEqual(
+            snapshots[-1]["usage"]["total_tokens"],
+            already + PROMPT_TOKENS + COMPLETION_TOKENS,
         )
 
 

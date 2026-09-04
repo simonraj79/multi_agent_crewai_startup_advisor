@@ -174,33 +174,44 @@ describe('every edge element carries exactly one is-class-*', () => {
 /* --- the D4 table, stroke by stroke --------------------------------------- */
 
 describe('each class takes the stroke D4 gives it, read out of builder.css', () => {
+  /**
+   * Every class's width is `max(<its design weight>, var(--edge-floor))` since
+   * critic round product-1's P-06. The design weight is still the first
+   * argument and is still what D4 assigns; the floor is what stops the
+   * viewport's zoom multiplying it down to 0.56 device px at the fits the
+   * product picks for itself. Asserted as the whole declaration rather than
+   * just the token, because the ORDER of the two arguments is the thing that
+   * makes it a floor rather than a cap.
+   */
+  const floored = (weight: string) => `max(var(${weight}), var(--edge-floor))`
+
   it('paints a flow edge with the per-edge gradient at the flow weight', () => {
     const style = ruleFor('.builder-edge.is-class-flow .builder-edge-path')
     // `--edge-paint` is published by the edge as `url(#edge-gradient-<id>)`; a
     // CSS file cannot write a per-element id, and an inline `stroke` would
     // outrank `has-error`, `is-lit-in` and `is-selected`.
     expect(style.stroke).toBe('var(--edge-paint, var(--edge-inactive))')
-    expect(style.strokeWidth).toBe('var(--edge-width-flow)')
+    expect(style.strokeWidth).toBe(floored('--edge-width-flow'))
   })
 
   it('paints an attach edge violet, thin and finely dashed', () => {
     const style = ruleFor('.builder-edge.is-class-attach .builder-edge-path')
     expect(style.stroke).toBe('var(--accent-attach)')
-    expect(style.strokeWidth).toBe('var(--edge-width-attach)')
+    expect(style.strokeWidth).toBe(floored('--edge-width-attach'))
     expect(style.strokeDasharray).toBe('2 3')
   })
 
   it('paints a member edge mint, thin, and on a longer dash than attach', () => {
     const style = ruleFor('.builder-edge.is-class-member .builder-edge-path')
     expect(style.stroke).toBe('var(--accent-mint)')
-    expect(style.strokeWidth).toBe('var(--edge-width-attach)')
+    expect(style.strokeWidth).toBe(floored('--edge-width-attach'))
     expect(style.strokeDasharray).toBe('6 3')
   })
 
   it('paints an error edge red at the flow weight, because it is a flow', () => {
     const style = ruleFor('.builder-edge.is-class-error .builder-edge-path')
     expect(style.stroke).toBe('var(--err-text)')
-    expect(style.strokeWidth).toBe('var(--edge-width-flow)')
+    expect(style.strokeWidth).toBe(floored('--edge-width-flow'))
   })
 
   it('adds a dash to a back edge and takes no colour away from it', () => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Map as MapIcon, X } from 'lucide-vue-next'
 import type { Severity } from '../../types/builder'
 
@@ -78,6 +78,86 @@ function toggle(): void {
     /* A remembered panel state is a convenience, never a reason to fail. */
   }
 }
+
+/* --- yielding to whatever is underneath (critic round product-1, P-07) ----- */
+
+/**
+ * The map gets out of the way of a node it is sitting on.
+ *
+ * Measured by the critic on a three-node blank canvas at 1440x900: the panel is
+ * 186x158 at `z-index: var(--z-control)`, x902-1088 / y558-716, and it covered
+ * **30.2%** of `agent_1` - including its model pill and its `2 iter · no tools`
+ * line. On the validator template it lands on `Validation report`. It is open
+ * by default and had only a close button, so the author's options were "lose
+ * the corner of the canvas" or "lose the map".
+ *
+ * Neither, now. When a node's screen box overlaps the panel's, the panel drops
+ * to a whisper and stops taking the pointer - so the node underneath is both
+ * visible and clickable - and it comes back the moment the pointer reaches its
+ * toggle, which keeps `pointer-events` throughout precisely so there is always
+ * something to aim at. Collapsing it instead was the other candidate and is
+ * worse: `collapsed` is remembered per browser, so an automatic collapse would
+ * either write over the author's own choice or flap against it.
+ *
+ * The geometry is done here rather than in the parent because both halves are
+ * already props. Vue Flow's pane transform is `translate(x, y) scale(zoom)`, so
+ * a node's screen box is `flow * zoom + pan`; the panel is absolutely
+ * positioned inside `.builder-canvas`, which is `position: relative` and which
+ * `.builder-flow` fills exactly, so `offsetLeft/Top/Width/Height` ARE its box in
+ * the same coordinates. No `getBoundingClientRect`, no second origin to get
+ * wrong, and nothing that changes under a device-pixel ratio.
+ */
+const root = ref<HTMLElement | null>(null)
+const yielding = ref(false)
+
+/**
+ * How much of a node the panel has to hide before it gets out of the way.
+ *
+ * An intersection test alone is the wrong rule, and it was measured to be:
+ * on the one-node capture the card's corner clipped the panel's by about
+ * 11 x 3 px - 0.14% of a 240x96 card, nothing an author would ever notice -
+ * and the map faded anyway, which changed a visual baseline for no reason
+ * a reader of that diff could have named. The defect this answers is
+ * **30.2% of a card**, so a tenth is comfortably below the thing being
+ * fixed and two orders of magnitude above the thing being ignored.
+ */
+const YIELD_MIN_COVERAGE = 0.1
+
+function recomputeYield(): void {
+  const element = root.value
+  if (!element) {
+    yielding.value = false
+    return
+  }
+  const left = element.offsetLeft
+  const top = element.offsetTop
+  const right = left + element.offsetWidth
+  const bottom = top + element.offsetHeight
+  const { x: panX, y: panY, zoom } = props.viewport
+  yielding.value = props.nodes.some((node) => {
+    const nodeLeft = node.x * zoom + panX
+    const nodeTop = node.y * zoom + panY
+    const width = node.width * zoom
+    const height = node.height * zoom
+    if (width <= 0 || height <= 0) return false
+    const wide = Math.min(nodeLeft + width, right) - Math.max(nodeLeft, left)
+    const tall = Math.min(nodeTop + height, bottom) - Math.max(nodeTop, top)
+    if (wide <= 0 || tall <= 0) return false
+    return (wide * tall) / (width * height) >= YIELD_MIN_COVERAGE
+  })
+}
+
+/**
+ * `flush: 'post'` because the answer depends on the panel's own laid-out size,
+ * and `is-collapsed` changes it. Reading before the DOM settles measures the
+ * previous frame's box, which is the shape of bug that shows up only when a
+ * node happens to sit on the boundary.
+ */
+watch(
+  [() => props.nodes, () => props.viewport, () => props.pane, collapsed],
+  recomputeYield,
+  { deep: true, immediate: true, flush: 'post' },
+)
 
 /**
  * The rectangle the author is currently looking at, in flow coordinates.
@@ -265,7 +345,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="builder-minimap" :class="{ 'is-collapsed': collapsed }" role="group" aria-label="Graph minimap">
+  <div
+    ref="root"
+    class="builder-minimap"
+    :class="{ 'is-collapsed': collapsed, 'is-yielding': yielding }"
+    :data-yielding="yielding ? 'true' : 'false'"
+    role="group"
+    aria-label="Graph minimap"
+  >
     <button
       class="minimap-toggle"
       type="button"
@@ -371,8 +458,19 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border-default);
   border-radius: var(--r-lg);
   backdrop-filter: var(--blur-panel);
-  transition: width var(--motion-medium) var(--ease-out);
+  transition: width var(--motion-medium) var(--ease-out),
+    opacity var(--motion-medium) var(--ease-out);
 }
+
+/* P-07. A whisper rather than a hide: the author can still see there is a map
+   there, and the toggle keeps taking the pointer so reaching it restores both
+   the opacity and the panel's own interactivity. `pointer-events: none` on the
+   panel is what makes the node underneath genuinely clickable rather than
+   merely visible - a translucent overlay still swallows every click. */
+.builder-minimap.is-yielding { opacity: 0.12; pointer-events: none; }
+.builder-minimap.is-yielding .minimap-toggle { pointer-events: auto; }
+.builder-minimap.is-yielding:hover,
+.builder-minimap.is-yielding:focus-within { opacity: 1; pointer-events: auto; }
 
 .builder-minimap.is-collapsed { padding: 6px; }
 

@@ -309,22 +309,34 @@ def authored_agent_node(
     )
 
 
-def authored_crew_node(node_id: str, *, tier: str = "cheap") -> dict[str, Any]:
-    """A crew the AUTHOR assembled, whose members are `member` edges."""
+def authored_crew_node(
+    node_id: str,
+    *,
+    tier: str = "cheap",
+    process: str = "sequential",
+    task_order: Sequence[str] = (),
+    manager_agent: str | None = None,
+) -> dict[str, Any]:
+    """A crew the AUTHOR assembled, whose members are `member` edges.
 
-    return node(
-        node_id,
-        "crew",
-        {
-            "tier": tier,
-            "max_iter": 2,
-            "guardrail_max_retries": 2,
-            "prompt_inputs": {},
-            "on_error": "fail",
-            "process": "sequential",
-            "task_order": [],
-        },
-    )
+    `process`, `task_order` and `manager_agent` are parameters because plan 12's
+    two crew codes are precisely about them: an order entry or a manager naming
+    something that is not a member of THIS crew. Every other caller takes the
+    defaults and is unaffected.
+    """
+
+    config: dict[str, Any] = {
+        "tier": tier,
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {},
+        "on_error": "fail",
+        "process": process,
+        "task_order": list(task_order),
+    }
+    if manager_agent is not None:
+        config["manager_agent"] = manager_agent
+    return node(node_id, "crew", config)
 
 
 # --------------------------------------------------------------------------
@@ -1014,6 +1026,62 @@ PROBLEM_SCENARIOS: list[dict[str, Any]] = [
             "empty crew",
             [input_node(), authored_crew_node("team"), output_node()],
             [edge("e1", "idea", "team"), edge("e2", "team", "report")],
+        ),
+    },
+    {
+        "name": "an authored crew ordering a task by a node that is not a member",
+        "expects": ["crew-task-order-mismatch"],
+        "why": (
+            "The gauntlet's own forbidden 'a parameter rendered in the UI that the "
+            "compiler ignores', found in `runtime.py:724`: an order entry naming "
+            "something that is not a member of this crew is filtered out with no word "
+            "to anybody, so the author drags an order and the crew runs a different "
+            "one. Reachable by clicking - choose an order, then delete that agent's "
+            "member edge, and `AuthoredCrewForm` hides the stranger it left behind. A "
+            "PARTIAL order is deliberately NOT reported: the next line completes it "
+            "from `member_ids`, so naming two of five members really does mean 'these "
+            "two first'."
+        ),
+        "document": document(
+            "order names a stranger",
+            [
+                input_node(),
+                authored_crew_node("team", task_order=["worker", "ghost"]),
+                agent_node("worker"),
+                output_node(),
+            ],
+            [
+                edge("e1", "idea", "team"),
+                edge("e2", "team", "report"),
+                member_edge("e3", "worker", "team"),
+            ],
+        ),
+    },
+    {
+        "name": "a hierarchical crew whose manager is not one of its members",
+        "expects": ["crew-hierarchical-needs-manager"],
+        "why": (
+            "The half `document.py` cannot see. Its cross-field validator refuses a "
+            "hierarchical crew with NEITHER manager set and raises, because that is a "
+            "rule about one object; whether `manager_agent` names one of THIS crew's "
+            "members is a question only the `member` edges answer. `runtime.py:730` "
+            "resolves it against the crew's own agents and falls through to "
+            "`manager_llm`; with neither resolving, `Crew.__init__` raises at "
+            "`crew.py:729` mid-run - after every node upstream has already billed."
+        ),
+        "document": document(
+            "manager outside the team",
+            [
+                input_node(),
+                authored_crew_node("team", process="hierarchical", manager_agent="ghost"),
+                agent_node("worker"),
+                output_node(),
+            ],
+            [
+                edge("e1", "idea", "team"),
+                edge("e2", "team", "report"),
+                member_edge("e3", "worker", "team"),
+            ],
         ),
     },
     {

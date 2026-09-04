@@ -856,6 +856,23 @@ export const PROBLEM_CODES = [
   // forbidden list names a parameter rendered in the UI that the compiler
   // ignores; this is that rule answered on the node.
   'crew-tier-not-honoured',
+  // 12-error-handling.md's two, added 2026-09-04 with the run-phase surfaces.
+  // Both are one defect in two keys: an authored crew carries a field whose
+  // value the RUNTIME silently discards, and the discarding happens after every
+  // node upstream of the crew has already billed.
+  //
+  // `crew-task-order-mismatch` is the gauntlet's own forbidden "a parameter
+  // rendered in the UI that the compiler ignores", found in
+  // `runtime.py:724`: an order entry naming a node that is not a member of
+  // this crew is filtered out with no word to anybody, so the author dragged
+  // an order and got a different one.
+  //
+  // `crew-hierarchical-needs-manager` is the half `document.py` cannot see. Its
+  // cross-field validator refuses a hierarchical crew with NEITHER manager set,
+  // but whether `manager_agent` names one of THIS crew's members is a question
+  // only the `member` edges answer - and with it unresolved CrewAI raises at
+  // `crew.py:729` mid-run.
+  'crew-task-order-mismatch', 'crew-hierarchical-needs-manager',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 
@@ -1000,6 +1017,15 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
   // 03 D2's crew membership count. It is about the `member` edges, and the
   // control that shows them is the authored crew's read-only member list.
   'crew-members-out-of-range': 'members',
+  // 12's two. `crew-task-order-mismatch` anchors to `members` and not to
+  // `task_order`, because the read-only member list IS the order control - an
+  // author drags rows there and the form writes `task_order`, and there is no
+  // control by that name to focus. `crew-hierarchical-needs-manager` anchors to
+  // the manager select, which is the one thing to change. Both ALSO carry
+  // `field` on the payload; these entries are the fallback for a server that
+  // predates the key, exactly as `model-unknown`'s is.
+  'crew-task-order-mismatch': 'members',
+  'crew-hierarchical-needs-manager': 'manager_agent',
   /*
    * `tool-param-invalid` is deliberately absent. Its field is one of the
    * catalogue's own parameter names - `params.limit`, `params.formats` - which

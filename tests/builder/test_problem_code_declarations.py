@@ -250,6 +250,12 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
         would have nothing to anchor it to - and it is declared in
         `service/builder_api.py`, outside the package these three greps read,
         precisely so it cannot be swept in.
+
+        **Fifty-five until 2026-09-04**, when plan 12 added `bounds.py`'s two
+        crew codes: `crew-task-order-mismatch` and
+        `crew-hierarchical-needs-manager`. Neither adds a declaring FILE, which
+        is why the file count below did not move with them - they are the first
+        addition since 03 that did not.
         """
 
         codes: set[str] = set()
@@ -258,7 +264,7 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             codes |= {match.group(2) for match in DECLARATION.finditer(text)}
         self.assertEqual(
             len(codes),
-            55,
+            57,
             "the number of problem codes moved; frontend/src/types/builder.ts's "
             "PROBLEM_CODES and builderTypes.spec.ts's length assertion both "
             "have to move with it",

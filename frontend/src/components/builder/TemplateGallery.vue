@@ -13,7 +13,13 @@ import {
   Upload,
 } from 'lucide-vue-next'
 import GraphThumbnail from './GraphThumbnail.vue'
-import { BUILDER_TEMPLATES } from '../../data/builderTemplates'
+import {
+  ALL_BUILDER_TEMPLATES,
+  BUILDER_TEMPLATES,
+  MORE_BUILDER_TEMPLATES,
+  documentFromTemplate,
+} from '../../data/builderTemplates'
+import { loadModels } from '../../data/models'
 import { BuilderConflictError, builderApi } from '../../services/builderApi'
 import type { BuilderApiLike } from '../../services/builderApi'
 import type { BuilderTemplate } from '../../data/builderTemplates'
@@ -34,9 +40,22 @@ import { agoFrom, parseStamp } from '../../utils/storedTime'
  * line each and they are already measured - and this repo has now recorded five
  * separate occasions where a number written into prose was wrong within two
  * commits. `bounds.py` and `budget.py` own those figures; the gallery renders
- * what they answer. The node count is the only number computed here, and it is
- * `document.nodes.length`: a description of the document rather than one of
- * `bounds.py`'s counts (R6).
+ * what they answer. The node and edge counts are the only numbers computed
+ * here, and they are `document.nodes.length` and `document.edges.length`:
+ * descriptions of the document rather than any of `bounds.py`'s counts (R6).
+ *
+ * WHY EACH CARD SAYS WHAT IT TEACHES. A gallery of graphs is a gallery of
+ * pictures, and a picture of a flow does not say why anybody would draw it.
+ * `teaches` and `modifyFirst` come off the template module verbatim; between
+ * them they answer the two questions somebody landing here actually has, which
+ * are what is this for and what do I touch first.
+ *
+ * THE MODEL ROSTER LOADS BEFORE THE PRICES. The four pattern templates name
+ * their models by ROLE, and `documentFromTemplate` resolves those against the
+ * served roster - so pricing a template before the roster has arrived would
+ * price a document naming `{{workhorse}}`, which the server answers
+ * `model-unknown` for. `loadModels()` is awaited first, and it is the same
+ * single in-flight request every model picker shares.
  */
 
 const props = withDefaults(
@@ -134,17 +153,23 @@ onMounted(() => {
 onBeforeUnmount(() => window.clearInterval(ticker))
 
 /**
- * Price all four templates at once.
+ * Price every template at once, both rows.
  *
  * `allSettled`, not `all`: one template failing to validate must not blank the
- * prices of the other three, and the failure that matters here is the network
- * rather than the document - all four are known to validate clean.
+ * prices of the others, and the failure that matters here is the network rather
+ * than the document - every one of them is known to validate clean.
+ *
+ * `documentFromTemplate` rather than `template.document`, because that is what
+ * resolves the model roles and it is also exactly what the author gets when
+ * they click the card. Pricing the unresolved singleton would price a graph
+ * nobody can run.
  */
 async function priceTemplates(): Promise<void> {
   pricing.value = true
+  await loadModels()
   const answers = await Promise.allSettled(
-    BUILDER_TEMPLATES.map(async (template) => {
-      const result = await props.api.validate(template.document)
+    ALL_BUILDER_TEMPLATES.map(async (template) => {
+      const result = await props.api.validate(documentFromTemplate(template))
       return { id: template.id, budget: result.budget }
     }),
   )
@@ -550,6 +575,18 @@ const orderedLibrary = computed(() =>
             <p class="template-blurb">{{ template.blurb }}</p>
 
             <!--
+              The two sentences a picture cannot carry. `teaches` is why you
+              would open this one; `modifyFirst` is what you do once you have.
+              Both come off the module verbatim.
+            -->
+            <p class="template-teaches">
+              <span class="template-lede">Teaches</span>{{ template.teaches }}
+            </p>
+            <p class="template-teaches">
+              <span class="template-lede">Change first</span>{{ template.modifyFirst }}
+            </p>
+
+            <!--
               Rendered verbatim (R14). It is the difference between a template
               and a booby trap, and paraphrasing it on a card is how the
               difference gets lost.
@@ -560,6 +597,10 @@ const orderedLibrary = computed(() =>
               <div>
                 <dt>Nodes</dt>
                 <dd>{{ template.document.nodes.length }}</dd>
+              </div>
+              <div>
+                <dt>Edges</dt>
+                <dd>{{ template.document.edges.length }}</dd>
               </div>
               <div>
                 <dt>Billable</dt>
@@ -595,6 +636,75 @@ const orderedLibrary = computed(() =>
           </button>
         </li>
       </ul>
+
+      <!--
+        The second row, collapsed. These two are built from LIBRARY agents,
+        whose prompts live in YAML rather than in the document - excellent
+        proofs that the compiler works, and poor teachers, because a new author
+        opening one sees six dropdown choices rather than a team they could have
+        written. Kept rather than deleted because `e2e/builder.spec.ts` drives
+        them (owner's decision 21), and demoted rather than removed because
+        somebody looking for the smallest launchable graph should still find it.
+
+        OPEN by default, and that is arithmetic rather than a preference. The
+        grid is `repeat(auto-fill, minmax(232px, 1fr))` inside
+        `width: min(1080px, 100%)`, which resolves to four columns - so six
+        cards occupy two rows and eight cards occupy the same two rows.
+        Shutting it saves no vertical space at all, and it would hide the card
+        six E2E specs click, which is "a template change becomes a suite
+        change": the thing owner's decision 21 was made to avoid. The author
+        can still shut it. The demotion is the heading and the position, which
+        is what a demotion is.
+      -->
+      <details class="template-more" open>
+        <summary>
+          More, built from this repository's own agents
+          <span class="template-more-count">{{ MORE_BUILDER_TEMPLATES.length }}</span>
+        </summary>
+        <ul class="template-grid">
+          <li v-for="template in MORE_BUILDER_TEMPLATES" :key="template.id">
+            <button class="template-card" type="button" @click="emit('start', template)">
+              <GraphThumbnail class="template-spine" :document="template.document" />
+              <h3>{{ template.title }}</h3>
+              <p class="template-blurb">{{ template.blurb }}</p>
+              <p class="template-teaches">
+                <span class="template-lede">Teaches</span>{{ template.teaches }}
+              </p>
+              <p class="template-teaches">
+                <span class="template-lede">Change first</span>{{ template.modifyFirst }}
+              </p>
+              <dl class="template-facts">
+                <div>
+                  <dt>Nodes</dt>
+                  <dd>{{ template.document.nodes.length }}</dd>
+                </div>
+                <div>
+                  <dt>Edges</dt>
+                  <dd>{{ template.document.edges.length }}</dd>
+                </div>
+                <div>
+                  <dt>Billable</dt>
+                  <dd>
+                    <template v-if="priced.get(template.id)">{{ priced.get(template.id)!.billable }}</template>
+                    <template v-else-if="pricing">…</template>
+                    <template v-else>—</template>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Est. run</dt>
+                  <dd>
+                    <template v-if="priced.get(template.id)">
+                      {{ money(priced.get(template.id)!.floorUsd) }}–{{ money(priced.get(template.id)!.staticUsd) }}
+                    </template>
+                    <template v-else-if="pricing">…</template>
+                    <template v-else>—</template>
+                  </dd>
+                </div>
+              </dl>
+            </button>
+          </li>
+        </ul>
+      </details>
     </section>
   </div>
 </template>
@@ -670,6 +780,55 @@ const orderedLibrary = computed(() =>
 .template-card h3 { margin: 2px 0 0; font-size: var(--fs-15); }
 .template-blurb { margin: 0; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.45; }
 
+/* The two explanatory lines. Quieter than the blurb, because the blurb says
+   what the graph IS and these say what it is for - and a card whose three
+   paragraphs all shout is a card nobody finishes. */
+.template-teaches {
+  margin: 0;
+  color: var(--text-40);
+  font-size: var(--fs-11);
+  line-height: 1.5;
+}
+
+/* INLINE, not a block. As a block it cost each card two lines, and six cards in
+   two rows then overflowed the gallery's own `max-height: 100%` - which is
+   `builder-layout.spec.ts`'s clipping guard, arriving from the other side. */
+.template-lede {
+  margin-right: 6px;
+  color: var(--text-muted);
+  font: 600 10px/1.6 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* The second row. `details` rather than a toggle of our own: it is a
+   disclosure, the browser already has one, and the native element carries the
+   expanded state to a screen reader without a line of script. */
+.template-more { margin-top: 4px; }
+
+.template-more > summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 2px;
+  color: var(--text-muted);
+  font-size: var(--fs-12);
+  cursor: pointer;
+}
+
+.template-more > summary:hover { color: var(--text-title); }
+
+.template-more-count {
+  padding: 1px 6px;
+  color: var(--text-40);
+  font: 600 10px/1.6 var(--font-mono);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+}
+
+.template-more .template-grid { margin-top: 10px; }
+
 /* The thumbnail must not stretch to fill a flex column - it is a fixed-ratio
    spine and a stretched one is a different picture of the same graph. */
 .template-spine { flex: none; }
@@ -689,7 +848,10 @@ const orderedLibrary = computed(() =>
 
 .template-facts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Four now, not three - `Edges` joined the row. Two columns below the card's
+     own breakpoint would be a second layout to keep in step, so the cell
+     padding tightens instead. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   /* The one line that lands the stats on the card's bottom edge. */
   margin: auto 0 0;
@@ -699,7 +861,7 @@ const orderedLibrary = computed(() =>
   border-radius: var(--r-md);
 }
 
-.template-facts div { padding: 7px 8px; background: var(--surface-well); }
+.template-facts div { padding: 7px 6px; background: var(--surface-well); }
 .template-facts dt { color: var(--text-40); font: 600 10px/1 var(--font-mono); text-transform: uppercase; }
 .template-facts dd { margin: 5px 0 0; color: var(--text-title); font: 600 var(--fs-12)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
 

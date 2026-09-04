@@ -263,18 +263,235 @@ reads frames and the run result).
 
 ## Status
 
-**Planned · 2026-09-02.**
+**Built · 2026-09-04.** Eight of the ten criteria are met. Criterion 9 is the
+owner's money and criterion 10 is a capture run rather than a code change.
 
-Contract requests for 00: none. Dependencies this file waits on, by owner:
-03 (`task.output_schema`, `member` / `attach` ports, `joins: 'any'`,
-`member-agent-has-flow-edges`, `crew-hierarchical-needs-manager`), 05
-(role tokens), 06 (`web_search` on the platform key), 09 (per-member crew
-pricing, `'any'` join compilation).
+The gallery leads with **six** templates and keeps the two library-agent ones in
+a demoted second row. The four new ones are authored end to end - every prompt
+on the canvas is a prompt an author may edit - name their models by role rather
+than by slug, validate with **zero problems**, publish, and reach a completed
+run with a non-empty body from a cold sign-in with nothing configured.
 
-Open decisions for the owner: (1) delete `minimal-gated-agent` and
-`fan-out-join` once `e2e/builder.spec.ts` is re-pointed at
-`sequential-pipeline`, or keep them in the "more" row; (2) whether criterion
-9's four paid runs happen before or after the rubric gate.
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 1 | four modules, `BUILDER_TEMPLATES.length === 6`, each id named | **met** | `templates.spec.ts` "offers them in the order plan 14 D7 declares" and "keeps the two library-agent templates in a second row"; `test_templates.py::GalleryTests` |
+| 2 | fixture `valid`, `problems: []`, `unpriced_models: []`, static x margin < ceiling, both sides | **met** | `test_templates.py::ValidationTests` (5) and `test_client_fixtures.py::TemplateFixtureTests` (3) server-side; `templates.spec.ts` asserts the same three per template client-side |
+| 3 | `unittest tests.builder.test_client_fixtures` passes, and a one-character template edit fails it naming the regeneration command | **met, in two halves** | proved by breaking it - see *The bridge* below |
+| 4 | no literal model slug under `frontend/src/data/templates` | **met** | the criterion's own grep exits 1; `test_templates.py::ModelRoleTests::test_no_template_source_file_carries_a_model_slug` runs it as a test and caught a slug in a docstring on its first run |
+| 5 | `reflection-loop` 1 cycle / `max_method_calls == 4`; `conditional-router` `joins.merge === 'any'`; `hierarchical-delegation` three member edges and no flow edge into a member | **met** | `test_templates.py::PatternTests` (7) |
+| 6 | every node of each template inside the canvas pane after fit | **met** | `e2e/builder-layout.spec.ts` "lands every node of every pattern template inside the canvas pane" |
+| 7 | cold sign-in, zero configuration: open, publish, launch, `completed` with a non-empty body, under four minutes | **met** | `e2e/templates.spec.ts`, four `@launch` tests, **1.6-1.7 s each** |
+| 8 | each card renders `teaches`, `modifyFirst`, node/edge counts and a price from `validation.budget` | **met** | `templates.spec.ts` "renders teaches, modifyFirst and both counts on every card", "prices every card from the server answer rather than from a literal" |
+| 9 | one **paid** run per template in `benchmarks/paid-runs.md` | **not done - the owner's money** | decision 22. Costed below. **This session spent $0.00** |
+| 10 | blind captures under `benchmarks/ours/templates/` | **met** | `e2e/capture-templates.spec.ts` wrote **28 PNGs** - gallery + six templates x 1440x900 and 390x844 x dark and light |
+
+### Measured, 2026-09-04, in this worktree
+
+```text
+Python           2243 run · 0 failures · 6 skipped · 131.7 s   (baseline 2119)
+Frontend unit    1468 passed in 74 files                        (baseline 1426 in 73)
+vue-tsc -b --force    exit 0
+npm run build         2042 modules · 677 ms
+E2E              68 passed · 2 failed · 5 skipped · 4.4 min    (baseline 69 listed)
+```
+
+Every row was RUN, not inherited. Three notes on the E2E line, because a count
+with no explanation is the thing this repository keeps having to correct:
+
+* **The two failures are not this plan's, and that was proved rather than
+  argued.** `visual/builder-canvas.spec.ts` "problem state — dark / light" is a
+  pixel baseline whose diff lies ENTIRELY inside the inspector rail - the model
+  picker, the tier control, the tools list - which plan 04's `4d8a054` rewrote
+  after the baseline was taken by `f7f2e95`. Re-run with this plan's four
+  changed `src/` files reverted to HEAD: **the same 12,442 pixels differ**. They
+  are left un-baselined deliberately; re-recording somebody else's pixels would
+  ratify a change nobody reviewed.
+* **The four GALLERY baselines WERE re-recorded**, because the gallery is this
+  plan's surface and it changed by design.
+* **The five skips are the harness, not the product.** `isolation.spec.ts`
+  carries `test.skip(Boolean(process.env.E2E_BASE_URL))`, and this run set
+  `E2E_BASE_URL` to reach a private Vite server on 5283: ports 8099-8101 and
+  5273 were already held by other sessions in this shared worktree, so this plan
+  ran its own stack on **8102 / 5283**. Run the suite the MISSION way, on 8099
+  with no `E2E_BASE_URL`, and those five run.
+
+### The four, priced at head
+
+Every figure regenerated on 2026-09-04 from the committed fixtures, which are
+themselves generated from the real `validate_document` and `estimate_budget`.
+`floor` is the published prices; `static` is what admission enforces, with the
+measured nitro inflation on every cheap-tier node; the ceiling is $10.00 and the
+margin 1.25×, applied to `static` and never to `floor`.
+
+| template | nodes | edges | billable | esc | cycles | calls | floor | static | × 1.25 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sequential-pipeline` | 7 | 6 | 3 | 1 | 0 | 30 | $0.4618 | $0.6597 | $0.8246 |
+| `conditional-router` | 10 | 11 | 4 | 0 | 0 | 33 | $0.3414 | $0.6116 | $0.7645 |
+| `reflection-loop` | 8 | 9 | 2 | 0 | **1** | 72 | $0.8547 | $1.5384 | $1.9230 |
+| `hierarchical-delegation` | 7 | 6 | 1 | 1 | 0 | 30 | $0.5235 | $0.5235 | $0.6543 |
+| **four, summed** | | | | | | | **$2.1814** | **$3.3332** | **$4.1665** |
+
+Three prices are worth a sentence each, because each is a fact about the model
+rather than about the graph. `reflection-loop` is the dearest with the fewest
+billable nodes: both agents sit on the cycle, so each is priced
+`1 + MAX_CYCLE_ITERATIONS` = four times over. `hierarchical-delegation` prices
+its three members INSIDE the crew node, so it reports one billable node and
+thirty calls. And `conditional-router` is a worst case in the strictest sense -
+every one of its three desks is priced although exactly one ever runs, which is
+the arithmetic the card exists to make visible.
+
+### Criterion 9's costed estimate - not run, and the owner's to authorise
+
+**$3.33** is the worst case for all four, and it is a worst case in which every
+guardrail retries, every tool loop runs to `max_iter`, every cycle goes round
+three times, and the cheap tier bills at its dearest endpoint. The only
+measurement this repository has of that model against reality is the paid
+acceptance run: `$0.0417` measured against a `$1.5137` static estimate for the
+same graph, **2.8%**. Projecting that ratio onto these four gives roughly
+**$0.09** for the set. That is a projection from ONE data point and is labelled
+as one; the number to authorise against is $3.33.
+
+**This session spent $0.00.** Nothing here called a model.
+
+### The bridge, and what each half catches
+
+A template's document is authored in TypeScript and the thing that proves it is
+a template - `validate_document` and `estimate_budget` - is Python. Something
+has to carry a document across that line, and the two obvious answers are worse
+than the one taken: writing the documents twice makes a template a thing that
+can disagree with itself, and having Python shell out to `node` inside a unit
+test makes the Python CI job depend on `frontend/node_modules`, which
+`.github/workflows/ci.yml` does not install.
+
+So `scripts/dump-templates.mjs` is the bridge and its output is committed:
+
+```
+frontend/src/data/templates/*.ts            authored
+  -> node scripts/dump-templates.mjs
+frontend/tests/fixtures/templates/documents.json     committed
+  -> ./.venv/Scripts/python.exe scripts/emit_builder_fixtures.py
+frontend/tests/fixtures/templates/<id>.json          committed
+```
+
+and BOTH ends are gated, which is the only thing that makes a committed
+intermediate honest:
+
+| gate | goes red when |
+| --- | --- |
+| `frontend/tests/templates.spec.ts` | the TypeScript no longer equals `documents.json` |
+| `tests/builder/test_client_fixtures.py::TemplateFixtureTests` | a fixture is not what the emitter produces from `documents.json` today |
+
+**Proved by breaking it**, 2026-09-04, rather than argued. One character was
+changed in `sequentialPipeline.ts` - `max_iter` 3 to 2:
+
+```text
+npx vitest run tests/templates.spec.ts
+  x sequential-pipeline matches its fixture byte for byte
+    sequential-pipeline has drifted from its fixture. Regenerate with:
+        node scripts/dump-templates.mjs && ./.venv/Scripts/python.exe scripts/emit_builder_fixtures.py
+
+node scripts/dump-templates.mjs      # the author remembers half the recipe
+python -m unittest tests.builder.test_client_fixtures
+  FAIL: test_every_committed_template_fixture_is_current (sequential-pipeline.json)
+    frontend/tests/fixtures/templates/sequential-pipeline.json is stale ...
+```
+
+Reverted; both green. **Criterion 3's letter says the Python test fails on a
+one-character TypeScript edit, and what is true is that it fails on the second
+step of that edit while the Vitest half fails on the first.** Stated rather than
+smoothed over: an edit cannot land silently either way, and closing the letter
+would mean running `node` from a Python unit test in a CI job that has neither
+`node_modules` nor a reason to.
+
+### Nine assumptions and departures, each where the plan and the code disagreed
+
+Stated rather than smoothed over. In every case the reading taken is the one the
+surrounding code most directly supports.
+
+1. **Every template carries a human GATE above its first billable node, and the
+   plan's node tables have none.** `create_run` answers **403** for a published
+   graph that reaches a billable node before any human gate unless
+   `BUILDER_ALLOW_GATELESS_GRAPHS` is set, and a `SYNTHETIC=1` backend with no
+   `AUTH_BASE_URL` resolves every caller to nobody - so a gateless template is
+   one the E2E suite cannot launch and a signed-out visitor cannot either.
+   Measured: `idea-validator`, which scopes before it gates, publishes
+   `gated_before_spend: false` and answers 403 on an anonymous launch. One node
+   and one edge per template, and it is the shape `MINIMAL_GATED_AGENT` has
+   shipped with since 2026-09-02.
+2. **The attached tool is `analyze_community_sentiment`, not `web_search`.** D8
+   calls `web_search` "platform-keyed"; it is not. Every one of its four
+   providers maps to a credential kind through `credential_kind_by_param`, and
+   PLANS.md decision 9 (a platform Firecrawl key) is provisional and off - so a
+   template shipping it opens with `tool-credential-required` on a graph nobody
+   has touched. Measured against a live `/api/builder/validate` before the swap.
+   The chosen tool is keyless, is a real search rather than a stand-in, and
+   returns URLs the writer can cite.
+3. **`reflection-loop`'s router loops on `lt` and exits on `otherwise`**, which
+   is the opposite polarity to D4's `[done: gte 8, again: otherwise]`.
+   `_compare` returns false for a null on every ordering comparison, so with
+   `done` as the tested branch a critic whose answer could not be parsed scores
+   null, fails `gte`, falls to `again`, and goes round until CrewAI's
+   `max_method_calls` raises `RecursionError` - a run that fails having paid for
+   four drafts because one answer came back unreadable. Written this way the
+   same null falls to `done` and the run ends with the draft it has. A loop
+   should fail towards stopping.
+4. **`reflection-loop`'s output names its source; the other three do not.** D4
+   asks for `source: "${state.out__generate}"` and it is right, for a reason
+   worth recording: an unset source follows the incoming edge, that edge comes
+   from `judge`, and a router records what flowed THROUGH it - which at that
+   point is the score it compared rather than the draft it was deciding about.
+   Measured before the line existed: the run completed and answered
+   `markdown_body: ""` with no problem reported anywhere. Every other output in
+   the gallery leaves `source` null on purpose, so the `8e24e35` default stays
+   exercised.
+5. **`conditional-router`'s merge is `join_text`, not `default`.** `default`
+   takes one value and one fallback, which is two branches; there are three.
+   `join_text` skips a null and every branch that did not run IS null, because
+   the compiler pre-seeds `out__*` - so joining all three yields exactly the one
+   that ran, and a fourth desk costs one more argument.
+6. **The three role tokens are C9's, not C3's.** The plan lists `{{cheapest}}`,
+   `{{workhorse}}` and `{{escalation}}` as consumed from plan 05; no such thing
+   exists in `data/models.ts`, and the served roster carries two presets named
+   `cheap` and `escalation`. `frontend/src/data/templates/modelRoles.ts`
+   resolves all three - the two presets, plus the roster's least expensive row
+   that still supports tools and JSON mode, measured on `cost_in_max_endpoint`
+   rather than on the headline. `test_templates.py::ModelRoleTests` asserts the
+   Python and TypeScript answers agree, which is spec R7's condition for
+   admitting a client mirror at all.
+7. **The "more" row ships OPEN.** D7 says collapsed. The grid is
+   `repeat(auto-fill, minmax(232px, 1fr))` inside `width: min(1080px, 100%)`,
+   which resolves to four columns - so six cards occupy two rows and eight cards
+   occupy the same two rows. Shutting it saves no vertical space at all, and it
+   DOES hide the card six E2E specs click: measured, `builder.spec.ts` and
+   `mobile.spec.ts` failed on a hidden-element timeout the first time it shipped
+   shut. That is "a template change becomes a suite change", which is the thing
+   owner's decision 21 was made to avoid. The demotion is the heading and the
+   position.
+8. **`BuilderJoins` in `types/builder.ts` was narrower than the server** -
+   `Record<string, 'all'>` where `document.py::_validate_joins` has admitted
+   `'any'` since 03 D3. `conditionalRouter.ts` is the first client code that
+   needed it. Corrected, with the measurement that justified admitting `'any'`
+   restated at the site. **The Integrator should confirm this is a mirror repair
+   rather than a C1 change**; it widens the client to what the server already
+   accepts and narrows nothing.
+9. **`data/models.ts`'s `roster` ref moved to `data/modelRoster.ts`** and is
+   re-exported, so every importer is unchanged. `models.ts` imports
+   `services/httpCore`, which reads `import.meta.env` at module load and is
+   therefore unimportable by anything that is not Vite - including the dump
+   script, which needs the roster to resolve a role and needs no network at all.
+   One ref, two doors.
+
+### For the Integrator
+
+- **`frontend/tests/builderApi.spec.ts` is red, and not from this plan.** It
+  asserts `declared.size === 30` and `builder_api.py` now declares **31**: the
+  extra is `GET /workflows/{document_id}/compiled`, added in this shared
+  worktree by plan 10/11's uncommitted work (`git diff` names it). This plan
+  added no route.
+- **`benchmarks/paid-runs.md` does not exist**, so criterion 9 has no file to
+  write into yet. Whoever authorises the spend creates it.
+- Nothing in `PLANS.md` was touched. The row this plan implies is
+  `| 14 | Templates | S8 | 09 | 10 | 8 | — | 0 | In build | 2026-09-04 |`.
 
 ### Owner decisions answered — 2026-09-04
 

@@ -1,0 +1,841 @@
+{
+  "_source": "scripts/emit_builder_fixtures.py --target templates, via node scripts/dump-templates.mjs",
+  "id": "sequential-pipeline",
+  "document": {
+    "schema": "builder.flow/v1",
+    "name": "Sequential pipeline",
+    "version": 1,
+    "input_field": "topic",
+    "nodes": [
+      {
+        "id": "topic",
+        "kind": "input",
+        "label": "Topic",
+        "position": {
+          "x": 340,
+          "y": 0
+        },
+        "config": {
+          "field": "topic",
+          "label": "What should the team write about?",
+          "max_chars": 2000,
+          "required": true
+        }
+      },
+      {
+        "id": "confirm",
+        "kind": "gate",
+        "label": "Confirm the topic",
+        "position": {
+          "x": 340,
+          "y": 160
+        },
+        "config": {
+          "message": "Three agents are about to research and write about this. Approve the topic, or send it back.",
+          "editable_fields": [],
+          "max_turns": 1,
+          "expiry_seconds": 1800
+        }
+      },
+      {
+        "id": "research",
+        "kind": "agent",
+        "label": "Research",
+        "position": {
+          "x": 340,
+          "y": 320
+        },
+        "config": {
+          "tier": "cheap",
+          "max_iter": 3,
+          "guardrail_max_retries": 2,
+          "prompt_inputs": {
+            "topic": "${state.topic}"
+          },
+          "role": "Research Analyst",
+          "goal": "Find what is actually known about a topic, and where each claim came from.",
+          "backstory": "You have spent a decade checking claims for a newsroom. You would rather report four things you can source than ten you cannot, and you never present a summary as if it were evidence.",
+          "task": {
+            "description": "Search the discussion for {topic} and report the five most load-bearing things practitioners say about it — the ones a reader would be wrong without — with the URL each came from.",
+            "expected_output": "Five numbered findings. Each is one sentence, followed by the URL it came from on its own line. No preamble.",
+            "output_schema": null,
+            "markdown": false,
+            "async_execution": false
+          },
+          "llm": {
+            "model": "google/gemini-3.5-flash-lite:nitro",
+            "temperature": null,
+            "top_p": null,
+            "max_tokens": null,
+            "timeout": null,
+            "response_format": null,
+            "frequency_penalty": null,
+            "presence_penalty": null,
+            "stop": [],
+            "seed": null,
+            "reasoning_effort": null
+          },
+          "max_rpm": null,
+          "max_execution_time": null,
+          "allow_delegation": false,
+          "memory": false,
+          "cache": true,
+          "respect_context_window": true,
+          "retry": {
+            "max_retries": 0,
+            "backoff_seconds": 0,
+            "fallback_model": null
+          },
+          "system_template": null,
+          "prompt_template": null,
+          "response_template": null,
+          "tool_failure_policy": null,
+          "planning": false,
+          "planning_config": null
+        }
+      },
+      {
+        "id": "search",
+        "kind": "tool",
+        "label": "Search the discussion",
+        "position": {
+          "x": 40,
+          "y": 320
+        },
+        "config": {
+          "tool_id": "analyze_community_sentiment",
+          "params": {}
+        }
+      },
+      {
+        "id": "analyse",
+        "kind": "agent",
+        "label": "Analyse",
+        "position": {
+          "x": 340,
+          "y": 480
+        },
+        "config": {
+          "tier": "cheap",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "prompt_inputs": {
+            "research": "${state.out__research}"
+          },
+          "role": "Analyst",
+          "goal": "Turn a pile of facts into the two or three tensions that actually decide the question.",
+          "backstory": "You read research the way an editor reads a draft: looking for the places where two true things pull in opposite directions, because that is where the reader learns something.",
+          "task": {
+            "description": "From the research below, name the three tensions a reader must understand, and give the evidence for each.\n\nRESEARCH:\n{research}",
+            "expected_output": "Three headed sections. Each names one tension in a short phrase, explains it in two or three sentences, and cites the facts on both sides.",
+            "output_schema": null,
+            "markdown": false,
+            "async_execution": false
+          },
+          "llm": {
+            "model": "google/gemini-3.5-flash-lite:nitro",
+            "temperature": null,
+            "top_p": null,
+            "max_tokens": null,
+            "timeout": null,
+            "response_format": null,
+            "frequency_penalty": null,
+            "presence_penalty": null,
+            "stop": [],
+            "seed": null,
+            "reasoning_effort": null
+          },
+          "max_rpm": null,
+          "max_execution_time": null,
+          "allow_delegation": false,
+          "memory": false,
+          "cache": true,
+          "respect_context_window": true,
+          "retry": {
+            "max_retries": 0,
+            "backoff_seconds": 0,
+            "fallback_model": null
+          },
+          "system_template": null,
+          "prompt_template": null,
+          "response_template": null,
+          "tool_failure_policy": null,
+          "planning": false,
+          "planning_config": null
+        }
+      },
+      {
+        "id": "write",
+        "kind": "agent",
+        "label": "Write",
+        "position": {
+          "x": 340,
+          "y": 640
+        },
+        "config": {
+          "tier": "escalation",
+          "max_iter": 2,
+          "guardrail_max_retries": 2,
+          "prompt_inputs": {
+            "analysis": "${state.out__analyse}"
+          },
+          "role": "Writer",
+          "goal": "Write something a busy reader finishes and can act on.",
+          "backstory": "You write briefs for people who will read them once, on a phone, between meetings. You put the answer first and you never pad.",
+          "task": {
+            "description": "Write a 600-word brief from the analysis below. Headline, three sections, and a sources list at the end.\n\nANALYSIS:\n{analysis}",
+            "expected_output": "Markdown. An H1 headline, three H2 sections of roughly 200 words each, and a final \"Sources\" list of the URLs the research carried.",
+            "output_schema": null,
+            "markdown": true,
+            "async_execution": false
+          },
+          "llm": {
+            "model": "google/gemini-3.8-flash",
+            "temperature": null,
+            "top_p": null,
+            "max_tokens": null,
+            "timeout": null,
+            "response_format": null,
+            "frequency_penalty": null,
+            "presence_penalty": null,
+            "stop": [],
+            "seed": null,
+            "reasoning_effort": null
+          },
+          "max_rpm": null,
+          "max_execution_time": null,
+          "allow_delegation": false,
+          "memory": false,
+          "cache": true,
+          "respect_context_window": true,
+          "retry": {
+            "max_retries": 0,
+            "backoff_seconds": 0,
+            "fallback_model": null
+          },
+          "system_template": null,
+          "prompt_template": null,
+          "response_template": null,
+          "tool_failure_policy": null,
+          "planning": false,
+          "planning_config": null
+        }
+      },
+      {
+        "id": "brief",
+        "kind": "output",
+        "label": "Brief",
+        "position": {
+          "x": 340,
+          "y": 800
+        },
+        "config": {
+          "body_key": "markdown_body",
+          "source": null
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "topic",
+        "source_port": "out",
+        "target": "confirm",
+        "target_port": "in"
+      },
+      {
+        "id": "e2",
+        "source": "confirm",
+        "source_port": "approve",
+        "target": "research",
+        "target_port": "in"
+      },
+      {
+        "id": "e3",
+        "source": "research",
+        "source_port": "out",
+        "target": "analyse",
+        "target_port": "in"
+      },
+      {
+        "id": "e4",
+        "source": "analyse",
+        "source_port": "out",
+        "target": "write",
+        "target_port": "in"
+      },
+      {
+        "id": "e5",
+        "source": "write",
+        "source_port": "out",
+        "target": "brief",
+        "target_port": "in"
+      },
+      {
+        "id": "e6",
+        "source": "search",
+        "source_port": "attach",
+        "target": "research",
+        "target_port": "attach"
+      }
+    ],
+    "joins": {},
+    "budget": null
+  },
+  "vocabulary": {
+    "schema_id": "builder.flow/v1",
+    "node_kinds": [
+      "input",
+      "agent",
+      "crew",
+      "gate",
+      "router",
+      "transform",
+      "output",
+      "tool",
+      "mcp",
+      "skill"
+    ],
+    "attachment_kinds": [
+      "tool",
+      "mcp",
+      "skill"
+    ],
+    "target_ports": {
+      "input": [],
+      "agent": [
+        "in",
+        "attach"
+      ],
+      "crew": [
+        "in",
+        "attach",
+        "member"
+      ],
+      "gate": [
+        "in"
+      ],
+      "router": [
+        "in"
+      ],
+      "transform": [
+        "in"
+      ],
+      "output": [
+        "in"
+      ],
+      "tool": [],
+      "mcp": [],
+      "skill": []
+    },
+    "tiers": [
+      "cheap",
+      "escalation"
+    ],
+    "tier_models": {
+      "cheap": "google/gemini-3.5-flash-lite",
+      "escalation": "google/gemini-3.8-flash"
+    },
+    "agent_ids": [
+      "feasibility_analyst",
+      "market_analyst",
+      "reporter",
+      "scoper",
+      "sentiment_analyst",
+      "synthesist"
+    ],
+    "crew_ids": [
+      "feasibility",
+      "market",
+      "scope",
+      "sentiment"
+    ],
+    "research_tools": [
+      "analyze_community_sentiment",
+      "assess_technical_feasibility",
+      "research_market_landscape"
+    ],
+    "tools": [
+      {
+        "tool_id": "research_market_landscape",
+        "label": "Market landscape",
+        "category": "research",
+        "credential_kind": "firecrawl",
+        "credential_kind_by_param": null,
+        "credential_optional": false,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "limit",
+            "type": "integer",
+            "required": false,
+            "default": 3,
+            "description": "Full page fetches per query. Each one is a Firecrawl credit.",
+            "min": 1,
+            "max": 3
+          }
+        ],
+        "description": "Search and scrape the web for market evidence, returning the repository's JSON envelope with a source URL per row.",
+        "docs_url": "https://docs.firecrawl.dev/api-reference/endpoint/search",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {},
+        "packages_param": null
+      },
+      {
+        "tool_id": "analyze_community_sentiment",
+        "label": "Community sentiment",
+        "category": "research",
+        "credential_kind": null,
+        "credential_kind_by_param": null,
+        "credential_optional": false,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "story_limit",
+            "type": "integer",
+            "required": false,
+            "default": 5,
+            "description": "Distinct threads to retrieve. One story is one URL.",
+            "min": 1,
+            "max": 5
+          },
+          {
+            "name": "comments_per_story",
+            "type": "integer",
+            "required": false,
+            "default": 5,
+            "description": "Comments walked per story.",
+            "min": 1,
+            "max": 20
+          }
+        ],
+        "description": "Search Hacker News stories and walk their comment trees, citing the HN item URL for every thread.",
+        "docs_url": "https://hn.algolia.com/api",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {},
+        "packages_param": null
+      },
+      {
+        "tool_id": "assess_technical_feasibility",
+        "label": "Technical feasibility",
+        "category": "research",
+        "credential_kind": "github",
+        "credential_kind_by_param": null,
+        "credential_optional": true,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "limit",
+            "type": "integer",
+            "required": false,
+            "default": 5,
+            "description": "Repositories to inspect.",
+            "min": 1,
+            "max": 5
+          }
+        ],
+        "description": "Search GitHub repositories and report what exists, with the shared rate limiter this deployment already runs.",
+        "docs_url": "https://docs.github.com/en/rest/search",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {},
+        "packages_param": null
+      },
+      {
+        "tool_id": "firecrawl_scrape",
+        "label": "Scrape a page (Firecrawl)",
+        "category": "web",
+        "credential_kind": "firecrawl",
+        "credential_kind_by_param": null,
+        "credential_optional": false,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "only_main_content",
+            "type": "boolean",
+            "required": false,
+            "default": true,
+            "description": "Strip navigation, headers and footers."
+          },
+          {
+            "name": "formats",
+            "type": "array",
+            "required": false,
+            "default": [
+              "markdown"
+            ],
+            "description": "What to return for each page.",
+            "enum": [
+              "markdown",
+              "links"
+            ]
+          }
+        ],
+        "description": "Fetch one URL as clean markdown, JavaScript rendered.",
+        "docs_url": "https://docs.crewai.com/en/tools/web-scraping/firecrawlscrapewebsitetool",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {
+          "": [
+            "firecrawl"
+          ]
+        },
+        "packages_param": null
+      },
+      {
+        "tool_id": "firecrawl_crawl",
+        "label": "Crawl a site (Firecrawl)",
+        "category": "web",
+        "credential_kind": "firecrawl",
+        "credential_kind_by_param": null,
+        "credential_optional": false,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "limit",
+            "type": "integer",
+            "required": false,
+            "default": 10,
+            "description": "Pages to fetch at most.",
+            "min": 1,
+            "max": 20
+          },
+          {
+            "name": "max_depth",
+            "type": "integer",
+            "required": false,
+            "default": 1,
+            "description": "Link hops from the starting URL.",
+            "min": 1,
+            "max": 2
+          }
+        ],
+        "description": "Follow links from one URL and return every page. Bounded, because a crawl is a bill.",
+        "docs_url": "https://docs.crewai.com/en/tools/web-scraping/firecrawlcrawlwebsitetool",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {
+          "": [
+            "firecrawl"
+          ]
+        },
+        "packages_param": null
+      },
+      {
+        "tool_id": "firecrawl_search",
+        "label": "Search the web (Firecrawl)",
+        "category": "web",
+        "credential_kind": "firecrawl",
+        "credential_kind_by_param": null,
+        "credential_optional": false,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "limit",
+            "type": "integer",
+            "required": false,
+            "default": 5,
+            "description": "Results to return.",
+            "min": 1,
+            "max": 5
+          }
+        ],
+        "description": "Semantic web search returning scraped page content.",
+        "docs_url": "https://docs.crewai.com/en/tools/search-research/firecrawlsearchtool",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {
+          "": [
+            "firecrawl"
+          ]
+        },
+        "packages_param": null
+      },
+      {
+        "tool_id": "web_search",
+        "label": "Web search",
+        "category": "web",
+        "credential_kind": null,
+        "credential_kind_by_param": {
+          "param": "provider",
+          "map": {
+            "serper": "serper",
+            "tavily": "tavily",
+            "exa": "exa",
+            "brave": "brave"
+          }
+        },
+        "credential_optional": false,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "provider",
+            "type": "string",
+            "required": false,
+            "default": "serper",
+            "description": "Which search back end runs the query.",
+            "enum": [
+              "serper",
+              "tavily",
+              "exa",
+              "brave"
+            ]
+          },
+          {
+            "name": "n_results",
+            "type": "integer",
+            "required": false,
+            "default": 5,
+            "description": "Results to return. Exa ignores this and returns highlights.",
+            "min": 1,
+            "max": 10
+          }
+        ],
+        "description": "Search the web through one of four providers; the agent sees a single tool called web_search whichever one is chosen.",
+        "docs_url": "https://docs.crewai.com/en/tools/search-research/serperdevtool",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {
+          "exa": [
+            "exa_py"
+          ],
+          "tavily": [
+            "tavily"
+          ]
+        },
+        "packages_param": "provider"
+      },
+      {
+        "tool_id": "http_request",
+        "label": "HTTP request",
+        "category": "data",
+        "credential_kind": "http_header",
+        "credential_kind_by_param": null,
+        "credential_optional": true,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "timeout",
+            "type": "integer",
+            "required": false,
+            "default": 15,
+            "description": "Seconds before the request is abandoned.",
+            "min": 1,
+            "max": 30
+          },
+          {
+            "name": "max_bytes",
+            "type": "integer",
+            "required": false,
+            "default": 1048576,
+            "description": "Response bytes read at most.",
+            "min": 1024,
+            "max": 5242880
+          }
+        ],
+        "description": "Read one URL. Already refuses private, loopback and link-local targets, so an agent cannot use it to reach this network.",
+        "docs_url": "https://docs.crewai.com/en/tools/web-scraping/urlreadtool",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {},
+        "packages_param": null
+      },
+      {
+        "tool_id": "scrape_website",
+        "label": "Scrape a page",
+        "category": "web",
+        "credential_kind": null,
+        "credential_kind_by_param": null,
+        "credential_optional": false,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [],
+        "description": "Keyless page fetch for sites that do not need Firecrawl.",
+        "docs_url": "https://docs.crewai.com/en/tools/web-scraping/scrapewebsitetool",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {},
+        "packages_param": null
+      },
+      {
+        "tool_id": "postgres_query",
+        "label": "Ask a Postgres database",
+        "category": "data",
+        "credential_kind": "postgres",
+        "credential_kind_by_param": null,
+        "credential_optional": false,
+        "attaches_to": [
+          "agent",
+          "crew"
+        ],
+        "params": [
+          {
+            "name": "tables",
+            "type": "array",
+            "required": false,
+            "default": [],
+            "description": "Tables the agent may see. Empty means every table."
+          }
+        ],
+        "description": "Turn a question into SQL against your own database. Reads only - writes are locked off and are not a setting.",
+        "docs_url": "https://docs.crewai.com/en/tools/database-data/nl2sqltool",
+        "owner": "builtin",
+        "available": true,
+        "requires_packages": {},
+        "packages_param": null
+      }
+    ],
+    "transform_ops": [
+      "default",
+      "format",
+      "join_text",
+      "merge",
+      "pick",
+      "to_json"
+    ],
+    "router_comparisons": [
+      "contains",
+      "eq",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "ne"
+    ],
+    "router_otherwise": "otherwise",
+    "result_body_keys": [
+      "markdown_body"
+    ],
+    "problem_codes": [
+      "attach-target-not-agent",
+      "attachment-nodes-over-max",
+      "attachment-reference-missing",
+      "attachment-unattached",
+      "attachments-over-max",
+      "back-edge-not-router",
+      "billable-count",
+      "budget-over-ceiling",
+      "budget-unpriced-model",
+      "credential-missing",
+      "crew-members-out-of-range",
+      "crew-tier-not-honoured",
+      "cycle-count",
+      "cycle-iterations",
+      "duplicate-edge-id",
+      "duplicate-node-id",
+      "edge-target-refuses-incoming",
+      "edge-unknown-endpoint",
+      "edge-unknown-port",
+      "error-port-unconnected",
+      "escalation-count",
+      "fanout-width",
+      "ident-collision",
+      "ident-pattern",
+      "input-field-ambiguous",
+      "input-field-undeclared",
+      "join-single-predecessor",
+      "join-unknown-node",
+      "library-missing-prompt-input",
+      "library-unbuildable-crew",
+      "library-unknown-id",
+      "mcp-no-tools-selected",
+      "mcp-server-unavailable",
+      "mcp-tool-description-suspicious",
+      "mcp-tool-unknown",
+      "mcp-transport-disallowed",
+      "member-agent-has-flow-edges",
+      "member-target-not-crew",
+      "model-lacks-capability",
+      "model-over-ceiling",
+      "model-unknown",
+      "no-input-node",
+      "no-output-node",
+      "node-count",
+      "node-unreachable",
+      "router-branch-count",
+      "router-branch-unconnected",
+      "router-duplicate-branch",
+      "router-otherwise",
+      "skill-unknown",
+      "state-key-reserved",
+      "state-schema-invalid",
+      "tool-credential-required",
+      "tool-param-invalid",
+      "tool-unknown"
+    ],
+    "warning_codes": [
+      "attachment-unattached",
+      "join-single-predecessor",
+      "mcp-tool-description-suspicious",
+      "no-output-node",
+      "router-branch-unconnected"
+    ],
+    "bounds": {
+      "max_graph_nodes": 24.0,
+      "max_billable_nodes": 13.0,
+      "max_escalation_nodes": 8.0,
+      "max_fanout_width": 4.0,
+      "min_router_branches": 2.0,
+      "max_cycles": 3.0,
+      "max_cycle_iterations": 3.0,
+      "max_agent_iter": 8.0,
+      "max_guardrail_retries": 2.0,
+      "max_label_chars": 40.0,
+      "max_name_chars": 80.0,
+      "max_gate_message_chars": 2000.0,
+      "max_input_chars": 2000.0,
+      "max_document_bytes": 262144.0,
+      "run_cost_ceiling_usd": 10.0,
+      "max_attachment_nodes": 24.0,
+      "max_attachments_per_node": 8.0,
+      "max_crew_members": 6.0,
+      "max_prompt_chars": 4000.0,
+      "max_retries": 3.0,
+      "ceiling_usd_per_m_input": 1.0
+    }
+  },
+  "validation": {
+    "valid": true,
+    "problems": [],
+    "budget": {
+      "static_cost_usd": 0.65971233,
+      "floor_cost_usd": 0.46181985,
+      "modelled_calls": 30,
+      "billable_nodes": 3,
+      "escalation_nodes": 1,
+      "cycles": 0,
+      "unpriced_models": [],
+      "over_ceiling": false,
+      "ceiling_usd": 10.0,
+      "margin": 1.25
+    }
+  }
+}

@@ -699,13 +699,30 @@ export interface BuilderEdge {
 }
 
 /**
- * node_id -> 'all'. `'any'` is REFUSED at parse time with a message rather than
- * reported, because there is nothing to fix except deleting it: a multi-event
- * `or_()` listener is added to `_fired_or_listeners` the first time it fires and
- * skipped forever after, so the SECOND arrival ends the run normally having
- * produced nothing. No exception, no warning, no frame. Measured both ways.
+ * node_id -> `'all'` or `'any'`, and nothing else.
+ *
+ * **`'any'` WAS REFUSED, AND IS NOT ANY MORE.** This mirror said `'all'` alone
+ * until 2026-09-04, three days after `document.py::_validate_joins` began
+ * admitting both - so a client could not even express a shape the server had
+ * accepted since 03-node-library.md D3, and `conditionalRouter.ts` was the first
+ * template that needed to. Corrected here rather than worked around, because a
+ * mirror that is narrower than its subject is the same class of defect as one
+ * that is wider: both make the canvas and the compiler disagree about what a
+ * document may say.
+ *
+ * The old refusal was right about a real measurement and wrong about what the
+ * word compiles to. A multi-event `or_()` listener IS added to
+ * `_fired_or_listeners` the first time it fires and skipped forever after - but
+ * that is a fact about an `or_` over METHOD names, and `'any'` compiles to
+ * `compiler._listen_for`'s alternatives shape, where each alternative is a
+ * router LABEL, only one fires per pass, and CrewAI re-arms an or-listener whose
+ * condition names the label a router just emitted. Which is exactly what "the
+ * first arrival wins" means, and what lets a router's mutually exclusive
+ * branches converge on one node instead of waiting forever for the branch that
+ * was not taken. `document.py::BuilderDocument._validate_joins` carries the
+ * whole argument.
  */
-export type BuilderJoins = Record<string, 'all'>
+export type BuilderJoins = Record<string, 'all' | 'any'>
 
 /**
  * The compiler's static estimate, stored on the document it priced. Written by

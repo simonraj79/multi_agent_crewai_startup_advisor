@@ -7,7 +7,11 @@ import StudioView from '../src/views/StudioView.vue'
 import DocumentBar from '../src/components/builder/DocumentBar.vue'
 import ShortcutSheet from '../src/components/builder/ShortcutSheet.vue'
 import TemplateGallery from '../src/components/builder/TemplateGallery.vue'
-import { BUILDER_TEMPLATES, IDEA_VALIDATOR } from '../src/data/builderTemplates'
+import {
+  ALL_BUILDER_TEMPLATES,
+  BUILDER_TEMPLATES,
+  IDEA_VALIDATOR,
+} from '../src/data/builderTemplates'
 import { HOTKEY_BINDINGS } from '../src/composables/useBuilderHotkeys'
 import { clearRunHandoff, readRunHandoff, writeRunHandoff } from '../src/data/builderRunHandoff'
 import { resetVocabulary } from '../src/data/builderVocabulary'
@@ -362,9 +366,12 @@ describe('the gallery is the empty state and the way back into saved work', () =
     return { wrapper, api }
   }
 
-  it('shows all four templates', async () => {
+  it('shows every template, both rows', async () => {
+    // BOTH rows: the six the gallery leads with and the two library-agent
+    // templates behind the disclosure. `details` keeps its content in the DOM
+    // whether it is open or shut, so the card count is all of them.
     const { wrapper } = await gallery()
-    expect(wrapper.findAll('.template-card')).toHaveLength(BUILDER_TEMPLATES.length)
+    expect(wrapper.findAll('.template-card')).toHaveLength(ALL_BUILDER_TEMPLATES.length)
   })
 
   it('renders the validator caveat verbatim and on that card alone', async () => {
@@ -378,13 +385,17 @@ describe('the gallery is the empty state and the way back into saved work', () =
     const { wrapper, api } = await gallery()
     // One validate per template. The alternative - writing the figures into the
     // cards - is how this repo's counts went wrong five times.
-    expect(api.validateCalls).toHaveLength(BUILDER_TEMPLATES.length)
-    const facts = wrapper.findAll('.template-card')[3].findAll('.template-facts dd')
-    expect(facts[1].text()).toBe('8')
+    expect(api.validateCalls).toHaveLength(ALL_BUILDER_TEMPLATES.length)
+    // The flagship is last in the first row, which is where D7 puts it.
+    const validatorCard = wrapper.findAll('.template-card')[BUILDER_TEMPLATES.length - 1]
+    const facts = validatorCard.findAll('.template-facts dd')
+    // Nodes, Edges, Billable, Est. run. `Edges` joined the row with plan 14, so
+    // the billable count moved from index 1 to index 2.
+    expect(facts[2].text()).toBe('8')
     // Both figures: the published floor and the enforced one. The inflated
     // figure alone reads as an error beside anyone's arithmetic.
-    expect(facts[2].text()).toContain('$1.22')
-    expect(facts[2].text()).toContain('$1.51')
+    expect(facts[3].text()).toContain('$1.22')
+    expect(facts[3].text()).toContain('$1.51')
   })
 
   it('says prices are unavailable rather than showing a wrong one', async () => {
@@ -395,12 +406,12 @@ describe('the gallery is the empty state and the way back into saved work', () =
     expect(wrapper.find('.gallery-notice').text()).toContain('Prices are unavailable')
     // The cards still open. A price nobody could fetch is missing information,
     // not a broken template.
-    expect(wrapper.findAll('.template-card')).toHaveLength(BUILDER_TEMPLATES.length)
+    expect(wrapper.findAll('.template-card')).toHaveLength(ALL_BUILDER_TEMPLATES.length)
   })
 
   it('hands the chosen template up rather than mutating the module copy', async () => {
     const { wrapper } = await gallery()
-    await wrapper.findAll('.template-card')[3].trigger('click')
+    await wrapper.findAll('.template-card')[BUILDER_TEMPLATES.length - 1].trigger('click')
     expect(wrapper.emitted('start')?.[0]).toEqual([IDEA_VALIDATOR])
   })
 

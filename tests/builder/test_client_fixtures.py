@@ -59,14 +59,21 @@ from scripts.emit_builder_fixtures import (  # noqa: E402
     MODELS_PATH,
     PROBLEM_CODES_PATH,
     PROBLEM_SCENARIOS,
+    TEMPLATE_DOCUMENTS_PATH,
     build_back_edges,
     build_models,
     build_problem_codes,
+    build_templates,
     committed,
     render,
+    template_documents,
 )
 
 REGENERATE = "./.venv/Scripts/python.exe scripts/emit_builder_fixtures.py"
+#: Spelled out so the two regeneration commands render on their own lines
+#: in a failure message. A test that says how to fix itself is the only
+#: reason a generated fixture is safe to commit.
+NEWLINE = chr(10)
 
 
 class BackEdgeFixtureTests(unittest.TestCase):
@@ -321,3 +328,67 @@ class ModelFixtureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TemplateFixtureTests(unittest.TestCase):
+    """Plan 14 criterion 3: every gallery template's recorded answer is current.
+
+    The other three fixtures in this file are DERIVED from Python and compared
+    against themselves. A template is not: the document is authored in
+    TypeScript, `scripts/dump-templates.mjs` carries it across, and what is
+    regenerated and compared here is the ANSWER - the validation, the price and
+    the served vocabulary - over the document that file holds.
+
+    So the bridge is gated at both ends and neither end can stand in for the
+    other. Edit a template and forget the dump, and
+    `frontend/tests/templates.spec.ts` goes red because the TypeScript no longer
+    equals `documents.json`. Run the dump and forget this generator, and this
+    goes red because the recorded answer no longer matches the document it is
+    offered as proof of. Move a bound, a price or a problem message, and this
+    goes red on its own.
+    """
+
+    def test_every_committed_template_fixture_is_current(self) -> None:
+        for path, content in build_templates():
+            with self.subTest(fixture=path.name):
+                self.assertEqual(
+                    committed(path),
+                    content,
+                    f"frontend/tests/fixtures/templates/{path.name} is stale: the "
+                    "template's document, this build's bounds, its prices or a "
+                    "problem message has moved. Regenerate with:" + NEWLINE
+                    + "    node scripts/dump-templates.mjs" + NEWLINE
+                    + "    " + REGENERATE,
+                )
+
+    def test_the_dump_covers_every_template_the_gallery_renders(self) -> None:
+        dumped = template_documents()
+        self.assertEqual(
+            sorted(dumped["documents"]),
+            sorted(list(dumped["order"]) + list(dumped["more"])),
+            f"{TEMPLATE_DOCUMENTS_PATH.name} lists a row it has no document for",
+        )
+        self.assertEqual(
+            sorted(dumped["cards"]),
+            sorted(dumped["documents"]),
+            "a template with no card, or a card with no template",
+        )
+
+    def test_every_fixture_records_a_clean_answer(self) -> None:
+        """Stated against the FILE, so a reader of the committed fixture sees it.
+
+        `test_templates.py` asserts the same property against a freshly computed
+        answer. Both are here because they fail for different reasons: that one
+        catches a template that stopped validating, this one catches a fixture
+        that was regenerated from a stale dump and recorded a clean answer for a
+        document nobody ships.
+        """
+
+        for path, content in build_templates():
+            with self.subTest(fixture=path.name):
+                payload = json.loads(content.decode("utf-8"))
+                self.assertTrue(payload["validation"]["valid"])
+                self.assertEqual(payload["validation"]["problems"], [])
+                budget = payload["validation"]["budget"]
+                self.assertEqual(budget["unpriced_models"], [])
+                self.assertFalse(budget["over_ceiling"])

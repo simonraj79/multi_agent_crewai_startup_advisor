@@ -164,6 +164,26 @@ async function openValidatorTemplate(page: Page): Promise<void> {
 }
 
 /**
+ * Every template the gallery leads with, and how many nodes each draws.
+ *
+ * The counts are literals rather than a read of the module, and deliberately:
+ * the e2e directory is its own TypeScript program, and a count read from the
+ * thing under test would pass over a template that had silently lost half its
+ * nodes. `frontend/tests/templates.spec.ts` is where the document is compared
+ * against its generated fixture; here the number is the thing being checked.
+ *
+ * `blank` is absent because two nodes cannot fail a fit, and the flagship keeps
+ * its own test above - the one carrying D-15-2's legibility-floor ruling and
+ * the problems-dock geometry.
+ */
+const FIRST_ROW = [
+  { title: 'Sequential pipeline', nodes: 7 },
+  { title: 'Conditional router', nodes: 10 },
+  { title: 'Reflection loop', nodes: 8 },
+  { title: 'Hierarchical delegation', nodes: 7 },
+] as const
+
+/**
  * Every node's worst excursion outside the pane, in CSS pixels.
  *
  * Read from `getBoundingClientRect` on both sides rather than from the viewport
@@ -297,7 +317,9 @@ test.describe('Flow builder layout', () => {
     // rails are absent first is what makes the width assertion meaningful: a
     // 236px gallery is only possible while a column that holds nothing is
     // still being reserved for it.
-    await expect(gallery(page).locator('.template-card')).toHaveCount(4)
+    // EIGHT: plan 14's six pattern cards plus the two library-agent templates
+    // in the demoted second row.
+    await expect(gallery(page).locator('.template-card')).toHaveCount(8)
     await expect(page.locator('.builder-palette')).toHaveCount(0)
     await expect(page.locator('.builder-inspector')).toHaveCount(0)
 
@@ -316,28 +338,66 @@ test.describe('Flow builder layout', () => {
       .soft(box.clientWidth, 'the gallery should be a page, not a column')
       .toBeGreaterThanOrEqual(Math.round(WIDE.width * 0.45))
 
-    // ...and it must not be CLIPPED. `.template-gallery` carries
-    // `max-height: 100%; overflow: auto`, so a row that collapsed to 70px
-    // reports the whole 1356px of cards as scrollHeight and shows a sliver.
-    // One pixel of slack for sub-pixel rounding; anything a reader would call
-    // "there is more below" fails.
-    expect
-      .soft(box.scrollHeight - box.clientHeight, 'the gallery is clipped vertically')
-      .toBeLessThanOrEqual(1)
+    // ...and it must not be clipped SIDEWAYS. A horizontal scrollbar on a
+    // grid of cards is always a layout defect: `auto-fill` reflows, so the only
+    // way to produce one is a column that cannot shrink.
     expect
       .soft(box.scrollWidth - box.clientWidth, 'the gallery is clipped horizontally')
       .toBeLessThanOrEqual(1)
 
-    // The last card is fully on screen, stated as a rectangle rather than as a
-    // scroll figure - this is the assertion a human would make by looking, and
-    // it survives any future change to how the gallery scrolls.
-    const cardBox = await gallery(page).locator('.template-card').last().boundingBox()
+    /*
+     * AMENDED 2026-09-04 (plan 14). This asserted the gallery did not scroll
+     * VERTICALLY either - `scrollHeight - clientHeight <= 1`, and the LAST card
+     * fully on screen - and both were right about four templates and wrong
+     * about eight.
+     *
+     * The grid is `repeat(auto-fill, minmax(232px, 1fr))` inside
+     * `width: min(1080px, 100%)`, so it resolves to four columns: four cards
+     * were one row and eight are two, and a second row plus the library section
+     * above it is 568px more than a 900px window holds. Measured. There is no
+     * card small enough to make eight of them fit that is still a card, so the
+     * old assertion could only be satisfied by shipping fewer templates.
+     *
+     * What it was FOR still holds, and is asserted below instead: the defect it
+     * caught was a gallery squeezed into a 236px column inside a 0px grid row,
+     * which reported 1356px of cards as scrollHeight and drew a sliver. A
+     * gallery whose first row is fully visible cannot be that. A page with more
+     * content than a screen is a page; a page with none of its content on the
+     * screen is the defect.
+     */
     const galleryBox = await gallery(page).boundingBox()
-    expect(cardBox, 'the last template card should have a box').not.toBeNull()
     expect(galleryBox, 'the gallery should have a box').not.toBeNull()
+
+    const firstRow = gallery(page).locator('.template-grid').first()
+    const firstRowCards = firstRow.locator('.template-card')
+    await expect(firstRowCards).toHaveCount(6)
+    for (const index of [0, 3]) {
+      const cardBox = await firstRowCards.nth(index).boundingBox()
+      expect(cardBox, `template card ${index} should have a box`).not.toBeNull()
+      expect
+        .soft(cardBox!.height, `template card ${index} collapsed`)
+        .toBeGreaterThan(200)
+      expect
+        .soft(
+          cardBox!.y + cardBox!.height,
+          `template card ${index} is below the fold before anybody has scrolled`,
+        )
+        .toBeLessThanOrEqual(galleryBox!.y + galleryBox!.height + 1)
+    }
+
+    // And the rest is REACHABLE rather than clipped: scrolling the gallery to
+    // its end brings the last card fully into it. This is the half the old
+    // assertion did for free and the half that still matters.
+    await gallery(page).evaluate((el) => {
+      el.scrollTop = el.scrollHeight
+    })
+    await page.waitForTimeout(150)
+    const lastBox = await gallery(page).locator('.template-card').last().boundingBox()
+    const scrolledBox = await gallery(page).boundingBox()
+    expect(lastBox, 'the last template card should have a box').not.toBeNull()
     expect
-      .soft(cardBox!.y + cardBox!.height, 'the last template card is below the fold')
-      .toBeLessThanOrEqual(galleryBox!.y + galleryBox!.height + 1)
+      .soft(lastBox!.y + lastBox!.height, 'the last template card is unreachable')
+      .toBeLessThanOrEqual(scrolledBox!.y + scrolledBox!.height + 1)
 
     expect(watch.unexpected).toEqual([])
   })
@@ -403,6 +463,66 @@ test.describe('Flow builder layout', () => {
     expect(geometry.dockTop, 'the problems dock should be rendered').not.toBeNull()
     expect(geometry.paneHeight).toBeGreaterThan(100)
     expect(Math.round(geometry.paneBottom)).toBeLessThanOrEqual(Math.round(geometry.dockTop!) + 1)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('lands every node of every pattern template inside the canvas pane', async ({ page }) => {
+    /*
+     * Plan 14 criterion 6, and the same defect the validator test above guards
+     * against - a fit computed before the budget meter and the problems dock
+     * have taken their height, reporting itself fitted while the last two nodes
+     * sit under the dock.
+     *
+     * Four templates in one test rather than four tests, because the assertion
+     * is identical and what differs is only the graph: a failure names the
+     * template through `subtest`-style message text, and the cost of the shared
+     * page is one navigation each.
+     *
+     * The disjunction is D-15-2's ruling, restated: every node inside the pane,
+     * OR the fit held at the legibility floor with the rest reachable by a pan.
+     * A stale fit satisfies neither - it lands at some arbitrary zoom ABOVE the
+     * floor with nodes below the pane, which is exactly what was measured at
+     * 0.544 and 0.524 against a settled 0.466.
+     */
+    const watch = watchConsole(page)
+    await stubEmptyLibrary(page)
+
+    for (const template of FIRST_ROW) {
+      /*
+       * `goto` then `reload`, and the reload is not belt and braces.
+       *
+       * Opening a template leaves the hash at `#/build` - no document id until
+       * a save - so the NEXT `goto('/#/build')` is a same-hash navigation,
+       * which the browser answers by doing nothing at all. The canvas stays
+       * open, no card is ever rendered, and the loop's second iteration times
+       * out waiting for a locator that cannot appear. Measured, on this test's
+       * first run.
+       */
+      await page.goto('/#/build')
+      await page.reload()
+      await page.locator('.template-card', { hasText: template.title }).click()
+      await expect(
+        page.locator('.vue-flow__node'),
+        `${template.title} did not draw its ${template.nodes} nodes`,
+      ).toHaveCount(template.nodes)
+
+      await expect
+        .poll(
+          async () => {
+            const state = await legibility(page)
+            const overflow = await worstNodeOverflow(page)
+            return overflow === 0 || state.zoom <= 11 / 15 + 0.001
+          },
+          {
+            timeout: 10_000,
+            message:
+              `${template.title}: every node must be inside the pane the fit was ` +
+              'computed against, unless the fit is held at the legibility floor',
+          },
+        )
+        .toBe(true)
+    }
 
     expect(watch.unexpected).toEqual([])
   })

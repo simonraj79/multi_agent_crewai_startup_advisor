@@ -1,5 +1,6 @@
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref } from 'vue'
 import { API_BASE_URL } from '../services/httpCore'
+import { roster } from './modelRoster'
 import type { ModelRoster, RegistryModel, SpeedTier } from '../types/builder'
 
 /**
@@ -44,8 +45,15 @@ export const MODELS_PATH = '/api/builder/models'
  */
 const SESSION_KEY = 'builder-models'
 
-/** The loaded roster, or null while it has not loaded. Replaced whole, never mutated. */
-export const roster = shallowRef<ModelRoster | null>(null)
+/**
+ * The loaded roster, or null while it has not loaded.
+ *
+ * Re-exported from `data/modelRoster.ts` rather than declared here, so that a
+ * consumer needing only the STATE - `templates/modelRoles.ts`, and the dump
+ * script behind it - does not have to import this module's `fetch` and, through
+ * it, `import.meta.env`. One ref, two doors.
+ */
+export { roster }
 
 /**
  * Why the roster is unusable, as a sentence, or `''` when it is fine.

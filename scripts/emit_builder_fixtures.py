@@ -63,7 +63,12 @@ if str(REPO / "src") not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(REPO / "src"))
 
 from brief_crew import config as project_config  # noqa: E402
-from brief_crew.builder import back_edge_indices, registry_document  # noqa: E402
+from brief_crew.builder import (  # noqa: E402
+    back_edge_indices,
+    estimate_budget,
+    registry_document,
+    validate_document,
+)
 from brief_crew.builder.compiler import document_problems  # noqa: E402
 from brief_crew.builder.document import BuilderDocument  # noqa: E402
 
@@ -71,9 +76,21 @@ FIXTURES = REPO / "frontend" / "tests" / "fixtures"
 BACK_EDGES_PATH = FIXTURES / "builderBackEdges.json"
 PROBLEM_CODES_PATH = FIXTURES / "builderProblemCodes.json"
 MODELS_PATH = FIXTURES / "models.json"
+TEMPLATES_DIR = FIXTURES / "templates"
+#: What `scripts/dump-templates.mjs` writes: every gallery template in the
+#: `forValidate` shape a browser posts. INPUT to this script, never output -
+#: see `build_templates`.
+TEMPLATE_DOCUMENTS_PATH = TEMPLATES_DIR / "documents.json"
+DUMP_TEMPLATES = "node scripts/dump-templates.mjs"
 
 #: Stated rather than read from the environment. See the module docstring.
 CEILING_USD = 10.0
+
+#: The document id every template fixture is priced under. `forValidate`
+#: deletes `id` because the server assigns one on save, and
+#: `BuilderDocument` requires one - so a placeholder is unavoidable. It is a
+#: constant so the fixtures do not churn, and it is never the id of anything.
+FIXTURE_DOCUMENT_ID = "ug_00000000"
 
 #: A permutation set is emitted in full below this many edges and sampled above
 #: it. Five is 120 orderings, a few kilobytes of two-integer rows, and it
@@ -1684,6 +1701,112 @@ def build_models() -> dict[str, Any]:
     return registry_document()
 
 
+# --------------------------------------------------------------------------
+# Templates - plan 14, contract C9
+# --------------------------------------------------------------------------
+def template_documents() -> dict[str, Any]:
+    """The dumped gallery documents, or a refusal naming how to make them.
+
+    Read rather than computed, and that is the one asymmetry in this file. Every
+    other fixture here is DERIVED from Python; a template document is AUTHORED,
+    in TypeScript, and the only honest way to price a TypeScript document from
+    Python is to have something carry it across. `scripts/dump-templates.mjs`
+    is that something and its output is committed.
+
+    The bridge is gated at both ends, which is what keeps a committed
+    intermediate from becoming a place where drift hides:
+    `frontend/tests/templates.spec.ts` asserts the TypeScript still equals this
+    file, and `tests/builder/test_client_fixtures.py` asserts the fixtures below
+    are still what this file regenerates to. Neither can be satisfied by the
+    other, so an edit to a template goes red on one side or the other whatever
+    the author forgets.
+    """
+
+    if not TEMPLATE_DOCUMENTS_PATH.exists():
+        raise SystemExit(
+            f"{TEMPLATE_DOCUMENTS_PATH.relative_to(REPO)} is missing. Generate it with:\n"
+            f"    {DUMP_TEMPLATES}"
+        )
+    return json.loads(TEMPLATE_DOCUMENTS_PATH.read_text(encoding="utf-8"))
+
+
+def build_template(template_id: str, wire: dict[str, Any]) -> dict[str, Any]:
+    """One template's `{document, vocabulary, validation}`.
+
+    The shape `builderValidatorTemplate.json` already has, so a spec that reads
+    one reads all of them. `document` is the wire body VERBATIM, which is what
+    makes a client-side `forValidate(TEMPLATE.document)` comparison a comparison
+    against the thing the answer below was computed from rather than against a
+    re-serialisation of it.
+
+    The id and version are stamped rather than carried: `forValidate` deletes
+    `id` because the server assigns one on save, and `BuilderDocument` requires
+    one - so a placeholder is unavoidable, and it is a constant so the fixtures
+    do not churn.
+    """
+
+    from brief_crew.service.builder_api import _vocabulary
+
+    document = dict(wire)
+    document["id"] = FIXTURE_DOCUMENT_ID
+    document["version"] = 1
+    parsed = BuilderDocument.model_validate(document)
+
+    problems = validate_document(parsed, ceiling_usd=project_config.MAX_RUN_COST_USD)
+    estimate = estimate_budget(parsed)
+    margin = project_config.GRAPH_STATIC_BUDGET_MARGIN
+    return {
+        "_source": f"scripts/emit_builder_fixtures.py --target templates, via {DUMP_TEMPLATES}",
+        "id": template_id,
+        "document": wire,
+        # The whole served vocabulary, so a spec asserts the RELATION between a
+        # template and this build's bounds rather than against a literal.
+        # `MAX_BILLABLE_NODES` has already moved once, 8 to 13, and a test
+        # asserting 8 would have failed for being right.
+        "vocabulary": json.loads(_vocabulary().model_dump_json()),
+        "validation": {
+            "valid": not any(problem.severity == "error" for problem in problems),
+            "problems": [
+                {
+                    "code": problem.code,
+                    "severity": problem.severity,
+                    "message": problem.message,
+                    "node_id": problem.node_id,
+                    "edge_id": problem.edge_id,
+                }
+                for problem in problems
+            ],
+            "budget": {
+                "static_cost_usd": estimate.static_cost_usd,
+                "floor_cost_usd": estimate.floor_cost_usd,
+                "modelled_calls": estimate.modelled_calls,
+                "billable_nodes": estimate.billable_nodes,
+                "escalation_nodes": estimate.escalation_nodes,
+                "cycles": estimate.cycles,
+                "unpriced_models": list(estimate.unpriced_models),
+                "over_ceiling": estimate.static_cost_usd * margin
+                > project_config.MAX_RUN_COST_USD,
+                "ceiling_usd": project_config.MAX_RUN_COST_USD,
+                # Carried so a client assertion can do the margin arithmetic
+                # with the server's own multiplier instead of a literal 1.25 -
+                # three documents printed the floor beside the margin figure and
+                # invited the wrong sum.
+                "margin": margin,
+            },
+        },
+    }
+
+
+def build_templates() -> tuple[tuple[pathlib.Path, bytes], ...]:
+    """One fixture per gallery template, both rows."""
+
+    dumped = template_documents()
+    return tuple(
+        (TEMPLATES_DIR / f"{template_id}.json", render(build_template(template_id, wire)))
+        for template_id, wire in dumped["documents"].items()
+    )
+
+
 def targets() -> tuple[tuple[pathlib.Path, bytes], ...]:
     return (
         (BACK_EDGES_PATH, render(build_back_edges())),
@@ -1693,6 +1816,9 @@ def targets() -> tuple[tuple[pathlib.Path, bytes], ...]:
         # `build_tool_catalogue`'s own docstring for why the distinction is
         # cut-list item 17 rather than a naming choice.
         (TOOL_CATALOGUE_PATH, render(build_tool_catalogue())),
+        # Plan 14 criterion 2. Last, because they are the only target that READS
+        # a committed file rather than deriving one.
+        *build_templates(),
     )
 
 
@@ -1703,10 +1829,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="report whether the committed fixtures are current; write nothing",
     )
+    parser.add_argument(
+        "--target",
+        choices=("all", "templates"),
+        default="all",
+        help="which fixtures to emit; 'templates' is plan 14's C9 set alone",
+    )
     args = parser.parse_args(argv)
 
+    chosen = build_templates() if args.target == "templates" else targets()
+
     stale: list[str] = []
-    for path, content in targets():
+    for path, content in chosen:
         if committed(path) == content:
             continue
         stale.append(str(path.relative_to(REPO)).replace("\\", "/"))

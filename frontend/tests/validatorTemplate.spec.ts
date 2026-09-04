@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import fixture from './fixtures/builderValidatorTemplate.json'
 import GraphThumbnail from '../src/components/builder/GraphThumbnail.vue'
 import {
+  ALL_BUILDER_TEMPLATES,
   BLANK,
-  BUILDER_TEMPLATES,
   FAN_OUT_JOIN,
   IDEA_VALIDATOR,
   MINIMAL_GATED_AGENT,
@@ -157,18 +157,20 @@ describe('the idea validator ships as a document the compiler accepts', () => {
   })
 })
 
-describe('the gallery ships four templates and no half-drawn ones', () => {
-  it('offers blank, minimal, fan-out and the validator, in that order', () => {
-    expect(BUILDER_TEMPLATES.map((template) => template.id)).toEqual([
-      'blank',
-      'minimal-gated-agent',
-      'fan-out-join',
-      'idea-validator',
-    ])
-  })
-
+/*
+ * THE GALLERY'S OWN CONTENTS MOVED TO `templates.spec.ts` with plan 14, and the
+ * ordering assertion moved with them - this file's subject is the evaluator,
+ * and a list of six ids asserted here would be a second place the gallery is
+ * described. What stays is the properties that must hold of EVERY template,
+ * because they are properties of a document rather than of the gallery.
+ *
+ * `ALL_BUILDER_TEMPLATES` rather than `BUILDER_TEMPLATES`: the two library-agent
+ * templates behind the disclosure are still templates, and a bound they break
+ * is a 422 an author cannot act on whichever row they were opened from.
+ */
+describe('every template is a document the server would accept', () => {
   it('gives every template a legal name, input field and node ids', () => {
-    for (const template of BUILDER_TEMPLATES) {
+    for (const template of ALL_BUILDER_TEMPLATES) {
       const document = template.document
       expect(document.name.length, template.id).toBeGreaterThan(0)
       expect(document.name.length).toBeLessThanOrEqual(BOUNDS.max_name_chars)
@@ -188,7 +190,7 @@ describe('the gallery ships four templates and no half-drawn ones', () => {
   it('declares an input node for the field each template names', () => {
     // Every template except BLANK, which is deliberately incomplete: a draft
     // need not be valid, and its two problems name the first two things to do.
-    for (const template of BUILDER_TEMPLATES.filter((entry) => entry.id !== 'blank')) {
+    for (const template of ALL_BUILDER_TEMPLATES.filter((entry) => entry.id !== 'blank')) {
       const inputs = template.document.nodes.filter(
         (node): node is Extract<BuilderNode, { kind: 'input' }> => node.kind === 'input',
       )

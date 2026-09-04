@@ -16,7 +16,7 @@ the first paid run: 11 calls, 128,069 tokens, 46,787 of them completion, so
     attempts    = guardrail_max_retries + 1
     tool calls  = max_iter + 1 if the node binds tools, else 1
     calls       = attempts x tool calls, x (1 + MAX_CYCLE_ITERATIONS) on a cycle
-    usd        += calls x compute_cost_usd(tier's model, prompt, 4,253)
+    usd        += calls x compute_cost_usd(the NODE's model, prompt, 4,253)
 
 `depth` is the node's own longest billable-upstream depth rather than an
 average, because a 20-deep chain costs 3.9x per call what a 1-deep one does and
@@ -30,10 +30,18 @@ TWO THINGS IT IS HONEST ABOUT.
    own shape prices at about a third of what the same shape's worst case does.
 2. It inherits `compute_cost_usd`'s blind spots wholesale - embeddings, rerank
    and Firecrawl raise no LLM event and are absent from both - and adds one of
-   its own: `:nitro` routes on speed, not price, so the cheap tier's published
-   rate is a floor. NITRO_PRICE_FACTOR is the interim answer, and
+   its own: `:nitro` routes on speed, not price, so a nitro id's published rate
+   is a floor. Since plan 05 the inflation is the registry's MEASURED
+   `cost_in_max_endpoint / cost_in` for that slug, with NITRO_PRICE_FACTOR as a
+   floor rather than as the whole answer - the measured per-model ratios run
+   1.0x to 9.5x and one constant was never going to be right for ten rows.
    `floor_cost_usd` keeps the un-inflated figure beside the enforced one so the
    two can be told apart.
+
+WHICH MODEL A NODE IS PRICED AT changed with plan 05 and is `node_model` below:
+an AUTHORED node is priced at the model it names, a LIBRARY node at its tier's
+preset. Before that every node was priced at its tier, which made the model
+picker a control with no effect on the meter beside it.
 """
 
 from __future__ import annotations
@@ -43,6 +51,7 @@ from datetime import datetime, timezone
 
 from brief_crew.builder.bounds import Problem, billable_depths, back_edges, nodes_on_cycles
 from brief_crew.builder.document import (
+    AuthoredCrewConfig,
     LibraryAgentConfig,
     BuilderBudget,
     BuilderDocument,
@@ -64,6 +73,66 @@ BUDGET_OVER_CEILING = "budget-over-ceiling"
 BUDGET_UNPRICED_MODEL = "budget-unpriced-model"
 
 _MODEL_BY_TIER = {"cheap": CHEAP_MODEL, "escalation": ESCALATION_MODEL}
+
+
+def node_model(node: BuilderNode) -> str:
+    """The model id this node's calls are priced at - PER NODE, not per tier.
+
+    Two arms, and the split is the same one `document.py` draws. A LIBRARY node
+    names one of `config.py`'s YAML agents or crews, whose LLMs are built inside
+    the crew from the tier constants; the document's `tier` word is the whole of
+    what it gets to say, and pricing it any other way would be pricing a model
+    the run will not use. An AUTHORED node carries `llm.model`, an id out of the
+    registry, and that is what it will actually be billed at - so a graph that
+    puts a classifier on `qwen/qwen3.7-flash` is priced at $0.03/M rather than
+    at the cheap preset's $0.30/M, which is a 10x difference in the meter the
+    author is watching.
+
+    The spelling returned is a `PRICES` key. `resolve_price_model` accepts all
+    four, but building the prefixed one here keeps the `:nitro` question (D5,
+    below) answerable from one string.
+    """
+
+    config = node.config
+    llm = getattr(config, "llm", None)
+    if isinstance(config, AuthoredCrewConfig):
+        # An authored crew's own step is the manager's call when there is one,
+        # and otherwise the tier it declared. `manager_llm` is the model that
+        # actually runs the hierarchical process; `planning_llm` runs at most
+        # once and is not what the node's call count multiplies.
+        llm = config.manager_llm
+    if llm is not None and getattr(llm, "model", None):
+        model = str(llm.model)
+        return model if model.startswith("openrouter/") else f"openrouter/{model}"
+    return _MODEL_BY_TIER[node.tier or "cheap"]
+
+
+def _nitro_multiplier(model: str) -> float:
+    """What a `:nitro` id may bill above its published rate, as a factor.
+
+    D5, narrowed by the 2026-09-04 endpoint measurement. `:nitro` routes on
+    SPEED, not price, so a nitro id's published rate is a floor and the dearest
+    endpoint serving that slug is what it can actually cost. Where the registry
+    records that endpoint the factor is `max(measured, NITRO_PRICE_FACTOR)` -
+    the measurement, with the constant as a floor so a re-measure that came back
+    suspiciously low cannot quietly reduce the enforced figure.
+
+    A PLAIN id gets 1.0, and that is a decision the measurement now supports
+    rather than an omission. Applying 1.8 to a plain id would invent a number in
+    both directions: the three OpenAI first-party rows spread 1.1x and
+    `openai/gpt-oss-120b` spreads 9.5x, so one constant is wrong for nine of the
+    ten rows. A plain slug is not routed on speed, so its headline is what it
+    bills.
+    """
+
+    if ":nitro" not in model.casefold():
+        return 1.0
+    from brief_crew.config import registry_model
+
+    row = registry_model(model)
+    if row is None or row.cost_in <= 0:
+        return NITRO_PRICE_FACTOR
+    return max(row.cost_in_max_endpoint / row.cost_in, NITRO_PRICE_FACTOR)
 
 
 @dataclass(frozen=True)
@@ -169,7 +238,7 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
         calls = _calls_for(node, on_cycle=node.id in cyclic)
         calls_total += calls
 
-        model = _MODEL_BY_TIER[tier]
+        model = node_model(node)
         prompt_tokens = (
             GRAPH_BUDGET_SEED_PROMPT_TOKENS
             + depths.get(node.id, 0) * GRAPH_BUDGET_CALL_COMPLETION_TOKENS
@@ -181,7 +250,7 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
             continue
 
         floor += calls * per_call
-        static += calls * per_call * (NITRO_PRICE_FACTOR if tier == "cheap" else 1.0)
+        static += calls * per_call * _nitro_multiplier(model)
 
     return BudgetEstimate(
         static_cost_usd=static,
@@ -227,7 +296,7 @@ def budget_problems(
                     "this graph cannot be priced: "
                     f"{', '.join(estimate.unpriced_models)} has no entry in PRICES, so every "
                     "call it makes would contribute $0.00 to a total that is supposed to bound "
-                    "spend. Add the price in the same commit as the model"
+                    "spend. Add the model to data/models.json in the same commit that names it"
                 ),
             )
         )

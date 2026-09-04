@@ -36,6 +36,7 @@ from unittest.mock import patch
 
 from brief_crew.builder import (
     BuilderDocument,
+    node_model,
     budget_problems,
     estimate_budget,
     node_call_count,
@@ -52,8 +53,14 @@ from brief_crew.config import (
     MAX_RUN_COST_USD,
     NITRO_PRICE_FACTOR,
 )
+from brief_crew.config import (
+    CHEAP_MODEL,
+    ESCALATION_MODEL,
+    MODEL_BY_ID,
+)
 from tests.builder.test_document import (
     agent_node,
+    node as raw_node,
     document,
     edge,
     input_node,
@@ -113,6 +120,204 @@ def frontier_document(*, cheap: int, escalation: int, cyclic: bool = True) -> Bu
 
     nodes.append(output_node())
     return document(nodes, edges)
+
+
+def authored_agent_node(
+    node_id: str,
+    *,
+    model: str,
+    tier: str = "cheap",
+    max_iter: int = 2,
+    guardrail_max_retries: int = 2,
+) -> dict[str, Any]:
+    """An agent the AUTHOR wrote, which is the only arm that NAMES a model.
+
+    Deliberately the same retry and iteration ceilings `agent_node` uses, so the
+    per-model documents below make the SAME number of calls as the library
+    frontier and the only variable between them is the price of one token.
+    """
+
+    return raw_node(
+        node_id,
+        "agent",
+        {
+            "tier": tier,
+            "max_iter": max_iter,
+            "guardrail_max_retries": guardrail_max_retries,
+            "role": "Analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+                "description": "Research the market for ${state.idea}",
+                "expected_output": "Three competitors with URLs",
+            },
+            "llm": {"model": model},
+        },
+    )
+
+
+def authored_frontier(*, cheap: int, escalation: int, model: str) -> BuilderDocument:
+    """`frontier_document`'s shape with every billable node NAMING one model.
+
+    Same chain, same tools-priced call count, same cycle - so a difference in
+    the total is a difference in the model's price and in nothing else.
+    """
+
+    ids = [f"a{index}" for index in range(cheap + escalation)]
+    nodes: list[dict[str, Any]] = [input_node("idea")]
+    nodes += [
+        authored_agent_node(
+            node_id, model=model, tier="cheap" if index < cheap else "escalation"
+        )
+        for index, node_id in enumerate(ids)
+    ]
+    edges = [edge("e_in", "idea", ids[0])]
+    edges += [
+        edge(f"e{index}", source, target)
+        for index, (source, target) in enumerate(zip(ids, ids[1:]))
+    ]
+    nodes.append(
+        router_node(
+            "loop",
+            branches=(
+                {"label": "again", "op": "otherwise"},
+                {"label": "done", "op": "gte", "key": "turns", "value": 3},
+            ),
+        )
+    )
+    edges.append(edge("e_last", ids[-1], "loop"))
+    edges.append(edge("e_back", "loop", ids[0], source_port="again"))
+    edges.append(edge("e_done", "loop", "report", source_port="done"))
+    nodes.append(output_node())
+    return document(nodes, edges)
+
+
+class PerModelPricingTests(unittest.TestCase):
+    """Plan 05 criterion 6 and D6: a node is priced at ITS model, not its tier.
+
+    Before this, every billable node was priced at one of two constants, which
+    made the model picker a control with no effect on the meter beside it. The
+    two documents here are byte-for-byte the same shape - same chain, same
+    cycle, same 468 worst-case calls - and differ only in one string.
+
+    THE FRONTIER USED HERE IS THE BOUND-DERIVED ONE, 13 billable and 8
+    escalation, not the 8-node document `MeasuredFrontierTests` prices. That is
+    deliberate and it is worth stating, because the criterion says "still
+    refused" and the smaller document is NOT: at `deepseek-r1` prices the
+    published 8-node frontier comes to $6.47, $8.08 with the margin, and is
+    admitted. `MAX_BILLABLE_NODES` moved 8 -> 13 and `MAX_ESCALATION_NODES`
+    5 -> 8 when the gallery hero errored on the first node a user added; the
+    worst graph the counts now permit is the one that has to stay refused on
+    price, and it is.
+    """
+
+    #: Measured at head 2026-09-04 by running this module's own functions.
+    FRONTIER_CALLS = 468
+
+    def frontier(self, model: str) -> BuilderDocument:
+        return authored_frontier(
+            cheap=MAX_BILLABLE_NODES - MAX_ESCALATION_NODES,
+            escalation=MAX_ESCALATION_NODES,
+            model=model,
+        )
+
+    def test_per_model_pricing(self) -> None:
+        """Criterion 6, both halves, over one document shape.
+
+        `deepseek/deepseek-r1` is $0.70/$2.50 and the roster's dearest input
+        price; `qwen/qwen3.7-flash` is $0.03/$0.13 and its cheapest. The ratio
+        of the two totals is the ratio of their prices, and the ceiling falls
+        between them - which is the whole claim that a model choice moves the
+        meter.
+        """
+
+        dear = estimate_budget(self.frontier("deepseek/deepseek-r1"))
+        cheap = estimate_budget(self.frontier("qwen/qwen3.7-flash"))
+
+        self.assertEqual(dear.modelled_calls, self.FRONTIER_CALLS)
+        self.assertEqual(cheap.modelled_calls, self.FRONTIER_CALLS)
+        self.assertEqual(dear.billable_nodes, MAX_BILLABLE_NODES)
+        self.assertEqual(dear.escalation_nodes, MAX_ESCALATION_NODES)
+
+        self.assertGreater(
+            dear.static_cost_usd * GRAPH_STATIC_BUDGET_MARGIN, MAX_RUN_COST_USD
+        )
+        self.assertLess(
+            cheap.static_cost_usd * GRAPH_STATIC_BUDGET_MARGIN, MAX_RUN_COST_USD
+        )
+
+        self.assertEqual(
+            [problem.code for problem in budget_problems(self.frontier("deepseek/deepseek-r1"))],
+            [budget_module.BUDGET_OVER_CEILING],
+        )
+        self.assertEqual(budget_problems(self.frontier("qwen/qwen3.7-flash")), [])
+
+    def test_the_two_totals_are_in_the_ratio_of_the_two_prices(self) -> None:
+        """The strongest available check that the model is what moved the number.
+
+        Both documents make the same calls with the same prompt sizes, so the
+        totals divide out to the price ratio exactly. A pricing path that read
+        the TIER would give a ratio of 1.0 and this fails loudly rather than by
+        a few cents.
+        """
+
+        dear = estimate_budget(self.frontier("deepseek/deepseek-r1")).floor_cost_usd
+        cheap = estimate_budget(self.frontier("qwen/qwen3.7-flash")).floor_cost_usd
+        r1 = MODEL_BY_ID["deepseek/deepseek-r1"]
+        qwen = MODEL_BY_ID["qwen/qwen3.7-flash"]
+
+        # One call's prompt/completion mix is fixed across the two documents, so
+        # the ratio is a weighted mean of the two per-token ratios and sits
+        # between them.
+        self.assertGreater(dear / cheap, min(r1.cost_in / qwen.cost_in, r1.cost_out / qwen.cost_out) - 0.01)
+        self.assertLess(dear / cheap, max(r1.cost_in / qwen.cost_in, r1.cost_out / qwen.cost_out) + 0.01)
+
+    def test_a_plain_id_is_not_inflated_by_the_nitro_factor(self) -> None:
+        """D5: the factor applies to a `:nitro` id and to nothing else.
+
+        Applying 1.8 to a plain id would invent a number in both directions -
+        the three OpenAI first-party rows spread 1.1x and `openai/gpt-oss-120b`
+        spreads 9.5x - so a plain slug is priced at what it publishes.
+        """
+
+        estimate = estimate_budget(self.frontier("qwen/qwen3.7-flash"))
+        self.assertAlmostEqual(estimate.static_cost_usd, estimate.floor_cost_usd, places=6)
+
+    def test_a_library_node_is_still_priced_at_its_tier(self) -> None:
+        """The other arm, unchanged: a library node has no model to name.
+
+        Its LLMs are built inside the YAML crew from `config.py`'s constants, so
+        the tier word is the whole of what the document gets to say - and
+        pricing it any other way would price a model the run will not use.
+        """
+
+        graph = frontier_document(cheap=1, escalation=1)
+        by_id = graph.nodes_by_id()
+        self.assertEqual(node_model(by_id["a0"]), CHEAP_MODEL)
+        self.assertEqual(node_model(by_id["a1"]), ESCALATION_MODEL)
+
+    def test_an_authored_node_is_priced_at_the_model_it_names(self) -> None:
+        graph = self.frontier("qwen/qwen3.7-flash")
+        self.assertEqual(
+            node_model(graph.nodes_by_id()["a0"]), "openrouter/qwen/qwen3.7-flash"
+        )
+
+    def test_the_nitro_factor_for_the_cheap_preset_is_the_measured_ratio(self) -> None:
+        """1.8 is a MEASUREMENT for this one slug and a guess for every other.
+
+        `google/gemini-3.5-flash-lite` is $0.30 headline and $0.54 on its two
+        `priority` endpoints - 1.8 to the cent, measured 2026-09-04. That is
+        where the constant came from, and it is why replacing the blanket factor
+        with the per-model ratio left `MeasuredFrontierTests`' published figures
+        untouched. Any other roster row would have moved them.
+        """
+
+        row = MODEL_BY_ID["google/gemini-3.5-flash-lite"]
+        self.assertAlmostEqual(row.cost_in_max_endpoint / row.cost_in, NITRO_PRICE_FACTOR, places=6)
+        self.assertAlmostEqual(
+            budget_module._nitro_multiplier(CHEAP_MODEL), NITRO_PRICE_FACTOR, places=6
+        )
+        self.assertEqual(budget_module._nitro_multiplier(ESCALATION_MODEL), 1.0)
 
 
 class MeasuredFrontierTests(unittest.TestCase):

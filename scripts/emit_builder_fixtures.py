@@ -41,7 +41,10 @@ because the alternative is a gate that fails for reasons unrelated to drift:
   to every call, which makes the fixture a fact about the code.
 
 No network, no model, no credential: this reads `brief_crew.builder` and writes
-two files.
+THREE files. The third, `models.json`, is the model registry as
+`GET /api/builder/models` serves it - emitted through the SAME
+`registry_payload` the endpoint uses, so the fixture cannot describe a row
+differently from the route it stands for.
 """
 
 from __future__ import annotations
@@ -59,13 +62,15 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 if str(REPO / "src") not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(REPO / "src"))
 
-from brief_crew.builder import back_edge_indices  # noqa: E402
+from brief_crew import config as project_config  # noqa: E402
+from brief_crew.builder import back_edge_indices, registry_document  # noqa: E402
 from brief_crew.builder.compiler import document_problems  # noqa: E402
 from brief_crew.builder.document import BuilderDocument  # noqa: E402
 
 FIXTURES = REPO / "frontend" / "tests" / "fixtures"
 BACK_EDGES_PATH = FIXTURES / "builderBackEdges.json"
 PROBLEM_CODES_PATH = FIXTURES / "builderProblemCodes.json"
+MODELS_PATH = FIXTURES / "models.json"
 
 #: Stated rather than read from the environment. See the module docstring.
 CEILING_USD = 10.0
@@ -225,6 +230,46 @@ def output_node(node_id: str = "report") -> dict[str, Any]:
 
 def tool_node(node_id: str, *, tool_id: str = "firecrawl_scrape") -> dict[str, Any]:
     return node(node_id, "tool", {"tool_id": tool_id, "params": {}})
+
+
+def authored_agent_node(
+    node_id: str,
+    *,
+    model: str = "google/gemini-3.8-flash",
+    tier: str = "escalation",
+    response_format: str | None = None,
+    reasoning_effort: str | None = None,
+) -> dict[str, Any]:
+    """An agent the AUTHOR wrote, which is the only arm that NAMES a model.
+
+    A library agent carries a `tier` and nothing else - its LLM is built inside
+    the YAML crew from `config.py`'s two constants - so none of the three model
+    codes can fire on one. Every model scenario below therefore uses this arm.
+    """
+
+    llm: dict[str, Any] = {"model": model}
+    if response_format is not None:
+        llm["response_format"] = response_format
+    if reasoning_effort is not None:
+        llm["reasoning_effort"] = reasoning_effort
+    return node(
+        node_id,
+        "agent",
+        {
+            "tier": tier,
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+                "description": "Research the market for ${state.idea}",
+                "expected_output": "Three competitors with URLs",
+            },
+            "llm": llm,
+        },
+    )
 
 
 def authored_crew_node(node_id: str, *, tier: str = "cheap") -> dict[str, Any]:
@@ -950,6 +995,69 @@ PROBLEM_SCENARIOS: list[dict[str, Any]] = [
             [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
         ),
     },
+    {
+        "name": "an authored agent naming a model this build does not offer",
+        "expects": ["model-unknown"],
+        "why": (
+            "openai/o4-mini is the worked example of a model the registry refuses: "
+            "exactly ONE endpoint, at $1.10 per million input, measured 2026-09-04. "
+            "Under provider.max_price every candidate endpoint is filtered and the "
+            "request fails rather than overspending, so the model is not merely dear - "
+            "it is unservable. It is therefore absent from the roster, and a document "
+            "naming it gets this code rather than model-over-ceiling."
+        ),
+        "document": document(
+            "unknown model",
+            [input_node(), authored_agent_node("draft", model="openai/o4-mini"), output_node()],
+            [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+        ),
+    },
+    {
+        "name": "a registry row whose price crossed the ceiling after publish",
+        "expects": ["model-over-ceiling"],
+        "why": (
+            "Unreachable against the live registry, and that is the point: config.py "
+            "REFUSES an over-ceiling row at import, so this code can only fire on data "
+            "that was legal when it was written and is not now. The scenario patches "
+            "one roster row to $1.50 to reproduce a catalogue price moving under a "
+            "published document. The repair is a refresh_models.py run, not an edit "
+            "to the graph, which is why the message says so."
+        ),
+        "patch_registry": {"id": "openai/gpt-4o-mini", "cost_in": 1.5},
+        "document": document(
+            "dear model",
+            [
+                input_node(),
+                authored_agent_node("draft", model="openai/gpt-4o-mini"),
+                output_node(),
+            ],
+            [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+        ),
+    },
+    {
+        "name": "JSON mode asked of a model that has none",
+        "expects": ["model-lacks-capability"],
+        "why": (
+            "Every roster row supports JSON mode as measured on 2026-09-04, so this is "
+            "provoked by patching one row's flag off rather than by finding a model "
+            "that lacks it. The behaviour it stands against is the one the gauntlet "
+            "names as the worst competitor habit: a parameter rendered, accepted, sent "
+            "and silently dropped. Enforced twice - the inspector disables the control, "
+            "and this fires anyway, so a stale client cannot smuggle it past."
+        ),
+        "patch_registry": {"id": "openai/gpt-4o-mini", "supports_json_mode": False},
+        "document": document(
+            "json on a text model",
+            [
+                input_node(),
+                authored_agent_node(
+                    "draft", model="openai/gpt-4o-mini", response_format="json_object"
+                ),
+                output_node(),
+            ],
+            [edge("e1", "idea", "draft"), edge("e2", "draft", "report")],
+        ),
+    },
 ]
 
 
@@ -962,6 +1070,20 @@ def _problems_for(scenario: dict[str, Any]) -> list[Any]:
     credential_check = (
         (lambda _credential_id: False) if scenario.get("credential_check") else None
     )
+    patched_row = scenario.get("patch_registry")
+    if patched_row is not None:
+        # One registry row edited in place, so a code that cannot fire against
+        # the live roster still has a real instance. `MODEL_BY_ID` is what
+        # `registry_model` reads, and `mock.patch.dict` puts it back.
+        row = project_config.MODEL_BY_ID[patched_row["id"]]
+        edited = row._replace(
+            **{key: value for key, value in patched_row.items() if key != "id"}
+        )
+        with mock.patch.dict(project_config.MODEL_BY_ID, {patched_row["id"]: edited}):
+            return document_problems(
+                parsed, ceiling_usd=CEILING_USD, credential_check=credential_check
+            )
+
     slug = scenario.get("patch_cheap_model")
     if slug is None:
         return document_problems(
@@ -989,7 +1111,7 @@ def _declared_codes() -> set[str]:
     pattern = re.compile(r'^([A-Z][A-Z0-9_]*) = "([a-z]+(?:-[a-z]+)+)"$', re.MULTILINE)
     builder = REPO / "src" / "brief_crew" / "builder"
     codes: set[str] = set()
-    for name in ("bounds.py", "budget.py", "compiler.py"):
+    for name in ("bounds.py", "budget.py", "compiler.py", "registry.py"):
         text = (builder / name).read_text(encoding="utf-8")
         codes |= {match.group(2) for match in pattern.finditer(text)}
     return codes
@@ -1095,10 +1217,24 @@ def committed(path: pathlib.Path) -> bytes | None:
     return path.read_bytes().replace(b"\r\n", b"\n")
 
 
+def build_models() -> dict[str, Any]:
+    """The roster exactly as `GET /api/builder/models` serves it.
+
+    Built through `registry_payload`, the same function the endpoint calls, so
+    the fixture and the route cannot describe one row differently. `generated_at`
+    and `source` travel with it because they are what a stale mirror is diagnosed
+    from - a client can say WHEN the roster it holds was measured, which no
+    amount of comparing prices would tell it.
+    """
+
+    return registry_document()
+
+
 def targets() -> tuple[tuple[pathlib.Path, bytes], ...]:
     return (
         (BACK_EDGES_PATH, render(build_back_edges())),
         (PROBLEM_CODES_PATH, render(build_problem_codes())),
+        (MODELS_PATH, render(build_models())),
     )
 
 

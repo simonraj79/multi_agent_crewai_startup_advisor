@@ -47,11 +47,16 @@ BUILDER = pathlib.Path(__file__).resolve().parents[2] / "src" / "brief_crew" / "
 #: two ever disagree this file is asserting about a gate that does not exist.
 DECLARATION = re.compile(r'^([A-Z][A-Z0-9_]*) = "([a-z]+(?:-[a-z]+)+)"$', re.MULTILINE)
 
-#: The files that declare codes. The frontend reads exactly these three, and the
+#: The files that declare codes. The frontend reads exactly these FOUR, and the
 #: third was missing there for a while - which is how twenty-seven passed as
-#: thirty. A fourth file appearing here without appearing there is the next
+#: thirty. A fifth file appearing here without appearing there is the next
 #: instance of that defect, so the count test below pins the pair.
-SOURCES = ("bounds.py", "budget.py", "compiler.py")
+#:
+#: `registry.py` is the fourth, added 2026-09-04 with plan 05's three model
+#: codes. It went into `builderTypes.spec.ts`, `emit_builder_fixtures.py`'s
+#: `_declared_codes` and `builder_api.py`'s `_problem_code_union` in the same
+#: commit, which is exactly the four-place edit the paragraph above predicts.
+SOURCES = ("bounds.py", "budget.py", "compiler.py", "registry.py")
 
 
 def _module(name: str) -> tuple[ast.Module, str]:
@@ -197,10 +202,10 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
                 "codes are declared here",
             )
 
-    def test_the_three_files_carry_every_code_the_frontend_lists(self) -> None:
-        """Thirty-eight, and the arithmetic is stated so a change has to face it.
+    def test_the_four_files_carry_every_code_the_frontend_lists(self) -> None:
+        """Forty-one, and the arithmetic is stated so a change has to face it.
 
-        Thirty-two, two and four. The compiler's first three were absent from
+        Thirty-two, two, four and three. The compiler's first three were absent from
         the TypeScript tuple for a while precisely because that file was not in
         the frontend's source list, and one of them -
         `library-missing-prompt-input` - is the most common problem in the
@@ -216,6 +221,13 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
         client files rather than merely reporting a number - it is the only
         thing standing between a server that emits a code and a canvas that
         renders it nowhere.
+
+        **Thirty-eight until 2026-09-04**, when plan 05 added `registry.py` and
+        its three: `model-unknown`, `model-over-ceiling` and
+        `model-lacks-capability`. The third is the one this count is really
+        protecting - it is the code that fires when an author asks a model for
+        a parameter it cannot honour, and a client that had never heard of it
+        would render nothing while the compiler refused the publish.
         """
 
         codes: set[str] = set()
@@ -224,7 +236,7 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             codes |= {match.group(2) for match in DECLARATION.finditer(text)}
         self.assertEqual(
             len(codes),
-            38,
+            41,
             "the number of problem codes moved; frontend/src/types/builder.ts's "
             "PROBLEM_CODES and builderTypes.spec.ts's length assertion both "
             "have to move with it",

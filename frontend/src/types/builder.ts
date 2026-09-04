@@ -535,6 +535,13 @@ export const PROBLEM_CODES = [
   'attach-target-not-agent', 'member-target-not-crew', 'member-agent-has-flow-edges',
   'attachment-unattached', 'attachments-over-max', 'attachment-nodes-over-max',
   'crew-members-out-of-range',
+  // 05-model-registry.md D7's three, added 2026-09-04 with `builder/registry.py`.
+  // The first two are about WHICH model - an id no roster row carries, and a row
+  // whose price crossed the ceiling after the document was published. The third
+  // is about a PARAMETER, and it is the one the inspector also gates: the widget
+  // disables the control and the server reports it anyway, so a stale client
+  // cannot smuggle in a parameter the compiler would silently drop.
+  'model-unknown', 'model-over-ceiling', 'model-lacks-capability',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 

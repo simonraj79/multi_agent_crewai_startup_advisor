@@ -1,0 +1,100 @@
+{
+  "_note": [
+    "A RECORDED slice of GET https://openrouter.ai/api/v1/models, hand-cut to eight rows.",
+    "Shapes are verbatim from the public resource: `pricing.prompt` is a per-TOKEN decimal",
+    "STRING, so $0.30 per million is \"0.0000003\". The MCP's get-model gives the same fact",
+    "as a display string already per million; the two disagree in form and never in value.",
+    "",
+    "Each row is here to make one predicate fail or pass:",
+    "  google/gemini-3.5-flash-lite         admitted - the cheap preset",
+    "  google/gemini-3.5-flash-lite:batch   REFUSED by variant, and priced at exactly half.",
+    "                                       This pair is the whole fixture: plan 05's own",
+    "                                       table read a :batch price as a headline and",
+    "                                       concluded config.py was stale. The test asserts",
+    "                                       the plain row's $0.30 wins.",
+    "  openai/gpt-4o-mini                   admitted - and its name has drifted, so the",
+    "                                       diff has something to show.",
+    "  openai/o4-mini                       REFUSED on price: $1.10/M input, one endpoint.",
+    "  anthropic/claude-haiku-4.5           REFUSED by provider, and cheap enough to pass",
+    "                                       the price filter, so it proves the provider",
+    "                                       clause does work rather than riding on price.",
+    "  meta-llama/llama-4-scout:free        REFUSED by variant.",
+    "  mistralai/mistral-small-3.2          REFUSED for having no `tools`.",
+    "  deepseek/deepseek-r1                 admitted, and absent from the seeded registry",
+    "                                       used in the departure test."
+  ],
+  "data": [
+    {
+      "id": "google/gemini-3.5-flash-lite",
+      "name": "Google: Gemini 3.5 Flash Lite",
+      "context_length": 1048576,
+      "architecture": { "input_modalities": ["text", "image"] },
+      "pricing": { "prompt": "0.0000003", "completion": "0.0000025" },
+      "supported_parameters": [
+        "tools",
+        "tool_choice",
+        "response_format",
+        "structured_outputs",
+        "reasoning",
+        "include_reasoning",
+        "reasoning_effort"
+      ]
+    },
+    {
+      "id": "google/gemini-3.5-flash-lite:batch",
+      "name": "Google: Gemini 3.5 Flash Lite (batch)",
+      "context_length": 1048576,
+      "architecture": { "input_modalities": ["text", "image"] },
+      "pricing": { "prompt": "0.00000015", "completion": "0.00000125" },
+      "supported_parameters": ["tools", "response_format", "structured_outputs", "reasoning"]
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "OpenAI: GPT-4o-mini (2024-07-18)",
+      "context_length": 128000,
+      "architecture": { "input_modalities": ["text", "image"] },
+      "pricing": { "prompt": "0.00000015", "completion": "0.0000006" },
+      "supported_parameters": ["tools", "tool_choice", "response_format", "structured_outputs"]
+    },
+    {
+      "id": "openai/o4-mini",
+      "name": "OpenAI: o4 Mini",
+      "context_length": 200000,
+      "architecture": { "input_modalities": ["text", "image"] },
+      "pricing": { "prompt": "0.0000011", "completion": "0.0000044" },
+      "supported_parameters": ["tools", "response_format", "structured_outputs", "reasoning"]
+    },
+    {
+      "id": "anthropic/claude-haiku-4.5",
+      "name": "Anthropic: Claude Haiku 4.5",
+      "context_length": 200000,
+      "architecture": { "input_modalities": ["text", "image"] },
+      "pricing": { "prompt": "0.0000008", "completion": "0.000004" },
+      "supported_parameters": ["tools", "response_format", "reasoning"]
+    },
+    {
+      "id": "meta-llama/llama-4-scout:free",
+      "name": "Meta: Llama 4 Scout (free)",
+      "context_length": 131072,
+      "architecture": { "input_modalities": ["text", "image"] },
+      "pricing": { "prompt": "0", "completion": "0" },
+      "supported_parameters": ["tools", "response_format"]
+    },
+    {
+      "id": "mistralai/mistral-small-3.2",
+      "name": "Mistral: Mistral Small 3.2",
+      "context_length": 131072,
+      "architecture": { "input_modalities": ["text"] },
+      "pricing": { "prompt": "0.00000005", "completion": "0.0000001" },
+      "supported_parameters": ["response_format", "seed"]
+    },
+    {
+      "id": "deepseek/deepseek-r1",
+      "name": "DeepSeek: R1",
+      "context_length": 64000,
+      "architecture": { "input_modalities": ["text"] },
+      "pricing": { "prompt": "0.0000007", "completion": "0.0000025" },
+      "supported_parameters": ["tools", "response_format", "structured_outputs", "reasoning", "include_reasoning"]
+    }
+  ]
+}

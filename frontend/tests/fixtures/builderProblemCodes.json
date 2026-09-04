@@ -35,6 +35,9 @@
     "library-unknown-id",
     "member-agent-has-flow-edges",
     "member-target-not-crew",
+    "model-lacks-capability",
+    "model-over-ceiling",
+    "model-unknown",
     "no-input-node",
     "no-output-node",
     "node-count",
@@ -136,7 +139,7 @@
       "problem": {
         "code": "budget-unpriced-model",
         "severity": "error",
-        "message": "this graph cannot be priced: openrouter/example/unpriced-preview has no entry in PRICES, so every call it makes would contribute $0.00 to a total that is supposed to bound spend. Add the price in the same commit as the model",
+        "message": "this graph cannot be priced: openrouter/example/unpriced-preview has no entry in PRICES, so every call it makes would contribute $0.00 to a total that is supposed to bound spend. Add the model to data/models.json in the same commit that names it",
         "node_id": null,
         "edge_id": null
       }
@@ -403,6 +406,42 @@
         "message": "edge 'e3' makes a agent node a member of a transform node. Membership runs from an agent TO a crew: a crew is a team of agents, and nothing else can be one of them",
         "node_id": "worker",
         "edge_id": "e3"
+      }
+    },
+    {
+      "code": "model-lacks-capability",
+      "scenario": "JSON mode asked of a model that has none",
+      "why": "Every roster row supports JSON mode as measured on 2026-09-04, so this is provoked by patching one row's flag off rather than by finding a model that lacks it. The behaviour it stands against is the one the gauntlet names as the worst competitor habit: a parameter rendered, accepted, sent and silently dropped. Enforced twice - the inspector disables the control, and this fires anyway, so a stale client cannot smuggle it past.",
+      "problem": {
+        "code": "model-lacks-capability",
+        "severity": "error",
+        "message": "openai/gpt-4o-mini does not support JSON mode, so llm.response_format would be sent and dropped and this node would answer prose where the graph expects an object. Pick a model with JSON mode, or ask for text",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "model-over-ceiling",
+      "scenario": "a registry row whose price crossed the ceiling after publish",
+      "why": "Unreachable against the live registry, and that is the point: config.py REFUSES an over-ceiling row at import, so this code can only fire on data that was legal when it was written and is not now. The scenario patches one roster row to $1.50 to reproduce a catalogue price moving under a published document. The repair is a refresh_models.py run, not an edit to the graph, which is why the message says so.",
+      "problem": {
+        "code": "model-over-ceiling",
+        "severity": "error",
+        "message": "openai/gpt-4o-mini is priced at $1.5000 per million input tokens, over the $1.00 ceiling. Its price moved after this graph was saved; pick a cheaper model",
+        "node_id": "draft",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "model-unknown",
+      "scenario": "an authored agent naming a model this build does not offer",
+      "why": "openai/o4-mini is the worked example of a model the registry refuses: exactly ONE endpoint, at $1.10 per million input, measured 2026-09-04. Under provider.max_price every candidate endpoint is filtered and the request fails rather than overspending, so the model is not merely dear - it is unservable. It is therefore absent from the roster, and a document naming it gets this code rather than model-over-ceiling.",
+      "problem": {
+        "code": "model-unknown",
+        "severity": "error",
+        "message": "'openai/o4-mini' is not a model this build offers, so llm.model names something no run could resolve. Pick one from the model picker; the roster is at GET /api/builder/models",
+        "node_id": "draft",
+        "edge_id": null
       }
     },
     {
@@ -4539,6 +4578,247 @@
             "agent_id": "scoper",
             "tools": [],
             "credential_id": "cr_0badc0de"
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an authored agent naming a model this build does not offer": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "unknown model",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+              "description": "Research the market for ${state.idea}",
+              "expected_output": "Three competitors with URLs"
+            },
+            "llm": {
+              "model": "openai/o4-mini"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "a registry row whose price crossed the ceiling after publish": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "dear model",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+              "description": "Research the market for ${state.idea}",
+              "expected_output": "Three competitors with URLs"
+            },
+            "llm": {
+              "model": "openai/gpt-4o-mini"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "JSON mode asked of a model that has none": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "json on a text model",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "draft",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+              "description": "Research the market for ${state.idea}",
+              "expected_output": "Three competitors with URLs"
+            },
+            "llm": {
+              "model": "openai/gpt-4o-mini",
+              "response_format": "json_object"
+            }
           }
         },
         {

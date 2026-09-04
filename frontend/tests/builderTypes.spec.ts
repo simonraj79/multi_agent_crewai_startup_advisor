@@ -159,11 +159,12 @@ function withNode(doc: BuilderDocument, index: number, node: BuilderNode): Build
 
 /**
  * The problem codes as the Python declares them, read at run time - from all
- * THREE files that declare one.
+ * FOUR files that declare one.
  *
  * Transcribing them would make this test agree with the tuple it is checking
  * for exactly as long as both were copied from the same place, which is no
- * check at all. `bounds.py` (25), `budget.py` (2) and `compiler.py` (3) declare
+ * check at all. `bounds.py` (25), `budget.py` (2), `compiler.py` (3) and
+ * `registry.py` (3) declare
  * every code as a module-level constant precisely so neither side has an inline
  * string, and the kebab-case filter is what tells a code apart from any other
  * string constant any of them might grow.
@@ -186,6 +187,11 @@ function pythonProblemCodes(): string[] {
     '../../src/brief_crew/builder/bounds.py',
     '../../src/brief_crew/builder/budget.py',
     '../../src/brief_crew/builder/compiler.py',
+    // The fourth, added 2026-09-04 with plan 05. `compiler.py` was missing from
+    // this array for a while and twenty-seven codes passed as thirty; the same
+    // omission here would hide `model-lacks-capability`, which is the most
+    // frequent thing an author does wrong with a model picker.
+    '../../src/brief_crew/builder/registry.py',
   ]
   const codes = new Set<string>()
   for (const relative of sources) {
@@ -468,7 +474,7 @@ describe('the problem codes are the python problem codes', () => {
     // names this line and the tuple by path - which is the only mechanism that
     // makes a server-side code addition break a TypeScript test in the same
     // commit rather than three commits later.
-    expect(pythonProblemCodes()).toHaveLength(38)
+    expect(pythonProblemCodes()).toHaveLength(41)
     expect(PROBLEM_CODES).toHaveLength(38)
   })
 

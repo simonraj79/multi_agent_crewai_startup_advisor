@@ -685,6 +685,31 @@ class BoundAttachments:
                 LOGGER.warning("an attachment failed to clean up", exc_info=True)
 
 
+def release_mcp_clients(crew: Any) -> None:
+    """Close every MCP client this crew's agents opened. Never raises.
+
+    **CrewAI cleans up only on the happy path**, and that is a measured fact
+    rather than a precaution: `agent/core.py` calls `_cleanup_mcp_clients()`
+    after the completion event is emitted, so a task that RAISES skips it and
+    the client survives the step. A builder graph can fail a step for a dozen
+    ordinary reasons - a guardrail, a cancel, a cost ceiling - so this runs in
+    `run_agent`'s `finally` and covers the paths the package does not.
+
+    A failure here is logged and swallowed for the same reason
+    `BoundAttachments.cleanup` swallows one: a leaked client is a defect, and a
+    run failed at its last line BY a leaked client is a worse one.
+    """
+
+    for agent in getattr(crew, "agents", ()) or ():
+        closer = getattr(agent, "_cleanup_mcp_clients", None)
+        if closer is None:
+            continue
+        try:
+            closer()
+        except Exception:  # noqa: BLE001 - see the docstring
+            LOGGER.warning("an MCP client failed to close", exc_info=True)
+
+
 def _credential_fields(
     node_id: str, credential_id: Any, *, kind: str | None
 ) -> dict[str, str] | None:
@@ -946,10 +971,11 @@ def run_agent(
         return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
     finally:
         # `cleanup()` in a `finally`, always. CrewAI's MCP resolver opens a
-        # client when the agent is constructed, and a client that outlives the
+        # client when the agent binds its tools, and a client that outlives the
         # step is a socket this process has forgotten it holds - which on a
         # stdio transport is also a child process nobody will reap.
         bound.cleanup()
+        release_mcp_clients(crew)
 
 
 #: The credential kind an agent node's model key must be. An agent's

@@ -141,11 +141,15 @@ def sanitise_description(description: str) -> str:
     forge the end of that list.
     """
 
+    # Zero-width characters are DELETED and control characters become a SPACE,
+    # and the asymmetry is deliberate. A zero-width joiner sits between two
+    # halves of one word and deleting it restores the word; a newline separates
+    # two words and deleting it would glue them into a third that appears in no
+    # source - which is a sanitiser inventing text.
     text = _INVISIBLE.sub("", str(description))
     text = "".join(
-        character
+        " " if unicodedata.category(character) == "Cc" else character
         for character in text
-        if unicodedata.category(character) != "Cc" or character == " "
     )
     text = re.sub(r"\s+", " ", text).strip()
     return text[: project_config.MCP_TOOL_DESCRIPTION_MAX_CHARS]
@@ -393,6 +397,7 @@ def discover(
     header: Mapping[str, str] | None = None,
     env: Mapping[str, str] | None = None,
     resolver: Resolver | None = None,
+    resolve: HostResolver | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> DiscoveryResult:
     """Connect, read every tool's name, description and schema, sanitise, stop.
@@ -405,12 +410,15 @@ def discover(
     """
 
     clock = now or (lambda: datetime.now(timezone.utc))
+    # `resolve` is the DNS seam, injected for the same reason `resolver` is: a
+    # test asserting the transport policy must not depend on a name existing.
     refusal = transport_refusal(
         transport=record.transport,
         url=record.url,
         command=record.command,
         args=record.args,
         env_keys=tuple(env or ()),
+        resolve=resolve,
     )
     if refusal is not None:
         return DiscoveryResult(status="error", error=refusal, discovered_at=clock())
@@ -469,7 +477,10 @@ ServerLookup = Callable[[str], McpServerRecord | None]
 
 
 def mcp_problems(
-    document: BuilderDocument, *, servers: ServerLookup | None = None
+    document: BuilderDocument,
+    *,
+    servers: ServerLookup | None = None,
+    resolve: HostResolver | None = None,
 ) -> list[Problem]:
     """Every `mcp` node this run could not honour, and why."""
 
@@ -513,6 +524,7 @@ def mcp_problems(
             url=record.url,
             command=record.command,
             args=record.args,
+            resolve=resolve,
         )
         if refusal is not None:
             problems.append(

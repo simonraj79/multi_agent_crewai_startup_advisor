@@ -58,7 +58,7 @@ from typing import Any, Literal
 
 from brief_crew import config as project_config
 from brief_crew.builder.bounds import Problem
-from brief_crew.builder.document import BuilderDocument, ToolConfig
+from brief_crew.builder.document import ATTACH_TARGET_KINDS, BuilderDocument, ToolConfig
 
 # --------------------------------------------------------------------------
 # Problem codes
@@ -109,6 +109,34 @@ class ParamSpec:
     maximum: int | None = None
     #: For `array`: the closed set its members come from.
     items_enum: tuple[str, ...] | None = None
+
+    def wire(self) -> dict[str, Any]:
+        """One row of `BuilderToolCatalogueEntry.params`, as the client reads it.
+
+        `required` is always false and that is a property of the catalogue
+        rather than an omission: every entry declares a default for every
+        parameter, so there is no configuration an author can leave incomplete.
+        A parameter that had no sensible default would be a tool this product
+        cannot offer with zero configuration, which the idea-validator template
+        depends on.
+        """
+
+        row: dict[str, Any] = {
+            "name": self.name,
+            "type": self.type,
+            "required": False,
+            "default": list(self.default) if isinstance(self.default, tuple) else self.default,
+            "description": self.description,
+        }
+        if self.enum is not None:
+            row["enum"] = list(self.enum)
+        if self.items_enum is not None:
+            row["enum"] = list(self.items_enum)
+        if self.minimum is not None:
+            row["min"] = self.minimum
+        if self.maximum is not None:
+            row["max"] = self.maximum
+        return row
 
     def json_schema(self) -> dict[str, Any]:
         schema: dict[str, Any] = {"type": self.type, "description": self.description}
@@ -202,16 +230,37 @@ class ToolCatalogueEntry:
         }
 
     def serialisable(self) -> dict[str, Any]:
-        """The wire shape. `factory` is absent, and that absence is asserted."""
+        """The wire shape. `factory` is absent, and that absence is asserted.
+
+        **The key is `tool_id`, not `id`, and that is a correction to plan 06's
+        own Interfaces section.** Three client files already read `tool_id` -
+        `NodePalette.vue`, `BuilderNode.vue` and `inspectors/ToolForm.vue`, all
+        written against `types/builder.ts::BuilderToolCatalogueEntry` before this
+        catalogue existed - and two of the three are outside this plan's
+        surfaces. Serving the plan's spelling would have meant either editing
+        files this plan may not touch or shipping a palette that renders an
+        empty label for every tool. The client's shape is the contract; the
+        plan's extra fields are added to it rather than replacing it.
+
+        `params` is the LIST the client's form control reads.
+        `ToolCatalogueEntry.param_schema()` still renders the JSON-Schema view
+        for anything that wants one, and both come off the same `ParamSpec`
+        tuple, so the two cannot describe a parameter differently.
+        """
 
         return {
-            "id": self.id,
+            "tool_id": self.id,
             "label": self.label,
             "category": self.category,
             "credential_kind": self.credential_kind,
             "credential_kind_by_param": self.credential_kind_by_param,
             "credential_optional": self.credential_optional,
-            "param_schema": self.param_schema(),
+            # Every kind an `attach` edge may ARRIVE at, read from the document
+            # schema rather than written down here - `bounds.py` refuses any
+            # other target with `attach-target-not-agent`, so a client offering
+            # a third would be offering a drop the server refuses.
+            "attaches_to": sorted(ATTACH_TARGET_KINDS),
+            "params": [spec.wire() for spec in self.params],
             "description": self.description,
             "docs_url": self.docs_url,
             "owner": self.owner,

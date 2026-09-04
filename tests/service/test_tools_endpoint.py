@@ -36,14 +36,22 @@ CUSTOM = "/api/builder/tools/custom"
 #: be added here deliberately - which is what stops `factory` arriving by
 #: accident the day somebody adds a field to `ToolCatalogueEntry`.
 ENTRY_KEYS = {
-    "id",
+    # The six `types/builder.ts::BuilderToolCatalogueEntry` already declared,
+    # and which `NodePalette.vue`, `BuilderNode.vue` and `ToolForm.vue` already
+    # read. The key is `tool_id` and not `id`: plan 06's Interfaces section
+    # writes `id`, three client files written before the catalogue existed read
+    # `tool_id`, and two of them are outside this plan's surfaces - so the
+    # client's spelling is the contract and the plan's is the correction.
+    "tool_id",
     "label",
     "category",
+    "description",
     "credential_kind",
+    "attaches_to",
+    "params",
+    # And the plan's own additions, each answering a question the six cannot.
     "credential_kind_by_param",
     "credential_optional",
-    "param_schema",
-    "description",
     "docs_url",
     "owner",
     "available",
@@ -73,7 +81,7 @@ class CatalogueTests(AuthenticatedTwoUserCase):
         self.assertEqual(response.status_code, 200, response.text)
         served = response.json()["tools"]
         self.assertEqual(
-            [entry["id"] for entry in served], [entry.id for entry in catalogue()]
+            [entry["tool_id"] for entry in served], [entry.id for entry in catalogue()]
         )
 
     def test_the_count_is_ten_with_the_interpreter_flag_off_and_eleven_with_it_on(self) -> None:
@@ -91,28 +99,43 @@ class CatalogueTests(AuthenticatedTwoUserCase):
 
         served = self.client.get(TOOLS, headers=self.as_alice()).json()["tools"]
         self.assertEqual(len(served), 10)
-        self.assertNotIn("code_interpreter", [entry["id"] for entry in served])
+        self.assertNotIn("code_interpreter", [entry["tool_id"] for entry in served])
         with patch.object(project_config, "BUILDER_CODE_INTERPRETER_ENABLED", True):
             lifted = self.client.get(TOOLS, headers=self.as_alice()).json()["tools"]
         self.assertEqual(len(lifted), 11)
-        self.assertIn("code_interpreter", [entry["id"] for entry in lifted])
+        self.assertIn("code_interpreter", [entry["tool_id"] for entry in lifted])
 
     def test_no_entry_carries_a_class_ref_or_any_other_server_side_key(self) -> None:
         served = self.client.get(TOOLS, headers=self.as_alice()).json()["tools"]
         for entry in served:
-            with self.subTest(tool=entry["id"]):
+            with self.subTest(tool=entry["tool_id"]):
                 self.assertEqual(set(entry), ENTRY_KEYS)
                 self.assertNotIn("class_ref", entry)
                 self.assertNotIn("factory", entry)
 
-    def test_every_param_schema_is_a_closed_object(self) -> None:
-        """`additionalProperties: false`, so a form control the compiler ignores
-        is impossible by construction rather than by review."""
+    def test_every_param_is_declared_with_a_type_and_a_default(self) -> None:
+        """The gauntlet forbids a parameter rendered in the UI that the compiler
+        ignores, and this is the other side of it: every parameter an author can
+        set is DECLARED, with the bound the server checks it against, so a
+        control the server would refuse cannot be drawn."""
+
+        types = {"string", "number", "integer", "boolean", "array", "json"}
+        for entry in self.client.get(TOOLS, headers=self.as_alice()).json()["tools"]:
+            for param in entry["params"]:
+                with self.subTest(tool=entry["tool_id"], param=param["name"]):
+                    self.assertIn(param["type"], types)
+                    self.assertIn("default", param)
+                    self.assertIs(param["required"], False)
+
+    def test_every_tool_attaches_to_the_kinds_the_server_would_accept(self) -> None:
+        """`attach-target-not-agent` is what the server answers otherwise, so an
+        entry advertising a third target would be advertising a refused drop."""
+
+        from brief_crew.builder.document import ATTACH_TARGET_KINDS
 
         for entry in self.client.get(TOOLS, headers=self.as_alice()).json()["tools"]:
-            with self.subTest(tool=entry["id"]):
-                self.assertEqual(entry["param_schema"]["type"], "object")
-                self.assertIs(entry["param_schema"]["additionalProperties"], False)
+            with self.subTest(tool=entry["tool_id"]):
+                self.assertEqual(set(entry["attaches_to"]), set(ATTACH_TARGET_KINDS))
 
     def test_the_vocabulary_serves_the_same_catalogue(self) -> None:
         """One source, two endpoints. A palette reading either must agree."""
@@ -136,12 +159,12 @@ class CustomToolRouteTests(AuthenticatedTwoUserCase):
         self.assertEqual(created["entry"]["category"], "custom")
 
         listed = self.client.get(TOOLS, headers=self.as_alice()).json()["tools"]
-        self.assertIn(created["id"], [entry["id"] for entry in listed])
+        self.assertIn(created["id"], [entry["tool_id"] for entry in listed])
 
     def test_it_appears_in_NOBODY_elses_catalogue(self) -> None:
         created = self.create(self.as_alice())
         listed = self.client.get(TOOLS, headers=self.as_bob()).json()["tools"]
-        self.assertNotIn(created["id"], [entry["id"] for entry in listed])
+        self.assertNotIn(created["id"], [entry["tool_id"] for entry in listed])
 
     def test_another_users_tool_is_404_and_never_403_on_every_verb(self) -> None:
         """A 403 would confirm the row exists, which is an oracle for ids."""
@@ -200,7 +223,7 @@ class CustomToolRouteTests(AuthenticatedTwoUserCase):
             204,
         )
         listed = self.client.get(TOOLS, headers=self.as_alice()).json()["tools"]
-        self.assertNotIn(created["id"], [entry["id"] for entry in listed])
+        self.assertNotIn(created["id"], [entry["tool_id"] for entry in listed])
 
     def test_the_ceiling_is_a_422_naming_the_ceiling(self) -> None:
         from unittest.mock import patch

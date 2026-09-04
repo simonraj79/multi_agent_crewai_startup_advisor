@@ -733,11 +733,31 @@ export interface BuilderBounds {
  */
 export interface BuilderToolParam {
   name: string
-  type: 'string' | 'number' | 'boolean' | 'json'
+  /**
+   * The server's own words, not a mapping of them.
+   *
+   * `'integer'` and `'array'` were added 2026-09-04 when `builder/tools.py`
+   * landed and this union was `'string' | 'number' | 'boolean' | 'json'`. The
+   * catalogue declares `integer` for every bounded count and `array` for
+   * `firecrawl_scrape`'s `formats`, and folding those into `number` and `json`
+   * would have cost the inspector the two things it needs to draw a control -
+   * that a count is whole, and that a list has a closed set of members.
+   * `'number'` and `'json'` are kept because nothing has proved they are
+   * unreachable.
+   */
+  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'json'
+  /**
+   * Always false in today's catalogue, and that is a property rather than an
+   * omission: every entry declares a default for every parameter, so there is
+   * no configuration an author can leave incomplete. A parameter with no
+   * sensible default would be a tool this product cannot offer with zero
+   * configuration, which the idea-validator template depends on.
+   */
   required: boolean
-  default?: JsonScalar
+  default?: JsonScalar | JsonScalar[]
   min?: number
   max?: number
+  /** For `'string'`, the values it may take; for `'array'`, its MEMBERS' set. */
   enum?: JsonScalar[]
   description?: string
 }
@@ -753,6 +773,43 @@ export interface BuilderToolCatalogueEntry {
   /** Which kinds this tool may hang off. */
   attaches_to: NodeKind[]
   params: BuilderToolParam[]
+
+  /*
+   * Everything below arrived with `builder/tools.py` on 2026-09-04 and is
+   * OPTIONAL, so a fixture written against the earlier six fields still
+   * type-checks. Each one answers a question the six could not.
+   */
+
+  /**
+   * `web_search` is one tool over four providers, so which key it needs is a
+   * function of a PARAMETER rather than a property of the entry. `{param, map}`,
+   * and `credential_kind` is null whenever this is set.
+   */
+  credential_kind_by_param?: { param: string; map: Record<string, CredentialKind> } | null
+  /**
+   * The tool runs without a key and does better with one - GitHub
+   * unauthenticated is a lower rate limit, not a refusal. The server does NOT
+   * report `tool-credential-required` for these, so a card that showed the
+   * amber "no key" chip on one would be inventing a problem.
+   */
+  credential_optional?: boolean
+  /** Where the author reads about what this tool actually does. */
+  docs_url?: string
+  /** `builtin`, or `user` for one of the caller's own custom HTTP tools. */
+  owner?: 'builtin' | 'user'
+  /**
+   * Whether THIS DEPLOYMENT can build it, which is not the same as whether the
+   * catalogue describes it. `tavily-python` and `exa_py` ship separately and
+   * neither is installed, so two of `web_search`'s four providers abort at run
+   * time - and `TavilySearchTool`'s constructor asks, through `click.confirm`,
+   * whether it should install itself. A picker that offered all four alike
+   * would be offering two that cannot run.
+   */
+  available?: boolean
+  /** The missing distributions, keyed by the `packages_param` value that needs them. */
+  requires_packages?: Record<string, string[]>
+  /** Which parameter chooses a row of `requires_packages`. Only `web_search` has one. */
+  packages_param?: string | null
 }
 
 export interface BuilderVocabulary {

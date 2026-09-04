@@ -130,16 +130,21 @@ class VocabularyShapeTests(unittest.TestCase):
         from brief_crew.builder.tools import catalogue
 
         served = self.payload["tools"]
-        self.assertEqual([entry["id"] for entry in served], [e.id for e in catalogue()])
+        self.assertEqual(
+            [entry["tool_id"] for entry in served], [e.id for e in catalogue()]
+        )
+        # `tool_id` and not `id`: three client files read the first, and two of
+        # them predate this catalogue. See `builder/tools.py::serialisable`.
         allowed = {
-            "id",
+            "tool_id",
             "label",
             "category",
+            "description",
             "credential_kind",
+            "attaches_to",
+            "params",
             "credential_kind_by_param",
             "credential_optional",
-            "param_schema",
-            "description",
             "docs_url",
             "owner",
             "available",
@@ -147,7 +152,7 @@ class VocabularyShapeTests(unittest.TestCase):
             "packages_param",
         }
         for entry in served:
-            with self.subTest(tool=entry["id"]):
+            with self.subTest(tool=entry["tool_id"]):
                 self.assertEqual(set(entry), allowed)
                 self.assertEqual(entry["owner"], "builtin")
                 self.assertIn(entry["category"], project_config.BUILDER_TOOL_CATEGORIES)

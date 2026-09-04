@@ -108,6 +108,26 @@
     ],
     [
       "scoper",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scoper",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scoper",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scoper",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scoper",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],

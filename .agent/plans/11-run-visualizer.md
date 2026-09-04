@@ -290,3 +290,190 @@ to the competitor this product argues against (CLAUDE.md remaining-work item 6).
 **Decision 20 — re-baseline the validator's three screenshots once.** Two code
 paths for one card is the quietly-divergent double this repository keeps warning
 about.
+
+### Built - 2026-09-04
+
+Fourteen of the fifteen criteria met; criterion 14 is the Integrator's judge
+round and was not attempted. The run console now says who is speaking, what
+walked which edge, what phase the run is in and what failed - for the validator
+and, for the first time, for a graph somebody drew.
+
+| n | state | evidence |
+| ---: | --- | --- |
+| 1 | **met** | `frontend/tests/runChoreography.spec.ts` (38) - pure across 1,000 calls; the 16 template ids spread over **11** distinct colours, measured against `builderValidatorTemplate.json` |
+| 2 | **met** | `e2e/visual/choreography.spec.ts` "one agent is one colour on the card, in the rail and on the token" - resolved `background-color`, medallion == dialogue avatar |
+| 3 | **met** | same file, "steps every other card back mid-run and lifts on the terminal frame" - idle 0.55, waiting 1.0, every card 1.0 after the terminal frame |
+| 4 | **met** | same file, "a token walks the edge and is gone inside its own bound" - monotone in x AND y over three samples, removed inside 4,100 ms. Recording: `e2e/capture-handoff.spec.ts`, `test-results/capture-handoff-*/video.webm` |
+| 5 | **met** | `grep -rn "Edge condition met" frontend/src` -> exit 1, nothing. The phrase is deliberately not written anywhere under `src/`, including in the comment that explains the refusal |
+| 6 | **met** | `e2e/published-run.spec.ts` (2) - `sequential-pipeline` published through the dialog and run through the console: the lane is absent before launch, paints from the plan frames, shows at least 3 chips, the current index never falls and does leave the first stage, and it stays visible for the whole run |
+| 7 | **met** | `e2e/visual/run-canvas.spec.ts` 3/3 after its one re-baseline commit (`7060af5`); `frontend/tests/stageLane.spec.ts` "the validator is unchanged" keeps the boat, the three named oars and the lap banner |
+| 8 | **met** | `runChoreography.spec.ts` - 1,200 chars reveals at 120 +/- 10 per second, driven through `advanceReveal` at exact ms boundaries; three at once dumps the first two whole |
+| 9 | **met** | same file - five chunks for one `call_id` concatenate to one entry; `runConsoleChoreography.spec.ts` proves the frame reaches it through the real composable |
+| 10 | **met** | `e2e/visual/choreography.spec.ts` "the control glows from the press, and the cards land staggered" - `animation-delay` 0s / -0.04s / -0.08s / -0.12s by `getComputedStyle` |
+| 11 | **met** | `runChoreography.spec.ts` "never exceeds twelve across a thirty-frame fan-out" and "is zero once the run is terminal"; `e2e` "no card animation runs on a canvas whose run is over" |
+| 12 | **met** | `e2e/visual/choreography.spec.ts` "keeps the recede, drops the movement"; `run-canvas.spec.ts`'s own reduced-motion leg still passes |
+| 13 | **met** | `e2e/capture-run.spec.ts` - **20 PNGs** written to `benchmarks/ours/11/`, `<state>-<theme>-<w>x<h>.png` over empty, one-node, largest, running and errored, times light/dark, times 1440x900/390x844, plus the webm above. Gitignored by the global `*.png` rule, as `benchmarks/README.md` intends |
+| 14 | **not this session's** | the blind reference comparison is the Integrator's judge round |
+| 15 | **met** | `frontend/tests/nodeChoreography.spec.ts` (16) - the message on the card, `data-testid="node-error-message"`, clipped at 120 chars with the whole of it in `title` and in the aria label; `e2e` proves the card neither glows nor recedes and takes a static red ring |
+
+Plus the two other plan-12 surfaces that live in this plan's files:
+
+| plan 12 | state | evidence |
+| --- | --- | --- |
+| D6 | **met** | `runConsoleChoreography.spec.ts` - `data-testid="rerun-from-here"` on the failed node of a TERMINAL run only, POSTs `resume_from {run_id, node_id}` through `studioApi.resumeRun`, follows the new run, and surfaces the server's refusal; a `replayed: true` node draws dimmed and says REPLAYED |
+| D7 | **met** | `data-testid="stream-reconnecting"` reads exactly `reconnecting - N steps kept`, N being the frames APPLIED; the existing recovery path is untouched and `e2e/studio.spec.ts`'s reload test still passes |
+
+#### Measured, 2026-09-04, in this worktree
+
+```text
+Python          2257 run - 0 failures - 6 skipped - 147.5 s   (baseline 2243)
+Frontend unit   1567 passed in 80 files                       (baseline 1468 in 74)
+vue-tsc -b --force   exit 0
+npm run build        1981 modules, 730 ms
+E2E             88 passed in 7.0 min, ALL files, both projects
+                (E2E_API_TARGET=http://127.0.0.1:8098, E2E_UI_PORT=5274,
+                 SYNTHETIC=1, SYNTHETIC_BRANCH_DELAY_SECONDS=5)
+```
+
+**This plan spent $0.00.** Every launch is against `SYNTHETIC=1`, which replaces
+the crew factories and nothing else.
+
+New specs: `runChoreography` 38, `nodeChoreography` 16, `stageLane` 13,
+`dialogueRail` 12, `runConsoleChoreography` 11, `handoffToken` 9;
+`tests/service/test_synthetic_choreography.py` 14; four E2E files
+(`visual/choreography` 9, `published-run` 2, `capture-run` 1, `capture-handoff` 1).
+
+#### The backend change this needed, and why it was allowed
+
+`SYNTHETIC=1` replaces only the crew factories, so three of the five C6 shapes
+already reached a published builder graph on the free path. **Two did not, and
+both were the same defect this repository has now recorded four times: a double
+that cannot produce the thing under test certifies nothing.**
+
+* `SyntheticValidatorRunner` emitted no `edge_taken` and no `llm` frame of any
+  kind, so the console's edge march and its whole dialogue surface were
+  unobservable on the only path a test, an E2E run or a local session can use.
+* `_SyntheticCrew` calls no model, so a published graph said nothing either.
+
+Both now emit, every field mirrored from its production emitter and named in
+`tests/service/test_synthetic_choreography.py`. **No paid path was touched.**
+The predecessor of a traversal is NAMED at each call site rather than inferred
+from whichever node finished last, because that rule reports
+`research_market -> research_sentiment` at the fan-out - an edge the graph does
+not draw, and the exact pair `events/adapter.py::_traversal_for` refuses by
+consulting `NodeRegistry.edges`.
+
+Consequence, recorded rather than smoothed over: **21 rubric-11 goldens changed**
+(`cea4cbd`). 520 insertions, **zero deletions**, every added line a
+`FrameKind.LLM` / `MODEL_CALL` frame on the author's own node id. The definition
+and the result body are byte-identical, which is what says this changed the
+narration and not the compile.
+
+#### Departures from the plan, each stated rather than smoothed over
+
+1. **`useRunChoreography` is a STORE frames are pushed into**, not
+   `useRunChoreography(run: ValidatorRun)`. Taking the run would mean exposing a
+   frame stream off `useValidatorRun` for one consumer to subscribe to - a
+   second path through the same frames with its own ordering and replay
+   semantics. There is exactly one place a frame is applied and that property is
+   worth more than the signature.
+2. **D4's precedence is inverted: `CREW_STAGES` wins over the frame stages**,
+   not the other way round. Criterion 7 is the reason. A topological plan cannot
+   know that the three research branches are one stage called Research with oars
+   called Market, Signal and Build; it would emit them as one anonymous layer,
+   which is true about the graph and a worse picture of the crew. In practice
+   the two readings never disagree - `_emit_plan` lives on the BUILDER runner,
+   so neither hand-written flow emits a plan at all - and the precedence is
+   written down for the day one does.
+3. **The dialogue rail is in the ACTIVITY column, not under the canvas.** It
+   shipped as a fifth row of `.graph-workspace` first, and the measurement is
+   why it is not one: opening on the first utterance took the Vue Flow container
+   from 626px to 462px, mid-run, on the exact canvas the gauntlet captures. A
+   surface whose job is narrating a run cannot pay for itself out of the run.
+4. **The landing settle is on Vue Flow's node WRAPPER, not on the card.** Two
+   reasons and either decides it: `.workflow-node.is-running` sets the
+   `animation` shorthand, so an equal-specificity landing rule on the card would
+   replace the whole list and cancel a running node's glow; and Vue Flow
+   positions a node by writing `transform` onto that wrapper, so the keyframe is
+   opacity-only rather than D6's translate.
+5. **A dialogue entry's `role` comes from the node's AGENT frames, or falls back
+   to its label.** The `utterance` frame carries neither role nor task - the
+   real serializer writes seven keys and none of them is one - and adding them
+   to the synthetic double would have taught the client to read a field
+   production never sends.
+6. **Criterion 13's `empty`, `one-node` and `largest` states are produced by
+   stubbing `GET /api/workflows/{id}/graph`**, and `capture-run.spec.ts` says so
+   at the top. They are facts about a GRAPH and this console draws whatever that
+   endpoint hands it. `running` and `errored` are facts about a RUN and are not
+   stubbed.
+
+#### Three things the visual gate could not survive unchanged
+
+The re-baseline commit (`7060af5`) carries three edits to
+`e2e/visual/run-canvas.spec.ts` that are repairs rather than loosenings, and each
+is a measurement worth keeping:
+
+1. The handoff tokens are **masked**, as the elapsed clock has been since that
+   file was written and for the same reason. A token's centre is rewritten every
+   frame, so two consecutive captures never agree, `toHaveScreenshot` retried
+   until its 15 s budget was gone, and the animation audit twenty lines below
+   then ran against a fan-out that had finished.
+2. The audit runs **before** the screenshot. `toHaveScreenshot` cancels infinite
+   CSS animations to capture and what it restores is not dependable: measured,
+   the card's glow came back and the state dot's `dot-pulse` did not, so the
+   audit read an empty list on an element whose rule was intact - the exact
+   false negative that audit exists to avoid producing.
+3. It waits for `.workflow-node.is-running` rather than for `Market Analyst` by
+   name. The synthetic runner walks the three branches in sequence at five
+   seconds each, so naming one bounded every assertion to that branch's window.
+
+#### Contract needs
+
+**None.** Every consumed shape is in C6 as landed. The one assumption this plan
+raised for 10 - that the `stage` frames are emitted one per layer, all before
+the first `NODE_START` - is **confirmed**: `builder_runner._emit_plan` emits the
+whole plan at kickoff, so the lane paints before anything has happened.
+
+#### For the Integrator
+
+* **New `data-testid`s, for the plan-12 and plan-13 agents:**
+  `node-error-message`, `rerun-from-here`, `node-replayed`,
+  `stream-reconnecting`, `node-character`, `handoff-token` (which also carries
+  `data-edge`), `dialogue-list`, `dialogue-text`, `dialogue-avatar`,
+  `dialogue-fold`, `dialogue-trimmed`, `dialogue-toggle`, `crew-medallions`,
+  `launch-button`.
+* **The resume client call is `studioApi.resumeRun(sessionId, sourceRunId,
+  nodeId, workflowId, inputs, gates)`**, which POSTs
+  `resume_from: {run_id, node_id}` to `POST /api/sessions/{id}/runs`. It refuses
+  outright in mock mode. `StudioApiLike` gained the method, so every double must
+  too - `tests/helpers.ts::FakeStudioApi` has it with a `resumeError` hook,
+  because the interesting half of that control is the refusal.
+* **`StudioNodeData` gained nine fields** - `character`, `receded`,
+  `errorMessage`, `replayed`, `receiving`, `index`, `landing`, `nodeId` and
+  `rerunnable`. Four spec files build that object by hand and were updated.
+* **Files touched outside S6's list:** `frontend/src/components/ChatRail.vue`
+  (one slot named `above` and a `.rail-slot` rule, so the dialogue rail has a
+  home in the activity column), `frontend/src/components/StatusPanel.vue` (an
+  `armed` prop and `data-testid="launch-button"` on the Launch control),
+  `frontend/src/data/serverLimits.ts` (`MAX_NODE_CARD_ERROR_CHARS`, a client
+  bound with the Python one named beside it), `frontend/tests/helpers.ts`,
+  `src/brief_crew/service/runner.py` and `service/builder_runner.py` (the
+  SYNTHETIC paths only), and `tests/builder/fixtures/rubric11/*` (regenerated).
+* **`MAX_FANOUT_WIDTH` is respected without being read:** the lane shows at most
+  four medallions and at most four tokens can be in flight, because that is what
+  the topology can emit at once.
+
+#### Follow-ups - pre-existing, outside this plan's surfaces, not fixed
+
+1. **A published `sequential-pipeline` descriptor names an edge whose endpoints
+   are not in its own node list.** Vue Flow logs
+   `[Vue Flow]: Edge source or target is missing - Edge: e6, Source: search,
+   Target: research` repeatedly while that graph is on the run canvas. The
+   descriptor comes from `builder/descriptor.py`, so this is plan 09/10's
+   surface rather than this one's. It is a console WARNING and not an error, so
+   it does not fail the E2E's zero-console-errors gate - which is arguably the
+   problem.
+2. **`benchmarks/perf/canvas.json` is rewritten by `e2e/builder-perf.spec.ts` on
+   every full E2E run**, so a full suite always leaves the tree dirty with a new
+   `measuredAt`. It was reverted rather than committed here. Either ignore the
+   file or have that spec write outside the tree.

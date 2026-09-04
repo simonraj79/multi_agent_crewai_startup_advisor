@@ -216,6 +216,26 @@
     ],
     [
       "team",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "team",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "team",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "team",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "team",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],

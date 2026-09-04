@@ -29,6 +29,18 @@ const props = withDefaults(defineProps<{
   canLaunch: boolean
   isActive: boolean
   primaryLabel: string
+  /**
+   * The run has been asked for and its first frame has not arrived (plan 11
+   * D6.1).
+   *
+   * The gap it covers is real and was previously blank: a POST to Singapore, a
+   * queue slot and a socket handshake, during which the button read `Launching…`
+   * and nothing else on the page acknowledged the press. The glow is the
+   * reference's own `gradientShift` + `glowPulse` pair, because there is one
+   * motion vocabulary here and a second glow meaning the same thing is how a
+   * design stops reading as one system.
+   */
+  armed?: boolean
   activeView: 'graph' | 'activity'
   gatesMode: GatesMode
   error: string
@@ -249,7 +261,14 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <div class="control-actions">
-      <button class="button button-primary" type="button" :disabled="!canLaunch" @click="emit('launch')">
+      <button
+        class="button button-primary"
+        :class="{ 'is-armed': armed }"
+        data-testid="launch-button"
+        type="button"
+        :disabled="!canLaunch"
+        @click="emit('launch')"
+      >
         <RotateCcw v-if="primaryLabel === 'Relaunch'" :size="16" aria-hidden="true" />
         <Play v-else :size="16" aria-hidden="true" />
         {{ primaryLabel }}

@@ -347,6 +347,26 @@
     ],
     [
       "left",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "left",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "left",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "left",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "left",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],
@@ -429,6 +449,26 @@
       "right",
       "UIEventType.NODE_START",
       "FrameKind.NODE_STATE"
+    ],
+    [
+      "right",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "right",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "right",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "right",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
     ],
     [
       "right",

@@ -104,6 +104,26 @@
     ],
     [
       "scope_crew",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scope_crew",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scope_crew",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scope_crew",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.LLM"
+    ],
+    [
+      "scope_crew",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],

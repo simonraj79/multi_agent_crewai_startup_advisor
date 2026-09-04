@@ -6,6 +6,7 @@ import { VueFlow } from '@vue-flow/core'
 import { Activity, ChevronLeft, ChevronRight, CircleDot, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
 import ChatRail from '../components/ChatRail.vue'
 import CrewProgress from '../components/CrewProgress.vue'
+import DialogueRail from '../components/DialogueRail.vue'
 import GateCard from '../components/GateCard.vue'
 import ReportPanel from '../components/ReportPanel.vue'
 import RunHistory from '../components/RunHistory.vue'
@@ -13,6 +14,7 @@ import StatusPanel from '../components/StatusPanel.vue'
 import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
 import { useValidatorRun } from '../composables/useValidatorRun'
+import { characterIndex } from '../composables/useRunChoreography'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
 import type { SignedInUser } from '../composables/useAuthGate'
 
@@ -113,10 +115,16 @@ const {
   isActive,
   canLaunch,
   primaryLabel,
+  dialogue,
+  stages,
+  framesApplied,
+  armed,
+  endHandoff,
   initialize,
   launch,
   submitGate,
   cancel,
+  resumeFrom,
   downloadLogs,
   dismissError,
 } = useValidatorRun(undefined, {
@@ -166,6 +174,43 @@ watch(
     if (key === announcedReport) return
     announcedReport = key
     reportOpen.value = true
+  },
+)
+
+/**
+ * The reconnecting strip. Plan 12 D7.
+ *
+ * The header badge already turns amber, and it is 12px of text in a corner
+ * nobody is looking at while a run is in flight - so a socket that dropped read
+ * as a run that had gone quiet. This says the two things somebody in that
+ * moment actually needs: that the connection is being re-made, and that
+ * nothing already on screen has been lost.
+ *
+ * N is the frame count APPLIED, which is the honest number. `lastSequence` is
+ * the highest sequence the server issued and would over-report on a run that
+ * dropped frames; the count of frames this console has actually put on the page
+ * is what "kept" means.
+ */
+const reconnecting = computed(() => connection.value === 'reconnecting')
+const reconnectingLabel = computed(
+  () => `reconnecting — ${framesApplied.value} steps kept`,
+)
+
+/**
+ * The dialogue rail opens itself the first time an agent says anything, the way
+ * `ReportPanel` opens itself for the first body. Keyed on the run id so a
+ * relaunch re-arms it, and only ONCE per run - an operator who collapsed it has
+ * said what they want, and a rail that reopened on every utterance would be
+ * fighting them for the rest of the run.
+ */
+const dialogueCollapsed = ref(true)
+let dialogueOpenedFor = ''
+watch(
+  () => [runId.value, dialogue.value.length] as const,
+  ([id, count]) => {
+    if (!count || dialogueOpenedFor === id) return
+    dialogueOpenedFor = id
+    dialogueCollapsed.value = false
   },
 )
 
@@ -292,7 +337,16 @@ function backToValidator(): void {
     </header>
 
     <main class="studio-main">
-      <ChatRail :entries="chatEntries" :collapsed="chatCollapsed" @toggle="chatCollapsed = !chatCollapsed" />
+      <ChatRail :entries="chatEntries" :collapsed="chatCollapsed" @toggle="chatCollapsed = !chatCollapsed">
+        <template #above>
+          <DialogueRail
+            :entries="dialogue"
+            :collapsed="dialogueCollapsed"
+            :character-of="characterIndex"
+            @toggle="dialogueCollapsed = !dialogueCollapsed"
+          />
+        </template>
+      </ChatRail>
 
       <section id="workflow-canvas" class="graph-workspace" aria-labelledby="graph-title" tabindex="-1">
         <div class="canvas-heading">
@@ -315,11 +369,25 @@ function backToValidator(): void {
           </div>
         </div>
 
+        <!--
+          Said where the run is, not in the corner. The header badge is 12px in
+          a place nobody looks at while a graph is moving, so a dropped socket
+          read as a run that had gone quiet.
+        -->
+        <p
+          v-if="reconnecting"
+          class="stream-reconnecting"
+          data-testid="stream-reconnecting"
+          role="status"
+          aria-live="polite"
+        >{{ reconnectingLabel }}</p>
+
         <CrewProgress
           :node-states="nodeStates"
           :node-visits="nodeVisits"
           :descriptor="descriptor"
           :active="isActive"
+          :run-stages="stages"
         />
 
         <VueFlow
@@ -339,10 +407,10 @@ function backToValidator(): void {
           :aria-label="`${canvasTitle} workflow graph`"
         >
           <template #node-workflow="nodeProps">
-            <WorkflowNode v-bind="nodeProps" />
+            <WorkflowNode v-bind="nodeProps" @rerun="resumeFrom" />
           </template>
           <template #edge-workflow="edgeProps">
-            <WorkflowEdge v-bind="edgeProps" />
+            <WorkflowEdge v-bind="edgeProps" @handoff-done="endHandoff" />
           </template>
           <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />
           <!--
@@ -433,6 +501,7 @@ function backToValidator(): void {
             :last-sequence="lastSequence"
             :dropped-frames="droppedFrames"
             :can-launch="canLaunch"
+            :armed="armed"
             :is-active="isActive"
             :primary-label="primaryLabel"
             :active-view="activeView"

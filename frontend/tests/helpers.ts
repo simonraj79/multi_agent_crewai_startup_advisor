@@ -161,6 +161,30 @@ export class FakeStudioApi implements StudioApiLike {
     this.cancelled.push(runIdValue)
   }
 
+  /**
+   * The `resume_from` launches, and what the server said if it refused.
+   *
+   * Present for the same reason `listRuns` is: `StudioApiLike` requires it and
+   * the compiler refused this class until it did. `resumeError` exists because
+   * the interesting half of this control is the REFUSAL - somebody else's run
+   * (404), a run still in flight (422), a saved state with no output for an
+   * upstream node - and a double that can only succeed cannot test any of it.
+   */
+  resumeCalls: Array<{ sourceRunId: string; nodeId: string; inputs: Record<string, unknown> }> = []
+  resumeError: Error | null = null
+
+  async resumeRun(
+    _sessionId: string,
+    sourceRunId: string,
+    nodeId: string,
+    _workflowId: string,
+    inputs: Record<string, unknown>,
+  ): Promise<StartRunResponse> {
+    this.resumeCalls.push({ sourceRunId, nodeId, inputs })
+    if (this.resumeError) throw this.resumeError
+    return { run_id: `${this.runIdToIssue}-resumed`, status: 'queued', graph_version: this.graph.version }
+  }
+
   async downloadLogs(runIdValue: string, format: LogFormat = 'ndjson'): Promise<void> {
     this.downloaded.push({ runId: runIdValue, format })
   }

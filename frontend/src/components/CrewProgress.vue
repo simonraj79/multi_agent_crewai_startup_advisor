@@ -24,8 +24,11 @@ import {
   activeStageIndex,
   assertStageCoverage,
   stageProgress,
+  stagesFromFrames,
+  type CrewStage,
   type StageProgress,
 } from '../data/crewStages'
+import { characterIndex, type RunStage } from '../composables/useRunChoreography'
 
 const props = defineProps<{
   nodeStates: Record<string, NodeRunState>
@@ -38,6 +41,14 @@ const props = defineProps<{
   descriptor: GraphDescriptor
   /** Suppresses the crew on an idle console - there is no voyage to draw yet. */
   active: boolean
+  /**
+   * The server's own plan, one entry per topological layer (C6 `stage`).
+   *
+   * Present for a published builder graph and absent for both hand-written
+   * flows, which is exactly the split this prop exists for - see `stages`
+   * below for why the precedence runs the way it does.
+   */
+  runStages?: RunStage[]
 }>()
 
 /**
@@ -55,11 +66,42 @@ const props = defineProps<{
  */
 const staged = computed(() => assertStageCoverage(props.descriptor).length === 0)
 
+/**
+ * Which stage list this strip is rowing, and why the validator wins.
+ *
+ * Plan 11 D4 says "from `stages` when non-empty and from `CREW_STAGES`
+ * otherwise". The order here is the other way round, and criterion 7 is the
+ * reason: the validator must keep the boat, the three NAMED oars and the lap
+ * banner exactly as they are, and `CREW_STAGES` is the only thing that knows
+ * the three research branches are one stage called Research with oars called
+ * Market, Signal and Build. A topological plan cannot know that - it would
+ * emit them as one layer with three anonymous members, which is a true
+ * statement about the graph and a worse picture of the crew.
+ *
+ * In practice the two readings never disagree. `_emit_plan` lives on the
+ * BUILDER runner, so neither hand-written flow emits a `stage` frame at all,
+ * and `assertStageCoverage` passes for exactly one graph. The precedence is
+ * written down because the day a hand-written flow starts emitting a plan is
+ * the day the difference matters, and by then nobody will remember.
+ */
+const frameStages = computed<CrewStage[]>(() => stagesFromFrames(props.runStages ?? []))
+const usingPlan = computed(() => !staged.value && frameStages.value.length > 0)
+const stages = computed<readonly CrewStage[]>(() =>
+  usingPlan.value ? frameStages.value : CREW_STAGES,
+)
+
 const progress = computed<StageProgress[]>(() =>
-  stageProgress(props.nodeStates, CREW_STAGES, props.nodeVisits ?? {}),
+  stageProgress(props.nodeStates, stages.value, props.nodeVisits ?? {}),
 )
 const activeIndex = computed(() => activeStageIndex(progress.value))
-const visible = computed(() => staged.value && (props.active || activeIndex.value !== -1))
+/**
+ * A published graph gets a strip because the SERVER told us its shape; an
+ * unknown graph with no plan still gets none, which is the honest answer - a
+ * strip that narrated a sequence it had guessed would be worse than no strip.
+ */
+const visible = computed(
+  () => (staged.value || usingPlan.value) && (props.active || activeIndex.value !== -1),
+)
 
 const completedCount = computed(() => progress.value.filter((p) => p.state === 'completed').length)
 
@@ -111,6 +153,31 @@ const oars = computed(() => {
     pulling: rowing.value,
     state: stage.state === 'idle' ? ('idle' as NodeRunState) : (stage.state as NodeRunState),
   }))
+})
+
+/**
+ * The crew, for a graph that is not the validator: one character medallion per
+ * node running in the active stage, in place of the hull.
+ *
+ * The boat is the validator's, and it is the validator's for a reason worth
+ * keeping - three oars ARE three research branches. A graph somebody drew has
+ * no such fact, and drawing three rowers on a two-node layer would claim a
+ * fan-out that does not exist. The medallions are the same marks as the cards'
+ * and the tokens', so the strip says WHICH node is working rather than how
+ * many.
+ */
+const laneCrew = computed(() => {
+  const stage = current.value
+  if (!stage) return []
+  return stage.branches
+    .filter((branch) => branch.state === 'running' || branch.state === 'waiting')
+    .slice(0, 4)
+    .map((branch) => ({
+      id: branch.id,
+      label: branch.label,
+      character: characterIndex(branch.id),
+      state: branch.state,
+    }))
 })
 
 /** Named oars, for the aria label and the caption row under the boat. */
@@ -292,8 +359,31 @@ const ariaSummary = computed(() => {
         </li>
       </ol>
 
+      <!--
+        The crew, for a graph somebody drew: one medallion per node running in
+        the active stage. Same marks as the cards and the tokens, so the strip
+        says WHICH node is working rather than how many.
+      -->
+      <div
+        v-if="usingPlan"
+        class="crew-medallions"
+        data-testid="crew-medallions"
+        :style="{ left: `${boatPercent}%` }"
+        aria-hidden="true"
+      >
+        <span
+          v-for="member in laneCrew"
+          :key="member.id"
+          class="crew-medallion"
+          :class="[`is-${member.state}`]"
+          :style="{ '--character-color': `var(--character-${member.character})` }"
+          :title="member.label"
+          :data-node="member.id"
+        >{{ member.label.slice(0, 2).toUpperCase() }}</span>
+      </div>
+
       <!-- The crew. Three rowers, one per research branch. -->
-      <div class="crew-boat" :style="{ left: `${boatPercent}%` }" aria-hidden="true">
+      <div v-else class="crew-boat" :style="{ left: `${boatPercent}%` }" aria-hidden="true">
         <svg viewBox="0 0 96 48" class="crew-boat-svg">
           <!--
             Paint order is hull, then oars, then rowers, and it is load-bearing.
@@ -343,7 +433,7 @@ const ariaSummary = computed(() => {
           else they are one crew pulling one task and naming them would be a
           lie about the topology.
         -->
-        <div v-if="namedOars.length" class="crew-oar-names" data-testid="crew-oar-names">
+        <div v-if="!usingPlan && namedOars.length" class="crew-oar-names" data-testid="crew-oar-names">
           <span
             v-for="oar in namedOars"
             :key="`n${oar.id}`"
@@ -405,6 +495,33 @@ const ariaSummary = computed(() => {
  * than adding to it. 46px is the boat (30) plus the caption line (16).
  */
 .crew-track { position: relative; padding-top: 46px; }
+
+/* The builder graph's crew: the same lane, the same position maths, a
+   different hull. The transition matches `.crew-boat`'s so the two read as one
+   widget in two costumes rather than as two widgets. */
+.crew-medallions {
+  position: absolute;
+  top: 34px;
+  display: flex;
+  gap: 4px;
+  transform: translateX(-50%);
+  transition: left var(--motion-medium) var(--ease-out);
+}
+
+.crew-medallion {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: var(--bg-node);
+  font: 800 9px/1 var(--font-mono);
+  background: var(--character-color, var(--accent-cyan));
+  border: 2px solid var(--bg-app);
+  border-radius: var(--r-full);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+}
+
+.crew-medallion.is-waiting { box-shadow: 0 0 0 2px var(--warn-border), 0 3px 10px rgba(0, 0, 0, 0.4); }
 
 .crew-river {
   position: absolute;

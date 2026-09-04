@@ -4,6 +4,7 @@ import { MOCK_GRAPH } from '../data/mockGraph'
 import { scopedKey } from '../data/identityStorage'
 import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
+import { LANDING_STAGGER_MS, useRunChoreography, type Handoff } from './useRunChoreography'
 import type {
   RunResult,
   CallChip,
@@ -67,6 +68,56 @@ export interface StudioNodeData extends Record<string, unknown> {
    * changes every second refutes "it is stuck" in a way no spinner can.
    */
   activeCall: ActiveCall | null
+  /**
+   * Which of the twelve character colours this node wears (plan 11 D1).
+   *
+   * A pure function of the node id, computed once here rather than in the card,
+   * so the medallion, the dialogue avatar and the handoff token are reading one
+   * value rather than three calls that happen to agree.
+   */
+  character: number
+  /**
+   * True while this card should step back for whoever is speaking (D2).
+   *
+   * Computed in the composable and not in the card, because the answer depends
+   * on the RUN's status as well as this node's state - a completed card recedes
+   * mid-run and does not recede afterwards - and a card has no way to know
+   * which of those it is looking at.
+   */
+  receded: boolean
+  /** The sentence the last `node_error` frame carried for this node, or ''. */
+  errorMessage: string
+  /** True when this node's output was REPLAYED rather than run (10 D5). */
+  replayed: boolean
+  /**
+   * True for the ~200ms after a handoff token arrived here, which is what fires
+   * the medallion's one-shot receipt pulse.
+   *
+   * The ARRIVAL and not the node's state, deliberately. A state is a proxy for
+   * an arrival and proxies drift - the crew strip's row-back announcement keyed
+   * on the boat's position and announced a revision on a run that never revised.
+   */
+  receiving: boolean
+  /**
+   * This node's position in the descriptor, for the landing stagger's negative
+   * delay. Index and not the delay itself, so the 40ms step lives in one place.
+   */
+  index: number
+  /** True from the run's first frame, for the one-shot landing settle (D6.2). */
+  landing: boolean
+  /** This node's own id. On the DATA and not as a prop, deliberately - see below. */
+  nodeId: string
+  /**
+   * Whether this card may offer "Re-run from here" (plan 12 D6).
+   *
+   * A RUN-level fact repeated on every node, because the alternative is a
+   * second prop on `WorkflowNode` and `id` is already reaching that component
+   * as a FALLTHROUGH attribute from `v-bind="nodeProps"` - declaring props
+   * would take it off the `<article>` and move every selector that reads it.
+   * The card stays a one-prop component; `graphNodes` is a computed rebuild
+   * either way.
+   */
+  rerunnable: boolean
 }
 
 export interface ActiveCall {
@@ -82,6 +133,10 @@ export interface ActiveCall {
 export interface StudioEdgeData extends Record<string, unknown> {
   label?: string
   active: boolean
+  /** The token walking this edge right now, or undefined (plan 11 D3). */
+  handoff?: Handoff
+  /** The SOURCE node's character index, so the token wears the sender's colour. */
+  character?: number
 }
 
 const initialUsage = (): UsageMetrics => ({
@@ -279,6 +334,8 @@ export function useValidatorRun(
   const pendingGate = ref<PendingGate | null>(null)
   const gateSubmitting = ref(false)
   const launching = ref(false)
+  /** A `resume_from` is in flight. Guards the Re-run control against a double press. */
+  const resuming = ref(false)
   const downloadStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
   const downloadMessage = ref('')
   const lastError = ref('')
@@ -363,6 +420,31 @@ export function useValidatorRun(
     if (!nodeId) return
     nodeActiveCall[nodeId] = call
   }
+
+  /**
+   * The run's motion (plan 11), fed from `applyFrame` and nowhere else.
+   *
+   * Built HERE rather than in the view for the reason `nodeVisits` is counted
+   * here: it reads frames, and there is exactly one place a frame is applied.
+   * A view that subscribed to its own frame stream would have a second replay
+   * path with its own ordering, which is the shape of defect this file's
+   * `ingestFrame` gap-fill exists to prevent.
+   *
+   * `edgeIdFor` hands it the DESCRIPTOR's own edge id, so a handoff token can
+   * find the `<path>` Vue Flow rendered. Falling back to `from-to` matches
+   * `applyEdge`'s own fallback, which keeps the two in step for a graph whose
+   * frames name a pair the descriptor does not draw.
+   */
+  const choreography = useRunChoreography({
+    nodeStates: () => nodeStates,
+    status,
+    activeEdgeIds,
+    labelFor: (nodeId) =>
+      descriptor.value.nodes.find((node) => node.id === nodeId)?.label ?? nodeId,
+    edgeIdFor: (from, to) =>
+      descriptor.value.edges.find((edge) => edge.source === from && edge.target === to)?.id
+      ?? `${from}-${to}`,
+  })
   const seenFrames = new Set<string>()
   const pendingCallEntries = new Map<string, string[]>()
   /** Active edge id -> the node it feeds, so a finished branch can end it. */
@@ -390,10 +472,20 @@ export function useValidatorRun(
   resetNodes()
 
   const graphNodes = computed<Node<StudioNodeData>[]>(() =>
-    descriptor.value.nodes.map((node) => ({
+    descriptor.value.nodes.map((node, index) => ({
       id: node.id,
       type: 'workflow',
       position: node.position,
+      /*
+       * The landing settle, on Vue Flow's OWN node wrapper rather than on the
+       * card. Two reasons and either decides it: `.workflow-node.is-running`
+       * sets the `animation` shorthand, so a landing class on the card at equal
+       * specificity would replace the whole list and cancel a running node's
+       * glow; and Vue Flow positions a node by writing `transform` onto this
+       * wrapper, so the keyframe is opacity-only.
+       */
+      class: choreography.landed.value ? 'is-landing' : undefined,
+      style: { animationDelay: `-${index * LANDING_STAGGER_MS}ms` },
       draggable: false,
       selectable: false,
       connectable: false,
@@ -409,6 +501,19 @@ export function useValidatorRun(
         frameCount: nodeFrames[node.id] ?? 0,
         visits: nodeVisits[node.id] ?? 0,
         activeCall: nodeActiveCall[node.id] ?? null,
+        character: choreography.characterIndex(node.id),
+        receded: choreography.isReceded(node.id),
+        errorMessage: choreography.nodeErrors.value[node.id] ?? '',
+        replayed: choreography.replayed.value.has(node.id),
+        receiving: choreography.receiving.value.has(node.id),
+        index,
+        landing: choreography.landed.value,
+        nodeId: node.id,
+        rerunnable:
+          TERMINAL_STATUSES.includes(status.value)
+          && Boolean(runId.value)
+          && transportMode.value === 'live'
+          && (nodeStates[node.id] ?? 'idle') === 'error',
       },
     })),
   )
@@ -419,7 +524,12 @@ export function useValidatorRun(
       source: edge.source,
       target: edge.target,
       type: 'workflow',
-      data: { label: edge.label ?? undefined, active: activeEdgeIds.value.has(edge.id) },
+      data: {
+        label: edge.label ?? undefined,
+        active: activeEdgeIds.value.has(edge.id),
+        handoff: choreography.handoffs.value.find((entry) => entry.edgeId === edge.id),
+        character: choreography.characterIndex(edge.source),
+      },
     })),
   )
 
@@ -458,6 +568,10 @@ export function useValidatorRun(
     clearStoredRun(identity())
     // Nothing further will stream, so no traversal should still be marching.
     clearEdgeAnimations()
+    // The terminal frame settles the console: the recede lifts (`isReceded`
+    // reads the status), and a half-revealed utterance is shown whole rather
+    // than left mid-sentence under a COMPLETED badge (plan 11 D7).
+    choreography.revealAll()
     // The frame's copy of the report is clipped at 4096 characters; the
     // snapshot's is not. Collect the full one exactly once per run.
     if (!wasTerminal && next === 'completed') void fetchFullReport()
@@ -505,6 +619,10 @@ export function useValidatorRun(
     const previousStatus = status.value
     launching.value = true
     lastError.value = ''
+    // D6.1: the control glows from the press until the run's first frame. The
+    // gap it covers is a real one - a POST to Singapore, a queue slot and a
+    // socket handshake - and it was previously three seconds of nothing.
+    choreography.arm()
     try {
       const response = await api.startRun(
         sessionId,
@@ -697,6 +815,10 @@ export function useValidatorRun(
       lastError.value = frame.message
     }
     if (!['token', 'metrics'].includes(frame.kind)) appendChat(frame)
+    // Last, and after every state write above: the choreography's recede and
+    // its animation bound both read `nodeStates`, so ingesting first would
+    // compute them against the run as it was one frame ago.
+    choreography.ingest(frame)
   }
 
   /**
@@ -1018,6 +1140,22 @@ export function useValidatorRun(
   function appendChat(frame: FrameData): void {
     const stage = String(frame.details.stage ?? '')
     if ((frame.kind === 'llm' || frame.kind === 'tool') && stage === 'chunk') return
+    /*
+     * Three C6 shapes the TRACE does not carry, because another surface owns
+     * each and carrying them twice is how one copy goes stale.
+     *
+     * `utterance` is the dialogue rail's whole subject (D5) - it is what an
+     * agent SAID, rendered with an avatar and a progressive reveal, and a
+     * verbatim copy of the same 4,096 characters in the trace beside it is
+     * noise in the surface whose job is the mechanics. `plan` is the stage
+     * lane's (D4): it is a statement about the graph, made seven times before
+     * anything happens, and in the trace it reads as seven system messages
+     * before the run starts. The trace keeps everything else - the kicker, the
+     * tool chips, the warnings, the errors - which is the half of the run the
+     * rail was always good at.
+     */
+    if (frame.kind === 'llm' && stage === 'utterance') return
+    if (frame.kind === 'run_state' && stage === 'plan') return
     if ((frame.kind === 'llm' || frame.kind === 'tool') && stage !== 'before' && completeCallEntry(frame)) return
 
     const call = toCallChip(frame)
@@ -1119,6 +1257,61 @@ export function useValidatorRun(
     }
   }
 
+  /**
+   * Start a new run that replays this one up to `nodeId` and runs from there.
+   *
+   * Plan 12 D6. Offered only on the node that FAILED, and only on a run that
+   * has reached a terminal state - both are the server's own preconditions
+   * (`derived_plan` answers 422 for a run still being written, because a state
+   * still in flight is not a state to replay), and asking first is the
+   * difference between a control that is honest about what it can do and one
+   * that produces a 422 when pressed.
+   *
+   * The server's refusals are SURFACED rather than swallowed. There are four,
+   * and each is a sentence somebody can act on: somebody else's run answers
+   * 404 (`require_own_run` refuses that way because a 403 confirms the run
+   * exists), a run still in flight answers 422, a workflow that is not a
+   * compiled graph answers 422, and a saved state missing an upstream node's
+   * output fails with `replay-missing-output`. That last one is the reason
+   * this button cannot simply be assumed to work: `flow_states` is written per
+   * node, and a run that died before a node it needs has nothing to replay.
+   */
+  async function resumeFrom(nodeId: string): Promise<void> {
+    if (!nodeId || !runId.value || isActive.value || resuming.value) return
+    resuming.value = true
+    lastError.value = ''
+    const source = runId.value
+    try {
+      const response = await api.resumeRun(
+        sessionId,
+        source,
+        nodeId,
+        workflowId.value,
+        { [inputField.value]: idea.value.trim() },
+        gatesMode.value,
+      )
+      resetRun()
+      runId.value = response.run_id
+      setStatus(response.status)
+      persistRun(
+        {
+          version: 1,
+          runId: response.run_id,
+          sessionId,
+          workflowId: workflowId.value,
+          inputField: inputField.value,
+        },
+        identity(),
+      )
+      connectStream()
+    } catch (error) {
+      lastError.value =
+        error instanceof Error ? error.message : 'The run could not be resumed from that node.'
+    } finally {
+      resuming.value = false
+    }
+  }
+
   async function cancel(): Promise<void> {
     if (!runId.value || !isActive.value || status.value === 'stopping') return
     setStatus('stopping')
@@ -1160,6 +1353,7 @@ export function useValidatorRun(
     seenFrames.clear()
     pendingCallEntries.clear()
     clearEdgeAnimations()
+    choreography.reset()
     resetNodes()
     Object.assign(usage, initialUsage())
     status.value = 'idle'
@@ -1214,6 +1408,17 @@ export function useValidatorRun(
     nodeVisits,
     nodeActiveCall,
     nodeUsage,
+    resuming,
+    // Plan 11's surfaces, re-exported rather than built in the view: the view
+    // renders them and the composable is the only thing that has seen a frame.
+    dialogue: choreography.dialogue,
+    handoffs: choreography.handoffs,
+    stages: choreography.stages,
+    liveAnimationCount: choreography.liveAnimationCount,
+    framesApplied: choreography.framesApplied,
+    armed: choreography.armed,
+    endHandoff: choreography.endHandoff,
+    revealAll: choreography.revealAll,
     graphNodes,
     graphEdges,
     quarantinedFrames,
@@ -1224,6 +1429,7 @@ export function useValidatorRun(
     launch,
     submitGate,
     cancel,
+    resumeFrom,
     downloadLogs,
     dismissError,
   }

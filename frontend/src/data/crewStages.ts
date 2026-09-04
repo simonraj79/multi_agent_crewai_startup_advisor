@@ -284,3 +284,57 @@ export function activeStageIndex(progress: StageProgress[]): number {
   if (lastDone === -1) return -1
   return Math.min(lastDone + 1, progress.length - 1)
 }
+
+/**
+ * The server's own plan, as stages this strip can row.
+ *
+ * `CREW_STAGES` above describes the validator specifically, and
+ * `assertStageCoverage` is what stops it narrating a graph it does not know -
+ * correctly, because there is no sequence there it understands. The cost was
+ * that a published builder graph got NO strip at all: `CrewProgress` hides
+ * itself when coverage fails, so the one surface answering "how far along is
+ * this" was absent from every graph anybody drew.
+ *
+ * The server already knows the answer. `builder_runner._emit_plan` emits one
+ * C6 `stage` frame per topological layer, all at kickoff, so the lane can be
+ * painted before the first node runs rather than discovered a node at a time.
+ * This turns those frames into the shape the strip already renders.
+ *
+ * THREE JUDGEMENTS, each of which the frame does not make for us:
+ *
+ * - Every node in a layer is a CORE node. A layer is by construction the set
+ *   of nodes that can run at once, so the stage is done when all of them are,
+ *   and there is no equivalent of the validator's revise nodes - a builder
+ *   graph's loop closes through a router, which is a node in a layer like any
+ *   other.
+ * - A layer with more than one node is PARALLEL, which is what gives it per-
+ *   branch pips. That is the same judgement `CREW_STAGES` makes by hand about
+ *   the three research branches, made here from the topology instead.
+ * - The label the frame carries is every node's label joined with commas,
+ *   which is right for a log line and far too long for a chip with about eight
+ *   characters of room. The chip takes the first; the rest become the branch
+ *   names, so nothing is lost and the pips are named rather than numbered.
+ */
+export function stagesFromFrames(
+  frames: readonly { index: number; label: string; nodeIds: string[]; of?: number }[],
+): CrewStage[] {
+  return [...frames]
+    .sort((left, right) => left.index - right.index)
+    .filter((frame) => frame.nodeIds.length > 0)
+    .map((frame) => {
+      const parts = frame.label
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+      const labels = parts.length === frame.nodeIds.length ? parts : frame.nodeIds
+      return {
+        id: `stage-${frame.index}`,
+        label: labels[0] ?? `Stage ${frame.index}`,
+        nodeIds: [...frame.nodeIds],
+        coreIds: [...frame.nodeIds],
+        kind: 'work' as StageKind,
+        parallel: frame.nodeIds.length > 1,
+        branchLabels: frame.nodeIds.length > 1 ? labels : undefined,
+      }
+    })
+}

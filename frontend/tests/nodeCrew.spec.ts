@@ -26,6 +26,15 @@ function nodeData(overrides: Partial<StudioNodeData> = {}): StudioNodeData {
     frameCount: 0,
     visits: 0,
     activeCall: null,
+    character: 1,
+    receded: false,
+    errorMessage: '',
+    replayed: false,
+    receiving: false,
+    index: 0,
+    landing: false,
+    nodeId: 'node',
+    rerunnable: false,
     ...overrides,
   }
 }

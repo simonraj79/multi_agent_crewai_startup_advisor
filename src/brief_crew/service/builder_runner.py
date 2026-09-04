@@ -445,7 +445,7 @@ class _SyntheticCrew:
         self._tier = tier
 
     def kickoff(self, inputs: Mapping[str, Any] | None = None) -> str:
-        return json.dumps(
+        payload = json.dumps(
             {
                 "node_id": self._node_id,
                 "produced_by": self._produced_by,
@@ -459,6 +459,61 @@ class _SyntheticCrew:
                 },
             },
             sort_keys=True,
+        )
+        self._speak(payload)
+        return payload
+
+    def _speak(self, text: str) -> None:
+        """The chunk frames and the `utterance` a real completion would raise.
+
+        Without this a published graph ran on the free path and said NOTHING:
+        `LLMStreamChunkEvent` and `LLMCallCompletedEvent` are raised by CrewAI's
+        own LLM, and a synthetic crew never builds one - so the dialogue rail,
+        which exists to show what an agent said, was blank for every E2E run,
+        every local `SYNTHETIC=1` session and every capture. That is the
+        divergence CLAUDE.md's closed items 20 and 33 both record: a double
+        that cannot produce the thing under test certifies nothing.
+
+        Shapes copied from `events/serializer.py` (`stage="utterance"`) and
+        `events/adapter.py::_merged_chunk` (a coalesced chunk carries
+        `call_id`, `stage` and `chunk`, and nothing else). Emitted through
+        `runtime._emit_frame`, which is what every other builder-side frame
+        goes through and which already degrades to a debug log if no capture
+        context is scoped - telemetry must never fail a run.
+        """
+
+        from brief_crew.builder.runtime import _emit_frame
+        from brief_crew.events.models import FrameKind, UIEventType
+
+        call_id = f"synthetic:{self._node_id}"
+        model = str(self._tier)
+        size = max(1, -(-len(text) // 3))
+        for start in range(0, len(text), size):
+            _emit_frame(
+                FrameKind.LLM,
+                UIEventType.MODEL_CALL,
+                node_id=self._node_id,
+                message="Model stream chunk",
+                details={
+                    "stage": "chunk",
+                    "call_id": call_id,
+                    "chunk": text[start : start + size],
+                },
+            )
+        _emit_frame(
+            FrameKind.LLM,
+            UIEventType.MODEL_CALL,
+            node_id=self._node_id,
+            message=f"{model} said",
+            details={
+                "stage": "utterance",
+                "call_id": call_id,
+                "text": text,
+                "truncated": False,
+                "prompt_tokens": 512,
+                "completion_tokens": max(1, len(text) // 4),
+                "model": model,
+            },
         )
 
 

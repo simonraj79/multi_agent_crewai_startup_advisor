@@ -366,6 +366,292 @@ silent drift is a P0.
 | C11 | Skill package layout on disk (`data/skills/<user>/<skill>/SKILL.md`) and `/api/builder/skills` | 08 | 04, 09 |
 | C12 | MCP server record and discovery result (`/api/builder/mcp/servers`, `/discover`) | 07 | 04, 06, 09 |
 
+## FD — the reconstructed reference index
+
+Nine plan files cite a reference called `FD` **26 times** — `FD2`, `FD3`, `FD4`,
+`FD5`, `FD6`, `FD9`, `FD10`, `FD14`. **Nothing anywhere defined any of them.**
+Regenerate rather than trust the sentence:
+
+```bash
+# --exclude this file, or the index counts its own definitions as citations
+grep -rno "FD[0-9]\+" .agent/plans/ --exclude=00-architecture.md | wc -l          # 26
+grep -rho "FD[0-9]\+" .agent/plans/ --exclude=00-architecture.md | sort | uniq -c
+# 1·FD2  2·FD3  4·FD4  9·FD5  2·FD6  1·FD9  3·FD10  4·FD14   — measured 2026-09-04
+```
+
+> **These eight definitions were RECONSTRUCTED from the citations on
+> 2026-09-04. They were not recovered from an original document, because there
+> is no original document — not in this repository and not on this machine.**
+>
+> Searched and empty: the sixteen plan files, all of `docs/` (including
+> `docs/flow-builder-spec.md`), and the gauntlet itself at
+> `C:\Users\Simon\Downloads\gauntlet-crewai-visual-builder.md`, which contains
+> the string `FD` **zero** times. `git log --all -S "FD5" --oneline` answers
+> exactly one commit — `4d5f942`, the commit that *introduced* the plan set —
+> so the reference was dangling the day it was written and has never resolved
+> against anything inside the tree.
+>
+> Each row below is an inference from the sentences that cite it, and each row
+> names the evidence that fixes it. Where the citations do not settle a
+> question the row says so rather than choosing. **A reconstructed definition
+> that is honest about being reconstructed is useful; one that presents itself
+> as recovered is a trap for the next reader.** If the original ever surfaces,
+> it wins, and the difference is a defect in this section.
+
+**Only the eight cited numbers are defined.** `FD1`, `FD7`, `FD8` and
+`FD11`–`FD13` are cited nowhere, so they are **undefined** — the numbering's own
+logic is not reconstructable from eight samples, and guessing at it would be
+inventing provenance, which this repository has been bitten by before
+(remaining-work item 5, question 6: a REJECT floor citing a PRD word the PRD
+does not contain). Do not invent one to fill a gap, and do not renumber: the 26
+citations resolve where they stand, which is why this index lives here rather
+than in nine edited files.
+
+| Ref | Denotes | Owned by | What fixes it |
+| --- | --- | --- | --- |
+| **FD2** | The document schema version and the **v1 → v2 upgrade** — `upgrade_document(dict) -> dict`, pure, total and idempotent, run in the store's re-validation path so every stored row reads as v2 | **03 D4**; the store hook is 15 D5, and S1 ruling 5 above governs the Stage 1 stand-in | `03:30` scopes "the v1→v2 upgrade (FD2)" to this plan, and 03 D4 is the only section in the set that specifies it |
+| **FD3** | The **node-kind vocabulary** — the ten kinds `input · agent · crew · gate · router · transform · output · tool · mcp · skill` and the two families (flow / attachment) | **03 D1** | `03:28` "the ten-kind vocabulary (FD3)"; `02:36` "three new node kinds (FD3)" — the three being `tool`, `mcp`, `skill`. 03 D1's table is exactly that |
+| **FD4** | The **port table and the edge-class rules** — target ports (`in`, `attach`, `member`), source ports (`out`, `approve`/`revise`, branch labels, conditional `error`) per kind, and which sources each class accepts | **03 D1** (the table) with **03 D2** (the legality rules and their codes) | `02:35` names the three port classes; `02:88` names the rules verbatim — "`attach` accepts only tool/mcp/skill sources, `member` only agent sources, `in` refuses attachment kinds and member agents" — which is 03 D2's first three rows; `02:168` binds it to C1 |
+| **FD5** | The **document field list** — every field each node kind carries, its tier, and the CrewAI primitive it compiles to. Nine citations, the most-depended-on of the eight, and the only one that had a live contradiction. **Resolved below.** | The schema is **03 D3** (C1); the placement and tiers are **04 D2**; the attachment configs are 06, 07 and 08. The canonical enumeration is **this section**, because it is the thing both cite and neither contains in full | `03:86` "The document (C1, spelled out in FD5)"; `04:14` "An authored agent has thirty-four (FD5)"; `04:55` "Every FD5 field, its widget, bound and source of truth"; `14:168` "which is why FD5 admits `'any'`" — `joins` is a `BuilderDocument` field, so FD5 spans the document, not only its nodes |
+| **FD6** | The **bounds and the static budget model** — the structural counts a document is refused on, and the `modelled_calls` arithmetic those counts feed | **03 D2** (the structural half, reported never raised, R6) with **09 D4** (`modelled_calls`, retry multiplication, worst-case fallback pricing) | `03:29` "their bounds (FD6)" for authored agents and crews; `09:93` "The compiler's contribution is `modelled_calls` (FD6)". **Mildly ambiguous:** the pair could be read as bounds-only with 09 borrowing the label. They are given one entry because `bounds.py` and `budget.py` are one refusal surface — shape and money, checked together — and neither citation is coherent without the other |
+| **FD9** | The **isolation rule** — one identity, every owned row SQL-scoped at the query, 404 never 403, and an unowned row readable by everyone | **00 D5** (the rule) with **01** (the routes that apply it); 15 D6 applies it per table | `15:128` is the only citation: "Every table carries `user_id` and is listed SQL-scoped, per FD9." That sentence is 00 D5's title almost word for word |
+| **FD10** | The **runtime entrypoint contract** — the closed set of `BUILDER_ACTION_REFS` and the `with:` argument shape. Author data reaches an entrypoint as **values and opaque ids, never names, paths or code**; the entrypoint dereferences them against the run's user inside the call | **C5 / 09** (the ref set and the compiled `with:` block) with **10 D3** (the entrypoint bodies) | All three citations are the same sentence shape about `runtime:run_agent`'s arguments — `06:89` `credential_id` "as an opaque id (FD10)", `07:131` `mcps: [{server_id, tool_names}]`, `08:99` `skills: [skill_id]`. Every one is an id the runtime resolves, never a value the document carries |
+| **FD14** | The **problem-code catalogue** — the union of validation codes with severity, grouped by area, mirrored client-side by a Python-generated fixture | **C8 / 12** | `06:292` "add `tool-param-invalid` beside the seven codes FD14 lists" — so FD14 enumerated per area; `07:240` "three codes beyond FD14"; `04:145` and `04:192` both read "every FD14 code with a fixed field", which is exactly C8's union |
+
+### FD5 — the field list, and the 25-versus-34 contradiction resolved
+
+Two plans stated different sizes for the same authored agent, and a subagent
+told to *"render every FD5 field"* could satisfy neither:
+
+- **03 D3** spells the fields out inline and names **25**.
+- **04's Problem** says an authored agent "has **thirty-four** (FD5)", and is
+  internally consistent about it — "the five that matter" and "the twenty-nine
+  that rarely do" sum to the same 34.
+
+**Both are right, and neither is the number of controls.** The two figures are
+one field list counted at two depths, and the depth is the whole difference.
+Three of 03 D3's names are *composites* — `task`, `llm` and `retry` — and 04 D2
+places their sub-fields individually, because a form has a widget per leaf and
+not per object. Expanded fully, 04 D2's authored-agent table is **41 leaf
+controls**. Then:
+
+```text
+41 leaves
+ − 4   task.{description, expected_output, output_schema, markdown, async_execution} → task
+ − 10  llm.{model, temperature, top_p, max_tokens, timeout, response_format,
+            frequency_penalty, presence_penalty, stop, seed, reasoning_effort} → llm
+ − 2   retry.{max_retries, backoff_seconds, fallback_model} → retry
+ = 25  ← 03 D3, every composite collapsed
+```
+
+```text
+41 leaves
+ − 4   task collapsed      (a Task is one primitive, edited as one object)
+ − 2   retry collapsed     (builder-only, edited as one object)
+ − 1   tier                (04 D2 renders it as a preset that SETS llm.model, bound
+                            column "—"; it is a control over another field, not a field)
+ = 34  ← 04, with `llm` expanded because a model's parameters are eleven separate widgets
+```
+
+The five that matter are then `role`, `goal`, `backstory`, `task`, `llm` — and
+`34 − 5 = 29`, which is 04's own second figure, reached independently. **The
+obvious hypothesis — that `llm` expanding into eleven is the whole story — is
+very nearly right and is short by one:** it also needs `tier` not to count.
+`35` is the honest total *with* `tier`, and `tier` is a real stored field: it is
+on `_BillableConfig` (`document.py:175`) and `bounds.py` counts it against
+`MAX_ESCALATION_NODES` on that word alone.
+
+> **Ruling.** FD5's authored agent is **41 leaf controls / 35 document fields**
+> once `llm` is expanded. **Neither plan needs editing**: 03 D3's **25** is
+> correct at composite depth and 04's **34** is correct at leaf depth minus the
+> tier preset. **The number to build against is the table below**, because
+> "render every FD5 field" is a question about leaves and only a leaf list
+> answers it.
+
+Both counts were derived from the plan text, not asserted:
+
+```bash
+sed -n '86,99p'   .agent/plans/03-node-library.md         # D3's 25 names
+sed -n '58,90p'   .agent/plans/04-inspector-and-params.md # D2's authored-agent table
+```
+
+#### The canonical table — authored `agent`
+
+**Verified field by field against the installed package**, per the gauntlet's
+own instruction for this section: *"Verify all of the above against the
+installed CrewAI source. Where this document and the package disagree, the
+package wins."* Regenerate the CrewAI column rather than trusting it:
+
+```bash
+PYTHONPATH=D:/MultiAgentSystem-wt/integration/src \
+D:/MultiAgentSystem/.venv/Scripts/python.exe -c "
+from crewai import Agent, Task, Crew, LLM
+for m, c in (('Agent',Agent),('Task',Task),('Crew',Crew),('LLM',LLM)):
+    for n, f in sorted(c.model_fields.items()):
+        d = getattr(f,'deprecated',None) or ('DEPRECAT' in (f.description or '').upper())
+        print(m, n, 'DEPRECATED' if d else 'ok')"
+```
+
+Tier is 04 D2's: **E** Essentials, **A** Advanced, **X** Expert. `—` in the
+CrewAI column means *builder-only*: the field is ours, it configures the
+compiler or the runtime, and no CrewAI attribute carries it.
+
+| Field | CrewAI 1.15.18 | At 1.15.18 | Tier |
+| --- | --- | --- | --- |
+| `role` | `Agent.role` | ✓ | E |
+| `goal` | `Agent.goal` | ✓ | E |
+| `backstory` | `Agent.backstory` | ✓ | E |
+| `tier` | — (pricing; `bounds.py` → `MAX_ESCALATION_NODES`) | — | E (preset) |
+| `task.description` | `Task.description` | ✓ | E |
+| `task.expected_output` | `Task.expected_output` | ✓ | E |
+| `task.output_schema` | `Task.output_json` / `Task.response_model` via `create_model` | ✓ indirect — the document carries `json_schema`, the compiler builds the class (crewai-notes §11.8) | A |
+| `task.markdown` | `Task.markdown` | ✓ | A |
+| `task.async_execution` | `Task.async_execution` | ✓ | A |
+| `llm.model` | `LLM.model` | ✓ | E |
+| `llm.temperature` | `LLM.temperature` | ✓ | A |
+| `llm.top_p` | `LLM.top_p` | ✓ | A |
+| `llm.max_tokens` | `LLM.max_tokens` | ✓ (also `max_completion_tokens`) | A |
+| `llm.timeout` | `LLM.timeout` | ✓ | A |
+| `llm.response_format` | `LLM.response_format` | ✓ | A |
+| `llm.frequency_penalty` | `LLM.frequency_penalty` | ✓ | X |
+| `llm.presence_penalty` | `LLM.presence_penalty` | ✓ | X |
+| `llm.stop` | `LLM.stop` | ✓ | X |
+| `llm.seed` | `LLM.seed` | ✓ | X |
+| `llm.reasoning_effort` | `LLM.reasoning_effort` | ✓ **but silently dropped for OpenRouter models** (`config.py:628`) — 04 D2 already gates it and says so in its help text | X |
+| `max_iter` | `Agent.max_iter` | ✓ | A |
+| `max_rpm` | `Agent.max_rpm` | ✓ | A |
+| `max_execution_time` | `Agent.max_execution_time` | ✓ | A |
+| `allow_delegation` | `Agent.allow_delegation` | ✓ | A |
+| `memory` | `Agent.memory` | ✓ unified (`bool \| Memory \| MemoryScope \| MemorySlice`) — **not** three toggles | A |
+| `cache` | `Agent.cache` | ✓ | A |
+| `respect_context_window` | `Agent.respect_context_window` | ✓ | A |
+| `guardrail_max_retries` | `Agent.guardrail_max_retries` / `Task.guardrail_max_retries` | ✓ | A |
+| `prompt_inputs` | — (`${state.x}` interpolation, `document.py:105-123`) | — | A |
+| `retry.max_retries` | — (the loop is inside `run_agent`, 09 D4 / 10 D3) | — | A |
+| `retry.backoff_seconds` | — | — | A |
+| `retry.fallback_model` | — | — | A |
+| `on_error` | — (compiles to the conditional `error` port and its router) | — | A |
+| `system_template` | `Agent.system_template` | ✓ | X |
+| `prompt_template` | `Agent.prompt_template` | ✓ | X |
+| `response_template` | `Agent.response_template` | ✓ | X |
+| `tool_failure_policy` | `Agent.tool_failure_policy` | ✓ | X |
+| `reasoning` | `Agent.reasoning` | **⚠ DEPRECATED** — `deprecated=True`, *"[DEPRECATED: Use planning_config instead]"* (`agent/core.py:318-322`) | X |
+| `max_reasoning_attempts` | `Agent.max_reasoning_attempts` | **⚠ DEPRECATED** — *"[DEPRECATED: Use planning_config.max_attempts instead]"* (`core.py:323-327`) | X |
+| `multimodal` | `Agent.multimodal` | **⚠ DEPRECATED** — *"[DEPRECATED, will be removed in v2.0 - pass files natively.]"* (`core.py:292-296`) | X |
+| `function_calling_llm` | `Agent.function_calling_llm` | **⚠ DEPRECATED** — *"will be removed in a future release"* (`core.py:261-268`); deprecated on `Crew` too | X |
+
+41 rows. Attachments (`tools`, `mcps`, `skills`) are deliberately **not** rows:
+they are `attach` edges (FD4), they reach the constructor as
+`Agent(tools=…, mcps=…, skills=…)` through the compiled `with:` block (FD10),
+and 04 D2 renders them read-only precisely because Flowise v2's `agentTools`
+array is the anti-pattern it is avoiding.
+
+#### What the package refuses, and what nobody has decided
+
+**Four rows above are deprecated at 1.15.18**, and this plan's own acceptance
+criterion 3 says no row's primitive may be. That criterion is scoped to the D3
+*kind* table, so it does not fail — but the same rule read one level down says
+these four cannot ship as written. Each needs an Integrator ruling; **none is
+decided here**, because a field is a contract and C1 is 03's.
+
+| Field | The package's replacement | Note |
+| --- | --- | --- |
+| `reasoning` | `Agent.planning_config: PlanningConfig` | Not cosmetic. `core.py:418-427` builds a `PlanningConfig` out of `reasoning` / `max_reasoning_attempts` and emits a `DeprecationWarning`; `PlanningConfig` carries `llm, max_attempts, max_replans, max_step_iterations, max_steps, observe_steps, plan_prompt, reasoning_effort, refine_prompt, step_timeout, system_prompt`, so an Expert *switch* is no longer the right control for it |
+| `max_reasoning_attempts` | `PlanningConfig.max_attempts` | as above |
+| `multimodal` | pass files natively | The Expert switch has no replacement control |
+| `function_calling_llm` | none named | 04 D2 gates it on `supports_tools`; it warns on both `Agent` and `Crew` |
+
+`Agent.planning` and `Crew.planning` are **not** deprecated — only the
+`reasoning` spelling is. Whatever replaces the three Expert rows, it is a
+`planning_config` object, not a rename.
+
+**Already cut, and the cut is confirmed correct.** `allow_code_execution` and
+`code_execution_mode` are deprecated at `core.py:279-282` and `:305-308`
+(*"CodeInterpreterTool is no longer available. Use dedicated sandbox services
+instead."*) with a runtime warning at `:407-410`. Neither appears in 03 D3 or
+04 D2. crewai-notes §11.1 and decision 3 (BYO E2B behind a flag, default off)
+already own this.
+
+**A name collision worth knowing before it costs a debugging session.** The
+builder's `retry.max_retries` is **not** `Task.max_retries`. `Task.max_retries`
+is itself deprecated at 1.15.18 — *"[DEPRECATED] … Use `guardrail_max_retries`
+instead. Will be removed in v1.0.0"* (`task.py:275-278`), with a
+`model_validator` that copies it across and warns (`task.py:574-583`) — and it
+counts *guardrail* retries, where the builder's counts whole-node attempts
+inside `run_agent`. `Task.retry_count` is a live counter (`default=0`), not a
+setting. crewai-notes §11.2 says *"Render `max_retries`"*; **the package now
+disagrees with that note**, and the package wins.
+
+**Fields the gauntlet names that exist and no plan places.** Not defects — a
+cut list is allowed — but they are cuts nobody has recorded, and an unrecorded
+cut is indistinguishable from an oversight:
+
+| Field | Exists | Why it is probably absent |
+| --- | --- | --- |
+| `Agent.verbose` | ✓ | Gauntlet Advanced. Console noise; the run console reads frames instead |
+| `Agent.knowledge_sources`, `Agent.embedder` | ✓ | Gauntlet Expert. RAG is 06's surface, and crewai-notes §11.9 records that the RAG family embeds with OpenAI by default, which the platform rules forbid |
+| `Task.tools` (per-task override), `Task.human_input`, `Task.output_file`, `Task.guardrail`, `Task.callback` | ✓ | `human_input` is the console prompt, not the durable gate — gates are `gate` nodes; `output_file` writes to ephemeral container disk; `callback` is code on a canvas |
+| `LLM.stream` | ✓ | The gauntlet's LLM line names eleven fields *including* `stream`; 04 D2 also lists eleven, with `stream` swapped for `reasoning_effort`. A builder run streams frames by construction, so there is nothing for an author to decide |
+
+#### The authored `crew` — 04 says fifteen, the prose names fourteen
+
+04 D2's crew paragraph names, as stored fields: **E** `process`, `task_order`
+(the member list is `member` edges; drag-to-reorder writes the order),
+`manager_llm`, `manager_agent`; **A** `memory`, `cache`, `max_rpm`, `planning`,
+`planning_llm`, `retry`, `on_error`, `prompt_inputs`; **X** none. With `retry`
+expanded the same way as the agent's, that is **fourteen** leaves.
+
+| Field | CrewAI 1.15.18 | At 1.15.18 |
+| --- | --- | --- |
+| `process` | `Crew.process` (`Process.sequential` / `hierarchical`) | ✓ |
+| `task_order` | — (member edge order → the `Crew.tasks` order) | — |
+| `manager_llm` | `Crew.manager_llm` | ✓ — `crew.py:729` raises when hierarchical and neither manager is set |
+| `manager_agent` | `Crew.manager_agent` | ✓ |
+| `memory` | `Crew.memory` | ✓ unified; `short_term_memory` / `long_term_memory` / `entity_memory` are **absent from the model** |
+| `cache` | `Crew.cache` | ✓ |
+| `max_rpm` | `Crew.max_rpm` | ✓ |
+| `planning` | `Crew.planning` | ✓ (not deprecated — unlike `Agent.reasoning`) |
+| `planning_llm` | `Crew.planning_llm` | ✓ |
+| `retry.max_retries` / `.backoff_seconds` / `.fallback_model` | — (the loop is inside `run_crew`) | — |
+| `on_error` | — | — |
+| `prompt_inputs` | — | — |
+
+> **UNRESOLVED — an Integrator ruling, not a reconstruction.** Fourteen is what
+> the prose names; 04 says fifteen. Exactly one field is missing and the
+> evidence does not say which, so picking one on judgement would be inventing
+> the reconciliation this section exists to prevent. Three candidates:
+>
+> 1. **`verbose`** — the gauntlet's Crew *Essentials* names it, `Crew.verbose`
+>    exists and is not deprecated, and 04's *agent* list drops `verbose` too,
+>    so dropping it twice would at least be consistent. Most likely of the three.
+> 2. **`tier`** — `CrewConfig` inherits it from `_BillableConfig`
+>    (`document.py:175`) and 03 D3 says the authored crew is the "same shape",
+>    so it is a stored field the crew paragraph does not mention. But it also
+>    inherits `max_iter` and `guardrail_max_retries`, which would make the total
+>    seventeen — so this candidate does not close cleanly either.
+> 3. **members counted separately from `task_order`** — arithmetically exact,
+>    but it counts a derived read-only list as a field, contradicting the same
+>    paragraph's own reason for showing it read-only.
+>
+> Until this is ruled on, **build the fourteen above** and treat 04's "fifteen"
+> as unverified. Whichever way it goes, the ruling belongs here and in 04's
+> `Status`, not in a builder's head.
+
+#### The other kinds
+
+FD5 covers the whole document, not only the agent. The remaining kinds are
+specified in full by their own plans and are **not** restated here — a contract
+lives in one file:
+
+| Kind | Fields | Specified in |
+| --- | --- | --- |
+| library `agent` / `crew` | `agent_id` / `crew_id`, `tier`, `tools`, `max_iter`, `guardrail_max_retries`, `prompt_inputs`, `credential_id` | `document.py:175-230` today; 03 D3 makes each a union arm discriminated by presence and refuses both-or-neither at parse |
+| `tool` | `{tool_id, credential_id \| null, params}` | 06 (`06:27`, `06:230`) |
+| `mcp` | `{server_id, tool_names[]}`, plus `pinned_args` if C1 v2 takes 07's request | 07 (`07:33`, `07:193`) |
+| `skill` | `{skill_id}` | 08 (`08:42`, `08:176`) |
+| `gate`, `router`, `transform`, `input`, `output` | unchanged from v1 | `document.py`; 04 D2 leaves their forms alone |
+| document level | `schema`, `state: FlowStateSchema \| None`, `joins` accepting `'all' \| 'any'`, `budget`, positions | 03 D3. `14:168`'s citation is this row: `joins: 'any'` is an FD5 admission, and it is what lets the router template's three mutually exclusive branches converge instead of waiting forever |
+
 ## Stage 0 — RAMP state, what exists and what is left
 
 | | Item | State on 2026-09-02 |
@@ -566,3 +852,84 @@ plan whose job is to prevent it. The lesson is not that the author was careless
 faithfully copied into a second file. It is that a supersession list and a
 price table are both claims, and a claim in this repository is worth what its
 last regeneration is worth.
+
+
+### S9 ruling — the deprecated fields the plan set renders, 2026-09-04
+
+Raised while reconstructing the `FD` index above, and settled here because C1
+is a contract and the Integrator owns every change to one. The governing rule
+is already written twice — the rules block's *"where the gauntlet and the
+installed package disagree, the package wins"*, and **this plan's own criterion
+3**, *"no row's primitive is deprecated at 1.15.18"*.
+
+Scanned across **all three** mechanisms CrewAI uses to mark a field deprecated,
+because a scan that knows only the first under-reports and would pass criterion
+3 for the wrong reason:
+
+```text
+Field(deprecated=True)     Agent.reasoning, Agent.max_reasoning_attempts,
+                           Agent.multimodal, Agent.allow_code_execution,
+                           Agent.code_execution_mode
+Field(deprecated="msg")    Agent.function_calling_llm, Crew.function_calling_llm
+description + validator    Task.max_retries          <- FieldInfo.deprecated is None
+```
+
+Eight in total. Two were already cut by the plans (`allow_code_execution`,
+`code_execution_mode`, `crewai-notes.md` §11.1). The ruling on the other six:
+
+| Field | Ruling | Why |
+| --- | --- | --- |
+| `Agent.multimodal` | **cut** | deprecated "removed in v2.0 — pass files natively". A control for a field that disappears at the next major is a trap, not a feature |
+| `Agent.function_calling_llm` | **cut** | deprecated on `Agent` *and* `Crew`; nothing in this product sets it |
+| `Crew.function_calling_llm` | **cut** | as above |
+| `Agent.reasoning` | **replaced** by `Agent.planning` (bool) | `agent/core.py:418-427` already folds `reasoning` into a `PlanningConfig` and warns. The switch an author sees should be the one CrewAI keeps |
+| `Agent.max_reasoning_attempts` | **replaced** by `planning_config.max_attempts` | same migration |
+| `Task.max_retries` | **not rendered**; use `guardrail_max_retries` | already the builder's own field name on `_BillableConfig`, so this costs nothing. **Watch the collision:** the builder's `retry.max_retries` is a NODE-level retry and is a different concept |
+
+**`planning_config` is bounded to four of its eleven fields** —
+`reasoning_effort`, `max_attempts`, `max_steps`, `max_replans`. Those four bound
+cost and iteration, which is what this product has to care about. The three
+prompt overrides (`system_prompt`, `plan_prompt`, `refine_prompt`) are
+deliberately excluded: prompts for this repository's crews live in YAML and an
+authored agent's live in the author's document, and a third place would be a
+third place. `planning_config.llm` is excluded because it would silently put the
+planner on a different model from the one the node names, which is a cost
+surprise with no visible cause.
+
+**The field counts move, and they are NOT restated here.** The `FD5` table above
+is the canonical list; regenerate the totals from it rather than carrying the
+41 / 34 / 25 figures forward through this ruling. That is the discipline the
+whole of the 2026-09-04 pass exists to enforce, and this is the first place it
+would be easy to break.
+
+**One consequence for a decision still open.** PLANS.md decision 3 — the code
+interpreter, BYO E2B key behind a flag — is marked *provisional, owner to
+confirm*. CrewAI's own code-execution surface (`allow_code_execution`,
+`code_execution_mode`) is **deprecated**, so the native path is going away
+regardless of what the owner decides. That is a new argument the decision was
+not made with, and it is recorded here rather than acted on.
+
+
+### S9 ruling — the crew's fifteenth field is `verbose`, 2026-09-04
+
+The `FD5` reconstruction above closed the authored **agent** at 41 leaves and
+left the **crew** one short: plan 04 says fifteen, its own prose names fourteen,
+and three candidates were escalated rather than guessed. Correctly — but the
+evidence does settle it.
+
+It is **`verbose`**, on three grounds:
+
+1. The gauntlet spec's own *Crew (canvas root) — Essentials* line reads
+   `process (sequential/hierarchical), verbose`. `process` is in plan 04's
+   fourteen and `verbose` is not, so the omission is on our side of the copy.
+2. `Crew.verbose` exists at CrewAI 1.15.18 and is **not** deprecated — checked
+   in the same scan that found the eight that are.
+3. The two rival candidates each break something. `tier` cannot be it: `tier`
+   arrives from `_BillableConfig` and drags `max_iter` and
+   `guardrail_max_retries` with it, giving seventeen rather than fifteen.
+   Counting members separately from `task_order` is arithmetically exact and
+   contradicts the paragraph's own reasoning, which treats membership as one
+   thing.
+
+So: **build fifteen, with `verbose` as the fifteenth.** If a later pass finds a
+better candidate, the number is not the thing to preserve — the enumeration is.

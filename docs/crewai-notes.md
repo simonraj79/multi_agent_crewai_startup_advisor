@@ -305,7 +305,15 @@ not a CrewAI limitation.
 ## 11. Where the gauntlet and the package disagree — the package wins
 
 1. **`allow_code_execution` / `code_execution_mode` are deprecated with no tool behind them.** The Expert tier must not render them. "Code interpreter, sandboxed, opt-in" maps to `E2BPythonTool` or `DaytonaPythonTool` behind a per-user key, or is cut.
-2. **Task `retry_count` is a counter, not a setting.** Render `max_retries`.
+2. **Task `retry_count` is a counter, not a setting.** ~~Render `max_retries`.~~
+   **CORRECTED 2026-09-04: render `guardrail_max_retries`, NOT `max_retries`.**
+   `Task.max_retries` is itself deprecated at 1.15.18 - `task.py:275-278` carries
+   `[DEPRECATED] ... Use guardrail_max_retries instead. Will be removed in
+   v1.0.0`, and `handle_max_retries_deprecation` (`:574-583`) warns and silently
+   copies the value into `guardrail_max_retries`. So the old advice built a
+   control that emits a `DeprecationWarning` and writes to a different field.
+   Note the collision: the builder's own `retry.max_retries` is a NODE-level
+   retry and is not this field.
 3. **Crew memory is one unified field**, not "short/long/entity individually toggleable".
 4. **`human_feedback`'s `llm` default is a live OpenAI string.** Every gate passes `llm=None`.
 5. **`Agent.llm = None` resolves to OpenAI.** The compiler must always attach an explicit `openrouter/` LLM — the repo's startup assertion already refuses anything else.
@@ -313,3 +321,25 @@ not a CrewAI limitation.
 7. **Firecrawl `map` and `extract` have no `crewai_tools` class.** Either wrap the Firecrawl SDK (the repo already wraps v2 search/scrape in `tools/market_research.py`) or list only the three that exist.
 8. **Flow state authored on a canvas is `json_schema`**, not a Pydantic editor; `pydantic` state needs a Python class the author cannot write.
 9. **RAG-family tools embed with OpenAI by default**, which the platform rules forbid; they need `brief_crew.embeddings` wired in or must be excluded.
+
+### Added 2026-09-04 — a full deprecation scan, all three mechanisms
+
+10. **Four fields the plan set renders are DEPRECATED on `Agent`.** `reasoning`,
+    `max_reasoning_attempts`, `multimodal` and `function_calling_llm` all appear
+    in `03-node-library.md` D3's `AuthoredAgentConfig` and `04-inspector-and-params.md`
+    D2's Expert tier. `Crew.function_calling_llm` is deprecated too. A form control
+    bound to a deprecated field is a control that emits a warning today and breaks
+    on the next major.
+11. **`Agent.reasoning` is auto-migrated, so the Expert *switch* is the wrong
+    control.** `agent/core.py:418-427` folds it into a `PlanningConfig` and warns.
+    `Agent.planning` (bool) and `Agent.planning_config` (11 fields) are **not**
+    deprecated and are the current surface.
+12. **Deprecation is marked THREE ways here, and a scan that knows one
+    under-reports.** `Field(deprecated=True)` (`reasoning`, `max_reasoning_attempts`,
+    `multimodal`, `allow_code_execution`, `code_execution_mode`);
+    `Field(deprecated="a sentence")` (`function_calling_llm` on both `Agent` and
+    `Crew`); and **neither** - `Task.max_retries` carries `[DEPRECATED]` only in its
+    description, enforced by a `model_validator`, so `model_fields[...].deprecated`
+    reads `None` for it. A check written against the first mechanism alone passes
+    plan 00's criterion 3 for the wrong reason. The scan that found all eight is
+    reproduced in that criterion's own notes.

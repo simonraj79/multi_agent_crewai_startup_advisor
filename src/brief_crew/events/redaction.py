@@ -90,6 +90,13 @@ SECRET_KEYS: frozenset[str] = frozenset(
         "ciphertext",
         "clientsecret",
         "cookie",
+        # `db_uri` normalises to `dburi`, which ends in none of
+        # SECRET_KEY_SUFFIXES - so until 2026-09-04 the NL2SQL tool's
+        # constructor keyword was the one credential-bearing name in the builder
+        # that reached a frame in clear. Found by plan 06's criterion 3 rather
+        # than by review, which is the argument for asserting a redaction list
+        # against the constructors that feed it instead of reading it.
+        "dburi",
         "dsn",
         "headers",
         "nonce",

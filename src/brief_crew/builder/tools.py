@@ -1234,7 +1234,10 @@ def build_custom_tool(
                 annotation | None,
                 PydanticField(default=None, description=prop.description),
             )
-    args_schema = create_model(f"{spec.name}_args", **fields)  # type: ignore[call-overload]
+    # NOT named `args_schema`: a class body assigning `args_schema = args_schema`
+    # resolves the right-hand side in the CLASS namespace, where the annotation
+    # has already bound the name, and raises NameError. Measured, not reasoned.
+    generated_schema = create_model(f"{spec.name}_args", **fields)  # type: ignore[call-overload]
 
     secret = dict(credential or {})
     request = spec.request
@@ -1253,7 +1256,7 @@ def build_custom_tool(
     class _CustomHttpTool(BaseTool):
         name: str = spec.name
         description: str = spec.description
-        args_schema: type = args_schema
+        args_schema: type = generated_schema
 
         def _run(self, **kwargs: Any) -> str:
             url = render(request.url, kwargs, quote=True)

@@ -167,3 +167,8 @@ Open decisions for the owner:
 
 - Whether test runs should appear in the run history beside real runs (this plan: yes, labelled `test`, because hiding spend is the failure the cost rules exist to prevent).
 - The 240 s budget under a 5 s synthetic delay is the gauntlet's figure, not a measurement of any real journey; the first real-model journey should be timed once and recorded here.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 17 — yes, labelled `test`.** Hiding them means an author cannot find
+the run they just made.

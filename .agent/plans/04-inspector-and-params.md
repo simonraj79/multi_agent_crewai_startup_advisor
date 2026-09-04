@@ -214,3 +214,8 @@ are granted.
 
 Open decision for the owner: whether the Expert switch is global (this plan)
 or per node kind.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 19 — global.** Per node kind means an author learns the same control
+four times and it remembers a different answer each time.

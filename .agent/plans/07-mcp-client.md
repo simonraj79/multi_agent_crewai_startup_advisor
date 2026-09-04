@@ -245,3 +245,14 @@ Open decisions for the owner:
 
 - Whether production should allow any stdio command at all. Recommendation: none — remote-only — until a sandboxed process model exists; document `npx` / `uvx` for local development.
 - Whether a suspicious tool may be selected at all, or only shown. Recommendation: selectable with the warning, because the pattern list has false positives (`act as` is ordinary English).
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 7 — remote servers only in production; stdio behind a flag that is
+OFF. PROVISIONAL: the owner confirms.** An arbitrary stdio command would let an
+author's document name a process to run on the server, which is the one thing
+the compiler's closed set of ten action refs exists to prevent.
+
+**Decision 8 — selectable with a warning. PROVISIONAL: the owner confirms.**
+Hiding it in the picker is the quietly-divergent double this repository keeps
+warning about; the author should see the warning and decide.

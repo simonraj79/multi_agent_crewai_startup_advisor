@@ -615,3 +615,14 @@ first sentence a reader meets stops being false. The critic has scored a
 ticked criterion whose opening sentence is false three times (D-15-11,
 D-15-12, D-15-20 on criterion 2), and a convention that guarantees a fourth
 is the wrong convention.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 23 — `0`, keep everything.** A default that deletes is a default that
+surprises; an operator who wants a retention window can set one.
+
+**Decision 24 — refuse.** An automatic unpublish makes a delete silently do two
+things, one of which the author did not ask for.
+
+**Decision 25 — on `main` only.** It needs a container and it is slow, and the
+compare-and-set paths it protects are only at risk once something has merged.

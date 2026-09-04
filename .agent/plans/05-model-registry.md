@@ -312,3 +312,14 @@ Open decisions for the owner:
 
 - Keep `deepseek/deepseek-r1` (the gauntlet's cheap-reasoning pick, $2.50 output) or replace it with `deepseek/deepseek-v3.2` ($0.27 / $0.40, 131K, reasoning)? The plan keeps r1 because the gauntlet named it and it passes the input ceiling; the meter will show its output price.
 - `cost_in_max_endpoint` is a human measurement per model (ten MCP calls). Do it once at build time or leave `null` and accept the 1.8 factor.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 5 — keep `deepseek/deepseek-r1` and show its output price on the
+card.** The $2.50 output price is a fact the author should see, not a reason to
+remove the model from the roster.
+
+**Decision 6 — measure once at build time.** The 1.8 factor exists because
+`:nitro` routes on speed and not price, and
+`mcp__openrouter__list-model-endpoints` answers it in one call per model, which
+turns a documented guess into a number.

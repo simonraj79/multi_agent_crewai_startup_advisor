@@ -266,3 +266,11 @@ Open decisions for the owner:
 
 - Chunk coalescing at 250 ms is a judgement about the 2,000-frame ring, not a measurement; the alternative is a larger ring, which costs memory per run.
 - Whether a BYO OpenRouter key should exempt a run from the platform `$10` ceiling. This plan says **no** — the ceiling bounds the process, not the bill.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 14 — no.** The ceiling bounds a topology somebody else drew; it is not
+a bound on whose card is charged.
+
+**Decision 15 — coalesce at 250 ms.** The ring is bounded to make a run
+survivable, and a bigger ring trades a known bound for an unknown one.

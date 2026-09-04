@@ -278,3 +278,15 @@ Open decisions for the owner:
 1. **Character art.** D1 ships icon medallions. Real characters need art this project owns — a commission, not a download. Decide whether to commission before or after the gauntlet.
 2. **The largest-graph capture.** The gauntlet asks for a 30-node state; `MAX_GRAPH_NODES = 24` (`config.py:1768`). The capture uses 24 flow nodes plus 6 attachment nodes on the assumption (03) that attachments are not counted by that bound. If 03 counts them, the state is 24 and the criterion says so.
 3. **Re-baseline timing.** D9 re-baselines the validator's three screenshots once. If the owner prefers the validator pixel-identical, D2's recede and D1's medallion are gated behind a builder-graph-only class and the validator keeps its current look.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 4 — icon medallions.** ChatDev's own sprites were already sourced,
+downscaled, rendered on every node and then deleted: 132 of the 144 frames could
+never paint because nothing writes a design-time run state, and the art belongs
+to the competitor this product argues against (CLAUDE.md remaining-work item 6).
+`.node-crew-slot` already reserves the box.
+
+**Decision 20 — re-baseline the validator's three screenshots once.** Two code
+paths for one card is the quietly-divergent double this repository keeps warning
+about.

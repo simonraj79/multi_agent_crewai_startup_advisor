@@ -63,36 +63,37 @@ Consolidated from every plan's `Status` section. A decision moves from
 | # | Decision | Raised in | Recommendation | Answer |
 | ---: | --- | --- | --- | --- |
 | 1 | Replace `CLAUDE.md` with `@AGENTS.md` and move it to `docs/handoff.md` | 00 D10 | — | **Declined, 2026-09-02** |
-| 2 | Prepend the rules block (`.agent/RULES.draft.md`) to `CLAUDE.md` and smoke-test it | 00 D10 | yes, one paste | open |
-| 3 | Code interpreter: BYO E2B key behind a flag, or cut | 06 D8, 01 | BYO E2B, not started until decided | open |
-| 4 | Commission character art, or ship icon medallions through the gauntlet | 11 | medallions first | open |
-| 5 | Roster: keep `deepseek/deepseek-r1` ($2.50 out) or swap for `deepseek-v3.2` | 05 | keep, show the output price | open |
-| 6 | Measure `cost_in_max_endpoint` per model, or accept the 1.8 factor | 05 | measure once at build time | open |
-| 7 | Allow any stdio MCP command in production | 07 | none — remote only | open |
-| 8 | A suspicious MCP tool: selectable with a warning, or shown only | 07 | selectable | open |
-| 9 | Platform Firecrawl key as the default for every user, with a daily cap | 06 | yes, per-user override | open |
-| 10 | Skills attachable to library agents, or authored only | 08 | authored only | open |
-| 11 | Licence header on the built-in skills; the repo has no `LICENSE` | 08, CLAUDE.md item 17 | settle the repo licence first | open |
-| 12 | Library crew `tier`: refuse it, or honour it by rebuilding the crew's LLMs | 09 | refuse | open |
-| 13 | `or_` inside a cycle depends on private `_discard_or_listener` | 09 | accept, as closed item 35 did | open |
-| 14 | A BYO OpenRouter key exempts a run from the $10 ceiling | 10 | no | open |
-| 15 | Stream-chunk coalescing at 250 ms, or a larger frame ring | 10 | 250 ms | open |
-| 16 | Retry a model refusal with the fallback model | 12 | no | open |
-| 17 | Test runs appear in run history, labelled `test` | 13 | yes | open |
-| 18 | Attachment palette hotkeys `T`/`M`/`K` or `8`/`9`/`0` | 03 | letters | open |
-| 19 | Expert switch global or per node kind | 04 | global | open |
-| 20 | Re-baseline the validator's three screenshots, or gate the new styling to builder graphs | 11 | re-baseline once | open |
-| 21 | Delete `minimal-gated-agent` and `fan-out-join` once the E2E is re-pointed | 14 | keep in a "more" row | open |
-| 22 | The four paid template runs before or after the rubric gate | 14 | after | open |
-| 23 | `VALIDATOR_RUN_RETENTION_DAYS` default | 15 | `0`, keep everything | open |
-| 24 | Deleting a published document: unpublish automatically or refuse | 15 | refuse | open |
-| 25 | PostgreSQL two-writer job on every push or only on `main` | 15 | `main` | open |
-| 26 | Unowned published workflows stay launchable by anyone | 01 D1 | yes, for legacy rows | open |
+| 2 | Prepend the rules block (`.agent/RULES.draft.md`) to `CLAUDE.md` and smoke-test it | 00 D10 | yes, one paste | **Taken, 2026-09-04** — applied in `c9e8521` |
+| 3 | Code interpreter: BYO E2B key behind a flag, or cut | 06 D8, 01 | BYO E2B, not started until decided | BYO E2B behind a flag, default OFF — **PROVISIONAL, owner to confirm before enabling**, 2026-09-04 |
+| 4 | Commission character art, or ship icon medallions through the gauntlet | 11 | medallions first | **Icon medallions**, 2026-09-04 |
+| 5 | Roster: keep `deepseek/deepseek-r1` ($2.50 out) or swap for `deepseek-v3.2` | 05 | keep, show the output price | **Keep `deepseek-r1` and show its output price on the card**, 2026-09-04 |
+| 6 | Measure `cost_in_max_endpoint` per model, or accept the 1.8 factor | 05 | measure once at build time | **Measure once at build time**, 2026-09-04 |
+| 7 | Allow any stdio MCP command in production | 07 | none — remote only | Remote servers only in production; stdio behind a flag that is OFF — **PROVISIONAL, owner to confirm**, 2026-09-04 |
+| 8 | A suspicious MCP tool: selectable with a warning, or shown only | 07 | selectable | Selectable with a warning — **PROVISIONAL, owner to confirm**, 2026-09-04 |
+| 9 | Platform Firecrawl key as the default for every user, with a daily cap | 06 | yes, per-user override | Per-user override built and the daily cap built; the platform default stays OFF — **PROVISIONAL, owner to confirm**, 2026-09-04 |
+| 10 | Skills attachable to library agents, or authored only | 08 | authored only | **Authored only**, 2026-09-04 |
+| 11 | Licence header on the built-in skills; the repo has no `LICENSE` | 08, CLAUDE.md item 17 | settle the repo licence first | **Not answerable** — depends on the repository having no `LICENSE`, 2026-09-04 |
+| 12 | Library crew `tier`: refuse it, or honour it by rebuilding the crew's LLMs | 09 | refuse | **Refuse**, 2026-09-04 |
+| 13 | `or_` inside a cycle depends on private `_discard_or_listener` | 09 | accept, as closed item 35 did | **Accept, with a guard test**, 2026-09-04 |
+| 14 | A BYO OpenRouter key exempts a run from the $10 ceiling | 10 | no | **No**, 2026-09-04 |
+| 15 | Stream-chunk coalescing at 250 ms, or a larger frame ring | 10 | 250 ms | **Coalesce at 250 ms**, 2026-09-04 |
+| 16 | Retry a model refusal with the fallback model | 12 | no | **No**, 2026-09-04 |
+| 17 | Test runs appear in run history, labelled `test` | 13 | yes | **Yes, labelled `test`**, 2026-09-04 |
+| 18 | Attachment palette hotkeys `T`/`M`/`K` or `8`/`9`/`0` | 03 | letters | **Letters `T`, `M`, `K`**, 2026-09-04 |
+| 19 | Expert switch global or per node kind | 04 | global | **Global**, 2026-09-04 |
+| 20 | Re-baseline the validator's three screenshots, or gate the new styling to builder graphs | 11 | re-baseline once | **Re-baseline once**, 2026-09-04 |
+| 21 | Delete `minimal-gated-agent` and `fan-out-join` once the E2E is re-pointed | 14 | keep in a "more" row | **Keep both in a "more" row**, 2026-09-04 |
+| 22 | The four paid template runs before or after the rubric gate | 14 | after | **After the rubric gate, and after asking** — the owner must approve the spend, 2026-09-04 |
+| 23 | `VALIDATOR_RUN_RETENTION_DAYS` default | 15 | `0`, keep everything | **`0` — keep everything**, 2026-09-04 |
+| 24 | Deleting a published document: unpublish automatically or refuse | 15 | refuse | **Refuse**, 2026-09-04 |
+| 25 | PostgreSQL two-writer job on every push or only on `main` | 15 | `main` | **On `main` only**, 2026-09-04 |
+| 26 | Unowned published workflows stay launchable by anyone | 01 D1 | yes, for legacy rows | **Yes, for legacy rows**, 2026-09-04 — already built on this recommendation |
 
 ## Log
 
 | Date | What |
 | --- | --- |
+| 2026-09-04 | All 25 open owner decisions answered. Each answer is in the decision table above and in the `## Status` section of every plan that raised it — 00, 01, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14 and 15. Four are **provisional** and say so in both places: 3, 7, 8 and 9 are built up to the surface, left off, and wait for the owner. Decision 11 is **not answerable** while the repository has no `LICENSE`, so the built-in skills ship with no licence header and the dependency is recorded. Decision 2 was taken in `c9e8521`, which put the rules block at the head of `CLAUDE.md` with two clauses amended — parallel subagents authorized, and a money bound the draft did not carry. No code changed and no criterion moved. |
 | 2026-09-03 | Plan 15 round 3 built on `gauntlet/plans`, `f2a3bb8` → `38d7635`. Twelve open rows built in eleven fixing commits (D-15-19 and D-15-20 share one - they are one defect the critic scored on two dimensions), preceded by two docs commits that fix no defect: `8231966` moves the ten misplaced round-2 rows into the ledger table, and `ca3d4f8` is the OWNER'S RULING closing D-15-8 … D-15-12 on the round-2 verifier's output, which is why 15's open count moved 17 → 12. Every built row is left `open` for the round-3 critic. That ruling also retires this plan's keep-the-earlier-wording convention: criteria 7 and 8 now strike the wrong figure inline, because the critic has scored a ticked criterion whose first sentence is false three times. The plan's per-module counts were regenerated by running each module alone - the verifier had found `test_isolation_matrix` at 32 where the table said 16. Python 1655 / PostgreSQL 18 5/5 / frontend 1195 in 65 files / E2E 37 in 5 files, all green. |
 | 2026-09-03 | Plan 01 round 3 built on `gauntlet/plans`, `f2a3bb8` → `e22a32f`. One commit for the one open row: D-01-5 `e22a32f` - browser residue (the builder draft holding a `credential_id`, the run handoff, the run pointer) is keyed to the signed-in user's id, so the next person on the same browser reads none of it even when the previous one never signed out, and a sign-out sweeps what that identity wrote. The row is left `open` for the round-3 critic. Preceded by `20d51a4`, the OWNER'S RULING closing D-01-1 and D-01-2 on the round-2 verifier's output, which is why 01's open count moved 3 → 1; it is docs-only and separate so the log cannot read as a builder closing its own work. Plan 01's Status now names every fixing commit per id, **including round 2's four**, which it had never listed. Python 1642 / frontend 1180 / E2E 35, all green. |
 | 2026-09-02 | Audit against `25634c0`; sixteen plans, three reference notes, design system, judge scaffolding written. Nothing committed. Decision 1 declined by the owner. |

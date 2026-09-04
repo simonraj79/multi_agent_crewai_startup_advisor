@@ -276,3 +276,15 @@ Open decisions for the owner:
 
 - Whether a crew node's **library** branch should refuse `tier` (this plan) or start honouring it by rebuilding the library crew's LLMs — the latter reaches into `validator_crew.py:155-159, 194` and changes a hand-written crew's behaviour from a canvas.
 - The `or_`-inside-a-cycle re-arm depends on a private CrewAI method (`_discard_or_listener`), the accepted cost recorded at closed item 35. If that is unacceptable, `'any'` joins are refused inside cycles and allowed elsewhere.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 12 — refuse.** Honouring `tier` means rebuilding the crew's LLMs from
+outside the crew, and the crew library is the one place in the builder where the
+code is ours and not the author's.
+
+**Decision 13 — accept, with a guard test.** CLAUDE.md's closed item 35 already
+accepted exactly this dependency after prototyping the alternative: the router
+variant costs two pass-through nodes carrying no agent, no model and no
+decision, plus lockstep edits to seven files. The guard test's failure message
+must name the router variant as the replacement, as item 35's does.

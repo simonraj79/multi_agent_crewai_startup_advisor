@@ -225,3 +225,8 @@ Open decisions for the owner:
 
 - `RETRY_MAX = 3` and `backoff ≤ 30 s` are judgements; the budget multiplier is what keeps them from being a money hole, and a critic may argue for higher.
 - Whether a model refusal should be retryable with the fallback model (this plan: no — a refusal is a prompt problem, and re-asking a cheaper model is how a refusal becomes a hallucination).
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 16 — no.** A refusal is a decision, and retrying it with a different
+model is asking a second judge until one agrees.

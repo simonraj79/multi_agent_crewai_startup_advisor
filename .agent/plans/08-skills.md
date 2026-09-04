@@ -224,3 +224,13 @@ Open decisions for the owner:
 
 - The four built-in skills are distilled from the validator's prompts. Confirm the licence header they ship under (the repo has no `LICENSE` — remaining-work item 17), because a user will download them.
 - Whether a user may attach a skill to a **library** agent node (the repo's own YAML agents) or only to authored ones. Recommendation: authored only in v1 — a library agent's prompt is tuned and pinned by tests, and a skill changes what it reads.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 10 — authored only.** The library agents are ours, not the author's,
+and attaching to them makes the boundary between the two disappear.
+
+**Decision 11 — not answerable; it depends on the repository having no
+`LICENSE`.** A public repo with no licence file means all rights reserved
+(CLAUDE.md remaining-work item 17). Build the four skills with no licence header
+and record the dependency; do not invent a header.

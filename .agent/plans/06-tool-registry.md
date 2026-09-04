@@ -297,3 +297,15 @@ Open decisions for the owner:
 
 - **D8, the code interpreter.** Recommendation: option 1, BYO E2B key, not started until decided.
 - Whether the platform Firecrawl key should back `research_market_landscape` for every user by default (zero-config templates) or only until the user adds their own. Recommendation: platform key by default, per-user override, and a per-user daily cap recorded in 01.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 3 (D8) — BYO E2B key behind a flag, default OFF. PROVISIONAL: the
+owner confirms before it is enabled.** It runs somebody else's code on our
+machine. Build the flag and the key handling; stop before enabling it by
+default.
+
+**Decision 9 — the per-user override is built and the daily cap is built; the
+platform Firecrawl default stays OFF. PROVISIONAL: the owner confirms.** A
+platform key backing every user's research spends the owner's money on other
+people's requests.

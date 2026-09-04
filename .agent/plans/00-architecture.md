@@ -471,3 +471,10 @@ plan carries the same note beside its table.
   second column to reach a deployed table by the additive path after
   `runs.mode`; `NULL` reads as `stored`, nothing is backfilled, and the
   upgrade is asserted against the shipped DDL. Consumers: 15 only.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 2 — taken, applied in `c9e8521`.** The rules block is now at the
+head of `CLAUDE.md` and in force, amended in two clauses: parallel subagents
+are authorized, and a money bound was added where the draft had none.
+`.agent/RULES.draft.md` is history, not the live copy.

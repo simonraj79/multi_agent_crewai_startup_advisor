@@ -275,3 +275,13 @@ Open decisions for the owner: (1) delete `minimal-gated-agent` and
 `fan-out-join` once `e2e/builder.spec.ts` is re-pointed at
 `sequential-pipeline`, or keep them in the "more" row; (2) whether criterion
 9's four paid runs happen before or after the rubric gate.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 21 — keep both in a "more" row.** They are what the E2E suite drives,
+and deleting them turns a template change into a suite change.
+
+**Decision 22 — after the rubric gate, and after asking; the owner must approve
+the spend.** The OpenRouter balance was $27.55 on 2026-09-04 and the standing
+authorization is $5.00 cumulative for small live runs, so criterion 9's four
+paid runs are outside it and need a costed estimate and a fresh yes.

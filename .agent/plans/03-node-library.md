@@ -241,3 +241,9 @@ granted.
 Open decision for the owner: whether attachment tiles get letter hotkeys
 (`T`/`M`/`K`) or `8`/`9`/`0`; the plan assumes letters because `0` reads as
 "none".
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 18 — letters `T`, `M`, `K`.** Digits 1–7 already select node kinds,
+and a second digit row on the same surface is a collision an author discovers
+by pressing one.

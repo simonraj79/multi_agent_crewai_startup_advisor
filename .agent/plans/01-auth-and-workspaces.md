@@ -445,3 +445,15 @@ is invisible to a `readRunHandoff()` that reads the unscoped one, and the
 fifth is then skipped by the file's serial mode. So the per-behaviour red is
 the 11 unit assertions listed above; the E2E red proves the spec is coupled
 to the fix rather than passing either way.
+
+### Owner decisions answered — 2026-09-04
+
+**Decision 3 — BYO E2B key behind a flag, default OFF. PROVISIONAL: the owner
+confirms before it is enabled.** It runs somebody else's code on our machine.
+Build the flag and the key handling; stop before enabling it by default.
+
+**Decision 26 — yes, unowned published workflows stay launchable, for legacy
+rows; already built on this recommendation.** Rows written before ownership
+existed cannot be given an owner, and refusing them would make deploying this
+destroy the history it organises. D1 and the build above already work this way,
+so the answer and that record agree.

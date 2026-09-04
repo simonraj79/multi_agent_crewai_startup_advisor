@@ -326,6 +326,35 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
 10. `frontend/tests/credentialPicker.spec.ts`: the picker lists `{kind, label}` rows filtered by the field's kind, offers "create new", and never renders a field value even when the fake API returns one.
 11. E2E `e2e/isolation.spec.ts` (synthetic backend, two browser contexts via `X-Synthetic-User`): Alice creates a document, a credential and publishes; Bob's gallery lists neither; deep-linking Bob to `#/build/<alice-id>` lands on the empty builder; Bob's launch of Alice's workflow shows the console's 404 sentence and no run starts. **Rubric 14.**
 12. `docs/tech-stack.md` §6's scan reports the new knob (`CREDENTIALS_MASTER_KEY`) and the count in that file is regenerated, not edited.
+
+    **Amended 2026-09-04 (round 3, D-01-9): this criterion now has a
+    verifier, `tests/test_env_knob_doc.py`.** It read as verified and was
+    not - `grep -rln "tech-stack" tests/` answered nothing, while criterion
+    13 beside it labels itself a review checklist item. Two ways out were
+    available and the better one was taken: criterion 6 already shows the
+    technique, opening the plan file and asserting a note is where it should
+    be, so the manual half became a checked one instead of gaining a label.
+
+    The test runs §1's canonical multiline scan over `config.py` and
+    `service/app.py`, extracts §6's pasted block, and asserts **set equality
+    in both directions** plus the spelled-out count in the heading; it also
+    asserts `CREDENTIALS_MASTER_KEY` is in both, which is this criterion's
+    own literal sentence.
+
+    Two things it deliberately does not do. It does not widen the scan to the
+    five knobs §9 records as living outside those two files - that is a
+    decision for whoever closes that item, and a test should check the scan
+    the document declares rather than a better one it does not. And it cannot
+    check "regenerated, not edited", which is a claim about process: what it
+    checks is that the result is the same either way, which is the part that
+    can be wrong.
+
+    **It will go red when somebody adds a knob without touching the docs**,
+    and that is the point - `docs/tech-stack.md` asks for exactly this check
+    by name ("the scan wired into CI against a committed expected list ... It
+    does not exist"), because that section's count has been published wrong
+    six times, every one of them a knob landing in a commit that did not
+    touch the docs.
 13. `git grep -n "api_key\|token" -- src/brief_crew/service/credentials.py` shows no `print`, no `logging` of a field value; a review checklist item, not a test.
 
 ## References

@@ -1033,6 +1033,155 @@ export interface CredentialSummary {
   last_used_at: string | null
 }
 
+/* --- the attachment stores, C11 and C12 ---------------------------------- */
+
+/**
+ * One tool an MCP server offered, after the server sanitised it.
+ *
+ * `suspicious` is the one field worth pausing on. A tool description lands
+ * verbatim in an agent's tool list, which is a prompt written by a third party,
+ * so discovery tests every description against thirteen injection patterns and
+ * marks a match. **The tool is still listed and still selectable** (PLANS.md
+ * decision 8): the patterns have false positives by design - `act as` is
+ * ordinary English - and a picker that quietly dropped rows would be the
+ * quietly-divergent double this repository keeps warning about. The author sees
+ * `matched_pattern` and decides.
+ */
+export interface McpDiscoveredTool {
+  name: string
+  description: string
+  /** The tool's own JSON Schema, rendered read-only as a parameter preview. */
+  input_schema: Record<string, unknown>
+  suspicious: boolean
+  matched_pattern: string | null
+}
+
+/**
+ * One row of `GET /api/builder/mcp/servers`.
+ *
+ * `url` arrives MASKED - origin plus `/************` - and there is no
+ * unmasked form on this side. Plenty of hosted MCP servers put a token in the
+ * path, so a panel that showed the whole URL would publish a credential to
+ * anybody who could see the screen. The two `has_*_credential` booleans are the
+ * same principle: whether a key is attached is a fact the panel needs, and
+ * which key it is belongs to the credential picker.
+ */
+export interface McpServerRow {
+  /** `MCP_SERVER_ID_PATTERN` - `ms_` + 12 hex. */
+  id: string
+  label: string
+  transport: 'http' | 'sse' | 'stdio'
+  /** Masked. Null for a stdio server. */
+  url: string | null
+  command: string | null
+  args: string[]
+  has_header_credential: boolean
+  has_env_credential: boolean
+  /** `pending` until a discovery has run, then `authorized` or `error`. */
+  status: 'pending' | 'authorized' | 'error'
+  /** No discovery yet, or one older than `MCP_DISCOVERY_STALE_SECONDS` (a day). */
+  stale: boolean
+  tools: McpDiscoveredTool[]
+  discovered_at: string | null
+  /** One sentence. What the panel shows instead of a stack trace. */
+  last_error: string | null
+}
+
+/** What `POST`/`PUT /api/builder/mcp/servers` takes. Credentials travel as ids. */
+export interface McpServerDraft {
+  label: string
+  transport: 'http' | 'sse' | 'stdio'
+  url?: string | null
+  command?: string | null
+  args?: string[]
+  header_credential_id?: string | null
+  env_credential_id?: string | null
+}
+
+/** What `POST .../discover` answers with, whether it worked or not. */
+export interface McpDiscovery {
+  status: 'pending' | 'authorized' | 'error'
+  tools: McpDiscoveredTool[]
+  discovered_at: string | null
+  error: string | null
+}
+
+/**
+ * One row of `GET /api/builder/skills`, WITHOUT the body.
+ *
+ * Thirty packs at 64 KiB each is two megabytes of JSON to draw a palette, so
+ * the list carries the frontmatter and `GET /api/builder/skills/{id}` carries
+ * the pack. `owner` is `builtin` for the four this repository ships - visible
+ * to everybody, editable by nobody - and `me` for the caller's own.
+ */
+export interface SkillSummary {
+  /** `SKILL_ID_PATTERN` - `sk_` + 12 hex. */
+  id: string
+  /** The frontmatter name, which is also the directory name. */
+  name: string
+  description: string
+  /** `metadata.version` in the frontmatter, which is where it lives. */
+  version: number
+  owner: 'builtin' | 'me'
+  size_bytes: number
+  updated_at: string | null
+}
+
+/** A pack with its `SKILL.md` text. Rendered through the escape-first renderer. */
+export interface SkillDetail extends SkillSummary {
+  body: string
+}
+
+/** One typed argument of a custom HTTP tool - Flowise's grid, minus the function. */
+export interface CustomToolProperty {
+  name: string
+  type: 'string' | 'integer' | 'number' | 'boolean'
+  description: string
+  required: boolean
+}
+
+/**
+ * The request template that replaces Flowise's JavaScript `func`.
+ *
+ * A function stored per user is an evaluation surface; a template is a shape.
+ * `{placeholders}` name declared properties and are URL-encoded on the way in;
+ * `{credential}` is the header credential's value and never leaves the server.
+ */
+export interface CustomToolRequest {
+  method: 'GET' | 'POST'
+  url: string
+  header_name: string | null
+  header_template: string | null
+  body_template: string | null
+  timeout_seconds: number
+  max_response_bytes: number
+}
+
+/** One row of the caller's own custom HTTP tools. */
+export interface CustomToolRow {
+  /** `CUSTOM_TOOL_ID_PATTERN` - `ut_` + 12 hex. This is the document's `tool_id`. */
+  id: string
+  name: string
+  description: string
+  properties: CustomToolProperty[]
+  request: CustomToolRequest
+  credential_id: string | null
+  /** The catalogue row it appears as, for its owner only. */
+  entry: BuilderToolCatalogueEntry
+}
+
+/**
+ * The body of `POST`/`PUT /api/builder/tools/custom`. The same shape the row
+ * carries, minus the server's own id and derived entry.
+ */
+export interface CustomToolDraft {
+  name: string
+  description: string
+  properties: CustomToolProperty[]
+  request: CustomToolRequest
+  credential_id?: string | null
+}
+
 /**
  * The body of `POST /api/builder/credentials`. The ONLY place a field value
  * exists on this side is inside this object, on its way out.

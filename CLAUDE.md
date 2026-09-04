@@ -219,31 +219,54 @@ rests on committed history it says so.
 
 ## Verified Baseline
 
-Re-measured on **2026-09-03** against `gauntlet/plans` = `5f63cc8` (plans 01
-and 15, round 3 BUILT), in the integration worktree
-(`D:\MultiAgentSystem-wt\integration`), on Windows. **Every row below was
-run by the pass that wrote it**, `npm run build` and the PostgreSQL job
-included.
+Re-measured on **2026-09-04** against `gauntlet/plans` = `bc12642` (waves A
+and B built), in the integration worktree
+(`D:\MultiAgentSystem-wt\integration`), on Windows, by the pre-production
+pass. **Two rows are RED and one was not run**, and the block says which is
+which on its own line rather than in a footnote.
+
+> ⚠️ **The working tree carried UNCOMMITTED edits from three concurrent build
+> agents** when these ran. That is not an excuse and it is not a hedge — it is
+> the measured cause of the two red rows, and the evidence is one command:
+> `git show HEAD:frontend/src/types/builder.ts` contains **no**
+> `max_prompt_chars` and no `AuthoredAgentConfig`, while the working copy
+> contains seven such references. So the committed branch is very probably
+> green on those rows and *this tree* is not. Nothing was stashed to prove it:
+> stashing would have destroyed three other agents' work in progress.
 
 ```text
 CrewAI: 1.15.18                 Python: 3.13.5
-Python tests:  1655 run, 0 failures, 0 errors, 6 skipped - 86.3s
+Python tests:  2023 run, 0 failures, 0 errors, 6 skipped - 127.2s   GREEN
                (5 of the 6 skips are tests/pg/ with no TEST_DATABASE_URL)
-PostgreSQL 18.6: tests/pg/test_two_writers.py - 5 run, OK - 25.2s
-               (all five compare-and-set paths, two processes each)
-Frontend unit: 1195 run, 0 failures, 65 files (Vitest + jsdom)
-Frontend build: `vue-tsc -b --force` exit 0; `npm run build` exit 0
-Playwright E2E:  37 tests in 5 files, 37 GREEN on the final run, ZERO console
-                 errors - 1.7m (16 builder + 5 isolation + 6 builder-layout
-                 + 7 studio + 3 node-card visual), against the recipe below
-                 with CREDENTIALS_MASTER_KEY set; 9 of the 37 are @launch.
-                 Two builder tests are timing-flaky - MEASURED, item 44 -
-                 and a throwaway capture spec left in e2e/ makes the LIST
-                 one higher than the suite, which is why none is committed.
+PostgreSQL 18.6: tests/pg/test_two_writers.py - 5 run, OK - 23.3s   GREEN
+               (all five compare-and-set paths, two processes each, against
+                "PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2)" in pg18-test)
+Frontend unit: 1400 run, 37 FAILURES, 72 files (Vitest + jsdom)      RED
+               builderDefaults.spec.ts 33, builderImport.spec.ts 2,
+               versionBrowser.spec.ts 2 - all in the uncommitted surface
+Type check:    `npx vue-tsc -b --force` EXIT 2, 11 errors            RED
+               `npm run build` is `vue-tsc -b && vite build && tsc -p
+               tsconfig.server.json`, so it stops at step one - this row
+               alone fails the studio's Render build
+Playwright E2E:  69 tests in 8 files, 9 of them @launch              NOT RUN
+                 `npx playwright test --list` answers 69; the same with
+                 `--grep-invert @launch` answers 60. A LIST IS NOT A RUN and
+                 no browser was launched by this pass.
 ```
 
+> **The previous block, for the record, and it was fully run:** 2026-09-03 at
+> `5f63cc8` — Python 1655 / 6 skipped / 86.3s, PostgreSQL 5 OK / 25.2s,
+> frontend unit 1195 in 65 files, `vue-tsc` and `npm run build` both exit 0,
+> and Playwright **37 tests in 5 files all green** with zero console errors
+> tolerated, 9 of them `@launch`. Two builder tests are timing-flaky there
+> (MEASURED, item 44), and a throwaway capture spec left in `e2e/` raises the
+> LIST above the suite, which is why none is committed.
+
 > **These are `gauntlet/plans` figures, not `main`'s.** `main` is still
-> `25634c0`, where the previous block's 1228 / 1024 / 28 stand. Stage 1 of
+> `25634c0`, where 1228 / 1024 / 28 stand. Waves A and B (`5f63cc8` →
+> `bc12642`) added **368 Python tests, 205 frontend tests and 32 E2E tests**
+> over the 2026-09-03 block below — arithmetic on two measured pairs, not a
+> count anybody took at the time. Stage 1 of
 > the gauntlet (section 15) took the suites to 1548 / 1131 / 33; plan 15's
 > round 2 (`a952c74` → `90699e9`) added 94 Python and 26 frontend tests and
 > one E2E layout test; **round 3 for both plans** (`f2a3bb8` → `5f63cc8`)
@@ -301,9 +324,9 @@ Playwright E2E:  37 tests in 5 files, 37 GREEN on the final run, ZERO console
 
 ⚠️ These counts move, and they move fast. The Python suite has gone
 65 → 295 → 341 → 378 → 415 → 459 → 522 → 537 → 660 → 679 → 698 → 713 → 772 →
-1228 → 1548 → 1642 → **1655** (on `gauntlet/plans`) and the frontend
+1228 → 1548 → 1642 → 1655 → **2023** (on `gauntlet/plans`) and the frontend
 103 → 116 → 126 → 133 → 165 → 203 → 284 → 311 → 324 → 1024 → 1131 → 1157 →
-**1195**. Re-run before
+1195 → **1400** (37 of them failing, see the baseline). Re-run before
 quoting a number; the command is the contract, not the figure. The last step in
 each series is one commit.
 
@@ -453,10 +476,11 @@ The app is deployed on Render and serving.
 
 | | |
 | --- | --- |
-| UI | `https://agentic-crew-ai-web.onrender.com` — static site, free plan |
+| UI | `https://agentic-crew-ai-studio.onrender.com` — **a Node web service, not a static site**, free plan, `region: singapore`. This row said `agentic-crew-ai-web` and "static site" until 2026-09-04; both halves were stale. `render.yaml` declares `agentic-crew-ai-studio` with `runtime: node`, and its own comment records a probe of `https://agentic-crew-ai-studio.onrender.com/api/workflows` on 2026-09-01. Better Auth needs a runtime a CDN cannot give it, and the region is load-bearing because the database's `ipAllowList` is empty |
 | API | `https://agentic-crew-ai-api.onrender.com` — web service, python, **starter**, **singapore** |
 | DB | `agentic-crew-ai-db` — basic_256mb, PostgreSQL 18, singapore. Pre-existing and **reused**, not recreated by the apply |
 | Repo | `https://github.com/simonraj79/multi_agent_crewai_startup_advisor` (**public**), branch `main`, `autoDeploy: yes` on both services |
+| ⚠️ Next deploy | **Will not start unless `CREDENTIALS_MASTER_KEY` is entered in the API service's dashboard first.** Remaining-work item 46; measured, not reasoned |
 | Commit | **Unknown, and now more so.** This row said "inferred `d3523c5`" as of 2026-08-30; local `main` is `b4ef654` as of 2026-09-02 and `autoDeploy: yes` is set on both services, so the flow builder has *probably* shipped. The service still exposes no version endpoint, **no probe was made this pass**, and "probably" is doing all the work in that sentence. If it did ship, section 14's endpoints and `MAX_RUN_COST_USD` are live on a public origin and have never been exercised there |
 
 > **Every live measurement below was taken on 2026-08-30 at `e539811` and was
@@ -1002,20 +1026,39 @@ reply.
 - Synthetic service mode for no-cost integration and UI testing, selected by
   `SYNTHETIC=1` through `app_from_env()`.
 
-**Environment knobs: there are FORTY-ONE, and the canonical list lives in
-[`docs/tech-stack.md` §6](docs/tech-stack.md).** Thirty-seven are read in
+**Environment knobs: there are FORTY-NINE, and the canonical list lives in
+[`docs/tech-stack.md` §6](docs/tech-stack.md).** Forty-five are read in
 `config.py`, four in `service/app.py` (`DATABASE_URL`, `HOST`, `PORT`,
-`SYNTHETIC`). Regenerated 2026-09-03 at `ca43ba8` with the multiline scan below,
+`SYNTHETIC`). Regenerated 2026-09-04 at `bc12642`, and re-run unchanged at `8ae9a1f`, with
+the multiline scan below,
 per file rather than in aggregate, because "thirty-two and four" was itself a
-figure nobody had re-split.
+figure nobody had re-split. **The production decision for each unset knob is
+[`docs/deploying.md`](docs/deploying.md)'s, not this file's** — four of the
+eight new ones are provisional rulings that must stay off.
 
-> **Forty-one is the SEVENTH, regenerated 2026-09-03 at `ca43ba8`.** The two
-> new knobs are `CREDENTIALS_MASTER_KEY` (plan 01, the credential vault) and
+> **Forty-nine is the EIGHTH, regenerated 2026-09-04 at `bc12642`, and
+> forty-one lasted one wave.** The eight new knobs are waves A and B's:
+> `BUILDER_CODE_INTERPRETER_ENABLED`, `BUILDER_PLATFORM_FIRECRAWL_DEFAULT`,
+> `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP`, `MCP_STDIO_ENABLED`,
+> `MCP_ALLOWED_COMMANDS`, `MCP_ALLOWED_ENV_VARS`, `MCP_ALLOW_INSECURE_LOCAL`
+> and `SKILLS_ROOT`. `docs/tech-stack.md` §6 carries a row for each and this
+> file does not restate them.
+>
+> **The eighth failure was the same failure**, and it is worth naming because
+> the previous entry predicted it in so many words. The handoff into this pass
+> stated the count as 39 and the number of new knobs as ten; the scan answers
+> 49 and eight. Both halves of that were arrived at by *reasoning about what a
+> wave added* rather than by running the scan — which is exactly what the
+> `MAX_RUN_COST_USD` correction below says never produces a right answer. The
+> 39 also came from the **main tree's** `CLAUDE.md`, which is a generation
+> stale; this worktree's copy already said 41.
+>
+> **Forty-one was the SEVENTH, regenerated 2026-09-03 at `ca43ba8`.** Its two
+> new knobs were `CREDENTIALS_MASTER_KEY` (plan 01, the credential vault) and
 > `VALIDATOR_RUN_RETENTION_DAYS` (plan 15, durable run retention), landed
 > together in the Stage 1 contract commit `52a954f`, whose message said the
-> scan now answers 41 and deferred this regeneration to integration. It is the
-> first time the count has moved in a commit that announced it would.
-> [`docs/tech-stack.md` §6](docs/tech-stack.md) carries both rows.
+> scan now answers 41 and deferred this regeneration to integration. It was the
+> first time the count moved in a commit that announced it would.
 >
 > **Thirty-nine was the SIXTH figure this paragraph published, and the five
 > before it were all wrong — never twice for the same reason.** (Six published,
@@ -1077,9 +1120,13 @@ The scan that regenerates it — **multiline**, never line-anchored:
 ./.venv/Scripts/python.exe -c "import re,pathlib;pat=re.compile(r'(?:os\.getenv|os\.environ\.get|_env_[a-z_]+)\(\s*\"([A-Z_][A-Z0-9_]*)\"',re.S);print(sorted({n for f in ('src/brief_crew/config.py','src/brief_crew/service/app.py') for n in pat.findall(pathlib.Path(f).read_text(encoding='utf-8'))}))"
 ```
 
-`render.yaml` sets **none** of the admission knobs, so production runs on the
-defaults above — including `VALIDATOR_ALLOW_AUTO_GATES` off, which is the right
-answer for a public endpoint. One knob needs a decision anywhere else:
+`render.yaml` sets **none** of the admission knobs, none of the five `BUILDER_*`
+knobs, none of the four `MCP_*` knobs and not `SKILLS_ROOT`, so production runs
+on the defaults above — including `VALIDATOR_ALLOW_AUTO_GATES` off, which is the
+right answer for a public endpoint. **The one it must set and did not is
+`CREDENTIALS_MASTER_KEY`** — see remaining-work item 46; the manifest sets
+`AUTH_BASE_URL`, and the two together are a boot refusal rather than a degraded
+feature. One knob needs a decision anywhere else:
 `RUN_RATE_LIMIT_TRUST_FORWARDED_FOR` defaults to **on**, which is right behind
 Render's proxy — the socket peer *is* the proxy, so without it every visitor on
 earth shares one bucket and the first person to click Launch rate-limits
@@ -2144,16 +2191,32 @@ where it previously could only assert that the reply was accepted.
 
 ## Remaining Work and Unverified Risks
 
-Updated 2026-09-02 against `b4ef654` (the flow-builder merge), clean tree apart
-from one doc file another agent was editing at the time. The previous pass was
-2026-08-31 at `c63aca0`. Numbering is continuous with previous handoffs and has
-not been compacted, so cross-references keep resolving.
+**Deployment surfaces updated 2026-09-04 against `bc12642`** (waves A and B
+built) by the pre-production pass, which owns `render.yaml`, `docs/deploying.md`,
+`docs/tech-stack.md`, `docs/preflight.md`, this file, `Dockerfile` and
+`.github/workflows/**` and nothing else. It added **items 46, 47 and 48**, re-ran
+item 3's PostgreSQL suite, and wrote a **go-live checklist** into
+[`docs/deploying.md`](docs/deploying.md) — sixteen lines, of which **five are
+NOT READY, five more unverified, and two of the five red ones would break the
+deploy outright**. Read that
+checklist before a merge to `main`; both Render services carry
+`autoDeploy: yes`, so the merge *is* the deploy and there is no later moment at
+which to notice.
+
+**Item 46 is the one that stops a deploy dead**, and it is new: the manifest
+sets `AUTH_BASE_URL` and nothing sets `CREDENTIALS_MASTER_KEY`, which is a
+startup `RuntimeError` rather than a degraded feature. It is measured.
+
+Everything else below was updated 2026-09-02 against `b4ef654` (the flow-builder
+merge), clean tree apart from one doc file another agent was editing at the time.
+The pass before that was 2026-08-31 at `c63aca0`. Numbering is continuous with
+previous handoffs and has not been compacted, so cross-references keep resolving.
 
 **The flow builder closed nothing on this list**, and that is worth saying
-plainly because it shipped 59,489 lines. Items 1, 3, 5 and 17 — the paid
-acceptance run, PostgreSQL concurrency, the ratified rubric that no paid run
-has exercised, and the missing `LICENSE` — are all still open, and item 3 is now *worse* by one path.
-What the builder added is items 40-42.
+plainly because it shipped 59,489 lines. Items 1, 5 and 17 — the paid
+acceptance run, the ratified rubric that no paid run has exercised, and the
+missing `LICENSE` — are all still open. **Item 3's concurrency half is now
+closed** and re-verified twice; what the builder added is items 40-42.
 
 ### Needs money or a live host - no agent can close these
 
@@ -2213,11 +2276,18 @@ What the builder added is items 40-42.
    real Firecrawl scrapes at 10-30 s, projecting 2.8x-2.9x. Two things could
    still sink it: unequal branch latencies, and GitHub's shared 10 req/min
    per-IP limit serializing the feasibility branch (R-7).
-3. **Live PostgreSQL 18 exercise — the concurrency half is CLOSED LOCALLY as
-   of 2026-09-03, and not yet in CI.** `tests/pg/test_two_writers.py` (plan
-   15 D8) races two processes from a barrier on each of the five paths and
-   passed 5/5 against PostgreSQL 18.6 in the `pg18-test` container, three
-   times over. Two things it found: the **orphan sweep was not a
+3. **Live PostgreSQL 18 exercise — the concurrency half is CLOSED LOCALLY and
+   INDEPENDENTLY RE-VERIFIED on 2026-09-04, and not yet in CI.**
+   `tests/pg/test_two_writers.py` (plan 15 D8) races two processes from a
+   barrier on each of the five paths and passed 5/5 against PostgreSQL 18.6 in
+   the `pg18-test` container, three times over on 2026-09-03 and once more by
+   the pre-production pass on 2026-09-04 at `bc12642` — `Ran 5 tests in
+   23.317s / OK`, against a server reporting `PostgreSQL 18.6 (Debian
+   18.6-1.pgdg13+2)`. **That is the half of this item that has been open since
+   the project began, and a second pass on a different day agrees with the
+   first.** What is still open is not the code: it is that the CI job proving
+   it runs only on `main` and has therefore never executed, so the merge that
+   ships this is also the first run of the job that guards it. Two things it found: the **orphan sweep was not a
    compare-and-set** (`_fail_interrupted` guarded on `id` alone; it is
    `claim_run_status` now), and a losing `save` reported the pre-CAS version.
    `ci.yml` gained a `postgres` job on `main` only (decision 25) that has not
@@ -2917,8 +2987,124 @@ true.
     than illegible. The pan reaches them and the E2E proves it; whether a
     cue is wanted is a design call.
 
+46. **[BLOCKER] The deployed API will not start on its next deploy, because
+    `render.yaml` sets `AUTH_BASE_URL` and nothing sets
+    `CREDENTIALS_MASTER_KEY`.** Found and **measured** 2026-09-04 at `bc12642`
+    by the pre-production pass, by building the app with exactly the
+    environment the manifest describes:
+
+    ```text
+    AUTH_BASE_URL=https://agentic-crew-ai-studio.onrender.com \
+    CREDENTIALS_MASTER_KEY= python -c \
+      "from brief_crew.service.app import create_app; create_app()"
+
+    RuntimeError: AUTH_BASE_URL is set but CREDENTIALS_MASTER_KEY is empty;
+    people can sign in and the credential vault has no key to keep theirs
+    with. Mint one with python -c "import base64, secrets;
+    print(base64.b64encode(secrets.token_bytes(32)).decode())" and set it
+    ```
+
+    The same command with a valid key returns a `FastAPI` instance. This is
+    **not** a defect in the code — `_assert_credential_vault_startup_safety`
+    (`service/app.py`, called from `create_app` at `:673`) is plan 01 D3
+    working exactly as designed, the same fail-loud shape as
+    `_assert_auth_startup_safety`: a deployment that can sign people in and has
+    nowhere to keep their API keys is misconfigured, and the half-configured
+    state is the quiet failure. The defect is that the **manifest never caught
+    up with it**, and `docs/tech-stack.md` §6 described the consequence as
+    "the deployed API therefore has no vault until it does", which understates
+    it by a whole category: it is a dead service, not a missing feature.
+
+    **Half fixed on 2026-09-04.** `render.yaml` now declares
+    `CREDENTIALS_MASTER_KEY` with `sync: false`, a minting command and the
+    rotation warning, so a *fresh* Blueprint prompts for it like every other
+    secret. **The other half cannot be fixed in a file**: Render prompts for
+    `sync: false` values at Blueprint **creation** only, so on the
+    already-applied Blueprint the value must be entered in the dashboard before
+    the next deploy — and both services carry `autoDeploy: yes`, which makes
+    "the next deploy" the next merge to `main`. A deploy that reaches this code
+    without it fails its health check and rolls back.
+
+    Two further notes, both measured rather than assumed. The key is the
+    AES-256-GCM master key for the per-user credential vault, so **rotating it
+    is not free**: `credentials.py` detects a changed key and refuses
+    (`CREDENTIALS_MASTER_KEY changed without a re-encrypt pass`) rather than
+    silently re-wrapping. And a *keyless* deployment is still a supported
+    state — `SYNTHETIC=1`, the test suites and a bare checkout all run with no
+    key and answer 503 on the credential routes; it is only the combination
+    with `AUTH_BASE_URL` that refuses.
+
+47. **[Medium] `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP` has no consumer, so the
+    ruling it exists to satisfy is not implemented.** PLANS.md decision 9 is
+    "platform Firecrawl key as everyone's default, **with a daily cap** and
+    per-user override", and it is provisional. The override exists. The cap is
+    a constant nothing reads. Measured 2026-09-04 at `bc12642`:
+
+    ```bash
+    grep -rn 'BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP' --include=*.py --include=*.ts \
+      src frontend/src tests
+    # src/brief_crew/config.py:3141   - its own definition, and nothing else
+
+    grep -rn 'BUILDER_PLATFORM_FIRECRAWL_DEFAULT' --include=*.py src
+    # src/brief_crew/config.py:3137        - its definition
+    # src/brief_crew/builder/tools.py:576  - credential_optional=...
+    ```
+
+    So the **flag is wired and its cap is not**: no counter, no store, no UTC
+    reset. Turning `BUILDER_PLATFORM_FIRECRAWL_DEFAULT` on today would be an
+    uncapped spend of the owner's Firecrawl quota by anybody who can sign in,
+    which is not the thing decision 9 describes. The flag is off and
+    `render.yaml` does not set it, so nothing is spending today — this is a
+    **sequencing** item, not an incident: build the counter, then ask the owner
+    to confirm decision 9. Asking first would be asking them to approve a
+    sentence the code does not implement.
+
+    The contrast worth keeping is `VALIDATOR_RUN_RETENTION_DAYS`, which is the
+    same shape of knob and *is* wired end to end
+    (`registry.py:1370`, `:2139`, `persistence.py:1543`) — so this is one
+    knob's gap and not a pattern.
+
+48. **[Medium] The Docker image could not have imported the application, and
+    half of that is now fixed.** Found 2026-09-04 by reading the two files
+    against the code rather than by building the image — which still has never
+    been built here, and that is exactly why this survived.
+
+    `Dockerfile` copied `src/`, `pyproject.toml` and `uv.lock` and **not
+    `data/`**, on the stated premise that "the image needs exactly" those
+    three. That premise predates two waves of work that put runtime data on
+    disk:
+
+    - `config.MODEL_REGISTRY_PATH` resolves to
+      `Path(config.py).resolve().parents[2] / "data" / "models.json"`, which
+      with `src/` at `/app/src` is `/app/data/models.json`, and
+      `load_model_registry` **raises at import** on a missing file — a
+      deliberate fragility, because "a registry that half-loads is a product
+      that offers half a roster and prices the rest at nothing". So
+      `import brief_crew.config` would have failed and the container would
+      never have served anything.
+    - `SKILLS_ROOT` defaults to the CWD-relative `data/skills`, `WORKDIR` is
+      `/app`, and the four built-in packs are committed files.
+
+    **`COPY data ./data` is added and closes the first half completely.** The
+    second half is still open and cannot be closed from the `Dockerfile`:
+    `.dockerignore` excludes `*.md` wholesale, so every `SKILL.md` is stripped
+    from the build context before `COPY` runs, and `load_builtins()` does
+    `if not path.exists(): continue` — so the image would serve **zero**
+    built-in skills with no error anywhere. The fix is one line,
+    `!data/skills/builtin/**/*.md`, in a file outside the surface of the pass
+    that found this. It is recorded rather than half-fixed, because a `COPY`
+    that looks complete and silently drops four packs is worse than a known
+    gap.
+
+    **Neither half affects the Render deployment**, which checks the repository
+    out whole and therefore has `data/` — the Blueprint path does not use this
+    image at all. What it affects is anybody who believes the container is a
+    working alternative. `Dockerfile`'s header comment also still described the
+    frontend as "a separate static site"; it has been a Node web service since
+    the auth work, and that is corrected in the same edit.
+
 Item 34 below is **resolved** (see item 35 in the closed ledger) and is kept
-only because its diagnosis is the valuable part. It appears after 36-45 because
+only because its diagnosis is the valuable part. It appears after 36-48 because
 those are the open ones; the numbering is chronological, not a priority order.
 
 34. **A latent CrewAI defect in `or_()`, under investigation by another agent —
@@ -3124,9 +3310,24 @@ Kept because the *reasoning* is what stops the defect coming back.
 
 ## Recommended Next Sequence
 
+> **⚠️ Nothing below is step one any more. Step zero is the go-live checklist
+> in [`docs/deploying.md`](docs/deploying.md)** (written 2026-09-04), and the
+> reason it outranks everything here is mechanical rather than editorial: both
+> Render services carry `autoDeploy: yes`, so **a merge to `main` is a deploy**
+> and there is no later moment at which to notice. Five of its sixteen lines
+> are NOT READY as measured on 2026-09-04, five more are unverified, and two of
+> the five red ones break the deploy outright — `CREDENTIALS_MASTER_KEY` absent from the API service
+> (item 46, a startup `RuntimeError`) and `vue-tsc -b` exiting 2, which is the
+> first of three steps in `npm run build` and therefore the studio's whole
+> Render build. A third, the missing `LICENSE`, is step 3 below and has been
+> open since the repository went public.
+>
+> **"Deployment is settled" was true on 2026-09-02 and is not true now.** The
+> sentence below is kept because its reasoning about *money* still holds.
+
 Rewritten 2026-09-02, after the flow builder merged. Deployment, admission
-control and CI are all settled, and the builder settled nothing on this list —
-it added to it. What is left is still one human decision and then money, and
+control and CI were settled at the time — the deployment half no longer is, see
+the box above — and the builder settled nothing on this list; it added to it. What is left is still one human decision and then money, and
 there is now **more** money-shaped work than before, because a second thing can
 now spend it.
 
@@ -3177,7 +3378,10 @@ the same reason — every cleanup it listed was completed on 2026-08-31.
    section 14.
 3. **Add a `LICENSE`** (item 17). The repo is public with no licence file, which
    means all rights reserved — almost certainly not the intent — and
-   `pyproject.toml` already carries the note saying so.
+   `pyproject.toml` already carries the note saying so. Re-verified 2026-09-04:
+   `ls LICENSE*` answers `No such file or directory` and `git ls-files` finds
+   none. PLANS.md decision 11 (a licence header on the built-in skills) is
+   **not answerable** until this is.
 4. **Run one real idea through both gates on the deployed service, with traces
    enabled**, and inspect citation closure before sharing any trace link. This
    is what actually closes item 1 and puts real concurrent load on PG 18

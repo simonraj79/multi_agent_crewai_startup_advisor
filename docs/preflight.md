@@ -745,3 +745,17 @@ Both are free to check and take a minute.
 One recommendation worth the emphasis: **make the first paid run `--no-gates`.**
 Same six agents, same tools, same guardrails, same money — and it never touches
 the `Flow.resume()` path that carries the one known intermittent crash.
+
+> **If the paid run is through the DEPLOYED SERVICE rather than this CLI, one
+> more thing must be true first** (added 2026-09-04). The CLI path
+> (`python -m brief_crew.validator_flow`) never builds the FastAPI app, so
+> nothing here changes. The service path does, and since plan 01 `create_app`
+> **refuses to start** when `AUTH_BASE_URL` is set and `CREDENTIALS_MASTER_KEY`
+> is empty — which is exactly the state `render.yaml` described until
+> 2026-09-04. Measured, with the reproduction, in `CLAUDE.md` remaining-work
+> item 46; the runbook entry is step 4 of [`deploying.md`](deploying.md). It
+> costs nothing to check and it is the difference between a paid run and a
+> service that never comes up.
+>
+> The go-live checklist at the head of `deploying.md` is the fuller version of
+> this paragraph, and it names three other things that are not ready.

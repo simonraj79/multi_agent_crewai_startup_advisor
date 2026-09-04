@@ -1,12 +1,19 @@
 # Container alternative to Render's native Python runtime (feature F44).
 #
-# Builds the FastAPI/WebSocket API only. The Vue frontend is a separate static
-# site (see render.yaml) and is deliberately not baked in here.
+# Builds the FastAPI/WebSocket API only. The Vue frontend is a separate service
+# and is deliberately not baked in here - note it is a NODE WEB SERVICE now,
+# not a static site: Better Auth needs a runtime a CDN cannot give it, and the
+# SPA and auth must share one origin because onrender.com is on the Public
+# Suffix List. See render.yaml.
 #
 # Build:
 #   docker build -t validator-studio-api .
 # Run (secrets are injected, never baked):
 #   docker run --rm -p 8000:8000 --env-file .env validator-studio-api
+#
+# If the environment sets AUTH_BASE_URL it MUST also set CREDENTIALS_MASTER_KEY,
+# or `create_app` raises at startup rather than degrading - plan 01 D3. See
+# docs/deploying.md step 4 and CLAUDE.md remaining-work item 46.
 #
 # NOTE: this image has not been built on this machine - the Docker daemon was
 # not running when it was written.
@@ -80,6 +87,35 @@ RUN useradd --create-home --uid 10001 appuser \
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --chown=appuser:appuser src ./src
 COPY --chown=appuser:appuser pyproject.toml uv.lock ./
+
+# `data/` IS RUNTIME DATA, not documentation, and without it this image cannot
+# even import. Added 2026-09-04 after reading the code rather than building the
+# image, which has still never been built here.
+#
+#   * `data/models.json` is the model registry (plan 05, contract C3).
+#     `config.MODEL_REGISTRY_PATH` resolves it as
+#     `Path(config.py).resolve().parents[2] / "data" / "models.json"` - with
+#     src/ at /app/src that is /app/data/models.json - and `load_model_registry`
+#     RAISES at import on a missing or malformed file, deliberately: "a registry
+#     that half-loads is a product that offers half a roster and prices the rest
+#     at nothing". So without this line `import brief_crew.config` fails and the
+#     container never serves anything.
+#   * `data/skills/builtin/*/SKILL.md` are the four built-in skill packs
+#     (plan 08). `SKILLS_ROOT` defaults to the CWD-relative `data/skills`, and
+#     WORKDIR is /app, so they belong at /app/data/skills/builtin.
+#
+# ⚠️ THE SKILLS HALF IS STILL BROKEN AND THIS LINE DOES NOT FIX IT.
+# `.dockerignore` excludes `*.md` wholesale, so every `SKILL.md` is stripped
+# from the build context before COPY sees it - and `load_builtins()` does
+# `if not path.exists(): continue`, so the image would serve ZERO built-in
+# skills with no error anywhere. The fix is one negation in `.dockerignore`:
+#
+#     !data/skills/builtin/**/*.md
+#
+# That file was outside the surface of the pass that found this; it is recorded
+# in CLAUDE.md's remaining work rather than half-fixed here, because a COPY that
+# looks complete and silently drops four packs is worse than a known gap.
+COPY --chown=appuser:appuser data ./data
 
 USER appuser
 

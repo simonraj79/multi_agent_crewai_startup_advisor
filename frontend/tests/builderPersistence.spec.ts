@@ -106,6 +106,7 @@ function model(document: BuilderDocument, version: number, head = version): Buil
     budget: BUDGET,
     graph: { id: DOC_ID, name: 'Sample', version: 'abc', start_nodes: [], nodes: [], edges: [] },
     published: false,
+    live_version: null,
   }
 }
 
@@ -848,5 +849,55 @@ describe('the draft belongs to the signed-in user (D-01-5)', () => {
     nobody.document.setName('Edited')
     await nextTick()
     expect(window.localStorage.getItem(`builder-draft:${DOC_ID}`)).not.toBeNull()
+  })
+})
+
+/* --- which version is LIVE (critic round product-1, P-05) ----------------- */
+
+describe('the session knows which version is live, not merely whether this one is', () => {
+  /**
+   * `adoptIdentity` read `status` alone: a head that had returned to `draft`
+   * nulled `publishedVersion`, so `DocumentBar`'s `v1 is live` chip vanished the
+   * instant the author saved v2 - at exactly the moment it starts mattering,
+   * because v1 goes on answering launches while they edit. The bar's own
+   * rendering was always right; it was being handed the wrong fact.
+   */
+  it('keeps the live version when head is saved past it', () => {
+    const { persistence } = session()
+    persistence.adopt({ ...model(sample(), 1), status: 'published', published: true, live_version: 1 })
+    expect(persistence.publishedVersion.value).toBe(1)
+
+    // The save that reproduces P-05: head is v2 and a draft again, and v1 is
+    // still the registered workflow.
+    persistence.adopt({ ...model(sample(), 2), status: 'draft', published: false, live_version: 1 })
+    expect(persistence.publishedVersion.value).toBe(1)
+    expect(persistence.publishedHere.value).toBe(false)
+    expect(persistence.version.value).toBe(2)
+  })
+
+  it('clears it when nothing of the document is registered', () => {
+    const { persistence } = session()
+    persistence.adopt({ ...model(sample(), 1), status: 'published', published: true, live_version: 1 })
+    persistence.adopt({ ...model(sample(), 2), status: 'draft', published: false, live_version: null })
+    expect(persistence.publishedVersion.value).toBeNull()
+  })
+
+  /**
+   * The other direction, and the branch that was unreachable before: a restart
+   * clears the process registration maps while the row still says `published`.
+   * With no `else` on the old assignment nothing was written at all, so
+   * `liveNote`'s "published but not registered here" sentence could never
+   * render from a fresh load.
+   */
+  it('falls back to the published head when this process registered nothing', () => {
+    const { persistence } = session()
+    persistence.adopt({
+      ...model(sample(), 3, 3),
+      status: 'published',
+      published: false,
+      live_version: null,
+    })
+    expect(persistence.publishedVersion.value).toBe(3)
+    expect(persistence.publishedHere.value).toBe(false)
   })
 })

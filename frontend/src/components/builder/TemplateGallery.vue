@@ -391,6 +391,21 @@ const orderedLibrary = computed(() =>
               <span class="library-name" :title="entry.name">{{ entry.name }}</span>
               <span class="library-meta">
                 <span class="status-pill" :class="`is-${entry.status}`">{{ entry.status }}</span>
+                <!--
+                  The head's status is not the whole truth. `save` returns a
+                  published head to `draft` while the service keeps serving the
+                  older version whose budget was priced, so a row reading
+                  `draft v2` can be answering launches from v1 - and until this
+                  chip existed the gallery drew it identically to a graph that
+                  had never been published. Only shown when the live version is
+                  BEHIND head; when it is the head, the `published` pill beside
+                  it has already said so.
+                -->
+                <span
+                  v-if="entry.live_version !== null && entry.live_version !== entry.version"
+                  class="live-pill"
+                  :title="`v${entry.live_version} is answering launches while head is v${entry.version}`"
+                >v{{ entry.live_version }} live</span>
                 <span class="library-version">v{{ entry.version }}</span>
                 <!--
                   Relative text, exact stamp on hover (D-15-15). The relative
@@ -952,6 +967,10 @@ const orderedLibrary = computed(() =>
 .status-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); }
 .status-pill.is-draft { color: var(--text-muted); background: var(--surface-raised); }
 .status-pill.is-published { color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
+/* Same weight and shape as the status pill beside it - it is a status too,
+   about a different version. Cyan rather than mint so "live, and it is not
+   what you are editing" reads as distinct from "this head is published". */
+.live-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
 
 /* The row's four actions (D-15-15). `auto` in the row's own grid, so the name
    keeps every pixel the actions do not need.

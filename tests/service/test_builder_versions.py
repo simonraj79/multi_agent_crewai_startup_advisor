@@ -349,3 +349,95 @@ class Visibility(VersionsCase):
     def test_the_store_refuses_by_name_too(self) -> None:
         with self.assertRaises(DocumentNotFound):
             self.store().history("ug_00000000")
+
+
+class TheSummaryKnowsWhichVersionIsLive(VersionsCase):
+    """Critic round product-1, P-04 and P-05.
+
+    D-15-23 made the *version rows* honest about a document whose live version
+    is behind head. The **document summary** above them stayed head-derived, so
+    `GET /api/builder/workflows` answered `status: "draft"` for a graph that was
+    answering launches, and the gallery - the only place an author sees all
+    their graphs - drew it identically to one that had never been published.
+    `GET /api/builder/workflows/{id}` had the same gap from the other side:
+    `published` answers "is THIS version the live one", which goes false the
+    moment the author saves past it.
+
+    Both now carry `live_version`, from the one helper all three readers share.
+    """
+
+    def summary(self, document_id: str) -> dict[str, Any]:
+        response = self.client.get(
+            "/api/builder/workflows", headers=self.auth(ADA_TOKEN)
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        rows = [row for row in response.json() if row["id"] == document_id]
+        self.assertEqual(len(rows), 1, response.text)
+        return rows[0]
+
+    def document(self, document_id: str) -> dict[str, Any]:
+        response = self.client.get(
+            f"/api/builder/workflows/{document_id}", headers=self.auth(ADA_TOKEN)
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def test_a_never_published_document_has_no_live_version(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        self.assertIsNone(self.summary(created["id"])["live_version"])
+        self.assertIsNone(self.document(created["id"])["live_version"])
+
+    def test_a_published_head_names_itself_as_live(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        self.publish(created["id"])
+        row = self.summary(created["id"])
+        self.assertEqual((row["status"], row["version"], row["live_version"]), ("published", 1, 1))
+        self.assertEqual(self.document(created["id"])["live_version"], 1)
+
+    def test_a_head_saved_past_a_published_version_still_names_it(self) -> None:
+        """P-04 and P-05 in one measurement: `draft v2` and `v1` live.
+
+        Before the fix the summary carried `status: "draft"` and nothing else,
+        and the canvas's `published: false` was the only signal - which is why
+        the `v1 is live` chip vanished at the exact moment it started mattering.
+        """
+
+        created = self.create_as(ADA_TOKEN)
+        self.publish(created["id"])
+        self.save_named(created["id"], "edited after publish", expected_version=1)
+
+        row = self.summary(created["id"])
+        self.assertEqual((row["status"], row["version"], row["live_version"]), ("draft", 2, 1))
+
+        document = self.document(created["id"])
+        self.assertEqual(document["status"], "draft")
+        self.assertEqual(document["version"], 2)
+        self.assertFalse(document["published"])
+        self.assertEqual(document["live_version"], 1)
+
+    def test_the_summary_and_the_version_rows_never_disagree(self) -> None:
+        created = self.create_as(ADA_TOKEN)
+        self.publish(created["id"])
+        self.save_named(created["id"], "edited after publish", expected_version=1)
+        live = [
+            entry["version"]
+            for entry in self.listed(ADA_TOKEN, created["id"])
+            if entry["status"] == "published"
+        ]
+        self.assertEqual(live, [self.summary(created["id"])["live_version"]])
+
+    def test_a_published_row_registered_nowhere_reports_no_live_version(self) -> None:
+        """The boot sweep's skip, from the summary's side.
+
+        The row says `published` and this process runs nothing, so `live_version`
+        is honestly `None` while `status` is honestly `published`. Two facts, and
+        the bar needs both to say "published but not registered here".
+        """
+
+        from tests.builder.test_compiler import straight_line
+
+        stored = self.store().create(straight_line(), user_id="user_ada")
+        self.store().mark_published(stored.id, 1, user_id="user_ada")
+        row = self.summary(stored.id)
+        self.assertEqual(row["status"], "published")
+        self.assertIsNone(row["live_version"])

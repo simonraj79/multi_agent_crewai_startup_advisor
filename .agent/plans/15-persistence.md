@@ -790,3 +790,56 @@ the difference from round 2: *"the menu is left-aligned"* is a rule that
 happened to reduce an overlap on one viewport, where *"these two rectangles do
 not meet"* is the thing the author experiences. The row's other half — labelling
 the item `Export head (vN)` — landed in round 2 and is unchanged.
+
+### Critic round product-1 fixes — 2026-09-04
+
+**P-04 and P-05 are one defect with two faces, and D-15-23 fixed only the third
+face.** That row made the *version rows* honest about a document whose live
+version is behind head. Nothing above them was: the document summary and the
+canvas both answered a head-derived question, and `store.save` deliberately
+returns a published head to `draft` while the registered workflow keeps the
+version whose budget was priced. So the same document read:
+
+```text
+GET /api/workflows                        lists it, launchable
+GET /api/workflows/{id}/graph             200
+GET /api/builder/workflows/{id}/versions  v2 draft · v1 PUBLISHED     <- honest
+GET /api/builder/workflows                status: "draft"             <- P-04
+document bar, head on v2                  "… v2 · Publish"            <- P-05
+```
+
+**P-04 — the gallery called a published document a draft.** A row whose live
+version is behind head was drawn identically to one that was never published,
+in the only place an author sees all their graphs. `BuilderDocumentSummaryModel`
+now carries `live_version: int | None` beside `status`, and the gallery renders
+a `v1 live` chip when it is behind the head. Two fields rather than a compound
+`status`, for the reason `_version_status` already gives from the other side:
+head-published and older-version-live are independent facts, and collapsing
+them means every reader parses one string back apart.
+
+**P-05 — the canvas stopped saying a version was live once head moved past it.**
+The bar's own rendering was always right — `liveNote` has said
+`v1 is live · you are on v2` since it was written. It was being handed the wrong
+fact: `adoptIdentity` read `status` alone, so a head that had returned to
+`draft` nulled `publishedVersion` and the chip vanished at the exact moment it
+starts mattering. `BuilderDocumentModel` now carries `live_version` too, because
+`published: bool` only ever answered *is it this one*.
+
+The fix uncovered a second, quieter bug in the same three lines. The old
+assignment had **no `else`**: for a row saying `published` with nothing
+registered on this process — every restart, and `autoDeploy: yes` makes that
+every push — nothing was written at all, so `liveNote`'s
+*"published but not registered here — republish it"* branch was **unreachable
+from a fresh load**. The fallback now supplies the head, and a test pins it.
+
+One helper, `_live_version`, is what the gallery summary, the version list and
+the document response all read, so those three cannot disagree again. It is a
+dict lookup against the process-local registry — the same map the other two
+already used — not a query.
+
+Tests: `tests/service/test_builder_versions.py::TheSummaryKnowsWhichVersionIsLive`
+(**5**), `frontend/tests/builderPersistence.spec.ts` (**3**),
+`frontend/tests/builderShell.spec.ts` (**4**, three gallery and one bar). Red
+before and green after was measured both sides: the Python five error with
+`KeyError: 'live_version'` against the reverted route, and three of the seven
+frontend ones fail against the reverted source.

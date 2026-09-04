@@ -987,8 +987,8 @@ describe('the palette renders the server vocabulary and nothing else', () => {
     seedVocabulary()
     const wrapper = mountPalette({
       library: [
-        { id: 'ug_00000001', name: 'Pricing check', version: 4, status: 'published', created_at: '', updated_at: '' },
-        { id: 'ug_00000002', name: 'Scratch', version: 1, status: 'draft', created_at: '', updated_at: '' },
+        { id: 'ug_00000001', name: 'Pricing check', version: 4, status: 'published', live_version: 4, created_at: '', updated_at: '' },
+        { id: 'ug_00000002', name: 'Scratch', version: 1, status: 'draft', live_version: null, created_at: '', updated_at: '' },
       ],
       openDocumentId: 'ug_00000002',
     })

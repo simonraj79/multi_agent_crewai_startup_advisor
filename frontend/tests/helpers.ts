@@ -507,6 +507,13 @@ interface StoredDocument {
   createdAt: string
   updatedAt: string
   published: boolean
+  /**
+   * Which version the service is registered to run, mirroring the server's
+   * `live_version`. Deliberately NOT cleared by a save: that is the whole
+   * shape of critic finding P-05 - the head returns to `draft` while the older
+   * version goes on answering launches.
+   */
+  liveVersion: number | null
 }
 
 /**
@@ -587,6 +594,12 @@ export class FakeBuilderApi implements BuilderApiLike {
     version = 1,
     status: BuilderDocumentModel['status'] = 'draft',
     updatedAt?: string,
+    /**
+     * Override which version the service is running, for the one state `status`
+     * cannot express: head saved past a published version, so the row reads
+     * `draft v2` while v1 goes on answering launches (critic P-04/P-05).
+     */
+    liveVersion?: number | null,
   ): DocumentId {
     const stamp = new Date(1_750_000_000_000).toISOString()
     this.store.set(doc.id, {
@@ -596,6 +609,7 @@ export class FakeBuilderApi implements BuilderApiLike {
       createdAt: stamp,
       updatedAt: updatedAt ?? stamp,
       published: status === 'published',
+      liveVersion: liveVersion === undefined ? (status === 'published' ? version : null) : liveVersion,
     })
     return doc.id
   }
@@ -608,6 +622,7 @@ export class FakeBuilderApi implements BuilderApiLike {
       name: row.document.name,
       version: row.version,
       status: row.status,
+      live_version: row.liveVersion,
       created_at: row.createdAt,
       updated_at: row.updatedAt,
     }))
@@ -689,6 +704,7 @@ export class FakeBuilderApi implements BuilderApiLike {
     const row = this.require(id)
     row.status = 'published'
     row.published = true
+    row.liveVersion = row.version
     return (
       this.publishResult ?? {
         workflow_id: id,
@@ -728,6 +744,7 @@ export class FakeBuilderApi implements BuilderApiLike {
       budget: this.validation.budget,
       graph: descriptorFor(document),
       published: row.published,
+      live_version: row.liveVersion,
     }
   }
 }

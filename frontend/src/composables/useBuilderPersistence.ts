@@ -381,8 +381,23 @@ export function useBuilderPersistence(
     headVersion.value = model.head_version
     status.value = model.status
     publishedHere.value = model.published
-    if (model.status === 'draft') publishedVersion.value = null
-    else if (model.published) publishedVersion.value = model.version
+    // `live_version` is the SERVICE's answer and `status` is the ROW's, and the
+    // two legitimately disagree in both directions - which is why this reads
+    // both rather than deriving one from the other.
+    //
+    // It used to read `status` alone: a `draft` head nulled `publishedVersion`,
+    // so the `v1 is live` chip vanished the instant the author saved v2 - at
+    // exactly the moment it starts mattering, because v1 goes on answering
+    // launches while they edit. `save` returning a published head to draft is
+    // the server behaving correctly; the bar was reading the wrong fact.
+    //
+    // The fallback is the other direction: a row that says `published` with
+    // nothing registered here (a restart clears the process maps) keeps the
+    // note, which is what makes `liveNote`'s "published but not registered
+    // here - republish it" branch reachable at all. It was not, before: with
+    // no `else` this assignment simply did not run and the note stayed empty.
+    publishedVersion.value =
+      model.live_version ?? (model.status === 'published' ? model.head_version : null)
     // The store's lock is set HERE, synchronously, from the same two numbers
     // `viewingVersion` reads - not from a watcher on them, which would run a
     // tick later and leave `restoreVersion`'s commit refused by a lock that

@@ -45,12 +45,17 @@ from brief_crew.builder.document import (
     BuilderNode,
     GateConfig,
     InputConfig,
+    McpConfig,
     RouterConfig,
+    SkillConfig,
 )
 from brief_crew.config import (
+    BUILDER_ERROR_ROUTER_PREFIX,
     BUILDER_EVENT_LABEL_PATTERN,
     BUILDER_GATE_ROUTER_PREFIX,
     BUILDER_METHOD_IDENT_PATTERN,
+    BUILDER_STATE_ERROR_PREFIX,
+    BUILDER_STATE_OUTPUT_PREFIX,
     MAX_ATTACHMENT_NODES,
     MAX_ATTACHMENTS_PER_NODE,
     MAX_BILLABLE_NODES,
@@ -102,6 +107,21 @@ ATTACHMENTS_OVER_MAX = "attachments-over-max"
 ATTACHMENT_NODES_OVER_MAX = "attachment-nodes-over-max"
 CREW_MEMBERS_OUT_OF_RANGE = "crew-members-out-of-range"
 
+# 09-compiler.md's four, added 2026-09-04 with the authored compile path.
+#
+# The first two are about `document.state` (D6): the compiler OWNS `out__*`,
+# `err__*`, `turns__*`, `__builder__` and the input field, and a declared key
+# under one of those names would let a request body overwrite a node's output.
+# The third is the `on_error: route` port with nothing drawn from it - legal,
+# and almost certainly not what was meant. The fourth is what an IMPORTED graph
+# looks like: `export.py` strips `server_id` and `skill_id` deliberately, so a
+# node whose reference did not survive is an author-visible problem rather than
+# a crash inside the compiler.
+STATE_KEY_RESERVED = "state-key-reserved"
+STATE_SCHEMA_INVALID = "state-schema-invalid"
+ERROR_PORT_UNCONNECTED = "error-port-unconnected"
+ATTACHMENT_REFERENCE_MISSING = "attachment-reference-missing"
+
 _METHOD_IDENT = re.compile(BUILDER_METHOD_IDENT_PATTERN)
 _EVENT_LABEL = re.compile(BUILDER_EVENT_LABEL_PATTERN)
 
@@ -120,6 +140,22 @@ class Problem:
     message: str
     node_id: str | None = None
     edge_id: str | None = None
+    #: WHICH CONTROL, when the code alone cannot say - C8's optional `field`,
+    #: requested by 04 D7 and consumed by `useBuilderProblems.fieldFor`.
+    #:
+    #: The client's `FIELD_CODES` holds ONE string per code, which is the right
+    #: shape for `router-branch-count` and the wrong shape for the three codes
+    #: whose control varies with the document: `model-lacks-capability` blames
+    #: `llm.response_format` on one node and `llm.reasoning_effort` on the next.
+    #: Those checks already know the answer - `_capability_problems` takes the
+    #: field name as an argument - so naming it here costs nothing and is the
+    #: only way the inspector can open the right disclosure and focus the right
+    #: control.
+    #:
+    #: `None` on every problem whose code already answers the question. A client
+    #: that has never heard of this key falls back to its own map, which is what
+    #: makes adding it additive.
+    field: str | None = None
 
 
 def has_errors(problems: Iterable[Problem]) -> bool:
@@ -178,6 +214,55 @@ def member_agent_ids(document: BuilderDocument) -> frozenset[str]:
     """
 
     return frozenset(edge.source for edge in member_edges(document))
+
+
+def routes_errors(node: BuilderNode) -> bool:
+    """Whether this node's failure takes an `error` port instead of ending the run."""
+
+    return getattr(node.config, "on_error", None) == "route"
+
+
+def error_router_labels(node: BuilderNode) -> tuple[str, ...]:
+    """The two event labels an `on_error: route` node's paired router emits.
+
+    `ok` and `error`, NOT the port names `out` and `error` - C5 spells them that
+    way and the asymmetry is worth keeping: `out` is where the value goes and
+    `ok` is what happened, and a label named after a port would read as though
+    the router were choosing a port rather than reporting an outcome.
+    """
+
+    return ("ok", "error") if routes_errors(node) and node.kind not in ROUTING_KINDS else ()
+
+
+def is_routed(node: BuilderNode) -> bool:
+    """Whether this node compiles a router at all - a gate, a router, or an error port."""
+
+    return node.kind in ROUTING_KINDS or routes_errors(node)
+
+
+def member_of(document: BuilderDocument) -> dict[str, str]:
+    """Member agent id -> the crew it is inside. Last member edge wins."""
+
+    return {edge.source: edge.target for edge in member_edges(document)}
+
+
+def step_nodes(document: BuilderDocument) -> tuple[BuilderNode, ...]:
+    """The nodes that become FLOW METHODS, in document order.
+
+    Two families are excluded and neither is a step. An ATTACHMENT is something
+    an agent HAS: it never runs, so there is no moment at which the flow would
+    move on from it. A MEMBER agent runs inside its crew, in the crew's own
+    order, so compiling it as a method too would run it twice and leave nothing
+    downstream able to say which output it was reading - which is exactly what
+    `member-agent-has-flow-edges` refuses an author for drawing.
+    """
+
+    members = member_of(document)
+    return tuple(
+        node
+        for node in document.nodes
+        if node.kind not in ATTACHMENT_KINDS and node.id not in members
+    )
 
 
 def _edges_by_source(document: BuilderDocument) -> dict[str, list[BuilderEdge]]:
@@ -399,7 +484,7 @@ def compiled_identifiers(
     loop_sources = {edge.source for edge in back_edges(document)}
 
     index = 0
-    for node in document.nodes:
+    for node in step_nodes(document):
         own = [f"n{index}_{node.id}"]
         routing_index = index
         index += 1
@@ -407,9 +492,18 @@ def compiled_identifiers(
             routing_index = index
             own.append(f"n{index}_{BUILDER_GATE_ROUTER_PREFIX}{node.id}")
             index += 1
+        elif routes_errors(node):
+            # 09 D3: a step whose `on_error` is `route` compiles to TWO methods
+            # for the same reason a gate does - only a `@router` can choose an
+            # event, so the step records `err__<node>` and a paired router reads
+            # it. The second index is consumed here so the two generators cannot
+            # drift; the compiler asserts they have not.
+            routing_index = index
+            own.append(f"n{index}_{BUILDER_ERROR_ROUTER_PREFIX}{node.id}")
+            index += 1
         methods[node.id] = tuple(own)
 
-        emitted = [f"e{routing_index}_{port}" for port in node.out_ports] if node.kind in ROUTING_KINDS else []
+        emitted = [f"e{routing_index}_{port}" for port in error_router_labels(node) or node.out_ports] if is_routed(node) else []
         # A loop-closing node also declares a rejoin label. Under the rule above
         # it is arguably redundant - a back edge can only leave a router or a
         # gate, and it leaves by a branch label that is already in `emitted` -
@@ -442,6 +536,8 @@ def structural_problems(document: BuilderDocument) -> list[Problem]:
     problems += _cycle_problems(document)
     problems += _input_output_problems(document)
     problems += _join_problems(document)
+    problems += _state_problems(document)
+    problems += _error_port_problems(document)
     problems += _identifier_problems(document)
     return problems
 
@@ -720,6 +816,33 @@ def _attachment_problems(document: BuilderDocument) -> list[Problem]:
                     node_id=node_id,
                 )
             )
+
+    for edge in attachment_edges(document):
+        source = nodes.get(edge.source)
+        if source is None:
+            continue
+        config = source.config
+        missing = None
+        if isinstance(config, McpConfig) and not config.server_id:
+            missing = "MCP server"
+        elif isinstance(config, SkillConfig) and not config.skill_id:
+            missing = "skill"
+        if missing is None:
+            continue
+        problems.append(
+            Problem(
+                code=ATTACHMENT_REFERENCE_MISSING,
+                severity="error",
+                message=(
+                    f"{source.id!r} is attached to {edge.target!r} and names no {missing}. "
+                    "An exported graph has this shape on purpose - the reference pointed at "
+                    "a row in the exporting author's own library and could not travel - so "
+                    "pick one of yours before this graph will run"
+                ),
+                node_id=source.id,
+                edge_id=edge.id,
+            )
+        )
 
     for node in document.nodes:
         if node.kind in ATTACHMENT_KINDS and node.id not in attached:
@@ -1114,6 +1237,140 @@ def _join_problems(document: BuilderDocument) -> list[Problem]:
                     node_id=node_id,
                 )
             )
+    return problems
+
+
+#: What a declared state key may not be called, because the compiler owns it.
+#: `_Plan.state_default()` writes every one of these, and a document key under
+#: the same name would let a run request overwrite a node's output, a node's
+#: failure, or a gate's turn counter.
+def _reserved_state_prefixes() -> tuple[str, ...]:
+    # Imported inside the function: two of the three live in `runtime.py`, which
+    # is a wire detail between two modules of this package rather than a
+    # platform constant, and a module-level import would make `bounds` depend on
+    # the module that loads YAML.
+    from brief_crew.builder.runtime import BUILDER_STATE_TURNS_PREFIX
+
+    return (
+        BUILDER_STATE_OUTPUT_PREFIX,
+        BUILDER_STATE_ERROR_PREFIX,
+        BUILDER_STATE_TURNS_PREFIX,
+    )
+
+
+#: The four python types the four declared scalar types accept as a default.
+#: `bool` is checked BEFORE `int` deliberately: `isinstance(True, int)` is
+#: `True` in python, so an integer field defaulting to `True` would validate.
+_STATE_DEFAULT_TYPES: dict[str, tuple[type, ...]] = {
+    "string": (str,),
+    "number": (float, int),
+    "integer": (int,),
+    "boolean": (bool,),
+}
+
+
+def _state_problems(document: BuilderDocument) -> list[Problem]:
+    """`document.state` (09 D6): reserved keys refused, defaults typed.
+
+    Reported rather than raised, both of them, because both are positions on a
+    canvas: a key with a reserved name is renamed in the state panel, and a
+    default of the wrong type is retyped in the same box that declared it.
+    """
+
+    problems: list[Problem] = []
+    declared = document.state
+    if declared is None:
+        return problems
+
+    from brief_crew.builder.runtime import BUILDER_STATE_KEY
+
+    reserved = _reserved_state_prefixes()
+    for key, field in declared.fields.items():
+        if key == BUILDER_STATE_KEY or key.startswith(reserved):
+            problems.append(
+                Problem(
+                    code=STATE_KEY_RESERVED,
+                    severity="error",
+                    message=(
+                        f"the state key {key!r} is one the compiler owns "
+                        f"({BUILDER_STATE_KEY}, and anything starting "
+                        f"{', '.join(reserved)}). A declared key under that name would be "
+                        "overwritten by a node's own output, or would overwrite it - "
+                        "rename it"
+                    ),
+                    field=key,
+                )
+            )
+            continue
+        if key == document.input_field:
+            problems.append(
+                Problem(
+                    code=STATE_KEY_RESERVED,
+                    severity="error",
+                    message=(
+                        f"the state key {key!r} is this graph's input field, which the run "
+                        "request already seeds. Declaring it again would give one name two "
+                        "sources and no rule for which wins"
+                    ),
+                    field=key,
+                )
+            )
+            continue
+        accepted = _STATE_DEFAULT_TYPES.get(field.type, ())
+        default = field.default
+        wrong = default is not None and (
+            not isinstance(default, accepted)
+            or (field.type != "boolean" and isinstance(default, bool))
+        )
+        if wrong:
+            problems.append(
+                Problem(
+                    code=STATE_SCHEMA_INVALID,
+                    severity="error",
+                    message=(
+                        f"the state key {key!r} is declared {field.type!r} and defaults to "
+                        f"{default!r}, which is a {type(default).__name__}. CrewAI validates "
+                        "a json_schema state at kickoff, so this would fail the run at its "
+                        "first method rather than here"
+                    ),
+                    field=key,
+                )
+            )
+    return problems
+
+
+def _error_port_problems(document: BuilderDocument) -> list[Problem]:
+    """An `on_error: route` node whose error port goes nowhere (09 criterion 4).
+
+    A WARNING, and the severity is the whole judgement. The graph is legal - the
+    error router still fires and the run still ends - but the author asked for a
+    recovery path and then did not draw one, so the failure they wanted to
+    handle would end the run silently anyway. The mirror-image mistake, an edge
+    leaving `error` on a node whose policy is `fail`, is an ERROR and is already
+    reported as `edge-unknown-port`, because such a node has no `error` port at
+    all.
+    """
+
+    problems: list[Problem] = []
+    drawn = {(edge.source, edge.source_port) for edge in flow_edges(document)}
+    for node in document.nodes:
+        if not routes_errors(node) or node.kind in ROUTING_KINDS:
+            continue
+        if (node.id, "error") in drawn:
+            continue
+        problems.append(
+            Problem(
+                code=ERROR_PORT_UNCONNECTED,
+                severity="warning",
+                message=(
+                    f"{node.id!r} routes its failures out of an `error` port and nothing is "
+                    "drawn from it, so a failure here still ends the run - which is what "
+                    "`on_error: fail` already does. Draw the recovery path, or set the "
+                    "policy back to fail"
+                ),
+                node_id=node.id,
+            )
+        )
     return problems
 
 

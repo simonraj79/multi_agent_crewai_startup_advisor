@@ -23,6 +23,7 @@ import BuilderEdge, { type BuilderEdgeData } from '../src/components/builder/Bui
 import NodePalette, { BUILDER_KIND_MIME, isBillableKind } from '../src/components/builder/NodePalette.vue'
 import PortMenu, { titleiseId, type PortMenuCreation } from '../src/components/builder/PortMenu.vue'
 import { resetVocabulary, vocabulary } from '../src/data/builderVocabulary'
+import { isAuthoredAgent } from '../src/types/builder'
 import { edgeClassOf, targetPortsOf } from '../src/composables/useBuilderCanvas'
 import { NODE_KINDS, outPortsOf } from '../src/data/nodeKinds'
 import {
@@ -62,6 +63,11 @@ const VOCABULARY: BuilderVocabulary = {
     max_input_chars: 2000,
     max_document_bytes: 262144,
     run_cost_ceiling_usd: 10,
+    // C2 v2\'s two authored-node bounds: BUILDER_MAX_PROMPT_CHARS and
+    // BUILDER_MAX_NODE_RETRIES, served since plan 04 and read by every
+    // PromptField and node-retry stepper rather than restated as a constant.
+    max_prompt_chars: 4000,
+    max_retries: 3,
   },
 }
 
@@ -884,7 +890,11 @@ describe('the port menu creates a node and its edge as one act', () => {
     expect(payload.node.kind).toBe('agent')
     expect(payload.node.label).toBe('Market analyst')
     expect(payload.node.id).toBe('market_analyst')
-    expect(payload.node.kind === 'agent' && payload.node.config.agent_id).toBe('market_analyst')
+    expect(
+      payload.node.kind === 'agent' &&
+        !isAuthoredAgent(payload.node.config) &&
+        payload.node.config.agent_id,
+    ).toBe('market_analyst')
     // Grid-snapped by the caller, and rounded again by `newNode` (R12): an
     // unrounded `position.x` is a hard 422 on a save long after the gesture.
     expect(payload.node.position).toEqual({ x: 240, y: 160 })

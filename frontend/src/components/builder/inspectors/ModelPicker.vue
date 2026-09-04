@@ -72,6 +72,50 @@ onMounted(() => {
 const models = computed<RegistryModel[]>(() => roster.value?.models ?? [])
 
 /**
+ * The list the `pick` mode offers: the two tier presets first, then every other
+ * model cheapest-first. 04 D4, and both halves are decisions rather than taste.
+ *
+ * SORTED BY `cost_in` because the roster arrives in the JSON file's own order,
+ * which is neither alphabetical nor priced - `registry_document()` serves the
+ * rows as written, and as written the escalation model sits second and
+ * `qwen3.7-flash` at a quarter the price sits fifth. An author scanning for
+ * "cheap enough" reads a price column that goes 0.30, 0.75, 0.09, 0.075, 0.03
+ * and has to sort it in their head.
+ *
+ * PRESETS PINNED because they are the two this product prices, counts and
+ * defaults to: `MAX_ESCALATION_NODES` counts the escalation one, and every
+ * budget figure on screen is computed against whichever a node names. Sorting
+ * them into the body by price would bury the escalation model eighth, in a list
+ * where seven of the ten are cheaper and none of the seven is what the tier
+ * chips write.
+ *
+ * They are pinned rather than duplicated: a model appears exactly once, so
+ * choosing one can never leave two options looking selected.
+ */
+const orderedModels = computed<RegistryModel[]>(() => {
+  const rows = models.value
+  const presetIds = Object.values(roster.value?.presets ?? {})
+    .map((spelling) => modelById(spelling)?.id)
+    .filter((id): id is string => Boolean(id))
+  const pinned = presetIds
+    .map((id) => rows.find((model) => model.id === id))
+    .filter((model): model is RegistryModel => Boolean(model))
+  const rest = rows
+    .filter((model) => !presetIds.includes(model.id))
+    .slice()
+    .sort((left, right) => left.cost_in - right.cost_in)
+  return [...pinned, ...rest]
+})
+
+/** Which tier a row is the preset for, for the option's own label. */
+function presetTier(id: string): string | undefined {
+  for (const [tier, spelling] of Object.entries(roster.value?.presets ?? {})) {
+    if (modelById(spelling)?.id === id) return tier
+  }
+  return undefined
+}
+
+/**
  * The row this control describes: the selected model, or the tier's preset.
  *
  * `null` covers three states that look the same to the template and are not the
@@ -193,8 +237,12 @@ function onSelect(event: Event): void {
            the document alone and lets the server's own `model-unknown` say
            why. -->
       <option v-if="unknown" :value="modelValue">{{ modelValue }} — not in this build</option>
-      <option v-for="model in models" :key="model.id" :value="model.id">
-        {{ model.name }} — {{ usd(model.cost_in) }}/{{ usd(model.cost_out) }} per M
+      <option v-for="model in orderedModels" :key="model.id" :value="model.id">
+        <!-- The preset word is IN the option text, because a `<select>`'s
+             options carry no glyphs and an author choosing "the escalation
+             one" needs to be able to find it by that name. -->
+        {{ presetTier(model.id) ? `[${presetTier(model.id)}] ` : '' }}{{ model.name }} —
+        {{ usd(model.cost_in) }}/{{ usd(model.cost_out) }} per M
       </option>
     </select>
 

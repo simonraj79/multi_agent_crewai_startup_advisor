@@ -315,3 +315,80 @@ class LibraryArmTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProblemFieldTests(unittest.TestCase):
+    """C8's optional `field`, requested by 04 D7 and set by this module.
+
+    WHY IT HAS TO EXIST AT ALL. The client anchors a problem to a control
+    through `FIELD_CODES`, which holds ONE string per code. That is the right
+    shape for `router-branch-count` and the wrong shape for
+    `model-lacks-capability`, which blames `llm.response_format` on one node and
+    `llm.reasoning_effort` on the next - and for `model-unknown`, which blames
+    `llm.model` on one node and `retry.fallback_model` on the node whose last
+    attempt nobody exercises before publishing. `_capability_problems` already
+    takes the field name as an argument, so naming it on the Problem costs
+    nothing and is the only way the inspector can open the right disclosure and
+    focus the right control.
+
+    A client that has never heard of the key falls back to its own map, which is
+    what makes this additive rather than a break.
+    """
+
+    def test_a_capability_refusal_names_the_parameter_it_is_about(self) -> None:
+        problems = model_problems(
+            one_agent(model=NO_REASONING_MODEL, llm={"reasoning_effort": "high"})
+        )
+        self.assertEqual([problem.field for problem in problems], ["llm.reasoning_effort"])
+
+    def test_json_mode_and_reasoning_name_DIFFERENT_fields_on_one_code(self) -> None:
+        """The whole argument for the key, in one assertion.
+
+        Both are `model-lacks-capability`; a single-string-per-code map cannot
+        place both, and placing one of them on the other's control would send an
+        author to a control that is working.
+        """
+
+        gated = model_problems(
+            one_agent(
+                model="openai/gpt-4o-mini",
+                llm={"response_format": "json_object", "reasoning_effort": "high"},
+            ),
+            registry=patched_registry(
+                "openai/gpt-4o-mini", supports_json_mode=False, supports_reasoning=False
+            ),
+        )
+        self.assertEqual(codes(gated), [MODEL_LACKS_CAPABILITY, MODEL_LACKS_CAPABILITY])
+        self.assertEqual(
+            sorted(problem.field for problem in gated),
+            ["llm.reasoning_effort", "llm.response_format"],
+        )
+
+    def test_an_unknown_fallback_model_blames_the_fallback_control(self) -> None:
+        """The site `FIELD_CODES`' single string gets wrong.
+
+        `model-unknown` maps to `llm.model` client-side, because that is the far
+        commoner of its two sites. The fallback is the other one, and it is the
+        model a node uses on its LAST attempt - precisely the attempt nobody
+        exercises before publishing.
+        """
+
+        graph = one_agent(model=ROSTER_MODEL, retry={"fallback_model": UNSERVABLE_MODEL})
+        problems = model_problems(graph)
+        self.assertEqual(codes(problems), [MODEL_UNKNOWN])
+        self.assertEqual(problems[0].field, "retry.fallback_model")
+
+    def test_every_other_check_leaves_it_none(self) -> None:
+        """`None` where the code already answers the question.
+
+        Not defensiveness: a `field` on a code whose control is fixed would be a
+        second declaration of the same fact, and the two would drift.
+        """
+
+        from brief_crew.builder import validate_document
+
+        graph = one_agent(model=ROSTER_MODEL)
+        for problem in validate_document(graph):
+            if problem.code not in {MODEL_UNKNOWN, MODEL_OVER_CEILING, MODEL_LACKS_CAPABILITY}:
+                with self.subTest(code=problem.code):
+                    self.assertIsNone(problem.field)

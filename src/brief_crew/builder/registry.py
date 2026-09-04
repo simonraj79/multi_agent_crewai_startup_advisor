@@ -134,6 +134,10 @@ def _capability_problems(
                     "graph expects an object. Pick a model with JSON mode, or ask for text"
                 ),
                 node_id=node.id,
+                # C8's `field`: the control the author has to change. This code
+                # blames a DIFFERENT one on the next node, which is exactly why
+                # the client's one-string-per-code map cannot express it.
+                field=f"{field}.response_format",
             )
         )
     if llm.reasoning_effort is not None and not model.supports_reasoning:
@@ -147,6 +151,7 @@ def _capability_problems(
                     "in the answer. Clear it, or pick a reasoning model"
                 ),
                 node_id=node.id,
+                field=f"{field}.reasoning_effort",
             )
         )
     if has_attachments and not model.supports_tools:
@@ -160,6 +165,10 @@ def _capability_problems(
                     "run time. Detach them, or pick a tool-calling model"
                 ),
                 node_id=node.id,
+                # The repair is on the CANVAS - detach an edge - or on this
+                # control. Naming the model field is the half the inspector can
+                # focus; the sentence carries the other half.
+                field=f"{field}.model",
             )
         )
     return problems
@@ -205,6 +214,10 @@ def model_problems(
                             "the model picker; the roster is at GET /api/builder/models"
                         ),
                         node_id=node.id,
+                        # `_model_references` yields `llm.model`,
+                        # `manager_llm.model` or `retry.fallback_model`, and all
+                        # three are separate controls on one form.
+                        field=field,
                     )
                 )
                 continue
@@ -219,6 +232,7 @@ def model_problems(
                             "this graph was saved; pick a cheaper model"
                         ),
                         node_id=node.id,
+                        field=field,
                     )
                 )
 

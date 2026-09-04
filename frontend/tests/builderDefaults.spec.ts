@@ -10,7 +10,7 @@ import {
   vocabularyUnavailable,
 } from '../src/data/builderVocabulary'
 import { NODE_KINDS, NODE_KIND_ORDER, outPortsOf } from '../src/data/nodeKinds'
-import { NODE_ID_PATTERN } from '../src/types/builder'
+import { NODE_ID_PATTERN, isAuthoredAgent, isAuthoredCrew } from '../src/types/builder'
 import type { NodeKind } from '../src/types/builder'
 
 /**
@@ -173,6 +173,8 @@ function vocabularyPayload(): Record<string, unknown> {
       max_input_chars: 2000.0,
       max_document_bytes: 262144.0,
       run_cost_ceiling_usd: 10.0,
+      max_prompt_chars: 4000,
+      max_retries: 3,
     },
   }
 }
@@ -214,6 +216,8 @@ describe('the vocabulary is fetched once and never invented', () => {
     Object.assign(payload.bounds as Record<string, number>, {
       max_graph_nodes: 24.7,
       run_cost_ceiling_usd: 2.5,
+      max_prompt_chars: 4000,
+      max_retries: 3,
     })
     stubFetch(servingFetch(payload))
 
@@ -418,6 +422,11 @@ describe('a new node is one the server would accept', () => {
     expect(node.config.max_iter).toBe(pythonInt('VALIDATOR_BRANCH_MAX_ITER'))
     expect(node.config.guardrail_max_retries).toBe(pythonInt('BUILDER_MAX_GUARDRAIL_RETRIES'))
     expect(node.config.max_iter).toBeLessThanOrEqual(pythonInt('BUILDER_MAX_AGENT_ITER'))
+    // `newNode` builds the LIBRARY arm - the authored one is reached by
+    // converting, never by dragging a tile - so this narrows before reading the
+    // two fields only that arm has.
+    expect(isAuthoredAgent(node.config)).toBe(false)
+    if (isAuthoredAgent(node.config)) throw new Error('unreachable')
     expect(node.config.agent_id).toBe(vocabulary.value?.agent_ids[0])
     expect(node.config.tools).toEqual([])
   })
@@ -444,6 +453,8 @@ describe('a new node is one the server would accept', () => {
     }
     // The first id the server offers, with nothing stepped over on this side.
     expect(vocabulary.value?.crew_ids).toEqual(BUILDABLE_CREW_IDS)
+    expect(isAuthoredCrew(node.config)).toBe(false)
+    if (isAuthoredCrew(node.config)) throw new Error('unreachable')
     expect(node.config.crew_id).toBe(BUILDABLE_CREW_IDS[0])
   })
 

@@ -219,3 +219,111 @@ or per node kind.
 
 **Decision 19 — global.** Per node kind means an author learns the same control
 four times and it remembers a different answer each time.
+
+### Built — 2026-09-04
+
+Built against **`00-architecture.md`'s `FD5` table and its S9 deprecation
+ruling**, not against this file's older prose, per the instruction in `FD5`
+itself: *"where this document and the package disagree, the package wins."*
+Every departure is listed below with its reason.
+
+| # | Criterion | State | Shown by |
+| ---: | --- | --- | --- |
+| 1 | every FD5 field once across three regions; Advanced closed; Expert absent with the switch off and `N` correct | **met** | `frontend/tests/authoredInspector.spec.ts` — the field list is parsed out of `document.py` at run time, not written here |
+| 2 | a problem on an Expert field opens the switch, the region, and focuses the control | **met (unit)** | same file, *"forces the region open"* and *"focusField turns the switch on"*. The `e2e/builder.spec.ts` half is **not written** — see criterion 9 |
+| 3 | `response_format` / `reasoning_effort` disabled, `aria-disabled`, a tooltip naming the model, stored value still rendered, `model-lacks-capability` anchored | **met** | same file, *"a parameter the model cannot honour"*; server half `tests/builder/test_model_gating.py::ProblemFieldTests` |
+| 4 | `ModelPicker` lists exactly the roster, sorted by `cost_in`, presets pinned; the card pill moves in the same tick | **met** | same file, *"the model picker, and what the card says"* |
+| 5 | `CredentialPicker` never renders a secret; *Create new* is docked, not a dialog | **met (pre-existing)** | `frontend/tests/credentialPicker.spec.ts` — *"renders no field value from a list that carries them, in any shape"* and *"opens an inline form with no dialog"*, both landed with plan 01 |
+| 6 | the per-node cost line changes within 500 ms of a model change | **partial** | the reader is built and tested (`authoredInspector.spec.ts`, *"the per-node cost line"*); the server serves no `per_node` yet — it is **C5, owned by plan 09**. The line renders when the key arrives and is absent until then |
+| 7 | `FIELD_CODES` covers every FD14 code with a fixed field | **met** | `authoredInspector.spec.ts`, *"anchors every code with a fixed field"* — a total partition over `PROBLEM_CODES` |
+| 8 | multi-select two authored agents: `MIXED` on `llm.model`, one undo | **met** | same file, *"multi-selection over authored nodes"* |
+| 9 | a Playwright keyboard walk reaches every control | **not reached** | `frontend/e2e/**` is S9's under the 00 ownership map, and the run needs a live backend. Every widget is a native control or carries `role` / `aria`, which is the precondition; nothing has walked it |
+| 10 | *"configure an agent in eight pointer actions"*, ending `valid: true` | **not reached as a test; counted as 7** | see the click budget below |
+| 11 | `vitest` and `vue-tsc -b --force` exit 0; a kind with no inspector fails `vue-tsc` | **met** | `vue-tsc` exit 0; `INSPECTORS` is still `Record<NodeKind, Component>` |
+
+**Click budget, counted against what is built rather than against D10's list.**
+From the gallery to a valid `input → authored agent → output` with one tool and
+a chosen model: Blank canvas card (1) · palette `2` (1) · **Convert to an
+authored agent (1)** · wire input→agent (1 drag) · a tier chip (1) · tool tile
+dropped on the agent (1 drag) · wire agent→output (1 drag) = **7**. Two things
+moved in opposite directions and they nearly cancel: the Blank template already
+seeds an `output`, so D10's `palette 7` press is gone, and the authored arm is
+reachable only by converting a library agent, which adds one. Choosing from the
+picker instead of pressing a tier chip makes it **8**. This is a count, not a
+browser measurement — criterion 10's test does not exist.
+
+**Departures from this plan's prose, each because the package or the schema
+says otherwise.**
+
+1. **`SchemaEditor` has two columns, not four, and four types, not five.**
+   `TaskConfig.output_schema` is `dict[NodeId, ScalarType] | None` — a flat map
+   of name to `string | number | integer | boolean`. There is nowhere to put a
+   description or `required`, and no `array` or `object` to offer. Rendering
+   them would be rendering controls whose values are dropped on save, which is
+   the competitor behaviour this plan names as the win condition. *Paste JSON*
+   survives and accepts both a bare map and a JSON Schema's `properties`; a
+   property it cannot express is reported rather than dropped, and nothing is
+   partially applied.
+2. **The crew's members reorder with buttons, not drag.** D9 needs every control
+   keyboard-reachable, so a drag would have needed this fallback anyway, and the
+   fallback alone is the whole feature at a fifth of the surface. The order is
+   what matters; the gesture is not.
+3. **`verbose` is the crew's fifteenth field (ruled) and is rendered in
+   *Advanced*, not Essentials.** D2's crew Essentials list is explicit and
+   complete, and `00`'s own "fields the gauntlet names that no plan places"
+   table gives the reason it was dropped in the first place: console noise, and
+   the run console reads frames. Rendering it honours the ruling; rendering it
+   in Advanced honours this plan's own tiering.
+4. **`max_iter` and `guardrail_max_retries` are rendered on the authored crew**
+   though its paragraph names neither. `AuthoredCrewConfig` inherits both from
+   `_BillableConfig`, and a stored field with no control round-trips a value the
+   author cannot see and cannot change.
+5. **The library crew keeps its "accepted and ignored" help text**, which D2
+   asks to remove. The removal is conditional on plan 09 making the factory
+   honour `tier` / `max_iter`; 09 has not landed, so removing it now would
+   replace a true sentence with a false one. It comes out in the commit that
+   makes it false.
+6. **`ModelPicker` stays a `<select>`** rather than becoming D4's listbox with
+   glyph columns and a search box. It is plan 05's component, already
+   unit-tested, and a hand-rolled listbox is a keyboard implementation this plan
+   would have to get right for no gain over ten options. What criterion 4 asks
+   for — exactly the roster, sorted by `cost_in`, presets pinned — is built; the
+   glyph row, both price columns and the speed tier render beneath it, as 05
+   shipped them.
+7. **`ModelPicker` and `CredentialPicker` stay where they are**
+   (`inspectors/ModelPicker.vue`, `builder/CredentialPicker.vue`) rather than
+   moving under `fields/` as the Interfaces section lists them. Both already
+   existed and both are imported by other plans' surfaces; the move is churn
+   with a merge cost and no reader benefit.
+8. **D8's `tool_failure_policy`, `memory` and `cache` are not in the shared
+   multi-selection pane.** An authored crew has `memory` and `cache` and no
+   `tool_failure_policy`, so the three do not share one predicate and a control
+   offered over "authored nodes" would be wrong for one of the two kinds.
+   `llm.model`, `retry.max_retries`, `retry.backoff_seconds` and `on_error` are
+   there, gated on every selected node being authored — a library agent has no
+   `llm` at all, and `extra="forbid"` makes writing one a 422 rather than a
+   dropped key.
+9. **The authored arm is reachable only by converting a library agent.** D2
+   specifies that action and nothing in the plan set specifies a palette route
+   to a fresh authored node; `nodeKinds.defaultConfig` still builds the library
+   arm, which is 02/03's surface rather than this one's.
+
+**One contract implemented rather than requested: C8's optional `field`.**
+`bounds.Problem` and `BuilderProblemModel` gained `field: str | None = None`,
+`registry.py` sets it on all three model codes, and
+`useBuilderProblems.fieldFor` prefers it over `FIELD_CODES`. C8 already
+specifies the key — *"an optional `field` on the payload"* — so this is
+implementing a frozen contract rather than changing one, but it touches
+`bounds.py` (S2's file) and `service/builder_api.py` (the Integrator's) and
+should be ratified as such. **Criterion 3 is not reachable without it**: the
+code blames `llm.response_format` on one node and `llm.reasoning_effort` on the
+next, and one string per code cannot say both.
+
+**`BuilderBounds` grew two keys.** `max_prompt_chars` and `max_retries` were
+already served and already enumerated in `clientMirrors.spec.ts` as "served and
+not yet read"; every `PromptField` and every node-retry stepper reads them
+rather than restating a constant, per R6. That list is now four rather than six.
+`builderValidatorTemplate.json`'s recorded `vocabulary.bounds` was refreshed
+from `_vocabulary()` at head — it was recorded on 2026-09-02 and was six bounds
+behind, which made the client refuse it outright once `readBounds` required one
+of the two.

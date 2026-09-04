@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { BuilderNodeData as CanvasNodeData } from '../../composables/useBuilderCanvas'
-import type { BuilderNode as BuilderDocumentNode, NodeKind } from '../../types/builder'
+import { isAuthoredAgent, isAuthoredCrew } from '../../types/builder'
+import type { AgentConfig, BuilderNode as BuilderDocumentNode, NodeKind } from '../../types/builder'
 import type { NodeRunState } from '../../types/studio'
 
 /**
@@ -63,13 +64,14 @@ export function summariseConfig(node: BuilderDocumentNode): string {
       const { field, max_chars, required } = node.config
       return `${field} · ${max_chars} chars · ${required ? 'required' : 'optional'}`
     }
-    case 'agent': {
-      const { tier, agent_id, max_iter, tools } = node.config
-      const bound = tools.length === 0 ? 'no tools' : `${tools.length} tool${tools.length === 1 ? '' : 's'}`
-      return `${tier} · ${agent_id} · ${max_iter} iter · ${bound}`
+    case 'agent':
+      return agentLines(node.config).join(' · ')
+    case 'crew': {
+      const config = node.config
+      return isAuthoredCrew(config)
+        ? `${config.tier} · ${config.process} · ${config.task_order.length} member${config.task_order.length === 1 ? '' : 's'}`
+        : `${config.tier} · ${config.crew_id}`
     }
-    case 'crew':
-      return `${node.config.tier} · ${node.config.crew_id}`
     case 'gate': {
       const { max_turns, editable_fields } = node.config
       return `${max_turns} turn${max_turns === 1 ? '' : 's'} · ${editable_fields.length} editable`
@@ -146,9 +148,32 @@ const UNRESOLVED = 'no reference'
  * canvas under an author who is typing.
  */
 export function summaryLines(node: BuilderDocumentNode): string[] {
-  const whole = summariseConfig(node)
-  if (node.kind !== 'agent') return [whole]
-  const { tier, agent_id, max_iter, tools } = node.config
+  if (node.kind !== 'agent') return [summariseConfig(node)]
+  return agentLines(node.config)
+}
+
+/**
+ * An agent card's two lines: identity, then budget.
+ *
+ * TWO ARMS, TWO IDENTITIES. A library agent IS its `agent_id` - that id is the
+ * whole of what the document says about who it is. An authored agent has no id
+ * to show and a model it names outright, so line one carries the MODEL PILL:
+ * `llm.model` is the single fact that changes what this node costs and what it
+ * can do, and 04 D4 asks for it to move in the same tick the picker writes it.
+ * Showing `agent_id` there for one arm and nothing for the other would leave
+ * the more configurable node with the emptier card.
+ *
+ * The model is printed WITHOUT its provider prefix. `google/gemini-3.8-flash`
+ * at the card's type size wraps or clips, and the half that identifies the
+ * model is the half after the slash - the provider is already the roster's
+ * business rather than the canvas's.
+ */
+function agentLines(config: AgentConfig): string[] {
+  if (isAuthoredAgent(config)) {
+    const model = config.llm.model.split('/').pop() ?? config.llm.model
+    return [`${config.tier} · ${model}`, `${config.max_iter} iter · authored`]
+  }
+  const { tier, agent_id, max_iter, tools } = config
   const bound = tools.length === 0 ? 'no tools' : `${tools.length} tool${tools.length === 1 ? '' : 's'}`
   return [`${tier} · ${agent_id}`, `${max_iter} iter · ${bound}`]
 }

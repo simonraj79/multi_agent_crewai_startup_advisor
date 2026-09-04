@@ -63,6 +63,12 @@ export interface BuilderProblemsIndex {
   unplacedForNode: (nodeId: string, knownFields?: readonly string[]) => BuilderProblem[]
   /** Which control a code anchors to, or undefined when nothing claims it. */
   fieldForCode: (code: ProblemCode | string) => string | undefined
+  /**
+   * Which control ONE problem anchors to: its own `field` (C8) if it carries
+   * one, else its code's. This is the answer every sink uses; `fieldForCode` is
+   * kept beside it because a caller holding only a code still has a question.
+   */
+  fieldFor: (problem: BuilderProblem) => string | undefined
 }
 
 /**
@@ -121,12 +127,26 @@ export function useBuilderProblems(
   const fieldForCode = (code: ProblemCode | string): string | undefined =>
     FIELD_CODES[code as ProblemCode]
 
+  /**
+   * The control ONE problem anchors to - its own `field` first, then its code's.
+   *
+   * C8's optional `field` exists because three codes blame a control that
+   * varies with the document rather than with the code:
+   * `model-lacks-capability` is about `llm.response_format` on one node and
+   * `llm.reasoning_effort` on the next, and `FIELD_CODES` holds one string per
+   * code. The payload wins where it is present, because it is the more specific
+   * statement and it was made by the check that found the problem; the map is
+   * the fallback for every server that has not grown the key.
+   */
+  const fieldFor = (problem: BuilderProblem): string | undefined =>
+    problem.field || fieldForCode(problem.code)
+
   const problemsForField = (nodeId: string, field: string): BuilderProblem[] =>
-    problemsForNode(nodeId).filter((problem) => fieldForCode(problem.code) === field)
+    problemsForNode(nodeId).filter((problem) => fieldFor(problem) === field)
 
   const unplacedForNode = (nodeId: string, knownFields?: readonly string[]): BuilderProblem[] =>
     problemsForNode(nodeId).filter((problem) => {
-      const field = fieldForCode(problem.code)
+      const field = fieldFor(problem)
       if (field === undefined) return true
       return knownFields ? !knownFields.includes(field) : false
     })
@@ -146,6 +166,7 @@ export function useBuilderProblems(
     problemsForField,
     unplacedForNode,
     fieldForCode,
+    fieldFor,
   }
 }
 

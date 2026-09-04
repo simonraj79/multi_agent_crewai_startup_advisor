@@ -38,7 +38,7 @@ import { edgeOptionsFor, useBuilderDocument } from '../../composables/useBuilder
 import { useBuilderHotkeys } from '../../composables/useBuilderHotkeys'
 import { useBuilderPersistence } from '../../composables/useBuilderPersistence'
 import { BUILDER_PROBLEMS, useBuilderProblems } from '../../composables/useBuilderProblems'
-import { useBuilderValidation } from '../../composables/useBuilderValidation'
+import { BUILDER_BUDGET, useBuilderValidation } from '../../composables/useBuilderValidation'
 import { useStudioTheme } from '../../composables/useStudioTheme'
 import { BLANK, documentFromTemplate } from '../../data/builderTemplates'
 import { BuilderConflictError, builderApi } from '../../services/builderApi'
@@ -1463,6 +1463,16 @@ const portMenu = computed(() => {
  */
 provide(BUILDER_PROBLEMS, problems)
 
+/*
+ * The budget, published for the same reason and with one difference.
+ *
+ * `BudgetMeter` is a sibling and takes it as a prop. The inspector's per-node
+ * cost line (04 D6) is four components down, behind a `<component :is>` that
+ * erases props, so it injects. One fact, two routes, and the route is chosen by
+ * distance rather than by preference.
+ */
+provide(BUILDER_BUDGET, validation.budget)
+
 /* The notice channel, so a structural rewrite deep in an inspector can say what
  * it took with it. */
 provide('builder-notice', notice)
@@ -1932,6 +1942,7 @@ watch(
         :read-only="persistence.viewingVersion.value"
         @commit="applyInspectorCommit"
         @notice="say"
+        @focus-node="canvas.focusNode($event as NodeId)"
       />
 
       <!--

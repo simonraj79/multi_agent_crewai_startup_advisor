@@ -283,27 +283,30 @@ describe('the vocabulary fixture is what this build would serve', () => {
     expect(mapping.size, 'the bounds block moved shape').toBe(21)
 
     /*
-     * SIX of the twenty-one are served and not yet read, and naming them is the
+     * FOUR of the twenty-one are served and not yet read, and naming them is the
      * point rather than an omission.
      *
      * C2 v2 grew the bounds block on 2026-09-04 with the attachment family's
      * three counts and the authored node's two ceilings, plus the owner's price
-     * ceiling. `BuilderBounds` in `types/builder.ts` still declares fifteen, so
-     * `readBounds()` drops these on ingest and the palette's attachment counter
-     * has nothing to read - which is the client half of plan 03 D7, not this
-     * one's. Enumerating them here means the gap is a list a reader can close
-     * rather than a silent difference between two numbers.
+     * ceiling. **Two of the six came off this list the same day**, when plan 04
+     * wired the authored-agent inspector: `max_prompt_chars` is what every
+     * `PromptField` bounds its counter and its `maxlength` by, and `max_retries`
+     * is the ceiling on the node-retry stepper. Both are read by
+     * `readBounds()` now, which is why they are checked below with the rest
+     * rather than skipped here.
+     *
+     * The four that remain are 03 D7's and 05's, not this plan's. Enumerating
+     * them means the gap is a list a reader can close rather than a silent
+     * difference between two numbers.
      *
      * The assertion below is deliberately still TOTAL over the mapping: a bound
      * the client does not read is checked against `config.py` all the same, so
-     * the day the six are wired there is nothing here to remember.
+     * the day the last four are wired there is nothing here to remember.
      */
     const notYetReadByTheClient = [
       'max_attachment_nodes',
       'max_attachments_per_node',
       'max_crew_members',
-      'max_prompt_chars',
-      'max_retries',
       'ceiling_usd_per_m_input',
     ]
     for (const key of notYetReadByTheClient) {

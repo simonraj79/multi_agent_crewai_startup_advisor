@@ -210,7 +210,115 @@ export interface InputConfig {
  */
 export type NodeErrorPolicy = 'fail' | 'route'
 
-export interface AgentConfig {
+/**
+ * `document.py:ToolFailurePolicy` - `Agent.tool_failure_policy` at CrewAI
+ * 1.15.18, by its enum's own VALUES rather than its member names.
+ */
+export type ToolFailurePolicy = 'ignore' | 'warn' | 'raise'
+
+/**
+ * `document.py:ScalarType`. FOUR, not six.
+ *
+ * 04 D2's prose asks a `SchemaEditor` for `string/number/boolean/array/object`.
+ * The schema admits neither `array` nor `object` and adds `integer`, because
+ * `task.output_schema` is a FLAT map the compiler turns into a pydantic class
+ * with `create_model` - a nested schema would be a second document format
+ * inside the document. The package wins; the editor offers these four.
+ */
+export type ScalarType = 'string' | 'number' | 'integer' | 'boolean'
+
+/**
+ * `document.py:TaskConfig` - the one `Task` an authored agent runs.
+ *
+ * A composite rather than five flat fields because a Task is one CrewAI
+ * primitive, and it is one of the three composites whose collapse is the
+ * difference between FD5's 25 and its 41.
+ */
+export interface TaskConfig {
+  /** REQUIRED, 1..`bounds.max_prompt_chars`. */
+  description: string
+  /** REQUIRED, same bound. */
+  expected_output: string
+  /**
+   * A FLAT map of property name to scalar type, or null. Compiles to
+   * `Task.output_json` / `Task.response_model` via `create_model`.
+   */
+  output_schema: Record<string, ScalarType> | null
+  markdown: boolean
+  async_execution: boolean
+}
+
+/**
+ * `document.py:LlmConfig` - eleven leaves, and the reason FD5 counts 41 rather
+ * than 25.
+ *
+ * `stream` is absent on purpose: a builder run streams frames by construction,
+ * so there is nothing for an author to decide. `reasoning_effort` takes the
+ * eleventh slot instead, and the inspector gates it on `supports_reasoning`
+ * because OpenRouter drops it for every model in this roster.
+ */
+export interface LlmConfig {
+  /** REQUIRED. A registry model id, in any of the four spellings `baseSlug` folds. */
+  model: string
+  /** 0..2, or null. */
+  temperature: number | null
+  /** 0..1, or null. */
+  top_p: number | null
+  /** >= 1, or null. No ceiling - what a completion COSTS is `run_cost_ceiling_usd`'s job. */
+  max_tokens: number | null
+  /** Seconds, >= 1, or null. */
+  timeout: number | null
+  /** Gated on `supports_json_mode`. */
+  response_format: 'text' | 'json_object' | null
+  /** -2..2, or null. */
+  frequency_penalty: number | null
+  /** -2..2, or null. */
+  presence_penalty: number | null
+  /** At most four - the OpenAI-compatible ceiling, enforced by `LlmConfig._validate_stop`. */
+  stop: string[]
+  seed: number | null
+  /** Gated on `supports_reasoning`. SILENTLY DROPPED for every OpenRouter model. */
+  reasoning_effort: 'low' | 'medium' | 'high' | null
+}
+
+/**
+ * `document.py:RetryConfig` - the builder's OWN whole-node retry loop.
+ *
+ * Not `Task.max_retries`, which is deprecated at CrewAI 1.15.18, counts
+ * GUARDRAIL retries and is a different concept sharing a name. The field that
+ * means what CrewAI's means is `guardrail_max_retries` on the shared base.
+ */
+export interface RetryConfig {
+  /** 0..`bounds.max_retries`. */
+  max_retries: number
+  /** 0..`BUILDER_MAX_RETRY_BACKOFF_SECONDS` (60). */
+  backoff_seconds: number
+  /** The model to try on the LAST attempt. A REFUSAL is never retried with it (decision 16). */
+  fallback_model: string | null
+}
+
+/**
+ * `document.py:PlanningConfig` - FOUR of CrewAI's eleven.
+ *
+ * The 00 S9 deprecation ruling: `Agent.reasoning` and
+ * `Agent.max_reasoning_attempts` are deprecated at 1.15.18 and are REPLACED by
+ * `Agent.planning` plus these four. The three prompt overrides are excluded
+ * because prompts live in YAML for this repository's crews and in the document
+ * for an authored agent, and a third place would be a third place; `llm` is
+ * excluded because it would put the planner on a different model from the one
+ * the node names - a cost surprise with no visible cause.
+ */
+export interface PlanningConfig {
+  reasoning_effort: 'low' | 'medium' | 'high'
+  /** 1..`bounds.max_retries`, or null. */
+  max_attempts: number | null
+  /** 1..`BUILDER_MAX_PLANNING_STEPS` (20). */
+  max_steps: number
+  /** 0..`bounds.max_retries`. */
+  max_replans: number
+}
+
+export interface LibraryAgentConfig {
   /** REQUIRED, no default. */
   tier: Tier
   /**
@@ -240,7 +348,68 @@ export interface AgentConfig {
   credential_id?: string | null
 }
 
-export interface CrewConfig {
+/**
+ * `document.py:AuthoredAgentConfig` - a role, a goal, a backstory and one task
+ * the author wrote. FD5's canonical list as amended by the 00 S9 ruling.
+ *
+ * FOUR fields the older plan text names are deliberately ABSENT, and each
+ * absence is a decision rather than an oversight:
+ *
+ *   - `multimodal` and `function_calling_llm` are CUT. Both are deprecated at
+ *     CrewAI 1.15.18 and `multimodal`'s own message says it goes at v2.0, so a
+ *     control for either warns today and breaks at the next major.
+ *   - `reasoning` and `max_reasoning_attempts` are REPLACED by `planning` and
+ *     `planning_config`. CrewAI already folds the old pair into a
+ *     `PlanningConfig` and emits a `DeprecationWarning`; the switch an author
+ *     sees should be the one the package keeps.
+ *
+ * Attachments - tools, MCP servers, skills - are NOT fields. They arrive along
+ * `attach` edges and reach the constructor through the compiled `with:` block,
+ * which is what keeps "what this agent has" a thing you can see on the canvas
+ * rather than a list buried in a form. Flowise v2's `agentTools` array is the
+ * anti-pattern this avoids.
+ */
+export interface AuthoredAgentConfig {
+  /* --- the shared billable base, identical to the library arm ------------ */
+  tier: Tier
+  on_error?: NodeErrorPolicy
+  max_iter: number
+  guardrail_max_retries: number
+  prompt_inputs: Record<string, JsonScalar>
+
+  /* --- essentials -------------------------------------------------------- */
+  role: string
+  goal: string
+  backstory: string
+  task: TaskConfig
+  llm: LlmConfig
+
+  /* --- advanced ---------------------------------------------------------- */
+  max_rpm: number | null
+  max_execution_time: number | null
+  allow_delegation: boolean
+  /** `Agent.memory` is UNIFIED at 1.15.18 and is not three toggles. */
+  memory: boolean
+  cache: boolean
+  respect_context_window: boolean
+  retry: RetryConfig
+
+  /* --- expert ------------------------------------------------------------ */
+  system_template: string | null
+  prompt_template: string | null
+  response_template: string | null
+  tool_failure_policy: ToolFailurePolicy | null
+  planning: boolean
+  /**
+   * `null` unless `planning` is on: `AuthoredAgentConfig._validate_planning`
+   * RAISES on a config that sets one without the other, so the inspector never
+   * writes that shape.
+   */
+  planning_config: PlanningConfig | null
+  credential_id?: string | null
+}
+
+export interface LibraryCrewConfig {
   /**
    * REQUIRED. A DECLARATION, not a derivation - the document is priced before
    * anything is constructed, so an author names the escalation-most tier the
@@ -261,6 +430,66 @@ export interface CrewConfig {
   // `extra="forbid"`, so sending one is a 422 rather than a silently dropped
   // key - which is why this interface has nothing for an inspector to render.
 }
+
+/**
+ * `document.py:AuthoredCrewConfig` - a team the author assembled.
+ *
+ * FIFTEEN fields, per the 00 S9 ruling that settled 04's count against its own
+ * prose: **`verbose` is the fifteenth**. The gauntlet's Crew Essentials line
+ * reads `process (sequential/hierarchical), verbose`; `process` is among the
+ * fourteen 04's paragraph names and `verbose` is not, and `Crew.verbose` exists
+ * at 1.15.18 and is not deprecated.
+ *
+ * The MEMBERSHIP is not a field - it is the set of `member` edges arriving
+ * here - which is why the inspector renders the member list read-only and lets
+ * an author drag the order that `task_order` records.
+ */
+export interface AuthoredCrewConfig {
+  tier: Tier
+  on_error?: NodeErrorPolicy
+  max_iter: number
+  guardrail_max_retries: number
+  prompt_inputs: Record<string, JsonScalar>
+
+  process: 'sequential' | 'hierarchical'
+  /** The member node ids, in the order their tasks run. */
+  task_order: NodeId[]
+  /**
+   * `Crew.__init__` RAISES when the process is hierarchical and neither manager
+   * is set, and a sequential crew refuses both - `_validate_manager` checks the
+   * pair here rather than reporting it, because it is a cross-field rule about
+   * one object.
+   */
+  manager_llm: LlmConfig | null
+  manager_agent: NodeId | null
+  memory: boolean
+  cache: boolean
+  max_rpm: number | null
+  planning: boolean
+  planning_llm: LlmConfig | null
+  retry: RetryConfig
+  verbose: boolean
+}
+
+/**
+ * The two arms per billable kind, discriminated by PRESENCE rather than a tag.
+ *
+ * There is no `kind` tag because the two arms are not two things an author
+ * picks in a dropdown - they are "I named one of yours" and "I wrote my own",
+ * and the field that says which is the field that does the work. `document.py`
+ * spells the same union the same way, and `_one_of` refuses both-or-neither at
+ * parse.
+ */
+export type AgentConfig = LibraryAgentConfig | AuthoredAgentConfig
+export type CrewConfig = LibraryCrewConfig | AuthoredCrewConfig
+
+/** Whether this agent config is the arm whose prompts the author wrote. */
+export const isAuthoredAgent = (config: AgentConfig): config is AuthoredAgentConfig =>
+  !('agent_id' in config)
+
+/** Whether this crew config is the arm whose members the author assembled. */
+export const isAuthoredCrew = (config: CrewConfig): config is AuthoredCrewConfig =>
+  !('crew_id' in config)
 
 export interface GateConfig {
   /** 1..`BUILDER_MAX_GATE_MESSAGE_CHARS` (2000). REQUIRED. */
@@ -632,6 +861,19 @@ export interface BuilderProblem {
   message: string
   node_id: string | null
   edge_id: string | null
+  /**
+   * WHICH CONTROL, when the code alone cannot say - C8's optional `field`,
+   * requested by 04 D7.
+   *
+   * Three codes anchor to a field that varies with the document rather than
+   * with the code: `model-lacks-capability` (the parameter the model cannot
+   * honour), `state-schema-invalid` and `prompt-too-long`. `FIELD_CODES` holds
+   * one string per code and cannot express any of them, so the server names the
+   * control and `useBuilderProblems` prefers it. Absent on every problem from a
+   * server that has not grown it, which is why the index falls back rather than
+   * dropping the row.
+   */
+  field?: string | null
 }
 
 /**
@@ -677,6 +919,46 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
   // Plan 01 D10: a `credential_id` the caller's vault does not hold anchors to
   // the picker that chose it (`data-field="credential_id"` in the inspector).
   'credential-missing': 'credential_id',
+
+  /*
+   * 04 D7: every FD14 code with a FIXED field. The three whose field varies
+   * with the document rather than with the code carry `field` on the payload
+   * instead (C8) and are deliberately absent here - `model-lacks-capability`
+   * blames `llm.response_format` on one node and `llm.reasoning_effort` on the
+   * next, and one string cannot say both.
+   *
+   * `model-unknown` and `model-over-ceiling` ARE fixed: both are about the
+   * model a node names, and `registry.py::_model_references` reports them for
+   * `llm.model` and for `retry.fallback_model` alike - which is precisely why
+   * those two ALSO carry `field`, and why the index prefers it when it is
+   * there. The entry below is the honest fallback for a server that has not
+   * grown the payload yet, and it points at the far commoner of the two.
+   */
+  'model-unknown': 'llm.model',
+  'model-over-ceiling': 'llm.model',
+  // 06: a tool node names a catalogue id and nothing else, so all three anchor
+  // to one of its two controls.
+  'tool-unknown': 'tool_id',
+  'tool-credential-required': 'credential_id',
+  // 07: which server, which of its tools, and whether any were picked at all.
+  // `mcp-transport-disallowed` is a property of the SERVER record rather than
+  // of this node's reference to it, so it anchors to the server row too.
+  'mcp-server-unavailable': 'server_id',
+  'mcp-transport-disallowed': 'server_id',
+  'mcp-tool-unknown': 'tool_names',
+  'mcp-no-tools-selected': 'tool_names',
+  'mcp-tool-description-suspicious': 'tool_names',
+  // 08: one code for absent, deleted and foreign, and one control to change.
+  'skill-unknown': 'skill_id',
+  // 03 D2's crew membership count. It is about the `member` edges, and the
+  // control that shows them is the authored crew's read-only member list.
+  'crew-members-out-of-range': 'members',
+  /*
+   * `tool-param-invalid` is deliberately absent. Its field is one of the
+   * catalogue's own parameter names - `params.limit`, `params.formats` - which
+   * varies per tool, so it is the fourth code that needs C8's `field` and the
+   * fourth that must not be given a single wrong string here.
+   */
 }
 
 /* --- budget ------------------------------------------------------------ */
@@ -718,6 +1000,21 @@ export interface BuilderBudget {
   over_ceiling: boolean
   /** `MAX_RUN_COST_USD`, default 10.0. <= 0 means DISABLED. */
   ceiling_usd: number
+  /**
+   * The per-node breakdown - C5, requested by 04 D6, OWNED BY PLAN 09.
+   *
+   * OPTIONAL, and it is optional because plan 09 has not landed: today's
+   * `budget.py::BudgetEstimate` carries the six whole-graph figures above and
+   * no breakdown, so the inspector's per-node cost line renders when the key
+   * arrives and is absent when it does not. That is the honest degradation -
+   * computing the figure here instead would be a second estimator quietly
+   * disagreeing with the one that enforces the ceiling (invariant 3), which is
+   * exactly the shape of thing this repository keeps finding.
+   *
+   * `node_call_count` already exists server-side and is addressed by node id,
+   * so the arithmetic 09 has to expose is arithmetic it already does.
+   */
+  per_node?: Record<string, { calls: number; usd: number }>
 }
 
 /* --- vocabulary -------------------------------------------------------- */
@@ -744,6 +1041,17 @@ export interface BuilderBounds {
   max_document_bytes: number
   /** `MAX_RUN_COST_USD`. <= 0 means DISABLED - and it is a dollar figure, so it is NOT trunc'd. */
   run_cost_ceiling_usd: number
+  /**
+   * `BUILDER_MAX_PROMPT_CHARS` (4000) - what one authored prompt field may hold.
+   *
+   * Read by every `PromptField` in the authored-agent form rather than by a
+   * constant here, per R6: a bound the client keeps its own copy of is a bound
+   * that disagrees with the compiler after any server change, and the failure
+   * mode is a 422 about a box the author was told was fine.
+   */
+  max_prompt_chars: number
+  /** `BUILDER_MAX_NODE_RETRIES` (3) - the ceiling on `retry.max_retries`. */
+  max_retries: number
 }
 
 /**

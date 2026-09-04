@@ -190,6 +190,9 @@ class BuilderProblemModel(BaseModel):
     #: which is the whole reason a Problem carries an id rather than prose.
     node_id: str | None = None
     edge_id: str | None = None
+    #: C8's optional `field`: which control on the open inspector this problem
+    #: is about, when the code alone cannot say. See `bounds.Problem.field`.
+    field: str | None = None
 
     @classmethod
     def of(cls, problem: Problem) -> "BuilderProblemModel":
@@ -199,7 +202,20 @@ class BuilderProblemModel(BaseModel):
             message=problem.message,
             node_id=problem.node_id,
             edge_id=problem.edge_id,
+            field=problem.field,
         )
+
+
+class BuilderNodeCostModel(BaseModel):
+    """One billable node's contribution to the graph's static price."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    calls: int
+    usd: float
+    #: What it was priced AT, which is not always what it names: a node with a
+    #: `retry.fallback_model` is priced at the dearer of the two (09 D4).
+    model_id: str
 
 
 class BuilderBudgetModel(BaseModel):
@@ -224,6 +240,11 @@ class BuilderBudgetModel(BaseModel):
     #: `static_cost_usd * GRAPH_STATIC_BUDGET_MARGIN` against MAX_RUN_COST_USD.
     over_ceiling: bool
     ceiling_usd: float
+    #: Per-node calls, dollars and the model each was priced at (C5, requested
+    #: by 04 for the inspector's cost line). The SAME figures the total above
+    #: sums, exposed rather than recomputed on the client: R6 stands, and two
+    #: arithmetics for one number is how a meter and a refusal come to disagree.
+    per_node: dict[str, "BuilderNodeCostModel"] = {}
 
     @classmethod
     def of(cls, estimate: BudgetEstimate) -> "BuilderBudgetModel":
@@ -237,6 +258,12 @@ class BuilderBudgetModel(BaseModel):
             unpriced_models=list(estimate.unpriced_models),
             over_ceiling=static_cost_over_ceiling(estimate.static_cost_usd),
             ceiling_usd=float(project_config.MAX_RUN_COST_USD),
+            per_node={
+                node_id: BuilderNodeCostModel(
+                    calls=cost.calls, usd=cost.usd, model_id=cost.model
+                )
+                for node_id, cost in estimate.per_node.items()
+            },
         )
 
 

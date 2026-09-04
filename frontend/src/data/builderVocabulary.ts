@@ -322,6 +322,14 @@ function readBounds(raw: unknown): BuilderBounds | string {
     max_input_chars: count('max_input_chars'),
     max_document_bytes: count('max_document_bytes'),
     /*
+     * C2 v2's two authored-node bounds. Both are DOCUMENT bounds rather than
+     * money ones - what a graph costs is `run_cost_ceiling_usd` and it is
+     * measured - and both are read straight by the authored-agent form rather
+     * than restated as a client constant, per R6.
+     */
+    max_prompt_chars: count('max_prompt_chars'),
+    max_retries: count('max_retries'),
+    /*
      * NOT truncated, and this is the one exception §2's "Math.trunc every bounds
      * value" has to carry: `MAX_RUN_COST_USD` is dollars. Truncating it turns a
      * deliberate `MAX_RUN_COST_USD=2.50` into a $2.00 ceiling the operator never

@@ -130,7 +130,23 @@ def sanitise_name(name: str) -> str:
     something the author never checked.
     """
 
-    return _NAME_ILLEGAL.sub("_", str(name))[: project_config.MCP_TOOL_NAME_MAX_CHARS]
+    clean = _NAME_ILLEGAL.sub("_", str(name))
+    cap = project_config.MCP_TOOL_NAME_MAX_CHARS
+    if len(clean) <= cap:
+        return clean
+    # Over the cap, keep the TAIL and not the head. CrewAI names a discovered
+    # tool `<sanitised server address>_<tool>` - for a stdio server the address
+    # is the whole command line - so the tool's own name sits at the END, and a
+    # right-truncation eats it first. Measured on the Ubuntu CI runner on
+    # 2026-09-05: under `/home/runner/work/<repo>/<repo>/...` the fixture's
+    # `search` and `fetch` both truncated to the same `..._mult` stump, so a
+    # server's every tool became one name; Windows paths were short enough to
+    # hide it. The dropped head is replaced by a short stable digest so two
+    # long-addressed servers offering the same tool still sanitise apart.
+    import hashlib
+
+    digest = hashlib.sha1(clean.encode("utf-8")).hexdigest()[:8]
+    return f"{digest}_{clean[-(cap - 9):]}"
 
 
 def sanitise_description(description: str) -> str:

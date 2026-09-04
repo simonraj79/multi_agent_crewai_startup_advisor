@@ -308,3 +308,32 @@ class MaskingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LongAddressNameTests(unittest.TestCase):
+    """A stdio server's tools keep their own names under a long command line.
+
+    CrewAI prefixes a discovered tool with the server's sanitised address, and a
+    stdio address is the whole command line. Right-truncating that at the cap
+    ate the tool's own name first: on the Ubuntu CI runner the fixture's two
+    tools both sanitised to one `..._mult` stump (2026-09-05). The tail is what
+    an author reads and what `tool_filter` matches on, so it is what survives.
+    """
+
+    def test_two_tools_under_one_long_address_stay_distinct(self) -> None:
+        from brief_crew import config as project_config
+        from brief_crew.builder.mcp import sanitise_name
+
+        address = "/home/runner/work/" + "multi_agent_crewai_startup_advisor/" * 4 + ".venv/bin/python"
+        names = [sanitise_name(f"{address} fixture.py_{tool}") for tool in ("search", "fetch")]
+        self.assertEqual(len(set(names)), 2, names)
+        for name, tool in zip(names, ("search", "fetch")):
+            with self.subTest(tool=tool):
+                self.assertTrue(name.endswith(f"_{tool}"), name)
+                self.assertLessEqual(len(name), project_config.MCP_TOOL_NAME_MAX_CHARS)
+                self.assertEqual(name, sanitise_name(f"{address} fixture.py_{tool}"), "not stable")
+
+    def test_a_name_under_the_cap_is_untouched_by_the_digest(self) -> None:
+        from brief_crew.builder.mcp import sanitise_name
+
+        self.assertEqual(sanitise_name("127.0.0.1:54253/mcp_search"), "127_0_0_1_54253_mcp_search")

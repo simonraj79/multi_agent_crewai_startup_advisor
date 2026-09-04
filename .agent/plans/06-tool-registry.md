@@ -644,3 +644,14 @@ the node the canvas shows and *"Tool 1"* after dragging the row that says
 `e2e/builder-tools.spec.ts` *"drags a NAMED tool out of the sub-list and lands
 that tool"* — the card reads `Web search` and the inspector's `tool_id` select
 reads `web_search`. Unit half in `frontend/tests/builderCanvas.spec.ts`.
+
+### Decisions 3 and 9 ruled — 2026-09-05
+
+The owner delegated the four provisional decisions to the Integrator on
+2026-09-05. **Decision 3: OFF** — a code interpreter runs a stranger's code
+under a key the platform does not hold; `BUILDER_CODE_INTERPRETER_ENABLED`
+stays unset in production. **Decision 9: ON** — `BUILDER_PLATFORM_FIRECRAWL_DEFAULT=1`
+was set on the Render API service through the Render API that day, the daily
+cap at its default 50 per user per UTC day, the per-user override honoured.
+Without it a cold sign-in cannot run a research template, and rubric 15 asks
+exactly that. PLANS.md carries the same wording.

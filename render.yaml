@@ -212,6 +212,14 @@ services:
       - key: CREDENTIALS_MASTER_KEY
         sync: false
 
+      # PLANS.md decision 9, ruled ON 2026-09-05: the platform Firecrawl key
+      # backs every user's research tools, bounded by
+      # BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP (default 50 per user per UTC day)
+      # and overridden by a user's own credential. Set here so a fresh apply
+      # matches the dashboard, where it was set through the API that day.
+      - key: BUILDER_PLATFORM_FIRECRAWL_DEFAULT
+        value: "1"
+
       # Every credential is `sync: false`: the value is never committed. Render
       # prompts once at Blueprint creation and stores it as a dashboard secret.
       - key: OPENROUTER_API_KEY

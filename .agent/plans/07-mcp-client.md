@@ -545,3 +545,12 @@ panel and the form.
 docked panel when the caller has no servers yet — correct behaviour, and exactly
 the state this test starts in, so a blind click on *"Manage servers"* SHUT it and
 the failure read as a missing component. The spec opens rather than toggles.
+
+### Decisions 7 and 8 ruled — 2026-09-05
+
+**Decision 7: remote servers only in production** — `MCP_STDIO_ENABLED` stays
+unset; a document must never be able to name a server-side process, the same
+reason the compiler's action refs are a closed set. **Decision 8: selectable
+with a warning** — the warning is information the author needs, and hiding the
+tool is the quietly-divergent picker R10 refused. Both ruled by the Integrator
+under the owner's delegation of 2026-09-05; PLANS.md carries the same wording.

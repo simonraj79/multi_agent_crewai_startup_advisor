@@ -302,8 +302,8 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
      unsaved work when they sign out, and that is the intent: the draft holds a
      credential id.
 
-   Pinned by `frontend/tests/authGate.spec.ts` (5),
-   `frontend/tests/identityStorage.spec.ts` (9),
+   Pinned by `frontend/tests/authGate.spec.ts` (~~5~~ **4**),
+   `frontend/tests/identityStorage.spec.ts` (~~9~~ **8**),
    `frontend/tests/builderRunHandoff.spec.ts` (3), the D-01-5 blocks in
    `builderPersistence.spec.ts` (4) and `runRecovery.spec.ts` (4), and end to
    end by `e2e/isolation.spec.ts`'s fifth test, which swaps the synthetic-user
@@ -311,6 +311,18 @@ C5 (ids in `with:`), C6 (`node_error` with `credential-not-yours`), C8
    Google sign-out cannot run here - and asserts an empty console and an empty
    draft for the second person, with Alice's own residue still in place as the
    control that proves it was one browser profile.
+
+   *Amended 2026-09-04 (round 3, D-01-8).* Two of the five counts were wrong,
+   struck through above in this plan's own convention. Re-measured with
+   `npx vitest run tests/<file>.spec.ts`: authGate **4**, identityStorage
+   **8**, builderRunHandoff **3**; and, counted from the verbose reporter,
+   four D-01-5 tests in `builderPersistence.spec.ts` and four in
+   `runRecovery.spec.ts` - those two were right. No `it.skip`, `it.todo` or
+   `.only` in any of them, so the substance is unchanged: the four authGate
+   tests are a complete set for the property and the number was simply wrong.
+   That it was wrong *in an amendment written to repair a text/reality drift*
+   is the whole of the row, and the answer is the same as everywhere else in
+   these two plans - the command is the contract and the figure never is.
 10. `frontend/tests/credentialPicker.spec.ts`: the picker lists `{kind, label}` rows filtered by the field's kind, offers "create new", and never renders a field value even when the fake API returns one.
 11. E2E `e2e/isolation.spec.ts` (synthetic backend, two browser contexts via `X-Synthetic-User`): Alice creates a document, a credential and publishes; Bob's gallery lists neither; deep-linking Bob to `#/build/<alice-id>` lands on the empty builder; Bob's launch of Alice's workflow shows the console's 404 sentence and no run starts. **Rubric 14.**
 12. `docs/tech-stack.md` §6's scan reports the new knob (`CREDENTIALS_MASTER_KEY`) and the count in that file is regenerated, not edited.

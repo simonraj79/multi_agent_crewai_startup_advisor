@@ -407,7 +407,25 @@ with 08 / 07).
     its dated amendment** — the unowned row per verb, and the test-inputs row
     asserted at the table level until plan 13's route exists. The test's own
     docstring carries the same two tables.
-11. `frontend/tests/builderPersistence.spec.ts` (33) passes unchanged. Rubric 16.
+11. `frontend/tests/builderPersistence.spec.ts` (~~33~~ **37**) passes unchanged. Rubric 16.
+    *Amended 2026-09-04 (round 3, D-15-31):* `npx vitest run
+    tests/builderPersistence.spec.ts` answers **37 passed**, and
+    `grep -c "^\s*\(it\|test\)("` over the file answers 37. "33" and
+    "passes unchanged" cannot both be true, and the file is the one that
+    moved: D-01-5 added a four-test `the draft belongs to the signed-in user`
+    block to it (`e22a32f`), which is exactly the "unchanged" this criterion
+    promised and did not get.
+
+    **This is the FOURTH time this plan has landed on the same convention**,
+    after D-15-11 (criterion 7), D-15-12 (criterion 8) and D-15-20
+    (criterion 2), and the owner's 2026-09-03 ruling on the third one is why
+    the wrong figure is struck through in the sentence itself rather than
+    corrected two lines below it. The convention that guaranteed a fourth was
+    replaced; this row is the fourth arriving anyway, from a criterion written
+    before the ruling. What actually stops a fifth is not a convention: it is
+    that a per-file count in prose is a figure with no command beside it. The
+    count is kept because a reader wants to know roughly what they are looking
+    at; the contract is `npx vitest run tests/builderPersistence.spec.ts`.
 
 ## References
 

@@ -43,8 +43,21 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-def run(module_names: Sequence[str], *, verbosity: int = 2) -> int:
-    """Run the named modules; return the process exit code."""
+def run(
+    module_names: Sequence[str],
+    *,
+    verbosity: int = 2,
+    stream: object | None = None,
+) -> int:
+    """Run the named modules; return the process exit code.
+
+    `stream` is where the inner runner writes. It defaults to `sys.stderr`,
+    which is right for the CI job and wrong for `tests/test_ci_pg_guard.py`:
+    that module calls this five times from INSIDE a suite, and a nested
+    runner's own "FAILED (failures=1)" landing in the outer run's output is a
+    red line nobody can attribute. Measured - the full suite read
+    `FAILED (failures=1)` over a green run because of it.
+    """
 
     if not module_names:
         print(
@@ -57,7 +70,10 @@ def run(module_names: Sequence[str], *, verbosity: int = 2) -> int:
     suite = unittest.TestSuite(
         loader.loadTestsFromName(name) for name in module_names
     )
-    result = unittest.TextTestRunner(verbosity=verbosity).run(suite)
+    runner = unittest.TextTestRunner(
+        verbosity=verbosity, **({} if stream is None else {"stream": stream})
+    )
+    result = runner.run(suite)
 
     if result.skipped:
         print(

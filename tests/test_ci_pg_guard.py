@@ -50,10 +50,12 @@ class ShimTests(unittest.TestCase):
     """`run()` returns the exit code the job needs, not the one unittest gives."""
 
     def _run(self, name: str) -> int:
-        # verbosity 0: this module is asserting an exit code, and the sample
-        # suite's deliberate failure would otherwise print a traceback into a
-        # green run and read as a real one.
-        return run([f"{SAMPLES}.{name}"], verbosity=0)
+        # verbosity 0 AND a throwaway stream: this module asserts an exit code,
+        # and the sample suite's deliberate failure would otherwise print its
+        # traceback - and its own "FAILED (failures=1)" - into the outer run.
+        # Measured: the full suite reported one failure over a green tree
+        # because of exactly that.
+        return run([f"{SAMPLES}.{name}"], verbosity=0, stream=io.StringIO())
 
     def test_a_passing_test_is_zero(self) -> None:
         self.assertEqual(0, self._run("test_passes"))
@@ -69,7 +71,9 @@ class ShimTests(unittest.TestCase):
     def test_a_run_with_no_tests_at_all_is_one(self) -> None:
         """An empty selection is not a pass; it is a job that ran nothing."""
 
-        self.assertEqual(1, run([f"{SAMPLES}.no_such_test"], verbosity=0))
+        self.assertEqual(
+            1, run([f"{SAMPLES}.no_such_test"], verbosity=0, stream=io.StringIO())
+        )
 
     def test_no_arguments_is_a_usage_error(self) -> None:
         # stderr captured: the usage line is the behaviour under test, and

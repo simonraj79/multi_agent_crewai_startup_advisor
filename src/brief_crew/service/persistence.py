@@ -70,6 +70,18 @@ MAX_OPEN_GATE_SCAN = 500
 MAX_STALE_RUN_SCAN = 500
 
 _UNSET = object()
+#: What a `runs.mode` of NULL means, and what the API answers for it. The
+#: column is additive and nullable (C7): a row written before it existed and a
+#: row written by an ordinary run are the same NULL, deliberately, so nothing
+#: has to be backfilled for the two to agree.
+DEFAULT_RUN_MODE = "run"
+
+
+def run_mode(value: Any) -> str:
+    """One `runs.mode` column value as the word the API uses."""
+
+    text = str(value or "").strip()
+    return text or DEFAULT_RUN_MODE
 _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 # Statuses that assert "a worker somewhere is supposed to be doing this".
 # `waiting` is deliberately absent: it is durably anchored by run_gates and
@@ -784,6 +796,38 @@ class PostgresFlowPersistence(FlowPersistence):
             state = connection.execute(statement).scalar_one_or_none()
         return dict(state) if isinstance(state, Mapping) else None
 
+    def load_state_at(
+        self, flow_uuid: str, moment: datetime | None
+    ) -> dict[str, Any] | None:
+        """The last state written at or before `moment` - C7's `?step=`.
+
+        `moment` is a FRAME's timestamp, and the answer is the state as of that
+        frame, which is what "read the flow state at a step" can mean when the
+        two are recorded in different tables by different writers. `None` for
+        `moment` is `load_state`: no bound asked for, the latest given.
+
+        Ordered by `id` and not by `created_at` for the tie. CrewAI writes a
+        state row per method and two of them can share a timestamp to the
+        resolution the column stores; the autoincrement is the only total order
+        there is, and a `?step=` that answered differently on two calls would
+        be worse than one that answers coarsely.
+        """
+
+        at = _as_utc(moment)
+        if at is None:
+            return self.load_state(flow_uuid)
+        flow_uuid = _identifier(flow_uuid, label="flow_uuid")
+        statement = (
+            select(flow_states.c.state)
+            .where(flow_states.c.flow_uuid == flow_uuid)
+            .where(flow_states.c.created_at <= at)
+            .order_by(flow_states.c.id.desc())
+            .limit(1)
+        )
+        with self._connect() as connection:
+            state = connection.execute(statement).scalar_one_or_none()
+        return dict(state) if isinstance(state, Mapping) else None
+
     def save_pending_feedback(
         self,
         flow_uuid: str,
@@ -895,6 +939,7 @@ class PostgresFlowPersistence(FlowPersistence):
         user_id: str | None = None,
         status: Any = "queued",
         created_at: datetime | None = None,
+        mode: str | None = None,
     ) -> dict[str, Any]:
         run_id = _identifier(run_id or uuid.uuid4(), label="run_id")
         session_id = _identifier(session_id, label="session_id")
@@ -910,6 +955,15 @@ class PostgresFlowPersistence(FlowPersistence):
         status_value = _identifier(_enum_value(status), label="status", limit=32)
         safe_inputs = _bounded_json(dict(inputs or {}), label="run inputs")
         now = _as_utc(created_at) or _utcnow()
+        # NULL for the default, not the literal `run`. Every row written before
+        # the column existed reads NULL, and `run_mode()` maps both to `run` -
+        # so a fresh default row and a legacy one are indistinguishable, which
+        # is the property that makes the additive column honest.
+        mode_value = (
+            None
+            if mode in (None, "", DEFAULT_RUN_MODE)
+            else _identifier(mode, label="mode", limit=16)
+        )
 
         with self._begin() as connection:
             connection.execute(
@@ -921,6 +975,7 @@ class PostgresFlowPersistence(FlowPersistence):
                     flow_id=flow_id,
                     graph_version=graph_version,
                     status=status_value,
+                    mode=mode_value,
                     inputs=safe_inputs,
                     usage={},
                     captured_frames=0,
@@ -1764,6 +1819,10 @@ class PostgresFlowPersistence(FlowPersistence):
             "usage": dict(row["usage"] or {}),
             "result": row["result"],
             "error": row["error"],
+            # NULL reads as `run` (C7). `_run_dict` is what restart recovery and
+            # `GET /api/runs/{id}` on a run this process never held both read,
+            # so the mapping has to happen HERE rather than at either caller.
+            "mode": run_mode(row["mode"]),
         }
 
     @staticmethod

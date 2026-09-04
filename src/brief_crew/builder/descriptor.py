@@ -28,6 +28,7 @@ import hashlib
 import json
 
 from brief_crew import config as project_config
+from brief_crew.builder.bounds import back_edges, flow_edges, step_nodes
 from brief_crew.builder.compiler import CompiledFlow, compile_document
 from brief_crew.builder.document import (
     BILLABLE_KINDS,
@@ -316,6 +317,64 @@ def builder_node_registry(
         method_names=compiled.method_idents,
         event_labels=compiled.port_labels,
     )
+
+
+def plan_layers(document: BuilderDocument) -> tuple[tuple[str, ...], ...]:
+    """The graph's step nodes in topological layers - C6's `stage` frames.
+
+    One layer is a set of nodes with no ordering between them, which for a
+    fan-out is the whole point: three research branches are ONE stage because
+    their concurrency is the interesting fact, and a plain topological sort
+    would emit them as three steps and lose it. `frontend/src/data/crewStages.ts`
+    makes the same judgement by hand for the validator; this derives it, because
+    a graph a user drew has nobody to declare it.
+
+    BACK EDGES ARE REMOVED FIRST, and that is what makes this terminate at all.
+    A builder graph may carry up to `MAX_CYCLES` loops - a revise gate is one -
+    and Kahn's algorithm over a cyclic graph produces no layers and no error,
+    just a shorter answer than the node count. `bounds.back_edges` is the same
+    set `budget.py` removes to price a cycle, so the two agree by construction
+    rather than by two walks that could differ.
+
+    A node the layering cannot reach - which after the back-edge removal means
+    an unreachable one - lands in a final layer of its own rather than being
+    dropped: a stage list that silently omits a node is exactly the "the boat
+    skipped a rower" failure `assertStageCoverage` exists to prevent.
+    """
+
+    nodes = [node.id for node in step_nodes(document)]
+    known = set(nodes)
+    loops = {id(edge) for edge in back_edges(document)}
+    successors: dict[str, set[str]] = {node_id: set() for node_id in nodes}
+    indegree: dict[str, int] = {node_id: 0 for node_id in nodes}
+    for edge in flow_edges(document):
+        if id(edge) in loops:
+            continue
+        if edge.source not in known or edge.target not in known:
+            continue
+        if edge.target in successors[edge.source]:
+            continue
+        successors[edge.source].add(edge.target)
+        indegree[edge.target] += 1
+
+    layers: list[tuple[str, ...]] = []
+    placed: set[str] = set()
+    frontier = [node_id for node_id in nodes if indegree[node_id] == 0]
+    while frontier:
+        layer = tuple(frontier)
+        layers.append(layer)
+        placed.update(layer)
+        nxt: list[str] = []
+        for node_id in layer:
+            for target in sorted(successors[node_id]):
+                indegree[target] -= 1
+                if indegree[target] == 0:
+                    nxt.append(target)
+        frontier = nxt
+    stranded = tuple(node_id for node_id in nodes if node_id not in placed)
+    if stranded:
+        layers.append(stranded)
+    return tuple(layers)
 
 
 def gate_before_first_billable(document: BuilderDocument) -> bool:

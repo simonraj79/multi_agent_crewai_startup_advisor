@@ -38,6 +38,21 @@ class RunExecution:
     #: does not know its owner can resolve nothing - which is the right
     #: answer for the four runners that never read this field.
     user_id: str | None = None
+    #: Which KIND of run this is - C7's `mode`. `run` for the four runners that
+    #: never read it, and for every run written before the field existed.
+    mode: str = "run"
+    #: The derived-plan instruction for a `resume_from` or a `node_test`, or
+    #: None for an ordinary run:
+    #: `{"node_id": ..., "mode": "resume_from" | "node_test", "source": "run" |
+    #: "test_input", "values": {node id: saved output}}`.
+    #:
+    #: A MAPPING and not a compiled plan, deliberately. The compile needs the
+    #: workflow's own document, which only the builder runner holds - the
+    #: registry does not have it and `RunExecution` is shared with four runners
+    #: that must not learn what a `BuilderDocument` is. What travels here is the
+    #: request, resolved and owner-checked; what compiles it is
+    #: `BuilderFlowRunner`.
+    derived: Mapping[str, Any] | None = None
 
     def checkpoint(self, step_name: str) -> None:
         """Abort at an explicit runner boundary when cancellation was requested."""

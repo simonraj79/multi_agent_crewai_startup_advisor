@@ -45,7 +45,12 @@ from brief_crew.builder import BudgetEstimate, Problem, estimate_budget, registr
 # structure and price only, and an author who names a crew this deployment
 # cannot construct has to be told here rather than at the moment Publish
 # refuses a document the canvas has been calling clean all afternoon.
-from brief_crew.builder.compiler import BuilderCompileError, document_problems
+from brief_crew.builder.compiler import (
+    BuilderCompileError,
+    compile_document,
+    document_problems,
+)
+from brief_crew.builder.preview import render_preview
 from brief_crew.builder.descriptor import (
     BuilderWorkflow,
     build_builder_workflow,
@@ -90,6 +95,7 @@ from brief_crew.builder.export import (
     strip_for_export,
 )
 from brief_crew.builder.runtime import BUILDABLE_BUILDER_CREW_IDS, BUILDER_AGENT_LIBRARY
+from brief_crew.service.credentials import CredentialStore
 from brief_crew.service.attachments import (
     AttachmentNotYours,
     CustomToolStore,
@@ -425,6 +431,25 @@ class BuilderPublishModel(BaseModel):
     #: BUILDER_ALLOW_GATELESS_GRAPHS is set - see `create_run`.
     gated_before_spend: bool
     reserved_input_keys: list[str]
+
+
+class CompiledPreviewModel(BaseModel):
+    """C7's `compiled` response - 09 D8's two renderings, plus the definition.
+
+    All three, rather than a choice, because they answer three questions and a
+    round trip per question is a round trip too many on a panel an author opens
+    to check one thing: the YAML is what runs, the Python is what it means, and
+    the definition is what a client would diff against a previous version.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str
+    version: int
+    generated_at: datetime
+    yaml: str
+    python: str
+    definition: dict[str, Any]
 
 
 class BuilderVocabularyModel(BaseModel):
@@ -1184,6 +1209,90 @@ def create_builder_router(
             )
         )
         return judged(stored)
+
+    @router.get("/workflows/{document_id}/compiled", response_model=CompiledPreviewModel)
+    async def compiled_preview(
+        document_id: str,
+        version: int | None = Query(default=None, ge=1),
+        user: Any = Depends(current_user),
+    ) -> CompiledPreviewModel:
+        """C7's `compiled`: what this canvas became, as something a person reads.
+
+        `preview.py` shipped with plan 09 and had no route; this is it. Two
+        renderings of ONE compiled definition - the literal YAML
+        `Flow.from_declaration` loads, and a Python reading aid that names the
+        constructors the entrypoints will build.
+
+        NO SECRET REACHES EITHER, and the mechanism is that this route hands the
+        renderer a LABELLING function rather than the vault: `render_preview`
+        cannot open a credential even by accident, because it was never given
+        anything that could. The label is the credential's own name where the
+        caller owns it, and the bare id where they do not - a document naming
+        somebody else's row still renders, saying only that it names one.
+
+        Visibility is `store.load`'s, so somebody else's document is the same
+        404 as an id that does not exist. A document that no longer COMPILES is
+        a 422 carrying the compiler's own problem list, exactly as publish
+        answers: a preview that silently showed the last version that worked
+        would be the most misleading thing on the page.
+        """
+
+        store = require_store()
+        stored = _guarded(
+            lambda: store.load(document_id, version=version, user_id=owner_of(user))
+        )
+        try:
+            compiled = compile_document(stored.document)
+        except BuilderCompileError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": str(exc),
+                    "problems": [
+                        BuilderProblemModel.of(problem).model_dump(mode="json")
+                        for problem in exc.problems
+                    ],
+                },
+            ) from exc
+        preview = render_preview(
+            compiled,
+            document_version=stored.document.version,
+            credential_label=_credential_label(user),
+        )
+        return CompiledPreviewModel(
+            document_id=stored.document.id,
+            version=preview.document_version,
+            generated_at=preview.generated_at,
+            yaml=preview.yaml,
+            python=preview.python,
+            definition=preview.definition,
+        )
+
+    def _credential_label(user: Any) -> Callable[[str], str]:
+        """A credential id to the caller's own name for it, or back to the id.
+
+        A closure over the caller and the store, handed to the renderer, which
+        is the whole of the containment: the module that draws the preview holds
+        no vault, no persistence and no key, so `<credential: ...>` can only
+        ever be a label.
+        """
+
+        persistence = _persistence()
+        owner = owner_of(user)
+        if persistence is None or owner is None:
+            return lambda credential_id: str(credential_id)
+
+        def label(credential_id: str) -> str:
+            try:
+                summaries = CredentialStore(persistence).list(owner)
+            except Exception:  # noqa: BLE001 - a preview must not 500 on a label
+                return str(credential_id)
+            for summary in summaries:
+                if summary.id == credential_id:
+                    return summary.label
+            return str(credential_id)
+
+        return label
 
     @router.get("/workflows/{document_id}/export")
     async def export_document(

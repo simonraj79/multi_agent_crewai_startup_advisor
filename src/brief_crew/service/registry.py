@@ -904,6 +904,13 @@ class RunRecord:
     # HookAborted branch, which is the only place a frame CAN be emitted for a
     # budget stop - see `_enforce_cost_ceiling`.
     stop_reason: str | None = None
+    # C7's run mode, and the derived-plan instruction that goes with two of the
+    # four. Both are set once at creation and handed to `RunExecution`; the
+    # registry itself never reads either, which is the point - a `node_test` is
+    # admitted, rate limited, priced, cancelled and swept exactly like a run,
+    # and the only thing that behaves differently is the runner.
+    mode: str = "run"
+    derived: Mapping[str, Any] | None = None
     # The per-run spend ceiling in USD, 0 meaning none. A field rather than a
     # direct read of the constant so a registry - and a test - can set one
     # without reaching into the environment at import time.
@@ -1106,6 +1113,15 @@ class RunRecord:
                 # that stopped itself. Both arrive as `status: "cancelled"`, so
                 # without this the API cannot tell them apart.
                 "stop_reason": self.stop_reason,
+                "mode": self.mode,
+                "resume_from": (
+                    {
+                        "run_id": str(dict(self.derived).get("source_run_id") or ""),
+                        "node_id": str(dict(self.derived).get("node_id") or ""),
+                    }
+                    if self.derived and dict(self.derived).get("source_run_id")
+                    else None
+                ),
             }
 
     def node_usage_payload(self) -> list[dict[str, int | float | str]]:
@@ -1536,6 +1552,8 @@ class RunRegistry:
         workflow_id: str,
         inputs: Mapping[str, Any],
         user_id: str | None = None,
+        mode: str = "run",
+        derived: Mapping[str, Any] | None = None,
     ) -> RunRecord:
         """Admit and register one NEW run.
 
@@ -1573,6 +1591,8 @@ class RunRegistry:
                 workflow_id=workflow_id,
                 inputs=inputs,
                 user_id=user_id,
+                mode=mode,
+                derived=derived,
             )
         except BaseException:
             # The slot is only held for a run that exists. A durable write that
@@ -1590,6 +1610,8 @@ class RunRegistry:
         workflow_id: str,
         inputs: Mapping[str, Any],
         user_id: str | None = None,
+        mode: str = "run",
+        derived: Mapping[str, Any] | None = None,
     ) -> RunRecord:
         flow_id = run_id if hasattr(runtime.runner, "resume") else None
         record = RunRecord(
@@ -1604,6 +1626,8 @@ class RunRegistry:
             on_frames=self._enqueue_frames,
             ring_capacity=self.ring_capacity,
             max_cost_usd=self.max_run_cost_usd,
+            mode=mode,
+            derived=derived,
         )
         if self.persistence is not None:
             self.persistence.create_run(
@@ -1614,6 +1638,7 @@ class RunRegistry:
                 graph_version=runtime.graph_version,
                 inputs=inputs,
                 user_id=user_id,
+                mode=mode,
             )
         with self._lock:
             self._records[run_id] = record
@@ -2657,6 +2682,8 @@ class RunRegistry:
             persistence=self.persistence,
             cancel_requested=record.cancel_requested,
             user_id=record.user_id,
+            mode=record.mode,
+            derived=record.derived,
         )
         try:
             with scoped_hooks():

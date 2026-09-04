@@ -56,6 +56,7 @@ from brief_crew.service.models import (
     CancelRunResponse,
     CreateRunRequest,
     CreateRunResponse,
+    DryRunResponse,
     ErrorResponse,
     FramePage,
     GateReplyMessage,
@@ -63,12 +64,14 @@ from brief_crew.service.models import (
     GateReplyResponse,
     GraphDescriptor,
     HealthResponse,
+    RunStateResponse,
     RunStatusResponse,
     WorkflowSummary,
     RunHistoryEntry,
     RunHistoryPage,
 )
 from brief_crew.service.registry import (
+    TERMINAL_STATUSES as TERMINAL_RUN_STATUSES,
     GateFieldError,
     RunAdmissionError,
     RunBusyError,
@@ -952,6 +955,46 @@ def create_app(
             raise HTTPException(status_code=404, detail="run not found")
         return record
 
+    def _budget_payload(estimate: Any) -> dict[str, Any]:
+        """One `BudgetEstimate` as the same six numbers `/validate` returns.
+
+        Assembled here rather than by importing `builder_api`'s response model:
+        this module is imported to build an app with or without the builder
+        router, and a dry run must not be the reason the whole service needs
+        the document store.
+        """
+
+        return {
+            "static_cost_usd": estimate.static_cost_usd,
+            "floor_cost_usd": estimate.floor_cost_usd,
+            "modelled_calls": estimate.modelled_calls,
+            "billable_nodes": estimate.billable_nodes,
+            "escalation_nodes": estimate.escalation_nodes,
+            "cycles": estimate.cycles,
+            "unpriced_models": list(estimate.unpriced_models),
+        }
+
+    def _redacted_state(state: Mapping[str, Any]) -> dict[str, Any]:
+        """A flow state with every secret-named value replaced by `***`.
+
+        The same `is_secret_key` both other walks ask - `events/redaction.py`
+        exists so this is not a third list. Shallow AND recursive through
+        mappings, because a credential-bearing key inside a node's own output
+        object is exactly where one would end up.
+        """
+
+        from brief_crew.events.redaction import REDACTED, is_secret_key
+
+        def walk(value: Any, depth: int = 0) -> Any:
+            if depth > 6 or not isinstance(value, Mapping):
+                return value
+            return {
+                str(key): REDACTED if is_secret_key(key) else walk(item, depth + 1)
+                for key, item in value.items()
+            }
+
+        return walk(dict(state))
+
     def health_payload(*, readiness: bool) -> tuple[dict[str, Any], int]:
         dependencies = registry.dependency_status()
         ready = all(
@@ -1128,9 +1171,140 @@ def create_app(
         )
     )
 
+    def dry_run_payload(
+        workflow_id: str, user: AuthenticatedUser | None
+    ) -> DryRunResponse:
+        """C7's `mode: dry_run` - `POST /validate` plus the compiled artifact.
+
+        Everything the launch path would have done up to the moment it spends
+        anything: parse, bound, price, compile. Nothing after it: no `runs` row,
+        no admission slot, no frame, no rate-limit bucket.
+
+        The definition returned is the one already registered for this graph
+        rather than a fresh compile of the stored document, and the difference
+        matters: what an author wants to see before pressing Launch is what
+        THIS SERVICE WOULD RUN, which after a bounds change or a lowered ceiling
+        is not always what the document would compile to today.
+        """
+
+        from brief_crew.builder.budget import estimate_budget
+        from brief_crew.builder.compiler import document_problems
+
+        builder = BUILDER_WORKFLOWS.get(workflow_id)
+        if builder is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"workflow {workflow_id} is not a builder graph; a dry run "
+                    "compiles a document, and the two built-in flows are Python"
+                ),
+            )
+        problems = document_problems(builder.document)
+        return DryRunResponse(
+            valid=not any(problem.severity == "error" for problem in problems),
+            problems=[
+                {
+                    "code": problem.code,
+                    "severity": problem.severity,
+                    "message": problem.message,
+                    "node_id": problem.node_id,
+                    "edge_id": problem.edge_id,
+                    "field": problem.field,
+                }
+                for problem in problems
+            ],
+            budget=_budget_payload(estimate_budget(builder.document)),
+            definition=dict(builder.compiled.definition),
+        )
+
+    def derived_plan(
+        request: CreateRunRequest, user: AuthenticatedUser | None
+    ) -> dict[str, Any] | None:
+        """The replay instruction for a `node_test` or a `resume_from`, resolved.
+
+        Resolved HERE and not in the runner, because both halves of it are
+        authorisation questions: a `resume_from` names somebody's run and a
+        `node_test` names somebody's saved input, and the runner has no request,
+        no identity and no HTTP status to answer with.
+
+        A source run that is not the caller's answers **404**, the same as
+        `require_own_run`, and for the same reason: a 403 confirms the run
+        exists.
+        """
+
+        if request.mode == "node_test":
+            if not request.node_id or not request.test_input_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "mode=node_test needs both node_id and test_input_id; a "
+                        "single node has nothing to run against without a saved "
+                        "input, and nothing to replay into without a node"
+                    ),
+                )
+            return {
+                "node_id": request.node_id,
+                "mode": "node_test",
+                "source": "test_input",
+                "values": _test_input_values(request.test_input_id, user),
+            }
+        if request.resume_from is None:
+            return None
+        source = require_own_run(request.resume_from.run_id, user)
+        if source.status not in TERMINAL_RUN_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"run {source.run_id} is {source.status.value}; a resume replays "
+                    "a run that has finished, and a state still being written is not "
+                    "a state to replay"
+                ),
+            )
+        return {
+            "node_id": request.resume_from.node_id,
+            "mode": "resume_from",
+            "source": "run",
+            "source_run_id": source.run_id,
+            "values": _saved_outputs(source),
+        }
+
+    def _saved_outputs(source: RunRecord) -> dict[str, Any]:
+        """A finished run's `out__<node>` slots, keyed by the author's node id.
+
+        Read off the last `flow_states` row rather than off the run's result:
+        the result is one node's output and a replay needs every node's.
+        """
+
+        if registry.persistence is None or not source.flow_id:
+            return {}
+        state = registry.persistence.load_state(source.flow_id) or {}
+        prefix = project_config.BUILDER_STATE_OUTPUT_PREFIX
+        return {
+            key[len(prefix):]: value
+            for key, value in state.items()
+            if isinstance(key, str) and key.startswith(prefix)
+        }
+
+    def _test_input_values(test_input_id: str, user: AuthenticatedUser | None) -> dict[str, Any]:
+        """One saved test input's per-node mocked outputs, for the caller only."""
+
+        from brief_crew.builder.store import BuilderTestInputStore
+
+        if registry.persistence is None:
+            raise HTTPException(
+                status_code=503,
+                detail="this service has no store, so it has no saved test inputs",
+            )
+        row = BuilderTestInputStore(registry.persistence).load(
+            test_input_id, user_id=user.id if user is not None else None
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="test input not found")
+        return dict(row.get("node_mocks") or {})
+
     @app.post(
         "/api/sessions/{session_id}/runs",
-        response_model=CreateRunResponse,
+        response_model=None,
         status_code=202,
         responses={
             404: {"model": ErrorResponse},
@@ -1143,8 +1317,9 @@ def create_app(
         session_id: str,
         request: CreateRunRequest,
         http_request: Request,
+        response: Response,
         user: AuthenticatedUser | None = Depends(current_user),
-    ) -> CreateRunResponse:
+    ) -> Any:
         """The only endpoint that spends money, and it is unauthenticated.
 
         Three refusals guard it, in the order a hostile request meets them: a
@@ -1163,6 +1338,24 @@ def create_app(
         # phone changes address mid-session and gets a fresh allowance. A
         # verified user id is neither shared nor changeable, so the limit finally
         # bounds what it was always meant to bound - spend per person.
+        # `dry_run` is answered BEFORE the limiter, and that is the one place
+        # this endpoint's ordering bends. The limiter exists because this route
+        # spends money and a dry run spends nothing: it writes no row, holds no
+        # slot, emits no frame and calls no model, so charging a launch
+        # allowance for one would make the canvas's own preview compete with the
+        # Launch button it exists to inform.
+        #
+        # The residual is that it is an unthrottled existence oracle for a
+        # workflow id - and it is not a NEW one: `workflow_visible_to` answers
+        # 404 for somebody else's graph exactly as `GET /api/builder/workflows/
+        # {id}` already does, unthrottled, for the same ids.
+        if request.mode == "dry_run":
+            if request.workflow_id not in WORKFLOWS or not workflow_visible_to(
+                request.workflow_id, user.id if user is not None else None
+            ):
+                raise HTTPException(status_code=404, detail="workflow not found")
+            response.status_code = 200
+            return dry_run_payload(request.workflow_id, user)
         limit_key = (
             f"user:{user.id}" if user is not None
             else client_rate_limit_key(http_request)
@@ -1387,12 +1580,18 @@ def create_app(
             # did not smuggle this in, so setting it here is the ONLY way it can
             # become true - which is what makes the 403 above meaningful.
             run_inputs["no_gates"] = True
+        # Resolved after every admission check and before the row is written:
+        # both halves are ownership questions, and neither should be answerable
+        # by a caller the rate limiter or the ceiling would have refused.
+        plan = derived_plan(request, user)
         try:
             record = registry.create_run(
                 session_id=session_id,
                 workflow_id=request.workflow_id,
                 inputs=run_inputs,
                 user_id=user.id if user is not None else None,
+                mode=request.mode,
+                derived=plan,
             )
         except RunAdmissionError as exc:
             # 429, not 503: nothing is broken and the service is not down for
@@ -1468,6 +1667,51 @@ def create_app(
     ) -> RunStatusResponse:
         require_own_run(run_id, user)
         return RunStatusResponse.model_validate(registry.status_payload(run_id))
+
+    @app.get(
+        "/api/runs/{run_id}/state",
+        response_model=RunStateResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def get_run_state(
+        run_id: str,
+        step: int | None = Query(default=None, ge=1),
+        user: AuthenticatedUser | None = Depends(current_user),
+    ) -> RunStateResponse:
+        """C7: the flow state as of one frame. Owner-only, 404 otherwise.
+
+        `step` is a FRAME sequence, not a state row id, because a frame seq is
+        the only cursor a client already has - it is what `/frames` pages on and
+        what the socket replays from. The answer is the last `flow_states` row
+        written at or before that frame's timestamp.
+
+        Every value is redacted through the same walk that bounds a frame, so a
+        state slot holding something a tool put under `api_key` reads `***`
+        here exactly as it does in the stream. The reserved keys are NOT
+        removed: `__builder__` and the `turns__` counters are the interesting
+        half of "why did this run take the branch it took".
+        """
+
+        record = require_own_run(run_id, user)
+        if registry.persistence is None or not record.flow_id:
+            return RunStateResponse(run_id=run_id, step=step or 0, state={})
+        moment = None
+        resolved_step = step or 0
+        if step is not None:
+            frames = registry.replay_frames(run_id, after=step - 1, limit=1)
+            if not frames:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"run {run_id} has no frame {step}",
+                )
+            moment = frames[0].ts
+            resolved_step = frames[0].seq
+        state = registry.persistence.load_state_at(record.flow_id, moment) or {}
+        return RunStateResponse(
+            run_id=run_id,
+            step=resolved_step,
+            state=_redacted_state(state),
+        )
 
     @app.get(
         "/api/runs/{run_id}/frames",

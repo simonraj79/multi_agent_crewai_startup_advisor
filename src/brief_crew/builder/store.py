@@ -290,6 +290,46 @@ def _checked_size(document_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+class BuilderTestInputStore:
+    """READ ONE saved test input, for the caller and nobody else.
+
+    Read-only and deliberately minimal. `13-flow-testing.md` owns this table and
+    will bring the create, list and delete with it; what plan 10 needs is the
+    one query C7's `test_input_id` implies, and writing that here rather than
+    inlining a `select` in `service/app.py` is what keeps the SQL for this table
+    in the module that already holds the SQL for every other builder table.
+
+    Ownership is a WHERE clause and not a check after the fact, so a row that
+    belongs to somebody else and a row that does not exist are the same `None` -
+    which is the 404-not-403 rule every other builder route already follows.
+    """
+
+    __slots__ = ("_store",)
+
+    def __init__(self, store: PostgresFlowPersistence) -> None:
+        self._store = store
+
+    def load(
+        self, test_input_id: str, *, user_id: str | None
+    ) -> dict[str, Any] | None:
+        statement = select(
+            builder_test_inputs.c.id,
+            builder_test_inputs.c.document_id,
+            builder_test_inputs.c.label,
+            builder_test_inputs.c.inputs,
+            builder_test_inputs.c.node_mocks,
+        ).where(builder_test_inputs.c.id == str(test_input_id))
+        # `user_id` is NOT NULL on this table (15 D6: these rows never existed
+        # before authentication did), so an unauthenticated caller matches
+        # nothing rather than matching everything.
+        statement = statement.where(
+            builder_test_inputs.c.user_id == str(user_id or "\x00")
+        )
+        with self._store.connect() as connection:
+            row = connection.execute(statement).mappings().first()
+        return dict(row) if row is not None else None
+
+
 class BuilderDocumentStore:
     """Read and write builder documents on the service's own engine.
 
@@ -923,6 +963,7 @@ def _parse(document_id: str, payload: Any) -> BuilderDocument:
 __all__: Sequence[str] = (
     "BuilderDocumentStore",
     "BuilderStoreError",
+    "BuilderTestInputStore",
     "DEFAULT_LIST_LIMIT",
     "DocumentNotFound",
     "DocumentReadOnly",

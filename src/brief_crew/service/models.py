@@ -122,6 +122,15 @@ class GraphDescriptor(BaseModel):
     edges: list[GraphEdge]
 
 
+class ResumeFrom(BaseModel):
+    """Which run to replay, and where to start running for real again."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(min_length=1, max_length=128)
+    node_id: str = Field(min_length=1, max_length=128)
+
+
 class CreateRunRequest(BaseModel):
     """The one request on this service that spends the owner's money.
 
@@ -160,6 +169,29 @@ class CreateRunRequest(BaseModel):
     #: says what the alternative IS instead of what it is not, and it leaves
     #: room for a third answerer later.
     gates: Literal["human", "auto"] = "human"
+    #: What KIND of run this is - .agent/plans/10-runtime.md D8, contract C7.
+    #:
+    #: `run` is the default and is everything this endpoint did before. `test`
+    #: is an ordinary run that is LABELLED one (decision 17: a test run appears
+    #: in run history, because hiding it means an author cannot find the run
+    #: they just made) and passes every admission check, the same rate limit,
+    #: the same ceiling and the same frames - it is not a cheaper run, it is a
+    #: findable one. `node_test` runs ONE node over a saved input with every
+    #: node above it replayed. `dry_run` creates nothing at all.
+    #:
+    #: A named mode rather than three booleans, for `gates`' own reason: it
+    #: reads correctly in OpenAPI and it leaves room for a fourth.
+    mode: Literal["run", "test", "dry_run", "node_test"] = "run"
+    #: A `builder_test_inputs` row of the caller's (C10). Required for
+    #: `node_test`, which has nothing to run the node against without one.
+    test_input_id: str | None = Field(default=None, max_length=128)
+    #: The one node `node_test` runs for real. Every step above it replays.
+    node_id: str | None = Field(default=None, max_length=128)
+    #: Start again from a node of a run that already happened, replaying
+    #: everything above it. The source run must be the caller's own and must be
+    #: terminal - resuming from a run that is still going would replay a state
+    #: that is still being written.
+    resume_from: ResumeFrom | None = None
 
     @field_validator("inputs")
     @classmethod
@@ -232,6 +264,34 @@ class CreateRunRequest(BaseModel):
                 "use the request's own fields instead"
             )
         return value
+
+
+class DryRunResponse(BaseModel):
+    """C7's `mode: dry_run` answer: `POST /validate` plus the artifact.
+
+    A 200 and not a 202, because nothing was accepted for later - there is no
+    run to poll. The definition is the literal document
+    `Flow.from_declaration` would have been handed, which is the only version of
+    it worth showing: a second rendering would be wrong the first time the
+    compiler changed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    valid: bool
+    problems: list[dict[str, Any]] = Field(default_factory=list)
+    budget: dict[str, Any] = Field(default_factory=dict)
+    definition: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunStateResponse(BaseModel):
+    """C7's `GET /api/runs/{run_id}/state?step=` - the flow state at one frame."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    step: int
+    state: dict[str, Any] = Field(default_factory=dict)
 
 
 class CreateRunResponse(BaseModel):
@@ -425,6 +485,12 @@ class RunStatusResponse(BaseModel):
     # this is a string rather than a Literal so adding a third does not become
     # a breaking API change.
     stop_reason: str | None = None
+    #: C7: which KIND of run this was. `run` for everything written before the
+    #: column existed - the table's NULL reads as `run`, and nothing is
+    #: backfilled.
+    mode: str = "run"
+    #: `{run_id, node_id}` when this run replayed another one, else None.
+    resume_from: dict[str, str] | None = None
 
 
 class RunHistoryEntry(BaseModel):

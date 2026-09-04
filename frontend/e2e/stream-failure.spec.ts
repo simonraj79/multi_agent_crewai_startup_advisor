@@ -36,7 +36,24 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
  * the button.
  */
 
-const ALLOWED_CONSOLE_ERROR: RegExp | null = null
+/**
+ * ONE exemption, and it names its cause - the shape `studio.spec.ts` documents.
+ *
+ * These two files are the first in the repository to meet
+ * `RUN_RATE_LIMIT_MAX_RUNS` (ten per sixty seconds), and a Launch that is
+ * refused makes the browser log the 429 as a failed resource. That console
+ * error is the LIMITER WORKING, provoked deliberately by a test that then waits
+ * out the window on the server's own `Retry-After` and launches again - the
+ * alternative being to raise the limit, which would turn off what makes an
+ * unauthenticated Launch button survivable.
+ *
+ * Narrow on purpose: only 429, only the words the browser uses for it. Any
+ * other status, any Vue warning and any uncaught exception still fails the
+ * test. If the limiter is ever removed or these files stop launching, DELETE
+ * THIS - an exemption that outlives its cause widens silently, which is what
+ * the favicon one did before it was retired.
+ */
+const ALLOWED_CONSOLE_ERROR: RegExp | null = /429 \(Too Many Requests\)/
 
 interface ConsoleWatch {
   unexpected: string[]
@@ -73,6 +90,34 @@ async function completedNodes(page: Page): Promise<string[]> {
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-id') ?? '').sort())
 }
 
+/**
+ * Press Launch, waiting out the admission limiter if it answers first.
+ *
+ * `RUN_RATE_LIMIT_MAX_RUNS` is ten per sixty seconds, and the two files plan 12
+ * added are the first in the repository to reach it. Waiting is the correct
+ * behaviour rather than a workaround: raising the limit would be turning off
+ * what makes an unauthenticated Launch button survivable at all.
+ *
+ * The alert is waited FOR rather than counted immediately after the click.
+ * Counting races the render - measured, and it failed exactly once that way -
+ * so the absence of the alert has to be a timeout rather than a snapshot taken
+ * before Vue had a chance to paint it.
+ */
+async function pressLaunch(page: Page): Promise<void> {
+  const limited = page.locator('[role="alert"]').filter({ hasText: /too many runs/i })
+  for (let attempt = 0; attempt < 14; attempt += 1) {
+    await launchButton(page).click()
+    try {
+      await limited.waitFor({ state: 'visible', timeout: 2_000 })
+    } catch {
+      return
+    }
+    await expect(limited).toContainText(/try again in \d+s/i)
+    await page.waitForTimeout(5_000)
+  }
+  throw new Error('the admission limiter refused every launch')
+}
+
 async function launchRun(page: Page, idea: string): Promise<void> {
   // Review rather than the console's own default, for `studio.spec.ts`'s
   // reason: `gatesMode` defaults to `auto`, and against a backend without
@@ -83,14 +128,7 @@ async function launchRun(page: Page, idea: string): Promise<void> {
 
   await page.locator('#idea').fill(idea)
   await expect(launchButton(page)).toBeEnabled()
-
-  const limited = page.locator('[role="alert"]').filter({ hasText: /too many runs/i })
-  for (let attempt = 0; attempt < 14; attempt += 1) {
-    await launchButton(page).click()
-    if ((await limited.count()) === 0) return
-    await page.waitForTimeout(5_000)
-  }
-  throw new Error('the admission limiter refused every launch')
+  await pressLaunch(page)
 }
 
 test.describe('a dropped socket loses nothing', () => {

@@ -58,7 +58,24 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
  * presses the button: against a paid origin, exclude it.
  */
 
-const ALLOWED_CONSOLE_ERROR: RegExp | null = null
+/**
+ * ONE exemption, and it names its cause - the shape `studio.spec.ts` documents.
+ *
+ * These two files are the first in the repository to meet
+ * `RUN_RATE_LIMIT_MAX_RUNS` (ten per sixty seconds), and a Launch that is
+ * refused makes the browser log the 429 as a failed resource. That console
+ * error is the LIMITER WORKING, provoked deliberately by a test that then waits
+ * out the window on the server's own `Retry-After` and launches again - the
+ * alternative being to raise the limit, which would turn off what makes an
+ * unauthenticated Launch button survivable.
+ *
+ * Narrow on purpose: only 429, only the words the browser uses for it. Any
+ * other status, any Vue warning and any uncaught exception still fails the
+ * test. If the limiter is ever removed or these files stop launching, DELETE
+ * THIS - an exemption that outlives its cause widens silently, which is what
+ * the favicon one did before it was retired.
+ */
+const ALLOWED_CONSOLE_ERROR: RegExp | null = /429 \(Too Many Requests\)/
 
 /** D8's five running modes, and the node each one is aimed at. */
 const MODES = [
@@ -338,7 +355,14 @@ test.describe('the failure reaches the screen', () => {
     const limited = page.locator('[role="alert"]').filter({ hasText: /too many runs/i })
     for (let attempt = 0; attempt < 14; attempt += 1) {
       await launchButton.click()
-      if ((await limited.count()) === 0) break
+      // WAITED FOR, not counted. Counting immediately after the click races the
+      // render, and the absence of the alert has to be a timeout rather than a
+      // snapshot taken before Vue had a chance to paint it.
+      try {
+        await limited.waitFor({ state: 'visible', timeout: 2_000 })
+      } catch {
+        break
+      }
       await expect(limited).toContainText(/try again in \d+s/i)
       await page.waitForTimeout(5_000)
     }

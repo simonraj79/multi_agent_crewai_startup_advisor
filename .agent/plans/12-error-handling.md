@@ -246,7 +246,7 @@ answer.
 | 2 | **met** | `test_bounds.py` 69 (was 57): `CrewTaskOrderTests` (5), `CrewManagerTests` (4), `CrewFieldPartitionTests` (3) — each code on a one-node reproduction, on nothing else, and `error-port-unconnected` asserted `severity="warning"` |
 | 3 | **met** | `test_failure_modes.py::RunningModeTests` (6) and `RecoveryTests` (3): each mode sets `SYNTHETIC_FAILURE`, runs a two-step authored fixture under `SYNTHETIC=1`, asserts D8's `error_class`, the attempt, `will_retry`, a terminal `failed`, and that `resume_from` the failed node completes — plus a clean-run control |
 | 4 | **met** | `SentinelTests::test_no_secret_in_any_failure`: five modes × frames, run row, status payload, NDJSON, ZIP, each preceded by the control that the run really held the key |
-| 5 | **met, with three guarded assertions** | `e2e/failure-modes.spec.ts`, **7 passed**. The five running modes fail with the right class and re-run to completion; one drives the whole person's journey and watches the card turn red; the cyclic mode is refused in the dock with its edge tinted, publish disabled and a second refusal from the server |
+| 5 | **met, with three guarded assertions** | `e2e/failure-modes.spec.ts`, **7 passed** (one console-error exemption declared: a deliberate 429, see below). The five running modes fail with the right class and re-run to completion; one drives the whole person's journey and watches the card turn red; the cyclic mode is refused in the dock with its edge tinted, publish disabled and a second refusal from the server |
 | 6 | **met, with one guarded assertion** | `e2e/stream-failure.spec.ts`, **2 passed**: `page.route` aborts the ws handshake mid-run, the reload keeps every completed node, `seq` does not go backwards, `0 dropped`, and both gates are answered to completion — with a no-drop control |
 | 7 | **met** | `frontend/tests/errorEdge.spec.ts`, **12 passed** |
 | 8 | **met, and one clause is a contradiction** | `frontend/tests/retryField.spec.ts`, **11 passed**. `retry-over-max` cannot arise — see contradiction 2 |
@@ -293,9 +293,10 @@ E2E             84 passed in 5.2 min, every file, both projects,
                 E2E_API_TARGET=127.0.0.1:8097, E2E_UI_PORT=5275
 ```
 
-The six skips added since baseline are the three MCP-arm tests in the merged
-`test_failure_modes.py` (plan 07's, absent here) counted twice by the two
-discovery paths. **This plan spent $0.00**: every billable node is built by the
+The three skips added since baseline (6 → 9) are the MCP arm of the merged
+`test_failure_modes.py`: `McpUnreachableTests` is plan 07's and its fixture
+server lives on `wd/ab-backend`, so it skips here and runs there.
+**This plan spent $0.00**: every billable node is built by the
 double `SYNTHETIC=1` installs, and the two places a real `Agent` is constructed
 call no model.
 
@@ -407,9 +408,15 @@ does not see it because its `abc()` fixture has no gate.
 3. **`benchmarks/perf/canvas.json` is rewritten by every full E2E run**, so a
    pass on one machine overwrites another's measurement. Restored here; it wants
    a `.gitignore` entry or a `--record` flag.
-4. **`e2e/failure-modes.spec.ts` is the first file to meet
-   `RUN_RATE_LIMIT_MAX_RUNS`.** It waits out the limiter on the server's own
-   `Retry-After` rather than raising the limit, which would be turning off what
-   makes an unauthenticated Launch survivable. If the suite grows more launching
-   files, the limiter — not the runner — becomes the bottleneck.
+4. **These two files are the first to meet `RUN_RATE_LIMIT_MAX_RUNS`.** They
+   wait out the limiter on the server's own `Retry-After` rather than raising
+   the limit, which would be turning off what makes an unauthenticated Launch
+   survivable. The cost is the one console-error exemption in the suite:
+   `/429 \(Too Many Requests\)/`, declared in both files with its cause, because
+   a refused Launch makes the browser log the response as a failed resource.
+   Narrow on purpose — any other status, any Vue warning and any uncaught
+   exception still fails. **Delete it if the limiter goes or these files stop
+   launching**; an exemption that outlives its cause widens silently, which is
+   what the favicon one did. If the suite grows more launching files, the
+   limiter — not the runner — becomes the bottleneck.
 

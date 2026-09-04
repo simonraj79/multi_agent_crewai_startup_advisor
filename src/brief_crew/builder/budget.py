@@ -43,7 +43,7 @@ from datetime import datetime, timezone
 
 from brief_crew.builder.bounds import Problem, billable_depths, back_edges, nodes_on_cycles
 from brief_crew.builder.document import (
-    AgentConfig,
+    LibraryAgentConfig,
     BuilderBudget,
     BuilderDocument,
     BuilderNode,
@@ -118,7 +118,13 @@ def _calls_for(node: BuilderNode, *, on_cycle: bool) -> int:
         return 0
     config = node.config
     attempts = getattr(config, "guardrail_max_retries", 0) + 1
-    binds_tools = not isinstance(config, AgentConfig) or bool(config.tools)
+    # Narrowed to the LIBRARY arm on purpose. An AUTHORED agent carries no
+    # `tools` tuple at all - its attachments are `attach` edges - so there is
+    # nothing here to read, and the conservative answer for a node whose hands
+    # this function cannot see is the same one a crew already gets: price it as
+    # tool-using. Under-pricing is the failure that reported 128,069 real tokens
+    # at $0.00.
+    binds_tools = not isinstance(config, LibraryAgentConfig) or bool(config.tools)
     calls = attempts * ((getattr(config, "max_iter", 1) + 1) if binds_tools else 1)
     if on_cycle:
         calls *= 1 + MAX_CYCLE_ITERATIONS

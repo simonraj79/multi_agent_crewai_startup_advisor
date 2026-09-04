@@ -49,11 +49,11 @@ from brief_crew.builder.bounds import (
 from brief_crew.builder.budget import estimate_budget
 from brief_crew.builder.document import (
     ROUTING_KINDS,
-    AgentConfig,
+    LibraryAgentConfig,
     BuilderBudget,
     BuilderDocument,
     BuilderNode,
-    CrewConfig,
+    LibraryCrewConfig,
     GateConfig,
     InputConfig,
     OutputConfig,
@@ -531,7 +531,7 @@ class _Plan:
                     "required": config.required,
                 },
             )
-        elif isinstance(config, AgentConfig):
+        elif isinstance(config, LibraryAgentConfig):
             method["do"] = self._action(
                 _RUN_AGENT,
                 {
@@ -555,7 +555,7 @@ class _Plan:
                     ),
                 },
             )
-        elif isinstance(config, CrewConfig):
+        elif isinstance(config, LibraryCrewConfig):
             method["do"] = self._action(
                 _RUN_CREW,
                 {
@@ -706,14 +706,13 @@ class _Plan:
     def _listen_for(self, node: BuilderNode) -> Any:
         """This node's trigger condition, or None when it is a start method.
 
-        A node the document DECLARES as a join waits for all of its
+        A node the document declares `join: "all"` waits for all of its
         predecessors: `{"and": [...]}`, which `_is_multi_event_or` reads as
-        false, so a fan-in is never the listener CrewAI suppresses. That is why
-        `join: "any"` is cut from the schema - there is no such thing as a
-        waiting-for-either fan-in that survives its second arrival.
+        false, so a fan-in is never the listener CrewAI suppresses.
 
-        A node with several predecessors and NO declared join is the other
-        shape entirely: alternatives. Two branches of one router converging on
+        A node with several predecessors and NO declared join - or one declared
+        `join: "any"`, which is the same compiled shape said out loud - is the
+        other thing entirely: alternatives. Two branches of one router converging on
         one output are mutually exclusive, and compiling them as `and` would
         deadlock the most ordinary graph anyone draws - the output would wait
         forever for the branch that was not taken, with no error. So they
@@ -977,7 +976,7 @@ def library_problems(document: BuilderDocument) -> list[Problem]:
     problems: list[Problem] = []
     for node in document.nodes:
         config = node.config
-        if isinstance(config, AgentConfig):
+        if isinstance(config, LibraryAgentConfig):
             if config.agent_id not in BUILDER_AGENT_LIBRARY:
                 problems.append(
                     Problem(
@@ -1005,7 +1004,7 @@ def library_problems(document: BuilderDocument) -> list[Problem]:
                         node_id=node.id,
                     )
                 )
-        elif isinstance(config, CrewConfig):
+        elif isinstance(config, LibraryCrewConfig):
             if config.crew_id not in BUILDER_CREW_LIBRARY:
                 problems.append(
                     Problem(

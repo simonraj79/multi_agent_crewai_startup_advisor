@@ -1999,6 +1999,59 @@ MAX_CYCLES = 3
 # and giving it a second, larger bound would be two numbers for one fact.
 MAX_CYCLE_ITERATIONS = 3
 
+# --------------------------------------------------------------------------
+# The ATTACHMENT family's own bounds - 03-node-library.md D2.
+#
+# None of the three is a money bound, and that is the whole reason they are
+# separate numbers rather than a share of the ones above. An attachment is not
+# a step: it never runs, never bills, never appears in a cycle and emits no
+# frame, so neither the frame-ring arithmetic behind MAX_GRAPH_NODES nor the
+# token model behind MAX_BILLABLE_NODES has anything to say about it. What each
+# of these bounds is a PROMPT and a DOCUMENT, and the honest thing to record is
+# which of the three rests on a measurement and which does not.
+# --------------------------------------------------------------------------
+
+# Attachment nodes on one canvas. 24 is MAX_GRAPH_NODES, the same ceiling
+# applied to the other family, on the argument that a document may hold as many
+# possessions as it holds steps. It is deliberately NOT derived from the frame
+# ring, because an attachment emits no frames - the reason MAX_GRAPH_NODES is
+# 24 does not transfer, and only the figure does.
+#
+# What actually bounds this in practice is the product below it:
+# MAX_ATTACHMENTS_PER_NODE x the billable nodes that can carry them. This is
+# the outer guard, so that a canvas full of unattached pills is refused by a
+# count rather than by MAX_BUILDER_DOCUMENT_BYTES, which would name a byte
+# figure no author can act on.
+MAX_ATTACHMENT_NODES = 24
+
+# Tools, MCP servers and skills hanging off ONE agent or crew.
+#
+# **This is the one figure here that nobody has measured**, and it is recorded
+# as 03-node-library.md's C2 declares it rather than dressed up as arithmetic.
+# What it bounds is the agent's system prompt: every attachment contributes a
+# tool schema or a skill preamble, and past some width the agent stops choosing
+# well - a claim about model behaviour that this repository has not tested.
+# 8 is the plan's number and the shipped validator's most-tooled agent binds 1,
+# so there is a great deal of headroom and no evidence about where it ends.
+#
+# It is treated the same way MAX_FANOUT_WIDTH is: left where the plan put it
+# until somebody measures a wide attachment set for real, rather than widened
+# or narrowed on judgement, which would be inventing a number.
+MAX_ATTACHMENTS_PER_NODE = 8
+
+# Agents inside one authored crew, along `member` edges.
+#
+# 6 is a measurement: it is the shipped six-agent validator's own crew count -
+# Scoper, Market, Sentiment, Feasibility, Synthesist, Reporter - which is
+# `grep -c '^@CrewBase' src/brief_crew/crews/validator_crew/validator_crew.py`.
+# No headroom multiplier is applied, and that is the difference from
+# MAX_BILLABLE_NODES: the counts above were widened by 1.7 because the
+# validator sat exactly on them and the gallery template could not gain a node,
+# where a crew's membership is not a shape an author grows into - a seventh
+# member is a different crew. The lower end is 1 rather than 0, because a crew
+# with no members compiles to a Crew with no tasks and returns nothing.
+MAX_CREW_MEMBERS = 6
+
 # Headroom over the static estimate, applied when the estimate is compared to
 # MAX_RUN_COST_USD. The estimate is a token model calibrated on ONE paid run;
 # 1.25 is the margin that stops a graph priced at the very edge of the ceiling
@@ -2142,6 +2195,50 @@ BUILDER_MAX_GATE_MESSAGE_CHARS = 2000
 # research branches in this repo run at VALIDATOR_BRANCH_MAX_ITER = 2.
 BUILDER_MAX_AGENT_ITER = 8
 BUILDER_MAX_GUARDRAIL_RETRIES = 2
+
+# --------------------------------------------------------------------------
+# What an AUTHORED agent or crew may write - 03-node-library.md D3, FD5.
+#
+# A library node names a YAML agent and carries no prose; an authored one
+# carries its own role, goal, backstory and task text, so these four ceilings
+# exist for the first time here. They live in this file rather than as literals
+# in `builder/document.py` for the platform rule's reason - a runtime limit
+# inlined at its use site is a limit nobody can find - and each says what it is
+# derived from, because a bound with no derivation is a number somebody will
+# move on a whim.
+# --------------------------------------------------------------------------
+
+# One free-text prompt field: `role`, `goal`, `backstory`, or a task's
+# `description` / `expected_output`. 4000 is 03-node-library.md's C2
+# (`max_prompt_chars`), and it is twice BUILDER_MAX_GATE_MESSAGE_CHARS on the
+# argument that a gate message is one question to a human while a backstory is
+# the whole of what an agent knows about itself. It is a DOCUMENT bound and not
+# a token bound: what the prompt costs is priced by `builder/budget.py` and
+# capped by MAX_RUN_COST_USD, which is the layer that can measure money.
+BUILDER_MAX_PROMPT_CHARS = 4000
+
+# Whole-node retries - `retry.max_retries`, the builder's own loop inside
+# `run_agent`, and NOT CrewAI's deprecated `Task.max_retries`, which counts
+# guardrail retries and is a different concept sharing a name. 3 is
+# 03-node-library.md's C2 (`max_retries`), and it is the same figure as
+# MAX_CYCLE_ITERATIONS for the same reason: a retry multiplies a node's price
+# exactly the way a cycle does, so the two ceilings that multiply spend are
+# deliberately equal rather than independently chosen.
+BUILDER_MAX_NODE_RETRIES = 3
+
+# The pause between those retries. 60 s x BUILDER_MAX_NODE_RETRIES is three
+# minutes of a worker thread sleeping inside one node, which is well under
+# VALIDATOR_GATE_TIMEOUT_SECONDS - so a retrying node can never outlive the
+# gate an operator is waiting at, which is the one interaction that would be
+# invisible from either side.
+BUILDER_MAX_RETRY_BACKOFF_SECONDS = 60
+
+# `planning_config.max_steps`, one of the FOUR of its eleven fields the S9
+# deprecation ruling admits. 20 is CrewAI 1.15.18's own default for that field
+# (`crewai/agent/planning_config.py`), taken rather than invented: the package
+# owns what a planner does and this repository owns only whether an author may
+# raise it.
+BUILDER_MAX_PLANNING_STEPS = 20
 
 # The three registered research tools an `agent` node may bind, by the name
 # each tool declares. Restated here because `tools/` imports this module and

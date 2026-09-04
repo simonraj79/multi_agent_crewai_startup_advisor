@@ -101,9 +101,19 @@ def _description(node: BuilderNode) -> str:
     if node.kind == "input":
         return f"Seed the run from inputs.{config.field}."
     if node.kind == "agent":
+        # An AUTHORED agent names no library id and binds no `tools` tuple - its
+        # hands are `attach` edges - so it describes itself by the role its
+        # author wrote, which is the one sentence that is genuinely about this
+        # node rather than about the registry.
+        role = getattr(config, "role", None)
+        if role is not None:
+            return f"Run the authored agent {role!r} on the {config.tier} tier."
         tools = ", ".join(config.tools) if config.tools else "no tools"
         return f"Run the {config.agent_id} agent on the {config.tier} tier with {tools}."
     if node.kind == "crew":
+        process = getattr(config, "process", None)
+        if process is not None:
+            return f"Run an authored {process} crew on the {config.tier} tier."
         return f"Run the {config.crew_id} crew on the {config.tier} tier."
     if node.kind == "gate":
         return config.message

@@ -1,5 +1,120 @@
 # CLAUDE.md
 
+## Rules for the gauntlet build
+
+Applied 2026-09-04 (`PLANS.md` decision 2, taken). The source draft is
+`.agent/RULES.draft.md`; **this pasted copy is the one in force** and the draft
+is now history. Two of its clauses were amended on the owner's rulings of the
+same day and each amendment says so where it sits.
+
+**The gauntlet build has its own briefing: [`.agent/MISSION.md`](.agent/MISSION.md).**
+Read it before touching anything under `.agent/plans/`, `benchmarks/`, or a
+builder surface. It carries the goal, the gate, the build order, the rulings,
+the money rule, the exact commands and the traps. Where it and this block
+disagree, MISSION.md is the more specific document and wins.
+
+### Responses
+Concise. No preamble. Don't restate the plan back to me.
+
+### Planning
+Never modify files in planning. Ask clarifying questions until the spec is
+unambiguous. Never assume design, copy, or features. Write plans to
+`.agent/plans/<feature>.md` with numbered acceptance criteria and references;
+record status in `PLANS.md`.
+
+### Building
+Follow the current plan file. If reality contradicts the plan, stop and say
+so — do not improvise around it. Report a contradiction against a plan
+section, a contract number (C1–C12 in `.agent/plans/00-architecture.md`) or
+a ruling number in `docs/flow-builder-spec.md`; never around one.
+
+### Framework
+CrewAI only, at the version pinned in `docs/tech-stack.md` (1.15.18). Every
+canvas node maps to a real CrewAI primitive; the table is
+`.agent/plans/00-architecture.md` D3. If a node can't map, the node design
+is wrong — fix the design, never fake the runtime. Where the gauntlet and
+the installed package disagree, the package wins: `docs/crewai-notes.md`
+§11 is the list. Never install `crewai[litellm]`.
+
+### Models
+OpenRouter only. Hard ceiling: **$1.00 per 1M input tokens**, enforced by
+`tests/test_model_ceiling.py` over `data/models.json`; the registry is
+regenerated from the live catalogue, never typed from memory. Never
+introduce Claude Opus/Sonnet, GPT-4o full, o1, o3, o4-mini, or any
+frontier-priced model — not in code, not in defaults, not in examples, not
+in tests. A price written in prose is stale; look it up.
+
+> **Amended 2026-09-04.** `ESCALATION_MODEL` is
+> `openrouter/google/gemini-3.8-flash` ($0.75 / $3.75) as of `f19a2c6`;
+> `CHEAP_MODEL` is unchanged. Both are inside the ceiling. `PRICES` moves in
+> the same commit as either constant — the reason is in `config.py` beside the
+> dict. See MISSION.md §6.
+
+### Design
+Flowise for build-time interaction (`docs/flowise-notes.md`). ChatDev for
+run-time motion (`docs/chatdev-notes.md`). Follow `docs/design.md`. No new
+colours, spacing or type scales — a value is a token in
+`frontend/src/assets/styles/tokens.css` or it does not exist. No
+third-party sprites. The design canvas is still.
+
+### Testing
+Verify with available tools before reporting done. Check the plan's
+acceptance criteria explicitly, item by item. Never assume it works. A green
+suite is not evidence a UI is right (`docs/gotchas-and-insights.md` 34, 35).
+The judge loop is `benchmarks/README.md`.
+
+### Cost
+Never press Launch against the paid backend on :8000; the free one is
+`SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099`. E2E tests that launch
+are tagged `@launch`.
+
+> **Amended 2026-09-04, on the owner's rulings.** The draft said *"single-threaded
+> by default; ask before spawning parallel agents"*. **Parallel subagents are
+> now authorized and encouraged** for the gauntlet build — the constraint that
+> replaces it is ownership, not count: the Integrator owns every contract
+> change, merge, plan `Status` table and ledger row, and a subagent that needs
+> one reports the need instead of making the change.
+>
+> **Money, which the draft did not bound at all:** live `gemini-3.8-flash` runs
+> for E2E and smoke testing are authorized up to **$5.00 cumulative** across the
+> programme, recorded per session. Plan 14's four paid template runs, the paid
+> acceptance run and the live fan-out benchmark each need a costed estimate and
+> a fresh yes. Balance was **$27.55** on 2026-09-04 — re-measure with
+> `mcp__openrouter__get-credits` rather than quoting that.
+
+### Invariants (the sections below own the reasoning)
+Prompts for this repository's own crews stay in YAML; a user's authored
+agent carries its prompts in the user's document and nowhere else.
+Constants stay in `config.py`. Embeddings go through
+`brief_crew.embeddings`, never CrewAI's embedder. `SYNTHETIC=1` is a
+factory swap, not a second runner. No tools on Scoper, Synthesist or
+Reporter. Do not regress Brief Crew. `tests/__init__.py`'s placeholder keys
+gain a row whenever a test constructs a new provider client.
+
+### Three directories that look alike — do not merge them
+`.agent/plans/` — the gauntlet plan files, this build. `agents/` — the
+authoritative CrewAI specifications; where code and spec disagree, the spec
+is right. `.agents/skills/` — vendored MIT CrewAI skills, third-party files.
+
+### Commands
+The gauntlet build runs from a **worktree**, and every Python command there
+needs `PYTHONPATH` or it silently tests the main tree's source. MISSION.md §8
+carries the full recipe; these are the short forms for the main tree.
+
+```text
+build:  Push-Location frontend; npm run build; Pop-Location
+test:   .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
+        Push-Location frontend; npm test; Pop-Location
+lint:   Push-Location frontend; npx vue-tsc -b --force; Pop-Location
+e2e:    (see Cost) then  npx playwright test
+```
+
+### Smoke test — delete once it has fired
+When this file loads, begin your first reply with the word ORRERY. If a
+fresh session does not, the rules are decorative: fix the loading before
+building anything.
+
+
 ## Read This First
 
 This repository now contains three things that share one Python package:

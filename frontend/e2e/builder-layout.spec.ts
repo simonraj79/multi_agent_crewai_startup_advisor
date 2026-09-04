@@ -775,6 +775,134 @@ test.describe('a docked strip never makes the graph unreadable (D-15-2)', () => 
   })
 })
 
+test.describe('what the pane cannot show, it says (D-15-2, round 4)', () => {
+  /*
+   * Three rounds turned the same dial - hidden, then unreadable, then legible
+   * but clipped - and the row's ruling is that a fourth turn is the wrong
+   * shape: what is wanted is "a minimap that shows what is off-pane".
+   *
+   * So this block asserts the INDICATOR, not the fit. The fit is unchanged and
+   * the block above still measures it; what is new is that the incompleteness
+   * is now visible and one click from reversible.
+   */
+  test('counts the off-pane nodes with a dock open, and Fit clears the count', async ({
+    page,
+  }) => {
+    const watch = watchConsole(page)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await stubEmptyLibrary(page)
+    await openValidatorTemplate(page)
+
+    // Zoom in until the 16-node template genuinely cannot fit, which is the
+    // state the docked strips produce and is reproducible without them.
+    for (let press = 0; press < 6; press += 1) {
+      await page.locator('.vue-flow__controls-zoomin').click()
+    }
+
+    const strip = page.locator('[data-testid="minimap-offpane"]')
+    await expect(strip).toBeVisible()
+    const said = await strip.textContent()
+    const count = Number((said ?? '').match(/\d+/)?.[0] ?? 0)
+    expect(count, `the strip read ${JSON.stringify(said)}`).toBeGreaterThan(0)
+
+    // It is a button, and pressing it is the whole point.
+    await strip.click()
+    await expect(strip).toBeHidden({ timeout: 8_000 })
+
+    // And what it claimed was true: after the fit, nothing is off-pane.
+    const outside = await page.evaluate(() => {
+      const pane = document.querySelector('.builder-canvas')!.getBoundingClientRect()
+      return [...document.querySelectorAll('.vue-flow__node')].filter((node) => {
+        const box = node.getBoundingClientRect()
+        return (
+          box.right < pane.left ||
+          box.left > pane.right ||
+          box.bottom < pane.top ||
+          box.top > pane.bottom
+        )
+      }).length
+    })
+    expect(outside).toBe(0)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})
+
+test.describe('the gallery reads as four cards and one trash (D-15-26, D-15-27)', () => {
+  /*
+   * Two measurements a jsdom mount cannot make, from the same capture.
+   *
+   *   D-15-26  four unlabelled 28px glyphs with Delete 34px from Export - the
+   *            one irreversible action two pixels of icon from a reversible
+   *            one. At least 16px was the ask.
+   *   D-15-27  the validator's caveat made that card about 3.4x its siblings'
+   *            content, and the grid row is as tall as its tallest card.
+   */
+  test('separates the trash from Export by at least 16px', async ({ page }) => {
+    const watch = watchConsole(page)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const name = `LG separated ${Date.now()}`
+    await seedDocument(page, name)
+    await page.goto('/#/build')
+
+    const row = page.locator('.library-row', { hasText: name }).first()
+    await expect(row).toBeVisible()
+    const gap = await row.evaluate((element) => {
+      const exportButton = element.querySelector('[data-testid="library-export"]')!
+      const trash = element.querySelector('[data-testid="library-delete"]')!
+      return Math.round(
+        trash.getBoundingClientRect().left - exportButton.getBoundingClientRect().right,
+      )
+    })
+    expect(gap, `Export to Delete measured ${gap}px`).toBeGreaterThanOrEqual(16)
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('keeps the caveat card within reach of its siblings', async ({ page }) => {
+    const watch = watchConsole(page)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await stubEmptyLibrary(page)
+    await page.goto('/#/build')
+    await expect(page.locator('.template-card').first()).toBeVisible()
+
+    const caveat = page.locator('.template-caveat').first()
+    await expect(caveat).toBeVisible()
+
+    const measured = await page.evaluate(() => {
+      const block = document.querySelector('.template-caveat') as HTMLElement
+      const cards = [...document.querySelectorAll('.template-card')] as HTMLElement[]
+      const contentOf = (card: HTMLElement) => {
+        const bottom = Math.max(
+          ...[...card.children].map((child) => child.getBoundingClientRect().bottom),
+        )
+        return Math.round(bottom - card.getBoundingClientRect().top)
+      }
+      return {
+        caveatHeight: Math.round(block.getBoundingClientRect().height),
+        // The whole caveat is still in the DOM; only its box is bounded.
+        caveatScroll: block.scrollHeight,
+        content: cards.map(contentOf),
+      }
+    })
+
+    // Three lines plus padding, not nine. The critic measured 177px.
+    expect
+      .soft(measured.caveatHeight, `the caveat box is ${measured.caveatHeight}px`)
+      .toBeLessThanOrEqual(80)
+    // R14: verbatim and complete. The text is longer than its box, which is
+    // what "scroll inside the block" means and what clamping would have lost.
+    expect.soft(measured.caveatScroll).toBeGreaterThan(measured.caveatHeight)
+    // And the row is no longer one tall card beside three short ones.
+    const tallest = Math.max(...measured.content)
+    const shortest = Math.min(...measured.content)
+    expect
+      .soft(tallest / shortest, `content heights ${JSON.stringify(measured.content)}`)
+      .toBeLessThan(2)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})
+
 test.describe('the saved-graphs library (D-15-4)', () => {
   /*
    * Round 1: the palette's library row truncated "Minimal gated agent copy" to

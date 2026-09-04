@@ -842,10 +842,29 @@ const orderedLibrary = computed(() =>
 .template-spine { flex: none; }
 
 /* Warn colours, not error. Nothing is wrong with the template; there is
-   something about it the picture cannot say. */
+   something about it the picture cannot say.
+
+   D-15-27: one card carries this block and three do not, so the grid row - as
+   tall as its tallest card - made the validator's card about 3.4x its
+   siblings' content and the block itself 177px of a 232px column. The row
+   offered two answers and this is the second one, "equalise heights and scroll
+   inside the block", because the first - clamp with a disclosure - is not
+   available here: `.template-card` is a `<button>`, and a disclosure control
+   inside a button is invalid HTML that no browser will operate.
+
+   Scrolling keeps R14's ruling intact, which clamping would not: the caveat is
+   rendered VERBATIM and in full, all of it in the DOM and all of it read by a
+   screen reader, which is the difference between a template and a booby trap.
+   What changes is how much of it the card spends its height on. */
 .template-caveat {
   margin: 0;
   padding: 8px 10px;
+  /* Three lines plus the padding. The block was nine. */
+  max-height: calc(3 * 1.5 * var(--fs-11) + 18px);
+  overflow-y: auto;
+  /* Or a wheel over the caveat scrolls the gallery behind it once the block
+     reaches its end, which reads as the page jumping. */
+  overscroll-behavior: contain;
   color: var(--warn-text);
   font-size: var(--fs-11);
   line-height: 1.5;

@@ -867,7 +867,10 @@
   flex-direction: column;
   gap: 8px;
   padding: 14px 12px;
-  overflow: auto;
+  /* `hidden`, not `auto`: the two lists inside scroll themselves now, and a
+     third scrollbar on the container would let the library head scroll away -
+     which is precisely the row this arrangement exists to keep on screen. */
+  overflow: hidden;
   background: var(--surface-panel);
   border-right: 1px solid var(--border-default);
 }
@@ -1016,7 +1019,27 @@
 .builder-filter-input::placeholder { color: var(--text-40); }
 .builder-filter-count { flex: 0 0 auto; color: var(--text-muted); font: 500 9px/1 var(--font-mono); }
 
-.builder-tiles { display: flex; flex-direction: column; gap: 6px; }
+/* The tile list scrolls on its own, for the same reason `.builder-library`
+   below does and for a reason that only appeared once the vocabulary grew.
+   At seven kinds ten rows fitted; at ten kinds the saved-graphs COUNT sat at
+   y=1039 in a 900 px viewport - measured, `builder-layout.spec.ts:732` - so
+   the affordance that tells an author how many graphs they have was below the
+   fold, which is the same defect D-15-4 was opened for from the other end.
+
+   Bounding the section rather than compressing the tiles is the durable
+   answer: 03 D7 puts a filtered TOOL SUB-LIST under the tool tile and 06, 07
+   and 08 each add catalogue rows, so this list is going to grow again. A
+   denser grid would buy two rows once and be back here. `min-height: 0` is
+   what lets a flex child shrink enough to be clipped at all. */
+.builder-tiles {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
 
 /* Each tile is a MINIATURE of the card it produces - the same well, the same
    gradient border, the same double-clip - so dragging one is a promise about

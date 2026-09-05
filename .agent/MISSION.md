@@ -236,14 +236,15 @@ Three things a later wave must not get wrong:
 
 ## 7. The money rule
 
-**Balance: $27.345242** — `total_credits` 120, `total_usage` 92.654757565,
-measured 2026-09-05 after the gate-payload verification run and confirmed
-unchanged three times. (It read $27.55 on 2026-09-04; an earlier note said
-$7.55 before the owner topped up. Re-measure rather than quote this — and read
-it LATE: the credits endpoint lags a completion by minutes, and every
-intermediate reading this programme has taken was low, never high.)
+**Balance: $27.216112** — `total_credits` 120, `total_usage` 92.783887525,
+measured 2026-09-05 after the gate-payload-as-prose and `max_iter`-exhaustion
+verification runs and confirmed unchanged twice. (It read $27.345242 earlier
+that day, $27.55 on 2026-09-04; an earlier note said $7.55 before the owner
+topped up. Re-measure rather than quote this — and read it LATE: the credits
+endpoint lags a completion by minutes, and every intermediate reading this
+programme has taken was low, never high.)
 
-**Spend to date on this programme: $0.148038 of the $5.00 allowance**, all of
+**Spend to date on this programme: $0.186905 of the $5.00 allowance**, all of
 it on 2026-09-04 and 2026-09-05:
 
 | what | spend | measured as | where |
@@ -252,13 +253,25 @@ it on 2026-09-04 and 2026-09-05:
 | plan 14's six template runs | $0.065942 | balance delta | §11b, `benchmarks/paid-runs.md` |
 | the `max_iter` verification run | $0.018073 | balance delta | `benchmarks/paid-runs.md` |
 | the gate-payload verification run | $0.022310 | balance delta | `benchmarks/paid-runs.md` |
+| the gate-payload-as-PROSE run | $0.020923 | the run's own `cost_usd` | `benchmarks/paid-runs.md` |
+| the `max_iter` EXHAUSTION run | $0.017927 | the run's own `cost_usd` | `benchmarks/paid-runs.md` |
 
-The first row is the only one that is not a balance delta — no balance was read
-around that run — and the column says so rather than letting four figures look
-like one kind of measurement. Every later run has both, and the two never differ
-by more than $0.0002.
+The acceptance run is the only row with no balance reading at all around it, and
+the column says so rather than letting six figures look like one kind of
+measurement. **The last two rows share ONE balance delta** — they ran back to
+back and only the pair was bracketed: **$0.038867** against **$0.038850**
+summed, a difference of $0.000017, the tightest agreement this page has
+recorded.
 
-**$4.85 of the allowance is unspent**, and the one item left that needs it is
+> **An unexplained $0.090263, recorded rather than smoothed over.** The reading
+> above this table was `total_usage` 92.654757565 after the gate-payload run.
+> The first reading taken before the two runs of 2026-09-05's later session was
+> **92.745020765**. Neither of those runs can account for the gap; something
+> else on this account spent it in between. It is NOT in the table, because
+> nothing in this programme is known to have caused it — but the allowance is
+> measured against the balance, so somebody should find out what did.
+
+**$4.81 of the allowance is unspent**, and the one item left that needs it is
 the live fan-out benchmark (§12.3).
 
 Owner's ruling, 2026-09-04:

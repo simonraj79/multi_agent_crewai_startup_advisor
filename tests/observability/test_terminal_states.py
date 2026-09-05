@@ -14,6 +14,7 @@ terminal frame nothing is left without an end time (row D3).
 
 from __future__ import annotations
 
+import pathlib
 import unittest
 
 from brief_crew.events.models import FrameKind, UIEventType
@@ -351,3 +352,101 @@ class FinalMetricsTests(unittest.TestCase):
         self.assertEqual(1, len(by_role(self.observations, "run")))
         self.assertEqual(1, len(by_role(self.observations, "node")))
         self.assertEqual([], [o.name for o in self.observations if not o.ended])
+
+
+class UnhandledTallyOnEveryTerminalTests(unittest.TestCase):
+    """C3's tally must reach the trace on the endings that are NOT completion.
+
+    The serializer's ladder drafts the tally onto `FlowFinishedEvent` and
+    `FlowFailedEvent`. A run that is cancelled at a gate, stopped by its cost
+    ceiling, or orphaned by a service restart ends on a frame `RunRegistry`
+    writes directly through `capture.emit` and the ladder never sees - so the
+    count reached Langfuse for a completed run and for no other ending, which
+    is exactly the half of a run population a blind spot is worst in: the ones
+    somebody is investigating.
+
+    The registry now spreads `serializer.unhandled_report()` into all five of
+    those terminals. This asserts the exporter's half over one terminal of each
+    kind, because the exporter reads the key off ANY run-level frame and that
+    is what makes the producer side a one-line change per site rather than a
+    branch.
+    """
+
+    TALLY = {"KnowledgeQueryStartedEvent": 14, "MemorySaveStartedEvent": 3}
+
+    def _trace_metadata(self, terminal) -> dict:
+        exporter, backend = exporter_for()
+        recorder = Recorder()
+        _mid_run(recorder)
+        terminal(recorder)
+        drive(exporter, recorder.frames)
+        return by_role(backend.observations, "run")[0].metadata
+
+    def test_a_cancelled_run_carries_the_tally(self) -> None:
+        metadata = self._trace_metadata(
+            lambda r: r.run_cancelled(unhandled_events=self.TALLY)
+        )
+        self.assertEqual(self.TALLY, metadata["unhandled_event_counts"])
+
+    def test_a_budget_stopped_run_carries_the_tally(self) -> None:
+        metadata = self._trace_metadata(
+            lambda r: r.run_cancelled(**BUDGET_STOP, unhandled_events=self.TALLY)
+        )
+        self.assertEqual(self.TALLY, metadata["unhandled_event_counts"])
+
+    def test_an_interrupted_run_carries_the_tally(self) -> None:
+        metadata = self._trace_metadata(
+            lambda r: r.run_cancelled(
+                reason=INTERRUPTED_REASON, unhandled_events=self.TALLY
+            )
+        )
+        self.assertEqual(self.TALLY, metadata["unhandled_event_counts"])
+
+    def test_a_failed_run_carries_the_tally(self) -> None:
+        exporter, backend = exporter_for()
+        recorder = Recorder()
+        _mid_run(recorder)
+        recorder.add(
+            FrameKind.ERROR,
+            UIEventType.WORKFLOW_END,
+            "workflow",
+            {
+                "error": "the upstream refused",
+                "error_class": "ProviderError",
+                "unhandled_events": self.TALLY,
+            },
+            level=recorder.frames[0].level.__class__.ERROR,
+        )
+        drive(exporter, recorder.frames)
+        run_span = by_role(backend.observations, "run")[0]
+        self.assertEqual(self.TALLY, run_span.metadata["unhandled_event_counts"])
+        self.assertEqual(STATUS_FAILED, backend.trace_output[run_span.trace_id]["status"])
+
+    def test_the_registry_spreads_the_tally_into_every_terminal_it_writes(self) -> None:
+        """The producer half, read off the source.
+
+        The exporter cannot be tested into carrying a tally nothing sends, and
+        the five sites are in a module this package does not import. Reading
+        them is the same anti-rot technique the frame-pipeline mapping already
+        uses on `events/serializer.py`, and it is what makes "every terminal"
+        checkable rather than asserted.
+        """
+
+        source = (
+            pathlib.Path(__file__).resolve().parents[2]
+            / "src"
+            / "brief_crew"
+            / "service"
+            / "registry.py"
+        ).read_text(encoding="utf-8")
+        terminals = source.count("UIEventType.WORKFLOW_END")
+        spreads = source.count("record.capture.serializer.unhandled_report()")
+        self.assertGreaterEqual(terminals, 5)
+        self.assertEqual(
+            terminals,
+            spreads,
+            "a terminal frame the registry writes does not carry the unhandled "
+            "tally; every WORKFLOW_END it emits must spread "
+            "`record.capture.serializer.unhandled_report()` into its details",
+        )
+

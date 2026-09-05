@@ -898,14 +898,14 @@ class LangfuseExporter:
         metadata = self._base_metadata(state, frame, details or {})
         metadata.update(
             {
-                "run_id": facts.run_id,
-                "workflow_id": facts.workflow_id,
-                "app_session_id": facts.session_id,
-                "gates": facts.gates,
-                "mode": facts.mode,
+                "run_id": self._safe(facts.run_id, limit=128),
+                "workflow_id": self._safe(facts.workflow_id, limit=256),
+                "app_session_id": self._safe(facts.session_id, limit=256),
+                "gates": self._safe(facts.gates, limit=32),
+                "mode": self._safe(facts.mode, limit=32),
                 "synthetic": self.policy.synthetic,
-                "user_id": facts.user_id,
-                "graph_version": facts.graph_version,
+                "user_id": self._safe(facts.user_id, limit=256),
+                "graph_version": self._safe(facts.graph_version, limit=128),
                 "observation_role": "run",
             }
         )
@@ -943,7 +943,7 @@ class LangfuseExporter:
     def _handle_run_level(
         self, state: _RunState, frame: FrameData, details: Mapping[str, Any]
     ) -> None:
-        self._absorb_unhandled(state, details)
+        self._absorb_unhandled(state, details, self.policy.secret_values)
         if frame.kind is FrameKind.METRICS:
             # Folded onto the run span rather than made an observation: it is a
             # coalesced snapshot of totals already carried by the generations
@@ -955,11 +955,15 @@ class LangfuseExporter:
             # run span already ended, which is what used to stop it - kept the
             # last INTERVAL snapshot instead. `_close_out` is what writes this,
             # and it runs after both.
-            state.metrics = {
-                key: value
-                for key, value in details.items()
-                if key in ("usage", "frames", "reason")
-            }
+            state.metrics = policy_details(
+                {
+                    key: value
+                    for key, value in details.items()
+                    if key in ("usage", "frames", "reason")
+                },
+                capture=self.policy.capture_content,
+                secret_values=self.policy.secret_values,
+            )
             return
 
         status = str(details.get("status") or "")
@@ -971,7 +975,9 @@ class LangfuseExporter:
         self._finish_run(state, frame, details)
 
     @staticmethod
-    def _absorb_unhandled(state: _RunState, details: Mapping[str, Any]) -> None:
+    def _absorb_unhandled(
+        state: _RunState, details: Mapping[str, Any], secret_values: Sequence[str] = ()
+    ) -> None:
         """Carry the frame pipeline's own unhandled-event tally onto the trace.
 
         The serializer converts a subset of CrewAI's `BaseEvent` classes and
@@ -992,7 +998,7 @@ class LangfuseExporter:
         counts: dict[str, int] = {}
         for name, value in list(reported.items())[:64]:
             try:
-                counts[str(name)[:128]] = int(value)
+                counts[safe_message(name, secret_values, limit=128)] = int(value)
             except (TypeError, ValueError):
                 continue
         if counts:
@@ -1205,6 +1211,20 @@ class LangfuseExporter:
     def _safe(self, value: Any, *, limit: int = 1024) -> str:
         """Any string this exporter sends as TEXT, on either policy.
 
+        **The rule, and it is a rule about SITES rather than about fields: no
+        value copied out of a frame's `details`, or off the run record, reaches
+        an observation without passing either this or `policy_details`.** The
+        second audit of this file found one site that did not - a metrics
+        snapshot's free-text `reason`, copied verbatim onto the run span as
+        `run_metrics.reason`, carrying a planted key and a DSN on BOTH
+        policies - and it was missed the first time for the reason every such
+        site is missed: it looked like vocabulary. `reason` is `"interval"` or
+        `"run_completed"` on every frame this application emits, so nobody
+        reading the branch saw a free-text field. It is typed `str` and the
+        rule has to be applied where the copy happens, not where the value
+        looks safe.
+
+
         One method rather than a `[:1024]` at each site, because the leak this
         closes was exactly a set of sites that each did their own bounding and
         none of which scrubbed: an exception message went RAW into six
@@ -1247,7 +1267,7 @@ class LangfuseExporter:
 
         base = {
             "run_id": state.facts.run_id,
-            "node_id": frame.node_id,
+            "node_id": self._safe(frame.node_id, limit=256),
             "agent_role": self._safe_or_none(details.get("agent_role"), limit=256),
             "task_name": self._safe_or_none(details.get("task_name"), limit=256),
             "frame_seq": frame.seq,
@@ -1607,9 +1627,13 @@ class LangfuseExporter:
             return
         if stage == "after":
             generation.end = frame.ts
-            generation.metadata["finish_reason"] = details.get("finish_reason")
+            generation.metadata["finish_reason"] = self._safe_or_none(
+                details.get("finish_reason"), limit=128
+            )
             generation.response_id = details.get("response_id") or None
-            generation.metadata["response_id"] = generation.response_id
+            generation.metadata["response_id"] = self._safe_or_none(
+                generation.response_id, limit=128
+            )
             generation.awaiting_usage_since = monotonic()
             return
         self._event(state, frame, details, parent=parent)
@@ -1633,7 +1657,7 @@ class LangfuseExporter:
         metadata = self._base_metadata(state, frame, details)
         metadata.update(
             {
-                "call_id": call_id,
+                "call_id": self._safe(call_id, limit=256),
                 "attempt": attempt,
                 "cost_source": "app-estimate",
                 "observation_role": "generation",

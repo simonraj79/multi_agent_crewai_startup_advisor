@@ -216,6 +216,21 @@ def _exercise_failures(**policy_overrides) -> str:
     recorder = Recorder()
     recorder.run_started({"idea": PLANTED_TEXT})
     recorder.node_started("n1", **IDENTITY)
+    # A METRICS snapshot whose `reason` is free text. It rides onto the run
+    # span as `run_metrics`, and it was the ONE site the first audit of this
+    # file missed: `reason` is `"interval"` or `"run_completed"` on every frame
+    # this application emits, so the branch that copied it looked like it was
+    # copying vocabulary. It is typed `str`.
+    recorder.add(
+        FrameKind.METRICS,
+        UIEventType.METRICS_UPDATED,
+        "workflow",
+        {
+            "reason": leaky,
+            "usage": {"call_count": 2, "cost_usd": 0.001, "total_tokens": 700},
+            "frames": {"captured": 12, "dropped": 0},
+        },
+    )
     recorder.tool_call("n1", "an authored tool", error=leaky, **IDENTITY)
     recorder.model_call_failed("n1", "call-1", error=leaky, **IDENTITY)
     # A frame kind nothing recognises, which becomes an EVENT carrying its
@@ -275,6 +290,30 @@ class FailurePathContentTests(unittest.TestCase):
 
         self.assertIn("ConnectionError", self.blob)
         self.assertIn("refused the key", self.blob)
+
+    def test_the_run_metrics_snapshot_is_scrubbed_too(self) -> None:
+        """Its own assertion, because it was its own hole.
+
+        `run_metrics` is a whole frame-details map copied onto the run span,
+        and until 2026-09-06 it was copied VERBATIM - the only remaining site
+        in this file where a `details` value reached an observation through
+        neither `policy_details` nor the scrubber. A second review's locator
+        found the planted key, the DSN and its password all three sitting in
+        `run_span.metadata.run_metrics.reason`, on BOTH policies.
+        """
+
+        run_span = next(
+            observation
+            for observation in json.loads(self.blob)["observations"]
+            if (observation["metadata"] or {}).get("observation_role") == "run"
+        )
+        metrics = json.dumps(run_span["metadata"].get("run_metrics"))
+        self.assertNotIn(PLANTED_KEY, metrics)
+        self.assertNotIn(PLANTED_DSN, metrics)
+        self.assertNotIn(PLANTED_DSN_PASSWORD, metrics)
+        # Scrubbing is not deletion, and the numbers are what the proof rows
+        # read: the snapshot must still be a snapshot.
+        self.assertEqual(2, run_span["metadata"]["run_metrics"]["usage"]["call_count"])
 
     def test_the_trace_output_reason_is_scrubbed_too(self) -> None:
         """Its own assertion because it is its own path: the terminal reason is

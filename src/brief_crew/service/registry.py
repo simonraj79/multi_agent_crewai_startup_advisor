@@ -1871,7 +1871,10 @@ class RunRegistry:
                 event_type=UIEventType.WORKFLOW_END,
                 node_id=record.node_registry.workflow_node_id,
                 message="Run cancelled at the human gate boundary",
-                details={"status": "cancelled"},
+                details={
+                    "status": "cancelled",
+                    **record.capture.serializer.unhandled_report(),
+                },
                 level=FrameLevel.WARNING,
             )
             record.emit_metrics("run_cancelled")
@@ -2399,7 +2402,11 @@ class RunRegistry:
                     "Run cancelled: the service restarted before it reached a "
                     "step boundary"
                 ),
-                details={"status": "cancelled", "reason": INTERRUPTED_REASON},
+                details={
+                    "status": "cancelled",
+                    "reason": INTERRUPTED_REASON,
+                    **record.capture.serializer.unhandled_report(),
+                },
                 level=FrameLevel.WARNING,
             )
             record.mark_cancelled()
@@ -2414,6 +2421,7 @@ class RunRegistry:
                     "error": INTERRUPTED_ERROR,
                     "reason": INTERRUPTED_REASON,
                     "interrupted_status": record.status.value,
+                    **record.capture.serializer.unhandled_report(),
                 },
                 level=FrameLevel.ERROR,
             )
@@ -2746,7 +2754,13 @@ class RunRegistry:
             # detected inside a capture callback that already holds the
             # adapter's non-reentrant lock.
             budget_stop = record.stop_reason == COST_CEILING_REASON
-            details: dict[str, Any] = {"status": "cancelled"}
+            details: dict[str, Any] = {
+                "status": "cancelled",
+                # As above: the tally of CrewAI events the frame pipeline could
+                # not convert (DoD row C3), on the ending a budget stop and an
+                # operator cancel both take.
+                **record.capture.serializer.unhandled_report(),
+            }
             if budget_stop:
                 details["reason"] = COST_CEILING_REASON
                 details["cost_usd"] = float(record.usage.get("cost_usd", 0.0))
@@ -2776,7 +2790,11 @@ class RunRegistry:
                 # `error_class` beside the sentence when the exception names
                 # one (C6): the node's own NODE_END frame already carries it,
                 # and the run-level frame is what a client reads last.
-                details={"error": str(exc), **error_class_of(exc)},
+                details={
+                    "error": str(exc),
+                    **error_class_of(exc),
+                    **record.capture.serializer.unhandled_report(),
+                },
                 level=FrameLevel.ERROR,
             )
             record.mark_failed(exc)

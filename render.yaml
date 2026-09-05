@@ -237,6 +237,65 @@ services:
       - key: GITHUB_TOKEN
         sync: false
 
+      # ------------------------------------------------------------------
+      # Langfuse - one trace per run, one generation per LLM call.
+      #
+      # THESE THREE KEYS ARE THE WHOLE SWITCH. There is no fourth key that
+      # turns the exporter on: `LANGFUSE_EXPORT_ENABLED` defaults to
+      # `bool(public and secret)` (config.py), the same derived shape as
+      # `VALIDATOR_REQUIRE_AUTH` above - configuring the destination IS
+      # turning it on, so the half-configured state does not exist and there
+      # is no boolean anyone can forget. Set it explicitly to `0` only to
+      # leave the keys in place with export suspended.
+      #
+      # Their ABSENCE is a supported state, and this is the opposite of
+      # CREDENTIALS_MASTER_KEY above. With either key missing `build_exporter`
+      # returns a no-op that logs one line at startup and does nothing else:
+      # it never raises, never joins a boot assertion and cannot fail a health
+      # check. Telemetry being off must never become "the run failed". So a
+      # fresh apply that skips these prompts still boots; it just writes no
+      # trace. `GET /readyz` carries an `observability` object saying which of
+      # the two it is - deliberately WITHOUT the base URL or either key, since
+      # /readyz is unauthenticated.
+      #
+      # ⚠️ LANGFUSE_CAPTURE_CONTENT IS DELIBERATELY UNSET AND MUST STAY UNSET
+      # HERE. Its default is `0`, and `0` is the only value for a public
+      # deployment. Off, a generation carries a SHA-256 fingerprint of the
+      # rendered prompt plus message and character counts - enough to answer
+      # *which* prompt, with no text. On, completions, tool arguments and tool
+      # results leave the process for a third-party console whose share URL is
+      # one paste away from a user's idea. Every outbound string is scrubbed
+      # either way, but a scrub is a denylist and the default is not.
+      #
+      # Both keys are credentials, hence `sync: false` like every other one.
+      # The Langfuse PUBLIC key is a credential too, whatever its name says -
+      # it is half of the Basic-auth pair and Langfuse's own API echoes it
+      # back on every object it serves (gotchas 60), so it never becomes a
+      # literal here. The base URL is not a secret and is a literal, in the
+      # same spirit as CORS_ALLOW_ORIGINS: a value that is knowable when this
+      # file is written should not be a manual step that can be missed.
+      #
+      # Set on the live service through the Render API on 2026-09-06 and
+      # recorded here so a fresh apply matches the dashboard, exactly as
+      # BUILDER_PLATFORM_FIRECRAWL_DEFAULT above says of itself. NOTE for the
+      # already-applied Blueprint: Render prompts for `sync: false` values at
+      # Blueprint CREATION only, and it snapshots a deploy's environment when
+      # the deploy is CREATED (deployment trap 3) - so entering these in the
+      # dashboard is not enough on its own; they reach the process only on the
+      # NEXT deploy, which is what the commit carrying this block triggers.
+      #
+      # The knobs not named here - export enabled, capture content,
+      # environment, billed-cost resolution and the seven bounds - are all
+      # left to their defaults on purpose; docs/deploying.md's observability
+      # table has a row per knob and docs/observability/TRACE-CONTRACT.md §9
+      # is the contract.
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_BASE_URL
+        value: "https://us.cloud.langfuse.com"
+
   # --------------------------------------------------------------------------
   # Frontend + auth - Vue 3 SPA served by a Node server (frontend/)
   #

@@ -1,0 +1,5 @@
+$ npx vue-tsc -b --force       # from frontend/
+# RV3 SEVENTH PASS (capture-only), branch run-shell/cast at f733833, 2026-09-05T19:56:38+08:00
+# exit code: 0
+
+<<< no output above means no diagnostics >>>

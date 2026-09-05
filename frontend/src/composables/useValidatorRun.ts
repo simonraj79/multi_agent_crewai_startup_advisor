@@ -1,10 +1,12 @@
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import type { Edge, Node } from '@vue-flow/core'
 import { MOCK_GRAPH } from '../data/mockGraph'
 import { scopedKey } from '../data/identityStorage'
 import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
 import { LANDING_STAGGER_MS, useRunChoreography, type Handoff } from './useRunChoreography'
+import { TRACE_TERMINAL_PRECEDENCE, interpretFrame, traceCallKey } from '../trace/interpret'
+import type { TraceContext, TraceLine } from '../trace/interpret'
 import type {
   RunResult,
   CallChip,
@@ -398,7 +400,24 @@ export function useValidatorRun(
   const lastSequence = ref(0)
   const droppedFrames = ref(0)
   const activeEdgeIds = ref(new Set<string>())
-  const chatEntries = ref<ChatEntry[]>([])
+  /**
+   * The trace's rows. `shallowRef`, not `ref`, and that is a measurement (T2.8).
+   *
+   * A deep `ref` proxies every object it holds, on first access and then for
+   * every property read. A trace row is read about a dozen times by the
+   * template - the kind, the event type, the sequence, the model, the tool, the
+   * duration, the message, the payload - and a long run has hundreds of rows,
+   * so a single re-render of the rail walked thousands of proxy gets and
+   * registered thousands of dependencies for objects that never change after
+   * they are written.
+   *
+   * They never change after they are written: a row is either appended or
+   * REPLACED whole (`appendChat` rewrites a call's `before` row in place by
+   * substituting a new object). So the array reference is the only reactive
+   * fact worth tracking, and every write below replaces it rather than mutating
+   * it - which is the one obligation `shallowRef` imposes.
+   */
+  const chatEntries = shallowRef<ChatEntry[]>([])
   const usage = reactive<UsageMetrics>(initialUsage())
   /**
    * The first and last frame timestamps this run has produced - the run's own
@@ -447,12 +466,47 @@ export function useValidatorRun(
     activeEdgeIds,
     labelFor: (nodeId) =>
       descriptor.value.nodes.find((node) => node.id === nodeId)?.label ?? nodeId,
+    // Rung two of the identity ladder, and the ONLY identity a synthetic run
+    // of a published graph has: that runner emits no `agent` frame, so
+    // `details.agent_role` never arrives and the descriptor is the whole
+    // ladder. `readsAsRole` inside the composable drops it again when it is
+    // really a node id, which a builder descriptor has carried.
+    declaredRoleFor: (nodeId) =>
+      descriptor.value.nodes.find((node) => node.id === nodeId)?.agent_role,
     edgeIdFor: (from, to) =>
       descriptor.value.edges.find((edge) => edge.source === from && edge.target === to)?.id
       ?? `${from}-${to}`,
   })
   const seenFrames = new Set<string>()
-  const pendingCallEntries = new Map<string, string[]>()
+  /**
+   * What the interpretation layer is allowed to know.
+   *
+   * Everything it can see about a node comes from the descriptor the SERVER
+   * sent, and the identity ladder is `details.agent_role` -> the node's
+   * declared `agent_role` -> its label. A synthetic run emits no agent frame
+   * at all, so the middle rung is the only identity the no-cost path has, and
+   * a graph an author drew may have only the last.
+   */
+  const traceContext: TraceContext = {
+    node(nodeId) {
+      const node = descriptor.value.nodes.find((candidate) => candidate.id === nodeId)
+      if (!node) return undefined
+      return {
+        label: node.label,
+        kind: node.kind,
+        agentRole: node.agent_role,
+        taskName: node.task_name,
+      }
+    },
+    // Peeked rather than popped: `noteCallLifecycle` retires the entry, and it
+    // runs after the line is built precisely so a completed call can still say
+    // how long it took.
+    startedAt: (key) => openCallStarts.get(key)?.[0],
+  }
+  /** Call key -> the start times of its unfinished `before` frames, in order. */
+  const openCallStarts = new Map<string, number[]>()
+  /** Coalesce key -> the id of the row a later frame may complete. */
+  const coalescedRows = new Map<string, string>()
   /** Active edge id -> the node it feeds, so a finished branch can end it. */
   const edgeTargets = new Map<string, string>()
   const edgeTimers = new Map<string, number>()
@@ -460,7 +514,15 @@ export function useValidatorRun(
   let receiveQueue = Promise.resolve()
   let downloadTimer = 0
 
+  const nodeDataCache = new Map<string, StudioNodeData>()
+  const graphNodeCache = new Map<string, Node<StudioNodeData>>()
+
   const resetNodes = () => {
+    // The identity caches go with them: a relaunch re-seeds every field, and a
+    // cached object that happened to compare equal to the new one would hand a
+    // card the previous run's `data`.
+    nodeDataCache.clear()
+    graphNodeCache.clear()
     for (const key of Object.keys(nodeStates)) delete nodeStates[key]
     for (const key of Object.keys(nodeUsage)) delete nodeUsage[key]
     for (const key of Object.keys(nodeFrames)) delete nodeFrames[key]
@@ -477,25 +539,35 @@ export function useValidatorRun(
   }
   resetNodes()
 
+  /**
+   * The last object handed to each card, so an unchanged card is handed the
+   * SAME object again (T2.8).
+   *
+   * MEASURED, and it was the largest single cost in the frame budget. This
+   * computed depends on nine reactive sources - `nodeStates`, `nodeUsage`,
+   * `nodeFrames`, `nodeVisits`, `nodeActiveCall`, the choreography's errors,
+   * replays and receipts, and `landed` - and a frame touches at least one of
+   * them, so it re-ran on every frame of the run. Rebuilt literally, it minted
+   * fourteen fresh `data` objects each time; a new object is never
+   * `props`-equal, so Vue re-rendered all fourteen cards for a frame that
+   * concerned one. Counted in a mounted benchmark over 262 frames: **2,912 card
+   * renders**, where the number of cards whose data actually changed was a
+   * fraction of that.
+   *
+   * The fix is identity, not memoisation of the work: the fields are still
+   * assembled every time (they are cheap - reads off plain objects), and what
+   * is cached is the OBJECT handed out. A card whose seventeen fields are
+   * unchanged gets the object it already has, `props` compare equal, and Vue
+   * skips it. The comparison is written out field by field rather than done
+   * with `JSON.stringify`, because two of the fields are objects with their own
+   * rules: `usage` is MUTATED in place by `addUsage`, so identity would say
+   * "unchanged" about a card that just billed; `activeCall` is REPLACED on
+   * every call, so identity would say "changed" about a card that is doing the
+   * same thing it was.
+   */
   const graphNodes = computed<Node<StudioNodeData>[]>(() =>
-    descriptor.value.nodes.map((node, index) => ({
-      id: node.id,
-      type: 'workflow',
-      position: node.position,
-      /*
-       * The landing settle, on Vue Flow's OWN node wrapper rather than on the
-       * card. Two reasons and either decides it: `.workflow-node.is-running`
-       * sets the `animation` shorthand, so a landing class on the card at equal
-       * specificity would replace the whole list and cancel a running node's
-       * glow; and Vue Flow positions a node by writing `transform` onto this
-       * wrapper, so the keyframe is opacity-only.
-       */
-      class: choreography.landed.value ? 'is-landing' : undefined,
-      style: { animationDelay: `-${index * LANDING_STAGGER_MS}ms` },
-      draggable: false,
-      selectable: false,
-      connectable: false,
-      data: {
+    descriptor.value.nodes.map((node, index) => {
+      const data: StudioNodeData = {
         label: node.label,
         eyebrow: node.eyebrow,
         description: node.description,
@@ -520,8 +592,45 @@ export function useValidatorRun(
           && Boolean(runId.value)
           && transportMode.value === 'live'
           && (nodeStates[node.id] ?? 'idle') === 'error',
-      },
-    })),
+      }
+      const cachedData = nodeDataCache.get(node.id)
+      const stableData = cachedData && sameNodeData(cachedData, data) ? cachedData : data
+      if (stableData === data) nodeDataCache.set(node.id, data)
+
+      const wrapper: Node<StudioNodeData> = {
+        id: node.id,
+        type: 'workflow',
+        position: node.position,
+        /*
+         * The landing settle, on Vue Flow's OWN node wrapper rather than on the
+         * card. Two reasons and either decides it: `.workflow-node.is-running`
+         * sets the `animation` shorthand, so a landing class on the card at
+         * equal specificity would replace the whole list and cancel a running
+         * node's glow; and Vue Flow positions a node by writing `transform`
+         * onto this wrapper, so the keyframe is opacity-only.
+         */
+        class: choreography.landed.value ? 'is-landing' : undefined,
+        style: { animationDelay: `-${index * LANDING_STAGGER_MS}ms` },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        data: stableData,
+      }
+      // The wrapper is cached on the same principle one level up: Vue Flow
+      // diffs this array itself, and a wrapper that is the same object is a
+      // node it has nothing to do about.
+      const cachedWrapper = graphNodeCache.get(node.id)
+      if (
+        cachedWrapper
+        && cachedWrapper.data === stableData
+        && cachedWrapper.class === wrapper.class
+        && cachedWrapper.position === wrapper.position
+      ) {
+        return cachedWrapper
+      }
+      graphNodeCache.set(node.id, wrapper)
+      return wrapper
+    }),
   )
 
   const graphEdges = computed<Edge<StudioEdgeData>[]>(() =>
@@ -1005,7 +1114,7 @@ export function useValidatorRun(
     if (frame.event_type.includes('END')) setNodeState(nodeId, 'completed')
     if (frame.level === 'ERROR') setNodeState(nodeId, 'error')
     // A node that has settled cannot still have a call in flight. Belt and
-    // braces behind `completeCallEntry`: a dropped or out-of-order `after`
+    // braces behind `noteCallLifecycle`: a dropped or out-of-order `after`
     // frame would otherwise leave a timer counting up forever on a finished
     // node, which is a worse lie than showing nothing.
     if (frame.event_type.includes('END') || frame.level === 'ERROR') {
@@ -1179,110 +1288,228 @@ export function useValidatorRun(
     usage.elapsedMs = Math.max(usage.elapsedMs, runClock.lastMs - runClock.firstMs)
   }
 
+  /**
+   * The trace's one write point, and it no longer decides what a row SAYS.
+   *
+   * It used to build the row itself out of `frame.message`, which is the
+   * framework's sentence about its own internals - "persist started",
+   * "write_report to persist", "AgentExecutor reporting_task". That decision
+   * now lives in `trace/interpret.ts`, which is pure and therefore assertable
+   * over a real frame log; what is left here is the three things a composable
+   * has to do and a pure function cannot: keep the run's per-node bookkeeping,
+   * find the row an earlier frame wrote, and hold the entries.
+   *
+   * A `null` from the interpreter is a decision, not a failure. Token frames,
+   * metrics, edge traversals, stream chunks, utterances, plan statements and a
+   * kind from a newer server all reach the run's log and its NDJSON export
+   * exactly as before; they simply do not get a row in a surface whose job is
+   * to be readable.
+   */
   function appendChat(frame: FrameData): void {
+    const line = interpretFrame(frame, traceContext)
+    noteCallLifecycle(frame)
+    if (!line) return
+    pushTraceLine(frame, line)
+  }
+
+  /**
+   * The per-node bookkeeping a call's two frames drive, whatever the row does.
+   *
+   * Kept deliberately separate from the row: `nodeUsage.elapsedMs` and the
+   * node card's in-flight marker were side effects buried inside the old
+   * `completeCallEntry`, so they only happened when a row happened to be
+   * found. A frame that produced no row silently stopped paying them.
+   */
+  function noteCallLifecycle(frame: FrameData): void {
+    if (frame.kind !== 'llm' && frame.kind !== 'tool' && frame.kind !== 'guardrail') return
     const stage = String(frame.details.stage ?? '')
-    if ((frame.kind === 'llm' || frame.kind === 'tool') && stage === 'chunk') return
-    /*
-     * Three C6 shapes the TRACE does not carry, because another surface owns
-     * each and carrying them twice is how one copy goes stale.
-     *
-     * `utterance` is the dialogue rail's whole subject (D5) - it is what an
-     * agent SAID, rendered with an avatar and a progressive reveal, and a
-     * verbatim copy of the same 4,096 characters in the trace beside it is
-     * noise in the surface whose job is the mechanics. `plan` is the stage
-     * lane's (D4): it is a statement about the graph, made seven times before
-     * anything happens, and in the trace it reads as seven system messages
-     * before the run starts. The trace keeps everything else - the kicker, the
-     * tool chips, the warnings, the errors - which is the half of the run the
-     * rail was always good at.
-     */
-    if (frame.kind === 'llm' && stage === 'utterance') return
-    if (frame.kind === 'run_state' && stage === 'plan') return
-    if ((frame.kind === 'llm' || frame.kind === 'tool') && stage !== 'before' && completeCallEntry(frame)) return
-
-    const call = toCallChip(frame)
-    if (call?.active && (frame.kind === 'tool' || frame.kind === 'llm')) {
-      // `query` has been on this frame all along and nothing read it.
-      const query = frame.details.query
-      setActiveCall(frame.node_id, {
-        label: call.label,
-        kind: frame.kind,
-        query: typeof query === 'string' && query.trim() ? query : undefined,
-        startedAt: call.startedAt,
-      })
+    const key = traceCallKey(frame)
+    if (stage === 'before') {
+      openCallStarts.set(key, [...(openCallStarts.get(key) ?? []), frameTime(frame)])
+      if (frame.kind === 'tool' || frame.kind === 'llm') {
+        // `query` has been on this frame all along and nothing read it.
+        const query = frame.details.query
+        setActiveCall(frame.node_id, {
+          label: String(frame.details.tool ?? frame.details.model ?? frame.kind),
+          kind: frame.kind,
+          query: typeof query === 'string' && query.trim() ? query : undefined,
+          startedAt: frameTime(frame),
+        })
+      }
+      return
     }
-    const entry: ChatEntry = {
-      id: `${frame.run_id}-${frame.seq}`,
-      seq: frame.seq,
-      nodeId: frame.node_id,
-      actor: actorFor(frame),
-      message: frame.message,
-      timestamp: new Date(frame.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      variant: frame.level === 'ERROR' ? 'error' : frame.level === 'WARNING' ? 'warning' : frame.node_id ? 'agent' : 'system',
-      calls: call ? [call] : [],
-    }
-    chatEntries.value.push(entry)
-    if (call?.active) {
-      const key = callKey(frame)
-      pendingCallEntries.set(key, [...(pendingCallEntries.get(key) ?? []), entry.id])
-    }
-  }
-
-  function toCallChip(frame: FrameData): CallChip | null {
-    if (frame.kind !== 'llm' && frame.kind !== 'tool') return null
-    const stage = String(frame.details.stage ?? '')
-    return {
-      id: String(frame.details.call_id ?? `call-${frame.seq}`),
-      kind: frame.kind,
-      label: String(frame.details.tool ?? frame.details.model ?? frame.kind),
-      startedAt: Number.isNaN(Date.parse(frame.ts)) ? Date.now() : Date.parse(frame.ts),
-      durationMs: frame.duration_ms,
-      active: stage === 'before',
-    }
-  }
-
-  function callKey(frame: FrameData): string {
-    const callId = frame.details.call_id
-    if (typeof callId === 'string' && callId) return `${frame.kind}:${callId}`
-    const name = String(frame.details.tool ?? frame.details.model ?? frame.kind)
-    return `${frame.node_id ?? QUARANTINE_NODE_ID}:${frame.kind}:${name}`
-  }
-
-  function completeCallEntry(frame: FrameData): boolean {
-    const key = callKey(frame)
-    const entryIds = pendingCallEntries.get(key)
-    const entryId = entryIds?.shift()
-    if (!entryId) return false
-    if (entryIds?.length) pendingCallEntries.set(key, entryIds)
-    else pendingCallEntries.delete(key)
-
-    const index = chatEntries.value.findIndex((entry) => entry.id === entryId)
-    if (index < 0) return false
-    const entry = chatEntries.value[index]
-    const completedAt = Date.parse(frame.ts)
-    const calls = entry.calls.map((call) => ({
-      ...call,
-      active: false,
-      durationMs: frame.duration_ms ?? Math.max(0, (Number.isNaN(completedAt) ? Date.now() : completedAt) - call.startedAt),
-    }))
-    chatEntries.value[index] = {
-      ...entry,
-      message: frame.message,
-      variant: frame.level === 'ERROR' ? 'error' : frame.level === 'WARNING' ? 'warning' : entry.variant,
-      calls,
-    }
-    if (frame.node_id && nodeUsage[frame.node_id]) {
-      nodeUsage[frame.node_id].elapsedMs += calls[0]?.durationMs ?? 0
+    if (stage !== 'after' && stage !== 'error') return
+    const queue = openCallStarts.get(key)
+    const started = queue?.shift()
+    if (queue && queue.length === 0) openCallStarts.delete(key)
+    if (frame.kind === 'guardrail') return
+    if (started !== undefined && frame.node_id && nodeUsage[frame.node_id]) {
+      nodeUsage[frame.node_id].elapsedMs +=
+        frame.duration_ms ?? Math.max(0, frameTime(frame) - started)
     }
     // The call is done: stop the node reporting it as in flight, and let the
     // shared ticker retire once nothing anywhere is running.
     setActiveCall(frame.node_id, null)
-    return true
   }
 
-  function actorFor(frame: FrameData): string {
-    if (!frame.node_id) return frame.kind === 'run_state' ? 'Run control' : 'System'
-    return descriptor.value.nodes.find((node) => node.id === frame.node_id)?.label ?? frame.node_id
+  /**
+   * Append the row, or complete the one an earlier frame already wrote.
+   *
+   * Three rules, and each of them is a defect that shipped:
+   *
+   * - A call's `after` frame REWRITES its `before` row rather than adding a
+   *   second one, so "is searching …" becomes "searched … — 3 results" in
+   *   place. Two rows for one call is how a nine-call run read as eighteen
+   *   events.
+   * - A coarser statement about a moment already narrated is DROPPED. A node
+   *   starting, a crew starting, a task starting and an agent starting are
+   *   four frames about one event; the most specific wins the row whichever
+   *   order they arrive in, which is what `precedence` is for.
+   * - A `tail`-scoped row merges only while it is still the newest. Reasoning
+   *   is the highest-volume kind there is, and a run-scoped key would rewrite
+   *   a row the reader scrolled past ten rows ago.
+   */
+  function pushTraceLine(frame: FrameData, line: TraceLine): void {
+    const entry = toChatEntry(frame, line)
+    const coalesce = line.coalesce
+    if (coalesce) {
+      const knownId = coalescedRows.get(coalesce.key)
+      const index = knownId ? chatEntries.value.findIndex((row) => row.id === knownId) : -1
+      if (index >= 0) {
+        const existing = chatEntries.value[index]
+        const reachable = coalesce.scope === 'run' || index === chatEntries.value.length - 1
+        if (reachable) {
+          if (coalesce.precedence < (existing.precedence ?? 0)) return
+          const rewritten = chatEntries.value.slice()
+          rewritten[index] = {
+            ...entry,
+            // The row keeps the identity it was born with: its Vue key, its
+            // sequence and the clock it first appeared at. A row that jumped
+            // its own timestamp while sitting still reads as a glitch.
+            id: existing.id,
+            seq: existing.seq,
+            timestamp: existing.timestamp,
+            calls: entry.calls.length ? entry.calls : existing.calls,
+          }
+          chatEntries.value = rewritten
+          // A finished thing is finished: retire the key so the SAME agent
+          // calling the SAME tool again gets its own row. Three calls that
+          // collapsed into one row is two thirds of a branch's spend invisible.
+          if (coalesce.precedence >= TRACE_TERMINAL_PRECEDENCE) coalescedRows.delete(coalesce.key)
+          return
+        }
+      }
+      // A new row, so whatever it declares stale is stale. This is what makes a
+      // second visit to a node read as a second visit rather than as a silent
+      // rewrite of the first.
+      if (coalesce.clears) coalescedRows.delete(coalesce.clears)
+      coalescedRows.set(coalesce.key, entry.id)
+    }
+    // An identical failure, twice in a row, about the same node, is ONE thing
+    // that happened. A cold reader met four rows of the same sentence in
+    // `evidence/S/failure.png` - twice from the agent and twice from the run -
+    // and read it as four failures.
+    //
+    // Deliberately NARROW, and every clause is doing work. CONSECUTIVE, so a
+    // failure that recurs after other rows still gets its own row and its own
+    // place in the sequence; SAME NODE, so two branches failing the same way
+    // are two rows, which is the fact; SAME MESSAGE, so nothing is folded that
+    // a reader could tell apart. This is not the `coalesce` machinery above -
+    // an error line carries no coalesce key on purpose, because sharing one
+    // with the node's completion lets either silently overwrite the other.
+    const previous = chatEntries.value[chatEntries.value.length - 1]
+    if (
+      previous
+      && entry.tone === 'error'
+      && previous.tone === 'error'
+      && previous.nodeId === entry.nodeId
+      && previous.message === entry.message
+    ) {
+      const folded = chatEntries.value.slice()
+      // The FIRST row's id, sequence and clock are kept: a row that jumped its
+      // own timestamp because the same thing was reported again would move
+      // under the reader, and its Vue key would change for no reason.
+      folded[folded.length - 1] = { ...previous, repeats: (previous.repeats ?? 1) + 1 }
+      chatEntries.value = folded
+      return
+    }
+    // Replaced, not pushed: `shallowRef` tracks the array reference, and a
+    // `push` would mutate the same array and notify nobody.
+    chatEntries.value = [...chatEntries.value, entry]
+  }
+
+  function toChatEntry(frame: FrameData, line: TraceLine): ChatEntry {
+    const started = openCallStarts.get(line.coalesce?.key ?? '')?.[0]
+    const call = toCallChip(frame, started)
+    return {
+      id: `${frame.run_id}-${frame.seq}`,
+      seq: frame.seq,
+      nodeId: line.nodeId,
+      actor: line.identity || actorFor(frame, line.nodeId),
+      message: line.text,
+      timestamp: new Date(frame.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      // `you` is a row addressed to the operator, not spoken by an agent, so
+      // it takes the system styling rather than an avatar and a bubble.
+      variant:
+        line.tone === 'error'
+          ? 'error'
+          : line.tone === 'warn'
+            ? 'warning'
+            : line.tone === 'you' || !line.nodeId
+              ? 'system'
+              : 'agent',
+      calls: call ? [call] : [],
+      identity: line.identity,
+      tone: line.tone,
+      raw: line.raw,
+      coalesceKey: line.coalesce?.key,
+      coalesceScope: line.coalesce?.scope,
+      precedence: line.coalesce?.precedence,
+    }
+  }
+
+  function frameTime(frame: FrameData): number {
+    const at = Date.parse(frame.ts)
+    return Number.isFinite(at) ? at : Date.now()
+  }
+
+  function toCallChip(frame: FrameData, startedAt?: number): CallChip | null {
+    if (frame.kind !== 'llm' && frame.kind !== 'tool') return null
+    const stage = String(frame.details.stage ?? '')
+    if (stage !== 'before' && stage !== 'after' && stage !== 'error') return null
+    const at = frameTime(frame)
+    const active = stage === 'before'
+    return {
+      id: String(frame.details.call_id ?? `call-${frame.seq}`),
+      kind: frame.kind,
+      label: String(frame.details.tool ?? frame.details.model ?? frame.kind),
+      startedAt: active ? at : startedAt ?? at,
+      durationMs: active
+        ? frame.duration_ms
+        : frame.duration_ms ?? (startedAt === undefined ? undefined : Math.max(0, at - startedAt)),
+      active,
+    }
+  }
+
+  /**
+   * Whose row this is, in words.
+   *
+   * The node id comes from the LINE and not from the frame, and that is the fix
+   * for a row that read `workflow`. The serializer stamps run-level frames with
+   * the registry's own workflow node id; `interpret.ts::runLine` correctly
+   * drops it, because that node is instrumentation and no canvas draws it - but
+   * this function was still reading `frame.node_id`, finding `workflow`, failing
+   * to find it in the descriptor and falling through to the id itself. So the
+   * one row in the trace that is about the whole run was attributed to a node
+   * that does not exist, by its internal name.
+   *
+   * `Run`, not `Run control`: it is the subject of the sentence beside it -
+   * "Run started", "Run finished" - and the shorter word is the one a reader
+   * would use.
+   */
+  function actorFor(frame: FrameData, nodeId?: string): string {
+    if (!nodeId) return frame.kind === 'run_state' ? 'Run' : 'System'
+    return descriptor.value.nodes.find((node) => node.id === nodeId)?.label ?? nodeId
   }
 
   async function submitGate(outcome: string, fields?: Record<string, string>): Promise<void> {
@@ -1393,7 +1620,8 @@ export function useValidatorRun(
     unsubscribe?.()
     unsubscribe = undefined
     seenFrames.clear()
-    pendingCallEntries.clear()
+    openCallStarts.clear()
+    coalescedRows.clear()
     clearEdgeAnimations()
     choreography.reset()
     resetNodes()
@@ -1458,6 +1686,16 @@ export function useValidatorRun(
     dialogue: choreography.dialogue,
     handoffs: choreography.handoffs,
     stages: choreography.stages,
+    // The cast, re-exported for the same reason the four above are: the view
+    // renders the node card, both rails and the stage lane, and the composable
+    // is the only thing that has seen a frame. ONE store reaches all four, so
+    // a character cannot be one creature on the canvas and another in the
+    // transcript - which is what DoD T2.6 measures.
+    identities: choreography.identities,
+    identityFor: choreography.identityFor,
+    castStates: choreography.castStates,
+    castState: choreography.castState,
+    castFor: choreography.castFor,
     liveAnimationCount: choreography.liveAnimationCount,
     framesApplied: choreography.framesApplied,
     armed: choreography.armed,
@@ -1478,6 +1716,80 @@ export function useValidatorRun(
     dismissError,
   }
 }
+
+/**
+ * Whether two card payloads say the same thing, field by field.
+ *
+ * Written out rather than generated, because two of the nineteen fields cannot
+ * be compared the obvious way and the obvious way is wrong in OPPOSITE
+ * directions for them:
+ *
+ *   `usage`      is mutated in place by `addUsage`, so `a.usage === b.usage` is
+ *                true for a card that has just spent money.
+ *   `activeCall` is replaced on every call start, so `a.activeCall !==
+ *                b.activeCall` is true for a card doing exactly what it was.
+ *
+ * Everything else is a primitive. A MISSED DIFFERENCE HERE IS A CARD THAT DOES
+ * NOT REPAINT, which is the failure mode to fear and the one no test would
+ * notice on its own, so the comparison is exhaustive by construction: every key
+ * of `StudioNodeData` appears below and in `NODE_DATA_KEYS`, and
+ * `traceRow.spec.ts` asserts that list against a fully-populated card object.
+ * A field added without a line here fails that assertion rather than shipping a
+ * card that goes stale under one particular kind of frame.
+ */
+function sameUsage(a: UsageMetrics, b: UsageMetrics): boolean {
+  return (
+    a.promptTokens === b.promptTokens
+    && a.completionTokens === b.completionTokens
+    && a.totalTokens === b.totalTokens
+    && a.callCount === b.callCount
+    && a.costUsd === b.costUsd
+    && a.elapsedMs === b.elapsedMs
+  )
+}
+
+function sameActiveCall(a: ActiveCall | null, b: ActiveCall | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.label === b.label
+    && a.kind === b.kind
+    && a.query === b.query
+    && a.startedAt === b.startedAt
+  )
+}
+
+export function sameNodeData(a: StudioNodeData, b: StudioNodeData): boolean {
+  return (
+    a.label === b.label
+    && a.eyebrow === b.eyebrow
+    && a.description === b.description
+    && a.kind === b.kind
+    && a.state === b.state
+    && a.model === b.model
+    && a.tool === b.tool
+    && a.frameCount === b.frameCount
+    && a.visits === b.visits
+    && a.character === b.character
+    && a.receded === b.receded
+    && a.errorMessage === b.errorMessage
+    && a.replayed === b.replayed
+    && a.receiving === b.receiving
+    && a.index === b.index
+    && a.landing === b.landing
+    && a.nodeId === b.nodeId
+    && a.rerunnable === b.rerunnable
+    && sameUsage(a.usage, b.usage)
+    && sameActiveCall(a.activeCall, b.activeCall)
+  )
+}
+
+/** Every key `sameNodeData` compares. Asserted against the type in a spec. */
+export const NODE_DATA_KEYS: readonly (keyof StudioNodeData)[] = [
+  'label', 'eyebrow', 'description', 'kind', 'state', 'model', 'tool', 'usage',
+  'frameCount', 'visits', 'activeCall', 'character', 'receded', 'errorMessage',
+  'replayed', 'receiving', 'index', 'landing', 'nodeId', 'rerunnable',
+]
 
 /**
  * The descriptor's `kind` comes from the service overlay, which falls back to

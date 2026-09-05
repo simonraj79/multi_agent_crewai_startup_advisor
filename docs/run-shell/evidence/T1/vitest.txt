@@ -1,0 +1,13 @@
+$ npx vitest run tests/verdictDisplay.spec.ts tests/noRawCodes.spec.ts       # from frontend/
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:22:54+08:00
+# vitest exit code: 0
+
+
+ RUN  v4.1.11 D:/MultiAgentSystem/frontend
+
+
+ Test Files  2 passed (2)
+      Tests  27 passed (27)
+   Start at  17:22:53
+   Duration  900ms (transform 249ms, setup 0ms, import 364ms, tests 66ms, environment 856ms)
+

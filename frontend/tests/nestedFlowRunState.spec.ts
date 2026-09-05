@@ -121,8 +121,22 @@ describe('a flow nested inside the run', () => {
     await flush(32)
 
     // Dropping the events would have fixed the status bug and lost the trace.
+    //
+    // AMENDED with the interpretation layer. The three rows are the same three
+    // frames; what changed is that the row no longer repeats CrewAI's own
+    // sentence about its internals. "AgentExecutor" is the class name of the
+    // flow CrewAI runs inside the node - a true statement, and not one the
+    // person watching the run has any use for. The subject is the agent whose
+    // node it ran inside, which is what the reader is looking at on the canvas.
     const logged = run.chatEntries.value.filter((entry) => entry.nodeId === 'scope_idea')
     expect(logged.map((entry) => entry.message)).toEqual([
+      'Scoper started',
+      'Scoper finished',
+      'Scoper could not finish: the agent gave up',
+    ])
+    // The framework's own sentence is not gone; it is behind the row's
+    // disclosure, which is the whole difference between a trace and a dump.
+    expect(logged.map((entry) => entry.raw.message)).toEqual([
       'AgentExecutor started',
       'AgentExecutor completed',
       'AgentExecutor failed',

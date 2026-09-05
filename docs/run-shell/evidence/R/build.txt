@@ -1,0 +1,23 @@
+$ npm run build       # from frontend/
+# RV3 SIXTH PASS, branch run-shell/cast at a182ed6, 2026-09-05T19:43:28+08:00
+# exit code: 0
+
+
+> frontend@0.0.0 build
+> vue-tsc -b && vite build && tsc -p tsconfig.server.json
+
+[36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 2085 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.88 kB │ gzip:   0.50 kB
+dist/assets/index-Ba6cp1GG.css  212.04 kB │ gzip:  32.79 kB
+dist/assets/index-CdoCsWnf.js   923.90 kB │ gzip: 289.67 kB
+
+[32m✓ built in 709ms[39m
+[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m

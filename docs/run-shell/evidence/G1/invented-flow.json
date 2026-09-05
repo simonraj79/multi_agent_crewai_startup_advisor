@@ -1,0 +1,512 @@
+{
+  "schema": "builder.flow/v1",
+  "id": "ug_00000000",
+  "name": "Clinic Rota Planner",
+  "version": 1,
+  "input_field": "brief",
+  "nodes": [
+    {
+      "id": "brief",
+      "kind": "input",
+      "label": "Clinic brief",
+      "position": {
+        "x": 360,
+        "y": 0
+      },
+      "config": {
+        "field": "brief",
+        "label": "Describe the week to be staffed",
+        "max_chars": 2000,
+        "required": true
+      }
+    },
+    {
+      "id": "forecast",
+      "kind": "agent",
+      "label": "Forecast demand",
+      "position": {
+        "x": 360,
+        "y": 160
+      },
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {
+          "brief": "${state.brief}"
+        },
+        "role": "Shift Demand Forecaster",
+        "goal": "Say how many people each clinic session needs, and on what the number rests.",
+        "backstory": "You have read appointment books for a decade. You count the sessions nobody remembers - the walk-in hour, the late list, the two afternoons a month the phlebotomist is in - and you would rather name an assumption than bury it.",
+        "task": {
+          "description": "Read the clinic brief below and produce a demand table: for every session of the week, how many clinical and how many reception staff are needed, and the one assumption each number rests on.\n\nBRIEF:\n{brief}",
+          "expected_output": "A session-by-session demand table with a stated assumption per row.",
+          "output_schema": null,
+          "markdown": false,
+          "async_execution": false
+        },
+        "llm": {
+          "model": "google/gemini-3.5-flash-lite:nitro",
+          "temperature": null,
+          "top_p": null,
+          "max_tokens": null,
+          "timeout": null,
+          "response_format": null,
+          "frequency_penalty": null,
+          "presence_penalty": null,
+          "stop": [],
+          "seed": null,
+          "reasoning_effort": null
+        },
+        "max_rpm": null,
+        "max_execution_time": null,
+        "allow_delegation": false,
+        "memory": false,
+        "cache": true,
+        "respect_context_window": true,
+        "retry": {
+          "max_retries": 0,
+          "backoff_seconds": 0,
+          "fallback_model": null
+        },
+        "system_template": null,
+        "prompt_template": null,
+        "response_template": null,
+        "tool_failure_policy": null,
+        "planning": false,
+        "planning_config": null
+      }
+    },
+    {
+      "id": "confirm",
+      "kind": "gate",
+      "label": "Confirm the demand",
+      "position": {
+        "x": 360,
+        "y": 320
+      },
+      "config": {
+        "message": "This is the demand the rota will be built against, and everything below it costs money. Approve the forecast, or send it back with what it got wrong.",
+        "editable_fields": [],
+        "max_turns": 1,
+        "expiry_seconds": 1800
+      }
+    },
+    {
+      "id": "draft",
+      "kind": "agent",
+      "label": "Draft the rota",
+      "position": {
+        "x": 360,
+        "y": 480
+      },
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {
+          "brief": "${state.brief}",
+          "demand": "${state.out__forecast}",
+          "notes": "${state.out__notes}"
+        },
+        "role": "Roster Architect",
+        "goal": "Turn a demand table into a week somebody can actually work.",
+        "backstory": "You build rotas back-to-front, from the hardest session to the easiest, because the last slot filled is always the one that breaks. If a redraft note arrives you fix every point in it rather than defending the draft.",
+        "task": {
+          "description": "Build the week's rota from the demand table below. If REDRAFT NOTES are present, fix every point in them.\n\nBRIEF:\n{brief}\n\nDEMAND:\n{demand}\n\nREDRAFT NOTES:\n{notes}",
+          "expected_output": "A named rota: one row per session, the people on it, and who is on call.",
+          "output_schema": null,
+          "markdown": true,
+          "async_execution": false
+        },
+        "llm": {
+          "model": "google/gemini-3.5-flash-lite:nitro",
+          "temperature": null,
+          "top_p": null,
+          "max_tokens": null,
+          "timeout": null,
+          "response_format": null,
+          "frequency_penalty": null,
+          "presence_penalty": null,
+          "stop": [],
+          "seed": null,
+          "reasoning_effort": null
+        },
+        "max_rpm": null,
+        "max_execution_time": null,
+        "allow_delegation": false,
+        "memory": false,
+        "cache": true,
+        "respect_context_window": true,
+        "retry": {
+          "max_retries": 0,
+          "backoff_seconds": 0,
+          "fallback_model": null
+        },
+        "system_template": null,
+        "prompt_template": null,
+        "response_template": null,
+        "tool_failure_policy": null,
+        "planning": false,
+        "planning_config": null
+      }
+    },
+    {
+      "id": "guidance",
+      "kind": "tool",
+      "label": "Read the rest rules",
+      "position": {
+        "x": 40,
+        "y": 640
+      },
+      "config": {
+        "tool_id": "scrape_website",
+        "params": {},
+        "credential_id": null
+      }
+    },
+    {
+      "id": "audit",
+      "kind": "agent",
+      "label": "Audit the rest rules",
+      "position": {
+        "x": 360,
+        "y": 640
+      },
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {
+          "rota": "${state.out__draft}",
+          "brief": "${state.brief}"
+        },
+        "role": "Rest Rules Auditor",
+        "goal": "Count the breaches in a rota and say exactly where each one is.",
+        "backstory": "You check rotas against the published rest rules rather than against your memory of them, and you read the page again whenever a rota looks close. A breach you cannot point at is not a breach.",
+        "task": {
+          "description": "Audit the rota below against the rest rules named in the brief. Fetch the published guidance page if the brief gives one. Count the breaches and say where each is.\n\nROTA:\n{rota}\n\nBRIEF:\n{brief}",
+          "expected_output": "An object with two keys: `breaches`, the whole number of rest-rule breaches found, and `notes`, what to change to clear them as one string.",
+          "output_schema": {
+            "breaches": "integer",
+            "notes": "string"
+          },
+          "markdown": false,
+          "async_execution": false
+        },
+        "llm": {
+          "model": "google/gemini-3.5-flash-lite:nitro",
+          "temperature": null,
+          "top_p": null,
+          "max_tokens": null,
+          "timeout": null,
+          "response_format": null,
+          "frequency_penalty": null,
+          "presence_penalty": null,
+          "stop": [],
+          "seed": null,
+          "reasoning_effort": null
+        },
+        "max_rpm": null,
+        "max_execution_time": null,
+        "allow_delegation": false,
+        "memory": false,
+        "cache": true,
+        "respect_context_window": true,
+        "retry": {
+          "max_retries": 0,
+          "backoff_seconds": 0,
+          "fallback_model": null
+        },
+        "system_template": null,
+        "prompt_template": null,
+        "response_template": null,
+        "tool_failure_policy": null,
+        "planning": false,
+        "planning_config": null
+      }
+    },
+    {
+      "id": "breaches",
+      "kind": "transform",
+      "label": "Breach count",
+      "position": {
+        "x": 180,
+        "y": 800
+      },
+      "config": {
+        "op": "pick",
+        "args": {
+          "source": "${state.out__audit}",
+          "key": "breaches"
+        }
+      }
+    },
+    {
+      "id": "notes",
+      "kind": "transform",
+      "label": "Redraft notes",
+      "position": {
+        "x": 540,
+        "y": 800
+      },
+      "config": {
+        "op": "pick",
+        "args": {
+          "source": "${state.out__audit}",
+          "key": "notes"
+        }
+      }
+    },
+    {
+      "id": "judge",
+      "kind": "router",
+      "label": "Rota legal?",
+      "position": {
+        "x": 360,
+        "y": 960
+      },
+      "config": {
+        "branches": [
+          {
+            "label": "again",
+            "op": "gt",
+            "key": "out__breaches",
+            "value": 0
+          },
+          {
+            "label": "clear",
+            "op": "otherwise",
+            "key": null,
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "cover",
+      "kind": "agent",
+      "label": "Plan the cover",
+      "position": {
+        "x": 360,
+        "y": 1120
+      },
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {
+          "rota": "${state.out__draft}"
+        },
+        "role": "Locum Cover Planner",
+        "goal": "Name who answers the phone when one of these people does not turn up.",
+        "backstory": "You have been the one holding the pager at 7am. You plan for the ordinary absence rather than the dramatic one, and you never write a cover plan that depends on the same person twice.",
+        "task": {
+          "description": "For the approved rota below, name the cover for every session: the first call, the fallback, and what to drop if neither is reachable.\n\nROTA:\n{rota}",
+          "expected_output": "A cover plan: per session, first call, fallback, and what gets stood down.",
+          "output_schema": null,
+          "markdown": false,
+          "async_execution": false
+        },
+        "llm": {
+          "model": "google/gemini-3.5-flash-lite:nitro",
+          "temperature": null,
+          "top_p": null,
+          "max_tokens": null,
+          "timeout": null,
+          "response_format": null,
+          "frequency_penalty": null,
+          "presence_penalty": null,
+          "stop": [],
+          "seed": null,
+          "reasoning_effort": null
+        },
+        "max_rpm": null,
+        "max_execution_time": null,
+        "allow_delegation": false,
+        "memory": false,
+        "cache": true,
+        "respect_context_window": true,
+        "retry": {
+          "max_retries": 0,
+          "backoff_seconds": 0,
+          "fallback_model": null
+        },
+        "system_template": null,
+        "prompt_template": null,
+        "response_template": null,
+        "tool_failure_policy": null,
+        "planning": false,
+        "planning_config": null
+      }
+    },
+    {
+      "id": "handover",
+      "kind": "agent",
+      "label": "Write the notice",
+      "position": {
+        "x": 360,
+        "y": 1280
+      },
+      "config": {
+        "tier": "escalation",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {
+          "rota": "${state.out__draft}",
+          "cover": "${state.out__cover}"
+        },
+        "role": "Handover Briefer",
+        "goal": "Write the one page the staff room actually reads.",
+        "backstory": "You write for people who are between patients. Short lines, the change first, the reason second, and never a table where a sentence would do.",
+        "task": {
+          "description": "Write the staff notice for next week from the rota and the cover plan below. Lead with what changed.\n\nROTA:\n{rota}\n\nCOVER:\n{cover}",
+          "expected_output": "A one-page staff notice in Markdown: what changed, the rota, the cover.",
+          "output_schema": null,
+          "markdown": true,
+          "async_execution": false
+        },
+        "llm": {
+          "model": "google/gemini-3.8-flash",
+          "temperature": null,
+          "top_p": null,
+          "max_tokens": null,
+          "timeout": null,
+          "response_format": null,
+          "frequency_penalty": null,
+          "presence_penalty": null,
+          "stop": [],
+          "seed": null,
+          "reasoning_effort": null
+        },
+        "max_rpm": null,
+        "max_execution_time": null,
+        "allow_delegation": false,
+        "memory": false,
+        "cache": true,
+        "respect_context_window": true,
+        "retry": {
+          "max_retries": 0,
+          "backoff_seconds": 0,
+          "fallback_model": null
+        },
+        "system_template": null,
+        "prompt_template": null,
+        "response_template": null,
+        "tool_failure_policy": null,
+        "planning": false,
+        "planning_config": null
+      }
+    },
+    {
+      "id": "notice",
+      "kind": "output",
+      "label": "Staff notice",
+      "position": {
+        "x": 360,
+        "y": 1440
+      },
+      "config": {
+        "body_key": "markdown_body",
+        "source": null
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "brief",
+      "source_port": "out",
+      "target": "forecast",
+      "target_port": "in"
+    },
+    {
+      "id": "e2",
+      "source": "forecast",
+      "source_port": "out",
+      "target": "confirm",
+      "target_port": "in"
+    },
+    {
+      "id": "e3",
+      "source": "confirm",
+      "source_port": "approve",
+      "target": "draft",
+      "target_port": "in"
+    },
+    {
+      "id": "e4",
+      "source": "draft",
+      "source_port": "out",
+      "target": "audit",
+      "target_port": "in"
+    },
+    {
+      "id": "e5",
+      "source": "audit",
+      "source_port": "out",
+      "target": "breaches",
+      "target_port": "in"
+    },
+    {
+      "id": "e6",
+      "source": "audit",
+      "source_port": "out",
+      "target": "notes",
+      "target_port": "in"
+    },
+    {
+      "id": "e7",
+      "source": "breaches",
+      "source_port": "out",
+      "target": "judge",
+      "target_port": "in"
+    },
+    {
+      "id": "e8",
+      "source": "notes",
+      "source_port": "out",
+      "target": "judge",
+      "target_port": "in"
+    },
+    {
+      "id": "e9",
+      "source": "judge",
+      "source_port": "again",
+      "target": "draft",
+      "target_port": "in"
+    },
+    {
+      "id": "e10",
+      "source": "judge",
+      "source_port": "clear",
+      "target": "cover",
+      "target_port": "in"
+    },
+    {
+      "id": "e11",
+      "source": "cover",
+      "source_port": "out",
+      "target": "handover",
+      "target_port": "in"
+    },
+    {
+      "id": "e12",
+      "source": "handover",
+      "source_port": "out",
+      "target": "notice",
+      "target_port": "in"
+    },
+    {
+      "id": "e13",
+      "source": "guidance",
+      "source_port": "attach",
+      "target": "audit",
+      "target_port": "attach"
+    }
+  ],
+  "joins": {
+    "judge": "all"
+  },
+  "budget": null
+}

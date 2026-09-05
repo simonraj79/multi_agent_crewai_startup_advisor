@@ -13,6 +13,9 @@
      --character-1 … --character-12   one agent, one colour, everywhere
      --recede-opacity / --recede-saturate   the idle card's step back
      --handoff-*                      the token that walks the edge
+     --node-wash-* / --node-danger-deep     the run card's state tints, moved
+                                      out of `WorkflowNode.vue` on 2026-09-05
+                                      so the light theme can reach them
 
    THE TWELVE CHARACTER COLOURS are the one genuinely new palette this plan
    adds, and they are new because nothing existing answers the question. The
@@ -54,11 +57,50 @@
   --handoff-size: 24px;
   --handoff-trail: 4px;
   --handoff-ring: rgba(255, 255, 255, 0.24);
+
+  /* THE RUN CARD'S THREE STATE WASHES, moved here 2026-09-05 from
+     `WorkflowNode.vue`'s scoped block.
+
+     They are an opaque tint painted OVER `--node-gradient`, so only the card's
+     1px gradient rim shows through - which is the whole trick that makes a
+     completed card and an errored one read as the same object in two moods.
+     They were written as literals inside the component, and a literal in a
+     component is a colour the light theme cannot reach: on paper every one of
+     these cards stayed dark. Here they are tokens with a light value beside
+     them, which is the arrangement `docs/design.md` §8 asks for and the one
+     `designTokens.spec.ts` measures.
+
+     The dark values are the component's own, unchanged to the byte, so the
+     three committed `run-canvas` baselines are unmoved by the move itself. The
+     LIGHT values are new - nothing was there before - and they are the same
+     recipe read the other way round: the card's own ground with a few percent
+     of the state's accent in it. */
+  --node-wash-completed: linear-gradient(rgba(38, 48, 43, 0.98), rgba(40, 46, 44, 0.98));
+  --node-wash-error: linear-gradient(rgba(64, 35, 35, 0.96), rgba(42, 42, 42, 0.98));
+  --node-wash-holding: linear-gradient(rgba(46, 40, 26, 0.98), rgba(42, 42, 42, 0.98));
+
+  /* The deep stop of the danger rim - the last colour of `--gradient-danger`,
+     named on its own because the errored card uses it as a gradient END and
+     not as the whole ramp. */
+  --node-danger-deep: #bd4a4a;
 }
 
 :root[data-theme='light'] {
-  --character-1: #1b7f96;
-  --character-2: #1d7a4d;
+  /* FOUR OF THE TWELVE WERE 3.89-4.47:1 AS SMALL TEXT, and the four are the
+     ones whose hue is intrinsically light - teal, green, orange, olive - so
+     the same lightness that made them distinct in the dark palette left them
+     short on paper. Each is the SAME hue at 90% of its own value, measured
+     against the four grounds a character is drawn on (the app ground, the
+     canvas, a rail, and the crew strip, which is `--surface-overlay` over the
+     canvas rather than over the shell): worst readings 4.64, 5.24, 5.13 and
+     4.84 where they were 3.89, 4.47, 4.36 and 4.11.
+
+     90% and not 86%: the twelve have to stay TELLABLE APART at 32px (T2.3),
+     and darkening four of them further than the hue shift needs would pull
+     -1 toward -11 and -2 toward -7. A ratio bought at the cost of the
+     property the palette exists for is not a fix. */
+  --character-1: #187287;
+  --character-2: #1a6e45;
   --character-3: #2f5fa8;
   --character-4: #6b46b8;
   --character-5: #8a5a00;
@@ -66,13 +108,24 @@
   --character-7: #16755f;
   --character-8: #3a5f9e;
   --character-9: #7b3fa8;
-  --character-10: #a35a1e;
+  --character-10: #93511b;
   --character-11: #1a6b80;
-  --character-12: #5f7a1e;
+  --character-12: #566e1b;
 
   --recede-opacity: 0.5;
   --recede-saturate: 0.65;
   --handoff-ring: rgba(15, 20, 25, 0.2);
+
+  /* The same three washes on paper: the card's white ground carrying a few
+     percent of the state's accent, so a completed card is faintly mint and an
+     errored one faintly red rather than both being the dark card they were
+     before these were tokens. Kept near-opaque for the same reason the dark
+     ones are - the rim is the signal, and a translucent wash would let the
+     whole gradient through and turn every card into a rainbow. */
+  --node-wash-completed: linear-gradient(rgba(238, 250, 243, 0.97), rgba(244, 250, 247, 0.97));
+  --node-wash-error: linear-gradient(rgba(253, 238, 238, 0.97), rgba(252, 245, 245, 0.97));
+  --node-wash-holding: linear-gradient(rgba(253, 246, 226, 0.97), rgba(252, 250, 243, 0.97));
+  --node-danger-deep: #a83232;
 }
 
 /* ===========================================================================
@@ -143,10 +196,59 @@
   pointer-events: none;
 }
 
+/* WITH A CHARACTER IN IT the disc stops being the mark and becomes the ground
+   the mark stands on: the Pip carries the palette colour in its own body (the
+   generator writes `style="color:var(--character-N)"` onto the figure), so a
+   filled disc behind it would be the same colour twice and the silhouette -
+   which is the whole of the identity at 32px - would vanish into it.
+
+   The box, its position, its ring and the receipt pulse are all unchanged, so
+   the slot is the same slot: only the fill moves out from under the figure.
+   No new colour, and no literal - `--bg-node` is what the card is already
+   painted with, which is what makes the half of the disc that overhangs the
+   card's top edge read as part of the card rather than as a hole in it. */
+.node-character.has-pip {
+  background: var(--bg-node);
+  border-color: var(--bg-node);
+}
+
 /* The receipt pulse: a single 120ms bump when a handoff token arrives here.
    One shot, not a loop - it marks an EVENT, and an event that repeats forever
    stops being one. */
 .node-character.is-receiving { animation: character-receipt 120ms var(--ease-out) 1; }
+
+/* ===========================================================================
+   THE CAST IN THE RAILS DOES NOT LOOP
+   ===========================================================================
+
+   T2.7's bound is TWELVE live animations across the whole page, counted by
+   `document.getAnimations()` inside `.pip` elements. A trace row is a frame,
+   not an agent, so a node that produced thirty rows has thirty avatars - and
+   with the node's live pose on each of them a single working branch would
+   spend thirty of the twelve on its own. MEASURED on the fan-out fixture: the
+   canvas costs three (one per running branch, each unioned with the card it
+   stands on, so the cast adds nothing there), and the rails would have cost
+   every row of every live node.
+
+   So the GRAPH's character moves and the rails' do not. That is the right way
+   round rather than a convenient one: the canvas is where "who is working right
+   now" is the question, and the rail is a transcript - a log line that breathes
+   is a log line pretending to be live. What the rails keep is the POSE, which
+   is a transform and a display, not an animation: a rail avatar still squints
+   when it is working, still wilts when it is blocked, and still closes its eyes
+   when it is done. Only the 2600ms bob and the 640ms mouth are dropped.
+
+   Three-class specificity (`.trace-avatar .pip .pip-shell`) because
+   `character.css` declares the loops at two (`.pip--working .pip-shell`) and is
+   imported AFTER this sheet - at equal specificity it would win. */
+.trace-avatar .pip .pip-shell,
+.trace-avatar .pip .pip-mouth--speak,
+.trace-avatar .pip .pip-figure,
+.dialogue-avatar .pip .pip-shell,
+.dialogue-avatar .pip .pip-mouth--speak,
+.dialogue-avatar .pip .pip-figure {
+  animation: none;
+}
 
 @keyframes character-receipt {
   50% { transform: scale(1.15); }
@@ -161,6 +263,11 @@
    looks like and the trailing dash that gives it a direction at 50% zoom. */
 .handoff-token { pointer-events: none; }
 .handoff-token-disc { stroke: var(--bg-node); stroke-width: 2; }
+/* The sender's own character rides the disc, drawn IDLE - a message in flight
+   is not the agent, which is still standing on the card it left. `--handoff-
+   size` is the figure's edge and the disc is drawn a little wider than half of
+   it so the Pip has a rim to stand on at 50% zoom. */
+.handoff-token-figure { pointer-events: none; }
 .handoff-token-trail {
   fill: none;
   stroke-width: var(--handoff-trail);
@@ -252,3 +359,60 @@
   .is-awaiting-you { animation: none; }
   .is-armed { background-position: 0% 50%; }
 }
+
+/* ---------------------------------------------------------------------------
+   THE RUN CONSOLE'S TENANCY OF THE SHARED CARD'S QUIET TEXT.
+
+   `node-card.css` paints five things in `--text-40` - the eyebrow, the
+   quarantine count, the in-flight query, the duration hint and the usage row -
+   and in the light theme that token measures 4.31:1 against the card, which is
+   an AA failure on the labels a reader leans in for.
+
+   The fix is one token (`--text-meta`) and it is NOT made in `node-card.css`,
+   for the reason that sheet's own header gives: the card is shared, and the
+   builder's sixteen full-page baselines include eight LIGHT ones, so a change
+   there is a sixteen-screenshot regeneration this task cannot run. Here
+   instead, guarded to the run console, which is the same construction
+   `studio.css` uses for the brand mark and for `.segmented` - and this sheet is
+   already the run console's tenancy of that card (see the import comment in
+   `studio.css`), so it is where a run-console-only card rule belongs.
+
+   NOTHING MOVES IN DARK, at either end: `--text-meta`'s dark value is
+   `rgba(255,255,255,.52)`, identical to `--text-40`, and the three run-canvas
+   baselines are captured in dark only. The builder never matches the guard.
+   `docs/run-shell/SHELL-SCOPE.md` §6.6 is the commit that folds this back into
+   `node-card.css` and regenerates the eight light baselines; until then the
+   builder's own card keeps the 4.31 and the audit says so on its own row.
+
+   Four of the five selectors below render in the run console alone - a design
+   canvas has no run state - so only `.node-eyebrow` strictly needs the guard.
+   They are written as one rule anyway: five selectors under one guard cannot
+   drift apart, and five rules under four different rationales can.
+   --------------------------------------------------------------------------- */
+.studio-shell:not(.is-builder) .node-eyebrow,
+.studio-shell:not(.is-builder) .node-active-query,
+.studio-shell:not(.is-builder) .node-active-hint,
+.studio-shell:not(.is-builder) .node-usage {
+  color: var(--text-meta);
+}
+
+/* `.quarantine-count` IS NOT IN THAT LIST, and leaving it out is the whole of
+   the second lesson.
+
+   It was in it for one revision, and `e2e/visual/run-canvas.spec.ts:243`
+   caught the consequence within the hour - which is exactly what that
+   assertion was written for, and its comment says so in advance:
+   `.quarantine-count` and `.node-state` are TWO CLASSES ON ONE ELEMENT
+   (`WorkflowNode.vue`: `class="node-state quarantine-count"`) setting `color`
+   at identical specificity, and `.node-state` wins only by being written
+   later. A rule at `.studio-shell:not(.is-builder) .quarantine-count` is
+   (0,2,0) against `.node-state`'s (0,1,0), so it did not recolour a chip - it
+   INVERTED the cascade the card is built on.
+
+   And the pairing it was fixing does not exist. `.quarantine-count`'s
+   `--text-40` never reaches a screen, because `.node-state` overrides it on
+   every element that ever carries it; the chip renders `--text-muted`, which
+   measures 6.85:1 in dark and 6.42:1 in light. The audit had been modelling a
+   declaration the cascade discards - a pairing nobody could see failing, whose
+   "fix" broke one anybody could. The row below it in `contrast-audit.mjs`
+   measures what the element actually paints instead. */

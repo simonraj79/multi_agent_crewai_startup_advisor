@@ -303,11 +303,23 @@ class SyntheticSpendFrameTests(unittest.TestCase):
         self.assertTrue(all(kind == "llm" for kind in kinds[:-1]))
 
     def test_the_details_mirror_the_serializers_token_draft(self) -> None:
-        """`events/serializer.py:527` writes exactly these four keys."""
+        """`events/serializer.py:527`'s four keys, and the role that spoke them.
+
+        `agent_role` and no `task_name`, and the asymmetry is the paid path's
+        rather than an omission: a builder-compiled `Task` is built with a
+        description and an expected output and no `name`
+        (`builder/runtime.py:910`), so a real builder frame carries no task
+        name either. The role IS there in production - `Agent(role=...)` for an
+        authored agent, the YAML `role` for a library one - and was missing
+        here until 2026-09-05.
+        """
 
         details = dict(self._spoken().of_kind("token")[0]["details"])
 
-        self.assertEqual({"call_id", "model", "usage", "cost_usd"}, set(details))
+        self.assertEqual(
+            {"call_id", "model", "usage", "cost_usd", "agent_role"}, set(details)
+        )
+        self.assertNotIn("task_name", details)
         self.assertEqual(
             {
                 "successful_requests",

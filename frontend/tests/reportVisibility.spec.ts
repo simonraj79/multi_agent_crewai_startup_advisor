@@ -1,9 +1,31 @@
+import { readFileSync } from 'node:fs'
+import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { App } from 'vue'
+import ReportPanel from '../src/components/ReportPanel.vue'
 import { useValidatorRun } from '../src/composables/useValidatorRun'
 import { FakeStudioApi, flush, frameFactory, withSetup } from './helpers'
 
 type ValidatorRun = ReturnType<typeof useValidatorRun>
+
+/**
+ * The body of the rule whose selector is exactly `selector`, at the start of a
+ * line.
+ *
+ * The anchoring is the point, and it cost two red tests to find.
+ * `.control-rail {` also occurs inside
+ * `.studio-main > .chat-rail, ... > .control-rail {` fifty lines earlier, so an
+ * unanchored `indexOf` reads THAT rule's three-line `min-height: 0` body and
+ * asserts against it. A source-level test that grabs the wrong rule passes or
+ * fails for reasons that have nothing to do with its subject - which is the
+ * one failure mode a source-level test must not have.
+ */
+function ruleFor(source: string, selector: string): string {
+  const at = source.indexOf(`\n${selector} {`)
+  if (at < 0) throw new Error(`no rule declared for ${selector}`)
+  const body = source.slice(at + 1)
+  return body.slice(0, body.indexOf('\n}'))
+}
 
 /**
  * The finished report, and the verdict that goes with it.
@@ -310,5 +332,193 @@ describe('the transport banner', () => {
     await flush()
 
     expect(run.transportProblem.value).toBe('')
+  })
+})
+
+/**
+ * THE SHEET IS ABOVE THE CANVAS, asserted from source because the alternative
+ * is a picture.
+ *
+ * `after-1440.png` showed the graph and the stage lane reading through a report
+ * that the shipped stylesheet paints in `--surface-strong` - an opaque
+ * `#222426` with no alpha at all, verified in the built bundle. Two people
+ * looked at that capture and read it two ways, which is exactly the argument
+ * for an assertion: a ratio or a declaration can be checked, and a picture is
+ * an opinion until somebody re-takes it.
+ *
+ * A unit test cannot compute a stacking order - jsdom lays nothing out - so
+ * what these check is the three DECLARATIONS that make the order unambiguous.
+ * The browser-side half is RV1's, and the exact instrument is:
+ *
+ *     const sheet = page.locator('.report-panel')
+ *     expect(await styleOf(sheet, 'background-color')).toBe('rgb(34, 36, 38)')
+ *     // light theme: rgb(243, 245, 247)
+ *
+ * plus a hit test on a point inside the sheet that sits over a node - if the
+ * element at that point is not the sheet or one of its descendants, the sheet
+ * is under the canvas and no colour assertion will say so.
+ */
+describe('the report sheet cannot be painted through', () => {
+  // `process.cwd()` is `frontend/` under vitest, and a plain relative path is
+  // what survives Windows: `import.meta.url` is not a file: URL here, so
+  // `new URL(...)` throws before a single assertion runs.
+  const source = readFileSync('src/components/ReportPanel.vue', 'utf8')
+  const rule = ruleFor(source, '.report-panel')
+
+  it('is positioned, so its z-index is not inert', () => {
+    // A `z-index` on a `position: static` element does nothing at all, and that
+    // is the failure mode this assertion exists for: the declaration would
+    // still be there, the sheet would still be behind the graph, and the CSS
+    // would look correct to a reader.
+    expect(rule).toMatch(/position:\s*absolute/)
+  })
+
+  it('is its own stacking context whatever changes around it', () => {
+    expect(rule).toMatch(/isolation:\s*isolate/)
+  })
+
+  it('outranks every sibling in the workspace', () => {
+    // `--z-control` (30) against `.canvas-heading` 8, `.stream-reconnecting`
+    // and `.crew-progress` 9, and the reopen FAB 11. Named rather than
+    // numbered so the comparison survives a renumbering of the scale.
+    expect(rule).toMatch(/z-index:\s*var\(--z-control\)/)
+  })
+
+  it('is opaque, with no alpha for a graph to show through', () => {
+    // `--surface-strong` is the only surface token with no alpha channel.
+    // `--surface-overlay` at 94% was tried first and is what produced the
+    // capture this block is named for.
+    expect(rule).toMatch(/background:\s*var\(--surface-strong\)/)
+    expect(rule).not.toMatch(/background:\s*var\(--surface-overlay\)/)
+  })
+
+  it('leaves room for an overlay rail rather than running under it', () => {
+    // Below 1180px the rails stop being grid columns and `.graph-workspace`
+    // takes the whole width - so `right: 0` put the score bars, the body text
+    // and this sheet's own Copy Markdown and close controls UNDER the control
+    // rail (`evidence/T3/after-1180.png`). The numbers live in `studio.css`
+    // beside the rail widths they mirror; the sheet only reads them.
+    expect(rule).toMatch(/right:\s*var\(--rail-cover-end, 0px\)/)
+    expect(rule).toMatch(/left:\s*var\(--rail-cover-start, 0px\)/)
+    expect(rule).not.toContain('right: 0;')
+  })
+
+  it('reads a cover that is zero wherever a rail is a column or collapsed', () => {
+    // The fallback matters as much as the variable: above 1180px the shell
+    // declares both as `0px`, so this resolves to exactly what it said before
+    // the breakpoints learned about it, and a stylesheet that failed to load
+    // the shell would still lay the sheet out edge to edge rather than at zero
+    // width.
+    const shell = readFileSync('src/studio.css', 'utf8')
+    const base = ruleFor(shell, '.studio-shell')
+    expect(base).toMatch(/--rail-cover-start:\s*0px/)
+    expect(base).toMatch(/--rail-cover-end:\s*0px/)
+    // and the overlay breakpoint sets a real one, collapsing back to zero.
+    expect(shell).toMatch(/\.studio-shell \{ --rail-cover-end: 310px; \}/)
+    expect(shell).toMatch(/\.studio-shell\.controls-are-collapsed \{ --rail-cover-end: 0px; \}/)
+  })
+
+  it('does not escape the rails, which are a different stacking context', () => {
+    // `.graph-workspace` declares `position: relative; z-index: 0`, so it IS a
+    // stacking context and everything in ReportPanel.vue is trapped below
+    // `--z-rail`. Without this the line above would put a report over the
+    // controls, which is a worse defect than the one it fixes.
+    const shell = readFileSync('src/studio.css', 'utf8')
+    expect(ruleFor(shell, '.graph-workspace')).toMatch(/z-index:\s*var\(--z-base\)/)
+  })
+})
+
+/**
+ * The right rail is above the canvas for the same reason and by a different
+ * route: it is a sibling of `.graph-workspace` rather than a child, so it is
+ * compared with the workspace's own `z-index: 0` and not with anything inside
+ * it. One number covers the rail whether it is a grid column (>= 1180px) or an
+ * overlay (below it).
+ */
+describe('the control rail cannot be painted through', () => {
+  const shell = readFileSync('src/studio.css', 'utf8')
+  const rule = ruleFor(shell, '.control-rail')
+
+  it('is positioned and outranks the workspace', () => {
+    expect(rule).toMatch(/position:\s*relative/)
+    expect(rule).toMatch(/z-index:\s*var\(--z-rail\)/)
+  })
+
+  it('is opaque, because below 1180px it overlays the graph', () => {
+    // `--bg-app`, not `--surface-overlay`: at 94% with the blur gone, the
+    // report panel's own Copy Markdown button ghosted through the GATES and
+    // VIEW controls (`evidence/T3/after-1180.png`).
+    expect(rule).toMatch(/background:\s*var\(--bg-app\)/)
+  })
+})
+
+/**
+ * The citations must not cost the reader the report.
+ *
+ * `.report-sources` was a flex SIBLING of the scrolling body with
+ * `max-height: 26%`, so for as long as a report was open it reserved up to a
+ * quarter of the panel whatever it held - and the body's viewport was whatever
+ * was left. When the scores panel above it grew a rubric question under each
+ * of the five rows, a cold reader at 1440x900 and at 1180x800 was left with a
+ * window tall enough for the markdown "Score breakdown" table's header row and
+ * nothing beneath it. The table was still reachable by scrolling. A
+ * deliverable reachable by scrolling a hundred-pixel window is hidden in every
+ * sense that matters, and a footer that hides the deliverable is the wrong
+ * trade.
+ *
+ * Body and sources now share ONE scroll container and the sources are a plain
+ * block at the end of it, which is also what they are: the report's citations,
+ * read after the report. Nothing overlays anything, so there is no footer
+ * height to measure and no padding rule to keep in step with it.
+ *
+ * Asserted at SOURCE level because a jsdom mount applies no scoped CSS: the
+ * structural half of this is visible to a mount and the half that actually
+ * caused the defect - `max-height`, `overflow`, a `position` - is not.
+ */
+describe('the citations do not cover the report', () => {
+  const sheet = readFileSync('src/components/ReportPanel.vue', 'utf8')
+
+  it('puts the body and the sources in one scroll container', () => {
+    const wrapper = mount(ReportPanel, {
+      props: {
+        report: {
+          markdown_body: '# Verdict\n\n## Score breakdown\n\n| D | M |\n| - | - |\n| 2 | 0 |',
+          sources: [{ url: 'https://example.com/a', title: 'A' }],
+        },
+        verdict: null,
+        open: true,
+      },
+    })
+
+    // Both inside the one scroller, in reading order: the report, then what it
+    // cites. Neither is a sibling of the other's scroll box any more.
+    expect(wrapper.find('.report-scroll > .report-body').exists()).toBe(true)
+    expect(wrapper.find('.report-scroll > .report-sources').exists()).toBe(true)
+    expect(wrapper.get('.report-scroll').element.lastElementChild).toBe(
+      wrapper.get('.report-sources').element,
+    )
+  })
+
+  it('scrolls in exactly one place', () => {
+    const scroll = ruleFor(sheet, '.report-scroll')
+    expect(scroll).toMatch(/overflow:\s*auto/)
+    // A flex item's automatic minimum size is its content, so without this the
+    // scroller grows to fit the whole report and the PANEL scrolls instead.
+    expect(scroll).toMatch(/min-height:\s*0/)
+
+    for (const selector of ['.report-body', '.report-sources']) {
+      expect(ruleFor(sheet, selector), selector).not.toMatch(/overflow:/)
+    }
+  })
+
+  it('gives the sources no way to reserve space or to overlay the body', () => {
+    const rule = ruleFor(sheet, '.report-sources')
+
+    // The three properties that made it a footer rather than a block. Any one
+    // of them coming back reinstates the defect, and none is visible to a
+    // mount.
+    expect(rule).not.toMatch(/position:\s*(sticky|fixed|absolute)/)
+    expect(rule).not.toMatch(/max-height:/)
+    expect(rule).not.toMatch(/flex:/)
   })
 })

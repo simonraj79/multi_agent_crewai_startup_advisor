@@ -29,7 +29,18 @@ type ValidatorRun = ReturnType<typeof useValidatorRun>
  * a run that simply had nothing to say.
  */
 const FRAMES = backendVerdictFrames as unknown as FrameData[]
-const [FLOORED, RESCORED] = FRAMES
+/**
+ * `THIN` is the third entry and the only one where the floor that is LISTED is
+ * not the floor that DECIDED. `compute_mechanical_result` gathers
+ * `fatal_floors` in full and then picks a label through an if/elif whose first
+ * arm is the low-confidence override, so this run carries `FLOOR_NO_MARKET`
+ * and was decided by `INSUFFICIENT_EVIDENCE`. A shell that reads
+ * `fatalFloors[0]` as the reason - the obvious implementation - would tell the
+ * operator the market was rejected, when what happened is that the run could
+ * not see far enough to answer. Neither of the first two entries can catch
+ * that: in one they are the same string and in the other both are empty.
+ */
+const [FLOORED, RESCORED, THIN] = FRAMES
 
 describe('the verdict frame shape the backend really emits', () => {
   let api: FakeStudioApi
@@ -49,8 +60,8 @@ describe('the verdict frame shape the backend really emits', () => {
   it('is addressed to the run under test', () => {
     // The composable drops any frame belonging to another run, so a fixture
     // built under a different id would prove nothing while still passing.
-    expect(FRAMES.map((frame) => frame.run_id)).toEqual([RUN_ID, RUN_ID])
-    expect(FRAMES.map((frame) => frame.seq)).toEqual([1, 2])
+    expect(FRAMES.map((frame) => frame.run_id)).toEqual([RUN_ID, RUN_ID, RUN_ID])
+    expect(FRAMES.map((frame) => frame.seq)).toEqual([1, 2, 3])
   })
 
   it('arrives as its own kind, on the synthesis node', () => {
@@ -124,6 +135,27 @@ describe('the verdict frame shape the backend really emits', () => {
     expect(run.verdictSummary.value?.provisional).toBe(false)
   })
 
+  it('keeps a listed floor apart from the reason that decided the run', async () => {
+    // The third fixture entry, end to end. `fatal_floors` says FLOOR_NO_MARKET
+    // and `decision_reason` says INSUFFICIENT_EVIDENCE, and they must not be
+    // collapsed: the first is a finding about the market, the second is a
+    // statement that the run cannot support any finding at all.
+    api.emit(THIN)
+    await flush()
+
+    expect(run.verdictSummary.value).toEqual({
+      verdict: 'NEEDS_WORK',
+      confidence: 0.34,
+      compositeScore: 3.8,
+      confidenceBand: 'LOW',
+      provisional: true,
+      fatalFloors: ['FLOOR_NO_MARKET'],
+      decisionReason: 'INSUFFICIENT_EVIDENCE',
+      dimensions: { demand: 2, market: 0, competitive_room: 2, feasibility: 3, headroom_over_free: 3 },
+      source: 'frame',
+    })
+  })
+
   it('renders the real floor, not a placeholder', async () => {
     // End to end on real bytes: fixture -> reducer -> panel. PRD 10.2 calls the
     // free-alternative floor the most valuable output this system produces, and
@@ -140,12 +172,15 @@ describe('the verdict frame shape the backend really emits', () => {
     })
     const text = wrapper.text()
 
-    expect(text).toContain('REJECT')
-    expect(text).toContain('Fatal floor')
-    expect(text).toContain('No demand')
-    expect(text).toContain('FLOOR_NO_DEMAND')
+    // Words, not enums: the badge, the block and the band all read as English
+    // while the raw codes stay in `data-code` where a grep can still find them.
+    expect(text).toContain('Reject')
+    expect(text).toContain('WHAT DECIDED THIS RUN')
+    expect(text).toContain('Demand scored 0 of 5.')
+    expect(text).not.toContain('FLOOR_NO_DEMAND')
+    expect(wrapper.get('.verdict-decision').attributes('data-code')).toBe('FLOOR_NO_DEMAND')
     expect(text).toContain('4.2')
-    expect(text).toContain('MODERATE')
+    expect(text).toContain('Moderate confidence · 50%')
     expect(wrapper.findAll('.score-row')).toHaveLength(5)
     // A floored dimension is a real zero, not a missing value.
     expect(wrapper.findAll('.score-value')[0].text()).toBe('0/5')

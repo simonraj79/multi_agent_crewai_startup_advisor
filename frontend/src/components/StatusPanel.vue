@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   Activity,
   Download,
@@ -11,11 +11,25 @@ import {
   Square,
   LoaderCircle,
   TriangleAlert,
+  Undo2,
   X,
 } from 'lucide-vue-next'
 import type { ConnectionStatus, GatesMode, LogFormat, TransportMode } from '../services/studioApi'
 import type { RunStatus, UsageMetrics } from '../types/studio'
 import { IDEA_CHARS_WARN_AT, MAX_IDEA_CHARS, MIN_IDEA_CHARS } from '../data/serverLimits'
+import { connectionLabel as transportWord, runStatusDisplay } from '../data/runStatusDisplay'
+
+/**
+ * The workflow this console runs when nobody has handed it another one.
+ *
+ * ONE literal for two jobs that must agree: it is `workflowName`'s default, and
+ * it is the name the "back to" control says while a published graph is loaded.
+ * At that moment the built-in's name is not recoverable from anywhere else -
+ * `descriptor` belongs to the graph on screen, and `workflowName` has been
+ * replaced by the author's - so the alternative to naming it here is naming it
+ * twice.
+ */
+const BUILT_IN_WORKFLOW_NAME = 'Idea Validator'
 
 const props = withDefaults(defineProps<{
   status: RunStatus
@@ -73,10 +87,20 @@ const props = withDefaults(defineProps<{
    */
   workflowName?: string
   inputLabel?: string
+  /**
+   * A published graph is loaded, so there is somewhere to go back TO.
+   *
+   * A boolean rather than an inference from `workflowName`, which would be the
+   * tempting shortcut and is wrong: an author may name their own graph "Idea
+   * Validator", and a control that appeared or vanished on a name collision
+   * would be a defect nobody could reproduce on purpose.
+   */
+  canReturnHome?: boolean
 }>(), {
-  workflowName: 'Idea Validator',
+  workflowName: BUILT_IN_WORKFLOW_NAME,
   inputLabel: 'IDEA TO VALIDATE',
   graphProblem: '',
+  canReturnHome: false,
 })
 
 const emit = defineEmits<{
@@ -87,6 +111,7 @@ const emit = defineEmits<{
   dismissError: []
   selectView: [value: 'graph' | 'activity']
   'update:gatesMode': [value: GatesMode]
+  returnHome: []
 }>()
 
 /**
@@ -113,10 +138,110 @@ const ideaHint = computed(() => {
   return `${ideaLength.value} / ${MAX_IDEA_CHARS} characters`
 })
 
-const statusLabel = computed(() => props.status === 'stopping' ? 'Stopping…' : props.status.replace('_', ' '))
-const connectionLabel = computed(() => props.transportMode === 'mock' ? 'Mock stream' : props.connection)
+/**
+ * The run's state, in the one vocabulary every surface shares.
+ *
+ * `data/runStatusDisplay.ts` is the table, and the reason it exists is that
+ * this panel used to render `status.replace('_', ' ')` over a CSS `capitalize`
+ * while `RunHistory` one panel over rendered the un-normalised backend
+ * spelling - so a run this rail called `error` was called `failed` in the list
+ * beneath it. The tone is a semantic role, never a colour; the class below
+ * binds it to a token.
+ */
+const statusWords = computed(() => runStatusDisplay(props.status))
+
+/**
+ * What the primary button SAYS it will do.
+ *
+ * `primaryLabel` is `useValidatorRun`'s and answers `Send` while a run is
+ * running or waiting - on a button `canLaunch` has already disabled, so it
+ * names an action nobody can take and that nothing on this panel would do if
+ * they could. Mid-run the honest word is the run's own state; `Launch`,
+ * `Relaunch` and `Launching…` pass straight through, because those three are
+ * the cases where the button really is the verb.
+ *
+ * Derived here rather than in the composable because the composable is another
+ * worker's file this week; the vocabulary is the shared table either way.
+ */
+const MID_RUN_VERBS: Readonly<Record<string, string>> = {
+  queued: 'Queued…',
+  running: 'Running…',
+  waiting: 'Waiting for you',
+  stopping: 'Stopping…',
+}
+const primaryWord = computed(() => MID_RUN_VERBS[props.status] ?? props.primaryLabel)
+
+/**
+ * The same words the header chip uses, from the same function.
+ *
+ * This line used to render the raw socket state, so at rest it read `offline`
+ * beside an enabled Launch while the chip eight inches above read `ready` -
+ * two surfaces contradicting each other about one fact, on the first screen a
+ * visitor sees. No socket is opened until a run is launched, so `offline`
+ * there was never a claim about the backend.
+ */
+const connectionWord = computed(() =>
+  transportWord(props.transportMode, props.connection, props.isActive),
+)
+/**
+ * ELAPSED, and why it read `00:00` beside CALLS 1 and TOKENS 708.
+ *
+ * `usage.elapsedMs` is the span between the FIRST and LAST frame this console
+ * has seen (`useValidatorRun.noteFrameClock`). That is exactly right as a
+ * record - it replays identically after a reload, and a real METRICS elapsed
+ * still wins over it - but it is not a clock: it advances only when a frame
+ * arrives, so a run whose frames so far fall inside one second reports that it
+ * has taken no time at all. A run that fails in under a second froze at
+ * `00:00` (`evidence/S/failure.png`), and a run mid-flight sat at whatever the
+ * last frame said until the next one landed
+ * (`evidence/T2/reduced-motion.png`).
+ *
+ * So this ticks. `Math.max` of the recorded span and the console's own wall
+ * clock since the run became active: the record wins whenever it is larger
+ * (it can see queue time this cannot), and between frames the seconds still
+ * move. It stops the moment the run does, which is the other half of the
+ * report - a failed run now freezes at the time it failed instead of resetting.
+ *
+ * NOT GATED BY `prefers-reduced-motion`, deliberately and against the obvious
+ * instinct: a ticking number looks like an animation and is not one. It is the
+ * only thing on this panel that says the run is still alive, and a reader who
+ * has asked for less motion has not asked to be told less.
+ */
+const liveMs = ref(0)
+let tickHandle: ReturnType<typeof setInterval> | null = null
+let startedAt = 0
+
+function stopTicking(): void {
+  if (tickHandle === null) return
+  clearInterval(tickHandle)
+  tickHandle = null
+}
+
+watch(
+  () => props.isActive,
+  (active) => {
+    if (!active) {
+      // Freeze, do not clear: the last reading is the run's duration and the
+      // panel goes on showing it until another run starts.
+      stopTicking()
+      return
+    }
+    // `elapsedMs` is what the run has already accounted for - a restored run
+    // resumes from its recorded span rather than from zero.
+    startedAt = Date.now() - props.usage.elapsedMs
+    liveMs.value = props.usage.elapsedMs
+    stopTicking()
+    tickHandle = setInterval(() => {
+      liveMs.value = Date.now() - startedAt
+    }, 1000)
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(stopTicking)
+
 const elapsed = computed(() => {
-  const totalSeconds = Math.floor(props.usage.elapsedMs / 1000)
+  const totalSeconds = Math.floor(Math.max(props.usage.elapsedMs, liveMs.value) / 1000)
   return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`
 })
 const tokens = computed(() => new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(props.usage.totalTokens))
@@ -135,7 +260,7 @@ const logFormat = ref<LogFormat>('ndjson')
       "Mock mode" chip rendered in the SUCCESS colour, which a real operator
       read straight past on 2026-09-01.
     -->
-    <div v-if="transportProblem" class="transport-banner" role="alert">
+    <div v-if="transportProblem" class="panel-banner is-warn transport-banner" role="alert">
       <TriangleAlert :size="15" aria-hidden="true" />
       <span>
         <strong>Demonstration mode - no agent is running.</strong>
@@ -149,7 +274,7 @@ const logFormat = ref<LogFormat>('ndjson')
       workflow's name with a green Launch; now the canvas is empty, Launch is
       disabled, and this says why in the server's own words.
     -->
-    <div v-if="graphProblem" class="graph-banner" role="alert">
+    <div v-if="graphProblem" class="panel-banner is-error graph-banner" role="alert">
       <TriangleAlert :size="15" aria-hidden="true" />
       <span>
         <strong>This graph cannot be launched from here.</strong>
@@ -157,17 +282,18 @@ const logFormat = ref<LogFormat>('ndjson')
       </span>
     </div>
 
-    <div v-if="error" class="error-banner" role="alert">
+    <div v-if="error" class="panel-banner is-error error-banner" role="alert">
       <span>{{ error }}</span>
       <button class="icon-button" type="button" aria-label="Dismiss error" title="Dismiss" @click="emit('dismissError')">
         <X :size="15" aria-hidden="true" />
       </button>
     </div>
 
-    <div class="control-section">
-      <label for="idea" class="control-label">{{ inputLabel }}</label>
+    <div class="panel-section control-section">
+      <label for="idea" class="control-label panel-kicker">{{ inputLabel }}</label>
       <textarea
         id="idea"
+        class="panel-well"
         :value="idea"
         rows="4"
         :maxlength="MAX_IDEA_CHARS"
@@ -189,17 +315,53 @@ const logFormat = ref<LogFormat>('ndjson')
       </span>
     </div>
 
-    <div class="control-section compact-section">
-      <span class="control-label">WORKFLOW</span>
-      <div class="read-only-well">
+    <div class="panel-section control-section compact-section">
+      <span class="control-label panel-kicker">WORKFLOW</span>
+      <!--
+        The `M2` chip that used to sit here was the PRODUCT's build mark, and
+        it is still in the header two inches above. Inside a well labelled
+        WORKFLOW, beside a workflow's name, it read as that workflow's version -
+        so a published graph called "News to social post" was labelled M2, which
+        is a version it does not have and a claim nothing on the page could
+        check. A graph an author drew has a real version (`v1`, `v2`), and this
+        panel is not passed one; asserting the wrong number is worse than
+        asserting none, so the chip goes and the build mark stays where it is
+        true.
+      -->
+      <div class="read-only-well panel-well">
         <GitBranch :size="15" aria-hidden="true" />
         <span class="workflow-title">{{ workflowName }}</span>
-        <span class="version">M2</span>
+        <!--
+          THE WAY BACK, and it lives here because the banner that used to carry
+          it now retires itself.
+          The handoff banner was the only route to the built-in validator, and
+          it is hidden once a run reaches a terminal status - which is exactly
+          when an operator who has just watched a published graph fail wants
+          it. The well is the right home anyway: it is the one surface that
+          names the graph the Launch button will spend money on, so the control
+          that changes that graph belongs beside its name rather than in a
+          notice about a launch.
+          `aria-label` carries the destination because the visible word is
+          "Back" and a screen reader reading a list of controls would otherwise
+          hear "back" with no object.
+        -->
+        <button
+          v-if="canReturnHome"
+          class="workflow-home"
+          type="button"
+          :aria-label="`Back to ${BUILT_IN_WORKFLOW_NAME}`"
+          :title="`Back to ${BUILT_IN_WORKFLOW_NAME}`"
+          :disabled="isActive"
+          @click="emit('returnHome')"
+        >
+          <Undo2 :size="13" aria-hidden="true" />
+          Back
+        </button>
       </div>
     </div>
 
-    <div class="control-section compact-section">
-      <span class="control-label">GATES</span>
+    <div class="panel-section control-section compact-section">
+      <span class="control-label panel-kicker">GATES</span>
       <div class="segmented" role="group" aria-label="Who answers the gates">
         <button
           type="button"
@@ -219,8 +381,15 @@ const logFormat = ref<LogFormat>('ndjson')
         </button>
       </div>
       <p class="control-hint">
+        <!--
+          "at every human gate", not "at the scope and verdict gates". Those two
+          are the Idea Validator's gates and nothing else's - this panel also
+          drives a graph somebody drew, whose gates are named whatever they
+          named them, and there may be one or five. A sentence that lists
+          another workflow's checkpoints is wrong on every workflow but one.
+        -->
         <template v-if="gatesMode === 'human'">
-          Pauses for you at the scope and verdict gates.
+          Pauses for you at every human gate.
         </template>
         <template v-else>
           Runs the whole pipeline without stopping. Costs more, and the
@@ -229,8 +398,8 @@ const logFormat = ref<LogFormat>('ndjson')
       </p>
     </div>
 
-    <div class="control-section compact-section">
-      <span class="control-label">VIEW</span>
+    <div class="panel-section control-section compact-section">
+      <span class="control-label panel-kicker">VIEW</span>
       <div class="segmented" role="group" aria-label="Workspace view">
         <button type="button" :aria-pressed="activeView === 'graph'" @click="emit('selectView', 'graph')">
           <GitBranch :size="14" aria-hidden="true" /> Graph
@@ -241,10 +410,32 @@ const logFormat = ref<LogFormat>('ndjson')
       </div>
     </div>
 
-    <div class="control-section metrics-section">
+    <div class="panel-section control-section metrics-section">
       <div class="status-line">
-        <span class="control-label">STATUS</span>
-        <span class="status-badge" :class="`is-${status}`"><i aria-hidden="true" />{{ statusLabel }}</span>
+        <span class="control-label panel-kicker">STATUS</span>
+        <!--
+          The word and the tone both come from `data/runStatusDisplay.ts`, so
+          this rail and the history list beneath it can no longer call one run
+          two things. `title` carries the clause that explains the word, which
+          is the whole gloss an operator needs and none of the noise a second
+          line of copy would be.
+        -->
+        <!--
+          `data-status` carries the RAW status beside the human word, and it is
+          not redundant: `e2e/cast.spec.ts` and `e2e/cast-perf.spec.ts` already
+          read this attribute and call it the contract, falling back to the
+          visible text only because the chip had carried its status as prose
+          since before that was written. Now that the prose is a sentence
+          ("Waiting for you", "Finished") rather than the enum, the attribute is
+          the only thing a test should be reading - and a machine-readable state
+          beside a human-readable one is the right shape anyway.
+        -->
+        <span
+          class="status-badge"
+          :class="`is-tone-${statusWords.tone}`"
+          :data-status="status"
+          :title="statusWords.hint || undefined"
+        ><i aria-hidden="true" />{{ statusWords.label }}</span>
       </div>
       <dl class="metrics-grid">
         <div><dt>Elapsed</dt><dd>{{ elapsed }}</dd></div>
@@ -253,7 +444,7 @@ const logFormat = ref<LogFormat>('ndjson')
         <div><dt>Cost</dt><dd>${{ usage.costUsd.toFixed(4) }}</dd></div>
       </dl>
       <div class="stream-line">
-        <span><i :class="`is-${connection}`" aria-hidden="true" />{{ connectionLabel }}</span>
+        <span><i :class="`is-${connection}`" aria-hidden="true" />{{ connectionWord }}</span>
         <span>seq {{ lastSequence }}</span>
         <span :class="{ 'has-drops': droppedFrames > 0 }">{{ droppedFrames }} dropped</span>
       </div>
@@ -271,7 +462,7 @@ const logFormat = ref<LogFormat>('ndjson')
       >
         <RotateCcw v-if="primaryLabel === 'Relaunch'" :size="16" aria-hidden="true" />
         <Play v-else :size="16" aria-hidden="true" />
-        {{ primaryLabel }}
+        {{ primaryWord }}
       </button>
       <button class="button button-secondary" type="button" :disabled="!isActive || status === 'stopping'" @click="emit('cancel')">
         <Square :size="14" aria-hidden="true" />
@@ -314,70 +505,121 @@ const logFormat = ref<LogFormat>('ndjson')
 </template>
 
 <style scoped>
+/*
+ * WHAT THIS BLOCK NO LONGER DECLARES, and where it went.
+ *
+ * `.segmented`, `.metrics-grid` and the panel-section / kicker / well / banner
+ * treatments are now global classes in `studio.css` (SHELL-SCOPE.md §4). Two
+ * of them had to move rather than merely wanting to: the segmented base was
+ * declared HERE and only here, so Vue scoped it to `.segmented[data-v-...]`
+ * and the application header - which spells the same class in both workspaces
+ * - inherited no display, no background and no border, and rendered its
+ * Build/Run pair as two NATIVE buttons. A base rule that reaches one component
+ * is not a base rule.
+ *
+ * What stays is what is genuinely this panel's: sizes and states that no other
+ * panel has an opinion about.
+ */
 .control-hint {
-  margin: 7px 0 0;
+  margin: var(--space-3) 0 0;
   color: var(--text-muted);
   font-size: var(--fs-11);
   line-height: 1.45;
 }
-.segmented button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .status-panel { min-width: 0; }
-.control-section { padding: 16px; border-bottom: 1px solid var(--border-default); }
-.compact-section { padding-block: 13px; }
-.control-label { display: block; margin-bottom: 8px; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
-textarea { display: block; width: 100%; min-height: 104px; resize: vertical; padding: 10px; color: var(--text-body); font: 400 var(--fs-13)/1.5 var(--font-body); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-lg); outline: 0; }
-textarea:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
+/* `.panel-section` supplies the 16px inset and the hairline; this is the one
+   thing that differs - a section holding a single control does not need a
+   panel's full block padding. 12px, where it was 13. */
+.compact-section { padding-block: var(--space-5); }
+.control-label { display: block; margin-bottom: var(--space-3); }
+textarea { display: block; width: 100%; min-height: 104px; resize: vertical; padding: var(--space-4); color: var(--text-body); font: var(--type-body); border-radius: var(--r-lg); outline: 0; }
+textarea:focus { border-color: var(--on-accent-cyan); box-shadow: var(--glow-input); }
 textarea:disabled { cursor: not-allowed; opacity: 0.64; }
-.field-meta { display: block; margin-top: 6px; color: var(--text-40); font: 500 10px/1 var(--font-mono); text-align: right; }
+.field-meta { display: block; margin-top: var(--space-2); color: var(--text-meta); font: var(--type-meta); text-align: right; }
 /* The counter only raises its voice near the ceiling, because `maxlength` is a
    hard stop: past it the browser discards keystrokes with no feedback at all,
    and a counter that looked identical at 1,900 and at 2,000 would be the only
    warning the operator ever got. */
-.field-meta.is-warn { color: var(--warn-text); }
-.read-only-well { display: flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 10px; color: var(--text-body); font-size: var(--fs-13); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); }
+.field-meta.is-warn { color: var(--warn-text-strong); }
+.read-only-well { display: flex; min-height: 40px; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); color: var(--text-body); font-size: var(--fs-13); }
 /* A drawn graph's name can be 80 characters; the well is 310px wide minus a
    rail. Ellipsis rather than wrap, so the panel's height does not change with
    the length of somebody's title. */
 .read-only-well .workflow-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.read-only-well .version { flex: 0 0 auto;  margin-left: auto; color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
-.segmented { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-lg); }
-.segmented button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 6px; color: var(--text-muted); background: transparent; border: 0; border-radius: var(--r-md); cursor: pointer; }
-.segmented button[aria-pressed='true'] { color: var(--text-title); background: var(--surface-raised); box-shadow: inset 0 0 0 1px rgba(153, 234, 249, 0.2); }
+/* Pushed to the end by the title's own ellipsis rather than by a margin: the
+   title is the flexible child and this is not, so it keeps its whole width
+   however long somebody's graph name is. */
+.workflow-home {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font: var(--type-meta);
+  background: transparent;
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.workflow-home:hover:not(:disabled) { color: var(--text-title); border-color: var(--border-hover-strong); }
+/* Leaving mid-run would reload the page out from under a run that is spending
+   money; the title says so rather than leaving a dead control. */
+.workflow-home:disabled { cursor: not-allowed; opacity: 0.42; }
+/* `.read-only-well .version` was here and is gone with the element it styled -
+   see the comment in the template. A rule for a class nothing renders is the
+   thing that makes the next person believe the element still exists. */
 .status-line { display: flex; align-items: center; justify-content: space-between; }
 .status-line .control-label { margin: 0; }
-.status-badge { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font: 600 var(--fs-11)/1 var(--font-mono); text-transform: capitalize; }
+.status-badge { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font: var(--type-meta); }
 .status-badge i, .stream-line i { width: 7px; height: 7px; background: currentColor; border-radius: 50%; }
-.status-badge.is-running, .status-badge.is-queued { color: var(--accent-cyan); }
-.status-badge.is-waiting, .status-badge.is-stopping { color: var(--warn-text); }
-.status-badge.is-completed { color: var(--accent-mint); }
-.status-badge.is-error, .status-badge.is-cancelled { color: var(--err-text); }
-.metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin: 13px 0 0; background: var(--border-default); border: 1px solid var(--border-default); border-radius: var(--r-md); overflow: hidden; }
-.metrics-grid div { padding: 9px 10px; background: var(--surface-well); }
-.metrics-grid dt { color: var(--text-40); font: 600 10px/1 var(--font-mono); text-transform: uppercase; }
-.metrics-grid dd { margin: 5px 0 0; color: var(--text-title); font: 600 var(--fs-13)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
-.stream-line { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; color: var(--text-40); font: 500 10px/1 var(--font-mono); }
-.stream-line span { display: inline-flex; align-items: center; gap: 5px; }
-.stream-line i.is-connected { color: var(--accent-mint); }
-.stream-line i.is-connecting, .stream-line i.is-reconnecting { color: var(--warn-text); }
+/*
+ * A TONE, never a colour. `runStatusDisplay` names six semantic roles and
+ * this is the only place in the shell that knows which token each one is
+ * painted with - so a seventh status, or a re-hue, is one edit here rather
+ * than a hunt through three panels for the word `cancelled`.
+ */
+.status-badge.is-tone-active { color: var(--on-accent-cyan); }
+.status-badge.is-tone-attention { color: var(--warn-text-strong); }
+.status-badge.is-tone-done { color: var(--on-accent-mint); }
+.status-badge.is-tone-failed, .status-badge.is-tone-stopped { color: var(--err-text); }
+.stream-line { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-5); margin-top: var(--space-4); color: var(--text-meta); font: var(--type-meta); }
+.stream-line span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.stream-line i.is-connected { color: var(--on-accent-mint); }
+.stream-line i.is-connecting, .stream-line i.is-reconnecting { color: var(--warn-text-strong); }
 .stream-line .has-drops { color: var(--err-text); }
-.run-id { display: inline-block; margin-top: 9px; padding: 3px 5px; color: var(--text-muted); background: var(--surface-well); border-radius: var(--r-sm); }
-.control-actions { display: grid; gap: 8px; padding: 16px; }
-.error-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; color: var(--err-text); font-size: var(--fs-12); background: var(--err-bg); border-bottom: 1px solid var(--err-border); }
+.run-id { display: inline-block; margin-top: var(--space-3); padding: var(--space-1) var(--space-2); color: var(--text-muted); font: var(--type-meta); background: var(--surface-well); border-radius: var(--r-sm); }
+.control-actions { display: grid; gap: var(--space-3); padding: var(--space-6); }
+/* `.panel-banner` supplies the layout and the colour family; these three keep
+   only what differs. The error banner is the one with a control in it, so it
+   centres its row and pushes the dismiss to the end. */
+.error-banner { align-items: center; justify-content: space-between; }
 .error-banner .icon-button { flex: 0 0 auto; }
-/* Warn colours, not error: nothing has failed - the console simply is not
-   connected to anything. And no dismiss control, by design. */
-.transport-banner { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; color: var(--warn-text); font-size: var(--fs-12); line-height: 1.45; background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); }
-.transport-banner svg { flex: 0 0 auto; margin-top: 1px; }
-.graph-banner { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; color: var(--err-text); font-size: var(--fs-12); line-height: 1.45; background: var(--err-bg); border-bottom: 1px solid var(--err-border); }
-.graph-banner svg { flex: 0 0 auto; margin-top: 1px; }
-.download-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.transport-banner, .graph-banner { line-height: 1.45; }
+.download-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); }
 .format-picker { grid-template-columns: 1fr 1fr; }
-.format-picker button { min-height: 34px; padding: 0 10px; font: 600 10px/1 var(--font-mono); }
+.format-picker button { min-height: 34px; padding: 0 var(--space-4); font: var(--type-meta); }
 .download-feedback { margin: 0; color: var(--text-muted); font-size: var(--fs-11); text-align: center; }
-.download-feedback.is-success { color: var(--accent-mint); }
+.download-feedback.is-success { color: var(--on-accent-mint); }
 .download-feedback.is-error { color: var(--err-text); }
 .download-spinner { animation: download-spin 0.8s linear infinite; }
 
 @keyframes download-spin { to { transform: rotate(360deg); } }
+
+/*
+ * THE ONE ANIMATION IN THE SHELL WITH NO NAMED RULE, until now.
+ *
+ * The global blanket in `studio.css` sets `animation-duration: .01ms` and
+ * `animation-iteration-count: 1`, which does not STOP a spinner - it freezes
+ * it at whatever rotation .01ms of a 0.8s cycle reaches, so a reduced-motion
+ * reader got a permanently crooked loader for as long as a log export takes to
+ * prepare. `animation: none` leaves the icon upright, which is the same answer
+ * `RunHistory.vue` and `SignInPanel.vue` already give for the identical icon.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .download-spinner { animation: none; }
+}
 </style>

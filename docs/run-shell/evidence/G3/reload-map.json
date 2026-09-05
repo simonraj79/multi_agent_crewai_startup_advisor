@@ -1,0 +1,25 @@
+{
+  "note": "G3, e2e/cast.spec.ts. Node id to character seed, read off the live canvas before and after a page reload of a run paused at the scope gate.",
+  "capturedAt": "2026-09-05T11:53:11.096Z",
+  "before": {
+    "scope_idea": "startup validation scoper",
+    "revise_scope": "startup validation scoper",
+    "research_market": "market evidence analyst",
+    "research_sentiment": "community demand analyst",
+    "research_feasibility": "technical feasibility analyst",
+    "synthesize": "startup validation synthesist",
+    "revise_verdict": "startup validation synthesist",
+    "write_report": "validation report writer"
+  },
+  "after": {
+    "scope_idea": "startup validation scoper",
+    "revise_scope": "startup validation scoper",
+    "research_market": "market evidence analyst",
+    "research_sentiment": "community demand analyst",
+    "research_feasibility": "technical feasibility analyst",
+    "synthesize": "startup validation synthesist",
+    "revise_verdict": "startup validation synthesist",
+    "write_report": "validation report writer"
+  },
+  "identical": true
+}

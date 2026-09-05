@@ -1,10 +1,14 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import DialogueRail from '../src/components/DialogueRail.vue'
+import { characterSeed, type PipState } from '../src/characters/pip'
+import type { RunStatus } from '../src/types/studio'
 import {
   characterIndex,
   type DialogueEntry,
 } from '../src/composables/useRunChoreography'
+import { MAX_UTTERANCE_CHARS } from '../src/data/serverLimits'
+import { readSpeech } from '../src/trace/speech'
 
 /**
  * The rail that shows what the agents said.
@@ -32,11 +36,48 @@ function entry(overrides: Partial<DialogueEntry> = {}): DialogueEntry {
   }
 }
 
-function rail(entries: DialogueEntry[], collapsed = false) {
+function rail(
+  entries: DialogueEntry[],
+  collapsed = false,
+  cast?: {
+    identityOf?: (nodeId: string) => string
+    stateOf?: (nodeId: string) => PipState
+    status?: RunStatus
+  },
+) {
   return mount(DialogueRail, {
-    props: { entries, collapsed, characterOf: characterIndex },
+    props: { entries, collapsed, characterOf: characterIndex, ...cast },
   })
 }
+
+/**
+ * A scroller jsdom can answer questions about.
+ *
+ * jsdom lays nothing out - `scrollHeight` and `clientHeight` are 0 and
+ * `Element.scrollTo` does not exist - so a rail mounted here can neither
+ * overflow nor scroll. These three are defined on the list so the component's
+ * own arithmetic has real numbers to work with, and the `scrollTo` calls are
+ * recorded rather than performed. What is asserted is therefore the INTENT: the
+ * component asked to go to the end. Whether the pixels land there is
+ * `e2e/cast.spec.ts`'s question.
+ */
+function measurable(
+  wrapper: ReturnType<typeof rail>,
+  { scrollHeight = 1000, clientHeight = 360, scrollTop = 0 } = {},
+): Array<Record<string, unknown>> {
+  const list = wrapper.get('[data-testid="dialogue-list"]').element as HTMLElement
+  const calls: Array<Record<string, unknown>> = []
+  Object.defineProperty(list, 'scrollHeight', { value: scrollHeight, configurable: true })
+  Object.defineProperty(list, 'clientHeight', { value: clientHeight, configurable: true })
+  Object.defineProperty(list, 'scrollTop', { value: scrollTop, writable: true, configurable: true })
+  ;(list as unknown as { scrollTo: (o: Record<string, unknown>) => void }).scrollTo = (options) => {
+    calls.push(options)
+  }
+  return calls
+}
+
+/** One `requestAnimationFrame` turn, which is how `follow()` coalesces. */
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
 
 describe('the dialogue rail', () => {
   it('says so when nothing has been said', () => {
@@ -58,6 +99,13 @@ describe('the dialogue rail', () => {
   it('gives the avatar the colour of the node it speaks for', () => {
     // The property the whole character design rests on. The reference's chat
     // avatars never match its graph, because its chat path omits the node id.
+    //
+    // The index is still published on the WRAPPER even though the disc no
+    // longer paints itself with it: it is the colour of the lucide medallion on
+    // the node kinds that keep an icon instead of a character, and one property
+    // with two readers is better than two properties that agree today. The
+    // character's own colour is the same hash of the same seed - `pip.ts` uses
+    // the raw FNV modulo twelve that `characterIndex` is, and says so.
     const wrapper = rail([entry({ nodeId: 'research_market' })])
     const avatar = wrapper.get('[data-testid="dialogue-avatar"]')
     expect(avatar.attributes('data-character')).toBe(String(characterIndex('research_market')))
@@ -66,10 +114,36 @@ describe('the dialogue rail', () => {
     )
   })
 
-  it('shows the role and the task it was working', () => {
+  it('shows the role and the task it was working, the task in words', () => {
+    // `market_task` is CrewAI's identifier and it was rendered raw, then cut
+    // in half by the chip's own ellipsis at a 330px rail - `market_ta…`, which
+    // is neither the name nor a word. `humaniseTask` drops the noun the
+    // surface already supplies and leaves "Market".
     const wrapper = rail([entry()])
     expect(wrapper.text()).toContain('Market Analyst')
-    expect(wrapper.text()).toContain('market_task')
+    expect(wrapper.get('.dialogue-task').text()).toBe('Market')
+    expect(wrapper.text()).not.toContain('market_task')
+  })
+
+  it('never truncates the NAME, and never cuts the task mid-word', () => {
+    // Every real role this product has is three or four words, so at a narrow
+    // rail the name was the thing being ellipsised - which is backwards: two
+    // agents can share a prefix, and "Startup validation…" names both of them.
+    // The name now takes the row and may wrap; the task goes to a second line.
+    const wrapper = rail([entry({ role: 'Startup validation scoper', task: 'scoping_task' })])
+    const name = wrapper.get('.dialogue-meta strong')
+    expect(name.text()).toBe('Startup validation scoper')
+    expect(name.attributes('style') ?? '').not.toContain('ellipsis')
+    const task = wrapper.get('.dialogue-task')
+    expect(task.text()).toBe('Scoping')
+    // Second line, in the shell's own quiet-fact class rather than a private one.
+    expect(task.classes()).toContain('panel-meta')
+    expect(task.element.tagName).toBe('P')
+  })
+
+  it('renders no task line at all when the entry names none', () => {
+    // An empty chip is a gap the eye reads as a missing fact.
+    expect(rail([entry({ task: '' })]).find('.dialogue-task').exists()).toBe(false)
   })
 
   it('folds an older entry to one line and opens it on demand', async () => {
@@ -85,19 +159,38 @@ describe('the dialogue rail', () => {
     expect(wrapper.findAll('[data-testid="dialogue-text"]')).toHaveLength(2)
   })
 
-  it('names where a trimmed answer went', () => {
-    // "It ends mid-sentence for a reason" versus "it just ends".
+  it('names where a trimmed answer went, at the number the server actually uses', () => {
+    // "It ends mid-sentence for a reason" versus "it just ends". The figure was
+    // written into the sentence as the literal 4,096 and would have gone on
+    // saying 4,096 after the server moved.
     const wrapper = rail([entry({ truncated: true })])
-    expect(wrapper.get('[data-testid="dialogue-trimmed"]').text()).toContain('run log')
+    const note = wrapper.get('[data-testid="dialogue-trimmed"]').text()
+    expect(note).toContain('run log')
+    expect(note).toContain(MAX_UTTERANCE_CHARS.toLocaleString())
+  })
+
+  it('mirrors the server bound it quotes', () => {
+    // Drift here is the whole hazard of a duplicated constant, so it is a test
+    // rather than a comment. `MAX_UTTERANCE_CHARS` in src/brief_crew/config.py.
+    expect(MAX_UTTERANCE_CHARS).toBe(4096)
   })
 
   it('says nothing about trimming on a whole answer', () => {
     expect(rail([entry()]).find('[data-testid="dialogue-trimmed"]').exists()).toBe(false)
   })
 
-  it('shows the token counts, which are the entry\'s own cost', () => {
-    expect(rail([entry()]).text()).toContain('640 in')
-    expect(rail([entry()]).text()).toContain('120 out')
+  it('puts the token counts behind the disclosure, not in front of the answer', () => {
+    // AMENDED: they used to be a visible line under every entry. `640 in ·
+    // 120 out` on every row is the same failure as the trace's raw payloads -
+    // true, unreadable, and in front of the thing somebody came to read.
+    const wrapper = rail([entry()])
+    const tokens = wrapper.get('[data-testid="dialogue-tokens"]')
+    expect(tokens.text()).toContain('640 in')
+    expect(tokens.text()).toContain('120 out')
+    // Inside a `<details>`, which is closed until somebody opens it.
+    const details = tokens.element.closest('details')
+    expect(details).not.toBeNull()
+    expect((details as HTMLDetailsElement).open).toBe(false)
   })
 
   it('hides the list when collapsed but keeps the count', () => {
@@ -115,8 +208,283 @@ describe('the dialogue rail', () => {
     expect(list.attributes('role')).toBe('log')
   })
 
-  it('makes initials out of a one-word role', () => {
-    expect(rail([entry({ role: 'Scoper' })]).get('[data-testid="dialogue-avatar"]').text())
-      .toBe('SC')
+  it('holds a CHARACTER, not two initials', () => {
+    // `MA` and `MO` are two letters apart at 32px and told a reader nothing the
+    // name printed beside them did not. What the slot holds now is the same
+    // figure standing on that node's card, which is a thing an eye can follow
+    // across three surfaces.
+    const avatar = rail([entry({ role: 'Scoper' })]).get('[data-testid="dialogue-avatar"]')
+    expect(avatar.text()).toBe('')
+    expect(avatar.findAll('.pip')).toHaveLength(1)
+    expect(avatar.get('.pip').attributes('data-character')).toBe(characterSeed('Scoper'))
+  })
+
+  it('draws the seed and the pose the RUN resolved, not the entry\'s own role', () => {
+    // The distinction T2.6 turns on. An entry's `role` is whatever the speakers
+    // map held when its utterance landed, so an entry produced before the
+    // node's first `agent_role` carries the label - two seeds for one agent.
+    // The store answers with the first role it ever saw and never changes it.
+    const avatar = rail([entry({ role: 'The research_market card' })], false, {
+      identityOf: () => 'Market Evidence Analyst',
+      stateOf: () => 'speaking',
+    }).get('[data-testid="dialogue-avatar"]')
+    expect(avatar.get('.pip').attributes('data-character')).toBe('market evidence analyst')
+    expect(avatar.get('.pip').attributes('data-state')).toBe('speaking')
+  })
+
+  it('falls back to the entry\'s role when no store is wired up', () => {
+    // A spec, a mock transport, a rail mounted on its own. It draws AN ordinary
+    // character rather than a placeholder: a system whose strangers look broken
+    // punishes the author of every flow it has never seen.
+    const avatar = rail([entry({ role: 'Market Analyst' })]).get('[data-testid="dialogue-avatar"]')
+    expect(avatar.get('.pip').attributes('data-character')).toBe('market analyst')
+    expect(avatar.get('.pip').attributes('data-state')).toBe('idle')
+  })
+
+  it('names the identity on the entry and the seed on the avatar', () => {
+    // T2.6: the tie-in between the node's character and the trace's is a string
+    // comparison, so both surfaces have to publish the same seed.
+    const wrapper = rail([entry({ role: 'Market Analyst' })])
+    expect(wrapper.get('.dialogue-entry').attributes('data-identity')).toBe('Market Analyst')
+    expect(wrapper.get('[data-testid="dialogue-avatar"]').attributes('data-character-seed'))
+      .toBe('Market Analyst')
+  })
+})
+
+/**
+ * The three shapes an `utterance` frame can carry.
+ *
+ * `events/serializer.py` writes the completed response into `details.text` and
+ * `json.dumps`es anything that is not already a string, so the rail receives
+ * prose, JSON-encoded prose, and structured results that are not speech at all.
+ * Before this it rendered all three as `pre-wrap` raw text, which is how a
+ * guardrail's `{"valid":true,"feedback":null}` ended up on screen as something
+ * an agent said, and how a wrapped response's newlines ended up as a literal
+ * backslash-n.
+ */
+describe('what an utterance actually is', () => {
+  const prose = 'Three of the five claims resolve to the filing.'
+
+  it('renders prose as prose, with its Markdown resolved', () => {
+    const text = '## What I checked\n\nThree claims **resolve**.'
+    const wrapper = rail([entry({ text, revealed: text.length })])
+    const html = wrapper.get('[data-testid="dialogue-text"]').html()
+    expect(html).toContain('<h2>What I checked</h2>')
+    expect(html).toContain('<strong>resolve</strong>')
+    // The wire format is gone from the screen, not merely styled.
+    expect(wrapper.get('[data-testid="dialogue-text"]').text()).not.toContain('**')
+  })
+
+  it('unwraps a response that went through json.dumps on its way here', () => {
+    // The literal backslash-n case, which is what `pre-wrap` was rendering.
+    const encoded = JSON.stringify('Two claims failed.\nBoth cite the same page.')
+    const wrapper = rail([entry({ text: encoded, revealed: encoded.length })])
+    const shown = wrapper.get('[data-testid="dialogue-text"]').text()
+    expect(shown).toContain('Two claims failed.')
+    expect(shown).toContain('Both cite the same page.')
+    expect(shown).not.toContain('\\n')
+    expect(shown).not.toContain('{"')
+  })
+
+  it('refuses to render a structured result as speech', () => {
+    const payload = '{"feedback": null, "valid": true}'
+    const wrapper = rail([entry({ role: 'Fact Checker', text: payload, revealed: payload.length })])
+    expect(wrapper.get('[data-testid="dialogue-structured"]').text())
+      .toBe('Fact Checker returned a structured result')
+    expect(wrapper.find('[data-testid="dialogue-text"]').exists()).toBe(false)
+    // Not dropped - behind the disclosure, closed.
+    const raw = wrapper.get('[data-testid="dialogue-payload"]')
+    expect(raw.text()).toContain('"valid": true')
+    expect((raw.element.closest('details') as HTMLDetailsElement).open).toBe(false)
+  })
+
+  it('lifts a long string out of a one-key wrapper, which is prose in a coat', () => {
+    const wrapped = JSON.stringify({ report: prose.repeat(3) })
+    expect(readSpeech(wrapped).kind).toBe('prose')
+    expect(readSpeech(wrapped).text).toContain('Three of the five claims')
+  })
+
+  it('leaves a sentence that merely begins with a brace alone', () => {
+    // A model that wrote a sentence is far commoner than one that wrote JSON
+    // and got the syntax wrong, so anything that fails to parse is prose.
+    expect(readSpeech('{not json at all').kind).toBe('prose')
+    expect(readSpeech('{not json at all').text).toBe('{not json at all')
+  })
+
+  it('keeps the newest thing anybody SAID open behind a run of structured results', () => {
+    // `collapsed` is decided upstream over every entry, so three machine
+    // answers in a row are enough to fold the last real utterance.
+    const wrapper = rail([
+      entry({ callId: 'said', text: prose, revealed: prose.length, collapsed: true }),
+      entry({ callId: 'j1', text: '{"valid": true}', collapsed: true }),
+      entry({ callId: 'j2', text: '{"valid": true}', collapsed: false }),
+      entry({ callId: 'j3', text: '{"valid": true}', collapsed: false }),
+    ])
+    expect(wrapper.findAll('[data-testid="dialogue-fold"]')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="dialogue-text"]').text()).toContain('Three of the five claims')
+    expect(wrapper.findAll('[data-testid="dialogue-structured"]')).toHaveLength(3)
+  })
+
+  it('escapes model output rather than sanitising it afterwards', () => {
+    const hostile = 'read this <img src=x onerror="alert(1)"> and this'
+    const wrapper = rail([entry({ text: hostile, revealed: hostile.length })])
+    const html = wrapper.get('[data-testid="dialogue-text"]').html()
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&lt;img')
+  })
+})
+
+describe('a finished run lands at the end of the transcript', () => {
+  /*
+   * Two cold readers saw the same thing in `evidence/S/long-run.png` and
+   * `T2/trace-completed.png`: a completed run whose NEWEST entry was cut mid
+   * sentence - "...and I am" - with a bare "Details" toggle peeking below it.
+   * The list was wherever the reveal's pin had last allowed, which on a long
+   * entry is short of the end, and the 40vh cap then cut it.
+   *
+   * The reveal must not yank a reader who has scrolled up, so the pin stays for
+   * that. A run STOPPING is one event rather than a stream of them, and the
+   * newest entry is the run's conclusion, so the terminal nudge ignores the pin.
+   */
+  it('scrolls to the end when the status crosses into terminal', async () => {
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    // The mount measured a 0x0 box, which is jsdom's, so the state is
+    // established from the fake metrics the way a real scroll would establish
+    // it from a real one.
+    await wrapper.get('[data-testid="dialogue-list"]').trigger('scroll')
+    expect(wrapper.attributes('data-at-end')).toBe('false')
+
+    await wrapper.setProps({ status: 'completed' })
+    await frame()
+
+    // `scrollHeight`, which the browser clamps to `scrollHeight - clientHeight`.
+    expect(calls.length).toBeGreaterThanOrEqual(1)
+    expect(calls[0]).toMatchObject({ top: 1000, behavior: 'auto' })
+    expect(wrapper.attributes('data-at-end')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('keeps landing while the transcript is still growing, and stops when it settles', async () => {
+    /*
+     * The browser defect, reproduced. `useValidatorRun.setStatus` calls
+     * `revealAll()` in the SAME tick it goes terminal - a half-revealed
+     * utterance is shown whole rather than left mid-sentence under a COMPLETED
+     * badge - so the box grows by hundreds of pixels immediately after the
+     * status changes. A single frame scrolled to an end that then moved:
+     * measured in a browser at `scrollTop 23 / scrollHeight 739 /
+     * clientHeight 360`, 356px short.
+     *
+     * Here the height grows for three frames and then holds, and the landing
+     * has to follow it rather than race it.
+     */
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 400, clientHeight: 360, scrollTop: 0 })
+    const list = wrapper.get('[data-testid="dialogue-list"]').element as HTMLElement
+
+    await wrapper.setProps({ status: 'completed' })
+    const heights = [739, 1100, 1400, 1400, 1400, 1400]
+    for (const height of heights) {
+      Object.defineProperty(list, 'scrollHeight', { value: height, configurable: true })
+      await frame()
+    }
+
+    // It followed the growth: the last thing it asked for is the settled height.
+    expect(calls.length).toBeGreaterThan(1)
+    expect(calls[calls.length - 1]).toMatchObject({ top: 1400 })
+    // And it let go rather than looping for the life of the page.
+    const settled = calls.length
+    await frame()
+    await frame()
+    await frame()
+    expect(calls.length, 'the landing never stopped re-arming').toBe(settled)
+    wrapper.unmount()
+  })
+
+  it('lands on a run that was ALREADY terminal when the rail mounted', async () => {
+    // A console restoring a finished run mounts with the status already
+    // terminal, so a watcher that only fires on a CROSSING never fires at all
+    // and the rail opens wherever the browser left it. The watch is
+    // `immediate` and guards on the value.
+    const wrapper = rail([entry()], false, { status: 'completed' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await frame()
+    await frame()
+    expect(calls.length, 'a restored terminal run never landed').toBeGreaterThanOrEqual(1)
+    wrapper.unmount()
+  })
+
+  it('re-lands when an entry finishes revealing after the run is over', async () => {
+    const wrapper = rail([entry({ revealed: 10 })], false, { status: 'completed' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await frame()
+    await frame()
+    await frame()
+    const before = calls.length
+    await wrapper.setProps({ entries: [entry({ revealed: 43 })] })
+    await frame()
+    expect(calls.length, 'a reveal completing after the run did not re-land').toBeGreaterThan(before)
+    wrapper.unmount()
+  })
+
+  it('does it for a cancelled and an errored run too, not only a completed one', async () => {
+    for (const status of ['cancelled', 'error'] as const) {
+      const wrapper = rail([entry()], false, { status: 'running' })
+      const calls = measurable(wrapper)
+      await wrapper.setProps({ status })
+      await frame()
+      expect(calls.length, `a ${status} run did not land at its end`).toBeGreaterThanOrEqual(1)
+      wrapper.unmount()
+    }
+  })
+
+  it('ignores the reader-has-scrolled-up pin, which the reveal obeys', async () => {
+    // 640px from the end is far past `PIN_SLACK_PX`, so a reveal would decline
+    // to follow. The run finishing is the one moment that overrides it.
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await wrapper.setProps({ status: 'completed' })
+    await frame()
+    expect(calls.length).toBeGreaterThanOrEqual(1)
+    wrapper.unmount()
+  })
+
+  it('does not scroll while the run is still going and the reader is away', async () => {
+    // The other half of the same decision: an append or a reveal tick must not
+    // move a reader who has scrolled up to read something earlier.
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await wrapper.setProps({ entries: [entry(), entry({ callId: 'call-2' })] })
+    await frame()
+    expect(calls).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('follows an append while the reader is at the end', async () => {
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 640 })
+    await wrapper.setProps({ entries: [entry(), entry({ callId: 'call-2' })] })
+    await frame()
+    expect(calls).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('marks the cut edge only while there is something below it', async () => {
+    // The affordance is a fade on the root's `::after`, gated by this class. A
+    // pseudo-element on the scroller itself would scroll with the content and
+    // sit at the bottom of the transcript rather than at the bottom of the
+    // window onto it.
+    const wrapper = rail([entry()], false, { status: 'running' })
+    measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await wrapper.get('[data-testid="dialogue-list"]').trigger('scroll')
+    expect(wrapper.classes()).not.toContain('is-at-end')
+    expect(wrapper.attributes('data-at-end')).toBe('false')
+
+    const list = wrapper.get('[data-testid="dialogue-list"]').element as HTMLElement
+    ;(list as unknown as { scrollTop: number }).scrollTop = 640
+    await wrapper.get('[data-testid="dialogue-list"]').trigger('scroll')
+    expect(wrapper.classes()).toContain('is-at-end')
+    expect(wrapper.attributes('data-at-end')).toBe('true')
+    wrapper.unmount()
   })
 })

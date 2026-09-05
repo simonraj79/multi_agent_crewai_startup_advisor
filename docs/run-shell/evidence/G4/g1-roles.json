@@ -1,0 +1,37 @@
+{
+  "flows": [
+    {
+      "name": "Idea Validator",
+      "note": "the six-agent flow this console shipped with",
+      "roles": [
+        "Scoper",
+        "Market Analyst",
+        "Sentiment Analyst",
+        "Feasibility Analyst",
+        "Synthesist",
+        "Reporter"
+      ]
+    },
+    {
+      "name": "Brief Crew",
+      "note": "the original three-agent pipeline",
+      "roles": ["Researcher", "Analyst", "Writer"]
+    },
+    {
+      "name": "Copy Desk",
+      "note": "an invented flow the character system has never seen",
+      "roles": ["Tone Coach", "Fact Checker", "Localisation Lead", "Pricing Strategist"]
+    },
+    {
+      "name": "Clinic Rota Planner",
+      "note": "authored after freeze 6833089",
+      "roles": [
+        "Shift Demand Forecaster",
+        "Roster Architect",
+        "Rest Rules Auditor",
+        "Locum Cover Planner",
+        "Handover Briefer"
+      ]
+    }
+  ]
+}

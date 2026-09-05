@@ -368,7 +368,11 @@ describe('the report panel', () => {
     confidenceBand: 'LOW',
     provisional: true,
     fatalFloors: ['FLOOR_NO_DEMAND'],
-    decisionReason: 'One usable thread, and nobody in it states a problem.',
+    // `decision_reason` is a `DecisionReason` enum on the wire, never prose -
+    // `schemas/validator.py` assigns it from the same ladder that fills
+    // `fatal_floors`. This fixture said prose until 2026-09-05, which is a
+    // shape the server cannot produce.
+    decisionReason: 'FLOOR_NO_DEMAND',
     dimensions: { demand: 1, market: 3, competitive_room: 2, feasibility: 1, headroom_over_free: 3 },
     source: 'frame',
   }
@@ -377,47 +381,65 @@ describe('the report panel', () => {
     return mount(ReportPanel, { props: { report: REPORT, verdict, open: true } })
   }
 
-  it('names the floor that forced the verdict', () => {
-    // The whole reason `fatal_floors` is on the wire. A REJECT whose cause is a
-    // floor is a different statement from a REJECT that merely scored low, and
-    // the panel used to make them indistinguishable.
-    const text = mountPanel(FRAME_VERDICT).text()
+  it('names what decided the run, in words, and puts the code out of sight', () => {
+    // The whole reason `decision_reason` is on the wire. A REJECT whose cause
+    // is a floor is a different statement from a REJECT that merely scored
+    // low, and the panel used to make them indistinguishable.
+    const wrapper = mountPanel(FRAME_VERDICT)
+    const text = wrapper.text()
 
-    expect(text).toContain('Fatal floor')
-    expect(text).toContain('No demand')
-    // The raw token stays on screen so the rubric is still greppable from it.
-    expect(text).toContain('FLOOR_NO_DEMAND')
+    expect(text).toContain('WHAT DECIDED THIS RUN')
+    expect(text).toContain('Demand scored 1 of 5.')
+    expect(text).not.toContain('FLOOR_NO_DEMAND')
+    // The raw token stays in the DOM so the rubric is still greppable from it.
+    expect(wrapper.get('.verdict-decision').attributes('data-code')).toBe('FLOOR_NO_DEMAND')
   })
 
-  it('pluralises and humanises every floor without a lookup table', () => {
+  it('humanises a floor the client has never heard of', () => {
     // A floor added to `config.py` after this component was written must still
-    // render as words rather than as nothing.
+    // render as words rather than as SNAKE_CASE or as nothing.
     const text = mountPanel({
       ...FRAME_VERDICT,
-      fatalFloors: ['FLOOR_ALREADY_FREE', 'FLOOR_SOMETHING_NEW'],
+      decisionReason: 'FLOOR_SOMETHING_NEW',
+      fatalFloors: ['FLOOR_SOMETHING_NEW', 'FLOOR_ALREADY_FREE'],
     }).text()
 
-    expect(text).toContain('Fatal floors')
-    expect(text).toContain('Already free')
-    expect(text).toContain('Something new')
+    expect(text).toContain('Something new.')
+    expect(text).not.toContain('FLOOR_SOMETHING_NEW')
+    // The one that did not decide is demoted, never a second block.
+    expect(text).toContain('ALSO BLOCKING')
+    expect(text).toContain('Headroom over free scored 3 of 5')
   })
 
   it('shows the composite score, the band and all five ladders', () => {
     const wrapper = mountPanel(FRAME_VERDICT)
     const text = wrapper.text()
 
-    expect(text).toContain('REJECT')
+    expect(text).toContain('Reject')
     expect(text).toContain('4.2')
     expect(text).toContain('/10')
-    expect(text).toContain('17% confidence')
-    expect(text).toContain('LOW')
+    // One chip carries the band word and the number; `17% confidence` beside a
+    // shouted `LOW` was two elements carrying one fact.
+    expect(text).toContain('Low confidence · 17%')
     expect(wrapper.findAll('.score-row')).toHaveLength(5)
-    expect(wrapper.findAll('.score-label').map((node) => node.text())).toEqual([
+    // The names are the markdown report body's own
+    // (`validator_flow.py::_DIMENSION_LABELS`), so the panel and the report it
+    // sits above agree word for word.
+    expect(wrapper.findAll('.score-name').map((node) => node.text().split(' thin')[0])).toEqual([
       'Demand',
       'Market',
       'Competitive room',
       'Feasibility',
       'Headroom over free',
+    ])
+    // ...and each carries its own ladder's question, which is the only place
+    // in the console "Headroom over free" is explained at all.
+    expect(wrapper.findAll('.score-question').map((node) => node.text())).toEqual([
+      'Is anyone actively trying to solve this today?',
+      'Is there money, and can you name whose?',
+      'Is the incumbent set beatable on a stated axis?',
+      'Can two or three engineers ship a v1?',
+      'Is the core already free and good?',
     ])
     // 1 of 5 is a fifth of the track, not a fifth of a 0-10 composite.
     expect(wrapper.findAll('.score-fill')[0].attributes('style')).toContain('width: 20%')
@@ -438,15 +460,15 @@ describe('the report panel', () => {
       source: 'gate',
     })
 
-    expect(wrapper.text()).toContain('NEEDS_WORK')
-    expect(wrapper.text()).toContain('62% confidence')
+    expect(wrapper.text()).toContain('Needs work')
+    expect(wrapper.text()).toContain('Confidence 62%')
     expect(wrapper.find('.verdict-summary').exists()).toBe(false)
   })
 
-  it('falls back to COMPLETE when no carrier delivered a verdict at all', () => {
+  it('falls back to Finished when no carrier delivered a verdict at all', () => {
     const wrapper = mountPanel(null)
 
-    expect(wrapper.text()).toContain('COMPLETE')
+    expect(wrapper.text()).toContain('Finished')
     expect(wrapper.find('.verdict-summary').exists()).toBe(false)
   })
 
@@ -455,6 +477,9 @@ describe('the report panel', () => {
     // fields on separate carriers. Dropping the warning is the only failure
     // here that costs anything, so either saying so is enough.
     const wrapper = mountPanel(FRAME_VERDICT)
-    expect(wrapper.text()).toContain('PROVISIONAL')
+    // Glossed rather than renamed: the markdown body below is required to
+    // carry "Provisional" in its own title, and two names for one thing is
+    // worse than one unfamiliar one.
+    expect(wrapper.text()).toContain('Provisional · not a final answer')
   })
 })

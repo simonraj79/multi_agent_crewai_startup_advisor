@@ -1,0 +1,58 @@
+$ npx playwright test e2e/cast.spec.ts       # from frontend/, capture-only run
+# RV3 SEVENTH PASS, branch run-shell/cast at f733833, 2026-09-05T19:56:39+08:00
+# exit code 0  -  10 passed, 0 failed, 2.1m
+#
+# Backend: the usual SYNTHETIC=1 line on :8099 with the six-mode
+# SYNTHETIC_FAILURE. Every listener on 5273/5274/5275/8099/8791 was hunted
+# first and none existed, so Playwright started its own Vite from this tree.
+#
+# Round eight is one file, DialogueRail.vue (+76/-14): the dialogue lands on
+# its end after the reveal grows it, and on a restored terminal run.
+#
+# THE MEASUREMENT THAT MATTERS, and it is FIXED.
+#
+# The sixth pass reported that the dialogue drawer did NOT land at its end:
+# scrollTop 23 of 379 possible, 356px short, newest entry cut mid-sentence
+# with its Details toggle clipped, 6 entries shown against a badge of 8.
+#
+# RV3 re-measured at this head with a throwaway spec that drives the SAME
+# 119-event journey cast.spec.ts:1183 does - launch, two revises at the scope
+# gate, approve, one revise at the verdict gate, approve, wait for terminal -
+# then read the scroller three times over four seconds:
+#
+#   DIALOGUE@~500ms  {"selector":"[role=\"log\"]","scrollTop":468,"scrollHeight":828,
+#     "clientHeight":360,"distanceToEnd":0,"entries":8,"lastEntryTop":323,
+#     "lastEntryBottom":487,"scrollerTop":149,"scrollerBottom":509,
+#     "lastFullyVisible":true,"lastHasDetails":true,"detailsBottom":487,
+#     "detailsVisible":true}
+#   DIALOGUE@~2000ms  identical
+#   DIALOGUE@~4000ms  identical
+#
+#   distanceToEnd 0 - the list is AT its end, and stays there.
+#   entries 8 - matching the drawer's own badge, where the sixth pass showed 6.
+#   lastFullyVisible true and detailsVisible true - the newest entry is whole
+#   and its Details toggle is inside the scroller, not clipped by it.
+#
+# T2/trace-completed.png and S/long-run.png agree: the newest entry is the
+# Validation report writer's, whole, ending '...with the shape of a real one.'
+# with its Details toggle beneath it.
+
+[WebServer] (!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+[WebServer]   - import "./syntheticUser" without a file extension (e2e/vite.e2e.config.ts:4:57). Add the file extension
+[WebServer] Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+Running 10 tests using 1 worker
+
+  ✓   1 [chromium] › e2e\cast.spec.ts:727:3 › the cast at rest › S1: every character is idle before a run, and the shell is not blank (833ms)
+  ✓   2 [chromium] › e2e\cast.spec.ts:764:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch (18.7s)
+  ✓   3 [chromium] › e2e\cast.spec.ts:907:3 › the graph and the trace show the same cast › T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state @launch (3.0s)
+  ✓   4 [chromium] › e2e\cast.spec.ts:998:3 › the character on a node is deterministic › G3: the same node keeps the same character across a page reload @launch (15.8s)
+  ✓   5 [chromium] › e2e\cast.spec.ts:1062:3 › motion stays quiet › T2.7: nothing animates offscreen and no more than twelve character animations run at once @launch (3.1s)
+  ✓   6 [chromium] › e2e\cast.spec.ts:1101:3 › motion stays quiet › T2.7/S5: reduced motion stops every part and keeps every state @launch (15.5s)
+  ✓   7 [chromium] › e2e\cast.spec.ts:1183:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch (35.3s)
+  ✓   8 [chromium] › e2e\cast.spec.ts:1682:3 › the report names what decided the run › T1.1: a verdict an override decided is captured with its block, its dimension and its score @launch (7.0s)
+  ✓   9 [chromium] › e2e\cast.spec.ts:1867:3 › the shell at 390x844 › S6: a run drives and finishes at 390px, and nothing overflows sideways @launch (18.6s)
+  ✓  10 [chromium] › e2e\cast.spec.ts:2095:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch (5.3s)
+
+  10 passed (2.1m)
+EXIT=0

@@ -16,7 +16,9 @@ import WorkflowNode from '../components/WorkflowNode.vue'
 import { useValidatorRun } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
+import { connectionLabel as transportWord, runStatusDisplay } from '../data/runStatusDisplay'
 import type { SignedInUser } from '../composables/useAuthGate'
+import type { RunStatus } from '../types/studio'
 
 /**
  * The run console, moved out of `App.vue` unchanged.
@@ -120,6 +122,14 @@ const {
   framesApplied,
   armed,
   endHandoff,
+  identities,
+  identityFor,
+  castStates,
+  castState,
+  // The cast, for one card. Cached by the store, so an unchanged card is handed
+  // the SAME object and Vue skips it - a literal built here would re-render all
+  // fourteen on every frame (T2.8).
+  castFor,
   initialize,
   launch,
   submitGate,
@@ -149,12 +159,9 @@ const {
  * claim to make at that moment. Once a run is in flight the socket is the
  * truth again and its own state wins.
  */
-const connectionLabel = computed(() => {
-  if (transportMode.value === 'mock') return 'Mock mode'
-  if (transportMode.value === 'probing') return 'connecting'
-  if (!isActive.value && connection.value === 'offline') return 'ready'
-  return connection.value
-})
+const connectionLabel = computed(() =>
+  transportWord(transportMode.value, connection.value, isActive.value),
+)
 
 /**
  * The report sheet opens itself the first time a body arrives and stays
@@ -216,6 +223,29 @@ watch(
 
 const chatCollapsed = ref(window.matchMedia('(max-width: 860px)').matches)
 const controlsCollapsed = ref(false)
+
+/**
+ * The scrim behind an open rail, and the one gesture it carries.
+ *
+ * Below 640px both rails are OVERLAYS - they cover the console rather than
+ * shrinking it - and a cold reader at 390px found the consequence: the rail sat
+ * on the console with nothing between them, so a sliver of half-cut console
+ * text showed down the edge and nothing on screen said which layer was live.
+ * A scrim is the answer to that question, and dismissing it is the gesture
+ * every overlay on a phone has.
+ *
+ * Rendered whenever a rail is open at ANY width and hidden above 640px by CSS,
+ * so the breakpoint stays a fact about the stylesheet and this file never
+ * learns that a phone exists. Closing BOTH is deliberate: a scrim means "put
+ * the layer over the content away", and at this width opening one rail does not
+ * close the other, so a scrim that closed only one would leave the reader
+ * looking at the same defect with one fewer control.
+ */
+const aRailIsOpen = computed(() => !chatCollapsed.value || !controlsCollapsed.value)
+function closeRails(): void {
+  chatCollapsed.value = true
+  controlsCollapsed.value = true
+}
 const activeView = ref<'graph' | 'activity'>('graph')
 
 watch(activeView, (view) => {
@@ -263,6 +293,26 @@ watch(
  * previous graph, which is how a console comes to draw one workflow's topology
  * over another's frames.
  */
+/**
+ * The handoff banner is about LAUNCHING, so it goes when there is nothing left
+ * to launch.
+ *
+ * A cold reader found it stacked above "Run failed" in the right rail
+ * (`evidence/S/failure.png`): two banners, two dismiss buttons, and the upper
+ * one saying "Running your published graph …" about a run that had already
+ * stopped. Present tense about a finished thing.
+ *
+ * Driven by the run's own status rather than by a timer, so it is exact: the
+ * banner is up while a launch is a live prospect and down the moment the run
+ * reaches an end state, whichever end that is. `handoff` itself is NOT
+ * cleared - the console is still pointed at that graph, Relaunch still runs
+ * it, and the WORKFLOW well still names it. Only the sentence goes.
+ */
+const TERMINAL_RUN_STATUSES: readonly RunStatus[] = ['completed', 'error', 'cancelled']
+const handoffBannerShown = computed(
+  () => handoff.value !== null && !TERMINAL_RUN_STATUSES.includes(status.value),
+)
+
 function backToValidator(): void {
   clearRunHandoff(props.user?.id ?? null)
   handoff.value = null
@@ -337,12 +387,53 @@ function backToValidator(): void {
     </header>
 
     <main class="studio-main">
-      <ChatRail :entries="chatEntries" :collapsed="chatCollapsed" @toggle="chatCollapsed = !chatCollapsed">
+      <!--
+        The scrim. `studio.css` hides it above 640px, where the rails are docked
+        columns and there is nothing to dismiss; below it, a rail covers the
+        console and this is both the answer to "which layer is live" and the way
+        back out.
+
+        A `<button>` because it is a control and should carry a control's
+        semantics, but OUT of the tab order and hidden from the accessibility
+        tree - and that pair is deliberate rather than lazy. Both rails already
+        have real toggle buttons that are focusable, labelled, and do exactly
+        this; a third control here would be a duplicate announced twice and
+        tabbed through once, buying nobody a capability they did not have. It is
+        a pointer affordance for a gesture the keyboard already has.
+      -->
+      <button
+        v-if="aRailIsOpen"
+        class="rail-scrim"
+        type="button"
+        tabindex="-1"
+        aria-hidden="true"
+        @click="closeRails"
+      />
+      <!--
+        `identityFor` and `castState` are handed to all three surfaces from ONE
+        store (`useRunChoreography`, by way of the run composable), which is the
+        whole of DoD T2.6: the node card, the trace row and the spoken line can
+        disagree about an agent only if they ask three different questions, and
+        here they ask one. `characterIndex` stays beside them because it is what
+        still colours the lucide medallion on the node kinds that get no
+        character - a router, a gate, an output, a step.
+      -->
+      <ChatRail
+        :entries="chatEntries"
+        :collapsed="chatCollapsed"
+        :character-of="characterIndex"
+        :identity-of="identityFor"
+        :state-of="castState"
+        @toggle="chatCollapsed = !chatCollapsed"
+      >
         <template #above>
           <DialogueRail
             :entries="dialogue"
             :collapsed="dialogueCollapsed"
+            :status="status"
             :character-of="characterIndex"
+            :identity-of="identityFor"
+            :state-of="castState"
             @toggle="dialogueCollapsed = !dialogueCollapsed"
           />
         </template>
@@ -364,7 +455,13 @@ function backToValidator(): void {
             <h2 id="graph-title">{{ canvasTitle }}</h2>
           </div>
           <div class="canvas-meta">
-            <span><Activity :size="13" aria-hidden="true" />{{ status }}</span>
+            <!--
+              The same word the status rail uses. The heading said "Completed"
+              beside a rail saying "Finished" - one state, two words, eighteen
+              inches apart - which is the defect `runStatusDisplay` was written
+              for and this surface had never been routed through it.
+            -->
+            <span><Activity :size="13" aria-hidden="true" />{{ runStatusDisplay(status).label }}</span>
             <code>{{ descriptor.version }}</code>
           </div>
         </div>
@@ -388,6 +485,8 @@ function backToValidator(): void {
           :descriptor="descriptor"
           :active="isActive"
           :run-stages="stages"
+          :identities="identities"
+          :cast-states="castStates"
         />
 
         <VueFlow
@@ -407,7 +506,13 @@ function backToValidator(): void {
           :aria-label="`${canvasTitle} workflow graph`"
         >
           <template #node-workflow="nodeProps">
-            <WorkflowNode v-bind="nodeProps" @rerun="resumeFrom" />
+            <!--
+              `cast` is a declared prop rather than another field on `data`,
+              because `data` is rebuilt by `graphNodes` on every frame and the
+              cast is answered by a different store. Declared, so it does NOT
+              fall through onto the `<article>` the way `id` deliberately does.
+            -->
+            <WorkflowNode v-bind="nodeProps" :cast="castFor(nodeProps.id)" @rerun="resumeFrom" />
           </template>
           <template #edge-workflow="edgeProps">
             <WorkflowEdge v-bind="edgeProps" @handoff-done="endHandoff" />
@@ -468,7 +573,10 @@ function backToValidator(): void {
             saying so, and the whole reason this strip exists is that a silent
             repoint is indistinguishable from the mock-mode failure.
           -->
-          <div v-if="handoff" class="handoff-banner" role="status">
+          <!-- `&& handoff` is for the type narrowing, not for the logic:
+               `handoffBannerShown` already implies it, but a computed does not
+               narrow a ref inside the template the way a direct `v-if` does. -->
+          <div v-if="handoffBannerShown && handoff" class="handoff-banner" role="status">
             <span>
               Running your published graph <strong>{{ handoff.name }}</strong>. It asks for
               <code>{{ handoff.inputField }}</code>.
@@ -491,6 +599,12 @@ function backToValidator(): void {
             :submitting="gateSubmitting"
             @submit="submitGate"
           />
+          <!--
+            `can-return-home` is the way back, and it lives in the panel because
+            the banner that used to carry it retires at a terminal status. The
+            condition is the same one the banner used: a published graph is
+            loaded.
+          -->
           <StatusPanel
             v-model:idea="idea"
             :status="status"
@@ -513,10 +627,12 @@ function backToValidator(): void {
             :download-message="downloadMessage"
             :workflow-name="handoff ? handoff.name : undefined"
             :input-label="handoff ? `${handoff.inputField.replaceAll('_', ' ').toUpperCase()} TO RUN` : undefined"
+            :can-return-home="handoff !== null"
             @launch="launch"
             @cancel="cancel"
             @download="downloadLogs"
             @dismiss-error="dismissError"
+            @return-home="backToValidator"
             @select-view="activeView = $event"
           />
           <RunHistory
@@ -540,25 +656,30 @@ function backToValidator(): void {
 
 .workspace-switch button {
   min-height: 28px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   font-size: var(--fs-12);
 }
 
+/* The same shape as `studio.css`'s `.panel-banner`, in a third colour family:
+   this one is neither a warning nor a fault, it is a fact about which graph
+   the Launch button is pointed at. It keeps its own rule rather than taking a
+   fourth modifier onto the shared class, because the shared class has exactly
+   two families and both are semantic states. */
 .handoff-banner {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  color: var(--accent-cyan);
-  font-size: var(--fs-12);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  color: var(--on-accent-cyan);
+  font: var(--type-label);
   line-height: 1.5;
   background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 
 .handoff-banner strong { color: var(--text-title); }
-.handoff-banner code { padding: 1px 5px; color: var(--accent-mint); font: 500 var(--fs-11)/1.5 var(--font-mono); background: var(--surface-well); border-radius: var(--r-xs); }
+.handoff-banner code { padding: 1px var(--space-2); color: var(--on-accent-mint); font: var(--type-meta); background: var(--surface-well); border-radius: var(--r-xs); }
 .handoff-banner .icon-button { flex: 0 0 auto; }
 /* Disabled only while a run is in flight, because leaving would reload the
    page out from under it. The title says so rather than leaving a dead

@@ -1,0 +1,166 @@
+{
+  "capturedAt": "2026-09-05T09:04:14.986Z",
+  "framesSent": 131,
+  "frames": 131,
+  "idleMedianMs": 16.599999964237213,
+  "intervals": 498,
+  "p50": 16.7,
+  "p95": 31,
+  "max": 148.3,
+  "over34ms": 21,
+  "over50ms": 12,
+  "longTaskCount": 2,
+  "longTaskError": null,
+  "longestTasks": [
+    {
+      "start": 712,
+      "duration": 102,
+      "name": "self",
+      "attribution": [
+        {
+          "name": "unknown",
+          "containerType": "window",
+          "containerName": "",
+          "containerId": "",
+          "containerSrc": ""
+        }
+      ]
+    },
+    {
+      "start": 11317.900000035763,
+      "duration": 51,
+      "name": "self",
+      "attribution": [
+        {
+          "name": "unknown",
+          "containerType": "window",
+          "containerName": "",
+          "containerId": "",
+          "containerSrc": ""
+        }
+      ]
+    }
+  ],
+  "overBudgetIntervals": [
+    {
+      "atMs": 6154,
+      "gap": 35.4,
+      "longTask": null
+    },
+    {
+      "atMs": 6414,
+      "gap": 36.8,
+      "longTask": null
+    },
+    {
+      "atMs": 7243,
+      "gap": 93.9,
+      "longTask": null
+    },
+    {
+      "atMs": 7373,
+      "gap": 129.4,
+      "longTask": null
+    },
+    {
+      "atMs": 7495,
+      "gap": 121.8,
+      "longTask": null
+    },
+    {
+      "atMs": 7532,
+      "gap": 37.2,
+      "longTask": null
+    },
+    {
+      "atMs": 7663,
+      "gap": 42.5,
+      "longTask": null
+    },
+    {
+      "atMs": 7763,
+      "gap": 55.5,
+      "longTask": null
+    },
+    {
+      "atMs": 7870,
+      "gap": 106.6,
+      "longTask": null
+    },
+    {
+      "atMs": 8026,
+      "gap": 44.6,
+      "longTask": null
+    },
+    {
+      "atMs": 8145,
+      "gap": 118.7,
+      "longTask": null
+    },
+    {
+      "atMs": 8184,
+      "gap": 39.3,
+      "longTask": null
+    },
+    {
+      "atMs": 8314,
+      "gap": 47.3,
+      "longTask": null
+    },
+    {
+      "atMs": 8434,
+      "gap": 119.6,
+      "longTask": null
+    },
+    {
+      "atMs": 8557,
+      "gap": 123.3,
+      "longTask": null
+    },
+    {
+      "atMs": 8685,
+      "gap": 127.4,
+      "longTask": null
+    },
+    {
+      "atMs": 8822,
+      "gap": 137.6,
+      "longTask": 51
+    },
+    {
+      "atMs": 8970,
+      "gap": 148.3,
+      "longTask": null
+    },
+    {
+      "atMs": 9168,
+      "gap": 70.8,
+      "longTask": null
+    },
+    {
+      "atMs": 9423,
+      "gap": 43.3,
+      "longTask": null
+    },
+    {
+      "atMs": 10018,
+      "gap": 39.8,
+      "longTask": null
+    }
+  ],
+  "dom": {
+    "rows": 39,
+    "pips": 49,
+    "spoken": 9,
+    "nodes": 14,
+    "edges": 16,
+    "elements": 3714,
+    "animations": 1
+  },
+  "measures": [
+    {
+      "name": "replay",
+      "duration": 10053.599999964237
+    }
+  ]
+}

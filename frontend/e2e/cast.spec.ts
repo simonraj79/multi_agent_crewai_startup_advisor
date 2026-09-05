@@ -1,0 +1,2170 @@
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { reviseGate } from './gateReply'
+import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
+
+/**
+ * The cast, in a real browser — `docs/run-shell/DEFINITION-OF-DONE.md`
+ * T2.6, T2.7, G3, T1, and the easy-to-skip states S1–S6.
+ *
+ * ## What this file is, and what it is NOT
+ *
+ * It was written by the verification worker (RV) BEFORE the builders landed,
+ * against the DOM contract in the build brief rather than against the DOM as it
+ * stood that morning. That is deliberate and it is the only ordering that makes
+ * these assertions evidence: a spec written after the fact asserts whatever the
+ * implementation happened to produce, which is the shape of test this repository
+ * keeps recording as "green for the wrong reason"
+ * (`docs/gotchas-and-insights.md`, the section on exactly that).
+ *
+ * So a failure here is a statement about one of two things, and the message on
+ * each assertion says which: the product does not meet the contract, or the
+ * contract moved and this file was not told. Neither is fixed by relaxing an
+ * assertion.
+ *
+ * ## The DOM contract these assertions are written against
+ *
+ * Every character is one `<AgentCharacter>`:
+ *
+ *   - root element `.pip`, carrying `data-character="<seed>"`,
+ *     `data-state="idle|working|speaking|blocked|blocked-error|done"`,
+ *     `data-parts`, `role="img"` and an `aria-label`;
+ *   - animated parts are DESCENDANTS of `.pip` (`.pip--working` and
+ *     `.pip--speaking` loop; idle, blocked and done are static; under reduced
+ *     motion every part resolves `animation-name: none`; a pip that is offscreen
+ *     has its parts `animation-play-state: paused`).
+ *
+ * On the graph, each node card `.workflow-node` inside a Vue Flow
+ * `.vue-flow__node[data-id]` that represents an AGENT mounts ONE `.pip` in its
+ * crew slot. On the trace, `ChatRail` rows `.trace-entry` carry `data-node` and
+ * `data-identity` and hold their character in `.trace-avatar > .pip`; the
+ * dialogue rail's entries do the same in `.dialogue-avatar`.
+ *
+ * **A gate is characterless, and so is every other piece of plumbing.** Ruled by
+ * the orchestrator on 2026-09-05: a human being asked for something is not a
+ * cast member, and giving a person's turn a cartoon face would be the one place
+ * in this console where the cast lied about who did the work. Gate, router,
+ * output, start, step and the quarantine node therefore mount NO `.pip` — they
+ * keep their per-kind icon. The consequence for the `blocked` pose is the
+ * interesting half: while the run waits at a gate, the pose lands on the AGENT
+ * THAT FED THAT GATE (the `from` of the last edge into it), because that is
+ * whose work is actually stopped. For the validator's scope gate that is
+ * `scope_idea`, labelled "Scoper".
+ *
+ * `.trace-entry .trace-line` is the one-sentence text and `.trace-entry details`
+ * is the per-row disclosure, closed by default.
+ *
+ * ## Which backend, and what it costs
+ *
+ * The same one every other spec here uses, and never :8000. From the repository
+ * root:
+ *
+ *   $env:SYNTHETIC="1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS="5"; $env:PORT="8099"
+ *   $env:CREDENTIALS_MASTER_KEY="Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
+ *   .\.venv\Scripts\serve.exe
+ *
+ * `SYNTHETIC_BRANCH_DELAY_SECONDS=5` is NOT optional for the two mid-run tests.
+ * Without it a research branch finishes in single-digit milliseconds and there
+ * is no `working` character to photograph — the assertions that need it say so
+ * in their own failure message rather than timing out anonymously, which is the
+ * lesson `e2e/visual/run-canvas.spec.ts` records at length.
+ *
+ * Zero cost: `SYNTHETIC=1` swaps the crew factories and nothing else. Tests that
+ * press Launch are tagged `@launch`, as everywhere in this suite; against a paid
+ * origin run `--grep-invert @launch`.
+ *
+ * ## Evidence
+ *
+ * Screenshots and text artifacts land under `docs/run-shell/evidence/`, whose
+ * PNG exception `.gitignore` already carries. The paths are the ones the
+ * definition of done names, and nothing else in this file invents one.
+ * `RUN_SHELL_EVIDENCE` overrides the root for a dry run.
+ */
+
+/* ------------------------------------------------------------------ evidence */
+
+/**
+ * `docs/run-shell/evidence`, resolved from the working directory Playwright was
+ * invoked in — `frontend/`, the same assumption `e2e/capture-run.spec.ts`
+ * already makes about `benchmarks/ours/11`.
+ */
+const EVIDENCE = process.env.RUN_SHELL_EVIDENCE
+  ? path.resolve(process.env.RUN_SHELL_EVIDENCE)
+  : path.resolve(process.cwd(), '..', 'docs', 'run-shell', 'evidence')
+
+function evidencePath(...parts: string[]): string {
+  const target = path.join(EVIDENCE, ...parts)
+  mkdirSync(path.dirname(target), { recursive: true })
+  return target
+}
+
+/**
+ * A full-page capture at a named evidence path.
+ *
+ * `expect.soft` is used here and NOWHERE else in this file. The definition of
+ * done says a capture must exist on disk; it does not make the capture the
+ * criterion. A soft check records a missing file and lets the run go on to the
+ * assertions that ARE the criterion, so one unwritable path cannot cost a
+ * verifier the whole measurement.
+ */
+async function shot(page: Page, ...parts: string[]): Promise<void> {
+  const target = evidencePath(...parts)
+  await page.screenshot({ path: target, fullPage: false })
+  expect.soft(existsSync(target), `capture not written: ${target}`).toBe(true)
+}
+
+async function shotOf(target: Locator, page: Page, ...parts: string[]): Promise<void> {
+  const file = evidencePath(...parts)
+  await target.screenshot({ path: file })
+  expect.soft(existsSync(file), `capture not written: ${file}`).toBe(true)
+  // `page` is taken so the signature reads the same as `shot` at every call
+  // site; nothing else needs it.
+  void page
+}
+
+function writeEvidence(contents: string, ...parts: string[]): void {
+  const target = evidencePath(...parts)
+  writeFileSync(target, contents, 'utf-8')
+  expect.soft(existsSync(target), `evidence not written: ${target}`).toBe(true)
+}
+
+/**
+ * What is painted at a point, and whether it belongs to the panel that should
+ * own it.
+ *
+ * A SCREENSHOT IS NEVER THE ONLY GUARD. Every layout defect this repository has
+ * recorded was invisible to a green suite and obvious in a picture — and a
+ * picture is only checked when somebody looks at it, which is once, by one
+ * reader, at the end. `document.elementFromPoint` asks the browser the same
+ * question the eye asks and gets an answer a test can hold: at this pixel, whose
+ * element is on top?
+ *
+ * The point is the centre of the target's VISIBLE portion rather than of its
+ * box, because a box that runs past the fold has a centre nobody can see and
+ * `elementFromPoint` answers `null` for it — which would read as "nothing is
+ * covering it", the exact false pass this is here to prevent. A target with no
+ * visible area at all is reported as such rather than silently skipped.
+ */
+interface HitTest {
+  name: string
+  found: boolean
+  visible: boolean
+  point: { x: number; y: number } | null
+  hit: string | null
+  insideOwner: boolean
+  forbidden: string | null
+}
+
+/** Surfaces that must never be on top of the panel under test. */
+const PAINT_ORDER_FORBIDDEN = ['.vue-flow__node', '.crew-progress', '.validator-flow'] as const
+
+async function hitTest(
+  page: Page,
+  owner: string,
+  targets: { name: string; selector: string }[],
+): Promise<HitTest[]> {
+  return page.evaluate(
+    ({ owner: ownerSelector, targets: wanted, forbidden }) => {
+      const describe = (el: Element | null): string | null => {
+        if (!el) return null
+        const classes = typeof el.className === 'string' ? el.className.trim() : ''
+        return `${el.nodeName.toLowerCase()}${classes ? `.${classes.split(/\s+/).join('.')}` : ''}`
+      }
+      return wanted.map(({ name, selector }) => {
+        const el = document.querySelector(selector)
+        if (!el) {
+          return { name, found: false, visible: false, point: null, hit: null, insideOwner: false, forbidden: null }
+        }
+        const box = el.getBoundingClientRect()
+        // The rectangle the reader can actually see: the target intersected
+        // with the viewport.
+        const left = Math.max(box.left, 0)
+        const top = Math.max(box.top, 0)
+        const right = Math.min(box.right, window.innerWidth)
+        const bottom = Math.min(box.bottom, window.innerHeight)
+        if (right <= left || bottom <= top) {
+          return { name, found: true, visible: false, point: null, hit: null, insideOwner: false, forbidden: null }
+        }
+        const x = Math.floor((left + right) / 2)
+        const y = Math.floor((top + bottom) / 2)
+        const at = document.elementFromPoint(x, y)
+        return {
+          name,
+          found: true,
+          visible: true,
+          point: { x, y },
+          hit: describe(at),
+          insideOwner: at !== null && at.closest(ownerSelector) !== null,
+          forbidden: forbidden.find((sel) => at?.closest(sel) !== null && at?.closest(ownerSelector) === null) ?? null,
+        }
+      })
+    },
+    { owner, targets, forbidden: [...PAINT_ORDER_FORBIDDEN] },
+  )
+}
+
+/** The three blocks T1.1's cold reader is given, in the order they are read. */
+const REPORT_HEADER_BLOCKS = ['.report-head', '.report-flags', '.verdict-summary'] as const
+
+/**
+ * The report's top region — the chips, the decided-by block and the scores —
+ * captured as one picture and returned as one string.
+ *
+ * A CLIP rather than an element screenshot, because there is no single element
+ * around those three: `.report-head`, `.report-flags` and `.verdict-summary` are
+ * siblings, and T1.1 asks for all three together. The box runs from the head's
+ * top to the last present block's bottom, which is what the before-capture set
+ * did and what makes the before/after pair comparable.
+ *
+ * The text comes back so the caller can assert on exactly what the reader was
+ * shown, rather than on a different query that might not be the same pixels.
+ */
+async function captureReportHeader(page: Page, ...parts: string[]): Promise<string> {
+  const clip = await page.evaluate((blocks: readonly string[]) => {
+    const head = document.querySelector(`.report-panel ${blocks[0]}`)
+    if (!head) return null
+    const present = blocks
+      .map((selector) => document.querySelector(`.report-panel ${selector}`))
+      .filter((el): el is Element => el !== null)
+    const top = head.getBoundingClientRect()
+    const bottom = present[present.length - 1].getBoundingClientRect()
+    return {
+      x: Math.max(0, Math.floor(top.x)),
+      y: Math.max(0, Math.floor(top.y)),
+      width: Math.ceil(top.width),
+      height: Math.ceil(bottom.bottom - top.top),
+    }
+  }, REPORT_HEADER_BLOCKS)
+  expect(clip, 'the report panel has no `.report-head` to clip').not.toBeNull()
+
+  const file = evidencePath(...parts)
+  await page.screenshot({ path: file, clip: clip! })
+  expect.soft(existsSync(file), `capture not written: ${file}`).toBe(true)
+
+  return page.evaluate((blocks: readonly string[]) =>
+    blocks
+      .map((selector) => document.querySelector(`.report-panel ${selector}`))
+      .filter((el): el is Element => el !== null)
+      .map((el) => (el as HTMLElement).innerText)
+      .join('\n'),
+  REPORT_HEADER_BLOCKS)
+}
+
+/* ------------------------------------------------------------- console rules */
+
+/**
+ * Nothing is tolerated, for `studio.spec.ts`'s reason: the one exemption this
+ * suite ever had (a `/favicon.ico` 404) outlived its cause by months, and an
+ * exemption that outlives its cause widens silently.
+ */
+const ALLOWED_CONSOLE_ERROR: RegExp | null = null
+
+interface ConsoleWatch {
+  unexpected: string[]
+}
+
+function watchConsole(page: Page): ConsoleWatch {
+  const watch: ConsoleWatch = { unexpected: [] }
+  const record = (text: string): void => {
+    if (!ALLOWED_CONSOLE_ERROR?.test(text)) watch.unexpected.push(text)
+  }
+  page.on('console', (message) => {
+    if (message.type() === 'error') record(message.text())
+  })
+  page.on('pageerror', (error) => record(`uncaught: ${error.message}`))
+  return watch
+}
+
+/* ------------------------------------------------------------------ contract */
+
+/** The five plus one states `AgentCharacter` declares. */
+const STATES = ['idle', 'working', 'speaking', 'blocked', 'blocked-error', 'done'] as const
+type PipState = (typeof STATES)[number]
+
+/** A pip is "live" in exactly these two states; both animate, neither is terminal. */
+const LIVE_STATES: PipState[] = ['working', 'speaking']
+
+/**
+ * Plan 11's bound, restated by T2.7: at most twelve character animations may be
+ * running at once. It is a bound on the WHOLE cast, not per character, and it is
+ * counted in CSS ANIMATIONS — each state is one animation, so twelve is twelve
+ * live characters and not three characters with four moving parts each.
+ */
+const MAX_LIVE_ANIMATIONS = 12
+
+/**
+ * The node kinds that carry no character, by the ruling in the docblock.
+ *
+ * Written as KINDS rather than as the validator's node ids on purpose: G1 puts a
+ * flow through this shell that did not exist when the cast was built, and a
+ * hard-coded id list would pass that run by saying nothing. `WorkflowNode`
+ * applies `is-${kind}` to the card, which is the same fact from the other side.
+ */
+const CHARACTERLESS_KINDS = ['gate', 'router', 'quarantine', 'output', 'start', 'step'] as const
+
+/** T2.1's line budget, and T1.3's raw-code regex, both quoted from the DoD. */
+const MAX_TRACE_LINE_CHARS = 140
+const SNAKE_CASE = /\b[A-Z][A-Z0-9]+(_[A-Z0-9]+)+\b/g
+
+/** S3's floor: "a run of ≥ 119 events". See `runLongToCompletion` for how. */
+const S3_MIN_FRAMES = 119
+
+/**
+ * `--surface-strong` in the dark theme, resolved: `#222426`.
+ *
+ * Stated as the resolved value because that is what `getComputedStyle` returns,
+ * and named as the token in the failure message because that is what a builder
+ * would change. If this ever moves, the token moved and this line follows it -
+ * it is not a number to be relaxed.
+ */
+const REPORT_SHEET_DARK = 'rgb(34, 36, 38)'
+
+/**
+ * The only SNAKE_CASE the DoD admits anywhere in the run shell: the two log
+ * formats named on the download control, and the model ids the trace discloses.
+ * Run ids are lowercase UUIDs and cannot match the regex at all, which is why
+ * they need no entry here.
+ */
+const SNAKE_CASE_ALLOWED = new Set(['NDJSON', 'ZIP'])
+
+function rawCodesIn(text: string): string[] {
+  return (text.match(SNAKE_CASE) ?? []).filter((token) => !SNAKE_CASE_ALLOWED.has(token))
+}
+
+/* ------------------------------------------------------------------ locators */
+
+function launchButton(page: Page): Locator {
+  return page.locator('[data-testid="launch-button"]')
+}
+
+function statusBadge(page: Page): Locator {
+  return page.locator('.status-panel .status-badge')
+}
+
+function gateCard(page: Page): Locator {
+  return page.locator('.gate-card')
+}
+
+function traceRail(page: Page): Locator {
+  return page.locator('.chat-rail')
+}
+
+function traceRows(page: Page): Locator {
+  return page.locator('.chat-rail .trace-entry')
+}
+
+/**
+ * The one-sentence text of every trace row.
+ *
+ * READ THESE WITH `allTextContents()`, NEVER `allInnerTexts()`, and the
+ * distinction is not pedantry - it cost a full suite run and 24 phantom
+ * failures. `.trace-entry` carries `content-visibility: auto`, so a row the
+ * browser has skipped rendering has NO layout, and `innerText` is defined in
+ * terms of rendered text: it returns `''` for every row outside the viewport
+ * while `textContent` returns the sentence that is really there. A rail of 130
+ * rows is mostly outside the viewport by construction, so the wrong reader
+ * reports the product as broken in exact proportion to how well the product
+ * optimises.
+ *
+ * `toHaveText` is safe on the same elements: it uses `textContent` unless asked
+ * for `useInnerText`.
+ */
+function traceLines(page: Page): Locator {
+  return page.locator('.chat-rail .trace-entry .trace-line')
+}
+
+/**
+ * The status the shell is reporting.
+ *
+ * `data-status` on the chip is the contract; the visible text is the documented
+ * fallback, because the chip has carried its status as prose since before this
+ * work and a test that could only read the attribute would fail on the wording
+ * rather than on the state.
+ */
+async function statusValue(page: Page): Promise<string> {
+  const chip = statusBadge(page).first()
+  const attribute = await chip.getAttribute('data-status')
+  if (attribute) return attribute.trim().toLowerCase()
+  return (await chip.innerText()).trim().toLowerCase()
+}
+
+/* -------------------------------------------------------------- the journey */
+
+async function openStudio(page: Page): Promise<void> {
+  await page.goto('/')
+  await expect(page.locator('.vue-flow__node').first()).toBeVisible()
+}
+
+/**
+ * Launch through Review, waiting out the admission limiter rather than tripping
+ * over it.
+ *
+ * Two things are declared rather than inherited, and each one has cost this
+ * suite a red before:
+ *
+ *  - `useValidatorRun` defaults `gatesMode` to `'auto'`. Against a backend with
+ *    `VALIDATOR_ALLOW_AUTO_GATES` set, the run then completes unattended and no
+ *    gate ever opens; against one without it, `create_run` answers 403 and no
+ *    run starts. `studio.spec.ts` records both. Clicking Review states the
+ *    requirement.
+ *  - `RUN_RATE_LIMIT_MAX_RUNS` is ten runs per sixty seconds. This file adds
+ *    eight launches to a suite that already had a dozen, so a 429 is reachable
+ *    on a full run. Waiting it out is the correct behaviour — the server
+ *    computes `Retry-After` and `CORS_EXPOSE_HEADERS` puts it on the wire for
+ *    exactly this reader — and raising the limit would turn off what makes an
+ *    unauthenticated Launch button survivable at all.
+ */
+async function launchRun(page: Page, idea: string): Promise<void> {
+  const review = page.getByRole('button', { name: 'Review', exact: true })
+  if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
+  await expect(review).toHaveAttribute('aria-pressed', 'true')
+
+  /*
+   * `textarea#idea`, and the tag is load-bearing.
+   *
+   * `#idea` alone resolved to TWO elements in S4 and failed on strict mode: the
+   * idea box, and a workflow node card whose Vue Flow node id is also `idea`
+   * (`WorkflowNode.vue` sets no `inheritAttrs: false`, so the id falls through
+   * to the article). A published graph is free to name a node anything, so this
+   * is not a quirk of one fixture — qualifying by tag is the fix that holds for
+   * every graph an author might draw.
+   */
+  await page.locator('textarea#idea').fill(idea)
+  await expect(launchButton(page)).toBeEnabled()
+
+  const limited = page.locator('[role="alert"]').filter({ hasText: /too many runs/i })
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await launchButton(page).click()
+    // WAITED FOR rather than counted: counting straight after the click races
+    // the render, so the absence of the alert has to be a timeout and not a
+    // snapshot taken before Vue had a chance to paint it.
+    try {
+      await limited.waitFor({ state: 'visible', timeout: 2_000 })
+    } catch {
+      return
+    }
+    await page.waitForTimeout(6_000)
+  }
+  throw new Error('the admission limiter refused eight launches in a row')
+}
+
+async function waitForGate(page: Page, title: string): Promise<void> {
+  await expect(gateCard(page).locator('h2')).toHaveText(title, { timeout: 60_000 })
+}
+
+async function approveGate(page: Page): Promise<void> {
+  await gateCard(page).getByRole('button', { name: /^Approve/ }).click()
+}
+
+/**
+ * Wait for the run to finish, keyed on the RAW status rather than on the word.
+ *
+ * This read `/completed/i` until T1 renamed the chip's copy to "Finished", and
+ * a spec that has to be edited every time a label is reworded is guarding the
+ * copy instead of the state. `data-status` exists on the chip for exactly this
+ * reader — it carries the raw status beside the human word — and `statusValue`
+ * still falls back to the text for a build that predates it.
+ */
+async function waitForCompletion(page: Page): Promise<void> {
+  await expect
+    .poll(() => statusValue(page), {
+      timeout: 90_000,
+      message: 'the run never reached its terminal state',
+    })
+    .toMatch(/^(completed|finished)$/)
+}
+
+/** `seq N` off the stream line — the client's high-water mark of frames. */
+async function readSequence(page: Page): Promise<number> {
+  const text = await page.locator('.status-panel .stream-line').innerText()
+  return Number(/seq\s+(\d+)/.exec(text)?.[1] ?? -1)
+}
+
+/**
+ * How long a reveal may still be running before a capture is taken anyway.
+ * Twenty seconds is a safety net, not an expectation - see `dialogueSettled`.
+ */
+const REVEAL_SETTLE_TIMEOUT_MS = 20_000
+/** The text must hold still this long before the rail counts as settled. */
+const REVEAL_STABLE_MS = 500
+
+interface RevealSettlement {
+  settled: boolean
+  chars: number
+  waitedMs: number
+}
+
+/**
+ * Wait for the dialogue rail to stop growing before photographing it.
+ *
+ * An utterance is revealed at 120 characters a second, paced by
+ * `requestAnimationFrame`, so a capture taken the instant a run goes terminal
+ * catches the newest bubble mid-sentence - `evidence/T2/trace-completed.png`
+ * ended on "...and I am", under a badge reading finished. A picture that
+ * contradicts itself is worse than no picture: the cold reader is asked what
+ * the crew did, and half a sentence is not an answer.
+ *
+ * `useValidatorRun.setStatus` already calls `choreography.revealAll()` on a
+ * terminal status for exactly this reason (plan 11 D7), so in the ordinary case
+ * this returns after one or two polls. What it is really waiting out is the
+ * PAINT: `waitForCompletion` returns the moment the status chip reads finished,
+ * which is the same tick `revealAll` mutates the entries in, and the screenshot
+ * can fire before Vue has re-rendered them.
+ *
+ * ## Why a length probe and not a class
+ *
+ * There is no `.is-revealing` and no `data-revealing` in `DialogueRail.vue` -
+ * the reveal is a float on each entry (`entry.revealed`) sliced into text at
+ * render time, and nothing about it reaches the DOM as a flag. So the honest
+ * instrument is the rendered text itself: total `textContent` length across the
+ * rail, which grows monotonically while any reveal is running and is constant
+ * when none is. `textContent` rather than `innerText`, for the reason
+ * `traceLines` records at length - a row the browser has skipped rendering has
+ * no rendered text at all.
+ *
+ * Bounded, and NON-FATAL on its own: an unsettled rail still gets captured,
+ * because a slightly-early picture beats a missing one, and the fact is
+ * recorded in `long-run.md` and asserted at the end of the test where it costs
+ * no artifact.
+ */
+async function dialogueSettled(page: Page): Promise<RevealSettlement> {
+  const started = Date.now()
+  const measure = (): Promise<number> =>
+    page.evaluate(() => {
+      const rail = document.querySelector('.dialogue-rail')
+      return rail ? (rail.textContent ?? '').length : 0
+    })
+
+  let last = -1
+  let stableSince = Date.now()
+  while (Date.now() - started < REVEAL_SETTLE_TIMEOUT_MS) {
+    const chars = await measure()
+    const now = Date.now()
+    if (chars !== last) {
+      last = chars
+      stableSince = now
+    } else if (now - stableSince >= REVEAL_STABLE_MS) {
+      return { settled: true, chars, waitedMs: now - started }
+    }
+    await page.waitForTimeout(100)
+  }
+  return { settled: false, chars: last, waitedMs: Date.now() - started }
+}
+
+/** Launch, approve both durable gates, and come back when the run is finished. */
+async function runToCompletion(page: Page, idea: string): Promise<void> {
+  await launchRun(page, idea)
+  await waitForGate(page, 'Confirm scope')
+  await approveGate(page)
+  await waitForGate(page, 'Review verdict')
+  await approveGate(page)
+  await waitForCompletion(page)
+}
+
+/**
+ * S3's long run: the same journey with three revise turns folded into it.
+ *
+ * A straight-through synthetic run is **96–97 frames**, and S3 asks for a run of
+ * at least 119 events. The frames are not invented to reach that number: a
+ * revise is a first-class reply the console offers on both gates, and the
+ * synthetic double models it properly (`route_scope -> revise_scope ->
+ * confirm_scope`, bounded at `SYNTHETIC_MAX_REVISE_TURNS = 3` per gate). Each
+ * turn re-runs the node and re-opens the gate, so the run genuinely is longer
+ * rather than padded.
+ *
+ * Two at the scope gate and one at the verdict gate, both inside the double's
+ * own cap. Fixed rather than adaptive: a loop that revised "until the count is
+ * high enough" would make the artifact a different length on every machine, and
+ * the frame badge is one of the numbers the definition of done asks to be
+ * recorded.
+ */
+async function runLongToCompletion(page: Page, idea: string): Promise<void> {
+  await launchRun(page, idea)
+  await waitForGate(page, 'Confirm scope')
+  await reviseGate(page, 'Confirm scope', 'Narrow the target user to single-site teams first.')
+  await reviseGate(page, 'Confirm scope', 'And say which sources would settle the demand question.')
+  await approveGate(page)
+  await waitForGate(page, 'Review verdict')
+  await reviseGate(page, 'Review verdict', 'Re-score demand against the revised scope.')
+  await approveGate(page)
+  await waitForCompletion(page)
+}
+
+/* ------------------------------------------------------- reading the cast */
+
+interface NodeCast {
+  seed: string
+  state: string
+  label: string
+}
+
+/** Every graph node that mounts a character, by Vue Flow node id. */
+async function graphCast(page: Page): Promise<Record<string, NodeCast>> {
+  return page.evaluate(() => {
+    const out: Record<string, { seed: string; state: string; label: string }> = {}
+    for (const host of Array.from(document.querySelectorAll('.vue-flow__node[data-id]'))) {
+      const id = host.getAttribute('data-id')
+      const pip = host.querySelector('.workflow-node .pip')
+      if (!id || !pip) continue
+      out[id] = {
+        seed: pip.getAttribute('data-character') ?? '',
+        state: pip.getAttribute('data-state') ?? '',
+        label: host.querySelector('.workflow-node')?.getAttribute('aria-label') ?? '',
+      }
+    }
+    return out
+  })
+}
+
+/**
+ * Any node of a characterless kind that mounted a character anyway.
+ *
+ * Returns `"<node id> (<kind>)"` per offender, so the failure names the card
+ * rather than reporting a count nobody can act on.
+ */
+async function characterlessOffenders(page: Page): Promise<string[]> {
+  return page.evaluate((kinds: readonly string[]) => {
+    const out: string[] = []
+    for (const host of Array.from(document.querySelectorAll('.vue-flow__node[data-id]'))) {
+      const card = host.querySelector('.workflow-node')
+      if (!card) continue
+      const kind = kinds.find((candidate) => card.classList.contains(`is-${candidate}`))
+      if (kind && card.querySelector('.pip')) {
+        out.push(`${host.getAttribute('data-id')} (${kind})`)
+      }
+    }
+    return out
+  }, CHARACTERLESS_KINDS)
+}
+
+interface TraceCastRow {
+  node: string
+  identity: string
+  seed: string
+  state: string
+}
+
+/** Every trace row that carries a character, oldest first. */
+async function traceCast(page: Page): Promise<TraceCastRow[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.chat-rail .trace-entry[data-node]'))
+      .map((row) => {
+        const pip = row.querySelector('.trace-avatar .pip')
+        return {
+          node: row.getAttribute('data-node') ?? '',
+          identity: row.getAttribute('data-identity') ?? '',
+          seed: pip?.getAttribute('data-character') ?? '',
+          state: pip?.getAttribute('data-state') ?? '',
+          hasPip: pip !== null,
+        }
+      })
+      .filter((row) => row.hasPip && row.node.length > 0)
+      .map(({ node, identity, seed, state }) => ({ node, identity, seed, state })),
+  )
+}
+
+interface LiveAnimation {
+  pip: string
+  name: string
+  inView: boolean
+  rect: { x: number; y: number; width: number; height: number }
+  playState: string
+}
+
+/**
+ * The animations the engine has actually STARTED inside a character, and where
+ * their character sits relative to the viewport.
+ *
+ * `document.getAnimations()` rather than `getComputedStyle(el).animationName`,
+ * for the reason `e2e/visual/run-canvas.spec.ts` sets out: the computed style
+ * echoes back whatever the declaration said, whether or not a `@keyframes` of
+ * that name resolved. Only `getAnimations()` distinguishes "the rule is still
+ * there" from "the rule still works".
+ *
+ * The in-view test is applied to the enclosing `.pip`, not to the animated part.
+ * A part can be an SVG `<g>` or a pseudo-element whose own box is degenerate,
+ * and T2.7's subject is the CHARACTER being offscreen — one rectangle per
+ * character is both the honest unit and the one that cannot produce a phantom
+ * red on a zero-area group.
+ */
+async function liveAnimations(page: Page): Promise<LiveAnimation[]> {
+  return page.evaluate(() => {
+    const width = window.innerWidth
+    const height = window.innerHeight
+    const out: LiveAnimation[] = []
+    for (const animation of document.getAnimations()) {
+      const effect = animation.effect as KeyframeEffect | null
+      const target = effect?.target ?? null
+      if (!target) continue
+      const pip = target.closest('.pip')
+      if (!pip) continue
+      if (animation.playState !== 'running') continue
+      const box = pip.getBoundingClientRect()
+      out.push({
+        pip: pip.getAttribute('data-character') ?? '',
+        name: (animation as CSSAnimation).animationName ?? '',
+        playState: animation.playState,
+        rect: { x: box.x, y: box.y, width: box.width, height: box.height },
+        inView:
+          box.width > 0 &&
+          box.height > 0 &&
+          box.right > 0 &&
+          box.bottom > 0 &&
+          box.left < width &&
+          box.top < height,
+      })
+    }
+    return out
+  })
+}
+
+/* ========================================================================== */
+/* S1 — the shell before anything has run                                     */
+/* ========================================================================== */
+
+test.describe('the cast at rest', () => {
+  test('S1: every character is idle before a run, and the shell is not blank', async ({ page }) => {
+    const watch = watchConsole(page)
+    await openStudio(page)
+    await expect(page.locator('.workflow-node').first()).toBeVisible()
+
+    await shot(page, 'S', 'empty.png')
+
+    const cast = await graphCast(page)
+    const ids = Object.keys(cast)
+    expect(
+      ids.length,
+      'no node on the canvas mounts a `.pip`; the cast is not wired into WorkflowNode',
+    ).toBeGreaterThan(0)
+
+    for (const [id, node] of Object.entries(cast)) {
+      expect(node.state, `${id} is not idle before a run`).toBe('idle')
+      expect(node.seed, `${id} has no data-character seed`).not.toBe('')
+    }
+
+    // Plumbing stays plumbing, at rest as much as mid-run.
+    expect(
+      await characterlessOffenders(page),
+      'a gate, router, output or quarantine node mounted a character; only agents are cast',
+    ).toEqual([])
+
+    // The trace explains what will happen rather than showing an empty box.
+    await expect(traceRail(page)).toBeVisible()
+
+    expect(watch.unexpected).toEqual([])
+  })
+})
+
+/* ========================================================================== */
+/* S2 + the five states                                                       */
+/* ========================================================================== */
+
+test.describe('the states a character passes through', () => {
+  test(
+    'S2: a working character and an interpreted line inside two seconds, then blocked, then done',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+      await openStudio(page)
+
+      await launchRun(page, 'A claim auditor for newsroom drafts')
+
+      /*
+       * S2's two seconds are measured from the click, and both halves are
+       * asserted before the capture so a slow first paint fails HERE rather
+       * than leaving a capture that looks fine and a criterion nobody checked.
+       *
+       * "A LIVE CHARACTER", not "a working one", and the difference was measured
+       * rather than argued. This asserted `working` first and failed in two
+       * independent full runs with the branch delay set — because on the
+       * validator the scope node completes in milliseconds and the run parks at
+       * the scope gate, so nothing is `is-running` at ALL until a human answers.
+       * A verifier waited 90 s after Launch and never saw one, then saw one
+       * immediately after Approve. `SYNTHETIC_BRANCH_DELAY_SECONDS` delays the
+       * three research BRANCHES, which are downstream of a gate this criterion's
+       * two seconds never reach.
+       *
+       * So the premise was wrong, not the product. S2 asks whether the console
+       * says something is happening within two seconds of a click, and every
+       * pose except `idle` says that: `working` and `speaking` are the crew at
+       * it, `blocked` is the gate asking, `done` is a node already finished.
+       * `idle` is the only one that means "nothing has started", which is the
+       * state this is here to rule out.
+       */
+      const deadline = Date.now() + 2_000
+      await expect
+        .poll(
+          async () => (await startedCharacters(page)).length,
+          {
+            timeout: 2_000,
+            message:
+              'no character left `idle` within 2s of Launch (S2): two seconds after the click ' +
+              'the canvas still says nothing has started.',
+          },
+        )
+        .toBeGreaterThan(0)
+      await expect(traceRows(page).first()).toBeVisible({
+        timeout: Math.max(250, deadline - Date.now()),
+      })
+      await expect(traceLines(page).first()).toBeVisible()
+      await shot(page, 'S', 'first-run.png')
+
+      /*
+       * ---- blocked: the gate is a person, so its FEEDER wears the wait ----
+       *
+       * The gate node itself is characterless by ruling (see the docblock), so
+       * the assertion is in two halves and the second is the one that carries
+       * the criterion. `confirm_scope` mounts nothing; `scope_idea` — the `from`
+       * of the last edge into that gate, and the agent whose work is actually
+       * stopped — wears `blocked`.
+       *
+       * The ids come from `src/data/mockGraph.ts`, which is asserted node for
+       * node against the live descriptor by `frontend/tests/mockGraph.spec.ts`,
+       * so they are the server's ids and not this file's guess at them.
+       */
+      await waitForGate(page, 'Confirm scope')
+      await expect(
+        page.locator('.vue-flow__node[data-id="confirm_scope"] .workflow-node .pip'),
+        'the gate node mounted a character; a human being asked for something is not a cast member',
+      ).toHaveCount(0)
+
+      const feeder = page.locator('.vue-flow__node[data-id="scope_idea"] .workflow-node .pip')
+      await expect(
+        feeder,
+        'the agent feeding the paused gate does not mount exactly one character',
+      ).toHaveCount(1)
+      await expect(
+        feeder,
+        'the agent feeding the paused gate is not `blocked` while a human is being asked',
+      ).toHaveAttribute('data-state', 'blocked')
+
+      expect(
+        await characterlessOffenders(page),
+        'a gate, router, output or quarantine node mounted a character mid-run',
+      ).toEqual([])
+
+      await approveGate(page)
+      await waitForGate(page, 'Review verdict')
+      await approveGate(page)
+      await waitForCompletion(page)
+
+      // ---- done: every agent that ran ends in the terminal pose ------------
+      const cast = await graphCast(page)
+      for (const label of [
+        'Scoper',
+        'Market Analyst',
+        'Sentiment Analyst',
+        'Feasibility Analyst',
+        'Synthesist',
+        'Reporter',
+      ]) {
+        const entry = Object.entries(cast).find(([, node]) => node.label.startsWith(`${label},`))
+        expect(entry, `no node card carries the ${label} character after completion`).toBeTruthy()
+        expect(entry![1].state, `${label} did not reach \`done\``).toBe('done')
+      }
+
+      // No character may be left mid-animation on a finished run.
+      const stillLive = Object.entries(cast).filter(([, node]) =>
+        LIVE_STATES.includes(node.state as PipState),
+      )
+      expect(
+        stillLive.map(([id]) => id),
+        'characters are still working or speaking after the run completed',
+      ).toEqual([])
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})
+
+/**
+ * The node ids whose character has left `idle` — the run has visibly begun.
+ *
+ * Broader than `liveCharacters` on purpose; S2's comment says why.
+ */
+async function startedCharacters(page: Page): Promise<string[]> {
+  const cast = await graphCast(page)
+  return Object.entries(cast)
+    .filter(([, node]) => node.state !== '' && node.state !== 'idle')
+    .map(([id]) => id)
+}
+
+/** The node ids whose character is currently working or speaking. */
+async function liveCharacters(page: Page): Promise<string[]> {
+  const cast = await graphCast(page)
+  return Object.entries(cast)
+    .filter(([, node]) => LIVE_STATES.includes(node.state as PipState))
+    .map(([id]) => id)
+}
+
+/* ========================================================================== */
+/* T2.6 — one cast, two views                                                 */
+/* ========================================================================== */
+
+test.describe('the graph and the trace show the same cast', () => {
+  test(
+    'T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+      await openStudio(page)
+
+      await launchRun(page, 'A rota assistant for community pharmacies')
+      await waitForGate(page, 'Confirm scope')
+      await approveGate(page)
+
+      /*
+       * The fan-out is the moment worth photographing: three branches, one of
+       * them in flight for five seconds. Waiting on "some node is live AND that
+       * node already has a trace row" is what makes the comparison below
+       * possible at all — a node that started a millisecond ago has a character
+       * and no row yet, and asserting into that window would be a flake rather
+       * than a gate.
+       */
+      await expect
+        .poll(
+          async () => {
+            const live = await liveCharacters(page)
+            if (live.length === 0) return 0
+            const rows = await traceCast(page)
+            return live.filter((id) => rows.some((row) => row.node === id)).length
+          },
+          {
+            timeout: 60_000,
+            message:
+              'no node was live in both views at once. If the branches finish instantly, ' +
+              'start the backend with SYNTHETIC_BRANCH_DELAY_SECONDS=5 — see this file docblock.',
+          },
+        )
+        .toBeGreaterThan(0)
+
+      const cast = await graphCast(page)
+      const rows = await traceCast(page)
+      await shot(page, 'T2', 'tie-in.png')
+
+      const sharedNodes = Object.keys(cast).filter((id) => rows.some((row) => row.node === id))
+      expect(
+        sharedNodes.length,
+        'no node id appears in both the graph and the trace; the tie-in cannot be checked',
+      ).toBeGreaterThan(0)
+
+      for (const id of sharedNodes) {
+        const node = cast[id]
+        const mine = rows.filter((row) => row.node === id)
+
+        // ONE seed per node, across every row it ever produced. A seed that
+        // drifts row to row is the failure this criterion exists to catch:
+        // two pictures of one agent is worse than none.
+        for (const row of mine) {
+          expect(
+            row.seed,
+            `trace row for ${id} (identity "${row.identity}") carries a different character ` +
+              `seed than the node card: ${row.seed} vs ${node.seed}`,
+          ).toBe(node.seed)
+        }
+
+        if (!LIVE_STATES.includes(node.state as PipState)) continue
+
+        /*
+         * The state comparison uses the node's LATEST row.
+         *
+         * Earlier rows are history — the frame that produced them is minutes
+         * old by the end of a run — so requiring every row to carry the live
+         * state would be asserting that the trace is not a log. T2.6's words
+         * are "the same state at the same moment", and the row at the bottom of
+         * the rail is the one on screen at this moment.
+         */
+        const latest = mine[mine.length - 1]
+        expect(
+          latest.state,
+          `${id} is "${node.state}" on the canvas but "${latest.state}" in the trace`,
+        ).toBe(node.state)
+        expect(LIVE_STATES).toContain(latest.state as PipState)
+      }
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})
+
+/* ========================================================================== */
+/* G3 — determinism across a reload                                           */
+/* ========================================================================== */
+
+test.describe('the character on a node is deterministic', () => {
+  test(
+    'G3: the same node keeps the same character across a page reload',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+      await openStudio(page)
+
+      await launchRun(page, 'A dosage-check assistant for community pharmacists')
+      // After the first frames, so the run is real and the reload has something
+      // to recover — a map read off an idle canvas would prove only that a
+      // constant is constant.
+      await expect(traceRows(page).first()).toBeVisible({ timeout: 60_000 })
+      await waitForGate(page, 'Confirm scope')
+
+      const before = await graphCast(page)
+      const beforeSeeds = Object.fromEntries(
+        Object.entries(before).map(([id, node]) => [id, node.seed]),
+      )
+      expect(Object.keys(beforeSeeds).length).toBeGreaterThan(0)
+
+      await page.reload()
+      await expect(page.locator('.vue-flow__node').first()).toBeVisible()
+      // Recovery, exactly as `studio.spec.ts` asserts it: same run, same gate.
+      await waitForGate(page, 'Confirm scope')
+
+      const after = await graphCast(page)
+      const afterSeeds = Object.fromEntries(
+        Object.entries(after).map(([id, node]) => [id, node.seed]),
+      )
+
+      writeEvidence(
+        `${JSON.stringify(
+          {
+            note:
+              'G3, e2e/cast.spec.ts. Node id to character seed, read off the live canvas ' +
+              'before and after a page reload of a run paused at the scope gate.',
+            capturedAt: new Date().toISOString(),
+            before: beforeSeeds,
+            after: afterSeeds,
+            identical: JSON.stringify(beforeSeeds) === JSON.stringify(afterSeeds),
+          },
+          null,
+          2,
+        )}\n`,
+        'G3',
+        'reload-map.json',
+      )
+
+      expect(
+        afterSeeds,
+        'the cast was re-rolled by a reload; the character is not a function of identity alone',
+      ).toEqual(beforeSeeds)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})
+
+/* ========================================================================== */
+/* T2.7 — motion bounds                                                       */
+/* ========================================================================== */
+
+test.describe('motion stays quiet', () => {
+  test(
+    'T2.7: nothing animates offscreen and no more than twelve character animations run at once',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+      await openStudio(page)
+
+      await launchRun(page, 'A triage inbox for single-vet practices')
+      await waitForGate(page, 'Confirm scope')
+      await approveGate(page)
+
+      await expect
+        .poll(async () => (await liveCharacters(page)).length, {
+          timeout: 60_000,
+          message:
+            'no character was live during the fan-out. Start the backend with ' +
+            'SYNTHETIC_BRANCH_DELAY_SECONDS=5 — see this file docblock.',
+        })
+        .toBeGreaterThan(0)
+
+      const running = await liveAnimations(page)
+
+      const offscreen = running.filter((animation) => !animation.inView)
+      expect(
+        offscreen.map((a) => `${a.pip}:${a.name} at ${JSON.stringify(a.rect)}`),
+        'character animations are running on characters outside the viewport',
+      ).toEqual([])
+
+      expect(
+        running.length,
+        `${running.length} character animations are running at once; plan 11 bounds it at ` +
+          `${MAX_LIVE_ANIMATIONS}. Running: ${running.map((a) => `${a.pip}:${a.name}`).join(', ')}`,
+      ).toBeLessThanOrEqual(MAX_LIVE_ANIMATIONS)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+
+  test(
+    'T2.7/S5: reduced motion stops every part and keeps every state',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(240_000)
+      const watch = watchConsole(page)
+
+      /*
+       * BEFORE navigation, deliberately.
+       *
+       * A media change applied to a live page re-resolves the cascade but does
+       * not re-run whatever a component decided at mount, so emulating after
+       * `goto` measures a state production never reaches: a reader with the OS
+       * preference set has it set on the first paint. This is also the only
+       * ordering under which "the static pose still conveys state" is a claim
+       * about what that reader sees rather than about a transition.
+       */
+      await page.emulateMedia({ reducedMotion: 'reduce' })
+      await openStudio(page)
+
+      await launchRun(page, 'A locum rota planner for independent pharmacies')
+      await waitForGate(page, 'Confirm scope')
+      await approveGate(page)
+
+      await expect
+        .poll(async () => (await liveCharacters(page)).length, {
+          timeout: 60_000,
+          message:
+            'no character was live under reduced motion. Start the backend with ' +
+            'SYNTHETIC_BRANCH_DELAY_SECONDS=5 — see this file docblock.',
+        })
+        .toBeGreaterThan(0)
+
+      await shot(page, 'T2', 'reduced-motion.png')
+
+      const audit = await page.evaluate(() => {
+        const problems: string[] = []
+        const states: string[] = []
+        const pips = Array.from(document.querySelectorAll('.pip'))
+        for (const pip of pips) {
+          const seed = pip.getAttribute('data-character') ?? '(no seed)'
+          const state = pip.getAttribute('data-state') ?? ''
+          if (!state) problems.push(`${seed} carries no data-state under reduced motion`)
+          else states.push(state)
+          for (const el of [pip, ...Array.from(pip.querySelectorAll('*'))]) {
+            const name = window.getComputedStyle(el).animationName
+            if (name && name !== 'none') {
+              problems.push(`${seed} > ${el.nodeName.toLowerCase()} still declares ${name}`)
+            }
+          }
+        }
+        return { problems, states, pips: pips.length }
+      })
+
+      expect(audit.pips, 'no characters were on screen to audit').toBeGreaterThan(0)
+      expect(
+        audit.problems,
+        'reduced motion did not silence every character part, or a state was dropped with it',
+      ).toEqual([])
+      // The pose still says something: at least one character is not idle.
+      expect(
+        audit.states.some((state) => state !== 'idle'),
+        'every character read `idle` under reduced motion, so the pose conveys no state',
+      ).toBe(true)
+
+      // And the engine agrees with the computed style — the run-canvas lesson:
+      // a declaration and a resolved animation are different measurements.
+      expect(
+        (await liveAnimations(page)).map((a) => `${a.pip}:${a.name}`),
+        'the engine is still running character animations under reduced motion',
+      ).toEqual([])
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})
+
+/* ========================================================================== */
+/* T2.1 (browser half), S3, T1 and the T3 after-captures                      */
+/* ========================================================================== */
+
+test.describe('the completed run', () => {
+  test(
+    'T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(300_000)
+      const watch = watchConsole(page)
+      await openStudio(page)
+
+      await runLongToCompletion(page, 'A claim auditor that checks numbers in newsroom drafts')
+
+      /*
+       * CAPTURES FIRST, ASSERTIONS SECOND, and the order is load-bearing.
+       *
+       * Six of the definition of done's named artifacts are produced by this one
+       * run. A hygiene assertion that fires before the captures leaves the cold
+       * reader with nothing to read and the verdict table with six blank rows —
+       * so everything that only needs the run to have finished is written to
+       * disk before anything that can fail is evaluated.
+       */
+      /*
+       * Let the reveal finish BEFORE the first shutter. Every completed-run
+       * capture below - the trace rail, the long-run page and the three T3
+       * after-* widths - is taken from this one settled state, so one wait
+       * covers all of them.
+       */
+      const reveal = await dialogueSettled(page)
+
+      /*
+       * THE SHEET, AND WHAT IS ON TOP OF IT — asserted before a single capture,
+       * so the pictures below are never the only thing standing between a
+       * regression and a PASS.
+       *
+       * The report panel is the surface the run's conclusion is read off, and it
+       * is drawn OVER the canvas. Two things can go wrong there and neither
+       * shows up in any other test: the sheet can become transparent enough for
+       * the graph to read through it, and a sibling can end up painted on top of
+       * it. Both are one CSS line, both look fine in jsdom, and both make the
+       * report unreadable in exactly the capture a cold reader is handed.
+       */
+      const reportPanel = page.locator('.report-panel')
+      await expect(reportPanel, 'the completed run did not open its report').toBeVisible()
+
+      expect(
+        await reportPanel.evaluate((el) => window.getComputedStyle(el).backgroundColor),
+        'the report sheet is not `--surface-strong` in the dark theme, so the canvas behind it ' +
+          'shows through the surface the verdict is read off',
+      ).toBe(REPORT_SHEET_DARK)
+
+      const painted = await hitTest(page, '.report-panel', [
+        { name: 'the verdict chip', selector: '.report-panel .verdict-badge' },
+        { name: 'a score row', selector: '.report-panel .verdict-scores .score-row' },
+        { name: "the report body's first heading", selector: '.report-panel .report-body :is(h1,h2,h3,h4)' },
+      ])
+
+      /*
+       * The first two are structural — they sit at the top of the panel and are
+       * on screen at every width this test uses — so they are required to have
+       * been testable. The body's first heading legitimately may not be: the
+       * body is long and scrolls, and a heading below the fold is a fact about
+       * the report's length rather than a defect. It is asserted when it is
+       * visible and reported when it is not.
+       */
+      for (const name of ['the verdict chip', 'a score row']) {
+        const probe = painted.find((entry) => entry.name === name)
+        expect(probe?.found, `${name} is not rendered in the report panel`).toBe(true)
+        expect(probe?.visible, `${name} has no visible area to hit-test`).toBe(true)
+      }
+      const covered = painted
+        .filter((entry) => entry.visible && !entry.insideOwner)
+        .map(
+          (entry) =>
+            `${entry.name} at (${entry.point?.x}, ${entry.point?.y}) is covered by ${entry.hit}` +
+            (entry.forbidden ? ` — inside ${entry.forbidden}` : ''),
+        )
+      expect(
+        covered,
+        'something is painted on top of the report panel; the canvas, the crew strip and the ' +
+          'node cards must all sit under it',
+      ).toEqual([])
+
+      await shot(page, 'T3', 'after-1440.png')
+
+      // S3: the newest line is the one on screen.
+      await traceRail(page).locator('.rail-list').evaluate((el) => {
+        el.scrollTop = el.scrollHeight
+      })
+      await page.waitForTimeout(250)
+      await shotOf(traceRail(page), page, 'T2', 'trace-completed.png')
+      await shot(page, 'S', 'long-run.png')
+
+      /*
+       * T1: the report header on the ORDINARY run — the plain case.
+       *
+       * `report-header-PLAIN.png`, not `report-header.png`, and the rename is
+       * the point rather than tidying. The synthetic double always returns five
+       * 3s at 0.62 confidence with no floor (`service/runner.py`), so this run
+       * can never show the "WHAT DECIDED THIS RUN" block — there is nothing
+       * overriding the arithmetic for it to show. T1.1 is about exactly that
+       * block, so its capture is taken by the override test below and this one
+       * becomes the control: the same header without an override, so a reader
+       * can see what the block adds.
+       */
+      const headerText = await captureReportHeader(page, 'T1', 'report-header-plain.png')
+
+      // T3: the other two widths and the light theme, on the same finished run
+      // so the pixels stay comparable — the before set was captured the same way.
+      await page.setViewportSize({ width: 1180, height: 800 })
+      await page.waitForTimeout(400)
+      await shot(page, 'T3', 'after-1180.png')
+
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await page.waitForTimeout(400)
+      /*
+       * `data-theme`, not `emulateMedia`.
+       *
+       * The run shell never calls `useStudioTheme` — only `BuilderView` does —
+       * and `tokens.css` carries the light palette under `:root[data-theme='light']`
+       * with no `prefers-color-scheme` block for this view. So flipping the media
+       * query alone produces DARK PIXELS UNDER A LIGHT FILENAME, which is exactly
+       * what `e2e/capture-run.spec.ts` still does and what the before-capture
+       * record calls out. Both are set here: the attribute is what paints, and
+       * the media query keeps anything that does read it consistent.
+       */
+      await page.emulateMedia({ colorScheme: 'light' })
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'))
+      await page.waitForTimeout(400)
+      await shot(page, 'T3', 'after-1440-light.png')
+      await page.evaluate(() => document.documentElement.removeAttribute('data-theme'))
+      await page.emulateMedia({ colorScheme: 'dark' })
+      await page.waitForTimeout(300)
+
+      /* ---- now the criteria ------------------------------------------- */
+
+      /*
+       * The row count is TWO numbers, because the rail folds.
+       *
+       * Beyond a 200-row window `ChatRail` hides the older rows behind one
+       * "N earlier lines" button, so `.trace-entry` counts what is mounted and
+       * not what the run produced. Reading only the mounted count would report
+       * a long run as a short one — and it is the fold itself that S3 is partly
+       * about ("older rows fold"), so the button is read rather than defeated.
+       */
+      const visibleRows = await traceRows(page).count()
+      const earlier = page.locator('[data-testid="trace-earlier"]')
+      const foldedRows = (await earlier.count())
+        ? Number(/^(\d+)/.exec(((await earlier.textContent()) ?? '').trim())?.[1] ?? 0)
+        : 0
+      const rowCount = visibleRows + foldedRows
+      expect(rowCount, 'a completed run produced no trace rows at all').toBeGreaterThanOrEqual(1)
+
+      const frames = await readSequence(page)
+      const frameBadge = (await page.locator('.status-panel .stream-line').innerText()).trim()
+      const railBadge = (await page.locator('.chat-rail .entry-count').innerText()).trim()
+
+      /*
+       * The rest of the hygiene sweep needs every row in the DOM, so the fold is
+       * opened AFTER the captures — the pictures are of the folded rail, which is
+       * the state S3 describes, and the audit is over all of it.
+       */
+      if (foldedRows > 0) {
+        await earlier.click()
+        await expect(earlier).toHaveCount(0)
+      }
+
+      const auditedRows = await traceRows(page).count()
+      const lineCount = await traceLines(page).count()
+      expect(
+        lineCount,
+        'trace rows carry no `.trace-line`; the one-sentence text has no stable hook (T2.1)',
+      ).toBe(auditedRows)
+
+      const lines = await traceLines(page).allTextContents()
+
+      // The S3 companion is written HERE, before the hygiene verdict, for the
+      // same reason the captures came first: a red on line 3 must not cost the
+      // cold reader the row count that explains the picture beside it.
+      const longest = lines.length ? Math.max(...lines.map((l) => l.trim().length)) : 0
+      writeEvidence(
+        [
+          '# S3 — the long run, as the console finished it',
+          '',
+          'Written by `e2e/cast.spec.ts` (RV). Companion to `evidence/S/long-run.png`,',
+          'captured on the same completed run with the trace rail scrolled to the bottom.',
+          '',
+          'The run is the ordinary operator journey with **three revise turns** folded in — two',
+          'at the scope gate, one at the verdict gate, all inside the synthetic double\'s own',
+          '`SYNTHETIC_MAX_REVISE_TURNS = 3` per-gate cap. A straight-through synthetic run is',
+          '96–97 frames, and S3 asks for 119; a revise is a reply the console really offers and',
+          'the double really models, so the run is longer rather than the number relaxed.',
+          '',
+          `- captured at: ${new Date().toISOString()}`,
+          `- frames the run emitted (\`seq\`): **${frames}** (S3 floor: ${S3_MIN_FRAMES})`,
+          `- stream line: \`${frameBadge.replace(/\s+/g, ' ')}\``,
+          `- trace rows: **${rowCount}** = ${visibleRows} mounted + ${foldedRows} folded behind`,
+          '  the "earlier lines" button',
+          `- trace rail badge: **${railBadge}**`,
+          `- rows audited after expanding the fold: **${auditedRows}**`,
+          `- longest line: **${longest}** chars (budget ${MAX_TRACE_LINE_CHARS})`,
+          `- dialogue reveal settled: **${reveal.settled ? 'yes' : 'NO'}** after ` +
+            `${reveal.waitedMs}ms at ${reveal.chars} rendered characters` +
+            (reveal.settled
+              ? ''
+              : ` — the captures were taken with a reveal still running, so the newest bubble ` +
+                'may end mid-sentence'),
+          '- disclosures open by default: **0** (asserted below)',
+          '',
+          "The stream line carries the run's frame high-water mark (`seq N`) and the dropped",
+          'count; the rail badge counts the rows the interpretation layer chose to render, which',
+          'is deliberately smaller — frames that cannot be summarised get no row (T2.1).',
+          '',
+        ].join('\n'),
+        'S',
+        'long-run.md',
+      )
+
+      expect(
+        frames,
+        `the run emitted ${frames} frames, below S3's ${S3_MIN_FRAMES}. Three revise turns ` +
+          'should carry a 96–97 frame synthetic run past it; if the double changed, add a turn ' +
+          'in `runLongToCompletion` (the cap is 3 per gate) rather than lowering this floor.',
+      ).toBeGreaterThanOrEqual(S3_MIN_FRAMES)
+
+      /*
+       * When a line comes back empty, SAY WHY IT LOOKED EMPTY.
+       *
+       * This was written after 24 rows read as empty and it has already paid for
+       * itself once: the answer was `content-visibility: auto` on `.trace-entry`
+       * emptying `innerText` for every off-screen row, a measuring fault and not
+       * a product one. The read above is `allTextContents()` now, so that
+       * particular cause is gone - and the diagnostic stays, because
+       * "row 7: empty line" still cannot distinguish the three things it can
+       * mean: the interpretation layer produced no sentence, the sentence moved
+       * to another element, or the element holds it and is not rendering it.
+       * Only the first is a T2.1 defect.
+       *
+       * `innerText` is reported BESIDE `textContent` deliberately: a row where
+       * the two disagree is a rendering fact, and that disagreement is exactly
+       * the tell that named the last cause. Three offenders, because a message
+       * naming twenty-four is a message nobody reads.
+       */
+      const emptyLineSamples = lines.some((raw) => raw.trim().length === 0)
+        ? await page.evaluate(() =>
+            Array.from(document.querySelectorAll('.chat-rail .trace-entry'))
+              .map((row) => {
+                const line = row.querySelector('.trace-line') as HTMLElement | null
+                return { row, line }
+              })
+              .filter(({ line }) => (line?.textContent ?? '').trim().length === 0)
+              .slice(0, 3)
+              .map(({ row, line }) => {
+                const style = line ? window.getComputedStyle(line) : null
+                return {
+                  node: row.getAttribute('data-node') ?? '(none)',
+                  hasLineElement: line !== null,
+                  innerText: (line?.innerText ?? '').trim().slice(0, 120),
+                  textContent: (line?.textContent ?? '').trim().slice(0, 120),
+                  display: style?.display ?? '',
+                  rowContentVisibility:
+                    window.getComputedStyle(row).getPropertyValue('content-visibility'),
+                  visibility: style?.visibility ?? '',
+                  fontSize: style?.fontSize ?? '',
+                  height: line ? Math.round(line.getBoundingClientRect().height) : -1,
+                  html: row.outerHTML.replace(/\s+/g, ' ').slice(0, 300),
+                }
+              }),
+          )
+        : []
+
+      const problems: string[] = []
+      lines.forEach((raw, index) => {
+        const line = raw.trim()
+        if (line.length === 0) problems.push(`row ${index}: empty line`)
+        if (line.length > MAX_TRACE_LINE_CHARS) {
+          problems.push(`row ${index}: ${line.length} chars > ${MAX_TRACE_LINE_CHARS} — "${line}"`)
+        }
+        if (line.includes('\\n')) problems.push(`row ${index}: literal \\n — "${line}"`)
+        if (line.includes('{"')) problems.push(`row ${index}: raw JSON — "${line}"`)
+        if (/\d+\s*in\s*·\s*\d+\s*out/.test(line)) {
+          problems.push(`row ${index}: token counts in the line — "${line}"`)
+        }
+        const codes = rawCodesIn(line)
+        if (codes.length) problems.push(`row ${index}: raw code ${codes.join(', ')} — "${line}"`)
+      })
+      const diagnostics = emptyLineSamples.length
+        ? [
+            '',
+            'Empty `.trace-line` diagnostics, up to three offenders:',
+            JSON.stringify(emptyLineSamples, null, 2),
+          ].join('\n')
+        : ''
+      expect(
+        problems,
+        `the trace is not one short human sentence per row (T2.1)${diagnostics}`,
+      ).toEqual([])
+
+      // Every disclosure closed by default — the whole point of putting the
+      // payload behind one is that nobody has to scroll past it.
+      await expect(
+        page.locator('.chat-rail .trace-entry details[open]'),
+        'a per-row disclosure is open by default (T2.1)',
+      ).toHaveCount(0)
+      await expect(
+        page.locator('.chat-rail .trace-entry details'),
+        'no row carries a disclosure; the payload has nowhere to sit (T2.1)',
+      ).not.toHaveCount(0)
+
+      // T1.3, in the browser rather than over a fixture: no raw internal code
+      // reaches the header a cold reader is asked to read. The text is the one the
+      // capture returned, so this asserts about the picture on disk rather than
+      // about a second query that might not have matched the same pixels.
+      expect(headerText.trim().length, 'the report header rendered no text').toBeGreaterThan(0)
+      expect(
+        rawCodesIn(headerText),
+        'raw SNAKE_CASE reached the report header (T1.3)',
+      ).toEqual([])
+
+      expect(
+        reveal.settled,
+        `the dialogue rail was still revealing after ${REVEAL_SETTLE_TIMEOUT_MS}ms, so the ` +
+          'captures above show a bubble mid-sentence under a finished badge. `setStatus` calls ' +
+          '`choreography.revealAll()` on a terminal status, so this failing means either that ' +
+          'call went away or something is still appending to the rail after the run ended.',
+      ).toBe(true)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})
+
+/* ========================================================================== */
+/* T1.1 — the override block, which no live synthetic run can produce         */
+/* ========================================================================== */
+
+/**
+ * The verdict shapes that override the arithmetic, read off the committed
+ * real-serializer fixture.
+ *
+ * `frontend/tests/fixtures/backendVerdictFrames.json` is a `verdict` frame as
+ * `events/serializer.py` really wrote it, which is what makes this a capture of
+ * the product rather than of a hand-typed object. Two shapes are interesting,
+ * and the fixture is asked which of them it holds rather than told:
+ *
+ *  - a FATAL FLOOR (`fatal_floors` non-empty) — the headline is composed from
+ *    the dimension and its score, "Demand scored 0 of 5.";
+ *  - INSUFFICIENT EVIDENCE (`decision_reason: "INSUFFICIENT_EVIDENCE"`) — low
+ *    confidence pre-empted every floor, and the headline is the stored sentence
+ *    "Too little evidence to judge."
+ *
+ * Measured 2026-09-05: the fixture holds the FLOOR shape (`FLOOR_NO_DEMAND`,
+ * REJECT at 4.2, demand 0) and one clean NEEDS_WORK with no override at all.
+ * There is no INSUFFICIENT_EVIDENCE entry, so one capture is taken today — and
+ * the discovery is written as a filter rather than as a constant precisely so
+ * that adding such an entry to the fixture produces the second capture with no
+ * edit here.
+ */
+interface OverrideShape {
+  readonly kind: 'floor' | 'insufficient'
+  readonly file: string
+  readonly code: string
+  readonly details: Record<string, unknown>
+}
+
+function fixtureFile(name: string): string {
+  return path.resolve(process.cwd(), 'tests', 'fixtures', name)
+}
+
+function overrideShapes(): OverrideShape[] {
+  const frames = JSON.parse(
+    readFileSync(fixtureFile('backendVerdictFrames.json'), 'utf-8'),
+  ) as { details?: Record<string, unknown> }[]
+
+  const found = new Map<OverrideShape['kind'], OverrideShape>()
+  for (const frame of frames) {
+    const details = frame.details
+    if (!details) continue
+    const floors = Array.isArray(details.fatal_floors) ? (details.fatal_floors as string[]) : []
+    const reason = typeof details.decision_reason === 'string' ? details.decision_reason : null
+    if (reason === 'INSUFFICIENT_EVIDENCE' && !found.has('insufficient')) {
+      found.set('insufficient', {
+        kind: 'insufficient',
+        file: 'report-header-insufficient.png',
+        code: reason,
+        details,
+      })
+    } else if (floors.length > 0 && !found.has('floor')) {
+      found.set('floor', {
+        kind: 'floor',
+        file: 'report-header.png',
+        code: reason ?? floors[0],
+        details,
+      })
+    }
+  }
+  return [...found.values()]
+}
+
+/** `demand` -> `D`, for the thin-evidence chip that must agree with the verdict. */
+const DIMENSION_LETTERS: Record<string, string> = {
+  demand: 'D',
+  market: 'M',
+  competitive_room: 'C',
+  feasibility: 'F',
+  headroom_over_free: 'X',
+}
+
+interface ReplayStep {
+  frame: Record<string, unknown>
+  gapMs: number
+}
+
+/** Live pace with the idle waits compressed, as `cast-perf.spec.ts` uses. */
+const REPLAY_MAX_GAP_MS = 250
+
+/**
+ * The gated synthetic run, with its verdict swapped for a real one that
+ * overrides the arithmetic.
+ *
+ * `syntheticRunGated.ndjson` is the 96-frame stream the free backend really
+ * serves through both gates, so everything except the verdict is the product's
+ * own bytes. Three things are patched and each is named here rather than left
+ * for a reader to diff:
+ *
+ *  1. `seq` is renumbered from 1. One file is replayed whole so nothing moves,
+ *     but it is stated because the client deduplicates on that field and the
+ *     next person to concatenate a second log here will need to know.
+ *  2. the `verdict` frame's `details` become the fixture's, and its `message` is
+ *     rewritten to agree — a message still reading `NEEDS_WORK at 6.0` beside a
+ *     REJECT would be a fabricated frame rather than a patched one.
+ *  3. the terminal `run_state`'s `result` gets `provisional: true`, a
+ *     `thin_dimensions` list derived from the verdict's own low scores, and the
+ *     verdict word — so the chips above the block say what the block says.
+ */
+function overrideScript(details: Record<string, unknown>): ReplayStep[] {
+  const rows = readFileSync(fixtureFile('syntheticRunGated.ndjson'), 'utf-8')
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as { data?: Record<string, unknown> })
+    .map((row) => row.data ?? (row as unknown as Record<string, unknown>))
+
+  const dimensions = (details.dimensions ?? {}) as Record<string, number>
+  const thin = Object.entries(dimensions)
+    .filter(([, score]) => typeof score === 'number' && score <= 1)
+    .map(([key]) => DIMENSION_LETTERS[key])
+    .filter((letter): letter is string => Boolean(letter))
+
+  const steps: ReplayStep[] = []
+  let previous: number | null = null
+  let sequence = 0
+  for (const frame of rows) {
+    const at = Date.parse(String(frame.ts ?? ''))
+    const gap =
+      previous === null || Number.isNaN(at)
+        ? 0
+        : Math.min(Math.max(at - previous, 0), REPLAY_MAX_GAP_MS)
+    if (!Number.isNaN(at)) previous = at
+    sequence += 1
+
+    let patched: Record<string, unknown> = { ...frame, seq: sequence }
+    if (frame.kind === 'verdict') {
+      patched = {
+        ...patched,
+        details: { ...details },
+        message:
+          `Verdict ${String(details.verdict)} at ${String(details.composite_score)} ` +
+          `(confidence ${String(details.confidence)})`,
+      }
+    }
+    if (frame.kind === 'run_state' && frame.event_type === 'WORKFLOW_END') {
+      const frameDetails = { ...((frame.details ?? {}) as Record<string, unknown>) }
+      const result = { ...((frameDetails.result ?? {}) as Record<string, unknown>) }
+      result.provisional = true
+      result.verdict = details.verdict
+      // Fall back to the fixture's own list rather than shipping an empty chip:
+      // a verdict with no dimension at or under 1 — an INSUFFICIENT_EVIDENCE one,
+      // for instance — is still provisional and still thin somewhere.
+      result.thin_dimensions = thin.length > 0 ? thin : result.thin_dimensions
+      frameDetails.result = result
+      patched = { ...patched, details: frameDetails }
+    }
+    steps.push({ frame: patched, gapMs: gap })
+  }
+  return steps
+}
+
+/** The full run id, from the identity-scoped pointer the console writes. */
+async function activeRunId(page: Page): Promise<string | null> {
+  const raw = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    storageKeyFor(DEFAULT_SYNTHETIC_USER, 'validator-active-run'),
+  )
+  if (!raw) return null
+  try {
+    return (JSON.parse(raw) as { runId?: string }).runId ?? null
+  } catch {
+    return null
+  }
+}
+
+test.describe('the report names what decided the run', () => {
+  test(
+    'T1.1: a verdict an override decided is captured with its block, its dimension and its score',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(300_000)
+      const watch = watchConsole(page)
+
+      const shapes = overrideShapes()
+      expect(
+        shapes.length,
+        'backendVerdictFrames.json holds no verdict that overrides the arithmetic, so T1.1 has ' +
+          'nothing to capture. Add a frame with `fatal_floors` non-empty or ' +
+          '`decision_reason: "INSUFFICIENT_EVIDENCE"`.',
+      ).toBeGreaterThan(0)
+
+      /*
+       * WHY THIS IS A REPLAY AND NOT A RUN.
+       *
+       * `SyntheticValidatorRunner` returns five 3s at 0.62 confidence with no
+       * floor and nothing provisional, every single time — so the free path
+       * cannot reach the state T1.1 is about, and the header captured from a
+       * live synthetic run shows a report with no override block in it at all.
+       * That is not a defect in the double: a stand-in that invented a REJECT
+       * would be worse than one that declines to. It is a gap between what the
+       * free path can produce and what the criterion is about, and the honest
+       * way across it is to feed the console a verdict the REAL serializer
+       * wrote and let every other frame, and the whole client, be the product's.
+       *
+       * The socket is owned rather than proxied (`routeWebSocket` with no
+       * `connectToServer`), exactly as `cast-perf.spec.ts` does it. Launch is
+       * still pressed for real, so the run row, the graph read and the transport
+       * probe are all genuine; only the frames are the fixture's.
+       */
+      let script: ReplayStep[] = []
+      let resolveReplay: () => void = () => undefined
+      let sent = 0
+
+      await page.routeWebSocket(
+        (url) => url.pathname === '/ws',
+        (ws) => {
+          ws.onMessage(() => undefined)
+          const runId = new URL(ws.url()).searchParams.get('run_id') ?? 'replay'
+          const mine = script
+          void (async () => {
+            for (const step of mine) {
+              await new Promise((resolve) => setTimeout(resolve, step.gapMs))
+              try {
+                ws.send(JSON.stringify({ type: 'frame', data: { ...step.frame, run_id: runId } }))
+              } catch {
+                // The page navigated away mid-replay: the next shape owns the
+                // next socket, and this one has nothing left to say.
+                return
+              }
+              sent += 1
+            }
+            resolveReplay()
+          })()
+        },
+      )
+
+      for (const shape of shapes) {
+        await test.step(`${shape.kind}: ${shape.code}`, async () => {
+          script = overrideScript(shape.details)
+          sent = 0
+          const replayed = new Promise<void>((resolve) => {
+            resolveReplay = resolve
+          })
+
+          await openStudio(page)
+          await launchRun(page, 'A claim auditor that checks numbers in newsroom drafts')
+          const runId = await activeRunId(page)
+
+          await replayed
+          expect(sent, 'the replay did not send every frame').toBe(script.length)
+          await waitForCompletion(page)
+
+          const report = page.locator('.report-panel')
+          await expect(report, 'the replayed run did not open its report').toBeVisible()
+
+          const block = report.locator('.verdict-decision')
+          await expect(
+            block,
+            'the report shows no "what decided this run" block for a verdict an override decided',
+          ).toHaveCount(1)
+
+          /*
+           * Settle before the shutter, for the same reason the long-run captures
+           * do: this is a completed-run capture too, and the console is still
+           * moving for a moment after the terminal frame - a reveal finishing,
+           * the report panel's own entry animation. Used here as a "the page has
+           * stopped changing" wait rather than for the rail specifically, which
+           * is why nothing is asserted about its result: T1.1's subject is the
+           * report, and the rail is only the most reliable thing on the page to
+           * watch for stillness.
+           */
+          await dialogueSettled(page)
+
+          // CAPTURED BEFORE THE WORDING IS ASSERTED. T1.1's artifact is the
+          // picture, and a red on a sentence must not cost the cold reader the
+          // one thing they are asked to read.
+          const headerText = await captureReportHeader(page, 'T1', shape.file)
+
+          await expect(
+            block.locator('h3 span'),
+            'the block is not labelled with the words the criterion names',
+          ).toHaveText('WHAT DECIDED THIS RUN')
+          await expect(block).toHaveAttribute('data-code', shape.code)
+
+          const headline = (await block.locator('.decision-headline').innerText()).trim()
+          if (shape.kind === 'floor') {
+            /*
+             * "Names a dimension and 0 of 5", asserted as a SHAPE rather than
+             * against one literal: which dimension floored is the fixture's to
+             * say, `verdictDisplay.headlineFor` composes
+             * "{Dimension} scored {n} of 5." from the score on the wire, and
+             * pinning "Demand" here would turn this into a test of the fixture.
+             */
+            expect(
+              headline,
+              'the floor headline does not name a dimension and its score',
+            ).toMatch(/^[A-Z][A-Za-z ]+ scored 0 of 5\.$/)
+          } else {
+            expect(headline).toBe('Too little evidence to judge.')
+          }
+
+          // The scores and the chips are in the same picture, which is what
+          // makes the block readable without the paragraph beneath it.
+          await expect(
+            report.locator('.verdict-scores .score-row'),
+            'the scorecard is missing from the region T1.1 captures',
+          ).not.toHaveCount(0)
+          await expect(
+            report.locator('.report-flag.is-provisional'),
+            'the provisional chip is missing beside an override the run is provisional on',
+          ).toHaveCount(1)
+
+          // T1.3, over the very text the capture shows.
+          expect(
+            rawCodesIn(headerText),
+            `raw SNAKE_CASE reached the report header for ${shape.code}`,
+          ).toEqual([])
+
+          /*
+           * Tidy, and then forget.
+           *
+           * The POST created a real synthetic run whose frames nobody read;
+           * cancelling releases the gate it is parked on. Clearing the pointer
+           * is the half that matters for correctness: without it the NEXT
+           * shape's page load restores this run and opens a socket BEFORE
+           * Launch is pressed, and the next script replays into the previous
+           * run.
+           */
+          if (runId) {
+            await page.request.post(`/api/runs/${runId}/cancel`).catch(() => undefined)
+          }
+          await page.evaluate(() => {
+            try {
+              window.localStorage.clear()
+            } catch {
+              /* a browser with site data blocked has nothing to forget */
+            }
+          })
+        })
+      }
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})
+
+/* ========================================================================== */
+/* S6 — 390x844                                                               */
+/* ========================================================================== */
+
+test.describe('the shell at 390x844', () => {
+  /*
+   * A viewport override rather than the `mobile` project.
+   *
+   * `playwright.config.ts` gives the mobile project a `testMatch` of exactly two
+   * files, and widening it would pull this whole file into a second run at a
+   * width six of its tests are not about. `test.use` sets the context viewport
+   * before the page exists, which is the same instrument at file scope.
+   */
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test(
+    'S6: a run drives and finishes at 390px, and nothing overflows sideways',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(300_000)
+      const watch = watchConsole(page)
+      await openStudio(page)
+
+      /*
+       * The control rail may start collapsed below the narrow breakpoint, which
+       * is the right default for a phone and would otherwise read here as "the
+       * console cannot be launched". Opening it by the control a person would
+       * use keeps the failure honest: if Launch is still unreachable after
+       * this, the shell genuinely is not usable at this width.
+       */
+      const expand = page.getByRole('button', { name: 'Expand control panel' })
+      if (await expand.isVisible().catch(() => false)) await expand.click()
+      await expect(
+        launchButton(page),
+        'the run shell cannot be launched at 390x844 (S6)',
+      ).toBeVisible()
+
+      await runToCompletion(page, 'A rota assistant for community pharmacies')
+
+      await shot(page, 'S', 'narrow.png')
+      await shot(page, 'T3', 'after-390.png')
+
+      const overflow = await page.evaluate(() => ({
+        scrollWidth: document.scrollingElement?.scrollWidth ?? 0,
+        clientWidth: document.scrollingElement?.clientWidth ?? 0,
+      }))
+      expect(
+        overflow.scrollWidth,
+        `the page is ${overflow.scrollWidth}px wide in a 390px viewport, so it scrolls sideways (S6)`,
+      ).toBeLessThanOrEqual(390)
+
+      // Something to look at: the canvas, or the report that replaced it.
+      const canvasVisible = await page.locator('.validator-flow').isVisible().catch(() => false)
+      const reportVisible = await page.locator('.report-panel').isVisible().catch(() => false)
+      expect(
+        canvasVisible || reportVisible,
+        'neither the canvas nor the report is visible at 390px (S6)',
+      ).toBe(true)
+
+      // And both rails are still reachable rather than stranded off-screen.
+      await expect(
+        page.locator('.chat-rail .rail-toggle'),
+        'the activity rail toggle is not visible at 390px (S6)',
+      ).toBeVisible()
+      await expect(
+        page.locator('.control-rail .control-toggle'),
+        'the control rail toggle is not visible at 390px (S6)',
+      ).toBeVisible()
+
+      /*
+       * PAINT ORDER IN THE DRAWER, and this is the width where it matters most.
+       *
+       * At 390px the control rail is an overlay rather than a column, so the
+       * canvas and the report are still full width UNDERNEATH it — which is
+       * correct, and which also means one wrong `z-index` puts a node card on
+       * top of the Launch button with nothing on screen saying so. The rail
+       * would still be "visible" to every assertion above it: `toBeVisible`
+       * asks about the element's own box and opacity, not about what is drawn
+       * over it.
+       *
+       * So the same question the eye asks: at the centre of the drawer, and at
+       * the centre of its primary control, whose element is on top?
+       */
+      const drawer = await hitTest(page, '.control-rail', [
+        { name: 'the control rail', selector: '.control-rail' },
+        { name: 'the Launch button', selector: '[data-testid="launch-button"]' },
+        { name: 'the status chip', selector: '.status-panel .status-badge' },
+      ])
+      for (const probe of drawer) {
+        expect(probe.found, `${probe.name} is not rendered at 390px (S6)`).toBe(true)
+        expect(probe.visible, `${probe.name} has no visible area at 390px (S6)`).toBe(true)
+      }
+      expect(
+        drawer
+          .filter((probe) => probe.visible && !probe.insideOwner)
+          .map(
+            (probe) =>
+              `${probe.name} at (${probe.point?.x}, ${probe.point?.y}) is covered by ${probe.hit}` +
+              (probe.forbidden ? ` — inside ${probe.forbidden}` : ''),
+          ),
+        'something is painted on top of the control rail at 390px; the drawer is the one ' +
+          'surface a phone reader has to be able to press (S6)',
+      ).toEqual([])
+
+      // The characters survive the width: still one per node, still terminal.
+      const cast = await graphCast(page)
+      expect(Object.keys(cast).length, 'the cast vanished at 390px').toBeGreaterThan(0)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})
+
+/* ========================================================================== */
+/* S4 — a failure the backend produced                                        */
+/* ========================================================================== */
+
+/**
+ * The failure route, and the backend it needs.
+ *
+ * The synthetic VALIDATOR has no failure knob at all — `SYNTHETIC_FAILURE`
+ * belongs to the BUILDER runner — so the only honest way to put a failed node in
+ * the run shell is `e2e/failure-modes.spec.ts`'s route: publish a gateless
+ * builder graph containing a node the backend has been told to fail, hand it to
+ * the console through the publish dialog's own "Run it", and launch.
+ *
+ * That needs a backend started with two extra knobs, and a browser cannot set
+ * either:
+ *
+ *   $env:SYNTHETIC="1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS="5"; $env:PORT="8099"
+ *   $env:CREDENTIALS_MASTER_KEY="Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
+ *   $env:BUILDER_ALLOW_GATELESS_GRAPHS="1"
+ *   $env:SYNTHETIC_FAILURE="fm_cast_refusal:refusal:1"
+ *   .\.venv\Scripts\serve.exe
+ *
+ * `BUILDER_ALLOW_GATELESS_GRAPHS` is not optional and its reason is recorded in
+ * plan 12's Status: `compile_replay_plan` cannot replay past a human gate, so
+ * the failure graphs are gateless and an anonymous caller may only launch a
+ * gateless graph with the flag on.
+ *
+ * The node id is this file's own (`fm_cast_refusal`), so the same backend can
+ * serve `failure-modes.spec.ts`, `studio.spec.ts` and `builder.spec.ts`
+ * unchanged: no graph of theirs contains it, so no run of theirs fails. The
+ * `:1` suffix fails the FIRST attempt only.
+ *
+ * WITHOUT those knobs this describe SKIPS and says so, rather than failing on an
+ * environment gap that reads exactly like a product defect. That is the
+ * `SYNTHETIC_BRANCH_DELAY_SECONDS` lesson applied before it costs anybody an
+ * afternoon.
+ */
+const FAILING_NODE = 'fm_cast_refusal'
+const AUTHORED_MODEL = 'google/gemini-3.8-flash'
+
+function failingAgent(id: string, source: string) {
+  return {
+    id,
+    kind: 'agent',
+    label: id,
+    position: { x: 0, y: 0 },
+    config: {
+      role: `${id} specialist`,
+      goal: `do the ${id} work`,
+      backstory: 'years of it',
+      task: {
+        description: 'work from ${state.out__' + source + '}',
+        expected_output: 'a paragraph',
+      },
+      llm: { model: AUTHORED_MODEL },
+      tier: 'cheap',
+      on_error: 'fail',
+    },
+  }
+}
+
+function failingGraph() {
+  return {
+    schema: 'builder.flow/v1',
+    name: 'cast failure state',
+    version: 1,
+    input_field: 'idea',
+    nodes: [
+      { id: 'idea', kind: 'input', label: 'idea', position: { x: 0, y: 0 }, config: { field: 'idea' } },
+      failingAgent('safe', 'idea'),
+      failingAgent(FAILING_NODE, 'safe'),
+      {
+        id: 'report',
+        kind: 'output',
+        label: 'report',
+        position: { x: 0, y: 0 },
+        config: { body_key: 'markdown_body', source: '${state.out__' + FAILING_NODE + '}' },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'idea', source_port: 'out', target: 'safe', target_port: 'in' },
+      { id: 'e2', source: 'safe', source_port: 'out', target: FAILING_NODE, target_port: 'in' },
+      { id: 'e3', source: FAILING_NODE, source_port: 'out', target: 'report', target_port: 'in' },
+    ],
+    joins: {},
+  }
+}
+
+let failureKnobPresent: boolean | null = null
+
+/** Publish one throwaway copy and see whether the backend actually fails it. */
+async function requireFailureKnob(request: APIRequestContext): Promise<void> {
+  if (failureKnobPresent === null) {
+    failureKnobPresent = false
+    const created = await request.post('/api/builder/workflows', {
+      data: { document: failingGraph() },
+    })
+    if (created.status() === 201) {
+      const id = ((await created.json()) as { document: { id: string } }).document.id
+      const published = await request.post(`/api/builder/workflows/${id}/publish`)
+      if (published.status() === 200) {
+        const run = await request.post('/api/sessions/e2e-cast-failure/runs', {
+          data: { workflow_id: id, inputs: { idea: 'probe' } },
+        })
+        if (run.status() === 202) {
+          const runId = ((await run.json()) as { run_id: string }).run_id
+          const until = Date.now() + 60_000
+          while (Date.now() < until) {
+            const snapshot = await request.get(`/api/runs/${runId}`)
+            if (snapshot.ok()) {
+              const body = (await snapshot.json()) as { status: string }
+              if (['completed', 'failed', 'cancelled'].includes(body.status)) {
+                failureKnobPresent = body.status === 'failed'
+                break
+              }
+            }
+            await new Promise((resolve) => setTimeout(resolve, 200))
+          }
+        }
+      }
+    }
+  }
+  test.skip(
+    !failureKnobPresent,
+    'the backend was started without BUILDER_ALLOW_GATELESS_GRAPHS=1 and ' +
+      `SYNTHETIC_FAILURE="${FAILING_NODE}:refusal:1" — see the S4 docblock in e2e/cast.spec.ts`,
+  )
+}
+
+test.describe('S4 — a failed run', () => {
+  test(
+    'S4: the failing node wears the blocked-error character and the trace says why in one sentence',
+    { tag: '@launch' },
+    async ({ page, request }) => {
+      test.setTimeout(300_000)
+      await requireFailureKnob(request)
+      const watch = watchConsole(page)
+
+      // Authored through the API and PUBLISHED through the dialog, which is how
+      // a person reaches the console with their own graph. Writing the handoff
+      // record into storage instead would test this file's idea of that record
+      // rather than the one `PublishDialog` writes, and it is identity-scoped.
+      const created = await request.post('/api/builder/workflows', {
+        data: { document: failingGraph() },
+      })
+      expect(created.status(), await created.text()).toBe(201)
+      const id = ((await created.json()) as { document: { id: string } }).document.id
+
+      await page.goto(`/#/build/${id}`)
+      await expect(page.locator('[data-testid="problems-checking"]')).toHaveCount(0, {
+        timeout: 30_000,
+      })
+      await page.keyboard.press('Control+Shift+P')
+      const dialog = page.locator('[aria-labelledby="publish-title"]')
+      await expect(dialog).toBeVisible()
+      await dialog.getByRole('button', { name: /^(Publish|Republish)$/ }).click()
+      await dialog.getByRole('button', { name: /run it/i }).click()
+      await expect.poll(() => new URL(page.url()).hash).not.toMatch(/^#\/build/)
+
+      const failing = page.locator(`.vue-flow__node[data-id="${FAILING_NODE}"]`)
+      await expect(failing, 'the console is not drawing the published graph').toBeVisible({
+        timeout: 30_000,
+      })
+
+      await launchRun(page, 'A scheduling assistant for clinics.')
+
+      // The character, first: this is S4's subject.
+      const pip = failing.locator('.workflow-node .pip')
+      await expect(pip, 'the failing node mounts no character').toHaveCount(1, { timeout: 90_000 })
+      await expect(
+        pip,
+        'the failing node does not wear the `blocked-error` character (S4)',
+      ).toHaveAttribute('data-state', 'blocked-error', { timeout: 90_000 })
+
+      await expect
+        .poll(async () => statusValue(page), { timeout: 60_000 })
+        .toMatch(/error|failed/)
+
+      const errorRow = page.locator('.chat-rail .trace-entry[data-tone="error"]').last()
+      await expect(
+        errorRow,
+        'the failure produced no trace row with an error tone (S4)',
+      ).toBeVisible({ timeout: 30_000 })
+
+      await shot(page, 'S', 'failure.png')
+
+      const line = ((await errorRow.locator('.trace-line').textContent()) ?? '').trim()
+      expect(line.length, 'the error line is empty').toBeGreaterThan(0)
+      expect(
+        line.length,
+        `the error line is ${line.length} chars: "${line}"`,
+      ).toBeLessThanOrEqual(MAX_TRACE_LINE_CHARS)
+      expect(line.includes('{"'), `raw JSON in the error line: "${line}"`).toBe(false)
+      expect(rawCodesIn(line), `raw code in the error line: "${line}"`).toEqual([])
+      // ONE sentence: a trailing terminator is fine, an internal one followed by
+      // more prose is a paragraph wearing a line's clothes.
+      const withoutTerminator = line.replace(/[.!?]+$/, '')
+      expect(
+        /[.!?]\s+\S/.test(withoutTerminator),
+        `the error line is more than one sentence: "${line}"`,
+      ).toBe(false)
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { AlertTriangle, Check, Clock3, Lock, RefreshCw, ShieldCheck } from 'lucide-vue-next'
-import type { PendingGate } from '../types/studio'
+import type { GateDerivedField, PendingGate } from '../types/studio'
+import { describeValue, verdictLabel } from '../data/verdictDisplay'
+import { humaniseCode } from '../utils/humanise'
 
 const props = defineProps<{
   gate: PendingGate
@@ -14,10 +16,10 @@ const emit = defineEmits<{
 
 /**
  * Mirrors `GATE_NOTE_FIELD` in `src/brief_crew/service/registry.py`. It is the
- * free-text lever both gates carry, and the only field the verdict gate has:
- * on a Revise reply the server lifts it to the payload's top level, where
- * `route_scope` / `route_verdict` read it and hand it to the crew that reruns
- * the step. Prose, not a value - so it gets a box, not a line.
+ * free-text lever a gate carries whatever flow declared it: on a send-back
+ * reply the server lifts it to the payload's top level, where the paired
+ * router reads it and hands it to whatever reruns the step. Prose, not a
+ * value - so it gets a box, not a line.
  */
 const NOTE_FIELD = 'feedback'
 
@@ -37,24 +39,144 @@ watch(
 const confidence = computed(() => props.gate.confidence == null ? '' : `${Math.round(props.gate.confidence * 100)}% confidence`)
 
 /**
- * Values the operator reads but cannot change. The verdict gate's whole payload
- * lands here: `Verdict` recomputes the composite score, confidence, band,
- * floors, provisional flag and label and discards whatever it was sent, and the
- * scored inputs to that arithmetic are bound to the rubric and to tool-returned
- * URLs by guardrails that never see a gate reply. Offering any of it as an
- * input would invite an edit that cannot land - the operator sets VALIDATE,
- * submits, and watches REJECT come back.
+ * Values the operator reads but cannot change.
  *
- * They are shown in full because they are the reason to approve or revise; the
- * lever for disagreeing with them is Revise plus a note, which sends the
- * Synthesist back to rescore against the same evidence.
+ * The server splits a gate's payload in two and this is the half an edit does
+ * not reach: anything the flow recomputes from its own work on every pass, and
+ * anything bound to what a tool actually returned. Offering one of those as an
+ * input invites an edit that cannot land - the operator types a value, submits,
+ * and watches the server's own answer come back instead.
+ *
+ * They are shown in full because they are the reason to approve or send back;
+ * the lever for disagreeing with them is a send-back reply plus a note, which
+ * returns the step to whatever produced it. The measured case that shaped all
+ * of this was the idea validator's scoring gate, whose entire payload is
+ * recomputed and discarded on every pass - but the rule is about gates, not
+ * about that flow.
  */
 const derived = computed(() => props.gate.derived ?? [])
 
-/** `startup_idea` -> `startup idea`. Every underscore, not just the first. */
+/** `startup_idea` -> `Startup idea`; `evidence_counts` -> `Evidence counts`. */
 function label(key: string): string {
-  return key.replaceAll('_', ' ')
+  return humaniseCode(key) || key
 }
+
+/** The gate's own headline outcome, if it carries one, in words. */
+const verdictWord = computed(() => verdictLabel(props.gate.verdict))
+
+/**
+ * One row of the read-only payload, decoded far enough to be read.
+ *
+ * This used to be dumped into a `<pre>` whole: an operator was asked to
+ * approve or send back a decision presented to them as `FATAL FLOORS / []`,
+ * `DECISION REASON / null` and `NEEDS_WORK`. Every one of those has an English
+ * answer, and none of them needed a new concept to produce it - `describeValue`
+ * in `data/verdictDisplay.ts` humanises whatever it is handed and falls through
+ * to the general humaniser for a code it has never seen, so a gate from a flow
+ * written next week decodes without an edit here.
+ *
+ * The decoding stops at one level, deliberately. The worked example was a
+ * scoring gate's `{score, anchor_matched, evidence_urls, evidence_thin}`, which
+ * flattens into four readable pairs; anything nested deeper than that is a
+ * structure, not a sentence, and structures go behind a collapsed `<details>`
+ * where a developer can still read them and an operator is not made to.
+ */
+interface DerivedPair {
+  label: string
+  value: string
+}
+
+interface DerivedRow {
+  key: string
+  label: string
+  /** A single value, a list of values, or a one-level key/value list. */
+  shape: 'value' | 'list' | 'pairs'
+  value: string
+  items: string[]
+  pairs: DerivedPair[]
+  /** Pretty JSON for the disclosure, or `null` when nothing is hidden. */
+  raw: string | null
+}
+
+/** A value this card can render inline: not an object, not a nested array. */
+function isFlat(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (Array.isArray(value)) return value.every((entry) => entry === null || typeof entry !== 'object')
+  return typeof value !== 'object'
+}
+
+function decodeRow(item: GateDerivedField): DerivedRow {
+  const row: DerivedRow = {
+    key: item.key,
+    label: label(item.key),
+    shape: 'value',
+    value: '—',
+    items: [],
+    pairs: [],
+    raw: null,
+  }
+  if (item.kind !== 'json') {
+    row.value = describeValue(item.value)
+    return row
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(item.value)
+  } catch {
+    // A `json` value the server could not have produced. Show it as it came
+    // rather than swallowing it: a multi-line blob goes behind the
+    // disclosure, a single line is just a value.
+    if (item.value.includes('\n')) {
+      row.value = 'see below'
+      row.raw = item.value
+    } else {
+      row.value = describeValue(item.value)
+    }
+    return row
+  }
+
+  if (parsed === null || parsed === undefined) return row
+
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) {
+      row.value = 'none'
+      return row
+    }
+    if (parsed.every((entry) => entry === null || typeof entry !== 'object')) {
+      row.shape = 'list'
+      row.items = parsed.map((entry) => describeValue(entry))
+      return row
+    }
+    row.value = `${parsed.length} ${parsed.length === 1 ? 'entry' : 'entries'}`
+    row.raw = item.value
+    return row
+  }
+
+  if (typeof parsed === 'object') {
+    const entries = Object.entries(parsed as Record<string, unknown>)
+    if (entries.length === 0) {
+      row.value = 'none'
+      return row
+    }
+    row.shape = 'pairs'
+    row.pairs = entries
+      .filter(([, value]) => isFlat(value))
+      .map(([key, value]) => ({ label: label(key), value: describeValue(value) }))
+    // Anything this card refused to flatten is still available, collapsed.
+    if (entries.some(([, value]) => !isFlat(value))) row.raw = item.value
+    if (row.pairs.length === 0) {
+      row.shape = 'value'
+      row.value = 'see below'
+    }
+    return row
+  }
+
+  row.value = describeValue(parsed)
+  return row
+}
+
+const derivedRows = computed<DerivedRow[]>(() => derived.value.map(decodeRow))
 const expiryTime = computed(() => props.gate.expiresAt ? Date.parse(props.gate.expiresAt) : 0)
 
 // PRD F03. The server owns expiry: it resolves `expired` on every run-status
@@ -124,8 +246,8 @@ function submit(outcome: string): void {
 
     <p>{{ gate.summary }}</p>
 
-    <div v-if="gate.verdict" class="verdict-row">
-      <strong>{{ gate.verdict }}</strong>
+    <div v-if="verdictWord" class="verdict-row">
+      <strong :data-code="gate.verdict">{{ verdictWord }}</strong>
       <span>{{ confidence }}</span>
     </div>
 
@@ -138,23 +260,37 @@ function submit(outcome: string): void {
     </p>
 
     <!-- Read-only, and never rendered as an input. Placed above the form so the
-         operator reads what the validator computed before deciding, and so no
-         control here can be mistaken for something their edit would reach. -->
+         operator reads what the run computed before deciding, and so no control
+         here can be mistaken for something their edit would reach. -->
     <section v-if="derived.length" class="gate-derived" aria-labelledby="gate-derived-title">
       <h3 id="gate-derived-title">
         <Lock :size="12" aria-hidden="true" />
-        <span>Computed by the validator</span>
+        <span>Computed by the run</span>
       </h3>
       <p class="gate-derived-note">
-        Recomputed from the five dimension scores and the evidence behind them, so an edit here
-        could not change them. To change the outcome, choose Revise and say what to reconsider.
+        Recomputed by the server from what produced it; edit the inputs above and it is recomputed.
       </p>
       <dl>
-        <template v-for="item in derived" :key="item.key">
-          <dt>{{ label(item.key) }}</dt>
+        <template v-for="row in derivedRows" :key="row.key">
+          <dt :data-key="row.key">{{ row.label }}</dt>
           <dd>
-            <pre v-if="item.kind === 'json'">{{ item.value }}</pre>
-            <span v-else>{{ item.value }}</span>
+            <ul v-if="row.shape === 'list'" class="derived-list">
+              <li v-for="(entry, index) in row.items" :key="index">{{ entry }}</li>
+            </ul>
+            <ul v-else-if="row.shape === 'pairs'" class="derived-pairs">
+              <li v-for="pair in row.pairs" :key="pair.label">
+                <span class="derived-pair-key">{{ pair.label }}</span>
+                <span class="derived-pair-value">{{ pair.value }}</span>
+              </li>
+            </ul>
+            <span v-else>{{ row.value }}</span>
+            <!-- Anything the card refused to flatten. Collapsed, so the
+                 operator is not made to read a structure, and present, so a
+                 developer never loses one. -->
+            <details v-if="row.raw" class="derived-raw">
+              <summary>Show the raw value</summary>
+              <pre>{{ row.raw }}</pre>
+            </details>
           </dd>
         </template>
       </dl>
@@ -168,7 +304,7 @@ function submit(outcome: string): void {
           v-model="fields[key]"
           rows="3"
           :readonly="!gate.editable"
-          placeholder="What should be reconsidered? Sent with a Revise reply."
+          placeholder="What should be reconsidered? Sent with your reply."
         />
         <input v-else v-model="fields[key]" :readonly="!gate.editable" autocomplete="off" />
       </label>
@@ -205,42 +341,69 @@ function submit(outcome: string): void {
 </template>
 
 <style scoped>
-.gate-card { padding: 16px; background: linear-gradient(145deg, rgba(255, 204, 0, 0.09), rgba(255, 255, 255, 0.025)); border-bottom: 1px solid var(--warn-border); }
+.gate-card { padding: var(--space-6); background: var(--warn-bg); border-bottom: 1px solid var(--warn-border-strong); }
 .gate-heading { display: flex; align-items: center; gap: 10px; }
-.gate-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--r-md); }
-.section-kicker { color: var(--warn-text); font: 700 var(--fs-11)/1 var(--font-mono); }
+.gate-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; color: var(--warn-text-strong); background: var(--warn-bg); border: 1px solid var(--warn-border-strong); border-radius: var(--r-md); }
+.section-kicker { color: var(--warn-text-strong); font: 700 var(--fs-11)/1 var(--font-mono); }
 .gate-heading h2 { margin: 3px 0 0; font-size: 16px; }
 .gate-card > p { margin: 12px 0; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
 .verdict-row { display: flex; align-items: center; justify-content: space-between; margin: 12px 0; padding: 9px 10px; background: var(--surface-well); border-left: 2px solid var(--warn-text); }
-.verdict-row strong { color: var(--warn-text); font: 700 var(--fs-13)/1 var(--font-mono); }
+.verdict-row strong { color: var(--warn-text-strong); font: 700 var(--fs-13)/1 var(--font-mono); }
 .verdict-row span { color: var(--text-muted); font: 500 var(--fs-11)/1 var(--font-mono); }
-.gate-late { display: flex; gap: 8px; margin: 12px 0 0; padding: 9px 10px; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--r-md); font-size: var(--fs-11); line-height: 1.5; }
+.gate-late { display: flex; gap: 8px; margin: 12px 0 0; padding: 9px 10px; color: var(--warn-text-strong); background: var(--warn-bg); border: 1px solid var(--warn-border-strong); border-radius: var(--r-md); font-size: var(--fs-11); line-height: 1.5; }
 .gate-late svg { flex: 0 0 auto; margin-top: 1px; }
-.late-tag { margin-left: 6px; padding: 1px 5px; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 999px; font: 700 var(--fs-11)/1.4 var(--font-mono); text-transform: uppercase; }
+.late-tag { margin-left: 6px; padding: 1px 5px; color: var(--warn-text-strong); background: var(--warn-bg); border: 1px solid var(--warn-border-strong); border-radius: 999px; font: 700 var(--fs-11)/1.4 var(--font-mono); text-transform: uppercase; }
 .gate-field { display: block; margin-top: 9px; }
-.gate-field span { display: block; margin-bottom: 5px; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
+.gate-field span { display: block; margin-bottom: 5px; color: var(--text-meta); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
 .gate-field input,
 .gate-field textarea { width: 100%; min-height: 40px; padding: 8px 9px; color: var(--text-body); font: inherit; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); outline: 0; }
 .gate-field textarea { min-height: 62px; resize: vertical; line-height: 1.45; }
 .gate-field input:focus,
-.gate-field textarea:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
+.gate-field textarea:focus { border-color: var(--on-accent-cyan); box-shadow: var(--glow-input); }
 .gate-field input[readonly],
 .gate-field textarea[readonly] { color: var(--text-muted); }
+/* A single-line `<input>` holding a SENTENCE clips at the box edge with no
+   mark, and at the 346px drawer width of a phone that lands mid-word: a cold
+   reader read "A scheduling assistant for small veterinary clinic" and could
+   not tell whether the value or the rendering was cut
+   (`evidence/S/narrow-rail-open.png`). An ellipsis at least says which.
+   IT IS NOT THE WHOLE FIX, and the rest is recorded rather than smuggled in:
+   an `<input>` cannot wrap at any width, so a value that is prose wants a
+   `<textarea>`. That is a template change, and two assertions count these
+   elements by tag - `tests/gateDerived.spec.ts:178` and
+   `e2e/studio.spec.ts:238` - so it is a decision with a test move in it rather
+   than a stylesheet edit. */
+.gate-field input { text-overflow: ellipsis; }
+/* These two genuinely can wrap, and were squashing instead: a long value in a
+   `space-between` row with `text-align: right` had nowhere to go. */
+.derived-pairs li { flex-wrap: wrap; }
+.derived-pair-value { min-width: 0; overflow-wrap: anywhere; }
 
 /* Deliberately not a form. Nothing here is an input, nothing here is focusable,
    and the lock in the heading says why before the operator reaches for it. */
 .gate-derived { margin-top: 13px; padding: 10px 11px; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); }
-.gate-derived h3 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
+.gate-derived h3 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--text-meta); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
 .gate-derived-note { margin: 7px 0 10px; color: var(--text-muted); font-size: var(--fs-11); line-height: 1.5; }
 .gate-derived dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0; }
-.gate-derived dt { color: var(--text-40); font: 700 var(--fs-11)/1.3 var(--font-mono); text-transform: uppercase; }
+/* Sentence case, not shouted: `text-transform: uppercase` over a humanised key
+   produced MEDIAN MARKET SOURCE AGE MONTHS, which reads as a constant name
+   even though it no longer is one. */
+.gate-derived dt { color: var(--text-meta); font: 700 var(--fs-11)/1.3 var(--font-body); }
 .gate-derived dd { margin: 3px 0 0; color: var(--text-body); font-size: var(--fs-12); line-height: 1.45; overflow-wrap: anywhere; }
-.gate-derived pre { max-height: 140px; margin: 0; padding: 7px 8px; overflow: auto; color: var(--text-muted); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); font: 500 var(--fs-11)/1.5 var(--font-mono); }
+.derived-list { margin: 0; padding-left: var(--space-6); }
+.derived-list li { margin-bottom: 2px; }
+.derived-pairs { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.derived-pairs li { display: flex; gap: var(--space-3); align-items: baseline; justify-content: space-between; }
+.derived-pair-key { color: var(--text-meta); font-size: var(--fs-11); }
+.derived-pair-value { color: var(--text-body); text-align: right; }
+.derived-raw { margin-top: var(--space-1); }
+.derived-raw summary { color: var(--text-meta); font-size: var(--fs-11); cursor: pointer; }
+.gate-derived pre { max-height: 140px; margin: var(--space-1) 0 0; padding: 7px 8px; overflow: auto; color: var(--text-muted); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); font: 500 var(--fs-11)/1.5 var(--font-mono); }
 /* The server decides how many options a gate has and in what order, so the row
    must not assume two with the primary second. */
 .gate-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 13px; }
-.gate-expiry { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--text-40); font-size: var(--fs-11); }
+.gate-expiry { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--text-meta); font-size: var(--fs-11); }
 .gate-expiry time { margin-left: auto; font-family: var(--font-mono); }
 /* Amber, not red: a passed deadline is a notice, not a failure. */
-.gate-expiry.is-expired { color: var(--warn-text); }
+.gate-expiry.is-expired { color: var(--warn-text-strong); }
 </style>

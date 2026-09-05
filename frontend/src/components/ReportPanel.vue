@@ -12,14 +12,36 @@
  * The scorecard below the header arrived with the `verdict` frame. Before it,
  * the only number that ever reached this panel was a confidence percentage
  * rescued from the verdict gate as it closed - so an unattended (`gates=auto`)
- * run, which never opens that gate, finished under a bare `COMPLETE` badge, and
+ * run, which never opens that gate, finished under a bare fallback badge, and
  * the fatal floors were invisible in every mode. PRD 10.2 calls the
- * free-alternative floor "the most valuable output this system produces"; a
- * REJECT that a floor forced now says which floor, in the loudest block here.
+ * free-alternative floor "the most valuable output this system produces".
+ *
+ * The block that says so is keyed on `decision_reason`, NOT on `fatal_floors`,
+ * and the difference is not cosmetic. The two are computed independently in
+ * `Verdict.compute_mechanical_result`: the floors are collected first and
+ * unconditionally, then a separate ladder picks the reason, and its FIRST
+ * branch is the low-confidence override. A run at 34% confidence with
+ * `market == 0` therefore carries `FLOOR_NO_MARKET` while that floor decided
+ * nothing - and the block this replaces said, in its loudest element, that the
+ * floor "not the arithmetic, is why this run reads NEEDS_WORK". It was false on
+ * exactly the screen it was written for. Floors that did not decide are
+ * demoted to also-rans here, in the conditional tense, because that is what
+ * happened. `data/verdictDisplay.ts` carries the wording and the reasoning.
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { Check, Copy, FileText, Gauge, OctagonAlert, X } from 'lucide-vue-next'
 import type { RunResult, VerdictSummary } from '../types/studio'
+import {
+  DIMENSION_MAX,
+  confidenceChip,
+  describeDecision,
+  dimensionName,
+  dimensionQuestion,
+  thinDimensionKeys,
+  thinEvidencePhrase,
+  verdictLabel,
+  verdictTone as verdictToneFor,
+} from '../data/verdictDisplay'
 import { renderMarkdown } from '../utils/markdown'
 
 const props = defineProps<{
@@ -36,7 +58,7 @@ let copyTimer = 0
 
 const body = computed(() => renderMarkdown(props.report?.markdown_body ?? ''))
 const sources = computed(() => props.report?.sources ?? [])
-const thin = computed(() => props.report?.thin_dimensions ?? [])
+
 /**
  * Either carrier may say so. The report's own flag predates the verdict frame
  * and a gate-sourced summary has no opinion, so the two are OR-ed rather than
@@ -48,17 +70,9 @@ const provisional = computed(
 )
 
 /** `VALIDATE` / `NEEDS_WORK` / `REJECT` drive the badge colour. */
-const verdictTone = computed(() => {
-  const label = props.verdict?.verdict?.toUpperCase() ?? ''
-  if (label.includes('VALIDATE')) return 'is-pass'
-  if (label.includes('REJECT')) return 'is-fail'
-  return 'is-warn'
-})
-
-const confidencePercent = computed(() => {
-  const value = props.verdict?.confidence
-  return typeof value === 'number' ? `${Math.round(value * 100)}%` : null
-})
+const verdictTone = computed(() => `is-${verdictToneFor(props.verdict?.verdict)}`)
+/** Words, never the enum. The badge shouts through CSS, not through the DOM. */
+const verdictWord = computed(() => verdictLabel(props.verdict?.verdict))
 
 /** 0-10, from `2 * (0.30D + 0.20M + 0.20C + 0.15F + 0.15X)`. */
 const compositeScore = computed(() => {
@@ -66,40 +80,54 @@ const compositeScore = computed(() => {
   return typeof value === 'number' ? value.toFixed(1) : null
 })
 
-const confidenceBand = computed(() => props.verdict?.confidenceBand ?? null)
-const bandTone = computed(() => `is-${(confidenceBand.value ?? '').toLowerCase()}`)
+/**
+ * One chip, not two. `34% confidence` beside a shouted `LOW` was two elements
+ * carrying one fact, and `LOW` alone answers "low what?" with nothing.
+ */
+const confidence = computed(() =>
+  confidenceChip(props.verdict?.confidenceBand, props.verdict?.confidence),
+)
 
-const fatalFloors = computed(() => props.verdict?.fatalFloors ?? [])
-const decisionReason = computed(() => props.verdict?.decisionReason ?? null)
-
-function sentenceCase(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
-}
+/** Canonical dimension keys the report flagged as resting on too few sources. */
+const thinKeys = computed(() => thinDimensionKeys(props.report))
+const thinPhrase = computed(() => thinEvidencePhrase(thinKeys.value))
 
 /**
- * `FLOOR_ALREADY_FREE` -> `Already free`. Deliberately a transform rather than
- * a lookup table: the floors live in `config.py`, and a table here would render
- * a newly added one as nothing at all. The raw token is shown beside it so the
- * rubric stays greppable from what is on screen.
+ * The override block, keyed on `decision_reason` and NOT on `fatal_floors`.
+ *
+ * The two are computed independently in `Verdict.compute_mechanical_result`:
+ * the floors are collected unconditionally, then a separate ladder picks the
+ * reason and its first branch is the low-confidence override. So a run can
+ * carry `FLOOR_NO_MARKET` while that floor decided nothing - which is exactly
+ * what the block this replaces used to narrate as the cause. `null` here means
+ * the arithmetic decided and there is nothing to override; the scores below
+ * are then the whole answer and no red box is drawn.
  */
-function floorLabel(floor: string): string {
-  return sentenceCase(floor.replace(/^FLOOR_/, '').replaceAll('_', ' ').toLowerCase())
-}
+const decision = computed(() => describeDecision(props.verdict, props.report))
 
 /** The scorecard, already in rubric order - the composable sorts it. */
 const dimensionRows = computed(() =>
-  Object.entries(props.verdict?.dimensions ?? {}).map(([key, score]) => ({
-    key,
-    label: sentenceCase(key.replaceAll('_', ' ')),
-    score: score as number,
-    // Every ladder is 0-5. Clamped so a score outside that range - a newer
-    // server, a wider ladder - cannot draw a bar past the end of its track.
-    percent: `${Math.min(100, Math.max(0, ((score as number) / 5) * 100))}%`,
-  })),
+  Object.entries(props.verdict?.dimensions ?? {}).map(([key, score]) => {
+    const value = score as number
+    const blocked = decision.value?.blockedDimensions.includes(key) ?? false
+    return {
+      key,
+      label: dimensionName(key),
+      question: dimensionQuestion(key),
+      thin: thinKeys.value.includes(key),
+      // A zero is the score every fatal floor is written about, so it is the
+      // one that earns the error tint whether or not a floor happened to fire.
+      floored: value === 0 || blocked,
+      score: value,
+      // Every ladder is 0-5. Clamped so a score outside that range - a newer
+      // server, a wider ladder - cannot draw a bar past the end of its track.
+      percent: `${Math.min(100, Math.max(0, (value / DIMENSION_MAX) * 100))}%`,
+    }
+  }),
 )
 
 const hasVerdictDetail = computed(
-  () => fatalFloors.value.length > 0 || decisionReason.value !== null || dimensionRows.value.length > 0,
+  () => decision.value !== null || dimensionRows.value.length > 0,
 )
 
 // Move focus into the sheet when it opens so a keyboard user is not left
@@ -144,11 +172,15 @@ async function copyReport(): Promise<void> {
       <div class="report-title-group">
         <span class="report-kicker"><FileText :size="13" aria-hidden="true" />VALIDATION REPORT</span>
         <h2 id="report-title">
-          <span v-if="verdict" class="verdict-badge" :class="verdictTone">{{ verdict.verdict }}</span>
-          <span v-else class="verdict-badge is-warn">COMPLETE</span>
+          <span v-if="verdictWord" class="verdict-badge" :class="verdictTone" :data-code="verdict?.verdict">{{ verdictWord }}</span>
+          <span v-else class="verdict-badge is-warn">Finished</span>
           <span v-if="compositeScore" class="verdict-score">{{ compositeScore }}<small>/10</small></span>
-          <span v-if="confidencePercent" class="verdict-confidence">{{ confidencePercent }} confidence</span>
-          <span v-if="confidenceBand" class="verdict-band" :class="bandTone">{{ confidenceBand }}</span>
+          <span
+            v-if="confidence"
+            class="verdict-confidence"
+            :class="`is-${confidence.tone}`"
+            title="How much evidence the five scores rest on: branch coverage, source freshness, and whether all three research branches came home."
+          >{{ confidence.label }}</span>
         </h2>
       </div>
       <div class="report-actions">
@@ -162,43 +194,71 @@ async function copyReport(): Promise<void> {
       </div>
     </header>
 
-    <div v-if="provisional || thin.length" class="report-flags">
-      <span v-if="provisional" class="report-flag is-provisional">PROVISIONAL</span>
-      <span v-if="thin.length" class="report-flag">
-        Thin evidence: {{ thin.join(', ') }}
-      </span>
+    <div v-if="provisional || thinPhrase" class="report-flags">
+      <!-- `Provisional` is kept as the head word, glossed rather than replaced:
+           the markdown body below is REQUIRED by `validator_guardrails.py` to
+           carry "Provisional" in its title and first summary line, and a chip
+           reading something else over a report headed "(Provisional)" teaches
+           the reader two names for one thing. -->
+      <span
+        v-if="provisional"
+        class="report-flag is-provisional"
+        title="The evidence is too thin to settle this. Re-run with better sources before acting on it."
+      >Provisional · not a final answer</span>
+      <span
+        v-if="thinPhrase"
+        class="report-flag"
+        title="These scores rest on fewer sources than the rubric asks for."
+      >Thin evidence · {{ thinPhrase }}</span>
     </div>
 
     <div v-if="hasVerdictDetail" class="verdict-summary">
-      <!-- Above the scorecard on purpose: a floor overrides the arithmetic, so
-           reading the composite first and the floor afterwards gets the
-           conclusion backwards. -->
-      <section v-if="fatalFloors.length" class="verdict-floors" aria-labelledby="verdict-floors-title">
-        <h3 id="verdict-floors-title">
+      <!-- Above the scorecard on purpose: whatever decided this run overrode
+           the arithmetic, so reading the composite first and the override
+           afterwards gets the conclusion backwards. -->
+      <section
+        v-if="decision"
+        class="verdict-decision"
+        :class="`is-${decision.tone}`"
+        :data-code="decision.code"
+        aria-labelledby="verdict-decision-title"
+      >
+        <h3 id="verdict-decision-title">
           <OctagonAlert :size="13" aria-hidden="true" />
-          <span>{{ fatalFloors.length === 1 ? 'Fatal floor' : 'Fatal floors' }}</span>
+          <span>WHAT DECIDED THIS RUN</span>
         </h3>
-        <p>
-          A floor overrides the composite score outright. It, not the arithmetic, is why this run
-          reads {{ verdict?.verdict ?? 'the way it does' }}.
-        </p>
-        <ul>
-          <li v-for="floor in fatalFloors" :key="floor">
-            <span class="floor-name">{{ floorLabel(floor) }}</span>
-            <code>{{ floor }}</code>
-          </li>
-        </ul>
+        <p class="decision-headline">{{ decision.headline }}</p>
+        <p v-if="decision.meaning" class="decision-meaning">{{ decision.meaning }}</p>
+        <div v-if="decision.alsoBlocking.length" class="decision-also">
+          <span class="decision-also-kicker">ALSO BLOCKING</span>
+          <p
+            v-for="entry in decision.alsoBlocking"
+            :key="entry.code"
+            class="decision-also-line"
+            :data-code="entry.code"
+          >{{ entry.text }}</p>
+        </div>
       </section>
 
-      <p v-if="decisionReason" class="verdict-reason">{{ decisionReason }}</p>
-
-      <section v-if="dimensionRows.length" class="verdict-scorecard" aria-labelledby="verdict-scorecard-title">
-        <h3 id="verdict-scorecard-title">
+      <section v-if="dimensionRows.length" class="verdict-scores" aria-labelledby="verdict-scores-title">
+        <h3 id="verdict-scores-title">
           <Gauge :size="13" aria-hidden="true" />
-          <span>Rubric dimensions</span>
+          <span>Scores</span>
         </h3>
-        <div v-for="row in dimensionRows" :key="row.key" class="score-row">
-          <span class="score-label">{{ row.label }}</span>
+        <div
+          v-for="row in dimensionRows"
+          :key="row.key"
+          class="score-row"
+          :class="{ 'is-floored': row.floored }"
+          :data-dimension="row.key"
+        >
+          <span class="score-label">
+            <span class="score-name">
+              {{ row.label }}
+              <span v-if="row.thin" class="score-thin" title="Fewer sources than the rubric asks for.">thin</span>
+            </span>
+            <span v-if="row.question" class="score-question">{{ row.question }}</span>
+          </span>
           <span class="score-track" aria-hidden="true">
             <span class="score-fill" :style="{ width: row.percent }"></span>
           </span>
@@ -207,40 +267,131 @@ async function copyReport(): Promise<void> {
       </section>
     </div>
 
-    <!-- eslint-disable-next-line vue/no-v-html -->
-    <article class="report-body markdown-body" v-html="body"></article>
+    <!--
+      ONE scroll container for the body and its sources, and that is the fix
+      rather than a tidy-up. As two flex siblings the sources footer reserved
+      up to 26% of the panel for as long as the report was open, so the body's
+      viewport shrank by that much whatever was in it - and when the scores
+      panel above grew a question line per row, a cold reader at 1440 and 1180
+      was left with a window tall enough for the "Score breakdown" table's
+      header row and nothing under it. The table was still reachable by
+      scrolling; a deliverable reachable by scrolling a hundred-pixel window is
+      hidden in every sense that matters.
 
-    <footer v-if="sources.length" class="report-sources">
-      <h3>{{ sources.length }} cited source{{ sources.length === 1 ? '' : 's' }}</h3>
-      <ol>
-        <li v-for="(source, i) in sources" :key="source.url ?? i">
-          <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer nofollow">
-            {{ source.title || source.url }}
-          </a>
-          <span v-else>{{ source.title || 'Untitled source' }}</span>
-        </li>
-      </ol>
-    </footer>
+      The sources are now a normal block at the END of the deliverable, in the
+      same scroller, which is also what they are: the report's citations, read
+      after the report. Nothing overlays anything, so there is no footer height
+      to measure and no padding to keep in step with it.
+    -->
+    <div class="report-scroll">
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <article class="report-body markdown-body" v-html="body"></article>
+
+      <footer v-if="sources.length" class="report-sources">
+        <h3>{{ sources.length }} cited source{{ sources.length === 1 ? '' : 's' }}</h3>
+        <ol>
+          <li v-for="(source, i) in sources" :key="source.url ?? i">
+            <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer nofollow">
+              {{ source.title || source.url }}
+            </a>
+            <span v-else>{{ source.title || 'Untitled source' }}</span>
+          </li>
+        </ol>
+      </footer>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .report-panel {
+  /* THE SHEET IS ABOVE THE CANVAS, UNCONDITIONALLY.
+
+     `position: absolute` + `isolation: isolate` + the highest z-index in the
+     workspace, and all three are belt to each other's braces rather than one
+     fix: a `z-index` is inert on a static element, an `isolation: isolate`
+     guarantees this element is its own stacking context whatever else changes
+     around it, and `--z-control` clears every sibling in `.graph-workspace`
+     (`.canvas-heading` 8, `.stream-reconnecting` and `.crew-progress` 9, the
+     reopen FAB 11) rather than clearing them by two.
+
+     It does NOT escape the rails, and that is the point of doing it here
+     rather than raising the number globally: `.graph-workspace` declares
+     `position: relative; z-index: 0`, which is a stacking context, so
+     everything in this file is trapped below `.control-rail` and `.chat-rail`
+     at `--z-rail` no matter what number this line carries. The report covers
+     the graph and never the controls.
+
+     WHAT THIS IS NOT. It was proposed as the fix for the report reading as if
+     it were UNDER the canvas after the `backdrop-filter` came off, on the
+     theory that the blur had been creating the panel's stacking context. That
+     theory does not survive reading the rule: the panel was already
+     `position: absolute; z-index: 12`, which creates a stacking context by
+     itself and was already being compared against its siblings in
+     `.graph-workspace`'s context - so removing the blur cannot have changed
+     the paint order. This hardening removes the ambiguity; it does not explain
+     the capture, and the note in `tests/reportVisibility.spec.ts` says what
+     would. */
   position: absolute;
-  z-index: 12;
+  isolation: isolate;
+  z-index: var(--z-control);
   top: 64px;
-  right: 0;
+  /* NOT `0`, below 1180px. The sheet is positioned to `.graph-workspace`, and
+     below that breakpoint the workspace runs UNDER the rails - so `right: 0`
+     put the score bars, the body text and this sheet's own Copy Markdown and
+     close controls beneath the control rail (`evidence/T3/after-1180.png`).
+     The variables are `studio.css`'s, set per breakpoint beside the rail
+     widths they mirror, and they are `0px` wherever a rail is a column or is
+     collapsed - so above 1180px this resolves to exactly what it said before.
+     The transition is the rail's own, so the sheet widens as the rail slides
+     away rather than snapping when it has gone. */
+  right: var(--rail-cover-end, 0px);
   bottom: 0;
-  left: 0;
+  left: var(--rail-cover-start, 0px);
+  transition: right var(--motion-medium) var(--ease-out), left var(--motion-medium) var(--ease-out);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--surface-overlay);
+  /* AN OPAQUE SHEET, and the blur removal is what proved it had to be.
+     `--surface-overlay` is 94% opaque, which sounded like enough and was not:
+     with the `backdrop-filter` gone, the graph, the stage lane and its chips
+     read straight THROUGH the verdict chips and the score rows - a node card
+     behind "Validation report - NEEDS_WORK", the word CONFIRM through
+     "Provisional - not a final answer". 6% of a bright card over a dark sheet
+     is not a wash, it is a legible ghost, and the blur had been smearing it
+     into one. Measured in `evidence/T3/after-1440.png` before this line
+     existed.
+     `--surface-strong` has no alpha at all. A report is the deliverable of the
+     whole product and the one surface that must never be read through; the
+     shadow says it floats, so the background does not have to. */
+  background: var(--surface-strong);
   border-top: 1px solid var(--border-default);
-  -webkit-backdrop-filter: var(--blur-rail);
-  backdrop-filter: var(--blur-rail);
+  box-shadow: var(--shadow-overlay);
   animation: report-rise var(--motion-medium) var(--ease-out);
 }
+
+/* NO `backdrop-filter` here, and its removal is a MEASUREMENT rather than a
+   preference.
+
+   W4's round-three bisect (`docs/run-shell/evidence/T2/perf-notes.md` §2) ran
+   the 131-frame replay once per suppressed suspect. Every other arm moved the
+   count of over-budget frames by at most 13; suppressing every
+   `backdrop-filter` moved it from **77 to 13**, and p95 from 81.8 ms to
+   28.3 ms. Headless Chromium rasterises in software here and a blur re-reads
+   everything behind the element on every frame that touches it.
+
+   And it was buying nothing. This surface is 94% opaque, so the blur was
+   filtering a background that is already almost entirely covered - the
+   coordinator's phrase for it is "a twentieth of a pixel". The alpha is
+   deliberately NOT raised to compensate: there is nothing to compensate for at
+   this opacity, and every token that could carry the rise is shared with the
+   builder, whose sixteen baselines would move to correct a difference nobody
+   can see.
+
+   `--blur-panel` and `--blur-rail` still exist and the builder still uses both
+   (its minimap, its two dialogs, its shortcut sheet) - see `docs/design.md`
+   §3. A design canvas is still; a run console is not, and that is the whole
+   difference. */
+
 
 @keyframes report-rise {
   from { opacity: 0; transform: translateY(12px); }
@@ -257,115 +408,195 @@ async function copyReport(): Promise<void> {
   border-bottom: 1px solid var(--border-default);
 }
 
-.report-kicker { display: inline-flex; gap: 6px; align-items: center; color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
+.report-kicker { display: inline-flex; gap: var(--space-2); align-items: center; color: var(--on-accent-cyan); font: var(--type-kicker); }
 .report-title-group h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 0; font-size: var(--fs-18); }
 
 .verdict-badge {
   padding: 4px 10px;
-  color: #101a18;
+  color: var(--ink-on-brand);
   font: 800 var(--fs-13)/1.3 var(--font-mono);
   border-radius: var(--r-sm);
   letter-spacing: 0.04em;
+  /* The DOM text is words ("Needs work"); the shout is typography. An
+     unrecognised label from a newer server therefore cannot reach the screen
+     looking like a variable name. */
+  text-transform: uppercase;
 }
+/* Each variant is filled with its own status colour, and `is-fail` was the one
+   literal in the set (`#ffb4b4`) until 2026-09-05.
+
+   GAP RECORDED HERE, THEN CLOSED IN `tokens.css` THE SAME DAY, and both halves
+   are worth keeping because the diagnosis is what made the fix a two-line one.
+   `--warn-text` and `--err-text` are TEXT colours used here as FILLS. In the
+   dark theme both are pale, so the near-black `--ink-on-brand` reads at 13.04:1
+   and 11.85:1. In the light theme both flip DARK - a text colour on a pale tint
+   has to - and the same ink measured 2.84:1 and 2.24:1, which made the badge
+   saying REJECT the least readable thing on the page. `--accent-mint` is shared
+   across themes, so `is-pass` was never affected and is 14.37:1 in both.
+
+   It was not fixable from this file: `tokens.css` is explicit that nothing
+   outside it knows a theme exists, so the answer had to be an ink per theme
+   rather than a component-level media block. `--ink-on-warn` and `--ink-on-err`
+   are that pair; they are near-black in dark and a 3-5% tint of their own
+   family in light, and they measure 5.60:1 and 7.05:1 there. */
 .verdict-badge.is-pass { background: var(--accent-mint); }
-.verdict-badge.is-warn { background: var(--warn-text); }
-.verdict-badge.is-fail { background: #ffb4b4; }
-.verdict-confidence { color: var(--text-muted); font: 500 var(--fs-13)/1 var(--font-mono); }
+.verdict-badge.is-warn { color: var(--ink-on-warn); background: var(--warn-text); }
+.verdict-badge.is-fail { color: var(--ink-on-err); background: var(--err-text); }
 
-.verdict-score { color: var(--text-title); font: 700 var(--fs-18)/1 var(--font-display); }
-.verdict-score small { color: var(--text-40); font: 500 var(--fs-12)/1 var(--font-mono); }
-
-.verdict-band {
-  padding: 3px 7px;
+/* One chip carries the band word and the number, so a reader is never asked
+   to join "34% confidence" to a shouted "LOW" themselves. */
+.verdict-confidence {
+  padding: 3px var(--space-3);
   color: var(--text-muted);
-  font: 700 var(--fs-11)/1.2 var(--font-mono);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-sm);
-  letter-spacing: 0.05em;
-}
-/* `ConfidenceBand` is exactly HIGH / MODERATE / LOW (`schemas/validator.py:33`).
-   Anything else keeps the neutral base style rather than vanishing. */
-.verdict-band.is-high { color: var(--accent-mint); background: rgba(170, 255, 205, 0.1); border-color: rgba(170, 255, 205, 0.34); }
-.verdict-band.is-moderate { color: var(--accent-cyan); background: rgba(153, 234, 249, 0.1); border-color: rgba(153, 234, 249, 0.32); }
-.verdict-band.is-low { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
-
-.report-flags { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; padding: 10px 20px 0; }
-.report-flag {
-  padding: 4px 8px;
-  color: var(--text-muted);
-  font: 600 var(--fs-11)/1.4 var(--font-mono);
+  font: 600 var(--fs-12)/1.2 var(--font-mono);
   background: var(--surface-well);
   border: 1px solid var(--border-default);
   border-radius: var(--r-sm);
 }
-.report-flag.is-provisional { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
+.verdict-confidence.is-high { color: var(--on-accent-mint); border-color: color-mix(in srgb, var(--accent-mint) 34%, transparent); }
+.verdict-confidence.is-moderate { color: var(--on-accent-cyan); border-color: color-mix(in srgb, var(--accent-cyan) 32%, transparent); }
+.verdict-confidence.is-low { color: var(--warn-text-strong); background: var(--warn-bg); border-color: var(--warn-border-strong); }
 
-/* Bounded so a long floor list can never squeeze the report body to nothing on
-   a short viewport; it scrolls on its own instead. */
+.verdict-score { color: var(--text-title); font: 700 var(--fs-18)/1 var(--font-display); }
+.verdict-score small { color: var(--text-meta); font: 500 var(--fs-12)/1 var(--font-mono); }
+
+.report-flags { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4) var(--space-7) 0; }
+.report-flag {
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-muted);
+  font: 500 var(--fs-12)/1.4 var(--font-body);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
+.report-flag.is-provisional { color: var(--warn-text-strong); background: var(--warn-bg); border-color: var(--warn-border-strong); }
+
+/* Bounded so a long decision block can never squeeze the report body to
+   nothing on a short viewport; it scrolls on its own instead. */
 .verdict-summary {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-5);
   max-height: 42vh;
   overflow: auto;
-  padding: 12px 20px 0;
+  padding: var(--space-5) var(--space-7) 0;
 }
 
-.verdict-floors {
-  padding: 11px 13px;
-  background: var(--err-bg);
-  border: 1px solid var(--err-border);
+/* Tone tracks the KIND of decision, and the distinction is the point: red for
+   "this idea is dead", amber for "we could not tell". A reader had to infer
+   that before; the tint states it. Both are existing semantic tokens. */
+.verdict-decision {
+  padding: var(--space-5);
   border-radius: var(--r-md);
 }
-.verdict-floors h3,
-.verdict-scorecard h3 {
+.verdict-decision.is-floor { background: var(--err-bg); border: 1px solid var(--err-border-strong); }
+.verdict-decision.is-evidence { background: var(--warn-bg); border: 1px solid var(--warn-border-strong); }
+
+.verdict-decision h3,
+.verdict-scores h3 {
   display: inline-flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
   margin: 0;
-  font: 700 var(--fs-11)/1 var(--font-mono);
-  letter-spacing: 0.06em;
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
   text-transform: uppercase;
 }
-.verdict-floors h3 { color: var(--err-text); }
-.verdict-floors p { margin: 7px 0 10px; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
-.verdict-floors ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.verdict-floors li {
-  display: inline-flex;
-  gap: 8px;
-  align-items: baseline;
-  padding: 5px 9px;
-  background: var(--surface-well);
-  border: 1px solid var(--err-border);
-  border-radius: var(--r-sm);
+.verdict-decision.is-floor h3 { color: var(--err-text); }
+.verdict-decision.is-evidence h3 { color: var(--warn-text-strong); }
+
+.decision-headline {
+  margin: var(--space-3) 0 0;
+  color: var(--text-title);
+  font: 600 var(--fs-18)/1.3 var(--font-display);
 }
-.floor-name { color: var(--text-title); font: 600 var(--fs-13)/1.2 var(--font-body); }
-.verdict-floors code { color: var(--err-text); font: 500 var(--fs-11)/1.2 var(--font-mono); }
+.decision-meaning { margin: var(--space-2) 0 0; color: var(--text-body); font-size: var(--fs-13); line-height: 1.55; }
 
-.verdict-reason { margin: 0; color: var(--text-muted); font-size: var(--fs-13); line-height: 1.55; }
+.decision-also {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-default);
+}
+.decision-also-kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-meta);
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
+}
+.decision-also-line { margin: 0 0 var(--space-1); color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
+.decision-also-line:last-child { margin-bottom: 0; }
 
-.verdict-scorecard {
+.verdict-scores {
   display: grid;
-  gap: 7px;
-  padding: 11px 13px;
+  gap: var(--space-4);
+  padding: var(--space-5);
   background: var(--surface-well);
   border: 1px solid var(--border-default);
   border-radius: var(--r-md);
 }
-.verdict-scorecard h3 { margin-bottom: 3px; color: var(--accent-cyan); }
-.score-row { display: grid; grid-template-columns: minmax(90px, 132px) minmax(48px, 1fr) auto; gap: 10px; align-items: center; }
-.score-label { color: var(--text-muted); font: 500 var(--fs-12)/1.3 var(--font-mono); }
-.score-track { height: 6px; overflow: hidden; background: rgba(255, 255, 255, 0.08); border-radius: var(--r-pill); }
+.verdict-scores h3 { margin-bottom: 2px; color: var(--on-accent-cyan); }
+.score-row { display: grid; grid-template-columns: minmax(120px, 190px) minmax(48px, 1fr) auto; gap: var(--space-4); align-items: center; }
+.score-label { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.score-name { display: flex; gap: var(--space-2); align-items: baseline; color: var(--text-body); font: 600 var(--fs-13)/1.3 var(--font-body); }
+.score-question { color: var(--text-meta); font: 400 var(--fs-11)/1.35 var(--font-body); }
+.score-thin {
+  padding: 1px 5px;
+  color: var(--warn-text-strong);
+  font: 700 var(--fs-11)/1.3 var(--font-mono);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border-strong);
+  border-radius: var(--r-pill);
+}
+.score-track {
+  height: 6px;
+  overflow: hidden;
+  background: var(--surface-well);
+  box-shadow: inset 0 0 0 1px var(--border-control);
+  border-radius: var(--r-pill);
+}
+/* The brand gradient's three stops, in their READABLE variants.
+
+   `--gradient-brand` is one shared value in both themes, and measured against
+   this track it is 16.26 / 14.08 / 10.75:1 in the dark and
+   1.14 / 1.01 / 1.33:1 in the light - a pale mint bar on a pale grey groove,
+   which is a progress bar whose proportion cannot be read at all. A cold
+   reader found it; the numbers are `scripts/contrast-audit.mjs`'s formula over
+   the stack this panel really paints (bg-app -> shell-bg -> surface-overlay ->
+   well -> well).
+
+   Every `--on-accent-*` token ALIASES its accent in the dark palette, so this
+   gradient is byte-identical to `--gradient-brand` there - not one dark pixel
+   moves - and resolves to the readable inks in the light one: 4.90 / 4.59 /
+   4.72:1, against the 3:1 that WCAG 1.4.11 asks of a UI component. The bar is
+   the only thing carrying the proportion, so it is a component and not
+   decoration. */
 .score-fill {
   display: block;
   height: 100%;
-  background: var(--gradient-brand);
+  background: linear-gradient(
+    135deg,
+    var(--on-accent-mint),
+    var(--on-accent-cyan),
+    var(--on-accent-blue)
+  );
   border-radius: var(--r-pill);
   transition: width var(--motion-medium) var(--ease-out);
 }
+/* The one tie between the red block and the scorecard: a reader who has just
+   read "Market scored 0 of 5" can find the row without hunting. */
+/* A zero row draws NO fill, so the tint and its ring are the whole signal -
+   and `--err-bg` alone measures 1.14:1 dark / 1.16:1 light against the card,
+   which is a red that is not there. The ring carries it. `--err-border-strong`
+   was the obvious token and lands at 3.16:1 dark but 2.91:1 light, 0.09 short
+   of the bar; `--err-text` clears both at 11.32:1 and 5.46:1 and is already
+   the colour of the `0/5` beside it, so the ring and the number read as one
+   statement rather than two. */
+.score-row.is-floored .score-track { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-text); }
+.score-row.is-floored .score-value { color: var(--err-text); }
 .score-value { color: var(--text-primary); font: 700 var(--fs-13)/1 var(--font-mono); }
-.score-value small { color: var(--text-40); font-weight: 500; }
+.score-value small { color: var(--text-meta); font-weight: 500; }
 
 .report-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .report-button {
@@ -384,19 +615,33 @@ async function copyReport(): Promise<void> {
 .report-button:hover { color: var(--text-title); border-color: var(--border-hover); }
 .report-button.is-icon { padding: 7px; }
 
-.report-body {
+/* The only scrolling box below the header. `min-height: 0` is load-bearing:
+   a flex item's automatic minimum size is its content, so without it this
+   grows to fit the whole report and the panel scrolls instead - the same trap
+   `studio.css` records against `.studio-main`. */
+.report-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 18px 20px 28px;
-  scrollbar-color: rgba(153, 234, 249, 0.3) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
 
-.report-sources { flex: 0 0 auto; max-height: 26%; overflow: auto; padding: 12px 20px 18px; border-top: 1px solid var(--border-default); }
-.report-sources h3 { margin: 0 0 8px; color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
+.report-body {
+  padding: 18px 20px 28px;
+}
+
+/* A block at the end of the body, NOT a footer over it: no `position`, no
+   `max-height`, no `overflow` of its own. `reportVisibility.spec.ts` asserts
+   all three against this file's own stylesheet, because a jsdom mount applies
+   no scoped CSS and therefore cannot see a rule that would hide the report. */
+.report-sources {
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--border-default);
+}
+.report-sources h3 { margin: 0 0 var(--space-3); color: var(--on-accent-cyan); font: var(--type-kicker); text-transform: uppercase; }
 .report-sources ol { margin: 0; padding-left: 20px; color: var(--text-muted); font-size: var(--fs-12); }
 .report-sources li { margin-bottom: 4px; overflow-wrap: anywhere; }
-.report-sources a { color: var(--link-cyan); }
+.report-sources a { color: var(--link-strong); }
 
 @media (prefers-reduced-motion: reduce) {
   .report-panel { animation: none; }

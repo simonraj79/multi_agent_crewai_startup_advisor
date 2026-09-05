@@ -202,7 +202,7 @@ test.describe('a dropped socket loses nothing', () => {
       await gateCard(page).getByRole('button', { name: /approve/i }).click()
       await expect(gateCard(page).locator('h2')).toHaveText('Review verdict', { timeout: 120_000 })
       await gateCard(page).getByRole('button', { name: /approve/i }).click()
-      await expect(statusBadge(page)).toHaveText(/completed/i, { timeout: 120_000 })
+      await expect(statusBadge(page)).toHaveText(/finished/i, { timeout: 120_000 })
 
       expect(watch.unexpected).toEqual([])
     },
@@ -249,7 +249,7 @@ test.describe('a dropped socket loses nothing', () => {
 
       // Leave nothing at a gate: a durable row would outlive this file.
       await page.locator('.status-panel .control-actions button', { hasText: 'Cancel' }).click()
-      await expect(statusBadge(page)).toHaveText(/cancel/i, { timeout: 60_000 })
+      await expect(statusBadge(page)).toHaveText(/stopp/i, { timeout: 60_000 })
 
       expect(watch.unexpected).toEqual([])
     },

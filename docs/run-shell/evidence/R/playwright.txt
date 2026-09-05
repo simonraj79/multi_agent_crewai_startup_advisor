@@ -1,0 +1,417 @@
+# ================================================================
+# FIFTH PASS (c2966e7) WAS TARGETED. THE FULL SUITE BELOW IS 8ae40ec's.
+# ================================================================
+#
+# Round six changed five frontend files and no test, fixture or Python, so
+# the fifth pass re-ran the four specs it could reach and cited this run for
+# R1 rather than pretending to a sweep it did not do. What the fifth pass
+# measured at c2966e7, all green:
+#
+#   e2e/visual/run-canvas.spec.ts       3/3, 21.9s, NO regeneration
+#   e2e/visual/builder-canvas.spec.ts  16/16, 41.1s, no regeneration
+#   e2e/cast.spec.ts + studio.spec.ts  17/17, 2.9m
+#   e2e/cast-perf.spec.ts alone         2/2, 1.8m  (T2.8 passes)
+#   npx vitest run                     93 files / 1987 tests
+#   npx vue-tsc -b --force             exit 0
+#   npm run build                      exit 0, 614ms
+#   node scripts/contrast-audit.mjs    exit 0, 236 pairings, 0 failing
+#
+# 38 Playwright tests across four specs, zero failures. Of the three reds in
+# the full run below, cast-perf.spec.ts:550 now passes and the other two are
+# the builder drag pair - one proved pre-existing on main
+# (evidence/R/builder-1227.md), one that passes when run alone.
+#
+# ================================================================
+
+$ npx playwright test        # from frontend/, the WHOLE suite, both projects
+# RV3 FOURTH PASS, branch run-shell/cast at 8ae40ec
+# npx playwright test exit code: 1   (163 tests: 160 passed, 3 failed, 0 skipped, 12.8m)
+#   pass 3 at 601baef: 163 tests, 159 passed, 4 failed, 0 skipped, 12.3m
+#   pass 2 at 16f3be5: 162 tests, 155 passed, 7 failed, 0 skipped, 12.2m
+#   pass 1 at 27b256e: 162 tests, 153 passed, 9 failed, 0 skipped, 13.1m
+#
+# BEFORE ANYTHING: every reusable dev server was hunted and none existed.
+# playwright.config.ts sets reuseExistingServer:true, so a stale Vite serving
+# an older bundle would be invisible and would explain a see-through capture.
+#   netstat -ano | findstr :527      -> no LISTENER on 5273/5274/5275
+#   every node/serve/python process  -> none listening on any port at all
+#   Stop-Process -Name serve -Force  -> ran; nothing to stop after it
+#   http://127.0.0.1:5273/ 5274 5275 -> no answer, all three
+# So this suite started its own Vite on :5273 from this tree, and the
+# see-through after-1440.png of the third pass is explained by its own
+# commit rather than by a stale server: the sheet was still translucent at
+# 601baef and fec004d made it opaque.
+#
+# BACKEND (repo root, background, log read rather than /healthz trusted):
+#   SYNTHETIC=1  SYNTHETIC_BRANCH_DELAY_SECONDS=5  PORT=8099
+#   CREDENTIALS_MASTER_KEY=Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE=
+#   BUILDER_ALLOW_GATELESS_GRAPHS=1  RUN_RATE_LIMIT_MAX_RUNS=100
+#   MCP_ALLOW_INSECURE_LOCAL=1  SKILLS_ROOT=D:/MultiAgentSystem/data/skills
+#   SYNTHETIC_FAILURE="fm_bad_key:bad_key:1,fm_tool_timeout:tool_timeout:1,
+#                      fm_refusal:refusal:1,fm_malformed:malformed_output:1,
+#                      fm_rate_limit:rate_limit:1,fm_cast_refusal:refusal:1"
+#   ./.venv/Scripts/serve.exe
+# MCP fixture on :8791 with E2E_MCP_URL exported -> 0 skipped.
+#
+# ONE INCIDENT, RECORDED BECAUSE IT COULD HAVE BEEN MISTAKEN FOR A DEFECT:
+# the backend was killed by something outside this session partway through
+# the run - no traceback in its log, the wrapper reported exit 127, and
+# /healthz went to 000 while e2e/cast.spec.ts was starting. That run was
+# ABANDONED rather than reported: it was stopped, the backend restarted
+# (pid recorded), and cast+studio re-run from scratch against the live one.
+# MISSION.md warns that 'Stop-Process -Name serve' kills every backend on
+# the machine; this looks like exactly that, from another shell.
+#
+# THE THREE FAILURES:
+#   builder.spec.ts:1227  paints the target handle green/red
+#     PRE-EXISTING, and measured: see evidence/R/builder-1227.md. It fails
+#     5/5 alone at HEAD and 4/5 alone on a worktree of MAIN, with the same
+#     call log both sides - the problems dock covers the attach port. Not
+#     this branch's, and not the timing flake item 44 describes.
+#   builder.spec.ts:1552  attaches a tool by DRAGGING its port
+#     The item-44 class. Re-run alone once and PASSED (2.4s). Declared.
+#   cast-perf.spec.ts:550 the graded three-arm comparison
+#     FAILED here by ONE dropped frame at the median (painted 4 against
+#     hidden 3) and PASSED when run alone (step 5). See evidence/T2/perf.json
+#     and the T2.8 section of RV3-REPORT.md: three runs of the same
+#     comparison on the same commit gave addedDrops 0, 1, 1.
+#
+# EVERYTHING ELSE IS GREEN, including both tests that were red in pass 3:
+#   studio.spec.ts:360 (the stale 'Computed by the validator' copy)  -> PASS
+#   visual/run-canvas.spec.ts:204                                    -> PASS
+
+
+Running 163 tests using 1 worker
+
+  ✓    1 [chromium] › e2e\builder-layout.spec.ts:264:3 › Flow builder layout › does not move the Build/Run toggle when a notice appears (D-15-14) (629ms)
+  ✓    2 [chromium] › e2e\builder-layout.spec.ts:310:3 › Flow builder layout › gives the empty gallery the page, not the 236px palette column (642ms)
+  ✓    3 [chromium] › e2e\builder-layout.spec.ts:411:3 › Flow builder layout › lands every node of the validator template inside the canvas pane (656ms)
+  ✓    4 [chromium] › e2e\builder-layout.spec.ts:476:3 › Flow builder layout › lands every node of every pattern template inside the canvas pane (2.4s)
+  ✓    5 [chromium] › e2e\builder-layout.spec.ts:536:3 › Flow builder layout › lands every node of the 48-node perf fixture inside the canvas pane (833ms)
+  ✓    6 [chromium] › e2e\builder-layout.spec.ts:594:3 › Flow builder layout › keeps all three shell columns present and non-zero once a document is open (694ms)
+  ✓    7 [chromium] › e2e\builder-layout.spec.ts:709:3 › a docked strip never makes the graph unreadable (D-15-2) › keeps titles legible with Versions, the banner and the delete strip docked (1.3s)
+  ✓    8 [chromium] › e2e\builder-layout.spec.ts:808:3 › the document menu clears the rows it operates on (D-15-25) › opens the menu clear of the version panel at 1440x900 (777ms)
+  ✓    9 [chromium] › e2e\builder-layout.spec.ts:888:3 › what the pane cannot show, it says (D-15-2, round 4) › counts the off-pane nodes with a dock open, and Fit clears the count (1.2s)
+  ✓   10 [chromium] › e2e\builder-layout.spec.ts:941:3 › the gallery reads as four cards and one trash (D-15-26, D-15-27) › separates the trash from Export by at least 16px (434ms)
+  ✓   11 [chromium] › e2e\builder-layout.spec.ts:961:3 › the gallery reads as four cards and one trash (D-15-26, D-15-27) › keeps the caveat card within reach of its siblings (423ms)
+  ✓   12 [chromium] › e2e\builder-layout.spec.ts:1036:3 › the saved-graphs library (D-15-4) › shows every distinguishing word and keeps every row reachable (690ms)
+  ✓   13 [chromium] › e2e\builder-layout.spec.ts:1161:3 › the canvas stays legible at the zooms it picks for itself › no edge is ever thinner than the design width in DEVICE pixels (P-06) (2.1s)
+  ✓   14 [chromium] › e2e\builder-layout.spec.ts:1207:3 › the canvas stays legible at the zooms it picks for itself › the minimap gets out of the way of a node underneath it (P-07) (2.0s)
+  ✓   15 [chromium] › e2e\builder-mcp.spec.ts:124:3 › an MCP server, added and discovered for real › adds a server by URL, discovers it, checks two tools and shows each preview (2.0s)
+  ✓   16 [chromium] › e2e\builder-models.spec.ts:110:3 › the model registry, from the picker › a cheaper model lowers the ENFORCED figure within one validate cycle (1.7s)
+  ✓   17 [chromium] › e2e\builder-models.spec.ts:173:3 › the model registry, from the picker › disables a parameter the chosen model cannot honour, and names it (895ms)
+  ✓   18 [chromium] › e2e\builder-perf.spec.ts:370:3 › canvas performance at the bound maximum › the sampler can actually see a stall, which is what makes a green run mean anything (2.0s)
+  ✓   19 [chromium] › e2e\builder-perf.spec.ts:425:3 › canvas performance at the bound maximum › records what an IDLE canvas costs, so a busy one can be compared to it (7.9s)
+  ✓   20 [chromium] › e2e\builder-perf.spec.ts:453:3 › canvas performance at the bound maximum › records the same gesture over ONE node, to say where the late frames come from (7.9s)
+  ✓   21 [chromium] › e2e\builder-perf.spec.ts:514:3 › canvas performance at the bound maximum › holds the frame budget on the 48-node fixture (8.2s)
+  ✓   22 [chromium] › e2e\builder-perf.spec.ts:533:3 › canvas performance at the bound maximum › holds the same budget on a 60-node graph the server would refuse to size (8.2s)
+  ✓   23 [chromium] › e2e\builder-skills.spec.ts:140:3 › skills, from paste to attached › the palette names all three attachment families in one line each (566ms)
+  ✓   24 [chromium] › e2e\builder-skills.spec.ts:170:3 › skills, from paste to attached › pastes a SKILL.md, lists it under mine, attaches it and renders its body (1.1s)
+  ✓   25 [chromium] › e2e\builder-skills.spec.ts:238:3 › skills, from paste to attached › shows the package parser own sentence when a pack will not parse (843ms)
+  ✓   26 [chromium] › e2e\builder-tools.spec.ts:132:3 › the tool catalogue, on the canvas › names every catalogue entry in a sub-list under the tool tile (664ms)
+  ✓   27 [chromium] › e2e\builder-tools.spec.ts:165:3 › the tool catalogue, on the canvas › attaches a tool to an agent and takes both away in one undo (744ms)
+  ✓   28 [chromium] › e2e\builder-tools.spec.ts:198:3 › the tool catalogue, on the canvas › leaves a tool dropped on a transform unattached, and says so in the dock (1.7s)
+  ✓   29 [chromium] › e2e\builder-tools.spec.ts:240:3 › the tool catalogue, on the canvas › shows the amber no-key chip and the dock row until a credential is chosen (2.6s)
+  ✓   30 [chromium] › e2e\builder-tools.spec.ts:321:1 › drags a NAMED tool out of the sub-list and lands that tool (734ms)
+  ✓   31 [chromium] › e2e\builder.spec.ts:303:3 › Flow builder › places a node, wires it, and watches validation go red then green (2.7s)
+  ✓   32 [chromium] › e2e\builder.spec.ts:355:3 › Flow builder › refuses a connection into the input node at the mouse, and commits nothing (990ms)
+  ✓   33 [chromium] › e2e\builder.spec.ts:399:3 › Flow builder › creates a node and its edge from a port drag as ONE undo step (1.1s)
+  ✓   34 [chromium] › e2e\builder.spec.ts:447:3 › Flow builder › aborts the port menu with Escape and leaves the history untouched (979ms)
+  ✓   35 [chromium] › e2e\builder.spec.ts:474:3 › Flow builder › deletes a router branch and its edge together, and one undo restores both (1.4s)
+  ✓   36 [chromium] › e2e\builder.spec.ts:521:3 › Flow builder › configures a node in the docked inspector and the card says so at once (1.7s)
+  ✓   37 [chromium] › e2e\builder.spec.ts:558:3 › Flow builder › aligns a marquee selection in exactly one undo step (1.1s)
+  ✓   38 [chromium] › e2e\builder.spec.ts:630:3 › Flow builder › resolves a save conflict without discarding the author work (914ms)
+  ✓   39 [chromium] › e2e\builder.spec.ts:697:3 › Flow builder › walks to a problem from the panel, fixes it, publishes, and the graph launches @launch (2.6s)
+  ✓   40 [chromium] › e2e\builder.spec.ts:835:3 › Flow builder › never presents an unchecked document as ready to publish (1.4s)
+  ✓   41 [chromium] › e2e\builder.spec.ts:896:3 › Flow builder › ends the keyboard connect gesture it starts, and Escape keeps working after (965ms)
+  ✓   42 [chromium] › e2e\builder.spec.ts:947:3 › Flow builder › completes a keyboard link with Tab and Enter (912ms)
+  ✓   43 [chromium] › e2e\builder.spec.ts:970:3 › Flow builder › focuses the node filter with / and dims what does not match (681ms)
+  ✓   44 [chromium] › e2e\builder.spec.ts:995:3 › Flow builder › lets a keyboard author out of the canvas (658ms)
+  ✓   45 [chromium] › e2e\builder.spec.ts:1027:3 › Flow builder › opens a prior version read-only, and Restore makes it the next head (1.2s)
+  ✓   46 [chromium] › e2e\builder.spec.ts:1105:3 › Flow builder › recovers the open document across a reload without offering a stale draft (960ms)
+  ✓   47 [chromium] › e2e\builder.spec.ts:1185:3 › the canvas, in a browser › connects at 50 / 100 / 150 % zoom, ten times out of ten (18.9s)
+  ✘   48 [chromium] › e2e\builder.spec.ts:1227:3 › the canvas, in a browser › paints the target handle green when it will take the edge and red when it will not (15.8s)
+  ✓   49 [chromium] › e2e\builder.spec.ts:1283:3 › the canvas, in a browser › says no to a refused drop, and commits nothing when it does (1.4s)
+  ✓   50 [chromium] › e2e\builder.spec.ts:1324:3 › the canvas, in a browser › shows the port name on the dangling line while a gate branch is dragged (898ms)
+  ✓   51 [chromium] › e2e\builder.spec.ts:1365:3 › the canvas, in a browser › places the first node of a new graph in one click from the landing page (513ms)
+  ✓   52 [chromium] › e2e\builder.spec.ts:1391:3 › the canvas, in a browser › keeps the zoom limits the plan sets, and the port target inside them (723ms)
+  ✓   53 [chromium] › e2e\builder.spec.ts:1506:3 › attachments and the inspector › attaches a tool by dropping it on an agent, in one undo step (911ms)
+  ✘   54 [chromium] › e2e\builder.spec.ts:1552:3 › attachments and the inspector › attaches a tool by DRAGGING its port onto the agent, not only by dropping (15.8s)
+  ✓   55 [chromium] › e2e\builder.spec.ts:1609:3 › attachments and the inspector › attaches with the T hotkey when an agent is selected, and places it loose when none is (1.8s)
+  ✓   56 [chromium] › e2e\builder.spec.ts:1668:3 › attachments and the inspector › leaves a tool dropped on empty canvas unattached, and says so (1.5s)
+  ✓   57 [chromium] › e2e\builder.spec.ts:1700:3 › attachments and the inspector › surfaces a problem that lives behind the Expert switch, and walks to its node (2.0s)
+  ✓   58 [chromium] › e2e\builder.spec.ts:1790:3 › attachments and the inspector › turns the Expert switch on and focuses the control a hidden problem blames (2.0s)
+  ✓   59 [chromium] › e2e\builder.spec.ts:1836:3 › attachments and the inspector › is fully keyboard reachable: every control of an authored agent, and the dock (2.4s)
+  ✓   60 [chromium] › e2e\builder.spec.ts:1927:3 › attachments and the inspector › configures an agent in nine pointer actions, ending valid (2.7s)
+  ✓   61 [chromium] › e2e\capture-run.spec.ts:161:3 › plan 11 capture set › captures the run console in five states, two viewports, two themes (51.1s)
+  ✓   62 [chromium] › e2e\capture-templates.spec.ts:66:3 › plan 14 capture set › captures the gallery and every template, two viewports, two themes (35.3s)
+  ✓   63 [chromium] › e2e\cast-perf.spec.ts:400:3 › T2.8 — frame budget › a real synthetic run is measured end to end and its numbers are recorded @launch (21.5s)
+  ✘   64 [chromium] › e2e\cast-perf.spec.ts:550:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch (1.4m)
+  ✓   65 [chromium] › e2e\cast.spec.ts:727:3 › the cast at rest › S1: every character is idle before a run, and the shell is not blank (647ms)
+  ✓   66 [chromium] › e2e\cast.spec.ts:764:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch (18.3s)
+  ✓   67 [chromium] › e2e\cast.spec.ts:907:3 › the graph and the trace show the same cast › T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state @launch (2.9s)
+  ✓   68 [chromium] › e2e\cast.spec.ts:998:3 › the character on a node is deterministic › G3: the same node keeps the same character across a page reload @launch (15.7s)
+  ✓   69 [chromium] › e2e\cast.spec.ts:1062:3 › motion stays quiet › T2.7: nothing animates offscreen and no more than twelve character animations run at once @launch (2.8s)
+  ✓   70 [chromium] › e2e\cast.spec.ts:1101:3 › motion stays quiet › T2.7/S5: reduced motion stops every part and keeps every state @launch (15.1s)
+  ✓   71 [chromium] › e2e\cast.spec.ts:1183:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch (34.9s)
+  ✓   72 [chromium] › e2e\cast.spec.ts:1682:3 › the report names what decided the run › T1.1: a verdict an override decided is captured with its block, its dimension and its score @launch (6.6s)
+  ✓   73 [chromium] › e2e\cast.spec.ts:1867:3 › the shell at 390x844 › S6: a run drives and finishes at 390px, and nothing overflows sideways @launch (18.4s)
+  ✓   74 [chromium] › e2e\cast.spec.ts:2095:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch (3.2s)
+1080 gallery: 4 of 9 cards above the fold
+1080 validator on open: zoom 0.7333 · smallest title 9.53px (13px CSS on route_scope) · card titles 11px · 5 of 16 clipped [{"id":"revise_scope","overflow":26},{"id":"route_scope","overflow":26},{"id":"market_analyst","overflow":26},{"id":"revise_verdict","overflow":26},{"id":"route_verdict","overflow":4}] · 0 wholly off-pane
+  ✓   75 [chromium] › e2e\desktop-1080.spec.ts:383:3 › 1 · the gallery and the sixteen-node template › the gallery fits, and every validator node is whole and legible (2.2s)
+1080 validator light: zoom 0.7333 · title 9.53px · 5 clipped · 0 off-pane
+  ✓   76 [chromium] › e2e\desktop-1080.spec.ts:459:3 › 1 · the gallery and the sixteen-node template › light theme keeps the same fit (2.1s)
+1080 versions+delete: pane 505px · zoom 0.7333 · title 9.53px · 5 clipped · 5 off-pane · 5 titles cut [{"id":"revise_scope","overflow":120},{"id":"route_scope","overflow":120},{"id":"market_analyst","overflow":120},{"id":"revise_verdict","overflow":121},{"id":"route_verdict","overflow":98}]
+  ✓   77 [chromium] › e2e\desktop-1080.spec.ts:493:3 › 2 · versions plus the delete strip › says what it hides and lets a pan reach it, with both docked (3.8s)
+1080 inspector 3-inspector-expert-dark: 0 clipped controls
+  ✓   78 [chromium] › e2e\desktop-1080.spec.ts:655:3 › 3 · the inspector with expert settings on › no control is clipped and the dock is visible — dark (2.1s)
+1080 inspector 7c-inspector-expert-light: 0 clipped controls
+  ✓   79 [chromium] › e2e\desktop-1080.spec.ts:664:3 › 3 · the inspector with expert settings on › no control is clipped and the dock is visible — light (2.2s)
+1080 test panel: 437px of 729 = 59.9% · canvas 0.733 -> 0.7333 · 15 clipped · 8 off-pane
+  ✓   80 [chromium] › e2e\desktop-1080.spec.ts:680:3 › 4 · the test panel at 60% of the pane › the canvas re-fits and nothing sits under the panel (2.9s)
+1080 console mid-run (dark): {"nodes":7,"offPane":0,"lane":true,"rail":true,"status":true,"pageScrolls":false}
+1080 console completed (dark): panel {"elapsed":"00:00","calls":"3","tokens":"1.8K","cost":"$0.0016"} · server {"frames":50,"frameSpanSeconds":0.307,"tokenFrames":3}
+  ✓   81 [chromium] › e2e\desktop-1080.spec.ts:991:3 › 5 · a published graph, mid-run and completed › the run console at 1920x1080 — dark @launch (3.4s)
+1080 console mid-run (light): {"nodes":7,"offPane":0,"lane":true,"rail":true,"status":true,"pageScrolls":false}
+1080 console completed (light): panel {"elapsed":"00:00","calls":"3","tokens":"1.8K","cost":"$0.0016"} · server {"frames":50,"frameSpanSeconds":0.325,"tokenFrames":3}
+  ✓   82 [chromium] › e2e\desktop-1080.spec.ts:999:3 › 5 · a published graph, mid-run and completed › the run console at 1920x1080 — light @launch (3.4s)
+crit10 dark bad_key: legible=true recoverable=true contrast=12.23:1 — "SyntheticBadCredential: SYNTHETIC_FAILURE: fm_bad_key attempt 1 (SyntheticBadCredential)"
+  ✓   83 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch bad_key is legible and recoverable — dark (1.7s)
+crit10 dark tool_timeout: legible=true recoverable=true contrast=12.23:1 — "SyntheticToolTimeout: SYNTHETIC_FAILURE: fm_tool_timeout attempt 1 (SyntheticToolTimeout)"
+  ✓   84 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch tool_timeout is legible and recoverable — dark (1.5s)
+crit10 dark refusal: legible=true recoverable=true contrast=12.23:1 — "SyntheticRefusal: SYNTHETIC_FAILURE: fm_refusal attempt 1 (SyntheticRefusal)"
+  ✓   85 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch refusal is legible and recoverable — dark (1.5s)
+crit10 dark malformed_output: legible=true recoverable=true contrast=12.23:1 — "SyntheticMalformedOutput: SYNTHETIC_FAILURE: fm_malformed attempt 1 (SyntheticMalformedOutput)"
+  ✓   86 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch malformed_output is legible and recoverable — dark (1.5s)
+crit10 dark rate_limit: legible=true recoverable=true contrast=12.23:1 — "SyntheticRateLimitError: SYNTHETIC_FAILURE: fm_rate_limit attempt 1 (SyntheticRateLimitError)"
+  ✓   87 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch rate_limit is legible and recoverable — dark (1.4s)
+crit10 dark cyclic_graph: legible=true recoverable=true contrast=13.18:1 — "back-edge-not-router edge 'e3' closes a loop from 'second' back to 'first', and 'second' is a agent node. A loop-closing node MUST be a router: insert a router node between 'second' and 'first' and draw the back edge from that router instead. This is measured, not cautious - with a plain node here the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing, with no exception and no warning second"
+  ✓   88 [chromium] › e2e\desktop-1080.spec.ts:1337:5 › 6 · plan 12 criterion 10 at 1920x1080 › the cyclic graph is refused legibly — dark (645ms)
+crit10 light bad_key: legible=true recoverable=true contrast=6.53:1 — "SyntheticBadCredential: SYNTHETIC_FAILURE: fm_bad_key attempt 1 (SyntheticBadCredential)"
+  ✓   89 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch bad_key is legible and recoverable — light (1.5s)
+crit10 light tool_timeout: legible=true recoverable=true contrast=6.53:1 — "SyntheticToolTimeout: SYNTHETIC_FAILURE: fm_tool_timeout attempt 1 (SyntheticToolTimeout)"
+  ✓   90 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch tool_timeout is legible and recoverable — light (1.5s)
+crit10 light refusal: legible=true recoverable=true contrast=6.53:1 — "SyntheticRefusal: SYNTHETIC_FAILURE: fm_refusal attempt 1 (SyntheticRefusal)"
+  ✓   91 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch refusal is legible and recoverable — light (1.5s)
+crit10 light malformed_output: legible=true recoverable=true contrast=6.53:1 — "SyntheticMalformedOutput: SYNTHETIC_FAILURE: fm_malformed attempt 1 (SyntheticMalformedOutput)"
+  ✓   92 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch malformed_output is legible and recoverable — light (1.5s)
+crit10 light rate_limit: legible=true recoverable=true contrast=6.53:1 — "SyntheticRateLimitError: SYNTHETIC_FAILURE: fm_rate_limit attempt 1 (SyntheticRateLimitError)"
+  ✓   93 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch rate_limit is legible and recoverable — light (1.5s)
+crit10 light cyclic_graph: legible=true recoverable=true contrast=12.85:1 — "back-edge-not-router edge 'e3' closes a loop from 'second' back to 'first', and 'second' is a agent node. A loop-closing node MUST be a router: insert a router node between 'second' and 'first' and draw the back edge from that router instead. This is measured, not cautious - with a plain node here the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing, with no exception and no warning second"
+  ✓   94 [chromium] › e2e\desktop-1080.spec.ts:1337:5 › 6 · plan 12 criterion 10 at 1920x1080 › the cyclic graph is refused legibly — light (678ms)
+  ✓   95 [chromium] › e2e\failure-modes.spec.ts:301:3 › the failure reaches the screen › @launch the failed node turns red on the run console, message and all (3.2s)
+  ✓   96 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch bad_key fails legibly and re-runs from the failed node (465ms)
+  ✓   97 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch tool_timeout fails legibly and re-runs from the failed node (479ms)
+  ✓   98 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch refusal fails legibly and re-runs from the failed node (466ms)
+  ✓   99 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch malformed_output fails legibly and re-runs from the failed node (466ms)
+  ✓  100 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch rate_limit fails legibly and re-runs from the failed node (467ms)
+  ✓  101 [chromium] › e2e\failure-modes.spec.ts:465:3 › the cyclic graph never gets as far as a run › publish is refused, the closing edge is highlighted, and the sentence says how (607ms)
+  ✓  102 [chromium] › e2e\isolation.spec.ts:266:3 › Per-user isolation › Alice authors a graph, stores a key and publishes, and every row says it is hers (2.0s)
+  ✓  103 [chromium] › e2e\isolation.spec.ts:347:3 › Per-user isolation › Bob's gallery lists no graph of Alice's, and his picker no key of hers (745ms)
+  ✓  104 [chromium] › e2e\isolation.spec.ts:384:3 › Per-user isolation › a deep link to Alice's document lands Bob on the empty builder (272ms)
+  ✓  105 [chromium] › e2e\isolation.spec.ts:417:3 › Per-user isolation › Bob's console pointed at Alice's workflow stays live, shows the server's sentence, and cannot launch @launch (440ms)
+  ✓  106 [chromium] › e2e\isolation.spec.ts:509:3 › Per-user isolation › the next person on the same browser inherits nothing of Alice's, and her sign-out clears what she wrote @launch (963ms)
+journey: 2.0s of a 240s budget
+  ✓  107 [chromium] › e2e\journey.spec.ts:100:3 › The four-minute journey › a cold sign-in reaches a visible result in under four minutes @launch (2.2s)
+  ✓  108 [chromium] › e2e\published-run.spec.ts:72:3 › a published graph in the run console › paints a phase lane that advances in order @launch (8.7s)
+  ✓  109 [chromium] › e2e\published-run.spec.ts:130:3 › a published graph in the run console › gives the lane medallions rather than the validator's boat @launch (1.3s)
+  ✓  110 [chromium] › e2e\stream-failure.spec.ts:137:3 › a dropped socket loses nothing › @launch the stream dies mid-run, the reload keeps every completed node, and the run finishes (18.8s)
+  ✓  111 [chromium] › e2e\stream-failure.spec.ts:211:3 › a dropped socket loses nothing › @launch a reload with no socket drop at all is the control (3.2s)
+  ✓  112 [chromium] › e2e\studio.spec.ts:143:3 › Validator Studio › renders the fixed validator topology (573ms)
+  ✓  113 [chromium] › e2e\studio.spec.ts:181:3 › Validator Studio › reports the live backend instead of falling back to the mock transport (561ms)
+  ✓  114 [chromium] › e2e\studio.spec.ts:204:3 › Validator Studio › runs the full operator journey through both gates to completion @launch (16.9s)
+  ✓  115 [chromium] › e2e\studio.spec.ts:339:3 › Validator Studio › marks the paused gate node Waiting while a human is being asked @launch (793ms)
+  ✓  116 [chromium] › e2e\studio.spec.ts:360:3 › Validator Studio › presents every verdict value as read-only and leaves only feedback editable @launch (16.4s)
+  ✓  117 [chromium] › e2e\studio.spec.ts:434:3 › Validator Studio › accepts a Revise reply at the scope gate and keeps the run going @launch (1.0s)
+  ✓  118 [chromium] › e2e\studio.spec.ts:484:3 › Validator Studio › recovers an in-flight run across a page reload @launch (16.8s)
+  ✓  119 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch sequential-pipeline opens, publishes and completes with a body (1.3s)
+  ✓  120 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch news-to-social opens, publishes and completes with a body (1.1s)
+  ✓  121 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch conditional-router opens, publishes and completes with a body (1.3s)
+  ✓  122 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch reflection-loop opens, publishes and completes with a body (1.4s)
+  ✓  123 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch hierarchical-delegation opens, publishes and completes with a body (1.3s)
+  ✓  124 [chromium] › e2e\test-panel.spec.ts:279:3 › The docked test panel › the Run tab completes a published graph and shows a result body inline @launch (4.1s)
+  ✓  125 [chromium] › e2e\test-panel.spec.ts:335:3 › The docked test panel › the Node tab names the mocks it has not got, and runs one node once it has @launch (4.4s)
+  ✓  126 [chromium] › e2e\test-panel.spec.ts:461:3 › The docked test panel › the Dry-run tab prices the graph and creates no run at all (973ms)
+  ✓  127 [chromium] › e2e\test-panel.spec.ts:494:3 › The docked test panel › a failed test run puts the node in the problems dock, under its own heading @launch (3.7s)
+  ✓  128 [chromium] › e2e\test-panel.spec.ts:587:3 › The docked test panel › the Code tab shows what a DRAFT compiled to, without publishing it (767ms)
+  ✓  129 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.1s)
+  ✓  130 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.2s)
+  ✓  131 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.5s)
+  ✓  132 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.2s)
+  ✓  133 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.2s)
+  ✓  134 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.2s)
+  ✓  135 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.4s)
+  ✓  136 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.2s)
+  ✓  137 [chromium] › e2e\visual\choreography.spec.ts:113:3 › characters › one agent is one colour on the card, in the rail and on the token (5.9s)
+  ✓  138 [chromium] › e2e\visual\choreography.spec.ts:140:3 › characters › every card wears a medallion, and the quarantine node does not (525ms)
+  ✓  139 [chromium] › e2e\visual\choreography.spec.ts:150:3 › the idle recede › steps every other card back mid-run and lifts on the terminal frame (25.3s)
+  ✓  140 [chromium] › e2e\visual\choreography.spec.ts:212:3 › the handoff › a token walks the edge and is gone inside its own bound @launch (3.0s)
+  ✓  141 [chromium] › e2e\visual\choreography.spec.ts:262:3 › the handoff › no card animation runs on a canvas whose run is over @launch (31.0s)
+  ✓  142 [chromium] › e2e\visual\choreography.spec.ts:282:3 › the launch sequence › the control glows from the press, and the cards land staggered (815ms)
+  ✓  143 [chromium] › e2e\visual\choreography.spec.ts:311:3 › a failed node › says what went wrong on the card @launch (912ms)
+  ✓  144 [chromium] › e2e\visual\choreography.spec.ts:346:3 › the dialogue rail › opens itself on the first utterance and reveals text @launch (814ms)
+  ✓  145 [chromium] › e2e\visual\choreography.spec.ts:371:3 › reduced motion › keeps the recede, drops the movement @launch (974ms)
+  ✓  146 [chromium] › e2e\visual\node-grammar.spec.ts:252:3 › the node grammar at working zoom › draws all ten kinds with a distinct silhouette, accent and eyebrow at 0.5 (2.5s)
+  ✓  147 [chromium] › e2e\visual\node-grammar.spec.ts:309:3 › the node grammar at working zoom › captures the same ten at 1.0 and one close-up per family (2.4s)
+  ✓  148 [chromium] › e2e\visual\run-canvas.spec.ts:204:3 › the run canvas survives the node-card extraction › looks the same idle, and the card shell resolves as authored (738ms)
+  ✓  149 [chromium] › e2e\visual\run-canvas.spec.ts:272:3 › the run canvas survives the node-card extraction › looks the same with a branch in flight, and still animates @launch (3.5s)
+  ✓  150 [chromium] › e2e\visual\run-canvas.spec.ts:390:3 › the run canvas survives the node-card extraction › looks the same paused at a gate @launch (12.9s)
+  ✓  151 [chromium] › e2e\capture-handoff.spec.ts:24:1 › records a token walking the fan-out @launch (5.6s)
+  ✓  152 [mobile] › e2e\mobile.spec.ts:48:3 › the builder at 390x844 › opens the gallery without the page scrolling sideways (500ms)
+  ✓  153 [mobile] › e2e\mobile.spec.ts:74:3 › the builder at 390x844 › opens a graph, and the palette is a bottom sheet rather than a rail (1.0s)
+  ✓  154 [mobile] › e2e\mobile.spec.ts:117:3 › the builder at 390x844 › opens the inspector as a full-width overlay over the canvas (2.6s)
+  ✓  155 [mobile] › e2e\mobile.spec.ts:158:3 › the builder at 390x844 › still pans and zooms the canvas, which is what this viewport is for (2.1s)
+  ✓  156 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.1s)
+  ✓  157 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.1s)
+  ✓  158 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.3s)
+  ✓  159 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.1s)
+  ✓  160 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.0s)
+  ✓  161 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.1s)
+  ✓  162 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.3s)
+  ✓  163 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.1s)
+
+
+  1) [chromium] › e2e\builder.spec.ts:1227:3 › the canvas, in a browser › paints the target handle green when it will take the edge and red when it will not 
+
+    TimeoutError: locator.hover: Timeout 15000ms exceeded.
+    Call log:
+      - waiting for locator('.vue-flow__handle.source[data-nodeid="tool_1"][data-handleid="attach"]')
+        - locator resolved to <div data-nodeid="tool_1" data-handleid="attach" data-handlepos="right" data-id="builder-flow-tool_1-attach-source" class="vue-flow__handle vue-flow__handle-right vue-flow__handle-attach nodrag nopan source connectable connectablestart connectableend connectionindicator builder-port is-port-out is-port-attach"></div>
+      - attempting hover action
+        2 × waiting for element to be visible and stable
+          - element is not stable
+        - retrying hover action
+        - waiting 20ms
+        2 × waiting for element to be visible and stable
+          - element is not stable
+        - retrying hover action
+          - waiting 100ms
+        - waiting for element to be visible and stable
+        - element is not stable
+      27 × retrying hover action
+           - waiting 500ms
+           - waiting for element to be visible and stable
+           - element is visible and stable
+           - scrolling into view if needed
+           - done scrolling
+           - <span data-v-ff58a1fa="" class="problem-message">tool_1 names the tool 'tool', which is not in thi…</span> from <section data-v-ff58a1fa="" data-v-1207ed5f="" class="problems-panel">…</section> subtree intercepts pointer events
+      - retrying hover action
+        - waiting 500ms
+
+
+      1258 |     // Hold one drag open across both hovers, so the two answers are the same
+      1259 |     // gesture rather than two gestures that happened to agree.
+    > 1260 |     await port(page, tool.id, 'attach').hover()
+           |                                         ^
+      1261 |     await page.mouse.down()
+      1262 |
+      1263 |     await attach.hover()
+        at D:\MultiAgentSystem\frontend\e2e\builder.spec.ts:1260:41
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\builder-the-canvas-in-a-br-d739b-ge-and-red-when-it-will-not-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\builder-the-canvas-in-a-br-d739b-ge-and-red-when-it-will-not-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\builder-the-canvas-in-a-br-d739b-ge-and-red-when-it-will-not-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\builder-the-canvas-in-a-br-d739b-ge-and-red-when-it-will-not-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › e2e\builder.spec.ts:1552:3 › attachments and the inspector › attaches a tool by DRAGGING its port onto the agent, not only by dropping 
+
+    TimeoutError: locator.hover: Timeout 15000ms exceeded.
+    Call log:
+      - waiting for locator('.vue-flow__handle.source[data-nodeid="tool_1"][data-handleid="attach"]')
+        - locator resolved to <div data-nodeid="tool_1" data-handleid="attach" data-handlepos="right" data-id="builder-flow-tool_1-attach-source" class="vue-flow__handle vue-flow__handle-right vue-flow__handle-attach nodrag nopan source connectable connectablestart connectableend connectionindicator builder-port is-port-out is-port-attach"></div>
+      - attempting hover action
+        2 × waiting for element to be visible and stable
+          - element is not stable
+        - retrying hover action
+        - waiting 20ms
+        2 × waiting for element to be visible and stable
+          - element is not stable
+        - retrying hover action
+          - waiting 100ms
+        - waiting for element to be visible and stable
+        - element is not stable
+      28 × retrying hover action
+           - waiting 500ms
+           - waiting for element to be visible and stable
+           - element is visible and stable
+           - scrolling into view if needed
+           - done scrolling
+           - <span data-v-ff58a1fa="" class="problem-message">tool_1 names the tool 'tool', which is not in thi…</span> from <section data-v-ff58a1fa="" data-v-1207ed5f="" class="problems-panel">…</section> subtree intercepts pointer events
+      - retrying hover action
+        - waiting 500ms
+
+
+      185 | /** Drag from one locator's centre to another's, the way a person draws an edge. */
+      186 | async function dragTo(page: Page, from: Locator, to: Locator): Promise<void> {
+    > 187 |   await from.hover()
+          |              ^
+      188 |   await page.mouse.down()
+      189 |   await to.hover()
+      190 |   await to.hover() // a second move, so Vue Flow's connection line has a frame to track
+        at dragTo (D:\MultiAgentSystem\frontend\e2e\builder.spec.ts:187:14)
+        at D:\MultiAgentSystem\frontend\e2e\builder.spec.ts:1590:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\builder-attachments-and-th-3f093--agent-not-only-by-dropping-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\builder-attachments-and-th-3f093--agent-not-only-by-dropping-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\builder-attachments-and-th-3f093--agent-not-only-by-dropping-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\builder-attachments-and-th-3f093--agent-not-only-by-dropping-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › e2e\cast-perf.spec.ts:550:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch 
+
+    Error: painting the console added 1 dropped frames at the median: 4 painted (samples 3, 4, 4) against 3 hidden (samples 3, 4, 3). Idle floor: 0. See D:\MultiAgentSystem\docs\run-shell\evidence\T2\perf.json.
+
+    expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 3
+    Received:    4
+
+      988 |           `${hidden.over34ms} hidden (samples ${drops(hiddenSamples)}). Idle floor: ` +
+      989 |           `${(arms.idle as { over34ms: number }).over34ms}. See ${PERF_JSON}.`,
+    > 990 |       ).toBeLessThanOrEqual(hidden.over34ms)
+          |         ^
+      991 |       expect(
+      992 |         painted.p95,
+      993 |         `painting the console cost ${p95Delta}ms of p95 at the median: ${painted.p95}ms painted ` +
+        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:990:9
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\error-context.md
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    [chromium] › e2e\builder.spec.ts:1227:3 › the canvas, in a browser › paints the target handle green when it will take the edge and red when it will not 
+    [chromium] › e2e\builder.spec.ts:1552:3 › attachments and the inspector › attaches a tool by DRAGGING its port onto the agent, not only by dropping 
+    [chromium] › e2e\cast-perf.spec.ts:550:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch 
+  160 passed (12.8m)
+EXIT=1

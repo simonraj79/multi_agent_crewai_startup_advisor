@@ -52,24 +52,49 @@ FIXTURE_TS = datetime(2026, 8, 30, 12, 0, 0, tzinfo=timezone.utc)
 
 EVIDENCE_URL = "https://news.ycombinator.com/item?id=1"
 
+#: Three distinct market sources. `DimensionScore.evidence_thin` is computed as
+#: `len(evidence_urls) < 3`, so this is the one way to say "we looked and found
+#: three sources" as opposed to "we barely looked" - which is the difference
+#: the third fixture entry below turns on.
+MARKET_URLS = [
+    EVIDENCE_URL,
+    "https://example.com/market-note",
+    "https://example.com/category-revenue",
+]
 
-def _dimension(score: int) -> DimensionScore:
+
+def _dimension(score: int, urls: list[str] | None = None) -> DimensionScore:
     return DimensionScore(
         score=score,
         anchor_matched=f"A rubric anchor standing in for level {score}.",
-        evidence_urls=[EVIDENCE_URL],
+        evidence_urls=list(urls) if urls is not None else [EVIDENCE_URL],
     )
 
 
-def _verdict(*, demand: int, coverage: float) -> Verdict:
-    """A real `Verdict`, so the schema - not the test - decides the answer."""
+def _verdict(
+    *,
+    demand: int,
+    coverage: float,
+    market: int = 3,
+    competitive: int = 3,
+    feasibility: int = 3,
+    headroom: int = 3,
+    market_urls: list[str] | None = None,
+) -> Verdict:
+    """A real `Verdict`, so the schema - not the test - decides the answer.
+
+    Every dimension past `demand` has a default equal to what the first two
+    fixture entries were built with, so widening this signature could not move
+    a byte of the frames that already existed - which matters, because those
+    two are what `realVerdictFrameShape.spec.ts` asserts field for field.
+    """
 
     return Verdict(
         demand=_dimension(demand),
-        market=_dimension(3),
-        competitive_room=_dimension(3),
-        feasibility=_dimension(3),
-        headroom_over_free=_dimension(3),
+        market=_dimension(market, market_urls),
+        competitive_room=_dimension(competitive),
+        feasibility=_dimension(feasibility),
+        headroom_over_free=_dimension(headroom),
         evidence_counts={"sentiment_usable_threads": 1},
         market_coverage=coverage,
         sentiment_coverage=coverage,
@@ -89,9 +114,29 @@ def _verdict(*, demand: int, coverage: float) -> Verdict:
 #: * `RESCORED` is what the revise loop republishes: no floor, so `fatal_floors`
 #:   is `[]` and `decision_reason` is `null`, and `provisional` is false.
 #:
-#: A client that renders both renders every case the schema can produce.
+#: * `THIN_EVIDENCE` is the third case and the one neither of the others can
+#:   reach: a floor is LISTED and did not DECIDE. `compute_mechanical_result`
+#:   collects `fatal_floors` first and then picks a label through an if/elif
+#:   whose FIRST arm is `confidence < 0.35`
+#:   (`schemas/validator.py:538-566`), so a run that is both under-evidenced
+#:   and floored comes back `NEEDS_WORK / INSUFFICIENT_EVIDENCE` carrying
+#:   `["FLOOR_NO_MARKET"]`. A client that reads `fatal_floors[0]` as the
+#:   reason - the obvious implementation - tells the operator the market was
+#:   rejected when what actually happened is that the run could not see far
+#:   enough to say. Nothing in the first two entries distinguishes those, so
+#:   until this entry existed the shell could get it wrong and stay green.
+#:
+#: A client that renders all three renders every case the schema can produce.
 REJECTED = _verdict(demand=0, coverage=0.50)
 RESCORED = _verdict(demand=3, coverage=0.90)
+#: D 2, M 0, C 2, F 3, X 3 -> composite 3.8; coverage 0.34 on all three
+#: branches -> confidence 0.34, band LOW, and the override fires. `market`
+#: carries THREE sources while scoring 0, so `evidence_thin` is false there and
+#: true for D, C, F and X: the M ladder's zero means "three sources and no
+#: nameable buyer", which is a finding, where the other four are simply thin.
+THIN_EVIDENCE = _verdict(
+    demand=2, coverage=0.34, market=0, competitive=2, market_urls=MARKET_URLS
+)
 
 
 def build_verdict_frames() -> tuple[FrameData, ...]:
@@ -107,7 +152,7 @@ def build_verdict_frames() -> tuple[FrameData, ...]:
         buffer=buffer,
         registry=NodeRegistry.from_flow_structure(build_flow_structure(ValidatorFlow)),
     )
-    for verdict in (REJECTED, RESCORED):
+    for verdict in (REJECTED, RESCORED, THIN_EVIDENCE):
         adapter(None, VerdictComputedEvent(verdict=verdict, timestamp=FIXTURE_TS))
     # An emit that raised would be swallowed into `emit_errors` and leave a
     # short, silently-wrong fixture behind, so refuse to build one.
@@ -124,7 +169,7 @@ def fixture_payload() -> str:
 
 class VerdictFrameContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.rejected, self.rescored = build_verdict_frames()
+        self.rejected, self.rescored, self.thin = build_verdict_frames()
 
     def test_the_frame_carries_exactly_the_agreed_payload(self) -> None:
         """The contract the Studio client is built against, key for key.
@@ -196,6 +241,70 @@ class VerdictFrameContractTests(unittest.TestCase):
         self.assertFalse(details["provisional"])
         self.assertEqual(details["verdict"], "NEEDS_WORK")
 
+    def test_a_listed_floor_is_not_always_the_reason_the_run_was_decided(self) -> None:
+        """The third entry, and the distinction it exists to make visible.
+
+        `fatal_floors` is collected in full and the LABEL is then chosen by an
+        if/elif whose first arm is the low-confidence override
+        (`schemas/validator.py:538-566`). So this verdict lists
+        `FLOOR_NO_MARKET` - market scored 0 with demand at 2, which is exactly
+        that floor's trigger - and was decided by `INSUFFICIENT_EVIDENCE`
+        instead, because at 0.34 the run cannot support a final answer at all.
+
+        Neither of the other two entries can catch a client that reads
+        `fatal_floors[0]` as the reason: in `REJECTED` the floor and the reason
+        are the same string, and in `RESCORED` both are empty. Here they differ,
+        and a shell that conflates them says "no market" about a run whose real
+        finding is "we could not see".
+        """
+
+        details = self.thin.to_dict()["details"]
+        self.assertEqual(details["verdict"], "NEEDS_WORK")
+        self.assertEqual(details["decision_reason"], "INSUFFICIENT_EVIDENCE")
+        self.assertEqual(details["fatal_floors"], ["FLOOR_NO_MARKET"])
+        self.assertNotEqual(details["decision_reason"], details["fatal_floors"][0])
+        self.assertEqual(details["confidence"], 0.34)
+        self.assertEqual(details["confidence_band"], "LOW")
+        self.assertEqual(details["composite_score"], 3.8)
+        self.assertTrue(details["provisional"])
+        self.assertEqual(
+            details["dimensions"],
+            {
+                "demand": 2,
+                "market": 0,
+                "competitive_room": 2,
+                "feasibility": 3,
+                "headroom_over_free": 3,
+            },
+        )
+
+    def test_the_thin_entry_is_thin_where_the_report_would_say_so(self) -> None:
+        """D, C, F and X are thin; M is not, and the asymmetry is the finding.
+
+        `DimensionScore.evidence_thin` is `len(evidence_urls) < 3`, and
+        `ValidationReport.thin_dimensions` is the field a report renders from
+        it. The verdict FRAME carries neither - its payload is the hand-picked
+        contract in `events/verdict.py`, deliberately not a model dump - so this
+        is asserted on the `Verdict` the frame was built from rather than on the
+        frame. It is what makes this entry the screen it is meant to be: four
+        dimensions nobody could gather evidence for, and one that scored zero
+        having been looked at properly.
+        """
+
+        thin = {
+            code
+            for code, dimension in (
+                ("D", THIN_EVIDENCE.demand),
+                ("M", THIN_EVIDENCE.market),
+                ("C", THIN_EVIDENCE.competitive_room),
+                ("F", THIN_EVIDENCE.feasibility),
+                ("X", THIN_EVIDENCE.headroom_over_free),
+            )
+            if dimension.evidence_thin
+        }
+        self.assertEqual(thin, {"D", "C", "F", "X"})
+        self.assertEqual(len(THIN_EVIDENCE.market.evidence_urls), 3)
+
     def test_the_payload_is_the_schema_s_arithmetic_not_the_serializer_s(self) -> None:
         """The frame must be a report of `compute_mechanical_result`, not a copy.
 
@@ -205,7 +314,11 @@ class VerdictFrameContractTests(unittest.TestCase):
         and the trace would disagree with the report.
         """
 
-        for frame, verdict in ((self.rejected, REJECTED), (self.rescored, RESCORED)):
+        for frame, verdict in (
+            (self.rejected, REJECTED),
+            (self.rescored, RESCORED),
+            (self.thin, THIN_EVIDENCE),
+        ):
             details = frame.to_dict()["details"]
             self.assertEqual(details["verdict"], verdict.verdict)
             self.assertEqual(details["composite_score"], verdict.composite_score)
@@ -241,6 +354,7 @@ class VerdictFrameContractTests(unittest.TestCase):
 
         self.assertEqual(self.rejected.node_id, "synthesize")
         self.assertEqual(self.rescored.node_id, "synthesize")
+        self.assertEqual(self.thin.node_id, "synthesize")
 
     def test_a_graph_without_a_synthesist_quarantines_rather_than_invents(self) -> None:
         """Brief Flow declares no `synthesize`, and must not gain a phantom one.

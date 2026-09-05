@@ -1,0 +1,44 @@
+$ node scripts/contrast-audit.mjs            # from frontend/, plain reporter
+$ node scripts/contrast-audit.mjs --markdown # from frontend/, the committed artifact
+# RV3 SIXTH PASS, branch run-shell/cast at a182ed6 (product source = 2cea4b9), 2026-09-05T19:43:28+08:00
+
+RESULT
+  plain run    exit 0        --markdown   exit 0
+  236 pairings, 234 in scope, 0 failing.
+  byte-identical to the committed docs/run-shell/evidence/T3/contrast.md
+    md5  4c0e9142b4e0326685e26bed179c1bab   both
+
+  T3.3 PASSES. The exit code has counted every in-scope row since round two.
+
+  Round seven moved --scrim twice - to rgba(10,10,10,0.72) dark and
+  rgba(15,20,25,0.42) light - and the count did not move, which is correct
+  and worth saying rather than glossing: tokens.css:297-305 records that the
+  scrim sits UNDER the rail it dims and over nothing that carries text, so it
+  contributes to no pairing. RV3 checked the claim rather than the comment:
+  grep for --scrim across the audit's own table returns nothing, and the
+  before/after sheets are byte-identical.
+
+SIX PASSES
+  pass 1 (27b256e)   300 pairings, exit 0, 17 below AA  <- exit code counted
+                                                           W5's 80 rows only
+  pass 2 (16f3be5)   330 pairings, exit 1,  1 below AA  <- carve-out removed
+  pass 3 (601baef)   232 pairings, exit 0,  0 below AA  <- 96 character rows
+                                                           re-classed 4.5 -> 3.0
+  pass 4 (8ae40ec)   236 pairings, exit 0,  0 below AA  <- +4, each ground
+                                                           modelled separately
+  pass 5 (c2966e7)   236 pairings, exit 0,  0 below AA
+  pass 6 (2cea4b9)   236 pairings, exit 0,  0 below AA
+
+FULL OUTPUT OF THE PLAIN RUN, from the failures section down
+===========================================================================
+FAILURES - every one of them, grouped by the file it lives in
+==============================================================================================================
+  none.
+
+==============================================================================================================
+OUT OF SCOPE - measured, printed, never counted (the builder’s own canvas)
+==============================================================================================================
+  dark   5.02 >= 4.5  quiet card text, THE BUILDER  node-card.css .node-eyebrow (design canvas)  -> var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6
+  light  4.31 < 4.5  quiet card text, THE BUILDER  node-card.css .node-eyebrow (design canvas)  -> var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6
+
+  236 pairings, 234 in scope, 0 failing.

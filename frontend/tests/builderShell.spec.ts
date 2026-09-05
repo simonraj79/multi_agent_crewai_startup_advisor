@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -733,5 +734,44 @@ describe('the builder hands the run console one workflow, visibly', () => {
       global: { stubs: SHELL_STUBS },
     })
     expect(wrapper.find('.handoff-banner').exists()).toBe(false)
+  })
+})
+
+/**
+ * ONE STATE, ONE WORD, wherever the console says it.
+ *
+ * A cold reader found the canvas heading saying "Completed" beside a status
+ * rail saying "Finished" - one run, two vocabularies, eighteen inches apart.
+ * `data/runStatusDisplay.ts` exists to stop exactly that, and this surface had
+ * never been routed through it.
+ *
+ * Read from source rather than from a mount: `StudioView` needs the run
+ * composable, a fake API and `matchMedia` to render its heading at all, and
+ * none of that is what this assertion is about. What it is about is that the
+ * heading does not print a raw enum, and that is a fact about one line.
+ */
+describe('the run console speaks one status vocabulary', () => {
+  const view = readFileSync('src/views/StudioView.vue', 'utf8')
+
+  it('renders the heading status through the shared table', () => {
+    expect(view).toContain('{{ runStatusDisplay(status).label }}')
+    // and not the raw union member it used to print
+    expect(view).not.toContain('aria-hidden="true" />{{ status }}')
+  })
+
+  it('reads the connection word from the shared table too', () => {
+    // The header chip carried its own copy of closed item 31's logic while the
+    // status rail rendered the raw socket state, so at rest they disagreed.
+    // One function now, imported by both.
+    expect(view).toMatch(/import \{ connectionLabel as transportWord[^}]*\} from '\.\.\/data\/runStatusDisplay'/)
+    expect(view).toContain('transportWord(transportMode.value, connection.value, isActive.value)')
+  })
+
+  it('does not title-case a label that is already sentence case', () => {
+    // `text-transform: capitalize` was right for `completed` and would render
+    // "Waiting For You" from the table's own wording.
+    const shell = readFileSync('src/studio.css', 'utf8')
+    const rule = shell.slice(shell.indexOf('\n.canvas-meta span {'))
+    expect(rule.slice(0, rule.indexOf('}'))).not.toContain('text-transform')
   })
 })

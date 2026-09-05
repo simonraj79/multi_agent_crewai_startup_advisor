@@ -68,5 +68,41 @@
         "X": 0.0476
       }
     }
+  },
+  {
+    "v": 1,
+    "seq": 3,
+    "run_id": "run-under-test",
+    "ts": "2026-08-30T12:00:00.000Z",
+    "kind": "verdict",
+    "event_type": "VERDICT_COMPUTED",
+    "level": "INFO",
+    "node_id": "synthesize",
+    "message": "Verdict NEEDS_WORK at 3.8 (confidence 0.34)",
+    "details": {
+      "verdict": "NEEDS_WORK",
+      "composite_score": 3.8,
+      "confidence": 0.34,
+      "confidence_band": "LOW",
+      "provisional": true,
+      "fatal_floors": [
+        "FLOOR_NO_MARKET"
+      ],
+      "decision_reason": "INSUFFICIENT_EVIDENCE",
+      "dimensions": {
+        "demand": 2,
+        "market": 0,
+        "competitive_room": 2,
+        "feasibility": 3,
+        "headroom_over_free": 3
+      },
+      "anchor_margins": {
+        "D": 0.0625,
+        "M": 0.0833,
+        "C": 0.0,
+        "F": 0.0833,
+        "X": 0.0476
+      }
+    }
   }
 ]

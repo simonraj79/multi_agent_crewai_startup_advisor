@@ -27,6 +27,7 @@ const handoff: Handoff = {
   from: 'route_scope',
   to: 'research_market',
   startedAt: 1_700_000_000_000,
+  fromIdentity: 'Market Evidence Analyst',
 }
 
 function token(overrides: Partial<Handoff> = {}) {
@@ -37,6 +38,44 @@ function token(overrides: Partial<Handoff> = {}) {
       character: 5,
     },
   })
+}
+
+/**
+ * A token that has actually been PLACED, which jsdom cannot do on its own.
+ *
+ * `getTotalLength` and `getPointAtLength` are unimplemented here, so the
+ * component's guard fires and it finishes with no position and therefore no
+ * disc and no figure - which is correct behaviour and is what the guard test
+ * below asserts. To see what the token WEARS, the two measurements are stubbed
+ * and the reduced-motion path is taken, because that one places the token
+ * synchronously at its destination instead of waiting for a frame callback.
+ */
+async function placedToken(overrides: Partial<Handoff> = {}) {
+  // `Element.prototype` and not `SVGElement.prototype`: this component's root
+  // is a `<g>` with no `<svg>` above it in a unit mount, so Vue creates it (and
+  // the ruler inside it) in the HTML namespace and jsdom hands back an
+  // `HTMLUnknownElement`. In the app the `<g>` really is inside the edge layer's
+  // SVG. Stubbing the base prototype covers both and costs nothing.
+  const prototype = Element.prototype as unknown as Record<string, unknown>
+  const hadLength = prototype.getTotalLength
+  const hadPoint = prototype.getPointAtLength
+  prototype.getTotalLength = () => 120
+  prototype.getPointAtLength = (at: number) => ({ x: at, y: at * 2 })
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }))
+  try {
+    const wrapper = token(overrides)
+    // The position is assigned inside `onMounted`; the DOM catches up on the
+    // next tick. Reading `.get()` before it is how the first draft of this
+    // helper reported "no figure" about a token that had one.
+    await nextTick()
+    return wrapper
+  } finally {
+    vi.unstubAllGlobals()
+    if (hadLength === undefined) delete prototype.getTotalLength
+    else prototype.getTotalLength = hadLength
+    if (hadPoint === undefined) delete prototype.getPointAtLength
+    else prototype.getPointAtLength = hadPoint
+  }
 }
 
 describe('the handoff token', () => {
@@ -63,6 +102,35 @@ describe('the handoff token', () => {
     const wrapper = token()
     await nextTick()
     expect(wrapper.emitted('done')).toEqual([['route_scope-research_market']])
+  })
+
+  it("wears the SENDER's character, at the seed the sender's card is drawn from", async () => {
+    // T2.6's third view. The seed is `characterSeed(fromIdentity)`, resolved by
+    // the choreography when the token was created rather than looked up here -
+    // `WorkflowEdge` knows about edges and nothing about agents, and a second
+    // lookup is a second answer waiting to disagree.
+    const figure = (await placedToken()).get('[data-testid="handoff-token-figure"]')
+    expect(figure.attributes('data-character')).toBe('market evidence analyst')
+    expect(figure.html()).toContain('pip-body')
+  })
+
+  it('draws the figure IDLE, whatever the sender is doing', async () => {
+    // A message in flight is not the agent: the agent is still standing on the
+    // card it left, in whatever pose that card says. A token that also posed
+    // would be a second animated cast member on a canvas whose whole budget is
+    // twelve moving things.
+    const html = (await placedToken()).get('[data-testid="handoff-token-figure"]').html()
+    expect(html).toContain('pip--idle')
+    expect(html).not.toContain('pip--working')
+  })
+
+  it('falls back to the source node id when a replayed handoff names no identity', async () => {
+    // A frame log written before `fromIdentity` existed. The token still walks
+    // and still wears A character - the same one the node card falls back to.
+    const figure = (await placedToken({ fromIdentity: '' })).get(
+      '[data-testid="handoff-token-figure"]',
+    )
+    expect(figure.attributes('data-character')).toBe('route scope')
   })
 
   it('places the token at the target under reduced motion', async () => {
@@ -138,7 +206,15 @@ describe('no regex trigger', () => {
     // which belongs in the plan's Status rather than in a unit test. What a
     // unit test CAN say is the positive form of the same claim: the token's
     // only input is a structured record, and there is nowhere for a log line
-    // to enter. `Handoff` has four fields and none of them is a message.
-    expect(Object.keys(handoff).sort()).toEqual(['edgeId', 'from', 'startedAt', 'to'])
+    // to enter. `Handoff` has five fields and none of them is a message: the
+    // fifth is the sender's identity, which is a role somebody declared rather
+    // than a sentence anybody logged.
+    expect(Object.keys(handoff).sort()).toEqual([
+      'edgeId',
+      'from',
+      'fromIdentity',
+      'startedAt',
+      'to',
+    ])
   })
 })

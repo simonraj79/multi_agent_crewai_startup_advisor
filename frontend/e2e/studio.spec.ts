@@ -198,7 +198,7 @@ test.describe('Validator Studio', () => {
     // a run is in flight (asserted as "connected" in the journey test).
     await expect(page.locator('.live-status')).toHaveText(/ready/i)
     await expect(page.locator('.live-status')).not.toHaveText(/offline/i)
-    await expect(statusBadge(page)).toHaveText(/idle/i)
+    await expect(statusBadge(page)).toHaveText(/ready/i)
   })
 
   test(
@@ -221,11 +221,20 @@ test.describe('Validator Studio', () => {
       // so `ScopedIdea` arrives as inputs, not as read-only text.
       const scopeFields = gateCard(page).locator('form .gate-field')
       await expect(scopeFields).toHaveCount(5)
+      /*
+       * SENTENCE CASE, since T1. These read `startup idea` … `feedback` until
+       * 2026-09-05, when the override-wording work stopped shipping the server's
+       * own key names to the operator and sentence-cased every label the run
+       * shell renders. Five expected, five received, same words in the same
+       * order - the diff was case alone. Updated rather than loosened to a
+       * case-insensitive match: which case a label is in is part of what T1
+       * decided, so a test that stopped caring would stop guarding it.
+       */
       await expect(scopeFields.locator('span')).toHaveText(
-        ['startup idea', 'category', 'target user', 'market query', 'feedback'],
+        ['Startup idea', 'Category', 'Target user', 'Market query', 'Feedback'],
         { useInnerText: false },
       )
-      for (const name of ['startup idea', 'category', 'target user', 'market query']) {
+      for (const name of ['Startup idea', 'Category', 'Target user', 'Market query']) {
         const input = gateCard(page).locator('.gate-field', { hasText: name }).locator('input')
         await expect(input).toBeEditable()
       }
@@ -251,7 +260,7 @@ test.describe('Validator Studio', () => {
       await approveGate(page)
 
       // ---- Completion -----------------------------------------------------
-      await expect(statusBadge(page)).toHaveText(/completed/i, { timeout: 60_000 })
+      await expect(statusBadge(page)).toHaveText(/finished/i, { timeout: 60_000 })
       await expect(gateCard(page)).toHaveCount(0)
       await expect(downloadButton(page)).toBeEnabled()
 
@@ -368,8 +377,19 @@ test.describe('Validator Studio', () => {
       // `review_verdict`, and `_split_gate_fields` prunes them out of `fields`
       // so a stale client cannot go on offering an edit the server discards.
       const derivedKeys = (await derived.locator('dt').allTextContents()).map((text) => text.trim())
+      /*
+       * `arrayContaining`, not an exact list, and that is deliberate rather than
+       * lax: the contract is that every `Verdict` key arrives read-only, so the
+       * set may only ever GROW, and a test that pinned it exactly would go red
+       * every time the server derived one more thing. It did exactly that on
+       * 2026-09-05, when T1 sentence-cased these and added `Scope reply` - the
+       * operator's own note from the scope gate, carried forward so the verdict
+       * is read beside what was asked for. The new key is named here rather than
+       * dropped, because "it appeared and nobody noticed" is the failure this
+       * assertion is for.
+       */
       expect(derivedKeys).toEqual(
-        expect.arrayContaining(['verdict', 'confidence', 'cheapest next test']),
+        expect.arrayContaining(['Verdict', 'Confidence', 'Cheapest next test', 'Scope reply']),
       )
 
       // Read-only means read-only in the DOM, not merely by convention: the
@@ -377,12 +397,16 @@ test.describe('Validator Studio', () => {
       await expect(
         derived.locator('input, textarea, select, button, [contenteditable="true"]'),
       ).toHaveCount(0)
-      await expect(derived.locator('h3')).toContainText('Computed by the validator')
+      // "Computed by the RUN", since W1's round three. The heading used to name
+      // the validator, which was wrong the moment a published builder graph
+      // could open a gate: the block is whatever the flow computed, and the flow
+      // is not always this one.
+      await expect(derived.locator('h3')).toContainText('Computed by the run')
 
       // ...and the form must offer exactly one lever: the feedback note.
       const fields = card.locator('form .gate-field')
       await expect(fields).toHaveCount(1)
-      await expect(fields.locator('span')).toHaveText('feedback', { useInnerText: false })
+      await expect(fields.locator('span')).toHaveText('Feedback', { useInnerText: false })
       await expect(card.locator('form input')).toHaveCount(0)
       const feedback = card.locator('form textarea')
       await expect(feedback).toHaveCount(1)
@@ -396,7 +420,7 @@ test.describe('Validator Studio', () => {
       // so the operator cannot be shown two different answers.
       const headline = (await card.locator('.verdict-row strong').textContent())?.trim()
       const derivedVerdict = (
-        await derived.locator('dt', { hasText: /^verdict$/ }).locator('+ dd').textContent()
+        await derived.locator('dt', { hasText: /^Verdict$/ }).locator('+ dd').textContent()
       )?.trim()
       expect(derivedVerdict).toBe(headline)
       expect((derivedVerdict ?? '').length).toBeGreaterThan(0)
@@ -417,7 +441,7 @@ test.describe('Validator Studio', () => {
 
       await waitForGate(page, 'Confirm scope')
       const feedback = gateCard(page)
-        .locator('.gate-field', { hasText: 'feedback' })
+        .locator('.gate-field', { hasText: 'Feedback' })
         .locator('textarea')
       await feedback.fill('Narrow the target user to single-vet practices before scoring.')
 

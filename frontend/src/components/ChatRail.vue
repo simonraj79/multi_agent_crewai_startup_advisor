@@ -1,48 +1,233 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Bot, ChevronLeft, ChevronRight, Cpu, Wrench } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { Bot, ChevronLeft, ChevronRight, UserRound } from 'lucide-vue-next'
+import AgentCharacter from './AgentCharacter.vue'
+import type { PipState } from '../characters/pip'
 import type { ChatEntry } from '../types/studio'
+
+/**
+ * The trace: one short line per thing that happened, and nothing else.
+ *
+ * It used to render `frame.message` verbatim, so the rail read as the
+ * framework's own log - "persist started", "write_report to persist",
+ * "ValidatorFlow completed", a guardrail's `{"valid":true,"feedback":null}`
+ * shown as though somebody had said it, and `5168 in · 3994 out` on every row.
+ * `trace/interpret.ts` now decides what a row says; this component decides how
+ * it looks, and the two are separate so the vocabulary can be asserted over a
+ * real frame log without mounting anything.
+ *
+ * NOTHING WAS DROPPED. Every row carries a `<details>` disclosure, collapsed by
+ * default, holding the framework's own sentence, the whole `details` payload,
+ * the model, the token counts and the duration. The raw is one click away
+ * rather than in the way - which is the actual difference between a trace and
+ * a dump.
+ */
 
 const props = defineProps<{
   entries: ChatEntry[]
   collapsed: boolean
+  /**
+   * Node id -> character index, so a trace avatar wears the same colour as the
+   * node's own medallion. Optional: the rail renders a neutral placeholder
+   * without it, and the cast work replaces the placeholder in place.
+   */
+  characterOf?: (nodeId: string) => number
+  /**
+   * Node id -> the identity the RUN resolved, and the pose it is in.
+   *
+   * Both from `useRunChoreography` by way of `StudioView`, and both optional
+   * so this rail still renders in a spec that mounts it with entries alone.
+   *
+   * The identity is asked of the STORE rather than taken from `entry.identity`,
+   * and the difference is the whole of T2.6. A row's own identity is resolved
+   * per FRAME, so a node whose first frame carried no `agent_role` produces
+   * early rows named after its label and later rows named after its role - two
+   * seeds, two characters, one agent. The store answers with the first role it
+   * ever saw and never changes it, so every row of a node draws one creature
+   * and it is the creature standing on that node's card.
+   */
+  identityOf?: (nodeId: string) => string
+  stateOf?: (nodeId: string) => PipState
 }>()
 
 const emit = defineEmits<{ toggle: [] }>()
 const list = ref<HTMLElement | null>(null)
-const expanded = ref(new Set<string>())
-const now = ref(Date.now())
-let timer = 0
 
-watch(
-  () => props.entries.length,
-  async () => {
-    if (props.collapsed) return
-    await nextTick()
-    list.value?.scrollTo({ top: list.value.scrollHeight, behavior: 'smooth' })
-  },
+/**
+ * How many rows are in the DOM at once.
+ *
+ * A run of 119+ frames is the criterion (T2.8, S3) and a long one goes well
+ * past it, so the list is windowed rather than unbounded: the newest 200 rows
+ * render, everything older folds behind one button that expands it when asked.
+ * 200 and not 40, deliberately - the whole point of the trace is that a reader
+ * can scroll back through what happened, and a fold that fires during an
+ * ordinary run would hide the narrative rather than bound the DOM. Paired with
+ * `content-visibility: auto` on the row, which lets the browser skip layout and
+ * paint for the rows scrolled out of view; between them a 500-frame run costs
+ * what a 200-row list costs.
+ */
+const WINDOW_ROWS = 200
+
+const showAll = ref(false)
+const hiddenCount = computed(() =>
+  showAll.value ? 0 : Math.max(0, props.entries.length - WINDOW_ROWS),
+)
+const shown = computed(() =>
+  hiddenCount.value > 0 ? props.entries.slice(-WINDOW_ROWS) : props.entries,
 )
 
-watch(
-  () => props.entries.some((entry) => entry.calls.some((call) => call.active)),
-  (hasActiveCall) => {
-    window.clearInterval(timer)
-    if (hasActiveCall) timer = window.setInterval(() => { now.value = Date.now() }, 100)
-  },
-  { immediate: true },
-)
-
-onBeforeUnmount(() => window.clearInterval(timer))
-
-function toggleEntry(id: string): void {
-  const next = new Set(expanded.value)
-  next.has(id) ? next.delete(id) : next.add(id)
-  expanded.value = next
+/**
+ * One row's rendered inputs, and the SAME object back while they are unchanged
+ * (T2.8).
+ *
+ * A trace row is thirty-odd elements - a name, a time, a line, a `<details>`
+ * with a six-row `<dl>`, a `<pre>`, and since the cast a fifteen-element SVG
+ * character. A frame appends one row and Vue re-evaluated the template for
+ * every row already there, so the cost of a frame grew with the length of the
+ * run: measured in a mounted benchmark, 455 ms of render across 262 frames with
+ * only 74 rows on screen, and the criterion's own replay is longer than that.
+ *
+ * `v-memo="[row]"` in the template is what skips them, and this is what makes
+ * that key HONEST: everything the row renders which can change independently of
+ * `entry` is folded into the object, so an unchanged object really does mean an
+ * unchanged row. There are exactly two such things - the character's seed and
+ * its pose, both of which come from the run store rather than from the entry -
+ * and both are captured here. A memo key that named only `entry` would freeze
+ * the newest row's character in whatever pose it was born in, which is the one
+ * thing T2.6 measures.
+ */
+interface TraceRow {
+  entry: ChatEntry
+  seed: string
+  pose: PipState
+  /** True for a row about the OPERATOR: a gate opening, closing or lapsing. */
+  you: boolean
 }
 
-function callDuration(startedAt: number, durationMs?: number): string {
-  const elapsedMs = durationMs ?? Math.max(0, now.value - startedAt)
-  return `${(elapsedMs / 1000).toFixed(1)}s`
+/**
+ * Whether this row is about a person rather than an agent.
+ *
+ * A gate is a human turn. The graph already refuses it a character - a gate
+ * node keeps its lucide medallion and gets no Pip - and the trace has to make
+ * the same distinction for the same reason: a cast member is something the
+ * system runs, and the one thing in a run it does not run is you.
+ *
+ * Two signals, and both are needed. `tone === 'you'` is the interpreter's own
+ * judgement and covers a line addressed to the operator whatever produced it;
+ * the `gate_` kinds catch a gate frame the interpreter toned differently -
+ * `gate_expired` is a warning, not a request.
+ */
+function isYou(entry: ChatEntry): boolean {
+  return entry.tone === 'you' || entry.raw.kind.startsWith('gate')
+}
+
+const rowCache = new Map<string, TraceRow>()
+
+const rows = computed<TraceRow[]>(() =>
+  shown.value.map((entry) => {
+    const seed = seedOf(entry)
+    const pose = poseOf(entry)
+    const cached = rowCache.get(entry.id)
+    if (cached && cached.entry === entry && cached.seed === seed && cached.pose === pose) {
+      return cached
+    }
+    const row: TraceRow = { entry, seed, pose, you: isYou(entry) }
+    rowCache.set(entry.id, row)
+    return row
+  }),
+)
+
+// The window is 200 rows and a long run is longer, so the cache is trimmed to
+// what is on screen rather than left to grow with the run. Cheap: it runs once
+// per render of a list that is already being walked.
+watch(rows, (current) => {
+  if (rowCache.size <= WINDOW_ROWS * 2) return
+  const live = new Set(current.map((row) => row.entry.id))
+  for (const id of [...rowCache.keys()]) if (!live.has(id)) rowCache.delete(id)
+})
+
+/**
+ * Follow the newest row, at most ONCE per animation frame, and only for a
+ * reader who is already at the bottom (T2.8).
+ *
+ * Three separate costs were in the old one line, and each is the kind a unit
+ * suite cannot see because jsdom implements no scrolling at all:
+ *
+ *  1. `behavior: 'smooth'` started a NEW animated scroll for every appended
+ *     row. A burst of a dozen frames in one millisecond - which is exactly what
+ *     the backend emits at a fan-out - started a dozen overlapping scroll
+ *     animations, none of which ever caught up.
+ *  2. Reading `scrollHeight` forces a synchronous layout. Doing it per frame,
+ *     after `nextTick`, is a layout thrash in the middle of the burst.
+ *  3. It fought the reader. Anybody who had scrolled up to read an earlier line
+ *     was yanked back to the bottom by the next frame.
+ *
+ * Coalescing on `requestAnimationFrame` fixes all three at once: at most one
+ * measurement and one scroll per painted frame, instant rather than animated,
+ * and skipped entirely when the reader has scrolled away. `PIN_SLACK_PX` is
+ * how far from the bottom still counts as "following" - a couple of rows, so a
+ * one-pixel wheel nudge does not un-pin the log.
+ */
+const PIN_SLACK_PX = 120
+let followHandle = 0
+
+function follow(): void {
+  if (props.collapsed || followHandle) return
+  const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null
+  const run = () => {
+    followHandle = 0
+    const element = list.value
+    if (!element || typeof element.scrollTo !== 'function') return
+    const distance = element.scrollHeight - element.scrollTop - element.clientHeight
+    if (distance > PIN_SLACK_PX) return
+    element.scrollTo({ top: element.scrollHeight, behavior: 'auto' })
+  }
+  if (!raf) {
+    run()
+    return
+  }
+  followHandle = raf(run)
+}
+
+onBeforeUnmount(() => {
+  if (followHandle && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(followHandle)
+})
+
+watch(() => props.entries.length, () => follow())
+
+/**
+ * The seed this row's character is drawn from.
+ *
+ * The store first, the row's own identity second. The fallback matters for a
+ * row the store has never heard of - a frame for a node outside the descriptor,
+ * or a rail mounted in a spec with no run behind it - and it is the row's own
+ * resolved identity rather than a placeholder, because a system whose strangers
+ * look broken punishes the author of every flow it has not seen.
+ */
+function seedOf(entry: ChatEntry): string {
+  const fromStore = entry.nodeId && props.identityOf ? props.identityOf(entry.nodeId) : ''
+  return fromStore || entry.identity
+}
+
+function poseOf(entry: ChatEntry): PipState {
+  return (entry.nodeId && props.stateOf ? props.stateOf(entry.nodeId) : undefined) ?? 'idle'
+}
+
+function avatarStyle(entry: ChatEntry): Record<string, string> {
+  const index = entry.nodeId && props.characterOf ? props.characterOf(entry.nodeId) : null
+  return index === null ? {} : { '--character-color': `var(--character-${index})` }
+}
+
+function characterIndexOf(entry: ChatEntry): string | undefined {
+  if (!entry.nodeId || !props.characterOf) return undefined
+  return String(props.characterOf(entry.nodeId))
+}
+
+/** The line's own numbers, for the disclosure. Never for the row. */
+function tokenNote(entry: ChatEntry): string {
+  const tokens = entry.raw.tokens
+  if (!tokens) return ''
+  return `${tokens.prompt.toLocaleString()} in · ${tokens.completion.toLocaleString()} out`
 }
 </script>
 
@@ -70,7 +255,7 @@ function callDuration(startedAt: number, durationMs?: number): string {
 
     <!--
       The dialogue rail, mounted HERE rather than under the canvas.
-      
+
       It was a fifth row of `.graph-workspace` first, and the measurement is why
       it is not: opening on the first utterance took the Vue Flow container from
       626px to 462px, mid-run, on the exact canvas the gauntlet's captures are
@@ -96,41 +281,112 @@ function callDuration(startedAt: number, durationMs?: number): string {
         <span>Run activity will appear here.</span>
       </div>
 
-      <article
-        v-for="entry in entries"
-        :key="entry.id"
-        class="trace-entry"
-        :class="[`is-${entry.variant}`, { 'is-system': entry.variant !== 'agent' }]"
+      <button
+        v-if="hiddenCount > 0"
+        class="trace-earlier"
+        type="button"
+        data-testid="trace-earlier"
+        @click="showAll = true"
       >
-        <div v-if="entry.variant === 'agent'" class="trace-avatar" aria-hidden="true">
-          {{ entry.actor.slice(0, 2).toUpperCase() }}
-        </div>
+        {{ hiddenCount }} earlier {{ hiddenCount === 1 ? 'line' : 'lines' }}
+      </button>
+
+      <article
+        v-for="row in rows"
+        :key="row.entry.id"
+        v-memo="[row]"
+        class="trace-entry"
+        data-testid="trace-entry"
+        :class="[
+          `is-${row.entry.variant}`,
+          { 'is-system': !row.entry.identity, 'has-mark': row.you || !!row.entry.identity },
+        ]"
+        :data-node="row.entry.nodeId"
+        :data-identity="row.entry.identity"
+        :data-tone="row.entry.tone"
+      >
+        <!--
+          The character's slot, and the character is in it.
+
+          It held two initials before, which is what a rail does when it has no
+          cast: `MA` and `MO` are two letters apart at 32px and told a reader
+          nothing they could not get from the name printed beside them. The Pip
+          is the same figure standing on that node's card - same store, same
+          seed, same pose - so the trace and the graph are one view of one run
+          rather than two lists that happen to be about it.
+
+          `data-character-seed` and `data-character` stay on the WRAPPER because
+          `traceInterpretation.spec.ts` pins them there; the seed the tie-in is
+          checked against is the Pip's own `data-character`, one level in.
+        -->
+        <!--
+          A person, not a cast member. Same decision as the graph's, in the same
+          words: a gate is somebody being asked for something, and giving that
+          turn a character would be the one place this console claimed an agent
+          did work a human did. The mark is the amber the gate card and the
+          waiting node already use, so the three read as one state.
+        -->
+        <span
+          v-if="row.you"
+          class="trace-avatar is-you"
+          data-testid="trace-you"
+          aria-hidden="true"
+        >
+          <UserRound :size="18" :stroke-width="2" />
+        </span>
+        <span
+          v-else-if="row.entry.identity"
+          class="trace-avatar"
+          data-testid="trace-avatar"
+          :data-character-seed="row.entry.identity"
+          :data-character="characterIndexOf(row.entry)"
+          :style="avatarStyle(row.entry)"
+          aria-hidden="true"
+        >
+          <AgentCharacter :identity="row.seed" :state="row.pose" :size="32" :label="row.entry.actor" />
+        </span>
+
         <div class="trace-content">
           <div class="trace-meta">
-            <strong>{{ entry.actor }}</strong>
-            <time :datetime="entry.timestamp">{{ entry.timestamp }}</time>
+            <strong>{{ row.entry.actor }}</strong>
+            <time class="panel-meta" :datetime="row.entry.timestamp">{{ row.entry.timestamp }}</time>
           </div>
           <div class="trace-bubble">
-            <p :class="{ 'is-clamped': entry.message.length > 180 && !expanded.has(entry.id) }">
-              {{ entry.message }}
-            </p>
-            <button
-              v-if="entry.message.length > 180"
-              class="text-button"
-              type="button"
-              :aria-expanded="expanded.has(entry.id)"
-              @click="toggleEntry(entry.id)"
-            >
-              {{ expanded.has(entry.id) ? 'Show less' : 'Show more' }}
-            </button>
-            <div v-if="entry.calls.length" class="call-list">
-              <span v-for="call in entry.calls" :key="call.id" class="call-chip" :class="{ 'is-active': call.active }">
-                <Wrench v-if="call.kind === 'tool'" :size="12" aria-hidden="true" />
-                <Cpu v-else :size="12" aria-hidden="true" />
-                {{ call.label }}
-                <span>{{ callDuration(call.startedAt, call.durationMs) }}</span>
-              </span>
-            </div>
+            <p class="trace-line" data-testid="trace-line">{{ row.entry.message }}</p>
+
+            <!--
+              Collapsed by default, and a native `<details>` rather than a
+              toggled div: it is keyboard reachable, it is announced as an
+              expandable region, and it costs no state in this component - which
+              matters when 200 of them are in the DOM.
+            -->
+            <details class="trace-raw">
+              <summary>Details</summary>
+              <dl class="trace-raw-facts">
+                <div><dt>Event</dt><dd>{{ row.entry.raw.kind }} · {{ row.entry.raw.eventType }}</dd></div>
+                <div><dt>Sequence</dt><dd>{{ row.entry.raw.seq }}</dd></div>
+                <div v-if="row.entry.raw.model"><dt>Model</dt><dd>{{ row.entry.raw.model }}</dd></div>
+                <div v-if="row.entry.raw.tool"><dt>Tool</dt><dd>{{ row.entry.raw.tool }}</dd></div>
+                <div v-if="row.entry.raw.durationMs !== undefined">
+                  <dt>Took</dt><dd>{{ row.entry.raw.durationMs }}ms</dd>
+                </div>
+                <div v-if="tokenNote(row.entry)" data-testid="trace-tokens">
+                  <dt>Tokens</dt><dd>{{ tokenNote(row.entry) }}</dd>
+                </div>
+                <!--
+                  How many times this exact line came in a row. In the
+                  disclosure and never in the sentence: the sentence is what
+                  happened and the count is a fact about the log, and a reader
+                  scanning for the failure should not have to read past a
+                  multiplier to find it.
+                -->
+                <div v-if="(row.entry.repeats ?? 1) > 1" data-testid="trace-repeats">
+                  <dt>Reported</dt><dd>{{ row.entry.repeats }}&times;</dd>
+                </div>
+              </dl>
+              <p class="trace-raw-message">{{ row.entry.raw.message }}</p>
+              <pre data-testid="trace-raw">{{ row.entry.raw.details }}</pre>
+            </details>
           </div>
         </div>
       </article>
@@ -149,7 +405,13 @@ function callDuration(startedAt: number, durationMs?: number): string {
   overflow: visible;
   background: var(--surface-overlay);
   border-right: 1px solid var(--border-default);
-  backdrop-filter: var(--blur-rail);
+  /* NO `backdrop-filter` here, and its removal is a measurement rather than a
+     taste (T2.8). `--surface-overlay` is 94% opaque in the dark theme and 95%
+     in the light one, so a 12px blur of what is behind this rail contributes
+     about a twentieth of each pixel - and it costs the compositor a blur of the
+     whole rail's backdrop every time the rail's own content changes, which on
+     this surface is every frame of a run. The two other rails keep theirs in
+     `studio.css`; neither of them repaints per frame. */
   transition: width var(--motion-medium) var(--ease-out), min-width var(--motion-medium) var(--ease-out);
 }
 
@@ -165,7 +427,11 @@ function callDuration(startedAt: number, durationMs?: number): string {
 }
 
 .rail-header h2 { margin: 2px 0 0; font-size: 16px; }
-.section-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
+/* `--on-accent-cyan`, not `--accent-cyan`: the raw accent measures 1.29:1 on
+   the rail in the light theme (T3.3), because a colour chosen to glow on a
+   dark ground is nearly white on paper. The `--on-*` pair is the same hue
+   with a light-theme value that carries ink. */
+.section-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
 .entry-count { min-width: 24px; padding: 3px 6px; color: var(--text-muted); text-align: center; font: 600 var(--fs-11)/1 var(--font-mono); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-sm); }
 
 .rail-toggle {
@@ -180,42 +446,222 @@ function callDuration(startedAt: number, durationMs?: number): string {
 
 /* Sized to its content and never flexed, so the trace below keeps every pixel
    the dialogue does not need. */
-.rail-slot { flex: 0 0 auto; }
+/*
+ * A GUTTER, and it is outside both scroll boxes on purpose.
+ *
+ * See `.rail-list` below for what this is fixing. `margin-bottom` on the slot
+ * is layout rather than content, so unlike the padding either box carries it
+ * cannot scroll away - the rail's own ground shows between the dialogue block's
+ * bottom edge and the trace list's top edge at every scroll position.
+ */
+.rail-slot { flex: 0 0 auto; margin-bottom: var(--space-3); }
 
 .rail-list {
   min-height: 0;
   flex: 1;
-  overflow: auto;
-  padding: 14px 14px 28px;
-  scrollbar-color: rgba(153, 234, 249, 0.3) transparent;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /*
+   * THE BORDER IS THE SEAM, and the padding above it never was.
+   *
+   * What a cold reader saw: the "Review verdict / You approved" row cut across
+   * its name and apparently sliding under the dialogue block. Nothing slides
+   * under anything - the slot and this list are static siblings in a column
+   * flex and neither is positioned - and the mechanism is duller and was mine
+   * to know: THIS LIST IS SCROLLED TO THE BOTTOM, so its topmost visible row is
+   * cut by the scroller's own top edge. That is what a scrolled list does. It
+   * read as an overlap because the cut landed flush against the block above
+   * with no drawn edge to say where one region ended and the other began.
+   *
+   * Round two's fix was `padding-top` here and `padding-bottom` on the dialogue
+   * block. Both are INSIDE their scroll boxes, so both scroll away with the
+   * content and neither is present at the moment the clip happens - the exact
+   * mistake, made twice, that the block's own comment already describes for its
+   * own half. The captures were taken after that fix and the seam was unchanged.
+   *
+   * A `border-top` is on the scroll container's own box and does not scroll, so
+   * the clip now lands ON a drawn line: a half row above a rule reads as a list
+   * scrolled past its start, which is what it is. The padding stays for the
+   * case it really does serve - the first row when the list is scrolled to the
+   * top - and claims nothing about the seam.
+   */
+  padding: var(--space-6) 14px 28px;
+  border-top: 1px solid var(--border-default);
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
 
 .rail-empty { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); font-size: var(--fs-13); }
 
-.trace-entry { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 9px; margin-bottom: 13px; }
-.trace-entry.is-system { display: block; }
-.trace-avatar { display: grid; width: 34px; height: 34px; place-items: center; color: #101a18; font: 800 10px/1 var(--font-mono); background: var(--gradient-brand); border-radius: 50%; }
+.trace-earlier {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 6px 8px;
+  color: var(--text-muted);
+  font: 500 var(--fs-11)/1.3 var(--font-mono);
+  background: var(--surface-well);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.trace-earlier:hover { color: var(--text-title); }
+.trace-earlier:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+
+/*
+ * `content-visibility` is what makes a long run cheap: the browser skips
+ * layout and paint for a row scrolled out of view, and `contain-intrinsic-size`
+ * gives it a height to reserve so the scrollbar does not jump as rows come back
+ * into view. The window above bounds the node COUNT; this bounds the work per
+ * node.
+ */
+.trace-entry {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 9px;
+  margin-bottom: 10px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 58px;
+}
+
+/* A row about the operator wears the amber the gate card and the waiting node
+   already use, on the same neutral ground every avatar stands on. `--warn-text`
+   rather than a character colour, because the colour has to say "a person" and
+   not "which agent". */
+.trace-avatar.is-you {
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  box-shadow: inset 0 0 0 1px var(--warn-border);
+}
+
+/*
+ * A ROW WITH A MARK KEEPS ITS COLUMN, and the exception is the fix for a defect
+ * a cold reader found in `evidence/T2/trace-completed.png`: the
+ * "Review verdict / You approved" row had no avatar at all, while every row
+ * above it had one.
+ *
+ * The cause was two `is-system`es. The class arrives twice - once from the
+ * row's VARIANT (`toChatEntry` gives `tone: 'you'` the system variant) and once
+ * from having no identity - and this rule dropped the two-column grid for both.
+ * That was right while a `you` row had nothing to put in the column; since the
+ * gate marker landed it is wrong, and the row lost its column, started hard
+ * against the left edge unlike its neighbours, and read as a different kind of
+ * thing half-hidden under the block above.
+ *
+ * So the full-width layout is now for rows with nothing in the column: the run
+ * itself, and anything the interpreter could not attribute. `has-mark` is
+ * computed from the same two things the template branches on, so the class and
+ * the markup cannot disagree.
+ */
+.trace-entry.is-system:not(.has-mark) { display: block; }
+
+/* The GROUND a character stands on, not the mark itself.
+
+   It was a filled disc in the node's own palette colour with two initials on
+   top; the Pip carries that colour in its own body, so a filled disc behind it
+   would be the same colour twice and the silhouette - the whole of the identity
+   at 32px - would disappear into it. Same decision, same reason, as
+   `.node-character.has-pip` in `motion.css` and `.crew-medallion` in the stage
+   lane, and it is one decision in three places rather than three.
+
+   `--character-color` is deliberately no longer read here. A palette entry
+   measured 3.89-4.47:1 against the rail's ground in the light theme, which is
+   under AA for anything carrying text - and now that nothing here is text, the
+   colour belongs to the figure and not to the box around it.
+
+   The inline `--character-color` binding is still WRITTEN, and that is not an
+   oversight: it is pinned by an existing spec, and it is still the colour of
+   the lucide medallion on the node kinds that keep an icon instead of a
+   character (router, gate, output, step). One property, two readers, and this
+   is no longer one of them. */
+.trace-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  background: var(--bg-node);
+  border-radius: var(--r-full);
+}
+
 .trace-content { min-width: 0; }
-.trace-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 5px; }
-.trace-meta strong { overflow: hidden; color: var(--text-40); font-size: var(--fs-11); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.trace-meta time { flex: 0 0 auto; color: var(--text-40); font: 400 10px/1 var(--font-mono); }
+/*
+ * THE COMPACT ROW, adopted from the dialogue rail 2026-09-05.
+ *
+ * avatar | name · time | one line | Details. What went is the BOX: every row
+ * used to be a bubble - a raised background, a one-pixel border and a 12px
+ * corner - and a hundred and thirty bubbles down a 320px rail is a column of
+ * boxes rather than a transcript. A bubble is the right shape for a chat with
+ * two sides to distinguish; this rail has one side and a name on every row, so
+ * the border was drawing a distinction that does not exist.
+ *
+ * What replaces it is a hairline BETWEEN rows: one pixel per row instead of
+ * four sides, so the eye gets the rhythm and the sentence gets the width. The
+ * two rails now read as one surface, which is what they are - they sit in the
+ * same column and divide the same frames between them.
+ *
+ * The tone tints stay, because they are the only thing that is not decoration:
+ * a warning and an error have to be findable in a long scroll. They move from
+ * a filled bubble to the TEXT plus a marker on the row's leading edge, which
+ * survives at a glance and costs no box.
+ */
+.trace-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 3px; }
+.trace-meta strong { overflow: hidden; color: var(--text-muted); font-size: var(--fs-11); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* `.panel-meta` is W5's global for exactly this - a timestamp beside a name -
+   and its token is `--text-meta`, which is the one that passes in both themes. */
+.trace-meta time { flex: 0 0 auto; }
 
-.trace-bubble { padding: 10px 11px; color: var(--text-body); font-size: var(--fs-12); line-height: 1.5; background: var(--surface-raised); border: 1px solid var(--border-default); border-radius: 2px var(--r-2xl) var(--r-2xl) var(--r-2xl); }
-.is-system .trace-bubble { border-radius: var(--r-lg); background: var(--surface-well); }
-.is-warning .trace-bubble { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
-.is-error .trace-bubble { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
+.trace-bubble { padding: 0; color: var(--text-body); font-size: var(--fs-12); line-height: 1.5; background: none; border: 0; border-radius: 0; }
 .trace-bubble p { margin: 0; overflow-wrap: anywhere; }
-.trace-bubble p.is-clamped { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent); }
 
-.text-button { margin-top: 7px; padding: 0; color: var(--link-cyan); background: none; border: 0; font: 600 var(--fs-11)/1.3 var(--font-body); cursor: pointer; }
-.call-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-.call-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 4px 6px; color: var(--text-muted); font: 500 10px/1.2 var(--font-mono); background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-default); border-radius: var(--r-sm); }
-.call-chip.is-active { color: var(--accent-cyan); border-color: rgba(153, 234, 249, 0.35); animation: chip-pulse 1.4s ease-in-out infinite; }
+/* The hairline is on the ROW rather than on the bubble, so the avatar column is
+   inside it and the rhythm is the whole row's. `:last-child` keeps the list
+   from ending on a rule that separates nothing. */
+.trace-entry { padding-bottom: 10px; border-bottom: 1px solid var(--border-default); }
+.trace-entry:last-child { border-bottom: 0; }
 
-@keyframes chip-pulse { 50% { opacity: 0.55; } }
+.is-system .trace-line { color: var(--text-muted); }
+.is-warning .trace-line { color: var(--warn-text); }
+.is-error .trace-line { color: var(--err-text); }
+/* The leading edge, for the two tones a reader scrolls back to find. A 2px
+   rule in the gap the grid already leaves, so nothing reflows. */
+.trace-entry.is-warning { box-shadow: inset 2px 0 0 var(--warn-border); padding-left: 8px; }
+.trace-entry.is-error { box-shadow: inset 2px 0 0 var(--err-border); padding-left: 8px; }
+
+.trace-raw { margin-top: 7px; }
+.trace-raw > summary {
+  color: var(--text-40);
+  font: 600 var(--fs-11)/1.3 var(--font-body);
+  cursor: pointer;
+  list-style: none;
+}
+.trace-raw > summary::-webkit-details-marker { display: none; }
+.trace-raw > summary::before { content: '▸ '; }
+.trace-raw[open] > summary::before { content: '▾ '; }
+.trace-raw > summary:hover { color: var(--text-muted); }
+.trace-raw > summary:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+
+.trace-raw-facts { display: grid; gap: 2px; margin: 7px 0 0; }
+.trace-raw-facts > div { display: flex; gap: 6px; }
+.trace-raw-facts dt { flex: 0 0 62px; color: var(--text-40); font: 500 10px/1.4 var(--font-mono); }
+.trace-raw-facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text-muted); font: 400 10px/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.trace-raw-message { margin: 7px 0 0 !important; color: var(--text-40); font: 400 10px/1.4 var(--font-mono); }
+
+.trace-raw pre {
+  max-height: 220px;
+  margin: 6px 0 0;
+  overflow: auto;
+  padding: 7px 8px;
+  color: var(--text-muted);
+  font: 400 10px/1.45 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-rail,
-  .call-chip.is-active { transition: none; animation: none; }
+  .chat-rail { transition: none; }
 }
 </style>

@@ -77,36 +77,95 @@ function ownerOf(file: string): string {
   return OWNERS.find(([pattern]) => pattern.test(file))?.[1] ?? '??'
 }
 
+/**
+ * The run shell's own surfaces, named rather than derived.
+ *
+ * The derived half of the list below answers "what did this branch change",
+ * which is the right question ON a branch and no question at all once the
+ * branch is merged: `git merge-base main HEAD` on `main` is HEAD, the diff is
+ * empty, and the check evaporated into its own emptiness guard. It failed
+ * loudly, which is the only reason this is a five-minute fix rather than a
+ * silent green that would have outlived everyone who knew what it was for.
+ *
+ * So the floor is explicit. These are the files that PAINT the run shell, they
+ * do not move when a branch merges, and the rule stands over them for good:
+ * a colour lives in a token sheet or it does not exist. Four of them are
+ * filtered straight back out by `TOKEN_SHEETS` - `motion.css`,
+ * `character.css`, `node-card.css` and anything else under `assets/styles/` -
+ * and they are listed anyway, because a reader checking whether their file is
+ * covered should find the answer here rather than by reasoning about a regex.
+ */
+const OWNED_SURFACES: readonly string[] = [
+  'frontend/src/components/ReportPanel.vue',
+  'frontend/src/components/GateCard.vue',
+  'frontend/src/components/ChatRail.vue',
+  'frontend/src/components/DialogueRail.vue',
+  'frontend/src/components/WorkflowNode.vue',
+  'frontend/src/components/CrewProgress.vue',
+  'frontend/src/components/StatusPanel.vue',
+  'frontend/src/components/AgentCharacter.vue',
+  'frontend/src/components/HandoffToken.vue',
+  'frontend/src/components/WorkflowEdge.vue',
+  'frontend/src/views/StudioView.vue',
+  'frontend/src/studio.css',
+  'frontend/src/assets/styles/motion.css',
+  'frontend/src/assets/styles/character.css',
+  'frontend/src/assets/styles/node-card.css',
+]
+
 function git(...args: string[]): string {
-  return execFileSync('git', args, { cwd: REPO, encoding: 'utf8' })
+  return execFileSync('git', args, { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
 }
 
 /**
- * Every `.vue` and `.css` file this branch has touched - committed or not.
+ * What this branch changed, or nothing if git cannot say.
  *
- * Three sources, unioned: what the branch changed against its merge base with
- * `main`, what is modified in the working tree, and what is untracked. The
- * third matters more than it looks: six people are building here at once and a
- * file that exists only in somebody's working copy is exactly the file whose
- * literals nobody has looked at yet.
+ * Three sources, unioned: the diff against the merge base with `main`, what is
+ * modified in the working tree, and what is untracked. The third matters more
+ * than it looks - a file that exists only in somebody's working copy is exactly
+ * the file whose literals nobody has looked at yet.
+ *
+ * NEVER THROWS. A shallow CI clone has no `main` to find a merge base against,
+ * a tarball export has no `.git` at all, and neither is a reason to fail a test
+ * about colour literals: the answer in both cases is "git cannot say", and the
+ * explicit list below carries the check on its own. The note goes to the
+ * console so a run that quietly lost half its scope says so.
  */
-function touchedFiles(): string[] {
-  const base = git('merge-base', 'main', 'HEAD').trim()
-  const lists = [
-    git('diff', '--name-only', `${base}...HEAD`),
-    git('diff', '--name-only', 'HEAD'),
-    git('ls-files', '--others', '--exclude-standard'),
-  ]
+function changedFiles(): string[] {
+  try {
+    const base = git('merge-base', 'main', 'HEAD').trim()
+    return [
+      git('diff', '--name-only', `${base}...HEAD`),
+      git('diff', '--name-only', 'HEAD'),
+      git('ls-files', '--others', '--exclude-standard'),
+    ].join('\n').split('\n')
+  } catch {
+    console.log(
+      'designTokens: git could not name the changed files (no repo, or no `main` '
+      + 'to compare against). Checking the committed surface list only.',
+    )
+    return []
+  }
+}
+
+/**
+ * The files this check covers: the run shell's own surfaces, plus whatever else
+ * this branch happens to have touched.
+ *
+ * The union is the point. The explicit half cannot evaporate - it is the same
+ * list on a branch, on `main`, and in a clone with no history - and the derived
+ * half means a branch that opens a file nobody listed still leaves it cleaner
+ * than it found it.
+ */
+function coveredFiles(): string[] {
   const seen = new Set<string>()
-  for (const list of lists) {
-    for (const line of list.split('\n')) {
-      const file = line.trim()
-      if (!file) continue
-      if (!/\.(vue|css)$/.test(file)) continue
-      if (TOKEN_SHEETS.test(file)) continue
-      if (!existsSync(path.join(REPO, file))) continue
-      seen.add(file)
-    }
+  for (const line of [...OWNED_SURFACES, ...changedFiles()]) {
+    const file = line.trim()
+    if (!file) continue
+    if (!/\.(vue|css)$/.test(file)) continue
+    if (TOKEN_SHEETS.test(file)) continue
+    if (!existsSync(path.join(REPO, file))) continue
+    seen.add(file)
   }
   return [...seen].sort()
 }
@@ -150,15 +209,20 @@ function literalsIn(file: string): Hit[] {
 }
 
 describe('design tokens: no colour literal in a file this branch touched', () => {
-  const files = touchedFiles()
+  const files = coveredFiles()
   const hits = files.flatMap(literalsIn)
 
-  it('has files to check at all', () => {
-    // A guard against the check silently passing because the git plumbing
-    // changed under it and the list came back empty. That is the failure mode
-    // `unittest discover` walking past a directory with no `__init__.py` has
-    // in the Python suite, and it has cost this repository real time.
-    expect(files.length).toBeGreaterThan(0)
+  it('covers the whole run shell, on a branch or on main', () => {
+    // The guard that caught the defect this function was rewritten for: on
+    // `main` the merge base IS HEAD, the diff is empty, and the check used to
+    // evaporate into this assertion. It is now a floor rather than a pulse -
+    // every surface in `OWNED_SURFACES` that survives the token-sheet filter
+    // must be in the list, whatever git says.
+    const expected = OWNED_SURFACES.filter(
+      (file) => !TOKEN_SHEETS.test(file) && existsSync(path.join(REPO, file)),
+    )
+    expect(expected.length).toBeGreaterThan(0)
+    for (const file of expected) expect(files).toContain(file)
   })
 
   it('reports the whole inventory, so the run is the evidence', () => {
@@ -170,7 +234,7 @@ describe('design tokens: no colour literal in a file this branch touched', () =>
     for (const hit of hits) byFile.set(hit.file, (byFile.get(hit.file) ?? 0) + 1)
 
     const lines = [
-      `scanned ${files.length} .vue/.css files touched on this branch`,
+      `scanned ${files.length} .vue/.css files: the run shell's surfaces, plus this branch's own changes`,
       `token sheets exempt: frontend/src/assets/styles/*.css (docs/design.md §0)`,
       '',
       ...[...byFile.entries()].map(([file, n]) => `${String(n).padStart(3)}  ${file}`),

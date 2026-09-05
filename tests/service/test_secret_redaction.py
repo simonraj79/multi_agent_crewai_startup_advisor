@@ -101,6 +101,16 @@ LEAKS = (
 )
 
 
+#: The plan file criterion 6's note lives in. **Local-only from 2026-09-05**:
+#: every `*.md` here but `README.md` and `data/skills/**/SKILL.md` is gitignored
+#: and untracked, because the repository is public and the plans are not. A
+#: clean checkout therefore has no plan to read, and the one test below that
+#: reads it skips with a sentence saying so rather than failing on an absence
+#: that is not a defect. On a machine that HAS the plan it still runs, which is
+#: the half that matters: it is what stops the note and the pin parting company.
+PLAN_01 = pathlib.Path(__file__).resolve().parents[2] / ".agent" / "plans" / "01-auth-and-workspaces.md"
+
+
 def assert_nothing_leaked(test: unittest.TestCase, rendered: str) -> None:
     for leak in LEAKS:
         test.assertNotIn(leak, rendered)
@@ -123,6 +133,12 @@ class ListTests(unittest.TestCase):
         self.assertFalse(is_secret_key("fields"))
         self.assertNotIn("fields", SECRET_KEYS)
 
+    @unittest.skipUnless(
+        PLAN_01.is_file(),
+        "docs are local-only (every *.md but README.md is gitignored since "
+        "2026-09-05); .agent/plans/01-auth-and-workspaces.md is absent, so "
+        "there is no criterion 6 text to hold the exclusion to",
+    )
     def test_the_plan_records_the_fields_exclusion_beside_the_pin(self) -> None:
         """D-01-3: the deviation above is written INTO criterion 6, dated, naming this pin.
 
@@ -134,9 +150,7 @@ class ListTests(unittest.TestCase):
         either and the other fails.
         """
 
-        plan = pathlib.Path(__file__).resolve().parents[2] / ".agent" / "plans" / "01-auth-and-workspaces.md"
-        self.assertTrue(plan.is_file(), plan)
-        text = plan.read_text(encoding="utf-8")
+        text = PLAN_01.read_text(encoding="utf-8")
         # Criterion 6 is the numbered item that names this file; the note is
         # the indented paragraph under it, before item 7.
         match = re.search(

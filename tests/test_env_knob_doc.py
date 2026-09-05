@@ -41,6 +41,23 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 TECH_STACK = REPO_ROOT / "docs" / "tech-stack.md"
 PLAN_01 = REPO_ROOT / ".agent" / "plans" / "01-auth-and-workspaces.md"
 
+#: **Both files are local-only from 2026-09-05.** Every `*.md` in this
+#: repository except `README.md` and `data/skills/**/SKILL.md` is gitignored and
+#: untracked, because the repository is public and these documents are not. So a
+#: clean checkout - CI's, and a contributor's first clone - has neither file, and
+#: a test that reads one would fail there for a reason that is not a defect.
+#:
+#: The guard is `skipUnless`, never a silent pass: on THIS machine, where the
+#: documents exist, the check still runs and still goes red when a knob is added
+#: without a doc edit, which is the entire reason the module exists. A skip that
+#: says why is the honest answer to "the evidence is not on this machine"; a
+#: green assertion over a missing file is the failure mode
+#: [gotchas](../docs/gotchas-and-insights.md) 20 is about.
+DOCS_ARE_LOCAL = (
+    "docs are local-only (every *.md but README.md is gitignored since "
+    "2026-09-05); {} is absent, so there is nothing to check against"
+)
+
 #: The canonical scan, verbatim from `docs/tech-stack.md` §1. Restated here as
 #: source rather than imported, because the document is what it has to agree
 #: with and a shared helper would let both sides move together.
@@ -104,6 +121,7 @@ def documented_knobs() -> set[str]:
     return set(re.findall(r"[A-Z][A-Z0-9_]{2,}", block))
 
 
+@unittest.skipUnless(TECH_STACK.is_file(), DOCS_ARE_LOCAL.format("docs/tech-stack.md"))
 class ScanAgreesWithTheDocument(unittest.TestCase):
     def test_every_knob_the_scan_finds_is_documented(self) -> None:
         undocumented = sorted(scanned_knobs() - documented_knobs())
@@ -154,6 +172,10 @@ class ScanAgreesWithTheDocument(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(
+    TECH_STACK.is_file() and PLAN_01.is_file(),
+    DOCS_ARE_LOCAL.format("docs/tech-stack.md or .agent/plans/01-auth-and-workspaces.md"),
+)
 class Criterion12(unittest.TestCase):
     """Plan 01's criterion 12, and the note that says a test now checks it."""
 

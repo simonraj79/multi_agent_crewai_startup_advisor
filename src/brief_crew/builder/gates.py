@@ -116,9 +116,17 @@ def gate_decision(feedback: Any) -> tuple[str, dict[str, Any]]:
     Returns `("approve" | "revise", rest)`. Anything that is not the word
     `revise` is an approval, which is the same reading `route_scope` already
     takes: a reply the router cannot parse must go FORWARD rather than wedge a
-    run at a gate a human has already answered. `rest` is recorded as the gate
-    node's output so a downstream node can reference `${state.out__<gate>}` -
-    an author's revise note is the input to the node that acts on it.
+    run at a gate a human has already answered.
+
+    `rest` is everything else the reply carried, and since 2026-09-05 it is
+    recorded under `decision__<gate>` rather than over `out__<gate>` - the gate
+    node's OUTPUT is the payload the operator was shown, and a downstream
+    `${state.out__<gate>}` wants that. An author's revise note is therefore
+    `${state.decision__<gate>}`, and the one part of `rest` that does reach the
+    output is `fields`, the operator's own edited payload
+    (`runtime.py::_apply_gate_edits`). The two were one key until a paid run
+    briefed three specialists on `{'decision': 'approve', ...}`;
+    `config.BUILDER_STATE_DECISION_PREFIX` carries it.
     """
 
     raw = feedback if isinstance(feedback, str) else ""

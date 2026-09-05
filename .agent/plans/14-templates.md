@@ -337,7 +337,10 @@ nine criteria were all met over a product that ran nothing.**
    the offending message shape is CrewAI's own
    `handle_max_iterations_exceeded`, which ends the request on an assistant
    turn. Intermittent, and measured to be so: the one permitted retry completed
-   on an identical document. Open.
+   on an identical document. **CLOSED 2026-09-05** (`98ba8e0`): a global
+   `before_llm_call` hook rewrites the trailing model turn as a user turn, and
+   the two tool-using researchers go `max_iter` 3 → 6 - the section at the head
+   of this Status.
 3. **`hierarchical-delegation` briefs its specialists on the gate's reply
    metadata.** `team.prompt_inputs` reads `${state.out__confirm}`, and a gate's
    ROUTER records `{"decision": …, "honoured": …, "turns_used": …}` under the
@@ -345,9 +348,12 @@ nine criteria were all met over a product that ran nothing.**
    specialists were told to size the market for
    `{'decision': 'approve', 'honoured': False, 'turns_used': 0}` and wrote about
    credit default swaps — at $0.029346, the dearest run of the set, and it
-   `completed` with a body that satisfies every criterion-7 assertion. Open: the
-   two repairs are rewiring this template to `${state.brief}` or stopping the
-   router clobbering the pause's output, and the second is a contract change.
+   `completed` with a body that satisfies every criterion-7 assertion.
+   **CLOSED 2026-09-05** (`8af20c2`) by the second of the two repairs - the
+   contract change. The router records under `decision__<gate>` and never writes
+   `out__<gate>`, so this template stays wired to `${state.out__confirm}` and
+   that reference now means what its author meant. `10-runtime.md`'s Status owns
+   the contract.
 4. **`sequential-pipeline` loses its source URLs** between `analyse` and
    `write`; the writer says so in its own sources section, which is the honest
    half.

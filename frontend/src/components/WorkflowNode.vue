@@ -2,10 +2,30 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { Bot, Check, Cog, FileText, Inbox, RedoDot, RotateCcw, ShieldCheck, Split, TriangleAlert } from 'lucide-vue-next'
+import AgentCharacter from './AgentCharacter.vue'
+import type { PipState } from '../characters/pip'
 import type { StudioNodeData } from '../composables/useValidatorRun'
 import { MAX_NODE_CARD_ERROR_CHARS } from '../data/serverLimits'
 
-const props = defineProps<{ data: StudioNodeData }>()
+/**
+ * Who stands on this card, and what they are doing (T2.5, T2.6).
+ *
+ * ONE prop rather than three, and passed rather than derived, for the reason
+ * `character` and `receded` are already computed in the composable: the answer
+ * depends on the RUN - the first `agent_role` any frame carried, whether a gate
+ * downstream is holding this agent up - and a card has no way to know any of
+ * that. `useRunChoreography` owns the store; this component owns the drawing.
+ *
+ * Optional, so a card mounted with no run behind it (the design-time gallery,
+ * a spec, a mock transport) still draws a character rather than nothing.
+ */
+export interface NodeCast {
+  /** The seed, already through the identity ladder. Never a node id if better exists. */
+  identity: string
+  state: PipState
+}
+
+const props = defineProps<{ data: StudioNodeData; cast?: NodeCast }>()
 
 const emit = defineEmits<{
   /** "Re-run from here" was pressed on this node. Carries its id (12 D6). */
@@ -106,19 +126,70 @@ const isRouter = computed(() => props.data.kind === 'router')
 const isDeterministic = computed(() => isRouter.value || props.data.kind === 'step')
 
 /**
- * The crew boards the card it is working on.
+ * The agent, standing on the card it is working (T2.9).
  *
- * The progress strip already says which STAGE is running, but a stage is three
- * nodes at the fan-out and the operator still has to map a word at the top of
- * the screen back to a card on the canvas. ChatDev solves this by standing the
- * agent's character on the active node, which costs the viewer nothing; this is
- * the same idea in vector, sharing the strip's boat so the two read as one
- * system rather than two unrelated widgets.
+ * WHAT THIS REPLACES: a 34px disc holding a per-kind lucide icon, plus a
+ * two-rower boat that appeared above the card while it was running. Both are
+ * gone rather than kept alongside - the criterion's words are "replaced, not
+ * duplicated" - and the reasons are worth recording, because the boat was a
+ * deliberate design and this is not a tidy-up. The boat could say a node was
+ * running and nothing else: it was the same two rowers on every card, so it
+ * answered "is this one working" at a glance and "which agent is this" never;
+ * and it appeared only while running, so fifteen sixteenths of the run it said
+ * nothing at all. A character that is present in every state and different for
+ * every agent answers both questions with one mark in the same 34px slot.
  *
- * Only ever on a `running` node: a marker that is always present is furniture,
- * and furniture is what the 5px state chip already was.
+ * WHO GETS ONE. Agents and crews, plus any node a frame actually named an
+ * agent role for - the escape hatch for a published graph whose author drew
+ * something the descriptor calls a `step`. Routers, gates, inputs, outputs and
+ * the quarantine node do NOT: a router makes no model call (its card already
+ * says `0 LLM CALLS`), and a gate is a person being asked for something. Giving
+ * a human's turn a cartoon face would be the one place in this console where
+ * the cast lied about who was doing the work.
  */
-const isCrewed = computed(() => props.data.state === 'running' && !isQuarantine.value)
+/*
+ * `StudioNodeKind` has exactly six members and `agent` is the only one that
+ * runs an agent, so this list is the other five written out rather than
+ * inferred - and written out is the point: if a seventh kind is added, the
+ * question "does this one have somebody in it" has to be answered rather than
+ * defaulted. There is deliberately NO "promote on a frame role" escape hatch:
+ * a builder `transform` compiles to `step` and an `input` to `start`, and T2
+ * names both as characterless, so a hatch keyed on a role turning up in a
+ * frame would put a face on the two nodes the criterion says must not have one.
+ */
+const CHARACTERLESS_KINDS: ReadonlySet<string> = new Set([
+  'gate',
+  'output',
+  'quarantine',
+  'router',
+  'step',
+])
+
+const hasCharacter = computed(() => !CHARACTERLESS_KINDS.has(props.data.kind))
+
+/**
+ * The seed, and the pose. Both degrade rather than disappear when no run is
+ * wired up: the label is rung three of the same ladder the composable walks,
+ * and the node's own state maps onto four of the six poses. What a card can
+ * never work out for itself is `speaking` (an `llm` frame bounds it) or the
+ * `blocked` a gate imposes on the agent that fed it - which is exactly why the
+ * store is one layer up.
+ */
+const castIdentity = computed(
+  () => props.cast?.identity || props.data.label || props.data.nodeId,
+)
+
+const STATE_POSE: Record<string, PipState> = {
+  idle: 'idle',
+  running: 'working',
+  waiting: 'blocked',
+  completed: 'done',
+  error: 'blocked-error',
+}
+
+const castPose = computed<PipState>(
+  () => props.cast?.state ?? STATE_POSE[props.data.state] ?? 'idle',
+)
 
 /**
  * How many passes this node has had. Shown from 2, because "×1" on every card
@@ -207,58 +278,43 @@ const ariaLabel = computed(() => {
     <Handle v-if="!isQuarantine" class="node-handle" type="target" :position="Position.Top" />
 
     <!--
-      The character. One colour per node, the same colour in the dialogue rail
-      and on the token that walks the edge, so an operator tracking one agent
-      tracks one mark rather than re-reading a 7px label at every stop.
+      The cast, in the slot the icon medallion and the crew both used to hold.
 
-      Not on the quarantine node: that is instrumentation, not a cast member,
-      and giving it a face would put it in the story.
+      One mark per node, in the same 34px box, in every state - so an operator
+      tracking one agent tracks one figure across the canvas, the rail and the
+      token that walks the edge, rather than re-reading a 7px label at every
+      stop. `AgentCharacter` publishes the seed and the pose as `data-character`
+      and `data-state`, which is how the graph and the trace are checked against
+      each other (T2.6) rather than asserted to agree.
+
+      Aria-hidden, because the card's own `aria-label` already carries the label
+      and the state in words. Two accessible names for one fact is a screen
+      reader saying everything twice.
     -->
     <div
       v-if="!isQuarantine"
       class="node-character"
-      :class="{ 'is-receiving': data.receiving }"
+      :class="{ 'is-receiving': data.receiving, 'has-pip': hasCharacter }"
       data-testid="node-character"
-      :data-character="data.character"
+      :data-character-index="data.character"
       :style="characterStyle"
       aria-hidden="true"
     >
-      <Split v-if="isRouter" :size="16" :stroke-width="2.2" />
-      <ShieldCheck v-else-if="data.kind === 'gate'" :size="17" :stroke-width="2.2" />
-      <FileText v-else-if="data.kind === 'output'" :size="17" :stroke-width="2.2" />
-      <Cog v-else-if="data.kind === 'step'" :size="17" :stroke-width="2.2" />
-      <Bot v-else :size="17" :stroke-width="2.2" />
-    </div>
-
-    <!--
-      The crew, moored to the card they are pulling. Aria-hidden because the
-      node's own label already says "Running" - this is the same fact drawn at a
-      size the default graph fit does not destroy.
-    -->
-    <div v-if="isCrewed" class="node-crew" data-testid="node-crew" aria-hidden="true">
-      <svg viewBox="0 0 60 30" class="node-crew-svg">
-        <!-- Hull, oars, rowers - same paint order as the strip's boat, and for
-             the same reason: hull last buries the crew inside it. -->
-        <path class="node-crew-hull" d="M2 17 C 8 15, 52 15, 58 17 L 55 23 C 49 27, 11 27, 5 23 Z" fill="currentColor" />
-        <!-- Casing then oar, so the oar does not dissolve into the hull it
-             crosses - both are `currentColor`. Same trick as the strip. -->
-        <g class="node-crew-oars">
-          <g v-for="i in 2" :key="i" class="node-crew-oar"
-             :style="{ animationDelay: `${(i - 1) * 0.16}s` }">
-            <line stroke="var(--bg-node)" stroke-width="4" stroke-linecap="round"
-                  :x1="21 + (i - 1) * 17" y1="13" :x2="13 + (i - 1) * 17" y2="26" />
-            <line stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
-                  :x1="21 + (i - 1) * 17" y1="13" :x2="13 + (i - 1) * 17" y2="26" />
-          </g>
-        </g>
-        <g class="node-crew-rowers" fill="currentColor" stroke="var(--bg-node)" stroke-width="1.2">
-          <g v-for="i in 2" :key="`r${i}`" class="node-crew-rower"
-             :style="{ animationDelay: `${(i - 1) * 0.16}s` }">
-            <circle :cx="23 + (i - 1) * 17" cy="6" r="3.1" />
-            <path :d="`M${19.7 + (i - 1) * 17} 17 q0 -6.4 3.3 -6.4 q3.3 0 3.3 6.4 z`" />
-          </g>
-        </g>
-      </svg>
+      <AgentCharacter
+        v-if="hasCharacter"
+        data-testid="node-agent-character"
+        :identity="castIdentity"
+        :state="castPose"
+        :size="32"
+        :label="data.label"
+      />
+      <template v-else>
+        <Split v-if="isRouter" :size="16" :stroke-width="2.2" />
+        <ShieldCheck v-else-if="data.kind === 'gate'" :size="17" :stroke-width="2.2" />
+        <FileText v-else-if="data.kind === 'output'" :size="17" :stroke-width="2.2" />
+        <Cog v-else-if="data.kind === 'step'" :size="17" :stroke-width="2.2" />
+        <Bot v-else :size="17" :stroke-width="2.2" />
+      </template>
     </div>
 
     <div class="node-icon" aria-hidden="true">
@@ -396,17 +452,17 @@ const ariaLabel = computed(() => {
 
 .workflow-node.is-waiting {
   --node-gradient: linear-gradient(135deg, var(--accent-blue), var(--warn-text));
-  box-shadow: 0 0 0 1px rgba(160, 196, 255, 0.26), 0 14px 34px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-blue) 26%, transparent), var(--shadow-raised);
 }
 
 .workflow-node.is-completed {
-  --node-gradient: linear-gradient(135deg, var(--accent-mint), rgba(170, 255, 205, 0.55));
-  background-image: linear-gradient(rgba(38, 48, 43, 0.98), rgba(40, 46, 44, 0.98)), var(--node-gradient);
+  --node-gradient: linear-gradient(135deg, var(--accent-mint), color-mix(in srgb, var(--accent-mint) 55%, transparent));
+  background-image: var(--node-wash-completed), var(--node-gradient);
 }
 
 .workflow-node.is-error {
-  --node-gradient: linear-gradient(135deg, var(--err-border), #bd4a4a);
-  background-image: linear-gradient(rgba(64, 35, 35, 0.96), rgba(42, 42, 42, 0.98)), var(--node-gradient);
+  --node-gradient: linear-gradient(135deg, var(--err-border), var(--node-danger-deep));
+  background-image: var(--node-wash-error), var(--node-gradient);
 }
 
 /* Quarantine: recessive while empty. */
@@ -437,8 +493,8 @@ const ariaLabel = computed(() => {
 /* Quarantine: loud once the backend has actually parked frames on it. */
 .workflow-node.is-holding {
   --node-gradient: linear-gradient(135deg, var(--warn-text), var(--warn-border));
-  background-image: linear-gradient(rgba(46, 40, 26, 0.98), rgba(42, 42, 42, 0.98)), var(--node-gradient);
-  box-shadow: 0 0 0 1px var(--warn-border), 0 12px 30px rgba(0, 0, 0, 0.3);
+  background-image: var(--node-wash-holding), var(--node-gradient);
+  box-shadow: 0 0 0 1px var(--warn-border), var(--shadow-controls);
 }
 
 .is-holding .node-icon { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
@@ -473,7 +529,7 @@ const ariaLabel = computed(() => {
 
 .workflow-node.is-router.is-running { border-style: solid; border-color: var(--accent-cyan); }
 .workflow-node.is-router.is-running .node-icon { color: var(--accent-cyan); }
-.workflow-node.is-router.is-completed { border-style: solid; border-color: rgba(170, 255, 205, 0.3); }
+.workflow-node.is-router.is-completed { border-style: solid; border-color: color-mix(in srgb, var(--accent-mint) 30%, transparent); }
 .workflow-node.is-router.is-error { border-style: solid; border-color: var(--err-border); }
 
 /* Deterministic marker. Shared with `step`/`start` nodes, which keep a full
@@ -490,7 +546,7 @@ const ariaLabel = computed(() => {
   border-radius: var(--r-pill);
 }
 
-.is-step .node-icon { color: var(--accent-blue); background: rgba(160, 196, 255, 0.08); border-color: rgba(160, 196, 255, 0.22); }
+.is-step .node-icon { color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 8%, transparent); border-color: color-mix(in srgb, var(--accent-blue) 22%, transparent); }
 
 .is-gate .node-icon { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 .is-output .node-icon { color: var(--accent-mint); }

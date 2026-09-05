@@ -206,48 +206,21 @@
 @keyframes dot-pulse { 50% { opacity: 0.35; } }
 
 /*
- * The crew, moored to the running card.
+ * WHAT WAS HERE: `.node-crew`, a two-rower boat moored above the running card,
+ * with `node-oar-stroke`, `node-rower-pull` and `node-hull-bob` behind it.
  *
- * It sits ABOVE the card rather than inside it, for the same reason ChatDev
- * stands its character on the node: the card's own interior is already full of
- * label, description, model, tool and a three-column usage table, and anything
- * added inside competes with all of it. Above the top edge the marker is the
- * only thing at that height on the whole canvas, so "what is running" is
- * answered by the eye before any text is read - which matters most at the
- * default fit, where none of the text is legible anyway.
+ * Retired 2026-09-05 with the cast (DoD T2.9). It is recorded rather than
+ * silently deleted because it was a considered design and its replacement has
+ * to be better on the two counts it was built for. It was the SAME two rowers
+ * on every card, so it said "this node is working" and never "which agent is
+ * this"; and it existed only while a node was running, so for most of a run it
+ * said nothing at all. `AgentCharacter` occupies the same slot, is a different
+ * creature per agent, and is present in all six states - so it answers both
+ * questions, and the criterion's word is "replaced", not "joined".
+ *
+ * The slot's geometry did not move: `.node-character` in `motion.css` is still
+ * the 34px box, and it now holds a Pip instead of a lucide glyph.
  */
-.node-crew {
-  position: absolute;
-  top: -26px;
-  left: 50%;
-  width: 52px;
-  height: 26px;
-  color: var(--accent-cyan);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-.node-crew-svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45)); }
-
-/* Two rowers here, not the strip's three: the strip's three ARE the three
-   research branches, and repeating that count on a single card would claim a
-   fan-out that a single node does not have. */
-.node-crew-oar { transform-box: fill-box; transform-origin: top right; animation: node-oar-stroke 1.05s ease-in-out infinite; }
-.node-crew-rower { animation: node-rower-pull 1.05s ease-in-out infinite; }
-.node-crew-hull { animation: node-hull-bob 2.1s ease-in-out infinite; }
-
-@keyframes node-oar-stroke {
-  0%, 100% { transform: rotate(0deg); }
-  40% { transform: rotate(26deg); }
-  70% { transform: rotate(-8deg); }
-}
-@keyframes node-rower-pull {
-  0%, 100% { transform: translateX(0); }
-  40% { transform: translateX(-2px); }
-}
-@keyframes node-hull-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(1.2px); }
-}
 
 /*
  * The eyebrow's margin moved here from `.node-eyebrow`, so the row's spacing is
@@ -275,14 +248,11 @@
 @media (prefers-reduced-motion: reduce) {
   .workflow-node.is-running,
   .is-running .state-dot,
-  .node-crew-oar,
-  .node-crew-rower,
-  .node-crew-hull,
   /* The dot stops pulsing; the elapsed COUNT keeps advancing, and that is the
      load-bearing signal anyway. Reduced motion must not cost a viewer the one
      piece of evidence that the run is alive. */
   .node-active-dot { animation: none; }
-  /* The boat itself stays. Its PRESENCE is the signal - the stroke was only
-     ever the flourish - so a reduced-motion viewer still sees which card the
-     crew is on, and the lap chip is text and was never at risk. */
+  /* The character's own reduced-motion pose is `character.css`'s, declared
+     beside the loops it silences. Nothing about it is named here, because a
+     second rule three files away is how half a contract gets changed. */
 }

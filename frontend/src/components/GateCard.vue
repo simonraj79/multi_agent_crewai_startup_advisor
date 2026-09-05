@@ -338,7 +338,7 @@ function submit(outcome: string): void {
 </template>
 
 <style scoped>
-.gate-card { padding: 16px; background: linear-gradient(145deg, rgba(255, 204, 0, 0.09), rgba(255, 255, 255, 0.025)); border-bottom: 1px solid var(--warn-border); }
+.gate-card { padding: var(--space-6); background: var(--warn-bg); border-bottom: 1px solid var(--warn-border-strong); }
 .gate-heading { display: flex; align-items: center; gap: 10px; }
 .gate-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--r-md); }
 .section-kicker { color: var(--warn-text); font: 700 var(--fs-11)/1 var(--font-mono); }
@@ -369,17 +369,17 @@ function submit(outcome: string): void {
 /* Sentence case, not shouted: `text-transform: uppercase` over a humanised key
    produced MEDIAN MARKET SOURCE AGE MONTHS, which reads as a constant name
    even though it no longer is one. */
-.gate-derived dt { color: var(--text-40); font: 700 var(--fs-11)/1.3 var(--font-body); }
+.gate-derived dt { color: var(--text-meta); font: 700 var(--fs-11)/1.3 var(--font-body); }
 .gate-derived dd { margin: 3px 0 0; color: var(--text-body); font-size: var(--fs-12); line-height: 1.45; overflow-wrap: anywhere; }
-.derived-list { margin: 0; padding-left: 16px; }
+.derived-list { margin: 0; padding-left: var(--space-6); }
 .derived-list li { margin-bottom: 2px; }
 .derived-pairs { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.derived-pairs li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
-.derived-pair-key { color: var(--text-40); font-size: var(--fs-11); }
+.derived-pairs li { display: flex; gap: var(--space-3); align-items: baseline; justify-content: space-between; }
+.derived-pair-key { color: var(--text-meta); font-size: var(--fs-11); }
 .derived-pair-value { color: var(--text-body); text-align: right; }
-.derived-raw { margin-top: 4px; }
-.derived-raw summary { color: var(--text-40); font-size: var(--fs-11); cursor: pointer; }
-.gate-derived pre { max-height: 140px; margin: 4px 0 0; padding: 7px 8px; overflow: auto; color: var(--text-muted); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); font: 500 var(--fs-11)/1.5 var(--font-mono); }
+.derived-raw { margin-top: var(--space-1); }
+.derived-raw summary { color: var(--text-meta); font-size: var(--fs-11); cursor: pointer; }
+.gate-derived pre { max-height: 140px; margin: var(--space-1) 0 0; padding: 7px 8px; overflow: auto; color: var(--text-muted); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); font: 500 var(--fs-11)/1.5 var(--font-mono); }
 /* The server decides how many options a gate has and in what order, so the row
    must not assume two with the primary second. */
 .gate-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 13px; }

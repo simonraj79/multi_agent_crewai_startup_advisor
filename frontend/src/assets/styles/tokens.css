@@ -235,6 +235,26 @@
   --brand-wash: rgba(153, 234, 249, 0.08);
   --brand-rim: rgba(153, 234, 249, 0.28);
   --ink-on-brand: #10201c;
+  /* THE INK ON A STATUS FILL, and why there are two of them.
+
+     `--warn-text` and `--err-text` are TEXT colours, and the verdict badge uses
+     each one as a FILL - which is fine in the dark theme, where both are pale
+     (`#ffe082`, `#ffcccc`) and the near-black ink reads at 13.04:1 and 11.85:1.
+     In the light theme both flip DARK, because as text they have to sit on a
+     pale tint - and the same near-black ink then measures 2.84:1 and 2.24:1.
+     The badge that says REJECT was the least readable thing on the page in
+     light, and it had been since the light palette existed.
+
+     TWO tokens rather than one, and their dark values are deliberately
+     identical rather than aliased to each other, for the reason `--kind-tool`
+     and `--accent-attach` are two tokens a few lines up: they are different
+     facts that happen to agree today. An ink on amber and an ink on red are
+     independent decisions, and a later change to either red would otherwise
+     silently re-ink the warning too. Each light value carries 3-5% of its own
+     family's hue rather than being pure white, so a chip reads as one object
+     instead of as white text dropped onto a colour. 5.60:1 and 7.05:1. */
+  --ink-on-warn: var(--ink-on-brand);
+  --ink-on-err: var(--ink-on-brand);
   /* The pressed segment's inner ring. `color-mix` at 20% of #99eaf9 is
      rgba(153,234,249,.2) exactly, which is the literal it replaces. */
   --ring-pressed: inset 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
@@ -370,6 +390,13 @@
   --warn-text-strong: #865700;
   --warn-border-strong: rgba(150, 100, 0, 0.95);
   --err-border-strong: rgba(190, 40, 40, 0.7);
+  /* The status fills are DARK here - see the note beside the dark pair - so
+     the ink on them inverts. `--ink-on-brand` does NOT, because
+     `--gradient-brand` is an accent and accents are shared across themes; that
+     asymmetry is the whole reason these are separate tokens rather than one
+     `--ink-on-status`. */
+  --ink-on-warn: #fff8e7;
+  --ink-on-err: #fff5f5;
   /* A shadow on paper is shorter, softer and cooler than one in the dark. */
   --shadow-panel: 0 1px 2px rgba(15, 20, 25, 0.06), 0 8px 24px rgba(15, 20, 25, 0.1);
   --shadow-raised: 0 2px 6px rgba(15, 20, 25, 0.08), 0 14px 34px rgba(15, 20, 25, 0.12);

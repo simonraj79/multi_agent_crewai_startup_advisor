@@ -317,12 +317,12 @@ async function copyReport(): Promise<void> {
   border-bottom: 1px solid var(--border-default);
 }
 
-.report-kicker { display: inline-flex; gap: 6px; align-items: center; color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
+.report-kicker { display: inline-flex; gap: var(--space-2); align-items: center; color: var(--on-accent-cyan); font: var(--type-kicker); }
 .report-title-group h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 0; font-size: var(--fs-18); }
 
 .verdict-badge {
   padding: 4px 10px;
-  color: #101a18;
+  color: var(--ink-on-brand);
   font: 800 var(--fs-13)/1.3 var(--font-mono);
   border-radius: var(--r-sm);
   letter-spacing: 0.04em;
@@ -331,30 +331,47 @@ async function copyReport(): Promise<void> {
      looking like a variable name. */
   text-transform: uppercase;
 }
+/* Each variant is filled with its own status colour, and `is-fail` was the one
+   literal in the set (`#ffb4b4`) until 2026-09-05.
+
+   GAP RECORDED HERE, THEN CLOSED IN `tokens.css` THE SAME DAY, and both halves
+   are worth keeping because the diagnosis is what made the fix a two-line one.
+   `--warn-text` and `--err-text` are TEXT colours used here as FILLS. In the
+   dark theme both are pale, so the near-black `--ink-on-brand` reads at 13.04:1
+   and 11.85:1. In the light theme both flip DARK - a text colour on a pale tint
+   has to - and the same ink measured 2.84:1 and 2.24:1, which made the badge
+   saying REJECT the least readable thing on the page. `--accent-mint` is shared
+   across themes, so `is-pass` was never affected and is 14.37:1 in both.
+
+   It was not fixable from this file: `tokens.css` is explicit that nothing
+   outside it knows a theme exists, so the answer had to be an ink per theme
+   rather than a component-level media block. `--ink-on-warn` and `--ink-on-err`
+   are that pair; they are near-black in dark and a 3-5% tint of their own
+   family in light, and they measure 5.60:1 and 7.05:1 there. */
 .verdict-badge.is-pass { background: var(--accent-mint); }
-.verdict-badge.is-warn { background: var(--warn-text); }
-.verdict-badge.is-fail { background: #ffb4b4; }
+.verdict-badge.is-warn { color: var(--ink-on-warn); background: var(--warn-text); }
+.verdict-badge.is-fail { color: var(--ink-on-err); background: var(--err-text); }
 
 /* One chip carries the band word and the number, so a reader is never asked
    to join "34% confidence" to a shouted "LOW" themselves. */
 .verdict-confidence {
-  padding: 3px 8px;
+  padding: 3px var(--space-3);
   color: var(--text-muted);
   font: 600 var(--fs-12)/1.2 var(--font-mono);
   background: var(--surface-well);
   border: 1px solid var(--border-default);
   border-radius: var(--r-sm);
 }
-.verdict-confidence.is-high { color: var(--accent-mint); border-color: rgba(170, 255, 205, 0.34); }
-.verdict-confidence.is-moderate { color: var(--accent-cyan); border-color: rgba(153, 234, 249, 0.32); }
+.verdict-confidence.is-high { color: var(--on-accent-mint); border-color: color-mix(in srgb, var(--accent-mint) 34%, transparent); }
+.verdict-confidence.is-moderate { color: var(--on-accent-cyan); border-color: color-mix(in srgb, var(--accent-cyan) 32%, transparent); }
 .verdict-confidence.is-low { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 
 .verdict-score { color: var(--text-title); font: 700 var(--fs-18)/1 var(--font-display); }
 .verdict-score small { color: var(--text-40); font: 500 var(--fs-12)/1 var(--font-mono); }
 
-.report-flags { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; padding: 10px 20px 0; }
+.report-flags { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4) var(--space-7) 0; }
 .report-flag {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-3);
   color: var(--text-muted);
   font: 500 var(--fs-12)/1.4 var(--font-body);
   background: var(--surface-well);
@@ -369,17 +386,17 @@ async function copyReport(): Promise<void> {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-5);
   max-height: 42vh;
   overflow: auto;
-  padding: 12px 20px 0;
+  padding: var(--space-5) var(--space-7) 0;
 }
 
 /* Tone tracks the KIND of decision, and the distinction is the point: red for
    "this idea is dead", amber for "we could not tell". A reader had to infer
    that before; the tint states it. Both are existing semantic tokens. */
 .verdict-decision {
-  padding: 12px;
+  padding: var(--space-5);
   border-radius: var(--r-md);
 }
 .verdict-decision.is-floor { background: var(--err-bg); border: 1px solid var(--err-border); }
@@ -388,51 +405,51 @@ async function copyReport(): Promise<void> {
 .verdict-decision h3,
 .verdict-scores h3 {
   display: inline-flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
   margin: 0;
-  font: 700 var(--fs-11)/1 var(--font-mono);
-  letter-spacing: 0.06em;
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
   text-transform: uppercase;
 }
 .verdict-decision.is-floor h3 { color: var(--err-text); }
 .verdict-decision.is-evidence h3 { color: var(--warn-text); }
 
 .decision-headline {
-  margin: 8px 0 0;
+  margin: var(--space-3) 0 0;
   color: var(--text-title);
   font: 600 var(--fs-18)/1.3 var(--font-display);
 }
-.decision-meaning { margin: 6px 0 0; color: var(--text-body); font-size: var(--fs-13); line-height: 1.55; }
+.decision-meaning { margin: var(--space-2) 0 0; color: var(--text-body); font-size: var(--fs-13); line-height: 1.55; }
 
 .decision-also {
-  margin-top: 10px;
-  padding-top: 8px;
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border-default);
 }
 .decision-also-kicker {
   display: block;
-  margin-bottom: 4px;
-  color: var(--text-40);
-  font: 700 var(--fs-11)/1 var(--font-mono);
-  letter-spacing: 0.06em;
+  margin-bottom: var(--space-1);
+  color: var(--text-meta);
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
 }
-.decision-also-line { margin: 0 0 4px; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
+.decision-also-line { margin: 0 0 var(--space-1); color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
 .decision-also-line:last-child { margin-bottom: 0; }
 
 .verdict-scores {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: var(--space-4);
+  padding: var(--space-5);
   background: var(--surface-well);
   border: 1px solid var(--border-default);
   border-radius: var(--r-md);
 }
-.verdict-scores h3 { margin-bottom: 2px; color: var(--accent-cyan); }
-.score-row { display: grid; grid-template-columns: minmax(120px, 190px) minmax(48px, 1fr) auto; gap: 10px; align-items: center; }
+.verdict-scores h3 { margin-bottom: 2px; color: var(--on-accent-cyan); }
+.score-row { display: grid; grid-template-columns: minmax(120px, 190px) minmax(48px, 1fr) auto; gap: var(--space-4); align-items: center; }
 .score-label { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.score-name { display: flex; gap: 6px; align-items: baseline; color: var(--text-body); font: 600 var(--fs-13)/1.3 var(--font-body); }
-.score-question { color: var(--text-40); font: 400 var(--fs-11)/1.35 var(--font-body); }
+.score-name { display: flex; gap: var(--space-2); align-items: baseline; color: var(--text-body); font: 600 var(--fs-13)/1.3 var(--font-body); }
+.score-question { color: var(--text-meta); font: 400 var(--fs-11)/1.35 var(--font-body); }
 .score-thin {
   padding: 1px 5px;
   color: var(--warn-text);
@@ -441,7 +458,13 @@ async function copyReport(): Promise<void> {
   border: 1px solid var(--warn-border);
   border-radius: var(--r-pill);
 }
-.score-track { height: 6px; overflow: hidden; background: rgba(255, 255, 255, 0.08); border-radius: var(--r-pill); }
+.score-track {
+  height: 6px;
+  overflow: hidden;
+  background: var(--surface-well);
+  box-shadow: inset 0 0 0 1px var(--border-control);
+  border-radius: var(--r-pill);
+}
 .score-fill {
   display: block;
   height: 100%;
@@ -451,7 +474,7 @@ async function copyReport(): Promise<void> {
 }
 /* The one tie between the red block and the scorecard: a reader who has just
    read "Market scored 0 of 5" can find the row without hunting. */
-.score-row.is-floored .score-track { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-border); }
+.score-row.is-floored .score-track { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-border-strong); }
 .score-row.is-floored .score-value { color: var(--err-text); }
 .score-value { color: var(--text-primary); font: 700 var(--fs-13)/1 var(--font-mono); }
 .score-value small { color: var(--text-40); font-weight: 500; }
@@ -478,14 +501,14 @@ async function copyReport(): Promise<void> {
   min-height: 0;
   overflow: auto;
   padding: 18px 20px 28px;
-  scrollbar-color: rgba(153, 234, 249, 0.3) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
 
 .report-sources { flex: 0 0 auto; max-height: 26%; overflow: auto; padding: 12px 20px 18px; border-top: 1px solid var(--border-default); }
-.report-sources h3 { margin: 0 0 8px; color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
+.report-sources h3 { margin: 0 0 var(--space-3); color: var(--on-accent-cyan); font: var(--type-kicker); text-transform: uppercase; }
 .report-sources ol { margin: 0; padding-left: 20px; color: var(--text-muted); font-size: var(--fs-12); }
 .report-sources li { margin-bottom: 4px; overflow-wrap: anywhere; }
-.report-sources a { color: var(--link-cyan); }
+.report-sources a { color: var(--link-strong); }
 
 @media (prefers-reduced-motion: reduce) {
   .report-panel { animation: none; }

@@ -233,6 +233,7 @@ says it is free.
 | `--err-border-strong` | `rgba(255,82,82,.70)` | `rgba(190,40,40,.70)` | 1.85 / 2.04 → 3.03 / 3.12 |
 | `--brand-wash` / `--brand-rim` | `rgba(153,234,249,.08)` / `.28` | same | the two literals at three sites |
 | `--ink-on-brand` | `#10201c` | same | the three near-identical inks on one gradient |
+| `--ink-on-warn` / `--ink-on-err` | `= --ink-on-brand` | `#fff8e7` / `#fff5f5` | 2.84 / **2.24** → 5.60 / 7.05 — added 2026-09-05 after W1's sweep |
 | `--ring-pressed` | `inset 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 20%, transparent)` | same | the pressed segment's ring literal |
 
 **Why `--on-accent-*` and not a repaint of the accents.** design.md §7 and plan
@@ -457,6 +458,7 @@ These are the contrast failures the run shell renders in files W5 must not open.
 | `node-card.css` five `--text-40` sites | 4.11:1 light | `--text-meta` (needs a baseline regeneration) | **W4** |
 | `ReportPanel.vue` `.score-track` | `rgba(255,255,255,.08)` — **1.014:1** against its own well in light | `var(--surface-well)` or `--border-control` | **W1** |
 | `ReportPanel.vue` sources `a` | `--link-cyan`, 4.41:1 light | `--link-strong` | **W1** |
+| `ReportPanel.vue` `.verdict-badge.is-warn` / `.is-fail` | `--ink-on-brand` on a fill that flips dark in light: **2.84 / 2.24** | **CLOSED 2026-09-05**: `--ink-on-warn` / `--ink-on-err`, 5.60 / 7.05. The token pair is W5's, because `tokens.css` is the only place that knows a theme exists; the two-line adoption was made in W1's file with the orchestrator's leave while W1 was idle | W1 → **W5** |
 | `GateCard.vue` `.gate-card` | `linear-gradient(145deg, rgba(255,204,0,.09), rgba(255,255,255,.025))` — the white stop is invisible on paper; its border is 1.69:1 | `--warn-bg` / `--warn-border-strong` | **W1** |
 | `ChatRail.vue` `.call-chip` | `rgba(0,0,0,.2)` — a dark chip on a light bubble; `--text-muted` on it drops to **3.40:1** | `var(--surface-well)`, or `.chip` | **W3** |
 | `ChatRail.vue` `.section-kicker`, `.text-button` | `--accent-cyan` 1.29:1, `--link-cyan` 4.41:1 light | `--on-accent-cyan`, `--link-strong` | **W3** |

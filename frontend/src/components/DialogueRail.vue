@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import AgentCharacter from './AgentCharacter.vue'
+import type { PipState } from '../characters/pip'
 import { ChevronDown, ChevronUp, MessagesSquare, Scissors } from 'lucide-vue-next'
 import { collapsedPreview, type DialogueEntry } from '../composables/useRunChoreography'
 import { readSpeech, renderSpeech } from '../trace/speech'
@@ -37,8 +39,20 @@ import { MAX_UTTERANCE_CHARS } from '../data/serverLimits'
 const props = defineProps<{
   entries: DialogueEntry[]
   collapsed: boolean
-  /** Node id -> character index, so the avatar matches the card. */
+  /** Node id -> character index, so the avatar's ground matches the card. */
   characterOf: (nodeId: string) => number
+  /**
+   * Node id -> the identity the RUN resolved, and the pose it is in.
+   *
+   * Optional, and asked of the STORE rather than taken from `entry.role`. A
+   * dialogue entry's role is whatever the speakers map held when its utterance
+   * landed, so an entry produced before the node's first `agent_role` carries
+   * the label instead - two seeds for one agent. The store answers with the
+   * first role it ever saw and never changes it, which is what makes the
+   * character here provably the one on that node's card (T2.6).
+   */
+  identityOf?: (nodeId: string) => string
+  stateOf?: (nodeId: string) => PipState
 }>()
 
 const emit = defineEmits<{ toggle: [] }>()
@@ -129,10 +143,20 @@ function avatarStyle(nodeId: string): Record<string, string> {
   return { '--character-color': `var(--character-${props.characterOf(nodeId)})` }
 }
 
-function initials(role: string): string {
-  const words = role.trim().split(/\s+/).filter(Boolean)
-  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase()
-  return (role.slice(0, 2) || '??').toUpperCase()
+/**
+ * The seed this entry's character is drawn from.
+ *
+ * The store first, the entry's own role second - the fallback is for a rail
+ * mounted with no run behind it, and it is the role rather than a placeholder
+ * because a stranger should look like an ordinary agent, not like a defect.
+ */
+function seedOf(entry: DialogueEntry): string {
+  const fromStore = entry.nodeId && props.identityOf ? props.identityOf(entry.nodeId) : ''
+  return fromStore || entry.role
+}
+
+function poseOf(entry: DialogueEntry): PipState {
+  return (entry.nodeId && props.stateOf ? props.stateOf(entry.nodeId) : undefined) ?? 'idle'
 }
 
 function clock(at: number): string {
@@ -188,6 +212,14 @@ function clock(at: number): string {
         :data-node="row.entry.nodeId"
         :data-identity="row.entry.role"
       >
+        <!--
+          The character, where two initials used to be. Same store, same seed
+          and same pose as the node's card and as the trace row for the same
+          frame, so following one agent across three surfaces is following one
+          figure. `data-character` and `data-character-seed` stay on the WRAPPER
+          because existing specs pin them there; the seed the tie-in is checked
+          against is the Pip's own `data-character`, one level in.
+        -->
         <span
           class="dialogue-avatar"
           data-testid="dialogue-avatar"
@@ -195,7 +227,14 @@ function clock(at: number): string {
           :data-character-seed="row.entry.role"
           :style="avatarStyle(row.entry.nodeId)"
           aria-hidden="true"
-        >{{ initials(row.entry.role) }}</span>
+        >
+          <AgentCharacter
+            :identity="seedOf(row.entry)"
+            :state="poseOf(row.entry)"
+            :size="32"
+            :label="row.entry.role"
+          />
+        </span>
 
         <div class="dialogue-body">
           <header class="dialogue-meta">
@@ -343,22 +382,33 @@ function clock(at: number): string {
   flex: 0 1 auto;
   overflow: auto;
   padding: 4px 14px 12px;
-  scrollbar-color: rgba(153, 234, 249, 0.3) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
 
 .dialogue-empty { margin: 8px 0; color: var(--text-40); font-size: var(--fs-12); }
 
-.dialogue-entry { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 9px; margin-bottom: 10px; }
+/* 32px, matching the trace rail's column: the two rails sit in one stack and a
+   character that changed size between them would read as a different mark. */
+.dialogue-entry { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 9px; margin-bottom: 10px; }
 .dialogue-entry.is-folded { margin-bottom: 5px; }
 
+/* The ground, not the mark. See `.trace-avatar` in `ChatRail.vue` for the
+   reasoning; it is one decision applied in three places (here, the trace rail
+   and `.node-character.has-pip`) rather than three. `--character-color` is no
+   longer read: the Pip carries the palette colour in its own body, and a
+   palette entry under text measured 3.89-4.47:1 in the light theme.
+
+   The inline `--character-color` binding is still WRITTEN, and that is not an
+   oversight: it is pinned by an existing spec, and it is still the colour of
+   the lucide medallion on the node kinds that keep an icon instead of a
+   character (router, gate, output, step). One property, two readers, and this
+   is no longer one of them. */
 .dialogue-avatar {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  color: var(--bg-node);
-  font: 800 10px/1 var(--font-mono);
-  background: var(--character-color, var(--accent-cyan));
+  background: var(--bg-node);
   border-radius: var(--r-full);
 }
 

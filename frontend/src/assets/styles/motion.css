@@ -13,6 +13,9 @@
      --character-1 … --character-12   one agent, one colour, everywhere
      --recede-opacity / --recede-saturate   the idle card's step back
      --handoff-*                      the token that walks the edge
+     --node-wash-* / --node-danger-deep     the run card's state tints, moved
+                                      out of `WorkflowNode.vue` on 2026-09-05
+                                      so the light theme can reach them
 
    THE TWELVE CHARACTER COLOURS are the one genuinely new palette this plan
    adds, and they are new because nothing existing answers the question. The
@@ -54,6 +57,32 @@
   --handoff-size: 24px;
   --handoff-trail: 4px;
   --handoff-ring: rgba(255, 255, 255, 0.24);
+
+  /* THE RUN CARD'S THREE STATE WASHES, moved here 2026-09-05 from
+     `WorkflowNode.vue`'s scoped block.
+
+     They are an opaque tint painted OVER `--node-gradient`, so only the card's
+     1px gradient rim shows through - which is the whole trick that makes a
+     completed card and an errored one read as the same object in two moods.
+     They were written as literals inside the component, and a literal in a
+     component is a colour the light theme cannot reach: on paper every one of
+     these cards stayed dark. Here they are tokens with a light value beside
+     them, which is the arrangement `docs/design.md` §8 asks for and the one
+     `designTokens.spec.ts` measures.
+
+     The dark values are the component's own, unchanged to the byte, so the
+     three committed `run-canvas` baselines are unmoved by the move itself. The
+     LIGHT values are new - nothing was there before - and they are the same
+     recipe read the other way round: the card's own ground with a few percent
+     of the state's accent in it. */
+  --node-wash-completed: linear-gradient(rgba(38, 48, 43, 0.98), rgba(40, 46, 44, 0.98));
+  --node-wash-error: linear-gradient(rgba(64, 35, 35, 0.96), rgba(42, 42, 42, 0.98));
+  --node-wash-holding: linear-gradient(rgba(46, 40, 26, 0.98), rgba(42, 42, 42, 0.98));
+
+  /* The deep stop of the danger rim - the last colour of `--gradient-danger`,
+     named on its own because the errored card uses it as a gradient END and
+     not as the whole ramp. */
+  --node-danger-deep: #bd4a4a;
 }
 
 :root[data-theme='light'] {
@@ -73,6 +102,17 @@
   --recede-opacity: 0.5;
   --recede-saturate: 0.65;
   --handoff-ring: rgba(15, 20, 25, 0.2);
+
+  /* The same three washes on paper: the card's white ground carrying a few
+     percent of the state's accent, so a completed card is faintly mint and an
+     errored one faintly red rather than both being the dark card they were
+     before these were tokens. Kept near-opaque for the same reason the dark
+     ones are - the rim is the signal, and a translucent wash would let the
+     whole gradient through and turn every card into a rainbow. */
+  --node-wash-completed: linear-gradient(rgba(238, 250, 243, 0.97), rgba(244, 250, 247, 0.97));
+  --node-wash-error: linear-gradient(rgba(253, 238, 238, 0.97), rgba(252, 245, 245, 0.97));
+  --node-wash-holding: linear-gradient(rgba(253, 246, 226, 0.97), rgba(252, 250, 243, 0.97));
+  --node-danger-deep: #a83232;
 }
 
 /* ===========================================================================
@@ -143,10 +183,59 @@
   pointer-events: none;
 }
 
+/* WITH A CHARACTER IN IT the disc stops being the mark and becomes the ground
+   the mark stands on: the Pip carries the palette colour in its own body (the
+   generator writes `style="color:var(--character-N)"` onto the figure), so a
+   filled disc behind it would be the same colour twice and the silhouette -
+   which is the whole of the identity at 32px - would vanish into it.
+
+   The box, its position, its ring and the receipt pulse are all unchanged, so
+   the slot is the same slot: only the fill moves out from under the figure.
+   No new colour, and no literal - `--bg-node` is what the card is already
+   painted with, which is what makes the half of the disc that overhangs the
+   card's top edge read as part of the card rather than as a hole in it. */
+.node-character.has-pip {
+  background: var(--bg-node);
+  border-color: var(--bg-node);
+}
+
 /* The receipt pulse: a single 120ms bump when a handoff token arrives here.
    One shot, not a loop - it marks an EVENT, and an event that repeats forever
    stops being one. */
 .node-character.is-receiving { animation: character-receipt 120ms var(--ease-out) 1; }
+
+/* ===========================================================================
+   THE CAST IN THE RAILS DOES NOT LOOP
+   ===========================================================================
+
+   T2.7's bound is TWELVE live animations across the whole page, counted by
+   `document.getAnimations()` inside `.pip` elements. A trace row is a frame,
+   not an agent, so a node that produced thirty rows has thirty avatars - and
+   with the node's live pose on each of them a single working branch would
+   spend thirty of the twelve on its own. MEASURED on the fan-out fixture: the
+   canvas costs three (one per running branch, each unioned with the card it
+   stands on, so the cast adds nothing there), and the rails would have cost
+   every row of every live node.
+
+   So the GRAPH's character moves and the rails' do not. That is the right way
+   round rather than a convenient one: the canvas is where "who is working right
+   now" is the question, and the rail is a transcript - a log line that breathes
+   is a log line pretending to be live. What the rails keep is the POSE, which
+   is a transform and a display, not an animation: a rail avatar still squints
+   when it is working, still wilts when it is blocked, and still closes its eyes
+   when it is done. Only the 2600ms bob and the 640ms mouth are dropped.
+
+   Three-class specificity (`.trace-avatar .pip .pip-shell`) because
+   `character.css` declares the loops at two (`.pip--working .pip-shell`) and is
+   imported AFTER this sheet - at equal specificity it would win. */
+.trace-avatar .pip .pip-shell,
+.trace-avatar .pip .pip-mouth--speak,
+.trace-avatar .pip .pip-figure,
+.dialogue-avatar .pip .pip-shell,
+.dialogue-avatar .pip .pip-mouth--speak,
+.dialogue-avatar .pip .pip-figure {
+  animation: none;
+}
 
 @keyframes character-receipt {
   50% { transform: scale(1.15); }
@@ -161,6 +250,11 @@
    looks like and the trailing dash that gives it a direction at 50% zoom. */
 .handoff-token { pointer-events: none; }
 .handoff-token-disc { stroke: var(--bg-node); stroke-width: 2; }
+/* The sender's own character rides the disc, drawn IDLE - a message in flight
+   is not the agent, which is still standing on the card it left. `--handoff-
+   size` is the figure's edge and the disc is drawn a little wider than half of
+   it so the Pip has a rim to stand on at 50% zoom. */
+.handoff-token-figure { pointer-events: none; }
 .handoff-token-trail {
   fill: none;
   stroke-width: var(--handoff-trail);

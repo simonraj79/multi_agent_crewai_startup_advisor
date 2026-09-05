@@ -1,0 +1,42 @@
+# Follow-ups — found during the run-shell work, deliberately not done here
+
+Each line is something the brief did not name, or names a surface the brief put
+out of scope (flow-specific rendering, the workflow engine, the scoring system,
+the builder workspace). Recorded with where it was found. None is a defect this
+branch introduced.
+
+## Deferred token VALUE changes (Option A ruling, 2026-09-05)
+
+The audit in `SHELL-SCOPE.md` measured four token values whose correction moves
+the builder's committed pixel baselines. They were left as-is so T3.5 could hold
+without a regeneration; each is one commit once the builder baselines are due a
+refresh anyway.
+
+- `--border-hover` and `--warn-border` / `--err-border`: below 3:1 as UI borders in the light theme.
+- Light `--link-cyan` on the pale accents used as small text (`tokens.css` records this itself).
+- Light `--surface-well` equals `--surface-raised`, so the three-level surface system is two in light.
+- `node-card.css`: five `--text-40` sites at 4.31:1 in light want `--text-meta`; shared with the builder card.
+
+## Shell
+
+- The 52 px header against the 64 px panel rhythm (`studio.css:129`, `:171`); moving it changes `.validator-flow`'s height and every run-canvas baseline.
+- `capture-run.spec.ts` switches themes with `emulateMedia` alone, so its `*-light-*.png` captures are dark pixels under a light filename; the run shell reads `data-theme`.
+- Run status is rendered three ways (`StudioView.vue`, `StatusPanel.vue`, `RunHistory.vue`); two now use `runStatusDisplay.ts`, the status-panel connection labels do not.
+
+## Data layer (out of scope by the brief; the display now reads it honestly)
+
+- `decision_reason` and `fatal_floors` are computed independently in `schemas/validator.py:538-566`; a floor can be listed while the low-confidence branch decides. The display is keyed on `decision_reason` and says so; whether a listed-but-not-deciding floor should exist at all is a rubric question.
+- Dimension display names exist only in `validator_flow.py::_DIMENSION_LABELS` and now again in `frontend/src/data/verdictDisplay.ts`; the API does not expose them. A `dimensions` block on the verdict frame carrying `label` and `question` would remove the client mirror.
+- `provisional` covers `INSUFFICIENT_EVIDENCE` (CLAUDE.md §4's unratified deviation) — unchanged, still open.
+
+## Trace and cast
+
+- Builder nodes carry no `task_name` because `builder/runtime.py:910` builds the Task with no `name`; the trace therefore cannot say which task an authored agent is on. Naming the task from the node label at compile time is a one-line runtime change.
+- A crew node (many agents) has no single role; it renders as the crew's label with a character seeded on that label. A per-member cast needs member frames the serializer does not emit.
+- Gate titles on builder graphs fall back to ids like `n1_confirm` (title-cased, so they evade the raw-code regex). The compiler should carry the author's gate label into the gate frame.
+- `useValidatorRun.recoverIdea` reads `details.inputs.idea` by name rather than the workflow's `inputField` (latent for builder graphs; found by the boundary map).
+- The synthetic double still emits `node_state` for step nodes the real serializer would not attribute the same way; the trace hides them by kind, which rests on the descriptor's `kind` being right.
+
+## Builder workspace (LEAVE)
+
+- The builder's `.segmented` had no base rule and rendered as native buttons in its header; the promoted global is guarded off the builder so its baselines stayed green. Lifting the guard is a builder change with a baseline regeneration.

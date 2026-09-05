@@ -1,18 +1,25 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import WorkflowNode from '../src/components/WorkflowNode.vue'
+import WorkflowNode, { type NodeCast } from '../src/components/WorkflowNode.vue'
+import type { PipState } from '../src/characters/pip'
 import type { StudioNodeData } from '../src/composables/useValidatorRun'
 import { zeroUsage } from './helpers'
 
 /**
- * The crew on the card, and the lap on the card.
+ * The cast on the card, and the lap on the card.
  *
- * The progress strip answers "which STAGE", but a stage is three nodes at the
- * fan-out, and the operator still has to carry a word from the top of the
- * screen back to a card on the canvas. ChatDev stands the agent's character on
- * the active node instead; this is that idea, and these tests pin the two
- * properties that make it worth having - it appears on exactly the running
- * node, and the lap survives without any animation at all.
+ * WHAT THESE TESTS USED TO PIN, and why they now pin something else. A
+ * two-rower boat used to moor above a running card: `.node-crew-rower` x2,
+ * `.node-crew-oar` x2, present on exactly the running node. It answered "is
+ * this one working" and could not answer "which agent is this", because it was
+ * the same two rowers on every card - and it was absent in every other state,
+ * which is most of a run. T2.9 replaces it with one `AgentCharacter` in the
+ * same 34px slot: a different creature per agent, present in all six poses.
+ *
+ * The assertions below are the STRONGER form of the old ones rather than fewer
+ * of them - "on exactly the running node" becomes "on exactly the nodes that
+ * have an agent in them, in every state, wearing the pose the run says", which
+ * is a claim the boat could not make. The lap block underneath is untouched.
  */
 
 function nodeData(overrides: Partial<StudioNodeData> = {}): StudioNodeData {
@@ -39,49 +46,101 @@ function nodeData(overrides: Partial<StudioNodeData> = {}): StudioNodeData {
   }
 }
 
-const mountNode = (data: StudioNodeData) =>
+const mountNode = (data: StudioNodeData, cast?: NodeCast) =>
   mount(WorkflowNode, {
-    props: { data },
+    props: cast ? { data, cast } : { data },
     global: { stubs: { Handle: true } },
   })
 
-describe('the crew boards the running node', () => {
-  it('appears on a running node', () => {
-    const wrapper = mountNode(nodeData({ state: 'running' }))
-    expect(wrapper.find('[data-testid="node-crew"]').exists()).toBe(true)
-  })
+/** The one character this card mounts, or an empty wrapper. */
+const pipOf = (wrapper: ReturnType<typeof mountNode>) => wrapper.find('.pip')
 
-  it('stays off every other state', () => {
-    // A marker on every card is furniture, and furniture is exactly what the
-    // 5px state chip already was.
-    for (const state of ['idle', 'waiting', 'completed', 'error'] as const) {
+describe('the cast stands on the card', () => {
+  it('is on an agent card in EVERY state, not only while it runs', () => {
+    // The boat's real limitation, written as a test. Identity is not a run
+    // state: a mark that appears only while a node is working cannot be the
+    // thing an operator tracks an agent BY, which is the whole of T2.6.
+    for (const state of ['idle', 'running', 'waiting', 'completed', 'error'] as const) {
       const wrapper = mountNode(nodeData({ state }))
-      expect(wrapper.find('[data-testid="node-crew"]').exists()).toBe(false)
+      expect(pipOf(wrapper).exists(), `no character on a ${state} agent`).toBe(true)
     }
   })
 
+  it('leaves no rower, oar or hull behind - replaced, not duplicated (T2.9)', () => {
+    const html = mountNode(nodeData({ state: 'running' })).html()
+    for (const gone of ['node-crew', 'node-rower', 'node-oar', 'node-hull']) {
+      expect(html, `${gone} survived the replacement`).not.toContain(gone)
+    }
+    expect(pipOf(mountNode(nodeData({ state: 'running' }))).exists()).toBe(true)
+  })
+
+  it('mounts exactly ONE character, inside the workflow node', () => {
+    // T2.6's E2E selects `.vue-flow__node[data-id] .workflow-node .pip` and
+    // reads one seed off it. Two would make that query ambiguous and the
+    // criterion unanswerable.
+    const wrapper = mountNode(nodeData({ state: 'running' }))
+    expect(wrapper.findAll('.pip')).toHaveLength(1)
+    expect(wrapper.find('.workflow-node .pip').exists()).toBe(true)
+    expect(wrapper.find('.node-character .pip').exists()).toBe(true)
+  })
+
   it('never boards the quarantine node', () => {
-    // Quarantine is instrumentation. Nothing rows there.
+    // Quarantine is instrumentation. Giving it a face puts it in the story.
     const wrapper = mountNode(nodeData({ kind: 'quarantine', state: 'running' }))
-    expect(wrapper.find('[data-testid="node-crew"]').exists()).toBe(false)
+    expect(pipOf(wrapper).exists()).toBe(false)
   })
 
-  it('boards a running router, because a router is still where the run IS', () => {
-    const wrapper = mountNode(nodeData({ kind: 'router', state: 'running' }))
-    expect(wrapper.find('[data-testid="node-crew"]').exists()).toBe(true)
+  it('gives no character to a router, gate, output or step', () => {
+    // A router makes no model call - its own card says `0 LLM CALLS` - and a
+    // gate is a PERSON being asked for something. A face on either would be
+    // the one place this console lied about who did the work. A `step` is what
+    // an authored transform compiles to, and an `output` is a file.
+    for (const kind of ['router', 'gate', 'output', 'step'] as const) {
+      const wrapper = mountNode(nodeData({ kind, state: 'running' }))
+      expect(pipOf(wrapper).exists(), `${kind} was given a character`).toBe(false)
+      // The lucide medallion is what it keeps instead, in the same slot.
+      expect(wrapper.find('[data-testid="node-character"]').exists()).toBe(true)
+    }
   })
 
-  it('draws two rowers, not the strip\'s three', () => {
-    // The strip's three ARE the three research branches. Repeating that count
-    // on one card would claim a fan-out the node does not have.
+  it('wears the pose the run resolved, not the one the card could guess', () => {
+    // `speaking` and the gate's `blocked` are the two states a card cannot
+    // derive: one is bounded by `llm` frames and the other is imposed by a
+    // gate downstream. Passing the pose in is what makes them reachable.
+    const cast: NodeCast = { identity: 'Market Evidence Analyst', state: 'speaking' }
+    const pip = pipOf(mountNode(nodeData({ state: 'running' }), cast))
+    expect(pip.attributes('data-state')).toBe('speaking')
+    expect(pip.attributes('data-character')).toBe('market evidence analyst')
+  })
+
+  it('falls back to the node label when no run has resolved an identity', () => {
+    // A design-time card, a mock transport, a spec. It draws A character - the
+    // same one the composable's own ladder lands on at rung three - rather
+    // than a placeholder, because a system whose strangers look broken
+    // punishes the author of every flow it has not seen.
+    const pip = pipOf(mountNode(nodeData({ label: 'Market Analyst' })))
+    expect(pip.attributes('data-character')).toBe('market analyst')
+  })
+
+  it('maps the four poses a card CAN work out for itself', () => {
+    const expected: Record<string, PipState> = {
+      idle: 'idle',
+      running: 'working',
+      waiting: 'blocked',
+      completed: 'done',
+      error: 'blocked-error',
+    }
+    for (const [state, pose] of Object.entries(expected)) {
+      const pip = pipOf(mountNode(nodeData({ state: state as StudioNodeData['state'] })))
+      expect(pip.attributes('data-state'), `${state} drew ${pose}`).toBe(pose)
+    }
+  })
+
+  it('is hidden from a screen reader, which already hears the state in words', () => {
+    // The card's own aria-label carries label and state. Two accessible names
+    // for one fact is a screen reader saying everything twice.
     const wrapper = mountNode(nodeData({ state: 'running' }))
-    expect(wrapper.findAll('.node-crew-rower')).toHaveLength(2)
-    expect(wrapper.findAll('.node-crew-oar')).toHaveLength(2)
-  })
-
-  it('is hidden from a screen reader, which already hears "Running"', () => {
-    const wrapper = mountNode(nodeData({ state: 'running' }))
-    expect(wrapper.find('[data-testid="node-crew"]').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.find('[data-testid="node-character"]').attributes('aria-hidden')).toBe('true')
   })
 })
 
@@ -167,6 +226,6 @@ describe('the lap is on the card', () => {
     delete (data as Partial<StudioNodeData>).visits
     const wrapper = mountNode(data as StudioNodeData)
     expect(wrapper.find('[data-testid="node-lap"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="node-crew"]').exists()).toBe(true)
+    expect(wrapper.find('.pip').exists()).toBe(true)
   })
 })

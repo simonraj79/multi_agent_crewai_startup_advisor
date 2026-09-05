@@ -5,7 +5,7 @@ Every colour is read from `tokens.css` and `motion.css`; every translucent
 token is composited over the surface stack `studio.css` actually paints.
 `need` is 4.5 for text (WCAG 1.4.3 AA) and 3.0 for a UI boundary (1.4.11).
 
-**294 pairings. 74 are W5's and 0 of those fail.**
+**300 pairings. 80 are W5's and 0 of those fail.**
 17 failing rows belong to another worker's file and are listed
 separately with the token to use; `docs/run-shell/SHELL-SCOPE.md` §7 is the
 same list in prose. The exit code counts W5's rows only.
@@ -59,6 +59,9 @@ same list in prose. The exit code counts W5's rows only.
 | dark | a crew pip as a UI mark | `--accent-mint` | canvas ground | 14.61 | 3 | pass | W4 | CrewProgress.vue .crew-pip |
 | dark | card meta on a card | `--text-40` | bg-node (card) | 5.02 | 4.5 | pass | W4 | node-card.css .node-meta |
 | dark | body text on a card | `--text-body` | bg-node (card) | 10.87 | 4.5 | pass | W4 | node-card.css |
+| dark | the verdict badge, needs work | `--ink-on-warn` | the warn badge | 13.04 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-warn |
+| dark | the verdict badge, reject | `--ink-on-err` | the err badge | 11.85 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-fail |
+| dark | the verdict badge, validate | `--ink-on-brand` | the pass badge | 14.37 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-pass |
 | dark | a report link | `--link-cyan` | rail | 9.48 | 4.5 | pass | W1 | ReportPanel.vue .report-sources a |
 | dark | a report score on a well | `--text-primary` | well in rail | 16.45 | 4.5 | pass | W1 | ReportPanel.vue .score-value |
 | dark | the gate card boundary | `--warn-border` | warn-bg over rail | 2.70 | 3 | handed to W1 | W1 | GateCard.vue .gate-card |
@@ -206,6 +209,9 @@ same list in prose. The exit code counts W5's rows only.
 | light | a crew pip as a UI mark | `--accent-mint` | canvas ground | 1.02 | 3 | handed to W4 | W4 | CrewProgress.vue .crew-pip |
 | light | card meta on a card | `--text-40` | bg-node (card) | 4.31 | 4.5 | handed to W4 | W4 | node-card.css .node-meta |
 | light | body text on a card | `--text-body` | bg-node (card) | 14.83 | 4.5 | pass | W4 | node-card.css |
+| light | the verdict badge, needs work | `--ink-on-warn` | the warn badge | 5.60 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-warn |
+| light | the verdict badge, reject | `--ink-on-err` | the err badge | 7.05 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-fail |
+| light | the verdict badge, validate | `--ink-on-brand` | the pass badge | 14.37 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-pass |
 | light | a report link | `--link-cyan` | rail | 4.98 | 4.5 | pass | W1 | ReportPanel.vue .report-sources a |
 | light | a report score on a well | `--text-primary` | well in rail | 14.88 | 4.5 | pass | W1 | ReportPanel.vue .score-value |
 | light | the gate card boundary | `--warn-border` | warn-bg over rail | 1.69 | 3 | handed to W1 | W1 | GateCard.vue .gate-card |

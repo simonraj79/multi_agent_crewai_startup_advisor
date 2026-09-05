@@ -15,6 +15,7 @@ import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
 import { useValidatorRun } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
+import type { NodeCast } from '../components/WorkflowNode.vue'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
 import type { SignedInUser } from '../composables/useAuthGate'
 
@@ -120,6 +121,10 @@ const {
   framesApplied,
   armed,
   endHandoff,
+  identities,
+  identityFor,
+  castStates,
+  castState,
   initialize,
   launch,
   submitGate,
@@ -135,6 +140,21 @@ const {
   // sign-out. The handoff above is read the same way.
   userId: () => props.user?.id ?? null,
 })
+
+/**
+ * The cast, for one node card.
+ *
+ * A tiny function rather than a field on `graphNodes`, and the reason is
+ * ownership: `graphNodes` is the run composable's rebuild of the descriptor and
+ * the cast is a different store's answer about the same node. Joining them here
+ * keeps each store the only writer of its own facts, and keeps the card a
+ * component that is TOLD who is standing on it rather than one that works it
+ * out - which is what lets `speaking` and the gate's `blocked` exist at all,
+ * since neither is derivable from the card's own state.
+ */
+function castFor(nodeId: string): NodeCast {
+  return { identity: identityFor(nodeId), state: castState(nodeId) }
+}
 
 /**
  * What the header badge says about the backend.
@@ -337,12 +357,30 @@ function backToValidator(): void {
     </header>
 
     <main class="studio-main">
-      <ChatRail :entries="chatEntries" :collapsed="chatCollapsed" @toggle="chatCollapsed = !chatCollapsed">
+      <!--
+        `identityFor` and `castState` are handed to all three surfaces from ONE
+        store (`useRunChoreography`, by way of the run composable), which is the
+        whole of DoD T2.6: the node card, the trace row and the spoken line can
+        disagree about an agent only if they ask three different questions, and
+        here they ask one. `characterIndex` stays beside them because it is what
+        still colours the lucide medallion on the node kinds that get no
+        character - a router, a gate, an output, a step.
+      -->
+      <ChatRail
+        :entries="chatEntries"
+        :collapsed="chatCollapsed"
+        :character-of="characterIndex"
+        :identity-of="identityFor"
+        :state-of="castState"
+        @toggle="chatCollapsed = !chatCollapsed"
+      >
         <template #above>
           <DialogueRail
             :entries="dialogue"
             :collapsed="dialogueCollapsed"
             :character-of="characterIndex"
+            :identity-of="identityFor"
+            :state-of="castState"
             @toggle="dialogueCollapsed = !dialogueCollapsed"
           />
         </template>
@@ -388,6 +426,8 @@ function backToValidator(): void {
           :descriptor="descriptor"
           :active="isActive"
           :run-stages="stages"
+          :identities="identities"
+          :cast-states="castStates"
         />
 
         <VueFlow
@@ -407,7 +447,13 @@ function backToValidator(): void {
           :aria-label="`${canvasTitle} workflow graph`"
         >
           <template #node-workflow="nodeProps">
-            <WorkflowNode v-bind="nodeProps" @rerun="resumeFrom" />
+            <!--
+              `cast` is a declared prop rather than another field on `data`,
+              because `data` is rebuilt by `graphNodes` on every frame and the
+              cast is answered by a different store. Declared, so it does NOT
+              fall through onto the `<article>` the way `id` deliberately does.
+            -->
+            <WorkflowNode v-bind="nodeProps" :cast="castFor(nodeProps.id)" @rerun="resumeFrom" />
           </template>
           <template #edge-workflow="edgeProps">
             <WorkflowEdge v-bind="edgeProps" @handoff-done="endHandoff" />

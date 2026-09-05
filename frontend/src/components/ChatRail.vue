@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { Bot, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import AgentCharacter from './AgentCharacter.vue'
+import type { PipState } from '../characters/pip'
 import type { ChatEntry } from '../types/studio'
 
 /**
@@ -30,6 +32,22 @@ const props = defineProps<{
    * without it, and the cast work replaces the placeholder in place.
    */
   characterOf?: (nodeId: string) => number
+  /**
+   * Node id -> the identity the RUN resolved, and the pose it is in.
+   *
+   * Both from `useRunChoreography` by way of `StudioView`, and both optional
+   * so this rail still renders in a spec that mounts it with entries alone.
+   *
+   * The identity is asked of the STORE rather than taken from `entry.identity`,
+   * and the difference is the whole of T2.6. A row's own identity is resolved
+   * per FRAME, so a node whose first frame carried no `agent_role` produces
+   * early rows named after its label and later rows named after its role - two
+   * seeds, two characters, one agent. The store answers with the first role it
+   * ever saw and never changes it, so every row of a node draws one creature
+   * and it is the creature standing on that node's card.
+   */
+  identityOf?: (nodeId: string) => string
+  stateOf?: (nodeId: string) => PipState
 }>()
 
 const emit = defineEmits<{ toggle: [] }>()
@@ -67,11 +85,22 @@ watch(
   },
 )
 
-/** Two letters for the placeholder disc, from the identity the row resolved. */
-function initials(identity: string): string {
-  const words = identity.trim().split(/\s+/).filter(Boolean)
-  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase()
-  return (identity.slice(0, 2) || '??').toUpperCase()
+/**
+ * The seed this row's character is drawn from.
+ *
+ * The store first, the row's own identity second. The fallback matters for a
+ * row the store has never heard of - a frame for a node outside the descriptor,
+ * or a rail mounted in a spec with no run behind it - and it is the row's own
+ * resolved identity rather than a placeholder, because a system whose strangers
+ * look broken punishes the author of every flow it has not seen.
+ */
+function seedOf(entry: ChatEntry): string {
+  const fromStore = entry.nodeId && props.identityOf ? props.identityOf(entry.nodeId) : ''
+  return fromStore || entry.identity
+}
+
+function poseOf(entry: ChatEntry): PipState {
+  return (entry.nodeId && props.stateOf ? props.stateOf(entry.nodeId) : undefined) ?? 'idle'
 }
 
 function avatarStyle(entry: ChatEntry): Record<string, string> {
@@ -163,11 +192,18 @@ function tokenNote(entry: ChatEntry): string {
         :data-tone="entry.tone"
       >
         <!--
-          The character's slot. It is a 32px disc wearing the node's own colour
-          today and the cast's character tomorrow: `data-character-seed` is the
-          identity string the interpretation layer resolved, which is the same
-          seed the node's medallion is drawn from, so the tie-in criterion is a
-          string comparison rather than a screenshot.
+          The character's slot, and the character is in it.
+
+          It held two initials before, which is what a rail does when it has no
+          cast: `MA` and `MO` are two letters apart at 32px and told a reader
+          nothing they could not get from the name printed beside them. The Pip
+          is the same figure standing on that node's card - same store, same
+          seed, same pose - so the trace and the graph are one view of one run
+          rather than two lists that happen to be about it.
+
+          `data-character-seed` and `data-character` stay on the WRAPPER because
+          `traceInterpretation.spec.ts` pins them there; the seed the tie-in is
+          checked against is the Pip's own `data-character`, one level in.
         -->
         <span
           v-if="entry.identity"
@@ -177,7 +213,9 @@ function tokenNote(entry: ChatEntry): string {
           :data-character="characterIndexOf(entry)"
           :style="avatarStyle(entry)"
           aria-hidden="true"
-        >{{ initials(entry.identity) }}</span>
+        >
+          <AgentCharacter :identity="seedOf(entry)" :state="poseOf(entry)" :size="32" :label="entry.actor" />
+        </span>
 
         <div class="trace-content">
           <div class="trace-meta">
@@ -185,7 +223,7 @@ function tokenNote(entry: ChatEntry): string {
             <time :datetime="entry.timestamp">{{ entry.timestamp }}</time>
           </div>
           <div class="trace-bubble">
-            <p data-testid="trace-line">{{ entry.message }}</p>
+            <p class="trace-line" data-testid="trace-line">{{ entry.message }}</p>
 
             <!--
               Collapsed by default, and a native `<details>` rather than a
@@ -266,7 +304,7 @@ function tokenNote(entry: ChatEntry): string {
   flex: 1;
   overflow: auto;
   padding: 14px 14px 28px;
-  scrollbar-color: rgba(153, 234, 249, 0.3) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
 
 .rail-empty { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); font-size: var(--fs-13); }
@@ -305,14 +343,31 @@ function tokenNote(entry: ChatEntry): string {
 
 .trace-entry.is-system { display: block; }
 
+/* The GROUND a character stands on, not the mark itself.
+
+   It was a filled disc in the node's own palette colour with two initials on
+   top; the Pip carries that colour in its own body, so a filled disc behind it
+   would be the same colour twice and the silhouette - the whole of the identity
+   at 32px - would disappear into it. Same decision, same reason, as
+   `.node-character.has-pip` in `motion.css` and `.crew-medallion` in the stage
+   lane, and it is one decision in three places rather than three.
+
+   `--character-color` is deliberately no longer read here. A palette entry
+   measured 3.89-4.47:1 against the rail's ground in the light theme, which is
+   under AA for anything carrying text - and now that nothing here is text, the
+   colour belongs to the figure and not to the box around it.
+
+   The inline `--character-color` binding is still WRITTEN, and that is not an
+   oversight: it is pinned by an existing spec, and it is still the colour of
+   the lucide medallion on the node kinds that keep an icon instead of a
+   character (router, gate, output, step). One property, two readers, and this
+   is no longer one of them. */
 .trace-avatar {
   display: grid;
   width: 32px;
   height: 32px;
   place-items: center;
-  color: var(--bg-node);
-  font: 800 10px/1 var(--font-mono);
-  background: var(--character-color, var(--gradient-brand));
+  background: var(--bg-node);
   border-radius: var(--r-full);
 }
 

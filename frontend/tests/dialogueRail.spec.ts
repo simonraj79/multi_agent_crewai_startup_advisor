@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import DialogueRail from '../src/components/DialogueRail.vue'
+import { characterSeed, type PipState } from '../src/characters/pip'
 import {
   characterIndex,
   type DialogueEntry,
@@ -34,9 +35,13 @@ function entry(overrides: Partial<DialogueEntry> = {}): DialogueEntry {
   }
 }
 
-function rail(entries: DialogueEntry[], collapsed = false) {
+function rail(
+  entries: DialogueEntry[],
+  collapsed = false,
+  cast?: { identityOf?: (nodeId: string) => string; stateOf?: (nodeId: string) => PipState },
+) {
   return mount(DialogueRail, {
-    props: { entries, collapsed, characterOf: characterIndex },
+    props: { entries, collapsed, characterOf: characterIndex, ...cast },
   })
 }
 
@@ -60,6 +65,13 @@ describe('the dialogue rail', () => {
   it('gives the avatar the colour of the node it speaks for', () => {
     // The property the whole character design rests on. The reference's chat
     // avatars never match its graph, because its chat path omits the node id.
+    //
+    // The index is still published on the WRAPPER even though the disc no
+    // longer paints itself with it: it is the colour of the lucide medallion on
+    // the node kinds that keep an icon instead of a character, and one property
+    // with two readers is better than two properties that agree today. The
+    // character's own colour is the same hash of the same seed - `pip.ts` uses
+    // the raw FNV modulo twelve that `characterIndex` is, and says so.
     const wrapper = rail([entry({ nodeId: 'research_market' })])
     const avatar = wrapper.get('[data-testid="dialogue-avatar"]')
     expect(avatar.attributes('data-character')).toBe(String(characterIndex('research_market')))
@@ -136,9 +148,37 @@ describe('the dialogue rail', () => {
     expect(list.attributes('role')).toBe('log')
   })
 
-  it('makes initials out of a one-word role', () => {
-    expect(rail([entry({ role: 'Scoper' })]).get('[data-testid="dialogue-avatar"]').text())
-      .toBe('SC')
+  it('holds a CHARACTER, not two initials', () => {
+    // `MA` and `MO` are two letters apart at 32px and told a reader nothing the
+    // name printed beside them did not. What the slot holds now is the same
+    // figure standing on that node's card, which is a thing an eye can follow
+    // across three surfaces.
+    const avatar = rail([entry({ role: 'Scoper' })]).get('[data-testid="dialogue-avatar"]')
+    expect(avatar.text()).toBe('')
+    expect(avatar.findAll('.pip')).toHaveLength(1)
+    expect(avatar.get('.pip').attributes('data-character')).toBe(characterSeed('Scoper'))
+  })
+
+  it('draws the seed and the pose the RUN resolved, not the entry\'s own role', () => {
+    // The distinction T2.6 turns on. An entry's `role` is whatever the speakers
+    // map held when its utterance landed, so an entry produced before the
+    // node's first `agent_role` carries the label - two seeds for one agent.
+    // The store answers with the first role it ever saw and never changes it.
+    const avatar = rail([entry({ role: 'The research_market card' })], false, {
+      identityOf: () => 'Market Evidence Analyst',
+      stateOf: () => 'speaking',
+    }).get('[data-testid="dialogue-avatar"]')
+    expect(avatar.get('.pip').attributes('data-character')).toBe('market evidence analyst')
+    expect(avatar.get('.pip').attributes('data-state')).toBe('speaking')
+  })
+
+  it('falls back to the entry\'s role when no store is wired up', () => {
+    // A spec, a mock transport, a rail mounted on its own. It draws AN ordinary
+    // character rather than a placeholder: a system whose strangers look broken
+    // punishes the author of every flow it has never seen.
+    const avatar = rail([entry({ role: 'Market Analyst' })]).get('[data-testid="dialogue-avatar"]')
+    expect(avatar.get('.pip').attributes('data-character')).toBe('market analyst')
+    expect(avatar.get('.pip').attributes('data-state')).toBe('idle')
   })
 
   it('names the identity on the entry and the seed on the avatar', () => {

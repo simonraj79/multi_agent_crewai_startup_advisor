@@ -417,8 +417,8 @@ describe('the alive-not-noisy bound', () => {
   }
 
   it('never exceeds twelve across a thirty-frame fan-out', () => {
-    // Criterion 11. The bound is a property of the design, not of one moment,
-    // so it is measured after every frame rather than at the end.
+    // Criterion 11, and DoD T2.7. The bound is a property of the design, not of
+    // one moment, so it is measured after every frame rather than at the end.
     const run = harness()
     const observed: number[] = []
     const record = () => observed.push(run.liveAnimationCount.value)
@@ -428,6 +428,34 @@ describe('the alive-not-noisy bound', () => {
     record()
     expect(Math.max(...observed)).toBeLessThanOrEqual(12)
     expect(observed.every((count) => count >= 0)).toBe(true)
+    // The MEASURED figure, not just the bound: three running cards, three
+    // marching edges, and FOUR tokens in flight - the fourth is `scoper` to
+    // `route`, whose target settles in this fixture without the token being
+    // told, because nothing here plays `HandoffToken`'s part. Pinned because a
+    // silent drift from ten to twelve would still pass the bound and would be
+    // the design getting louder with nobody deciding it should.
+    expect(Math.max(...observed)).toBe(10)
+  })
+
+  it('counts the cast into the bound, and the cast costs nothing here', () => {
+    // T2.7 asks for the character loops to be inside the same twelve. They are
+    // UNIONED with the running cards rather than added, for the reason the
+    // glow and the elapsed clock are already one thing: a card and the figure
+    // standing on it are the same card moving for the same reason.
+    //
+    // MEASURED on this fixture: all three looping Pips stand on running cards,
+    // so the union adds nothing and the count is what it was before the cast
+    // existed. The union is not therefore free everywhere - the feeder of an
+    // open gate is a Pip on a card that is not itself animating - which is why
+    // it is a union and not a subtraction.
+    const run = harness()
+    fanOut(run)
+    expect([...run.loopingCharacters.value].sort()).toEqual(['build', 'market', 'signal'])
+    const cards = Object.values(run.nodeStates.value).filter(
+      (state) => state === 'running' || state === 'waiting',
+    ).length
+    expect(cards).toBe(3)
+    expect(run.liveAnimationCount.value).toBe(10)
   })
 
   it('is zero once the run is terminal', () => {

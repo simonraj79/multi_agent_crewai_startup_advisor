@@ -29,6 +29,8 @@ import {
   type StageProgress,
 } from '../data/crewStages'
 import { characterIndex, type RunStage } from '../composables/useRunChoreography'
+import AgentCharacter from './AgentCharacter.vue'
+import type { PipState } from '../characters/pip'
 
 const props = defineProps<{
   nodeStates: Record<string, NodeRunState>
@@ -39,6 +41,18 @@ const props = defineProps<{
   nodeVisits?: Record<string, number>
   /** The topology on screen. The crew only rows a graph it knows. */
   descriptor: GraphDescriptor
+  /**
+   * Node id -> the identity seed the run resolved, and the pose it is in.
+   *
+   * Both optional and both from `useRunChoreography`, so the medallions in
+   * this lane are the SAME characters as the cards' and the tokens' rather
+   * than a second cast that agrees today. Absent, the lane falls back to the
+   * descriptor's declared role and to the node's own state, which is the same
+   * ladder one rung down - a strip that showed nothing without a full wiring
+   * would be worse than one that shows the honest second-best.
+   */
+  identities?: Record<string, string>
+  castStates?: Record<string, PipState>
   /** Suppresses the crew on an idle console - there is no voyage to draw yet. */
   active: boolean
   /**
@@ -176,9 +190,39 @@ const laneCrew = computed(() => {
       id: branch.id,
       label: branch.label,
       character: characterIndex(branch.id),
+      identity: identityOf(branch.id),
+      pose: poseOf(branch.id, branch.state),
       state: branch.state,
     }))
 })
+
+/**
+ * The lane's rung of the identity ladder.
+ *
+ * The run's own answer when it was passed in; otherwise the descriptor's
+ * declared `agent_role`, then the node's label, then its id - the same order
+ * `useRunChoreography.identityFor` walks, minus the rung only frames can
+ * supply. Restated here rather than imported because this component is handed
+ * a descriptor and a state map and never a run.
+ */
+function identityOf(nodeId: string): string {
+  const supplied = props.identities?.[nodeId]
+  if (supplied) return supplied
+  const node = props.descriptor.nodes.find((candidate) => candidate.id === nodeId)
+  return node?.agent_role || node?.label || nodeId
+}
+
+const LANE_POSE: Record<string, PipState> = {
+  idle: 'idle',
+  running: 'working',
+  waiting: 'blocked',
+  completed: 'done',
+  error: 'blocked-error',
+}
+
+function poseOf(nodeId: string, state: NodeRunState): PipState {
+  return props.castStates?.[nodeId] ?? LANE_POSE[state] ?? 'idle'
+}
 
 /** Named oars, for the aria label and the caption row under the boat. */
 const namedOars = computed(() => oars.value.filter((oar) => oar.label !== ''))
@@ -379,7 +423,17 @@ const ariaSummary = computed(() => {
           :style="{ '--character-color': `var(--character-${member.character})` }"
           :title="member.label"
           :data-node="member.id"
-        >{{ member.label.slice(0, 2).toUpperCase() }}</span>
+        >
+          <!--
+            The character, not two initials. `MA` and `MO` are two letters
+            apart at 26px and told an operator nothing they could not read off
+            the card; the Pip is the same figure standing on the card, which is
+            what makes this lane a view OF the run rather than a second legend
+            to learn. 28px, so the detail tier is off - `pip.ts` switches
+            cheeks and sparkles off below 48 because at this size they are mud.
+          -->
+          <AgentCharacter :identity="member.identity" :state="member.pose" :size="28" :label="member.label" />
+        </span>
       </div>
 
       <!-- The crew. Three rowers, one per research branch. -->
@@ -460,7 +514,7 @@ const ariaSummary = computed(() => {
   z-index: 9;
   margin: 0 40px 4px;
   padding: 8px 16px 14px;
-  background: rgba(26, 26, 26, 0.86);
+  background: var(--surface-overlay);
   border: 1px solid var(--border-default);
   border-radius: var(--r-2xl);
   -webkit-backdrop-filter: var(--blur-panel);
@@ -508,20 +562,23 @@ const ariaSummary = computed(() => {
   transition: left var(--motion-medium) var(--ease-out);
 }
 
+/* 30px for a 28px figure, and the ground is the app's own colour rather than
+   the character's: the Pip carries the palette colour in its body, so a filled
+   disc behind it would be that colour twice and the silhouette - the whole of
+   the identity at this size - would disappear into it. Same decision, same
+   reason, as `.node-character.has-pip` in `motion.css`. */
 .crew-medallion {
   display: grid;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   place-items: center;
-  color: var(--bg-node);
-  font: 800 9px/1 var(--font-mono);
-  background: var(--character-color, var(--accent-cyan));
+  background: var(--bg-app);
   border: 2px solid var(--bg-app);
   border-radius: var(--r-full);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-overlay);
 }
 
-.crew-medallion.is-waiting { box-shadow: 0 0 0 2px var(--warn-border), 0 3px 10px rgba(0, 0, 0, 0.4); }
+.crew-medallion.is-waiting { box-shadow: 0 0 0 2px var(--warn-border), var(--shadow-overlay); }
 
 .crew-river {
   position: absolute;
@@ -565,7 +622,7 @@ const ariaSummary = computed(() => {
 }
 .crew-tick { width: 13px; height: 13px; }
 
-.crew-stage.is-completed .crew-marker { color: #101a18; background: var(--accent-mint); border-color: var(--accent-mint); }
+.crew-stage.is-completed .crew-marker { color: var(--ink-on-brand); background: var(--accent-mint); border-color: var(--accent-mint); }
 .crew-stage.is-running .crew-marker { color: var(--accent-cyan); border-color: var(--accent-cyan); }
 .crew-stage.is-waiting .crew-marker { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 .crew-stage.is-error .crew-marker { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
@@ -628,7 +685,7 @@ const ariaSummary = computed(() => {
 .crew-lap.is-fresh { animation: lap-flash 1.1s ease-out 3; }
 
 @keyframes lap-flash {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
   35% { box-shadow: 0 0 0 4px var(--warn-bg); }
 }
 

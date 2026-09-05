@@ -79,7 +79,7 @@ const route = computed(() => getBezierPath({
   stroke-width: 2.5;
   stroke-linecap: round;
   stroke-dasharray: 7 13;
-  filter: drop-shadow(0 0 5px rgba(153, 234, 249, 0.9));
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent-cyan) 90%, transparent));
   pointer-events: none;
   animation: edge-march 0.75s linear infinite;
 }

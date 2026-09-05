@@ -143,6 +143,21 @@ function surfaces(t) {
     'err-bg over rail': over(parse(t['err-bg']), rail),
     'warn-bg over canvas': over(parse(t['warn-bg']), canvas),
     'surface-panel over bg-app': over(parse(t['surface-panel']), app),
+    /*
+     * THE THREE VERDICT BADGES, which are the one place a colour that was
+     * chosen as TEXT is used as a FILL.
+     *
+     * They are surfaces in their own right and have to be listed as such: a
+     * pairing measured against "a rail" says nothing about ink sitting on a
+     * solid `--err-text` chip. Two of the three invert between themes, because
+     * a text colour on a pale tint has to be dark and a text colour on a dark
+     * tint has to be pale - which is exactly why the ink on them cannot be one
+     * value. `--accent-mint` is shared across themes, so the third does not
+     * move, and it is listed anyway so the set is complete.
+     */
+    'the warn badge': parse(t['warn-text']),
+    'the err badge': parse(t['err-text']),
+    'the pass badge': parse(t['accent-mint']),
   }
 }
 
@@ -207,6 +222,13 @@ const PAIRS = [
   ['a crew pip as a UI mark', 'accent-mint', 'canvas ground', 'CrewProgress.vue .crew-pip', 'ui', 'W4', 'var(--on-accent-mint)'],
   ['card meta on a card', 'text-40', 'bg-node (card)', 'node-card.css .node-meta', 'text', 'W4', 'var(--text-meta)'],
   ['body text on a card', 'text-body', 'bg-node (card)', 'node-card.css', 'text', 'W4', ''],
+  // The verdict badge's ink. W5's, because the fix is a token pair rather than
+  // a component change: `tokens.css` is explicit that nothing outside it knows
+  // a theme exists, and this needed one ink per theme.
+  ['the verdict badge, needs work', 'ink-on-warn', 'the warn badge', 'ReportPanel.vue .verdict-badge.is-warn', 'text', 'W5', ''],
+  ['the verdict badge, reject', 'ink-on-err', 'the err badge', 'ReportPanel.vue .verdict-badge.is-fail', 'text', 'W5', ''],
+  ['the verdict badge, validate', 'ink-on-brand', 'the pass badge', 'ReportPanel.vue .verdict-badge.is-pass', 'text', 'W5', ''],
+
   ['a report link', 'link-cyan', 'rail', 'ReportPanel.vue .report-sources a', 'text', 'W1', 'var(--link-strong)'],
   ['a report score on a well', 'text-primary', 'well in rail', 'ReportPanel.vue .score-value', 'text', 'W1', ''],
   ['the gate card boundary', 'warn-border', 'warn-bg over rail', 'GateCard.vue .gate-card', 'ui', 'W1', 'var(--warn-border-strong)'],

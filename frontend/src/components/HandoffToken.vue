@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { handoffDurationMs, type Handoff } from '../composables/useRunChoreography'
+import { characterSeed, pipSvg } from '../characters/pip'
+import { characterIndex, handoffDurationMs, type Handoff } from '../composables/useRunChoreography'
 
 /**
  * A message, walking the edge it was sent along.
@@ -16,11 +17,18 @@ import { handoffDurationMs, type Handoff } from '../composables/useRunChoreograp
  * regresses. Criterion 5 is a grep for that log line's wording over
  * `frontend/src`, so it is deliberately not written out anywhere here.
  *
- * The token is the SOURCE node's character disc at 24px, with a short trailing
- * dash in the same colour. The sprite is dropped and so is facing: without a
- * character to turn around, "which way is it walking" is answered by the trail
- * rather than by a mirrored image, and the trail keeps working at 50% zoom
- * where a 24px sprite's orientation would not.
+ * The token is the SOURCE agent's own character at 24px, with a short trailing
+ * dash in its colour. Facing is dropped: "which way is it walking" is answered
+ * by the trail rather than by a mirrored image, and the trail keeps working at
+ * 50% zoom where a turned figure would not.
+ *
+ * The figure is drawn IDLE and not in the sender's live state, deliberately.
+ * What is walking the edge is a message, not the agent - the agent is still
+ * standing on the card it left - and a token whose pose changed halfway across
+ * would be a second animated cast member on a canvas that already counts this
+ * walk as one of its twelve. `pipSvg` is called directly rather than mounting
+ * `AgentCharacter`, because that component's root is a `<span>` and this is
+ * inside an `<svg>`; the markup it returns is a nested `<svg>`, which is not.
  *
  * MEASURING THE PATH is why this component exists at all rather than a CSS
  * `offset-path`. Only the DOM knows how long a bezier turned out to be after
@@ -34,7 +42,15 @@ const props = defineProps<{
   /** The edge's own path data, so this measures the line it is walking. */
   path: string
   handoff: Handoff
-  /** The SOURCE node's character index. One agent, one colour, everywhere. */
+  /**
+   * The SOURCE node's character index, as the edge knew it.
+   *
+   * Kept as the fallback for a handoff carrying no identity - a frame log
+   * written before `fromIdentity` existed, or a replay of one. When an
+   * identity IS present its own hash decides the colour, because that is the
+   * hash the figure is drawn from and two colours on one token would be worse
+   * than either.
+   */
   character: number
 }>()
 
@@ -48,7 +64,22 @@ const at = ref<{ x: number; y: number } | null>(null)
 const trail = ref<{ x: number; y: number } | null>(null)
 let frame = 0
 
-const colour = computed(() => `var(--character-${props.character})`)
+/** The sender's identity, normalised - the same seed its card is drawn from. */
+const seed = computed(() => characterSeed(props.handoff.fromIdentity || props.handoff.from))
+
+/* The colour is `characterIndex` of the SEED and not of the node id, because
+   `pipSvg` colours the figure from the raw FNV of that same seed and the two
+   must be one colour. `characterIndex` is byte-for-byte that hash - its own
+   docstring says so and `pip.ts` says so from the other side. */
+const colour = computed(() =>
+  props.handoff.fromIdentity
+    ? `var(--character-${characterIndex(seed.value)})`
+    : `var(--character-${props.character})`,
+)
+
+/** 24px, detail off: cheeks and sparkles are mud at this size (`pip.ts`). */
+const FIGURE_SIZE = 24
+const figure = computed(() => pipSvg(seed.value, { size: FIGURE_SIZE, state: 'idle', detail: false }))
 
 /** How far behind the token the trailing dash sits, in path units. */
 const TRAIL_LENGTH = 26
@@ -132,13 +163,27 @@ onBeforeUnmount(() => {
       :y2="at.y"
       :stroke="colour"
     />
+    <!--
+      The disc stays UNDER the figure rather than being replaced by it: an
+      edge is a thin line on a dark canvas and a Pip alone at 24px loses its
+      silhouette against it. The disc is the ground the character stands on,
+      which is what the node card's medallion already is.
+    -->
     <circle
       v-if="at"
       class="handoff-token-disc"
       :cx="at.x"
       :cy="at.y"
-      r="12"
+      r="14"
       :fill="colour"
+    />
+    <g
+      v-if="at"
+      class="handoff-token-figure"
+      data-testid="handoff-token-figure"
+      :data-character="seed"
+      :transform="`translate(${at.x - FIGURE_SIZE / 2} ${at.y - FIGURE_SIZE / 2})`"
+      v-html="figure"
     />
   </g>
 </template>

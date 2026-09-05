@@ -88,6 +88,7 @@ pair back into the token it shadows.
 | `--warn-border-strong` / `--err-border-strong` | `rgba(255,204,0,.46)` / `rgba(255,82,82,.7)` | `rgba(150,100,0,.95)` / `rgba(190,40,40,.7)` | the two status boundaries at 2.70 / 1.85 |
 | `--brand-wash` / `--brand-rim` | `rgba(153,234,249,.08)` / `.28` | same | the brand mark's fill and rim, written out at three sites |
 | `--ink-on-brand` | `#10201c` | same | three near-identical inks on one shared gradient |
+| `--ink-on-warn` / `--ink-on-err` | `= --ink-on-brand` | `#fff8e7` / `#fff5f5` | the verdict badge fills itself with `--warn-text` / `--err-text`, which are TEXT colours and flip DARK in light; the near-black ink then measured 2.84 and **2.24** → 5.60 / 7.05. Two tokens, not one: an ink on amber and an ink on red are independent decisions |
 | `--ring-pressed` | `inset 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 20%, transparent)` | same | the pressed segment's ring literal |
 
 ### Node kinds — one colour, one shape, one icon each (03)

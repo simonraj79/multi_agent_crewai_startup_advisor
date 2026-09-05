@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { characterSeed, type PipState } from '../characters/pip'
 import type { FrameData, NodeRunState, RunStatus } from '../types/studio'
 
 /**
@@ -122,6 +123,27 @@ export function characterVar(nodeId: string): string {
   return `var(--character-${characterIndex(nodeId)})`
 }
 
+/**
+ * Whether a declared `agent_role` reads as a ROLE somebody wrote or as an id.
+ *
+ * The descriptor's `agent_role` is rung two of the identity ladder, and for a
+ * builder graph it has carried the node's own id (`n3_market`) rather than a
+ * role. Seeding a character from that is not wrong-looking on its own - it is
+ * wrong LATER, at the node's first `agent_role`-bearing frame, when the
+ * character would change in front of the operator. So a value with neither a
+ * space nor a capital in it is treated as an identifier and skipped, and the
+ * ladder falls through to the node's label, which is prose either way.
+ *
+ * Deliberately generous rather than clever: `Scoper` passes on the capital and
+ * `market research analyst` passes on the spaces. What it rejects is the one
+ * shape ids actually take here - a lowercase snake or kebab token.
+ */
+export function readsAsRole(value: string | undefined): boolean {
+  const trimmed = (value ?? '').trim()
+  if (!trimmed) return false
+  return /\s/.test(trimmed) || /[A-Z]/.test(trimmed)
+}
+
 /** One token walking one edge. */
 export interface Handoff {
   /** Descriptor edge id, or `${from}-${to}` when the graph draws no such edge. */
@@ -129,6 +151,17 @@ export interface Handoff {
   from: string
   to: string
   startedAt: number
+  /**
+   * The SOURCE node's identity seed, resolved at the moment the token was
+   * created (T2.6).
+   *
+   * Stamped ON THE HANDOFF rather than looked up by the component, because the
+   * token is rendered by `WorkflowEdge`, which knows about edges and nothing
+   * about agents. Resolving it here is also what makes the token provably the
+   * same character as the card it left: one call, one store, one answer -
+   * rather than two call sites that agree today.
+   */
+  fromIdentity: string
 }
 
 /** One thing an agent said. */
@@ -166,6 +199,16 @@ export interface RunChoreographyOptions {
   activeEdgeIds?: Ref<Set<string>> | (() => Set<string>)
   /** Node id -> label, for a dialogue entry whose frame named no role. */
   labelFor?: (nodeId: string) => string
+  /**
+   * Node id -> the role the SERVER declared on the graph descriptor
+   * (`GraphNodeDefinition.agent_role`), rung two of the identity ladder.
+   *
+   * Optional, and a caller that does not supply it degrades to the label
+   * rather than breaking - which is exactly what the synthetic path needs,
+   * since a synthetic run emits no `agent` frame and the descriptor is the
+   * only identity it has.
+   */
+  declaredRoleFor?: (nodeId: string) => string | undefined
   /** Resolve a descriptor edge id from a node pair. Falls back to `from-to`. */
   edgeIdFor?: (from: string, to: string) => string
   /** Injectable clock, so a spec can place events at exact milliseconds. */
@@ -192,6 +235,7 @@ function detailNumber(details: Record<string, unknown>, key: string): number {
 export function useRunChoreography(options: RunChoreographyOptions) {
   const now = options.now ?? (() => Date.now())
   const labelFor = options.labelFor ?? ((nodeId: string) => nodeId)
+  const declaredRoleFor = options.declaredRoleFor ?? (() => undefined)
   const edgeIdFor = options.edgeIdFor ?? ((from: string, to: string) => `${from}-${to}`)
 
   const handoffs = ref<Handoff[]>([])
@@ -225,6 +269,62 @@ export function useRunChoreography(options: RunChoreographyOptions) {
   /** Text accumulated per call id from `chunk` frames before its utterance. */
   const streamed = new Map<string, string>()
 
+  /* ------------------------------------------------------------ the cast */
+
+  /**
+   * Node id -> the FIRST `agent_role` any frame carried for it, ever.
+   *
+   * First and not latest, and that is the whole of the rule: a character that
+   * changes halfway through a run is a different agent as far as the eye is
+   * concerned, and the one thing the cast exists to do is let somebody follow
+   * one worker across the canvas, the rail and the edges. CrewAI stamps
+   * `agent_role` on the agent, task, tool and LLM events of a paid run and the
+   * synthetic backend stamps it on `node_state`, so the first frame a node
+   * produces usually carries it; a node that never gets one falls through the
+   * ladder in `identityFor` and stays there for the run.
+   *
+   * Reactive rather than a plain Map, because the node card, both rails and
+   * the walking token all read it and all of them re-render on frames.
+   */
+  const frameRoles = ref<Record<string, string>>({})
+
+  /**
+   * Node id -> the life the FRAMES say it is in.
+   *
+   * This mirrors `useValidatorRun.applyNodeState` / `applyGate` / the
+   * `gate_closed` branch exactly - START is running, END is completed, an
+   * ERROR-level `node_state` is error, a gate opening is waiting and a gate
+   * closing is completed - and it exists because `castState` has to be
+   * answerable over a bare frame log with no host wired up (T2.5's evidence is
+   * a replay of two NDJSON fixtures). Where the host DOES supply
+   * `options.nodeStates`, that answer wins: it is the same derivation over the
+   * same frames, and one authority beats two agreeing ones.
+   */
+  const frameLife = ref<Record<string, NodeRunState>>({})
+
+  /**
+   * Nodes whose Pip is mid-sentence.
+   *
+   * EVENT-BOUNDED, not reveal-bounded. It opens on an `llm` `utterance` or
+   * `chunk` frame and closes on the next frame for that node that is neither -
+   * another model or tool call, an agent boundary, a guardrail, a node end.
+   * Keying it on the rail's reveal instead would tie the canvas to a typing
+   * animation, so a node that streamed 4,000 characters would still be
+   * "speaking" thirty seconds after the model stopped.
+   *
+   * `token` and `metrics` frames do NOT close it: they are bookkeeping the
+   * server emits beside a call, not the agent doing something else, and a
+   * usage frame landing between an utterance and its agent boundary would
+   * otherwise make every sentence flicker.
+   */
+  const speaking = ref(new Set<string>())
+
+  /** Gate node id -> the node the last `edge_taken` into it came from. */
+  const feeders = ref<Record<string, string>>({})
+
+  /** The last node a START frame named, as the feeder of last resort. */
+  const lastStarted = ref('')
+
   let revealHandle = 0
   /** The clock at the last reveal step, or null before the first one.
    *
@@ -251,6 +351,148 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     return state !== 'running' && state !== 'waiting' && state !== 'error'
   }
 
+  /**
+   * WHO this node is, as one string, for everything that draws a character.
+   *
+   * The ladder is the run's own, most specific first:
+   *
+   *   1. the first `agent_role` a frame carried for this node in this run
+   *   2. the descriptor's declared `agent_role`, when it reads as a role at
+   *      all rather than as an id (`readsAsRole`)
+   *   3. the node's label - prose somebody wrote, and the only identity a
+   *      hand-drawn node has
+   *   4. the node id, so this is total and never returns ''
+   *
+   * ONE store, deliberately. The node card, the dialogue rail, the trace rail
+   * and the walking token every one of them ask this function, so a character
+   * cannot be one creature on the canvas and another in the transcript - which
+   * is the defect the reference product has and which T2.6 measures.
+   */
+  function identityFor(nodeId: string): string {
+    if (!nodeId) return ''
+    const stamped = frameRoles.value[nodeId]
+    if (stamped) return stamped
+    const declared = declaredRoleFor(nodeId)
+    if (readsAsRole(declared)) return (declared as string).trim()
+    return labelFor(nodeId) || nodeId
+  }
+
+  /** Every node the run has mentioned, mapped through `identityFor`. */
+  const identities = computed<Record<string, string>>(() => {
+    const seen = new Set<string>([
+      ...Object.keys(frameRoles.value),
+      ...Object.keys(frameLife.value),
+      ...Object.keys(read(options.nodeStates)),
+    ])
+    const map: Record<string, string> = {}
+    for (const nodeId of seen) map[nodeId] = identityFor(nodeId)
+    return map
+  })
+
+  /** The seed a character is hashed from - `identityFor`, normalised. */
+  function characterSeedFor(nodeId: string): string {
+    return characterSeed(identityFor(nodeId))
+  }
+
+  /** What the host says this node's life is, or what the frames say. */
+  function lifeOf(nodeId: string): NodeRunState {
+    const hosted = read(options.nodeStates)[nodeId]
+    if (hosted && hosted !== 'idle') return hosted
+    return frameLife.value[nodeId] ?? 'idle'
+  }
+
+  /**
+   * The node whose work a waiting gate is holding up.
+   *
+   * A gate node gets no character - a human is not an agent - so without this
+   * the one moment the run is actually stopped has nothing on the canvas
+   * wearing the blocked pose. The feeder is the `from` of the last traversal
+   * INTO the gate, which is exactly the agent whose output is on the card the
+   * operator is being asked about; a run replayed from frames that name no
+   * such edge falls back to the last node that started, which on a linear
+   * flow is the same node.
+   */
+  function feederOf(nodeId: string): string {
+    const viaEdge = feeders.value[nodeId]
+    if (viaEdge && viaEdge !== nodeId) return viaEdge
+    return lastStarted.value && lastStarted.value !== nodeId ? lastStarted.value : ''
+  }
+
+  /**
+   * One node's character state (T2.5), from run events and nothing else.
+   *
+   * NO CLOCK IS READ HERE and none may be: `evidence/T2/no-timers.txt` greps
+   * this file for one. Every input is a frame that has already been applied,
+   * so the same log replayed twice produces the same states in the same order
+   * and a page reload mid-run puts the cast back exactly where it was.
+   *
+   * Precedence is worst-news-first, and each step is a decision:
+   *   error   beats everything, because a failed node that also has a stale
+   *           "speaking" flag must not read as chatting
+   *   blocked beats done, because the feeder of an open gate really is stopped
+   *           even though its own work finished - that is what the gate means
+   *   done    beats speaking, which the event bound already closes at node end
+   */
+  function castState(nodeId: string): PipState {
+    if (!nodeId) return 'idle'
+    const life = lifeOf(nodeId)
+    if (life === 'error' || nodeErrors.value[nodeId]) return 'blocked-error'
+    if (life === 'waiting') return 'blocked'
+    if (blockedFeeders.value.has(nodeId)) return 'blocked'
+    if (life === 'completed') return 'done'
+    if (life === 'running') return speaking.value.has(nodeId) ? 'speaking' : 'working'
+    return 'idle'
+  }
+
+  /** Nodes that are blocked because a gate they fed is waiting on a human. */
+  const blockedFeeders = computed(() => {
+    const held = new Set<string>()
+    // Every node EITHER source knows about, resolved through `lifeOf` one at a
+    // time. A merge of the two records was the first draft and it was wrong in
+    // a way worth recording: `nodeStates` seeds every descriptor node to
+    // `idle`, so spreading it over the frame-derived map replaced a real
+    // `waiting` with a placeholder and no gate ever blocked anybody.
+    const nodeIds = new Set([
+      ...Object.keys(frameLife.value),
+      ...Object.keys(read(options.nodeStates)),
+    ])
+    for (const nodeId of nodeIds) {
+      if (lifeOf(nodeId) !== 'waiting') continue
+      const feeder = feederOf(nodeId)
+      if (feeder) held.add(feeder)
+    }
+    return held
+  })
+
+  /** Node id -> `PipState`, for everything that binds `<AgentCharacter :state>`. */
+  const castStates = computed<Record<string, PipState>>(() => {
+    const seen = new Set<string>([
+      ...Object.keys(frameLife.value),
+      ...Object.keys(read(options.nodeStates)),
+      ...Object.keys(nodeErrors.value),
+      ...speaking.value,
+    ])
+    const map: Record<string, PipState> = {}
+    for (const nodeId of seen) map[nodeId] = castState(nodeId)
+    return map
+  })
+
+  /**
+   * Nodes whose Pip is running an INFINITE loop right now.
+   *
+   * Only `working` (`pip-bob`) and `speaking` (`pip-speak`) loop;
+   * `character.css` makes idle and done completely still and gives blocked a
+   * one-shot settle rather than a pulse, so those cost nothing and are not
+   * counted. Measured rather than assumed - see `liveAnimationCount`.
+   */
+  const loopingCharacters = computed(
+    () => new Set(
+      Object.entries(castStates.value)
+        .filter(([, state]) => state === 'working' || state === 'speaking')
+        .map(([nodeId]) => nodeId),
+    ),
+  )
+
   /** Entries still revealing. At most one is genuinely animating; see D5.3. */
   const pending = computed(() =>
     dialogue.value.filter((entry) => entry.revealed < entry.text.length),
@@ -270,11 +512,22 @@ export function useRunChoreography(options: RunChoreographyOptions) {
   const liveAnimationCount = computed(() => {
     if (isTerminal.value) return 0
     const states = read(options.nodeStates)
-    const moving = Object.values(states).filter(
-      (state) => state === 'running' || state === 'waiting',
-    ).length
+    // A CARD and the character standing on it are ONE moving thing, for the
+    // same reason the glow and the elapsed clock already were: they are the
+    // same card moving for the same reason, and counting both would turn a
+    // bound into arithmetic about presentation. So the character loops are
+    // UNIONED with the running cards rather than added to them - which also
+    // means a Pip on a card that is not itself animating (there is one: the
+    // feeder of an open gate) does get counted, because that one really is a
+    // new thing in motion. Measured on the fan-out fixture: the union adds
+    // nothing there, because every looping Pip stands on a running card.
+    const moving = new Set<string>()
+    for (const [nodeId, state] of Object.entries(states)) {
+      if (state === 'running' || state === 'waiting') moving.add(nodeId)
+    }
+    for (const nodeId of loopingCharacters.value) moving.add(nodeId)
     const edges = options.activeEdgeIds ? read(options.activeEdgeIds).size : 0
-    return moving + edges + handoffs.value.length + (pending.value.length ? 1 : 0) + (armed.value ? 1 : 0)
+    return moving.size + edges + handoffs.value.length + (pending.value.length ? 1 : 0) + (armed.value ? 1 : 0)
   })
 
   /** Called by `launch()`. The glow burns until the run's first frame lands. */
@@ -295,6 +548,14 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     replayed.value = new Set()
     speakers.clear()
     streamed.clear()
+    // The cast is per RUN. A relaunch is a new run with the same topology, and
+    // a role remembered across it would pin the previous run's identity onto a
+    // node whose author has since renamed it.
+    frameRoles.value = {}
+    frameLife.value = {}
+    speaking.value = new Set()
+    feeders.value = {}
+    lastStarted.value = ''
     armed.value = false
     landed.value = false
     framesApplied.value = 0
@@ -315,6 +576,15 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     const details = frame.details ?? {}
     const stage = detailString(details, 'stage')
 
+    // The cast reads EVERY frame, before the branches below start returning
+    // early: an identity, a life and a sentence boundary can each arrive on a
+    // kind this function otherwise ignores (`agent_role` is on `node_state` in
+    // a synthetic run and on `tool` frames in a paid one), and a store that
+    // only saw the four kinds the dialogue needs would miss most of them.
+    noteIdentity(frame, details)
+    noteLife(frame, stage)
+    noteSpeaking(frame, stage)
+
     if (frame.kind === 'edge_taken' && stage === 'traversal') {
       pushHandoff(detailString(details, 'from'), detailString(details, 'to'))
       return
@@ -331,10 +601,8 @@ export function useRunChoreography(options: RunChoreographyOptions) {
       pushUtterance(frame, details)
       return
     }
-    if (frame.kind === 'agent' && frame.node_id) {
-      rememberSpeaker(frame, details)
-      return
-    }
+    // `agent` frames are entirely `noteIdentity`'s business now; the branch
+    // that used to sit here only ever called `rememberSpeaker`.
     if (frame.kind === 'error' && frame.node_id && stage === 'error') {
       nodeErrors.value = {
         ...nodeErrors.value,
@@ -357,11 +625,98 @@ export function useRunChoreography(options: RunChoreographyOptions) {
    */
   function pushHandoff(from: string, to: string): void {
     if (!from || !to) return
+    // Which agent this hop came FROM, remembered for the gate's blocked pose.
+    // Written even when the target draws no token, because the fact wanted is
+    // "who fed this node", not "who is walking an edge right now".
+    feeders.value = { ...feeders.value, [to]: from }
     const edgeId = edgeIdFor(from, to)
     handoffs.value = [
       ...handoffs.value.filter((entry) => entry.edgeId !== edgeId),
-      { edgeId, from, to, startedAt: now() },
+      { edgeId, from, to, startedAt: now(), fromIdentity: identityFor(from) },
     ]
+  }
+
+  /**
+   * The first `agent_role` this node ever showed, plus the task beside it.
+   *
+   * `details.agent_role` is the field, and it replaces the regex that used to
+   * strip "started"/"completed" off the message. That regex was reading a
+   * SENTENCE the serializer happens to compose (`f"{role} started"`), which is
+   * copy rather than data - it breaks the moment the wording changes and it
+   * cannot work at all for the frames that carry a role but no such message.
+   * It is kept underneath for exactly one case: a log written before
+   * `agent_role` was on the wire, where the sentence is genuinely all there is.
+   */
+  function noteIdentity(frame: FrameData, details: Record<string, unknown>): void {
+    const nodeId = frame.node_id ?? ''
+    if (!nodeId) return
+    const stamped = detailString(details, 'agent_role').trim()
+    const legacy =
+      frame.kind === 'agent'
+        ? frame.message.replace(/\s+(started|completed|failed)$/i, '').trim()
+        : ''
+    const role = stamped || legacy
+    // FIRST wins. A character that changes mid-run is a different agent as far
+    // as the eye is concerned, and following one worker is the whole point.
+    if (role && !frameRoles.value[nodeId]) {
+      frameRoles.value = { ...frameRoles.value, [nodeId]: role }
+    }
+    const task = detailString(details, 'task') || detailString(details, 'task_name')
+    const previous = speakers.get(nodeId)
+    if (role || task || previous) {
+      speakers.set(nodeId, {
+        role: previous?.role || role || '',
+        task: task || previous?.task || '',
+      })
+    }
+  }
+
+  /**
+   * The frame-derived life of a node - the same four rules
+   * `useValidatorRun.applyNodeState` applies, in the same order.
+   *
+   * The ORDER is load-bearing and is copied rather than improved: an
+   * ERROR-level `NODE_END` sets `completed` and then `error`, so the error is
+   * what survives. A `tool` frame at ERROR level does NOT fail the node - only
+   * a `node_state` frame does - which is why the kind is checked first.
+   */
+  function noteLife(frame: FrameData, stage: string): void {
+    const nodeId = frame.node_id ?? ''
+    if (!nodeId) return
+    let next: NodeRunState | '' = ''
+    if (frame.kind === 'node_state') {
+      if (frame.event_type.includes('START')) next = 'running'
+      if (frame.event_type.includes('END')) next = 'completed'
+      if (frame.level === 'ERROR' || stage === 'error') next = 'error'
+      if (frame.event_type.includes('START')) lastStarted.value = nodeId
+    }
+    // A gate is the one thing that puts a node into `waiting`: no member of
+    // `UIEventType` contains the word, so it arrives as GATE_OPEN and nothing
+    // else. `gate_closed` settles the same node, which is the missing half of
+    // that pair rather than a new concept.
+    if (frame.kind === 'gate_open') next = 'waiting'
+    if (frame.kind === 'gate_closed') next = 'completed'
+    if (!next) return
+    frameLife.value = { ...frameLife.value, [nodeId]: next }
+  }
+
+  /** Opens on an utterance or a chunk; closes on the node's next other frame. */
+  function noteSpeaking(frame: FrameData, stage: string): void {
+    const nodeId = frame.node_id ?? ''
+    if (!nodeId) return
+    const opens = frame.kind === 'llm' && (stage === 'utterance' || stage === 'chunk')
+    // Bookkeeping the server emits alongside a call, not the agent doing
+    // something else. Closing on one would make every sentence flicker.
+    const neutral = frame.kind === 'token' || frame.kind === 'metrics'
+    if (opens) {
+      if (speaking.value.has(nodeId)) return
+      speaking.value = new Set(speaking.value).add(nodeId)
+      return
+    }
+    if (neutral || !speaking.value.has(nodeId)) return
+    const next = new Set(speaking.value)
+    next.delete(nodeId)
+    speaking.value = next
   }
 
   /**
@@ -472,21 +827,6 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     startReveal()
   }
 
-  function rememberSpeaker(frame: FrameData, details: Record<string, unknown>): void {
-    const nodeId = frame.node_id ?? ''
-    if (!nodeId) return
-    // The serializer writes `f"{role} started"` / `f"{role} completed"`, so the
-    // role is the message minus its verb. Read from the message because that is
-    // where it is: `details` carries the TASK and never the role.
-    const role = frame.message.replace(/\s+(started|completed|failed)$/i, '').trim()
-    const task = detailString(details, 'task')
-    const previous = speakers.get(nodeId)
-    speakers.set(nodeId, {
-      role: role || previous?.role || '',
-      task: task || previous?.task || '',
-    })
-  }
-
   /**
    * D5.3. More than two pending entries and every one but the newest is dumped
    * whole.
@@ -583,6 +923,15 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     isReceded,
     characterIndex,
     characterVar,
+    identities,
+    identityFor,
+    characterSeedFor,
+    castStates,
+    castState,
+    loopingCharacters,
+    speaking,
+    frameRoles,
+    frameLife,
     arm,
     ingest,
     endHandoff,

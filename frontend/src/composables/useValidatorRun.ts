@@ -449,6 +449,13 @@ export function useValidatorRun(
     activeEdgeIds,
     labelFor: (nodeId) =>
       descriptor.value.nodes.find((node) => node.id === nodeId)?.label ?? nodeId,
+    // Rung two of the identity ladder, and the ONLY identity a synthetic run
+    // of a published graph has: that runner emits no `agent` frame, so
+    // `details.agent_role` never arrives and the descriptor is the whole
+    // ladder. `readsAsRole` inside the composable drops it again when it is
+    // really a node id, which a builder descriptor has carried.
+    declaredRoleFor: (nodeId) =>
+      descriptor.value.nodes.find((node) => node.id === nodeId)?.agent_role,
     edgeIdFor: (from, to) =>
       descriptor.value.edges.find((edge) => edge.source === from && edge.target === to)?.id
       ?? `${from}-${to}`,
@@ -1559,6 +1566,15 @@ export function useValidatorRun(
     dialogue: choreography.dialogue,
     handoffs: choreography.handoffs,
     stages: choreography.stages,
+    // The cast, re-exported for the same reason the four above are: the view
+    // renders the node card, both rails and the stage lane, and the composable
+    // is the only thing that has seen a frame. ONE store reaches all four, so
+    // a character cannot be one creature on the canvas and another in the
+    // transcript - which is what DoD T2.6 measures.
+    identities: choreography.identities,
+    identityFor: choreography.identityFor,
+    castStates: choreography.castStates,
+    castState: choreography.castState,
     liveAnimationCount: choreography.liveAnimationCount,
     framesApplied: choreography.framesApplied,
     armed: choreography.armed,

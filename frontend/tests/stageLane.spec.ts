@@ -4,6 +4,7 @@ import CrewProgress from '../src/components/CrewProgress.vue'
 import { CREW_STAGES, stagesFromFrames } from '../src/data/crewStages'
 import { MOCK_GRAPH } from '../src/data/mockGraph'
 import type { RunStage } from '../src/composables/useRunChoreography'
+import type { PipState } from '../src/characters/pip'
 import type { GraphDescriptor, NodeRunState } from '../src/types/studio'
 
 /**
@@ -47,9 +48,10 @@ function lane(
   nodeStates: Record<string, NodeRunState>,
   descriptor: GraphDescriptor,
   runStages?: RunStage[],
+  cast?: { identities?: Record<string, string>; castStates?: Record<string, PipState> },
 ) {
   return mount(CrewProgress, {
-    props: { nodeStates, descriptor, active: true, runStages },
+    props: { nodeStates, descriptor, active: true, runStages, ...cast },
   })
 }
 
@@ -154,6 +156,47 @@ describe('the lane on a drawn graph', () => {
     )
     const wrapper = lane(running, graph, wide)
     expect(wrapper.findAll('.crew-medallion')).toHaveLength(4)
+  })
+
+  it('puts the CAST in the medallions, not two initials (T2.9)', () => {
+    // `MA` and `MO` are two letters apart at 26px and told an operator nothing
+    // they could not already read off the node. The medallion now holds the
+    // same character that stands on the card, so the lane is a view OF the run
+    // rather than a second legend to learn.
+    const wrapper = lane(
+      { research: 'completed', draft: 'running', review: 'waiting' },
+      drawnGraph(),
+      PIPELINE,
+    )
+    const medallions = wrapper.findAll('.crew-medallion')
+    expect(medallions).toHaveLength(2)
+    for (const medallion of medallions) {
+      expect(medallion.findAll('.pip')).toHaveLength(1)
+      expect(medallion.text()).toBe('')
+    }
+    expect(medallions[0].get('.pip').attributes('data-character')).toBe('draft')
+    expect(medallions[0].get('.pip').attributes('data-state')).toBe('working')
+    expect(medallions[1].get('.pip').attributes('data-state')).toBe('blocked')
+  })
+
+  it('wears the identity and the pose the RUN resolved when it is given them', () => {
+    // The lane has a descriptor and a state map and never a run, so its own
+    // ladder stops one rung short: it cannot know the first `agent_role` a
+    // frame carried, and it cannot know `speaking`. Both are passed in, from
+    // the same store the card and the token read - which is what stops this
+    // being a second cast that agrees today.
+    const wrapper = lane(
+      { research: 'completed', draft: 'running', review: 'completed' },
+      drawnGraph(),
+      PIPELINE,
+      {
+        identities: { draft: 'Drafting Editor' },
+        castStates: { draft: 'speaking' },
+      },
+    )
+    const pip = wrapper.get('.crew-medallion .pip')
+    expect(pip.attributes('data-character')).toBe('drafting editor')
+    expect(pip.attributes('data-state')).toBe('speaking')
   })
 })
 

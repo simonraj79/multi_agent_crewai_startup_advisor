@@ -1,0 +1,172 @@
+T2.5 — the character's state is driven by run events only, never by a clock.
+
+Written by W4 on branch `run-shell/cast`, working tree at 7da9bf5 plus this
+worker's uncommitted changes. Every command below was run from the repository
+root (D:\MultiAgentSystem) and its output is pasted verbatim.
+
+The criterion's words: "grep for `setTimeout|setInterval|Date.now` in
+`src/characters`, `AgentCharacter.vue` and the state derivation in
+`useRunChoreography.ts`, with every hit explained (reveal pacing is allowed;
+state is not)."
+
+`performance.now` and `requestAnimationFrame` are added to the pattern below
+even though the criterion does not name them. They are the two other ways a
+clock reaches this code, and leaving them out would let the grep pass over the
+exact mechanism it exists to rule out.
+
+
+================================================================================
+1. THE CRITERION'S OWN GREP
+================================================================================
+
+$ grep -rnE 'setTimeout|setInterval|Date\.now|performance\.now' \
+      frontend/src/characters \
+      frontend/src/components/AgentCharacter.vue \
+      frontend/src/composables/useRunChoreography.ts
+
+frontend/src/composables/useRunChoreography.ts:236:  const now = options.now ?? (() => Date.now())
+frontend/src/composables/useRunChoreography.ts:256:  const receiptTimers = new Map<string, ReturnType<typeof setTimeout>>()
+frontend/src/composables/useRunChoreography.ts:744:      setTimeout(() => {
+
+THREE hits, all in one file. `frontend/src/characters/` (pip.ts) and
+`AgentCharacter.vue` return NOTHING: zero hits, exit status 1 on each when run
+alone. That is the important half — the character system itself cannot read a
+clock, which is why the same identity draws byte-identical markup in two
+processes (G3).
+
+
+================================================================================
+2. EACH HIT, AND WHY IT IS NOT STATE
+================================================================================
+
+:236   const now = options.now ?? (() => Date.now())
+
+       The composable's injectable clock, and its ONLY two readers are
+       `Handoff.startedAt` (when a token began walking its edge) and a dialogue
+       entry's `at` when the frame's own `ts` will not parse. Both are
+       timestamps recorded ON a run event; neither is consulted by anything
+       that decides a character's pose. `options.now` exists so a spec can
+       place events at exact milliseconds, which is why the default is written
+       as a fallback rather than called inline.
+
+       Not state: no branch in `castState`, `lifeOf`, `feederOf`,
+       `blockedFeeders`, `identityFor` or `loopingCharacters` reads `now()`.
+
+:256   const receiptTimers = new Map<string, ReturnType<typeof setTimeout>>()
+:744   setTimeout(() => { ... }, RECEIPT_MS)
+
+       The receipt pulse's latch. When a handoff token ARRIVES at a node, that
+       node's medallion carries `is-receiving` for RECEIPT_MS (200ms) so a CSS
+       one-shot fires; the timer only takes the class off again. A CSS one-shot
+       animates when its class is ADDED, so a flag that never cleared would
+       animate the first arrival into a node and silently ignore every later
+       one — which on a revise loop is every arrival but the first.
+
+       Not state: `receiving` is a separate ref from `castStates`, it never
+       reaches `castState`, and it is a decoration on an EVENT that already
+       happened rather than a claim about what an agent is doing.
+
+There is a fourth clock in this file that the criterion's pattern does not
+match, and it is named here rather than left for a reader to find:
+
+       `startReveal` / `advanceReveal` use `requestAnimationFrame`.
+
+       This is the dialogue rail's typing reveal — "reveal pacing", which the
+       criterion admits in so many words. `advanceReveal(at)` takes the clock
+       as an argument and is a pure step, so a spec drives it at chosen
+       millisecond boundaries instead of racing a frame callback. It moves
+       `DialogueEntry.revealed` and nothing else.
+
+       The design decision it is evidence FOR: `speaking` is bounded by FRAMES,
+       not by the reveal. If the pose had been tied to the typing animation, a
+       node that streamed 4,000 characters would still be "speaking" thirty
+       seconds after the model stopped, and this file would have to argue that
+       a timer drives a state. It does not.
+
+
+================================================================================
+3. THE STATE DERIVATION ITSELF, GREPPED IN ISOLATION
+================================================================================
+
+The three hits above are elsewhere in a 900-line file, so the grep is repeated
+over exactly the two regions that decide a character's identity and pose.
+
+Region A — lines 371-496: `identityFor`, `identities`, `characterSeedFor`,
+`lifeOf`, `feederOf`, `castState`, `blockedFeeders`, `castStates`,
+`loopingCharacters`.
+
+$ sed -n '371,496p' frontend/src/composables/useRunChoreography.ts \
+    | grep -nE 'setTimeout|setInterval|Date\.now|performance\.now|requestAnimationFrame'
+(no output; exit status 1)
+
+Region B — lines 650-725: `noteIdentity`, `noteLife`, `noteSpeaking`, the three
+writers `ingest` calls on every frame.
+
+$ sed -n '650,725p' frontend/src/composables/useRunChoreography.ts \
+    | grep -nE 'setTimeout|setInterval|Date\.now|performance\.now|requestAnimationFrame'
+(no output; exit status 1)
+
+$ grep -rnE 'setTimeout|setInterval|Date\.now|performance\.now|requestAnimationFrame' \
+      frontend/src/characters frontend/src/components/AgentCharacter.vue
+(no output; exit status 1)
+
+
+================================================================================
+4. WHAT THE GREP CANNOT SAY, AND WHAT DOES
+================================================================================
+
+Absence of a clock is necessary and not sufficient: a derivation could still be
+non-deterministic through a `Math.random`, a `Set` iteration order or a read of
+live DOM. What proves the positive claim is
+`frontend/tests/characterStates.spec.ts`, which replays two committed frame
+logs — `syntheticRun.ndjson` (97 frames, the synthetic backend's own output)
+and `serializerFrames.ndjson` (34 frames from the real Python serializer) —
+and asserts the state sequence per node after EVERY frame. Nothing in that file
+fakes a timer, because there is no timer to fake; if a state ever needed one,
+the spec could not be written in that form at all.
+
+Result of that spec: 23 tests, all passing (see evidence/R/vitest.txt for the
+suite run).
+
+
+================================================================================
+5. WHERE ELSE THE STATE IS READ (added with the rail wiring)
+================================================================================
+
+Four surfaces draw a character, and not one of them derives a state:
+
+  WorkflowNode.vue   `cast` prop  -> <AgentCharacter :state>
+  ChatRail.vue       `stateOf`    -> <AgentCharacter :state>
+  DialogueRail.vue   `stateOf`    -> <AgentCharacter :state>
+  CrewProgress.vue   `castStates` -> <AgentCharacter :state>
+
+All four are handed the answer by `StudioView.vue`, which asks the one store.
+Two of the four contain a clock, and NEITHER of them is that answer. The grep,
+run and pasted rather than predicted - the first draft of this section claimed
+all three components were clean and was wrong about `CrewProgress.vue`:
+
+$ grep -nE 'setTimeout|setInterval|Date\.now|performance\.now'       frontend/src/components/ChatRail.vue       frontend/src/components/DialogueRail.vue       frontend/src/components/CrewProgress.vue       frontend/src/components/WorkflowNode.vue
+
+frontend/src/components/CrewProgress.vue:258:    returnTimer = window.setTimeout(() => { returning.value = false }, 6000)
+frontend/src/components/WorkflowNode.vue:48:const nowMs = ref(Date.now())
+frontend/src/components/WorkflowNode.vue:49:let ticker: ReturnType<typeof setInterval> | null = null
+frontend/src/components/WorkflowNode.vue:63:    nowMs.value = Date.now()
+frontend/src/components/WorkflowNode.vue:64:    ticker = setInterval(() => (nowMs.value = Date.now()), 1000)
+
+`ChatRail.vue` and `DialogueRail.vue` return nothing.
+
+CrewProgress.vue:258 - the stage lane's row-back latch. When a stage's LAP
+climbs past 1 the strip says the crew was sent back, and the timer retires that
+announcement after six seconds. It writes `returning`, which reaches one class
+on the strip. It does not touch `laneCrew`, `identityOf` or `poseOf`, which are
+the three things that decide what a medallion's character is and how it stands.
+
+WorkflowNode.vue:48-64 - the in-flight call's elapsed clock, the one honest
+progress signal an agent can offer, alive only while `data.activeCall` is
+non-null. It writes `nowMs`, which reaches `activeElapsed` and
+`showDurationHint` and nothing else: neither `hasCharacter`, nor `castIdentity`,
+nor `castPose` reads it. The card's own `data.state` is the only fallback pose,
+and `cast.state` overrides it.
+
+So the rule holds in the form that matters: a clock may decide how long a
+MESSAGE stays on screen, and no clock anywhere decides what an agent IS.

@@ -54,7 +54,13 @@ describe('the character medallion', () => {
     const wrapper = card({ character: 7 })
     const medallion = wrapper.get('[data-testid="node-character"]')
     expect(medallion.attributes('style')).toContain('--character-color: var(--character-7)')
-    expect(medallion.attributes('data-character')).toBe('7')
+    // `data-character-INDEX`, since the cast landed. `data-character` now means
+    // one thing everywhere - the identity SEED, published by `AgentCharacter` -
+    // and two attributes of that name meaning a number on the wrapper and a
+    // string on the figure inside it is exactly the ambiguity T2.6's E2E reads
+    // through (`.workflow-node .pip[data-character]`).
+    expect(medallion.attributes('data-character-index')).toBe('7')
+    expect(medallion.attributes('data-character')).toBeUndefined()
   })
 
   it('is on every card, at rest as well as running', () => {

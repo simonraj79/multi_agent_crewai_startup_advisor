@@ -129,3 +129,10 @@ db/
 # the `user_skills` rows. The committed half is `data/skills/builtin/`, which
 # is this repository's own four and is NOT ignored.
 data/skills/users/
+
+# Internal documents are local-only (2026-09-05): the repository is public.
+# Every markdown file except the root README and the runtime skill packs
+# (data/skills/**/SKILL.md, read by the product) stays out of the index.
+*.md
+!/README.md
+!data/skills/**/*.md

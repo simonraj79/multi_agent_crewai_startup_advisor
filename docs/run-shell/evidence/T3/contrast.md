@@ -5,7 +5,7 @@ Every colour is read from `tokens.css` and `motion.css`; every translucent
 token is composited over the surface stack `studio.css` actually paints.
 `need` is 4.5 for text (WCAG 1.4.3 AA) and 3.0 for a UI boundary (1.4.11).
 
-**232 pairings, 0 below the level they must meet.**
+**236 pairings, 0 below the level they must meet.**
 
 The `owner` column says which file a failure lives in, so the right person
 looks. It is **not** an exemption: the exit code counts every row. A run
@@ -24,30 +24,30 @@ that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 | dark | the version chip boundary | `--border-control` | well on canvas | 3.11 | 3 | pass | W5 | studio.css .canvas-meta code |
 | dark | reconnect strip on its tint | `--warn-text-strong` | warn-bg over canvas | 10.10 | 4.5 | pass | W5 | studio.css .stream-reconnecting |
 | dark | reconnect strip boundary | `--warn-border-strong` | warn-bg over canvas | 3.07 | 3 | pass | W5 | studio.css .stream-reconnecting |
-| dark | a hover boundary on a rail | `--border-hover-strong` | rail | 4.07 | 3 | pass | W5 | studio.css .icon-button:hover |
+| dark | a hover boundary on a rail | `--border-hover-strong` | the control rail | 4.06 | 3 | pass | W5 | studio.css .icon-button:hover |
 | dark | a markdown link over the canvas | `--link-strong` | canvas ground | 9.30 | 4.5 | pass | W5 | studio.css .markdown-body a |
 | dark | a markdown code chip | `--on-accent-mint` | well on canvas | 15.50 | 4.5 | pass | W5 | studio.css .markdown-body code |
-| dark | the handoff banner | `--on-accent-cyan` | rail | 12.88 | 4.5 | pass | W5 | StudioView.vue .handoff-banner |
-| dark | the handoff banner code chip | `--on-accent-mint` | well in rail | 15.70 | 4.5 | pass | W5 | StudioView.vue .handoff-banner code |
-| dark | body text in a rail | `--text-body` | rail | 13.23 | 4.5 | pass | W5 | StatusPanel.vue .read-only-well |
-| dark | title text on a well in a rail | `--text-title` | well in rail | 18.42 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dd |
-| dark | body text on a well in a rail | `--text-body` | well in rail | 13.95 | 4.5 | pass | W5 | StatusPanel.vue textarea |
-| dark | muted text in a rail | `--text-muted` | rail | 8.33 | 4.5 | pass | W5 | StatusPanel.vue .control-hint |
-| dark | a section kicker in a rail | `--text-meta` | rail | 5.54 | 4.5 | pass | W5 | StatusPanel.vue .control-label |
-| dark | a metric label on a well | `--text-meta` | well in rail | 5.64 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dt |
-| dark | the stream line in a rail | `--text-meta` | rail | 5.54 | 4.5 | pass | W5 | StatusPanel.vue .stream-line |
-| dark | a control boundary on a well | `--border-control` | well in rail | 3.11 | 3 | pass | W5 | StatusPanel.vue textarea |
-| dark | a control boundary on a rail | `--border-control` | rail | 3.12 | 3 | pass | W5 | studio.css .segmented |
-| dark | the metrics grid rule | `--border-control` | well in rail | 3.11 | 3 | pass | W5 | studio.css .metrics-grid |
-| dark | muted text on raised in a rail | `--text-muted` | raised in rail | 7.19 | 4.5 | pass | W5 | studio.css .button-quiet |
-| dark | status: in flight | `--on-accent-cyan` | rail | 12.88 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-active |
-| dark | status: needs you | `--warn-text-strong` | rail | 13.50 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-attention |
-| dark | status: finished | `--on-accent-mint` | rail | 14.88 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-done |
-| dark | status: failed | `--err-text` | rail | 12.28 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-failed |
-| dark | a warn banner on its tint | `--warn-text-strong` | warn-bg over rail | 10.33 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
-| dark | a warn banner boundary | `--warn-border-strong` | warn-bg over rail | 3.10 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
-| dark | an error banner on its tint | `--err-text` | err-bg over rail | 10.66 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
-| dark | an error banner boundary | `--err-border-strong` | err-bg over rail | 3.03 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
+| dark | the handoff banner | `--on-accent-cyan` | the control rail | 12.84 | 4.5 | pass | W5 | StudioView.vue .handoff-banner |
+| dark | the handoff banner code chip | `--on-accent-mint` | well in the control rail | 15.66 | 4.5 | pass | W5 | StudioView.vue .handoff-banner code |
+| dark | body text in a rail | `--text-body` | the control rail | 13.18 | 4.5 | pass | W5 | StatusPanel.vue .read-only-well |
+| dark | title text on a well in a rail | `--text-title` | well in the control rail | 18.38 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dd |
+| dark | body text on a well in a rail | `--text-body` | well in the control rail | 13.92 | 4.5 | pass | W5 | StatusPanel.vue textarea |
+| dark | muted text in a rail | `--text-muted` | the control rail | 8.30 | 4.5 | pass | W5 | StatusPanel.vue .control-hint |
+| dark | a section kicker in a rail | `--text-meta` | the control rail | 5.53 | 4.5 | pass | W5 | StatusPanel.vue .control-label |
+| dark | a metric label on a well | `--text-meta` | well in the control rail | 5.63 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dt |
+| dark | the stream line in a rail | `--text-meta` | the control rail | 5.53 | 4.5 | pass | W5 | StatusPanel.vue .stream-line |
+| dark | a control boundary on a well | `--border-control` | well in the control rail | 3.11 | 3 | pass | W5 | StatusPanel.vue textarea |
+| dark | a control boundary on a rail | `--border-control` | the control rail | 3.12 | 3 | pass | W5 | studio.css .segmented |
+| dark | the metrics grid rule | `--border-control` | well in the control rail | 3.11 | 3 | pass | W5 | studio.css .metrics-grid |
+| dark | muted text on raised in a rail | `--text-muted` | raised in the control rail | 7.16 | 4.5 | pass | W5 | studio.css .button-quiet |
+| dark | status: in flight | `--on-accent-cyan` | the control rail | 12.84 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-active |
+| dark | status: needs you | `--warn-text-strong` | the control rail | 13.46 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-attention |
+| dark | status: finished | `--on-accent-mint` | the control rail | 14.83 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-done |
+| dark | status: failed | `--err-text` | the control rail | 12.23 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-failed |
+| dark | a warn banner on its tint | `--warn-text-strong` | warn-bg over the control rail | 10.29 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
+| dark | a warn banner boundary | `--warn-border-strong` | warn-bg over the control rail | 3.10 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
+| dark | an error banner on its tint | `--err-text` | err-bg over the control rail | 10.62 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
+| dark | an error banner boundary | `--err-border-strong` | err-bg over the control rail | 3.75 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
 | dark | the verdict badge, needs work | `--ink-on-warn` | the warn badge | 13.04 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-warn |
 | dark | the verdict badge, reject | `--ink-on-err` | the err badge | 11.85 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-fail |
 | dark | the verdict badge, validate | `--ink-on-brand` | the pass badge | 14.37 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-pass |
@@ -64,15 +64,17 @@ that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 | dark | a waiting branch pip | `--warn-text-strong` | the crew strip | 13.44 | 3 | pass | W5 | CrewProgress.vue .crew-branches i |
 | dark | the boat | `--on-accent-cyan` | the crew strip | 12.83 | 3 | pass | W5 | CrewProgress.vue .crew-boat |
 | dark | an oar caption | `--text-meta` | the crew strip | 5.53 | 4.5 | pass | W5 | CrewProgress.vue .crew-oar-names |
-| dark | the gate icon boundary | `--warn-border-strong` | warn-bg over rail | 3.10 | 3 | pass | W5 | GateCard.vue .gate-icon |
-| dark | the gate kicker | `--warn-text-strong` | rail | 13.50 | 4.5 | pass | W5 | GateCard.vue .section-kicker |
-| dark | a gate field label | `--text-meta` | rail | 5.54 | 4.5 | pass | W5 | GateCard.vue .gate-field span |
-| dark | a low-confidence chip | `--warn-text-strong` | warn-bg over rail | 10.33 | 4.5 | pass | W5 | ReportPanel.vue .verdict-confidence.is-low |
-| dark | a provisional flag | `--warn-text-strong` | warn-bg over rail | 10.33 | 4.5 | pass | W5 | ReportPanel.vue .report-flag.is-provisional |
-| dark | a floor block boundary | `--err-border-strong` | err-bg over rail | 3.03 | 3 | pass | W5 | ReportPanel.vue .verdict-decision.is-floor |
-| dark | a score denominator | `--text-meta` | well in rail | 5.64 | 4.5 | pass | W5 | ReportPanel.vue .score-value small |
-| dark | a report link | `--link-strong` | rail | 9.48 | 4.5 | pass | W5 | ReportPanel.vue .report-sources a |
-| dark | a report score on a well | `--text-primary` | well in rail | 16.45 | 4.5 | pass | W5 | ReportPanel.vue .score-value |
+| dark | the gate icon boundary | `--warn-border-strong` | warn-bg over the control rail | 3.10 | 3 | pass | W5 | GateCard.vue .gate-icon |
+| dark | the gate kicker | `--warn-text-strong` | the control rail | 13.46 | 4.5 | pass | W5 | GateCard.vue .section-kicker |
+| dark | a gate field label | `--text-meta` | the control rail | 5.53 | 4.5 | pass | W5 | GateCard.vue .gate-field span |
+| dark | a low-confidence chip | `--warn-text-strong` | warn-bg over the report sheet | 9.09 | 4.5 | pass | W5 | ReportPanel.vue .verdict-confidence.is-low |
+| dark | a provisional flag | `--warn-text-strong` | warn-bg over the report sheet | 9.09 | 4.5 | pass | W5 | ReportPanel.vue .report-flag.is-provisional |
+| dark | a floor block boundary | `--err-border-strong` | err-bg over the report sheet | 3.40 | 3 | pass | W5 | ReportPanel.vue .verdict-decision.is-floor |
+| dark | a score denominator | `--text-meta` | well on the report sheet | 5.48 | 4.5 | pass | W5 | ReportPanel.vue .score-value small |
+| dark | a report link | `--link-strong` | the report sheet | 8.45 | 4.5 | pass | W5 | ReportPanel.vue .report-sources a |
+| dark | the report body | `--text-body` | the report sheet | 11.80 | 4.5 | pass | W5 | studio.css .markdown-body |
+| dark | a report heading | `--text-title` | the report sheet | 15.57 | 4.5 | pass | W5 | studio.css .markdown-body h1-h4 |
+| dark | a report score on a well | `--text-primary` | well on the report sheet | 15.24 | 4.5 | pass | W5 | ReportPanel.vue .score-value |
 | dark | a trace bubble in a rail | `--text-body` | rail | 13.23 | 4.5 | pass | W4 | ChatRail.vue .trace-bubble |
 | dark | a rail kicker | `--on-accent-cyan` | rail | 12.88 | 4.5 | pass | W4 | ChatRail.vue:421 / DialogueRail.vue:471 .section-kicker |
 | dark | a rail text button | `--link-strong` | rail | 9.48 | 4.5 | pass | W4 | DialogueRail.vue:632 .text-button |
@@ -140,30 +142,30 @@ that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 | light | the version chip boundary | `--border-control` | well on canvas | 3.16 | 3 | pass | W5 | studio.css .canvas-meta code |
 | light | reconnect strip on its tint | `--warn-text-strong` | warn-bg over canvas | 4.51 | 4.5 | pass | W5 | studio.css .stream-reconnecting |
 | light | reconnect strip boundary | `--warn-border-strong` | warn-bg over canvas | 3.44 | 3 | pass | W5 | studio.css .stream-reconnecting |
-| light | a hover boundary on a rail | `--border-hover-strong` | rail | 4.17 | 3 | pass | W5 | studio.css .icon-button:hover |
+| light | a hover boundary on a rail | `--border-hover-strong` | the control rail | 4.06 | 3 | pass | W5 | studio.css .icon-button:hover |
 | light | a markdown link over the canvas | `--link-strong` | canvas ground | 5.54 | 4.5 | pass | W5 | studio.css .markdown-body a |
 | light | a markdown code chip | `--on-accent-mint` | well on canvas | 4.88 | 4.5 | pass | W5 | studio.css .markdown-body code |
-| light | the handoff banner | `--on-accent-cyan` | rail | 5.85 | 4.5 | pass | W5 | StudioView.vue .handoff-banner |
-| light | the handoff banner code chip | `--on-accent-mint` | well in rail | 5.53 | 4.5 | pass | W5 | StudioView.vue .handoff-banner code |
-| light | body text in a rail | `--text-body` | rail | 14.13 | 4.5 | pass | W5 | StatusPanel.vue .read-only-well |
-| light | title text on a well in a rail | `--text-title` | well in rail | 16.42 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dd |
-| light | body text on a well in a rail | `--text-body` | well in rail | 12.50 | 4.5 | pass | W5 | StatusPanel.vue textarea |
-| light | muted text in a rail | `--text-muted` | rail | 6.12 | 4.5 | pass | W5 | StatusPanel.vue .control-hint |
-| light | a section kicker in a rail | `--text-meta` | rail | 5.05 | 4.5 | pass | W5 | StatusPanel.vue .control-label |
-| light | a metric label on a well | `--text-meta` | well in rail | 4.85 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dt |
-| light | the stream line in a rail | `--text-meta` | rail | 5.05 | 4.5 | pass | W5 | StatusPanel.vue .stream-line |
-| light | a control boundary on a well | `--border-control` | well in rail | 3.26 | 3 | pass | W5 | StatusPanel.vue textarea |
-| light | a control boundary on a rail | `--border-control` | rail | 3.35 | 3 | pass | W5 | studio.css .segmented |
-| light | the metrics grid rule | `--border-control` | well in rail | 3.26 | 3 | pass | W5 | studio.css .metrics-grid |
-| light | muted text on raised in a rail | `--text-muted` | raised in rail | 5.42 | 4.5 | pass | W5 | studio.css .button-quiet |
-| light | status: in flight | `--on-accent-cyan` | rail | 5.85 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-active |
-| light | status: needs you | `--warn-text-strong` | rail | 5.93 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-attention |
-| light | status: finished | `--on-accent-mint` | rail | 6.25 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-done |
-| light | status: failed | `--err-text` | rail | 7.19 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-failed |
-| light | a warn banner on its tint | `--warn-text-strong` | warn-bg over rail | 5.07 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
-| light | a warn banner boundary | `--warn-border-strong` | warn-bg over rail | 3.83 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
-| light | an error banner on its tint | `--err-text` | err-bg over rail | 6.14 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
-| light | an error banner boundary | `--err-border-strong` | err-bg over rail | 3.12 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
+| light | the handoff banner | `--on-accent-cyan` | the control rail | 5.32 | 4.5 | pass | W5 | StudioView.vue .handoff-banner |
+| light | the handoff banner code chip | `--on-accent-mint` | well in the control rail | 5.04 | 4.5 | pass | W5 | StudioView.vue .handoff-banner code |
+| light | body text in a rail | `--text-body` | the control rail | 12.85 | 4.5 | pass | W5 | StatusPanel.vue .read-only-well |
+| light | title text on a well in a rail | `--text-title` | well in the control rail | 14.95 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dd |
+| light | body text on a well in a rail | `--text-body` | well in the control rail | 11.38 | 4.5 | pass | W5 | StatusPanel.vue textarea |
+| light | muted text in a rail | `--text-muted` | the control rail | 5.57 | 4.5 | pass | W5 | StatusPanel.vue .control-hint |
+| light | a section kicker in a rail | `--text-meta` | the control rail | 4.90 | 4.5 | pass | W5 | StatusPanel.vue .control-label |
+| light | a metric label on a well | `--text-meta` | well in the control rail | 4.70 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dt |
+| light | the stream line in a rail | `--text-meta` | the control rail | 4.90 | 4.5 | pass | W5 | StatusPanel.vue .stream-line |
+| light | a control boundary on a well | `--border-control` | well in the control rail | 3.19 | 3 | pass | W5 | StatusPanel.vue textarea |
+| light | a control boundary on a rail | `--border-control` | the control rail | 3.28 | 3 | pass | W5 | studio.css .segmented |
+| light | the metrics grid rule | `--border-control` | well in the control rail | 3.19 | 3 | pass | W5 | studio.css .metrics-grid |
+| light | muted text on raised in a rail | `--text-muted` | raised in the control rail | 4.93 | 4.5 | pass | W5 | studio.css .button-quiet |
+| light | status: in flight | `--on-accent-cyan` | the control rail | 5.32 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-active |
+| light | status: needs you | `--warn-text-strong` | the control rail | 5.39 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-attention |
+| light | status: finished | `--on-accent-mint` | the control rail | 5.68 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-done |
+| light | status: failed | `--err-text` | the control rail | 6.53 | 4.5 | pass | W5 | StatusPanel.vue .is-tone-failed |
+| light | a warn banner on its tint | `--warn-text-strong` | warn-bg over the control rail | 4.65 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
+| light | a warn banner boundary | `--warn-border-strong` | warn-bg over the control rail | 3.53 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
+| light | an error banner on its tint | `--err-text` | err-bg over the control rail | 5.60 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
+| light | an error banner boundary | `--err-border-strong` | err-bg over the control rail | 3.64 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
 | light | the verdict badge, needs work | `--ink-on-warn` | the warn badge | 5.60 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-warn |
 | light | the verdict badge, reject | `--ink-on-err` | the err badge | 7.05 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-fail |
 | light | the verdict badge, validate | `--ink-on-brand` | the pass badge | 14.37 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-pass |
@@ -180,15 +182,17 @@ that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 | light | a waiting branch pip | `--warn-text-strong` | the crew strip | 5.91 | 3 | pass | W5 | CrewProgress.vue .crew-branches i |
 | light | the boat | `--on-accent-cyan` | the crew strip | 5.84 | 3 | pass | W5 | CrewProgress.vue .crew-boat |
 | light | an oar caption | `--text-meta` | the crew strip | 5.04 | 4.5 | pass | W5 | CrewProgress.vue .crew-oar-names |
-| light | the gate icon boundary | `--warn-border-strong` | warn-bg over rail | 3.83 | 3 | pass | W5 | GateCard.vue .gate-icon |
-| light | the gate kicker | `--warn-text-strong` | rail | 5.93 | 4.5 | pass | W5 | GateCard.vue .section-kicker |
-| light | a gate field label | `--text-meta` | rail | 5.05 | 4.5 | pass | W5 | GateCard.vue .gate-field span |
-| light | a low-confidence chip | `--warn-text-strong` | warn-bg over rail | 5.07 | 4.5 | pass | W5 | ReportPanel.vue .verdict-confidence.is-low |
-| light | a provisional flag | `--warn-text-strong` | warn-bg over rail | 5.07 | 4.5 | pass | W5 | ReportPanel.vue .report-flag.is-provisional |
-| light | a floor block boundary | `--err-border-strong` | err-bg over rail | 3.12 | 3 | pass | W5 | ReportPanel.vue .verdict-decision.is-floor |
-| light | a score denominator | `--text-meta` | well in rail | 4.85 | 4.5 | pass | W5 | ReportPanel.vue .score-value small |
-| light | a report link | `--link-strong` | rail | 6.30 | 4.5 | pass | W5 | ReportPanel.vue .report-sources a |
-| light | a report score on a well | `--text-primary` | well in rail | 14.88 | 4.5 | pass | W5 | ReportPanel.vue .score-value |
+| light | the gate icon boundary | `--warn-border-strong` | warn-bg over the control rail | 3.53 | 3 | pass | W5 | GateCard.vue .gate-icon |
+| light | the gate kicker | `--warn-text-strong` | the control rail | 5.39 | 4.5 | pass | W5 | GateCard.vue .section-kicker |
+| light | a gate field label | `--text-meta` | the control rail | 4.90 | 4.5 | pass | W5 | GateCard.vue .gate-field span |
+| light | a low-confidence chip | `--warn-text-strong` | warn-bg over the report sheet | 4.89 | 4.5 | pass | W5 | ReportPanel.vue .verdict-confidence.is-low |
+| light | a provisional flag | `--warn-text-strong` | warn-bg over the report sheet | 4.89 | 4.5 | pass | W5 | ReportPanel.vue .report-flag.is-provisional |
+| light | a floor block boundary | `--err-border-strong` | err-bg over the report sheet | 3.79 | 3 | pass | W5 | ReportPanel.vue .verdict-decision.is-floor |
+| light | a score denominator | `--text-meta` | well on the report sheet | 4.79 | 4.5 | pass | W5 | ReportPanel.vue .score-value small |
+| light | a report link | `--link-strong` | the report sheet | 6.05 | 4.5 | pass | W5 | ReportPanel.vue .report-sources a |
+| light | the report body | `--text-body` | the report sheet | 13.57 | 4.5 | pass | W5 | studio.css .markdown-body |
+| light | a report heading | `--text-title` | the report sheet | 17.81 | 4.5 | pass | W5 | studio.css .markdown-body h1-h4 |
+| light | a report score on a well | `--text-primary` | well on the report sheet | 14.30 | 4.5 | pass | W5 | ReportPanel.vue .score-value |
 | light | a trace bubble in a rail | `--text-body` | rail | 14.13 | 4.5 | pass | W4 | ChatRail.vue .trace-bubble |
 | light | a rail kicker | `--on-accent-cyan` | rail | 5.85 | 4.5 | pass | W4 | ChatRail.vue:421 / DialogueRail.vue:471 .section-kicker |
 | light | a rail text button | `--link-strong` | rail | 6.30 | 4.5 | pass | W4 | DialogueRail.vue:632 .text-button |

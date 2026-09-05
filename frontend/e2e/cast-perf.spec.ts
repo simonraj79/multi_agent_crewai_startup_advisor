@@ -127,6 +127,21 @@ const MIN_REPLAY_FRAMES = 119
 const MAX_GAP_MS = 250
 /** How long the idle arm watches a page at rest. */
 const IDLE_ARM_MS = 10_000
+/**
+ * How many times each replay arm is repeated, alternating H P H P H P.
+ *
+ * THREE, because one sample of each was inside the harness's own noise and said
+ * so out loud: the third pass read hidden 4 / painted 5 on one run and 5 / 10 on
+ * another, while the hidden CONTROL — the same replay, the same machine, nothing
+ * of ours painting — moved between 4 and 5 by itself. A comparison whose two
+ * halves are each one draw from that distribution decides on the draw.
+ *
+ * Alternating rather than blocked (H H H P P P) so that anything drifting across
+ * the test — thermal throttling, another process waking, the backend's own
+ * sqlite growing — lands on both arms equally instead of on whichever ran last.
+ * Odd, so the median is a measured sample rather than a mean of two.
+ */
+const REPLAY_REPEATS = 3
 /** The figures the retired absolute wording was read off, kept where they were. */
 const MIRRORED_KEYS = [
   'frames',
@@ -158,6 +173,12 @@ function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))
   return sorted[index]
+}
+
+/** The middle sample. Odd counts only, which `REPLAY_REPEATS` guarantees. */
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[Math.floor(sorted.length / 2)] ?? 0
 }
 
 function round(value: number): number {
@@ -530,7 +551,17 @@ test.describe('T2.8 — frame budget', () => {
     'the console adds no dropped frames of its own while 131 committed frames are applied',
     { tag: '@launch' },
     async ({ page }) => {
-      test.setTimeout(420_000)
+      /*
+       * Fifteen minutes, for six replays rather than two.
+       *
+       * Each arm is a page load, a launch, a ~10 s replay at the 250 ms gap
+       * clamp, a settle and a cancel — about 25 s — so six of them plus the
+       * ten-second idle arm is roughly three minutes of work. The rest is
+       * headroom for the admission limiter, which this file can meet: seven
+       * launches against `RUN_RATE_LIMIT_MAX_RUNS` of ten per sixty seconds, and
+       * `launchRun` waits one out rather than raising the limit.
+       */
+      test.setTimeout(900_000)
       const consoleErrors: string[] = []
       const pageErrors: string[] = []
       page.on('console', (message) => {
@@ -681,18 +712,37 @@ test.describe('T2.8 — frame budget', () => {
       report.budget = budget
       flush()
 
-      /* ---- arms 2 and 3: the same replay, hidden then painted ------------ */
+      /* ---- arms 2 and 3: the same replay, hidden and painted, three times each */
 
       /**
        * Drive one replay arm and return its numbers.
        *
-       * The two calls differ by ONE line — whether the shell is hidden before
-       * the starting gate opens — which is what makes their difference
-       * attributable to painting and to nothing else. Same script, same page,
-       * same sampler, same socket handler, same backend, minutes apart.
+       * Every call differs from every other by ONE line — whether the shell is
+       * hidden before the starting gate opens — which is what makes the
+       * difference between the two arms attributable to painting and to nothing
+       * else. Same script, same fresh page, same sampler, same socket handler,
+       * same backend.
+       *
+       * Called six times, alternating, and the median of each arm is what is
+       * graded. One sample each was not enough: the hidden control moved 4-5
+       * drops between runs on its own, so a single hidden-against-painted
+       * comparison was deciding on the draw rather than on the console.
        */
-      const replayArm = async (hidden: boolean): Promise<Record<string, unknown>> => {
-        const label = hidden ? 'hidden' : 'painted'
+      const replayArm = async (
+        hidden: boolean,
+        round_: number,
+      ): Promise<Record<string, unknown>> => {
+        const label = `${hidden ? 'hidden' : 'painted'}#${round_ + 1}`
+        /*
+         * EVERY arm starts from a fresh page, and that is part of the control.
+         *
+         * Without it the second arm launches on a console that is already
+         * showing the first arm's completed run with its report panel open —
+         * more painted surface than the arm before it, which is precisely the
+         * variable being measured. A `goto` also resets the sampler array, so
+         * each arm's window indexes into its own page.
+         */
+        await openStudio(page)
         let openGate: () => void = () => undefined
         const gate = new Promise<void>((resolve) => {
           openGate = resolve
@@ -751,10 +801,7 @@ test.describe('T2.8 — frame budget', () => {
         const applied = await readSequence(page).catch(() => -1)
         const status = await statusValue(page).catch(() => 'unknown')
         const arm = await armOf(from, {
-          what: hidden
-            ? 'the same replay with the whole console `visibility: hidden` — the harness itself: ' +
-              'the socket, the CDP driver, and applying 131 frames, with nothing of ours painting'
-            : 'the same replay with everything painted — the console as it ships',
+          label,
           hidden,
           frames: script.length,
           framesSent: mine.sent,
@@ -788,29 +835,81 @@ test.describe('T2.8 — frame budget', () => {
         return arm
       }
 
-      arms.hidden = await replayArm(true)
-      await openStudio(page)
-      arms.painted = await replayArm(false)
+      /*
+       * H P H P H P.
+       *
+       * The pairing is what the median is taken over: each round contributes one
+       * hidden and one painted sample minutes apart on the same page, and the
+       * three rounds bracket whatever the machine was doing.
+       */
+      const hiddenSamples: Record<string, unknown>[] = []
+      const paintedSamples: Record<string, unknown>[] = []
+      for (let round_ = 0; round_ < REPLAY_REPEATS; round_ += 1) {
+        hiddenSamples.push(await replayArm(true, round_))
+        paintedSamples.push(await replayArm(false, round_))
+      }
+
+      /** The middle sample of every figure, plus the legacy bar read off it. */
+      const medianOf = (samples: Record<string, unknown>[]): Record<string, unknown> => {
+        const pick = (key: string): number[] => samples.map((s_) => Number(s_[key] ?? 0))
+        const p95 = round(median(pick('p95')))
+        const over34ms = median(pick('over34ms'))
+        return {
+          over34ms,
+          over50ms: median(pick('over50ms')),
+          p50: round(median(pick('p50'))),
+          p95,
+          max: round(median(pick('max'))),
+          intervals: median(pick('intervals')),
+          meetsLegacyBar: over34ms === 0 && p95 <= P95_BUDGET_MS,
+        }
+      }
+
+      const hiddenMedian = medianOf(hiddenSamples)
+      const paintedMedian = medianOf(paintedSamples)
+      arms.hidden = {
+        what:
+          'the same replay with the whole console `visibility: hidden` — the harness itself: ' +
+          'the socket, the CDP driver, and applying 131 frames, with nothing of ours painting',
+        repeats: REPLAY_REPEATS,
+        samples: hiddenSamples,
+        median: hiddenMedian,
+      }
+      arms.painted = {
+        what: 'the same replay with everything painted — the console as it ships',
+        repeats: REPLAY_REPEATS,
+        samples: paintedSamples,
+        median: paintedMedian,
+      }
 
       /* ---- the artifact, before any verdict ------------------------------ */
 
-      const hidden = arms.hidden as { over34ms: number; p95: number }
-      const painted = arms.painted as { over34ms: number; p95: number }
+      const hidden = hiddenMedian as { over34ms: number; p95: number }
+      const painted = paintedMedian as { over34ms: number; p95: number }
       const addedDrops = painted.over34ms - hidden.over34ms
       const p95Delta = round(painted.p95 - hidden.p95)
+      const drops = (samples: Record<string, unknown>[]): string =>
+        samples.map((s_) => String(s_.over34ms)).join(', ')
+      const p95s = (samples: Record<string, unknown>[]): string =>
+        samples.map((s_) => String(s_.p95)).join(', ')
 
       record('fixtureReplay', {
         what:
           'The two committed frame logs replayed into the page over its own WebSocket ' +
-          '(page.routeWebSocket), so the client applies them through the production path, in ' +
-          'THREE arms of one run on one page with one sampler: idle, the same replay with the ' +
-          'console hidden, and the same replay painted. Gaps are the fixtures\' own timestamps ' +
-          `clamped to ${MAX_GAP_MS}ms, which only compresses idle waits.`,
+          '(page.routeWebSocket), so the client applies them through the production path. One ' +
+          'page, one sampler, three arms: idle once, then the replay hidden and the replay ' +
+          `painted ${REPLAY_REPEATS} times each, ALTERNATING (H P H P H P) so any drift across ` +
+          "the test lands on both equally. Gaps are the fixtures' own timestamps clamped to " +
+          `${MAX_GAP_MS}ms, which only compresses idle waits.`,
         graded: true,
         criterion:
-          'over34ms(painted) <= over34ms(hidden) and p95(painted) <= p95(hidden) + ' +
-          `${P95_HEADROOM_MS}ms. The absolute figures are printed for every arm so the retired ` +
-          'absolute bar (0 over 34ms, p95 <= 20ms) can still be applied by a reader.',
+          'On the MEDIAN of each arm: over34ms(painted) <= over34ms(hidden), and ' +
+          `p95(painted) <= p95(hidden) + ${P95_HEADROOM_MS}ms. Medians rather than single ` +
+          'samples because the hidden CONTROL itself moved 4-5 drops between runs, so a ' +
+          'one-against-one comparison decides on the draw. Every sample is in ' +
+          '`arms.<arm>.samples`, and every arm carries its absolute figures and a ' +
+          '`meetsLegacyBar` flag so the retired absolute bar (0 over 34ms, p95 <= 20ms) can ' +
+          'still be applied by a reader.',
         sources: perSource,
         budget,
         arms,
@@ -824,19 +923,23 @@ test.describe('T2.8 — frame budget', () => {
         consoleErrors,
         pageErrors,
         /*
-         * The retired keys, mirrored from the PAINTED arm.
+         * The retired keys, mirrored from the painted arm's MEDIAN.
          *
          * Picked one by one rather than spread, because a spread would carry the
-         * arm's own `what` and `hidden` up with them and overwrite this block's
-         * description with one that describes an arm. The point of the mirror is
-         * that a reader who knew this file's old shape still finds
-         * `frames`/`p95`/`over34ms` where they were, reading the arm the verdict
-         * rests on.
+         * arm's own `what` up with it and overwrite this block's description
+         * with one that describes an arm. The point of the mirror is that a
+         * reader who knew this file's old shape still finds
+         * `frames`/`p95`/`over34ms` where they were, reading the figure the
+         * verdict actually rests on — which is now a median and not a sample.
          */
         ...(() => {
-          const painted = arms.painted as Record<string, unknown>
+          const source: Record<string, unknown> = {
+            ...paintedMedian,
+            frames: script.length,
+            runFrames: paintedSamples[paintedSamples.length - 1]?.runFrames ?? -1,
+          }
           const mirrored: Record<string, unknown> = {}
-          for (const key of MIRRORED_KEYS) mirrored[key] = painted[key]
+          for (const key of MIRRORED_KEYS) mirrored[key] = source[key]
           return mirrored
         })(),
       })
@@ -848,14 +951,15 @@ test.describe('T2.8 — frame budget', () => {
         'a replay arm could not be driven to the end; the numbers above were still recorded',
       ).toEqual([])
       expect(pageErrors, 'an uncaught exception invalidates the measurement').toEqual([])
+      // Every one of the six replays has to have been the whole replay, or the
+      // medians are taken over arms that are not the same measurement.
+      const shortfall = [...hiddenSamples, ...paintedSamples]
+        .filter((sample) => Number(sample.framesSent ?? 0) !== script.length)
+        .map((sample) => `${String(sample.label)}: ${String(sample.framesSent)}`)
       expect(
-        (arms.hidden as { framesSent: number }).framesSent,
-        'the hidden arm did not send every frame',
-      ).toBe(script.length)
-      expect(
-        (arms.painted as { framesSent: number }).framesSent,
-        'the painted arm did not send every frame',
-      ).toBe(script.length)
+        shortfall,
+        `a replay arm did not send all ${script.length} frames`,
+      ).toEqual([])
       expect(
         (arms.idle as { intervals: number }).intervals,
         'the idle arm recorded no rAF intervals at all',
@@ -879,14 +983,16 @@ test.describe('T2.8 — frame budget', () => {
        */
       expect(
         painted.over34ms,
-        `painting the console added ${addedDrops} dropped frames: ${painted.over34ms} over 34ms ` +
-          `painted against ${hidden.over34ms} with the same replay hidden. Idle floor: ` +
+        `painting the console added ${addedDrops} dropped frames at the median: ` +
+          `${painted.over34ms} painted (samples ${drops(paintedSamples)}) against ` +
+          `${hidden.over34ms} hidden (samples ${drops(hiddenSamples)}). Idle floor: ` +
           `${(arms.idle as { over34ms: number }).over34ms}. See ${PERF_JSON}.`,
       ).toBeLessThanOrEqual(hidden.over34ms)
       expect(
         painted.p95,
-        `painting the console cost ${p95Delta}ms of p95: ${painted.p95}ms painted against ` +
-          `${hidden.p95}ms hidden, headroom ${P95_HEADROOM_MS}ms. Idle floor: ` +
+        `painting the console cost ${p95Delta}ms of p95 at the median: ${painted.p95}ms painted ` +
+          `(samples ${p95s(paintedSamples)}) against ${hidden.p95}ms hidden ` +
+          `(samples ${p95s(hiddenSamples)}), headroom ${P95_HEADROOM_MS}ms. Idle floor: ` +
           `${(arms.idle as { p95: number }).p95}ms. See ${PERF_JSON}.`,
       ).toBeLessThanOrEqual(hidden.p95 + P95_HEADROOM_MS)
     },
@@ -894,16 +1000,20 @@ test.describe('T2.8 — frame budget', () => {
 
   test.afterAll(() => {
     report.note =
-      'Three arms and a control. `fixtureReplay.arms` holds idle (the page at rest), hidden ' +
-      '(the same 131-frame replay with the console `visibility: hidden` — the socket, the CDP ' +
-      'driver and applying the frames, with nothing of ours painting) and painted (the same ' +
-      'replay drawn). The criterion is the COMPARISON in `fixtureReplay.verdict`: painting must ' +
-      'add no dropped frames and at most 4ms of p95. Every arm also carries its absolute ' +
-      'figures and a `meetsLegacyBar` flag, so the retired wording (0 over 34ms, p95 <= 20ms) ' +
-      'can still be applied — it is recorded as a fact about this machine rather than asserted ' +
-      'as a fact about the console. `liveSyntheticRun` is a real launch through three revise ' +
-      'turns, recorded and not graded. The top-level frames/p50/p95/max/over34ms/over50ms/' +
-      'runFrames keys mirror the PAINTED arm, named in `headlineFrom`.'
+      'Three arms, and the two that are compared are repeated. `fixtureReplay.arms` holds idle ' +
+      '(the page at rest, once), hidden (the 131-frame replay with the console ' +
+      '`visibility: hidden` - the socket, the CDP driver and applying the frames, with nothing ' +
+      `of ours painting) and painted (the same replay drawn), the last two ${REPLAY_REPEATS} ` +
+      'times each, ALTERNATING. The criterion is the comparison in `fixtureReplay.verdict`, ' +
+      'taken on each arm`s MEDIAN: painting must add no dropped frames and at most ' +
+      `${P95_HEADROOM_MS}ms of p95. Medians because the hidden control moved between runs by ` +
+      'itself, so one sample against one was deciding on the draw; every sample is in ' +
+      '`arms.<arm>.samples`. Every arm also carries its absolute figures and a `meetsLegacyBar` ' +
+      'flag, so the retired wording (0 over 34ms, p95 <= 20ms) can still be applied - recorded ' +
+      'as a fact about this machine rather than asserted as a fact about the console. ' +
+      '`liveSyntheticRun` is a real launch through three revise turns, recorded and not graded. ' +
+      'The top-level frames/p50/p95/max/over34ms/over50ms/runFrames keys mirror the PAINTED ' +
+      'arm`s median, named in `headlineFrom`.'
     flush()
   })
 })

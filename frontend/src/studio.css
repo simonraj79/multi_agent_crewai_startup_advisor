@@ -347,7 +347,17 @@ h3 {
   z-index: var(--z-rail);
   min-width: 0;
   height: 100%;
-  background: var(--surface-overlay);
+  /* OPAQUE, for the same reason the report sheet is, and found the same way.
+     At <= 1180px this rail is an OVERLAY over the canvas, and at 94% with the
+     blur gone the report panel's own "Copy Markdown" button and the node cards
+     behind it ghosted through the GATES and VIEW controls -
+     `evidence/T3/after-1180.png`. A phantom button inside the controls rail is
+     worse than any translucency is worth.
+     `--bg-app` rather than `--surface-strong`: a rail is the GROUND (design.md
+     §3 - "a rail is the ground; a ground does not float"), and `--bg-app` is
+     what this rail already composites to in the dark theme - #1a1a1a either
+     way, so nothing moves there at all. */
+  background: var(--bg-app);
   border-left: 1px solid var(--border-default);
 }
 

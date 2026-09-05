@@ -213,6 +213,16 @@ the blur was filtering a background that is already almost entirely covered. No
 alpha was raised to compensate: there is nothing to compensate for at that
 opacity, and every token that could carry the rise is shared with the builder.
 
+**Two surfaces had to become opaque when the blur came off, and that is the
+cost side of the trade.** `--surface-overlay` is 94 % opaque, which sounded like
+enough and was not: over a graph, 6 % of a bright node card is a legible ghost
+rather than a wash, and the blur had been smearing it into one. The report sheet
+now paints `--surface-strong` and the control rail `--bg-app`, both with no
+alpha at all — a report is the deliverable of the whole product and the one
+surface that must never be read through, and a rail is the ground. Neither was
+predicted; both were found in `evidence/T3/after-1440.png` and `after-1180.png`
+after the blurs were removed on reasoning alone.
+
 **The asymmetry is the point rather than an inconsistency.** A design canvas is
 still (`docs/flow-builder-spec.md` §5.5) — a blur behind a dialog on a static
 page is composited once. A run console is a surface with a graph moving on it,
@@ -230,9 +240,9 @@ with two occupants.
 
 | Token | Level | Where |
 | --- | --- | --- |
-| — (`--surface-panel` + `--border-default`, no shadow) | 0, the ground | a rail, the canvas ground. A ground does not float |
+| `--bg-app` or `--surface-panel` + `--border-default`, no shadow | 0, the ground | the canvas ground; the control rail, which is **opaque** because it overlays the graph below 1180 px. A ground does not float |
 | `--shadow-panel` | +1 | something *on* the panel: a bubble, a chip, a raised button |
-| `--shadow-overlay` | +2 | the report sheet, the zoom controls, the report FAB, a rail while it is an overlay |
+| `--surface-strong` + `--shadow-overlay` | +2 | the report sheet — **opaque**, because it is the one surface that must never be read through — the zoom controls, the report FAB, a rail while it is an overlay |
 | `--shadow-inset-well` | −1 | a field, a code chip, the segmented track — with `--surface-well` + `--border-control` |
 | `--shadow-raised` | +1 strong | a card lifted off its panel |
 

@@ -222,8 +222,17 @@
   --link-strong: #7dc6ff;
   /* The status colours, at the two sites where the tint is under them. */
   --warn-text-strong: #ffe082;
+  /* .84, raised from .70 on 2026-09-05 when the report sheet and the control
+     rail became opaque grounds. It cleared 3.0 against the old translucent
+     rail by 0.02, which is not a margin - it is a rounding error that happened
+     to fall the right way, and two grounds moving by a few units took it under
+     on both sides at once (2.78 dark on the sheet, 2.96 light on the rail).
+     .84 clears every ground this border is drawn on by at least 0.4: 3.40 the
+     worst in dark, 3.64 the worst in light. A boundary this repository has now
+     had to raise twice is a boundary that was set to the test rather than to
+     the job. */
   --warn-border-strong: rgba(255, 204, 0, 0.46);
-  --err-border-strong: rgba(255, 82, 82, 0.7);
+  --err-border-strong: rgba(255, 82, 82, 0.84);
 
   /* THE BRAND MARK'S WASH AND RIM, and the ink that sits on the gradient.
 
@@ -403,7 +412,7 @@
   --link-strong: #1a6099;
   --warn-text-strong: #865700;
   --warn-border-strong: rgba(150, 100, 0, 0.95);
-  --err-border-strong: rgba(190, 40, 40, 0.7);
+  --err-border-strong: rgba(190, 40, 40, 0.84);
   /* The status fills are DARK here - see the note beside the dark pair - so
      the ink on them inverts. `--ink-on-brand` does NOT, because
      `--gradient-brand` is an accent and accents are shared across themes; that

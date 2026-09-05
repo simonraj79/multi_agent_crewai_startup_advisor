@@ -295,8 +295,21 @@ async function copyReport(): Promise<void> {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--surface-overlay);
+  /* AN OPAQUE SHEET, and the blur removal is what proved it had to be.
+     `--surface-overlay` is 94% opaque, which sounded like enough and was not:
+     with the `backdrop-filter` gone, the graph, the stage lane and its chips
+     read straight THROUGH the verdict chips and the score rows - a node card
+     behind "Validation report - NEEDS_WORK", the word CONFIRM through
+     "Provisional - not a final answer". 6% of a bright card over a dark sheet
+     is not a wash, it is a legible ghost, and the blur had been smearing it
+     into one. Measured in `evidence/T3/after-1440.png` before this line
+     existed.
+     `--surface-strong` has no alpha at all. A report is the deliverable of the
+     whole product and the one surface that must never be read through; the
+     shadow says it floats, so the background does not have to. */
+  background: var(--surface-strong);
   border-top: 1px solid var(--border-default);
+  box-shadow: var(--shadow-overlay);
   animation: report-rise var(--motion-medium) var(--ease-out);
 }
 

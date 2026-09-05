@@ -175,6 +175,27 @@ function surfaces(t) {
      * row is what stops it coming back.
      */
     'the crew strip': over(parse(t['surface-overlay']), canvas),
+    /*
+     * TWO RAILS AND A SHEET, where this file had one key for all three until
+     * the blur came off.
+     *
+     * `.control-rail` and `.report-panel` are OPAQUE now - a 94% surface with
+     * no `backdrop-filter` over a graph is a legible ghost, not a wash, and the
+     * captures show it. `.chat-rail` is still translucent (W4's file), so
+     * `rail` keeps meaning what it always meant and the other two get their
+     * own entries. In dark the control rail lands on the same #1a1a1a it
+     * always composited to; in light it is eight units darker than the chat
+     * rail, which is exactly the sort of difference one shared key was hiding.
+     */
+    'the control rail': parse(t['bg-app']),
+    'well in the control rail': over(parse(t['surface-well']), parse(t['bg-app'])),
+    'raised in the control rail': over(parse(t['surface-raised']), parse(t['bg-app'])),
+    'warn-bg over the control rail': over(parse(t['warn-bg']), parse(t['bg-app'])),
+    'err-bg over the control rail': over(parse(t['err-bg']), parse(t['bg-app'])),
+    'the report sheet': parse(t['surface-strong']),
+    'well on the report sheet': over(parse(t['surface-well']), parse(t['surface-strong'])),
+    'warn-bg over the report sheet': over(parse(t['warn-bg']), parse(t['surface-strong'])),
+    'err-bg over the report sheet': over(parse(t['err-bg']), parse(t['surface-strong'])),
   }
 }
 
@@ -222,35 +243,35 @@ const PAIRS = [
   ['the version chip boundary', 'border-control', 'well on canvas', 'studio.css .canvas-meta code', 'ui', 'W5', ''],
   ['reconnect strip on its tint', 'warn-text-strong', 'warn-bg over canvas', 'studio.css .stream-reconnecting', 'text', 'W5', ''],
   ['reconnect strip boundary', 'warn-border-strong', 'warn-bg over canvas', 'studio.css .stream-reconnecting', 'ui', 'W5', ''],
-  ['a hover boundary on a rail', 'border-hover-strong', 'rail', 'studio.css .icon-button:hover', 'ui', 'W5', ''],
+  ['a hover boundary on a rail', 'border-hover-strong', 'the control rail', 'studio.css .icon-button:hover', 'ui', 'W5', ''],
   ['a markdown link over the canvas', 'link-strong', 'canvas ground', 'studio.css .markdown-body a', 'text', 'W5', ''],
   ['a markdown code chip', 'on-accent-mint', 'well on canvas', 'studio.css .markdown-body code', 'text', 'W5', ''],
-  ['the handoff banner', 'on-accent-cyan', 'rail', 'StudioView.vue .handoff-banner', 'text', 'W5', ''],
-  ['the handoff banner code chip', 'on-accent-mint', 'well in rail', 'StudioView.vue .handoff-banner code', 'text', 'W5', ''],
+  ['the handoff banner', 'on-accent-cyan', 'the control rail', 'StudioView.vue .handoff-banner', 'text', 'W5', ''],
+  ['the handoff banner code chip', 'on-accent-mint', 'well in the control rail', 'StudioView.vue .handoff-banner code', 'text', 'W5', ''],
 
   // ---- the right rail, W5 -------------------------------------------------
-  ['body text in a rail', 'text-body', 'rail', 'StatusPanel.vue .read-only-well', 'text', 'W5', ''],
-  ['title text on a well in a rail', 'text-title', 'well in rail', 'StatusPanel.vue .metrics-grid dd', 'text', 'W5', ''],
-  ['body text on a well in a rail', 'text-body', 'well in rail', 'StatusPanel.vue textarea', 'text', 'W5', ''],
-  ['muted text in a rail', 'text-muted', 'rail', 'StatusPanel.vue .control-hint', 'text', 'W5', ''],
-  ['a section kicker in a rail', 'text-meta', 'rail', 'StatusPanel.vue .control-label', 'text', 'W5', ''],
-  ['a metric label on a well', 'text-meta', 'well in rail', 'StatusPanel.vue .metrics-grid dt', 'text', 'W5', ''],
-  ['the stream line in a rail', 'text-meta', 'rail', 'StatusPanel.vue .stream-line', 'text', 'W5', ''],
+  ['body text in a rail', 'text-body', 'the control rail', 'StatusPanel.vue .read-only-well', 'text', 'W5', ''],
+  ['title text on a well in a rail', 'text-title', 'well in the control rail', 'StatusPanel.vue .metrics-grid dd', 'text', 'W5', ''],
+  ['body text on a well in a rail', 'text-body', 'well in the control rail', 'StatusPanel.vue textarea', 'text', 'W5', ''],
+  ['muted text in a rail', 'text-muted', 'the control rail', 'StatusPanel.vue .control-hint', 'text', 'W5', ''],
+  ['a section kicker in a rail', 'text-meta', 'the control rail', 'StatusPanel.vue .control-label', 'text', 'W5', ''],
+  ['a metric label on a well', 'text-meta', 'well in the control rail', 'StatusPanel.vue .metrics-grid dt', 'text', 'W5', ''],
+  ['the stream line in a rail', 'text-meta', 'the control rail', 'StatusPanel.vue .stream-line', 'text', 'W5', ''],
   // The `M2` mark that used to be measured here is gone with the element - it
   // was the PRODUCT's build mark inside a well labelled WORKFLOW, so on a graph
   // an author drew it named a version that graph does not have.
-  ['a control boundary on a well', 'border-control', 'well in rail', 'StatusPanel.vue textarea', 'ui', 'W5', ''],
-  ['a control boundary on a rail', 'border-control', 'rail', 'studio.css .segmented', 'ui', 'W5', ''],
-  ['the metrics grid rule', 'border-control', 'well in rail', 'studio.css .metrics-grid', 'ui', 'W5', ''],
-  ['muted text on raised in a rail', 'text-muted', 'raised in rail', 'studio.css .button-quiet', 'text', 'W5', ''],
-  ['status: in flight', 'on-accent-cyan', 'rail', 'StatusPanel.vue .is-tone-active', 'text', 'W5', ''],
-  ['status: needs you', 'warn-text-strong', 'rail', 'StatusPanel.vue .is-tone-attention', 'text', 'W5', ''],
-  ['status: finished', 'on-accent-mint', 'rail', 'StatusPanel.vue .is-tone-done', 'text', 'W5', ''],
-  ['status: failed', 'err-text', 'rail', 'StatusPanel.vue .is-tone-failed', 'text', 'W5', ''],
-  ['a warn banner on its tint', 'warn-text-strong', 'warn-bg over rail', 'StatusPanel.vue .panel-banner.is-warn', 'text', 'W5', ''],
-  ['a warn banner boundary', 'warn-border-strong', 'warn-bg over rail', 'StatusPanel.vue .panel-banner.is-warn', 'ui', 'W5', ''],
-  ['an error banner on its tint', 'err-text', 'err-bg over rail', 'StatusPanel.vue .panel-banner.is-error', 'text', 'W5', ''],
-  ['an error banner boundary', 'err-border-strong', 'err-bg over rail', 'StatusPanel.vue .panel-banner.is-error', 'ui', 'W5', ''],
+  ['a control boundary on a well', 'border-control', 'well in the control rail', 'StatusPanel.vue textarea', 'ui', 'W5', ''],
+  ['a control boundary on a rail', 'border-control', 'the control rail', 'studio.css .segmented', 'ui', 'W5', ''],
+  ['the metrics grid rule', 'border-control', 'well in the control rail', 'studio.css .metrics-grid', 'ui', 'W5', ''],
+  ['muted text on raised in a rail', 'text-muted', 'raised in the control rail', 'studio.css .button-quiet', 'text', 'W5', ''],
+  ['status: in flight', 'on-accent-cyan', 'the control rail', 'StatusPanel.vue .is-tone-active', 'text', 'W5', ''],
+  ['status: needs you', 'warn-text-strong', 'the control rail', 'StatusPanel.vue .is-tone-attention', 'text', 'W5', ''],
+  ['status: finished', 'on-accent-mint', 'the control rail', 'StatusPanel.vue .is-tone-done', 'text', 'W5', ''],
+  ['status: failed', 'err-text', 'the control rail', 'StatusPanel.vue .is-tone-failed', 'text', 'W5', ''],
+  ['a warn banner on its tint', 'warn-text-strong', 'warn-bg over the control rail', 'StatusPanel.vue .panel-banner.is-warn', 'text', 'W5', ''],
+  ['a warn banner boundary', 'warn-border-strong', 'warn-bg over the control rail', 'StatusPanel.vue .panel-banner.is-warn', 'ui', 'W5', ''],
+  ['an error banner on its tint', 'err-text', 'err-bg over the control rail', 'StatusPanel.vue .panel-banner.is-error', 'text', 'W5', ''],
+  ['an error banner boundary', 'err-border-strong', 'err-bg over the control rail', 'StatusPanel.vue .panel-banner.is-error', 'ui', 'W5', ''],
 
   // The verdict badge's ink. W5's, because the fix is a token pair rather than
   // a component change: `tokens.css` is explicit that nothing outside it knows
@@ -275,15 +296,17 @@ const PAIRS = [
   ['an oar caption', 'text-meta', 'the crew strip', 'CrewProgress.vue .crew-oar-names', 'text', 'W5', ''],
 
   // ---- the gate card and the report, W5 -----------------------------------
-  ['the gate icon boundary', 'warn-border-strong', 'warn-bg over rail', 'GateCard.vue .gate-icon', 'ui', 'W5', ''],
-  ['the gate kicker', 'warn-text-strong', 'rail', 'GateCard.vue .section-kicker', 'text', 'W5', ''],
-  ['a gate field label', 'text-meta', 'rail', 'GateCard.vue .gate-field span', 'text', 'W5', ''],
-  ['a low-confidence chip', 'warn-text-strong', 'warn-bg over rail', 'ReportPanel.vue .verdict-confidence.is-low', 'text', 'W5', ''],
-  ['a provisional flag', 'warn-text-strong', 'warn-bg over rail', 'ReportPanel.vue .report-flag.is-provisional', 'text', 'W5', ''],
-  ['a floor block boundary', 'err-border-strong', 'err-bg over rail', 'ReportPanel.vue .verdict-decision.is-floor', 'ui', 'W5', ''],
-  ['a score denominator', 'text-meta', 'well in rail', 'ReportPanel.vue .score-value small', 'text', 'W5', ''],
-  ['a report link', 'link-strong', 'rail', 'ReportPanel.vue .report-sources a', 'text', 'W5', ''],
-  ['a report score on a well', 'text-primary', 'well in rail', 'ReportPanel.vue .score-value', 'text', 'W5', ''],
+  ['the gate icon boundary', 'warn-border-strong', 'warn-bg over the control rail', 'GateCard.vue .gate-icon', 'ui', 'W5', ''],
+  ['the gate kicker', 'warn-text-strong', 'the control rail', 'GateCard.vue .section-kicker', 'text', 'W5', ''],
+  ['a gate field label', 'text-meta', 'the control rail', 'GateCard.vue .gate-field span', 'text', 'W5', ''],
+  ['a low-confidence chip', 'warn-text-strong', 'warn-bg over the report sheet', 'ReportPanel.vue .verdict-confidence.is-low', 'text', 'W5', ''],
+  ['a provisional flag', 'warn-text-strong', 'warn-bg over the report sheet', 'ReportPanel.vue .report-flag.is-provisional', 'text', 'W5', ''],
+  ['a floor block boundary', 'err-border-strong', 'err-bg over the report sheet', 'ReportPanel.vue .verdict-decision.is-floor', 'ui', 'W5', ''],
+  ['a score denominator', 'text-meta', 'well on the report sheet', 'ReportPanel.vue .score-value small', 'text', 'W5', ''],
+  ['a report link', 'link-strong', 'the report sheet', 'ReportPanel.vue .report-sources a', 'text', 'W5', ''],
+  ['the report body', 'text-body', 'the report sheet', 'studio.css .markdown-body', 'text', 'W5', ''],
+  ['a report heading', 'text-title', 'the report sheet', 'studio.css .markdown-body h1-h4', 'text', 'W5', ''],
+  ['a report score on a well', 'text-primary', 'well on the report sheet', 'ReportPanel.vue .score-value', 'text', 'W5', ''],
 
   // ---- painted in a file another worker owns THIS round --------------------
   ['a trace bubble in a rail', 'text-body', 'rail', 'ChatRail.vue .trace-bubble', 'text', 'W4', ''],

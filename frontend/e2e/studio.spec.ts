@@ -397,7 +397,11 @@ test.describe('Validator Studio', () => {
       await expect(
         derived.locator('input, textarea, select, button, [contenteditable="true"]'),
       ).toHaveCount(0)
-      await expect(derived.locator('h3')).toContainText('Computed by the validator')
+      // "Computed by the RUN", since W1's round three. The heading used to name
+      // the validator, which was wrong the moment a published builder graph
+      // could open a gate: the block is whatever the flow computed, and the flow
+      // is not always this one.
+      await expect(derived.locator('h3')).toContainText('Computed by the run')
 
       // ...and the form must offer exactly one lever: the feedback note.
       const fields = card.locator('form .gate-field')

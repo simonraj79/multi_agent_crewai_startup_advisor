@@ -401,17 +401,24 @@ a different finding.
 | | |
 | --- | --- |
 | balance before the first | **$27.254979** (`total_usage` 92.745020765) |
-| balance after the second | **$27.216112** (`total_usage` 92.783887525) |
-| **real spend** | **$0.038867** |
+| balance after the second | **$27.216078** (`total_usage` 92.783921845) |
+| **real spend** | **$0.038901** |
 | the service's own two `cost_usd` rows | **$0.038850** |
-| difference | **$0.000017** |
+| difference | **$0.000051** |
 
-Read three minutes past the second run and confirmed unchanged. **The
-difference is 0.04 %**, tighter than either single-run verification above
-(1.0 % and 0.10 %) and the same order as the sweep's $0.000049 over six runs.
-Three samples now sit either side of zero, which is the reading the `:nitro`
-question deserves: no drift has been observed, and none of these runs is a
-measurement of one.
+**The lag caught this page out again, and the correction is left visible.** A
+reading three minutes past the second run said `total_usage` 92.783887525 and
+was confirmed unchanged twice — $0.038867, a difference of $0.000017. A reading
+about twenty-five minutes later, after the suites had run, said 92.783921845.
+The settled figure is the later one, and it is $0.000034 dearer. Every
+intermediate reading this programme has taken has been low, never high; two
+confirmations is evidently not settlement.
+
+**The difference is 0.13 %**, between the previous section's 0.10 % and the
+`max_iter: 6` run's 1.0 %, and the same order as the sweep's $0.000049 over six
+runs. Four samples now sit either side of zero, which is the reading the
+`:nitro` question deserves: no drift has been observed, and none of these runs
+is a measurement of one.
 
 > **A discrepancy this task did not cause, recorded rather than smoothed over.**
 > MISSION.md §7 recorded `total_usage` **92.654757565** after the gate-payload

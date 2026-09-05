@@ -1,4 +1,4 @@
-# R1 — the visual baselines, across three RV3 passes
+# R1 — the visual baselines, across four RV3 passes
 
 Written by RV3 (verification worker) on branch `run-shell/cast`. RV3 built none
 of this work. The only product-tree edit RV3 is permitted is regenerating the
@@ -7,7 +7,83 @@ after first recording the failing diff. That is what this file records, pass by
 pass.
 
 Backend for every run below: the free `SYNTHETIC=1` one on :8099, full line in
-`evidence/R/playwright.txt`. Playwright drove its own Vite on :5273.
+`evidence/R/playwright.txt`. Playwright drove its own Vite on :5273 — and in
+this pass that was **verified rather than assumed**, because
+`playwright.config.ts` sets `reuseExistingServer: true` and a stale Vite would
+have made every capture below a picture of an older bundle. Before anything ran:
+`netstat -ano | findstr :527` showed no listener on 5273/5274/5275, no
+node/serve/python process was listening on any port, `Stop-Process -Name serve`
+found nothing to stop, and all three ports answered nothing.
+
+---
+
+# FOURTH PASS — `8ae40ec`, 2026-09-05
+
+## Step 1 — run first, record the diff
+
+```
+$ cd frontend
+$ npx playwright test e2e/visual/run-canvas.spec.ts
+# exit 1  ·  3 failed
+```
+
+All three failed on **pixels alone** — no timeout, no assertion, nothing but a
+changed picture, and the diffs are the smallest of any pass:
+
+| # | test | snapshot | pixels different |
+| ---: | --- | --- | ---: |
+| 1 | `:204` looks the same idle, and the card shell resolves as authored | `run-canvas-idle.png` | **22** (ratio 0.01) |
+| 2 | `:272` with a branch in flight, and still animates | `run-canvas-running.png` | **8** (ratio 0.01) |
+| 3 | `:390` paused at a gate | `run-canvas-gate-waiting.png` | **10** (ratio 0.01) |
+
+22, 8 and 10 pixels on a 14-node canvas is a change to one small drawn shape.
+That is what round five did: the **bun crest replaces the halo** on the
+character, and the crest is a few pixels across at canvas zoom. Nothing in
+rounds four or five touched the cards otherwise, and the numbers say so.
+
+## Step 2 — regenerate
+
+```
+$ npx playwright test e2e/visual/run-canvas.spec.ts --update-snapshots
+# exit 0  ·  3 passed (19.4s)
+```
+
+**All three PNGs were regenerated. Named, with why:**
+
+| PNG | md5 before | md5 after | why it changed |
+| --- | --- | --- | --- |
+| `run-canvas-idle-chromium-win32.png` | `685560518ca4976383af6620b3d0bca9` | `c0372c68b79f5862cf423d8f59bbaef1` | the bun crest replaces the halo on every idle card's character (round five) |
+| `run-canvas-running-chromium-win32.png` | `2306ea460978915b649bfaefbe098a28` | `68995bbcb458e3df2ce9f7bbd0789baf` | the same crest on the running card's medallion |
+| `run-canvas-gate-waiting-chromium-win32.png` | `67148155a14cd056a2fe60237d134207` | `2833bddbbbe40cbd554d9121838366e3` | the same crest, on the gate node's waiting character |
+
+**The opaque report sheet and control rail are NOT why these moved**, and that
+is worth saying because it was the leading hypothesis for the third pass's
+see-through capture: those three crops are the `.validator-flow` canvas element
+and neither the sheet nor the rail is inside them. Round four (`fec004d`), which
+made both opaque, moved these baselines by nothing at all — a run at `fec004d`
+was green with no regeneration.
+
+## Step 3 — re-run to confirm
+
+```
+$ npx playwright test e2e/visual/run-canvas.spec.ts
+# exit 0  ·  3 passed (19.1s)
+```
+
+## The four-pass history of these three files
+
+| PNG | at branch start | pass 1 | pass 2 | pass 3 | pass 4 |
+| --- | --- | --- | --- | --- | --- |
+| `run-canvas-idle` | `c1cbb91f…` | `13f82081…` | — | `68556051…` | `c0372c68…` |
+| `run-canvas-gate-waiting` | `0d85fde5…` | `5d2357ce…` | — | `67148155…` | `2833bddb…` |
+| `run-canvas-running` | `dcb4eba9…` | unreachable | `0c11150e…` | `2306ea46…` | `68995bbc…` |
+
+One line each: pass 1 moved idle and gate-waiting because the medallion took the
+character from the lucide icon; pass 2 finally moved running, because RV1
+replaced the assertions that pinned the retired rowers so the test could reach
+its shutter for the first time; pass 3 moved all three, because four
+`backdrop-filter`s went and the crests grew; pass 4 moved all three by 8–22
+pixels, because the halo became a bun.
 
 ---
 

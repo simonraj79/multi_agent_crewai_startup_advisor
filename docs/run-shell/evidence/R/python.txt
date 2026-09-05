@@ -1,16 +1,18 @@
 $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
-# RV3 THIRD PASS, from the repo root D:\MultiAgentSystem
-# branch run-shell/cast at 601baef, 2026-09-05, Windows 11, Python 3.13.5, CrewAI 1.15.18
+# RV3 FOURTH PASS, from the repo root D:\MultiAgentSystem
+# branch run-shell/cast at 8ae40ec, 2026-09-05, Windows 11, Python 3.13.5, CrewAI 1.15.18
 # exit code: 0
 #
-# RESULT:  Ran 2544 tests in 131.576s  --  OK (skipped=6)   GREEN
-#          pass 2 at 16f3be5: 2542 / OK / 6 skipped
-#          pass 1 at 27b256e: 2542 / OK / 6 skipped
-#          The two new tests are tests/events/test_verdict_frame.py's, for the
-#          third real-serializer verdict frame (4d5fd05) that T1.1's new capture
-#          replays. No Python source changed on this branch in round three.
+# RESULT:  Ran 2544 tests in 173.360s  --  OK (skipped=6)   GREEN
+#          pass 3 at 601baef: 2544 / OK / 6 skipped / 131.6s
+#          pass 2 at 16f3be5: 2542 / OK / 6 skipped / 132.9s
+#          pass 1 at 27b256e: 2542 / OK / 6 skipped / 131.5s
+#          The count has not moved since round three and no src/brief_crew
+#          file has changed since the first pass - R/diff-stat.txt proves it
+#          with an empty 'git diff 16f3be5..HEAD -- src/'. The 173s against
+#          131s is this machine after four hours of browser suites, not the code.
 #
-# The raw stream was 34762 lines / 3592685 bytes, because CrewAI prints a
+# The raw stream was 34827 lines / 3598600 bytes, because CrewAI prints a
 # rich panel per flow method and the suite runs whole flows against doubles.
 # What follows is (a) every line unittest itself wrote about a failure, error
 # or result, then (b) the last 200 lines verbatim, which carry the Ran/OK line.
@@ -19,13 +21,14 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 (a) every failure / error / result line
     $ grep -nE "^(FAIL|ERROR|FAILED|OK|Ran )" python.txt
 ===========================================================================
-15970:ERROR    Error executing listener n3_redo: ┌─__init__.py─────────────────────────: 🔄 Flow Method Running 3403──────────────────────────
-34759:Ran 2544 tests in 131.576s
-34761:OK (skipped=6)
+15965:ERROR   └─────────────────────────────────────────────────────────────────────────────┘
+19084:ERROR    Error executing listener n2_b:   │                                                                              │
+34824:Ran 2544 tests in 173.360s
+34826:OK (skipped=6)
 
     No 'FAIL:' or 'ERROR:' header line appears, which is what says no test
-    failed or errored. (A line beginning 'Error executing listener' inside
-    the stream is CrewAI narrating a failure a test deliberately injects.)
+    failed or errored. A line beginning 'ERROR   ' inside the stream is
+    CrewAI narrating a failure a test deliberately injects.
 
 ===========================================================================
 (b) the last 200 lines of the run, verbatim
@@ -34,7 +37,7 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │  Flow Started                                                               │
 │  Name: ValidatorFlow                                                        │
-│  ID: 5d48364f-bb9a-46e7-834a-52581d3d0ed2                                   │
+│  ID: 86aec104-0af2-4b11-ba1c-b2a9540ff8c6                                   │
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -46,13 +49,7 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
-│                                                                             │
-│  Method: scope_idea                                                         │
-│  Status: Completed                                                          │
-│                                                                             │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+
 ┌────────────────────────── 🔄 Flow Method Running ───────────────────────────┐
 │                                                                             │
 │  Method: confirm_scope                                                      │
@@ -62,12 +59,18 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
 │                                                                             │
+│  Method: scope_idea                                                         │
+│  Status: Completed                                                          │
+│                                                                             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
+│                                                                             │
 │  Method: confirm_scope                                                      │
 │  Status: Completed                                                          │
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-
 ┌────────────────────────── 🔄 Flow Method Running ───────────────────────────┐
 │                                                                             │
 │  Method: route_scope                                                        │
@@ -78,6 +81,14 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 
 
 
+
+┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
+│                                                                             │
+│  Method: route_scope                                                        │
+│  Status: Completed                                                          │
+│                                                                             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ┌────────────────────────── 🔄 Flow Method Running ───────────────────────────┐
 │                                                                             │
 │  Method: research_sentiment                                                 │
@@ -85,10 +96,10 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
+┌────────────────────────── 🔄 Flow Method Running ───────────────────────────┐
 │                                                                             │
-│  Method: route_scope                                                        │
-│  Status: Completed                                                          │
+│  Method: research_market                                                    │
+│  Status: Running                                                            │
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -99,13 +110,6 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-┌────────────────────────── 🔄 Flow Method Running ───────────────────────────┐
-│                                                                             │
-│  Method: research_market                                                    │
-│  Status: Running                                                            │
-│                                                                             │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
 ┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
 │                                                                             │
 │  Method: research_market                                                    │
@@ -113,7 +117,6 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-
 ┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
 │                                                                             │
 │  Method: research_sentiment                                                 │
@@ -140,7 +143,6 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-
 ┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
 │                                                                             │
 │  Method: synthesize                                                         │
@@ -148,7 +150,6 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-
 ┌────────────────────────── 🔄 Flow Method Running ───────────────────────────┐
 │                                                                             │
 │  Method: review_verdict                                                     │
@@ -156,6 +157,9 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
+
+
+
 
 
 ┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
@@ -172,13 +176,6 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
-│                                                                             │
-│  Method: route_verdict                                                      │
-│  Status: Completed                                                          │
-│                                                                             │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
 ┌────────────────────────── 🔄 Flow Method Running ───────────────────────────┐
 │                                                                             │
 │  Method: write_report                                                       │
@@ -189,6 +186,13 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 ┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
 │                                                                             │
 │  Method: write_report                                                       │
+│  Status: Completed                                                          │
+│                                                                             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────── ✅ Flow Method Completed ──────────────────────────┐
+│                                                                             │
+│  Method: route_verdict                                                      │
 │  Status: Completed                                                          │
 │                                                                             │
 │                                                                             │
@@ -201,7 +205,6 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-
 
 
 
@@ -219,14 +222,14 @@ $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 │                                                                             │
 │  Flow Execution Completed                                                   │
 │  Name: ValidatorFlow                                                        │
-│  ID: 5d48364f-bb9a-46e7-834a-52581d3d0ed2                                   │
+│  ID: 86aec104-0af2-4b11-ba1c-b2a9540ff8c6                                   │
 │                                                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 .
 ----------------------------------------------------------------------
-Ran 2544 tests in 131.576s
+Ran 2544 tests in 173.360s
 
 OK (skipped=6)
 PY_EXIT=0

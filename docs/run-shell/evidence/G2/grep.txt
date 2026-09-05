@@ -1,16 +1,16 @@
 $ grep -rniE "Scoper|Market Analyst|Sentiment|Feasibility|Synthesist|Reporter|market_task|scope_idea|research_market|MarketCrew|demand|headroom" frontend/src/characters frontend/src/trace frontend/src/components/AgentCharacter.vue frontend/src/composables/useRunChoreography.ts
-# RV3 THIRD PASS, from the repo root, branch run-shell/cast at 601baef, 2026-09-05T17:24:30+08:00
+# RV3 FOURTH PASS, from the repo root, branch run-shell/cast at 8ae40ec, 2026-09-05T18:30:19+08:00
 
 frontend/src/composables/useRunChoreography.ts:137: * Deliberately generous rather than clever: `Scoper` passes on the capital and
 
 ---------------------------------------------------------------------------
-RV3's judgement of every hit  (third pass, 601baef)
+RV3's judgement of every hit  (fourth pass, 8ae40ec)
 ---------------------------------------------------------------------------
 
-1 hit, 0 product hits. Re-run and re-judged, not carried forward - round
-three rewrote 91 lines of frontend/src/trace/interpret.ts and 69 of
-frontend/src/characters/pip.ts, which is exactly when a role name gets
-typed into a table by accident.
+1 hit, 0 product hits. Re-run and re-judged for the fourth time, not carried
+forward - round five rewrote 61 lines of frontend/src/characters/pip.ts (the
+bun crest replaces the halo), which is exactly the kind of edit that types a
+role name into a shape table by accident.
 
   frontend/src/composables/useRunChoreography.ts:137
 
@@ -35,18 +35,18 @@ VERDICT: G2 PASS. No Idea Validator role, task name, crew name, node id or
 dimension name reaches the logic of frontend/src/characters/*,
 frontend/src/trace/*, AgentCharacter.vue or useRunChoreography.ts.
 
-Files covered by the grep (all of them, none excluded) at 601baef:
-     577 frontend/src/characters/pip.ts
+Files covered by the grep (all of them, none excluded) at 8ae40ec:
+     612 frontend/src/characters/pip.ts
      860 frontend/src/trace/interpret.ts
      106 frontend/src/trace/speech.ts
      197 frontend/src/components/AgentCharacter.vue
     1024 frontend/src/composables/useRunChoreography.ts
-    2764 total
+    2799 total
 
-Growth across the three passes, which is the reason to re-run rather than cite:
-  pip.ts                   526 -> 526 -> 577
-  interpret.ts             783 -> 783 -> 860
-  AgentCharacter.vue        92 -> 197 -> 197
-  useRunChoreography.ts    958 -> 1024 -> 1024
+Growth across the four passes, which is why this is re-run and not cited:
+  pip.ts                  526 -> 526 -> 577 -> 612
+  interpret.ts            783 -> 783 -> 860 -> 860
+  AgentCharacter.vue       92 -> 197 -> 197 -> 197
+  useRunChoreography.ts   958 -> 1024 -> 1024 -> 1024
 
 No test fixture was excluded, because the grep's paths contain no fixtures.

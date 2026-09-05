@@ -292,3 +292,22 @@ Two facts the pass measured rather than assumed:
   T2.1 no unit test can reach.
 
 **T2.2 PASS, third pass.**
+
+### Fourth pass, `8ae40ec`
+
+Re-checked. `frontend/src/trace/interpret.ts` is **byte-identical to the third
+pass** — `git diff 601baef..HEAD -- frontend/src/trace/` prints nothing — and the
+serializer's ladder has not changed on this branch at all
+(`git diff main...HEAD -- src/brief_crew/events/` is empty). All sixteen
+`FrameKind` values were re-enumerated from the package and every one still has a
+row.
+
+What round five changed around this table is the *rendering* of a row, not its
+sentence: `ChatRail.vue` grew 68 lines (the trace seam is now a drawn edge, the
+drawer scrolls) and `DialogueRail.vue` 4. The line each row carries is still
+`interpret.ts`'s, and `traceInterpretation.spec.ts` + `traceRow.spec.ts` cover it
+— the file pair this criterion cites runs **76 tests green**, and the browser
+assertion that the trace is one short human sentence per row
+(`cast.spec.ts:1183`) passes.
+
+**T2.2 PASS, fourth pass.**

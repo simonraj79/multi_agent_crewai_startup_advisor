@@ -1,6 +1,8 @@
 $ git log --format='%h %ad %s' --date=iso -- docs/run-shell/SHELL-SCOPE.md frontend/src/studio.css
-# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:25:00+08:00
+# RV3 FOURTH PASS, branch run-shell/cast at 8ae40ec, 2026-09-05T18:30:47+08:00
 
+8ae40ec 2026-09-05 18:19:48 +0800 fix(run-shell): the bun crest replaces the halo, the trace seam is a drawn edge, the drawer scrolls, the way back lives on the workflow well, and the sheet is isolated
+fec004d 2026-09-05 17:56:58 +0800 fix(shell): the report sheet and the control rail are opaque; the perf spec grades medians of alternating arms
 601baef 2026-09-05 17:19:27 +0800 fix(run-shell): the run console drops its four backdrop blurs, and T2.8 measures the console against a hidden-console control
 35bed5a 2026-09-05 16:53:24 +0800 fix(run-shell): round three - a shape cue on the error state, crests that carry identity at 32px, generic gate copy, readable score bars, a scrim at 390, and the trace reads as a story
 16f3be5 2026-09-05 15:55:37 +0800 fix(run-shell): round two - the frame budget, the last contrast rows, the compact trace row, and the specs that pinned the rowers
@@ -28,4 +30,5 @@ fd84f57 2026-09-05 14:25:50 +0800 feat(shell): a token layer the rails inherit, 
 
 T3.1 holds and cannot stop holding: the scope document's first commit
 precedes the first studio.css change on this branch by sixteen minutes and
-fifty seconds, and both are now three rounds of history back.
+fifty seconds. studio.css has been touched in four rounds since and the
+ORDER is a fact about the first two commits, which no later edit can alter.

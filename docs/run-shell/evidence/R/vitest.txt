@@ -1,19 +1,32 @@
 $ npx vitest run       # from frontend/
-# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:22:50+08:00
+# RV3 FOURTH PASS, branch run-shell/cast at 8ae40ec, 2026-09-05T18:49:41+08:00
 # vitest exit code: 0
-# 93 files / 1963 tests, all passed.
-#   pass 2 at 16f3be5: 93 files / 1936
-#   pass 1 at 27b256e: 92 files / 1926
-# Round three adds no spec FILE and 27 tests, in traceRow, traceInterpretation,
-# characterSystem, realVerdictFrameShape, dialogueRail and gateDerived.
+# 93 files / 1979 tests, all passed.
+#   pass 3 at 601baef: 93 / 1963
+#   pass 2 at 16f3be5: 93 / 1936
+#   pass 1 at 27b256e: 92 / 1926
+# Rounds four and five add no spec FILE and 16 tests.
 
 
  RUN  v4.1.11 D:/MultiAgentSystem/frontend
 
-warning: in the working copy of 'docs/run-shell/evidence/R/python.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'benchmarks/perf/canvas.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/G1/capture-notes.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/G1/run.ndjson', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/G2/grep.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/G3/reload-map.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/R/diff-stat.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/S/long-run.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/T1/data-layer-diff.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/T2/no-timers.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/T2/perf.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/T2/rowers-grep.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/T3/builder-visual.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/T3/contrast-rv3-rerun.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/T3/scope-order.txt', LF will be replaced by CRLF the next time Git touches it
 
  Test Files  93 passed (93)
-      Tests  1963 passed (1963)
-   Start at  17:22:32
-   Duration  8.71s (transform 39.04s, setup 0ms, import 69.95s, tests 37.65s, environment 109.86s)
+      Tests  1979 passed (1979)
+   Start at  18:45:34
+   Duration  10.83s (transform 52.21s, setup 0ms, import 94.41s, tests 46.29s, environment 133.66s)
 

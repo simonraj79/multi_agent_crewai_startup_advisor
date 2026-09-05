@@ -371,3 +371,92 @@ feedback"*, where the route's model is `GateReplyRequest{outcome, fields}` with
 Everything else in this document was re-checked against the new run and still
 holds as written.
 
+---
+
+## Re-captured at `8ae40ec`
+
+**`8ae40ece84a10e3b86ca222de462a6e29fcbdcfe`** — *"fix(run-shell): the bun crest
+replaces the halo, the trace seam is a drawn edge, the drawer scrolls, the way
+back lives on the workflow well, and the sheet is isolated"*. The sixth crest
+changed shape (my **Roster Architect** wears it), the trace and gate rows changed
+again, and the report sheet and rails are opaque, so the `16f3be5` captures were
+stale. Re-taken 2026-09-05 by RV2.
+
+Same method, with one change made deliberately: **`reuseExistingServer: false`**
+in the throwaway Playwright config, and `netstat`/`Get-NetTCPConnection` checked
+before starting (5274 and 8098 were both already free, nothing to stop). A reused
+Vite from the `16f3be5` pass would have served an old bundle and produced a
+capture that looked current and was not — which is the whole failure this
+re-capture exists to correct. Everything else is unchanged: :8098 `SYNTHETIC=1`
+backend, my own Vite on `E2E_UI_PORT=5274` / `E2E_API_TARGET=http://127.0.0.1:8098`
+(8099 and 5273 left to RV3), the CDP socket throttle for the mid-run still,
+1440×900 dark.
+
+`invented-flow.json` was re-posted **unchanged** and re-validated
+**`{"valid": true, "problems": []}`**, same $2.4016 static price. New backend
+process, so a new workflow id again.
+
+| | `16f3be5` | **re-capture at `8ae40ec`** |
+| --- | --- | --- |
+| Workflow id | `ug_b0126f9b` (graph `1c0d417e22a0c992`) | **`ug_f49b8f8c`** (graph `e06cbcf0f69a19e1`) |
+| Run id | `7e807a84-f9d2-4edc-a9e1-8411c702eda1` | **`eb8474ce-9aa0-454d-b1e4-625a254533d9`** |
+| Frames | 81 | **81**, `seq` 1→81 gapless, `WORKFLOW_END`, completed |
+| `midRunState` | working-after-gate | **working-after-gate** (`Draft the rota`) |
+| Node cards / trace rows | 12 / 15 | **12 / 15** |
+| Console errors | 0 | **0** |
+
+`details.agent_role` is unchanged: exactly the five invented roles, 5 frames each,
+no other value in the log, and the same 25-of-40 split (`llm` and `token` carry
+it; `node_state` and `edge_taken` do not).
+
+### Node ↔ trace seed check, repeated — still an exact match
+
+```
+node cards : handover briefer, locum cover planner, rest rules auditor,
+             roster architect, shift demand forecaster
+trace rows : the same five
+difference : none in either direction
+```
+
+10 of 15 rows carry a `trace-avatar`; the five without are the three run-level
+rows (**"Run"**) and the two gate rows (amber person marker) — identical to
+`16f3be5`, so the row restyle changed the seam and the spacing, not who gets a
+character.
+
+### Transitions
+
+**44**, `working 5 · speaking 15 · done 19 · blocked 5` — the same count as
+`16f3be5`. All five invented roles reach `working` and `speaking` and end `done`;
+`shift demand forecaster` and the gate node reach `blocked` while the gate is open.
+
+### The new crest, and one defect CLOSED
+
+**Roster Architect now wears the bun.** `bell/oval/smile/ring/c2` reads as a small
+knotted top rather than a floating halo, on the node card, on the phase-lane
+figure and in the trace. It is more distinct from Rest Rules Auditor's antenna
+than the halo was, and it no longer reads as a haloed figure, which the halo
+unavoidably did.
+
+> The cross-flow near-collision I flagged after the first pass — Roster Architect
+> against Copy Desk's Localisation Lead, four of five parts shared including the
+> colour — is a **shape** change, not a **hash** change, so both figures moved
+> together and the pair is still four-of-five identical. Still cosmetic, still
+> W2's call; recorded so it is not assumed fixed by this commit.
+
+**CLOSED: the gate's read-only block no longer speaks Idea Validator.** The defect
+I raised at `16f3be5` — `GateCard.vue` hard-coding *"COMPUTED BY THE VALIDATOR /
+Recomputed by the server from the scores and the evidence behind them"* on a
+clinic rota — is gone. `graph-at-gate.png` now reads **"COMPUTED BY THE RUN"** over
+*"Recomputed by the server from what produced it; edit the inputs above and it is
+recomputed."* Nothing in that panel names a product any more.
+
+**STILL OPEN: the gate summary tells the operator to send the wrong key.** The
+same capture still shows *"Reply with JSON: decision=approve, or decision=revise
+plus feedback"* appended to my own gate message by the server, while
+`GateReplyRequest` is `{outcome, fields}` with `extra="forbid"`. First-pass defect
+2, unchanged at this HEAD.
+
+Everything else in this document was re-checked against the new run and still
+holds as written. The G4 sheet was **not** re-rendered by me this pass — W2
+regenerated it from `evidence/G4/g1-roles.json`.
+

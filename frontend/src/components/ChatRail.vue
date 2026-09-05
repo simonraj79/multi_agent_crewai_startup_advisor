@@ -1,18 +1,62 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Bot, ChevronLeft, ChevronRight, Cpu, Wrench } from 'lucide-vue-next'
+import { computed, nextTick, ref, watch } from 'vue'
+import { Bot, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import type { ChatEntry } from '../types/studio'
+
+/**
+ * The trace: one short line per thing that happened, and nothing else.
+ *
+ * It used to render `frame.message` verbatim, so the rail read as the
+ * framework's own log - "persist started", "write_report to persist",
+ * "ValidatorFlow completed", a guardrail's `{"valid":true,"feedback":null}`
+ * shown as though somebody had said it, and `5168 in · 3994 out` on every row.
+ * `trace/interpret.ts` now decides what a row says; this component decides how
+ * it looks, and the two are separate so the vocabulary can be asserted over a
+ * real frame log without mounting anything.
+ *
+ * NOTHING WAS DROPPED. Every row carries a `<details>` disclosure, collapsed by
+ * default, holding the framework's own sentence, the whole `details` payload,
+ * the model, the token counts and the duration. The raw is one click away
+ * rather than in the way - which is the actual difference between a trace and
+ * a dump.
+ */
 
 const props = defineProps<{
   entries: ChatEntry[]
   collapsed: boolean
+  /**
+   * Node id -> character index, so a trace avatar wears the same colour as the
+   * node's own medallion. Optional: the rail renders a neutral placeholder
+   * without it, and the cast work replaces the placeholder in place.
+   */
+  characterOf?: (nodeId: string) => number
 }>()
 
 const emit = defineEmits<{ toggle: [] }>()
 const list = ref<HTMLElement | null>(null)
-const expanded = ref(new Set<string>())
-const now = ref(Date.now())
-let timer = 0
+
+/**
+ * How many rows are in the DOM at once.
+ *
+ * A run of 119+ frames is the criterion (T2.8, S3) and a long one goes well
+ * past it, so the list is windowed rather than unbounded: the newest 200 rows
+ * render, everything older folds behind one button that expands it when asked.
+ * 200 and not 40, deliberately - the whole point of the trace is that a reader
+ * can scroll back through what happened, and a fold that fires during an
+ * ordinary run would hide the narrative rather than bound the DOM. Paired with
+ * `content-visibility: auto` on the row, which lets the browser skip layout and
+ * paint for the rows scrolled out of view; between them a 500-frame run costs
+ * what a 200-row list costs.
+ */
+const WINDOW_ROWS = 200
+
+const showAll = ref(false)
+const hiddenCount = computed(() =>
+  showAll.value ? 0 : Math.max(0, props.entries.length - WINDOW_ROWS),
+)
+const shown = computed(() =>
+  hiddenCount.value > 0 ? props.entries.slice(-WINDOW_ROWS) : props.entries,
+)
 
 watch(
   () => props.entries.length,
@@ -23,26 +67,28 @@ watch(
   },
 )
 
-watch(
-  () => props.entries.some((entry) => entry.calls.some((call) => call.active)),
-  (hasActiveCall) => {
-    window.clearInterval(timer)
-    if (hasActiveCall) timer = window.setInterval(() => { now.value = Date.now() }, 100)
-  },
-  { immediate: true },
-)
-
-onBeforeUnmount(() => window.clearInterval(timer))
-
-function toggleEntry(id: string): void {
-  const next = new Set(expanded.value)
-  next.has(id) ? next.delete(id) : next.add(id)
-  expanded.value = next
+/** Two letters for the placeholder disc, from the identity the row resolved. */
+function initials(identity: string): string {
+  const words = identity.trim().split(/\s+/).filter(Boolean)
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase()
+  return (identity.slice(0, 2) || '??').toUpperCase()
 }
 
-function callDuration(startedAt: number, durationMs?: number): string {
-  const elapsedMs = durationMs ?? Math.max(0, now.value - startedAt)
-  return `${(elapsedMs / 1000).toFixed(1)}s`
+function avatarStyle(entry: ChatEntry): Record<string, string> {
+  const index = entry.nodeId && props.characterOf ? props.characterOf(entry.nodeId) : null
+  return index === null ? {} : { '--character-color': `var(--character-${index})` }
+}
+
+function characterIndexOf(entry: ChatEntry): string | undefined {
+  if (!entry.nodeId || !props.characterOf) return undefined
+  return String(props.characterOf(entry.nodeId))
+}
+
+/** The line's own numbers, for the disclosure. Never for the row. */
+function tokenNote(entry: ChatEntry): string {
+  const tokens = entry.raw.tokens
+  if (!tokens) return ''
+  return `${tokens.prompt.toLocaleString()} in · ${tokens.completion.toLocaleString()} out`
 }
 </script>
 
@@ -70,7 +116,7 @@ function callDuration(startedAt: number, durationMs?: number): string {
 
     <!--
       The dialogue rail, mounted HERE rather than under the canvas.
-      
+
       It was a fifth row of `.graph-workspace` first, and the measurement is why
       it is not: opening on the first utterance took the Vue Flow container from
       626px to 462px, mid-run, on the exact canvas the gauntlet's captures are
@@ -96,41 +142,74 @@ function callDuration(startedAt: number, durationMs?: number): string {
         <span>Run activity will appear here.</span>
       </div>
 
+      <button
+        v-if="hiddenCount > 0"
+        class="trace-earlier"
+        type="button"
+        data-testid="trace-earlier"
+        @click="showAll = true"
+      >
+        {{ hiddenCount }} earlier {{ hiddenCount === 1 ? 'line' : 'lines' }}
+      </button>
+
       <article
-        v-for="entry in entries"
+        v-for="entry in shown"
         :key="entry.id"
         class="trace-entry"
-        :class="[`is-${entry.variant}`, { 'is-system': entry.variant !== 'agent' }]"
+        data-testid="trace-entry"
+        :class="[`is-${entry.variant}`, { 'is-system': !entry.identity }]"
+        :data-node="entry.nodeId"
+        :data-identity="entry.identity"
+        :data-tone="entry.tone"
       >
-        <div v-if="entry.variant === 'agent'" class="trace-avatar" aria-hidden="true">
-          {{ entry.actor.slice(0, 2).toUpperCase() }}
-        </div>
+        <!--
+          The character's slot. It is a 32px disc wearing the node's own colour
+          today and the cast's character tomorrow: `data-character-seed` is the
+          identity string the interpretation layer resolved, which is the same
+          seed the node's medallion is drawn from, so the tie-in criterion is a
+          string comparison rather than a screenshot.
+        -->
+        <span
+          v-if="entry.identity"
+          class="trace-avatar"
+          data-testid="trace-avatar"
+          :data-character-seed="entry.identity"
+          :data-character="characterIndexOf(entry)"
+          :style="avatarStyle(entry)"
+          aria-hidden="true"
+        >{{ initials(entry.identity) }}</span>
+
         <div class="trace-content">
           <div class="trace-meta">
             <strong>{{ entry.actor }}</strong>
             <time :datetime="entry.timestamp">{{ entry.timestamp }}</time>
           </div>
           <div class="trace-bubble">
-            <p :class="{ 'is-clamped': entry.message.length > 180 && !expanded.has(entry.id) }">
-              {{ entry.message }}
-            </p>
-            <button
-              v-if="entry.message.length > 180"
-              class="text-button"
-              type="button"
-              :aria-expanded="expanded.has(entry.id)"
-              @click="toggleEntry(entry.id)"
-            >
-              {{ expanded.has(entry.id) ? 'Show less' : 'Show more' }}
-            </button>
-            <div v-if="entry.calls.length" class="call-list">
-              <span v-for="call in entry.calls" :key="call.id" class="call-chip" :class="{ 'is-active': call.active }">
-                <Wrench v-if="call.kind === 'tool'" :size="12" aria-hidden="true" />
-                <Cpu v-else :size="12" aria-hidden="true" />
-                {{ call.label }}
-                <span>{{ callDuration(call.startedAt, call.durationMs) }}</span>
-              </span>
-            </div>
+            <p data-testid="trace-line">{{ entry.message }}</p>
+
+            <!--
+              Collapsed by default, and a native `<details>` rather than a
+              toggled div: it is keyboard reachable, it is announced as an
+              expandable region, and it costs no state in this component - which
+              matters when 200 of them are in the DOM.
+            -->
+            <details class="trace-raw">
+              <summary>Details</summary>
+              <dl class="trace-raw-facts">
+                <div><dt>Event</dt><dd>{{ entry.raw.kind }} · {{ entry.raw.eventType }}</dd></div>
+                <div><dt>Sequence</dt><dd>{{ entry.raw.seq }}</dd></div>
+                <div v-if="entry.raw.model"><dt>Model</dt><dd>{{ entry.raw.model }}</dd></div>
+                <div v-if="entry.raw.tool"><dt>Tool</dt><dd>{{ entry.raw.tool }}</dd></div>
+                <div v-if="entry.raw.durationMs !== undefined">
+                  <dt>Took</dt><dd>{{ entry.raw.durationMs }}ms</dd>
+                </div>
+                <div v-if="tokenNote(entry)" data-testid="trace-tokens">
+                  <dt>Tokens</dt><dd>{{ tokenNote(entry) }}</dd>
+                </div>
+              </dl>
+              <p class="trace-raw-message">{{ entry.raw.message }}</p>
+              <pre data-testid="trace-raw">{{ entry.raw.details }}</pre>
+            </details>
           </div>
         </div>
       </article>
@@ -192,9 +271,51 @@ function callDuration(startedAt: number, durationMs?: number): string {
 
 .rail-empty { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); font-size: var(--fs-13); }
 
-.trace-entry { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 9px; margin-bottom: 13px; }
+.trace-earlier {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 6px 8px;
+  color: var(--text-muted);
+  font: 500 var(--fs-11)/1.3 var(--font-mono);
+  background: var(--surface-well);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.trace-earlier:hover { color: var(--text-title); }
+.trace-earlier:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+
+/*
+ * `content-visibility` is what makes a long run cheap: the browser skips
+ * layout and paint for a row scrolled out of view, and `contain-intrinsic-size`
+ * gives it a height to reserve so the scrollbar does not jump as rows come back
+ * into view. The window above bounds the node COUNT; this bounds the work per
+ * node.
+ */
+.trace-entry {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 9px;
+  margin-bottom: 13px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 58px;
+}
+
 .trace-entry.is-system { display: block; }
-.trace-avatar { display: grid; width: 34px; height: 34px; place-items: center; color: #101a18; font: 800 10px/1 var(--font-mono); background: var(--gradient-brand); border-radius: 50%; }
+
+.trace-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: var(--bg-node);
+  font: 800 10px/1 var(--font-mono);
+  background: var(--character-color, var(--gradient-brand));
+  border-radius: var(--r-full);
+}
+
 .trace-content { min-width: 0; }
 .trace-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 5px; }
 .trace-meta strong { overflow: hidden; color: var(--text-40); font-size: var(--fs-11); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -205,17 +326,42 @@ function callDuration(startedAt: number, durationMs?: number): string {
 .is-warning .trace-bubble { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 .is-error .trace-bubble { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
 .trace-bubble p { margin: 0; overflow-wrap: anywhere; }
-.trace-bubble p.is-clamped { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent); }
 
-.text-button { margin-top: 7px; padding: 0; color: var(--link-cyan); background: none; border: 0; font: 600 var(--fs-11)/1.3 var(--font-body); cursor: pointer; }
-.call-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-.call-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 4px 6px; color: var(--text-muted); font: 500 10px/1.2 var(--font-mono); background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-default); border-radius: var(--r-sm); }
-.call-chip.is-active { color: var(--accent-cyan); border-color: rgba(153, 234, 249, 0.35); animation: chip-pulse 1.4s ease-in-out infinite; }
+.trace-raw { margin-top: 7px; }
+.trace-raw > summary {
+  color: var(--text-40);
+  font: 600 var(--fs-11)/1.3 var(--font-body);
+  cursor: pointer;
+  list-style: none;
+}
+.trace-raw > summary::-webkit-details-marker { display: none; }
+.trace-raw > summary::before { content: '▸ '; }
+.trace-raw[open] > summary::before { content: '▾ '; }
+.trace-raw > summary:hover { color: var(--text-muted); }
+.trace-raw > summary:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
 
-@keyframes chip-pulse { 50% { opacity: 0.55; } }
+.trace-raw-facts { display: grid; gap: 2px; margin: 7px 0 0; }
+.trace-raw-facts > div { display: flex; gap: 6px; }
+.trace-raw-facts dt { flex: 0 0 62px; color: var(--text-40); font: 500 10px/1.4 var(--font-mono); }
+.trace-raw-facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text-muted); font: 400 10px/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.trace-raw-message { margin: 7px 0 0 !important; color: var(--text-40); font: 400 10px/1.4 var(--font-mono); }
+
+.trace-raw pre {
+  max-height: 220px;
+  margin: 6px 0 0;
+  overflow: auto;
+  padding: 7px 8px;
+  color: var(--text-muted);
+  font: 400 10px/1.45 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-rail,
-  .call-chip.is-active { transition: none; animation: none; }
+  .chat-rail { transition: none; }
 }
 </style>

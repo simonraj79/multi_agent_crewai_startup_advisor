@@ -280,7 +280,9 @@ export class StudioApi {
 
   async getGraph(workflowId = 'idea-validator'): Promise<GraphDescriptor> {
     if (this.mode === 'live') {
-      return fetchJson<GraphDescriptor>(`/api/workflows/${encodeURIComponent(workflowId)}/graph`)
+      return normalizeGraph(
+        await fetchJson<GraphDescriptor>(`/api/workflows/${encodeURIComponent(workflowId)}/graph`),
+      )
     }
     return structuredClone(MOCK_GRAPH)
   }
@@ -765,6 +767,33 @@ export class StudioApi {
       }, elapsed)
       run.timers.push(timer)
     }
+  }
+}
+
+/**
+ * `null` is not `undefined`, and the difference reaches the screen.
+ *
+ * `GraphNode.crew`, `.agent_role` and `.task_name` are declared `str | None` on
+ * the server (`service/models.py:98-100`), so every node that names no crew
+ * arrives carrying three explicit `null`s. `GraphNodeDefinition` types them as
+ * optional strings, and a `null` slipping through would satisfy nothing that
+ * tests `typeof x === 'string'` while still being truthy to anything that does
+ * not - the exact shape of bug where an agent's identity silently becomes the
+ * word "null" on a card. Normalising once, here, is cheaper than defending in
+ * every reader.
+ *
+ * Nothing else about the descriptor is touched: positions, kinds and edges are
+ * the server's and are passed through as they arrive.
+ */
+function normalizeGraph(descriptor: GraphDescriptor): GraphDescriptor {
+  return {
+    ...descriptor,
+    nodes: (descriptor.nodes ?? []).map((node) => ({
+      ...node,
+      crew: node.crew ?? undefined,
+      agent_role: node.agent_role ?? undefined,
+      task_name: node.task_name ?? undefined,
+    })),
   }
 }
 

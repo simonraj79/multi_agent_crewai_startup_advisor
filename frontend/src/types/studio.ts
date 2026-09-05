@@ -1,3 +1,7 @@
+import type { TraceRaw, TraceTone } from '../trace/interpret'
+
+export type { TraceRaw, TraceTone }
+
 export type NodeRunState = 'idle' | 'running' | 'waiting' | 'completed' | 'error'
 
 export type RunStatus =
@@ -41,6 +45,22 @@ export type FrameKind =
   // at all.
   | 'verdict'
   | 'metrics'
+  /**
+   * A task guardrail's verdict on an agent's output.
+   *
+   * Its own kind on the server (`events/models.py::FrameKind.GUARDRAIL`) since
+   * the C6 work, and absent from this union until the interpretation layer
+   * needed to narrate one - so a rejected output, which is the *cause* of the
+   * retry that doubles a run's cost, was reaching the client as a kind it did
+   * not know it could receive.
+   */
+  | 'guardrail'
+  /**
+   * The agent's own thought/action/observation line
+   * (`FrameKind.REASONING`). The highest-volume kind there is, which is why
+   * the trace coalesces a burst of them into one row.
+   */
+  | 'reasoning'
   | 'error'
 
 export type FrameLevel = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR'
@@ -73,6 +93,25 @@ export interface GraphNodeDefinition {
   model?: string
   tool?: string
   position: { x: number; y: number }
+
+  /**
+   * Who runs at this node, as the SERVER already declares it
+   * (`service/models.py::GraphNode.crew` / `.agent_role` / `.task_name`).
+   *
+   * These have been on the wire since the graph descriptor existed and no
+   * client read them, which is why the trace could only ever call an agent by
+   * the label on its card. `agent_role` is the identity the interpretation
+   * layer and the character system are both seeded from, and it is the ONLY
+   * identity a synthetic run has: that runner emits no `agent` frame, so
+   * `details.agent_role` never arrives and this is the whole ladder.
+   *
+   * Optional because a published builder graph may declare none of them, and
+   * because `null` on the wire is normalised to `undefined` on the way in -
+   * see `studioApi.normalizeGraph`.
+   */
+  crew?: string
+  agent_role?: string
+  task_name?: string
 }
 
 export interface GraphEdgeDefinition {
@@ -161,15 +200,42 @@ export interface CallChip {
   active: boolean
 }
 
+/**
+ * One row of the trace, as the rail renders it.
+ *
+ * `message` used to be `frame.message` verbatim - the framework's own sentence
+ * about itself. It is now the interpreted line from `trace/interpret.ts`, and
+ * the framework's sentence has moved into `raw.message` behind the row's
+ * disclosure. Nothing was dropped; the row simply stopped being addressed to
+ * the framework.
+ *
+ * `actor`, `variant` and `calls` are unchanged so the builder's test panel
+ * (`components/builder/test/RunLog.vue`) keeps working against the same shape.
+ */
 export interface ChatEntry {
   id: string
   seq: number
   nodeId?: string
   actor: string
+  /** The interpreted line. One sentence, at most `MAX_TRACE_LINE_CHARS`. */
   message: string
   timestamp: string
   variant: 'agent' | 'system' | 'warning' | 'error'
   calls: CallChip[]
+  /**
+   * The agent identity this row is about, which is also the character seed
+   * (`docs/run-shell/DEFINITION-OF-DONE.md` T2.6). Empty when the row speaks
+   * for the run rather than for an agent.
+   */
+  identity: string
+  /** `you` is a row addressed to the operator - a gate waiting on them. */
+  tone: TraceTone
+  /** Everything the row is not saying, for the per-row disclosure. */
+  raw: TraceRaw
+  /** How a later frame finds this row again. See `trace/interpret.ts`. */
+  coalesceKey?: string
+  coalesceScope?: 'run' | 'tail'
+  precedence?: number
 }
 
 /**

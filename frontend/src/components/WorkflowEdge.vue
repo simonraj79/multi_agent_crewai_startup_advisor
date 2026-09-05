@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from '@vue-flow/core'
 import HandoffToken from './HandoffToken.vue'
 import type { StudioEdgeData } from '../composables/useValidatorRun'
+import { humaniseCode } from '../utils/humanise'
 
 const props = defineProps<EdgeProps<StudioEdgeData>>()
 
@@ -10,6 +11,18 @@ const emit = defineEmits<{
   /** The token finished its walk. Carries the edge id (plan 11 D3). */
   handoffDone: [string]
 }>()
+
+/**
+ * The edge chip is the router's own event name: `service/graph.py` sets
+ * `label = edge["router_event"]`, so `scope_approved` and `verdict_revise`
+ * were painted on the canvas verbatim. The id stays in `data-code` - it is
+ * what an E2E assertion and a bug report both want - and the reader gets
+ * words.
+ */
+const chip = computed(() => {
+  const raw = props.data?.label
+  return typeof raw === 'string' && raw.trim() ? humaniseCode(raw) : ''
+})
 
 const route = computed(() => getBezierPath({
   sourceX: props.sourceX,
@@ -42,9 +55,10 @@ const route = computed(() => getBezierPath({
     <EdgeLabelRenderer v-if="data?.label">
       <span
         class="edge-label"
+        :data-code="data.label"
         :style="{ transform: `translate(-50%, -50%) translate(${route[1]}px, ${route[2]}px)` }"
       >
-        {{ data.label }}
+        {{ chip }}
       </span>
     </EdgeLabelRenderer>
   </g>

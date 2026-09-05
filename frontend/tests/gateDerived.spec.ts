@@ -67,32 +67,84 @@ describe('GateCard separates what an edit reaches from what it does not', () => 
     expect(wrapper.findAll('input')).toHaveLength(0)
     expect(wrapper.findAll('textarea')).toHaveLength(1)
     expect(wrapper.findAll('.gate-field')).toHaveLength(1)
-    expect(wrapper.get('.gate-field span').text()).toBe('feedback')
+    expect(wrapper.get('.gate-field span').text()).toBe('Feedback')
   })
 
   it('shows every derived value, and none of them inside a form control', () => {
     const wrapper = mountGate(verdictGate())
     const block = wrapper.get('.gate-derived')
 
-    for (const item of VERDICT_DERIVED) {
-      expect(block.text()).toContain(item.key.replaceAll('_', ' '))
-      expect(block.text()).toContain(item.value)
-    }
-    // The whole basis for the decision is legible...
-    expect(block.text()).toContain('NEEDS_WORK')
+    // Every key is still named, now in words rather than as a shouted Python
+    // field: `MEDIAN MARKET SOURCE AGE MONTHS` read as a constant name even
+    // after the underscores came out.
+    expect(block.findAll('dt').map((node) => node.attributes('data-key'))).toEqual(
+      VERDICT_DERIVED.map((item) => item.key),
+    )
+    expect(block.text()).toContain('Composite score')
+    expect(block.text()).toContain('Confidence band')
+
+    // The whole basis for the decision is legible - and legible now means
+    // English. `NEEDS_WORK` reached an operator at the moment they were asked
+    // to approve or revise it.
+    expect(block.text()).toContain('Needs work')
+    expect(block.text()).not.toContain('NEEDS_WORK')
+    expect(block.text()).toContain('High')
     expect(block.text()).toContain('5.0')
     // ...and none of it is typeable.
     expect(block.findAll('input, textarea, select')).toHaveLength(0)
     expect(block.text()).toContain('could not change them')
   })
 
-  it('renders json values as blocks and scalars inline', () => {
+  it('decodes a json value into labelled rows rather than dumping it', () => {
+    // WAS: two `<pre>` blocks, one of them the literal `[]`. A `<pre>` is what
+    // this card used to do with every structured value, and it is what put
+    // `FATAL FLOORS / []` in front of the operator.
     const wrapper = mountGate(verdictGate())
-    const blocks = wrapper.findAll('.gate-derived pre')
 
-    expect(blocks).toHaveLength(2)
-    expect(blocks[0].text()).toContain('"score": 2')
-    expect(blocks[1].text()).toBe('[]')
+    expect(wrapper.findAll('.gate-derived pre')).toHaveLength(0)
+    const demand = wrapper.get('.gate-derived dd')
+    expect(demand.text()).toContain('Score')
+    expect(demand.text()).toContain('2')
+    // `evidence_thin: true` is a yes/no question, and now reads as one.
+    expect(demand.text()).toContain('Evidence thin')
+    expect(demand.text()).toContain('yes')
+  })
+
+  it('says none for an empty list and an em dash for a null', () => {
+    const wrapper = mountGate(
+      verdictGate({
+        derived: [
+          { key: 'fatal_floors', kind: 'json', value: '[]' },
+          { key: 'decision_reason', kind: 'text', value: 'null' },
+          { key: 'provisional', kind: 'text', value: 'false' },
+        ],
+      }),
+    )
+    const values = wrapper.findAll('.gate-derived dd').map((node) => node.text())
+
+    expect(values).toEqual(['none', '—', 'no'])
+  })
+
+  it('puts a value it will not flatten behind a collapsed disclosure', () => {
+    // One level of key: value is a scorecard; two is a structure, and a
+    // structure belongs where a developer can still reach it and an operator
+    // is not made to read it.
+    const wrapper = mountGate(
+      verdictGate({
+        derived: [
+          {
+            key: 'branch_detail',
+            kind: 'json',
+            value: '{\n  "market": {"sources": 3},\n  "ok": true\n}',
+          },
+        ],
+      }),
+    )
+    const details = wrapper.get('.gate-derived details')
+
+    expect(details.attributes('open')).toBeUndefined()
+    expect(details.text()).toContain('"sources": 3')
+    expect(wrapper.get('.derived-pairs').text()).toContain('Ok')
   })
 
   it('sends back only the fields it was offered', async () => {
@@ -123,9 +175,9 @@ describe('GateCard separates what an edit reaches from what it does not', () => 
     expect(wrapper.findAll('textarea')).toHaveLength(1)
     // Every underscore, not just the first: `target_user`, not `target user_`.
     expect(wrapper.findAll('.gate-field span').map((node) => node.text())).toEqual([
-      'category',
-      'target user',
-      'feedback',
+      'Category',
+      'Target user',
+      'Feedback',
     ])
   })
 

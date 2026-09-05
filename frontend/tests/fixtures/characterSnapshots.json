@@ -1,0 +1,152 @@
+{
+  "command": "cd frontend && node scripts/character-snapshots.mjs",
+  "generatedBy": "scripts/character-snapshots.mjs, plain Node, importing src/characters/pip.ts",
+  "assertedBy": "tests/characterDeterminism.spec.ts, Vitest under jsdom through Vite",
+  "hashOf": "sha256(pipSvg(identityFor(role).key, { size: 32, state: 'idle' })), utf8",
+  "fallbackNodeId": "n7_second_pass",
+  "note": "A mismatch is not a broken test. It means a character changed, and every screenshot, reload and running node changed with it. Regenerate only on purpose, and say so in the commit.",
+  "snapshots": {
+    "Scoper": "47b7e772933d4cbbddad42acf4abe94e766e9fd07dd3e21beb72b69a012f6bf0",
+    "Market Analyst": "33b875e30fd1d5a69c1edb135d64c80d8fa3c99435d6d3ef325ec2d39162514a",
+    "Sentiment Analyst": "6a6e720bea6536d89e19c0765f6c14dce2430f99e009f3fdd7d81fb3db25bfdb",
+    "Feasibility Analyst": "b4f3d0cf0a4ead35fa082b758e26d4a4c8bc158ed29232c2a43e481dd16773ac",
+    "Synthesist": "86fd8c8e13cd0c76a18ee9ba181a851d6036b830ed785cae187e665852c6d8cf",
+    "Reporter": "0c00ab4a5d0aceee96153699896d12df5c48f093c530f4c8a62a3a01c377f9e8",
+    "Researcher": "01019e10487b1a822dbaf72ff8e1a9b40f78db73f2afed59a95729e276896edb",
+    "Analyst": "ef888d27fb3892d645e0ebbf207bde6396b02f52a210e6c9ba32fecbea84855d",
+    "Writer": "c4eff4def802bcd2407847dbb57c095c6e7590727e79e42db94e199e19b80a4b",
+    "Tone Coach": "2d9ff9f2663b6b732aaa1d237ba4574ddc4943d2fc6ac9d3e0ca0c75976cb31b",
+    "Fact Checker": "a68eb4e16945be8f93e1862878d11ea860eb2ca712b5da9b46bae6c4c443e0b8",
+    "Localisation Lead": "6e7dc4870d294274d24c0c5b8bf4e0ca8ae79a9ff075e9418d41d9c0fddd1bcb",
+    "Pricing Strategist": "fe3c781e9b94c418a5174efc890f236d51b0c8387411617d7041e3be8ca07edd",
+    "  MARKET   ANALYST ": "33b875e30fd1d5a69c1edb135d64c80d8fa3c99435d6d3ef325ec2d39162514a",
+    "market-analyst": "33b875e30fd1d5a69c1edb135d64c80d8fa3c99435d6d3ef325ec2d39162514a",
+    "Sentiment Analysts": "0d9474521b5107737479ce92f824b96fdc3f6b34e3f38404cb0ac14d0cc0af99",
+    "Résumé Writer": "b1654c01c82eade18cbd0d2caf6bbfd48f68f8e5faaa0e92d9ff4f9b66ac682b",
+    "Resume Writer": "b1654c01c82eade18cbd0d2caf6bbfd48f68f8e5faaa0e92d9ff4f9b66ac682b",
+    "Senior Analyst": "8fcce59be4aae25ba083804494519ed66a680815290448009ea641c290ab7a72",
+    "": "b09e8a1a9f74fbef1f8d518f42c4c3976412920f937c2d7c0b77caa05fdbef51"
+  },
+  "diagnostics": {
+    "Scoper": {
+      "seed": "scoper",
+      "named": true,
+      "parts": "bell/lens/cat-w/fin/c12",
+      "bytes": 1634
+    },
+    "Market Analyst": {
+      "seed": "market analyst",
+      "named": true,
+      "parts": "pebble/oval/cat-w/antenna/c8",
+      "bytes": 1433
+    },
+    "Sentiment Analyst": {
+      "seed": "sentiment analyst",
+      "named": true,
+      "parts": "pebble/lens/smile/antenna/c5",
+      "bytes": 1617
+    },
+    "Feasibility Analyst": {
+      "seed": "feasibility analyst",
+      "named": true,
+      "parts": "bean/lens/oh/curl/c5",
+      "bytes": 1622
+    },
+    "Synthesist": {
+      "seed": "synthesist",
+      "named": true,
+      "parts": "pebble/lens/oh/antenna/c12",
+      "bytes": 1602
+    },
+    "Reporter": {
+      "seed": "reporter",
+      "named": true,
+      "parts": "bell/lens/oh/sprout/c1",
+      "bytes": 1598
+    },
+    "Researcher": {
+      "seed": "researcher",
+      "named": true,
+      "parts": "drop/lens/smile/ears/c12",
+      "bytes": 1634
+    },
+    "Analyst": {
+      "seed": "analyst",
+      "named": true,
+      "parts": "drop/square/cat-w/ring/c2",
+      "bytes": 1447
+    },
+    "Writer": {
+      "seed": "writer",
+      "named": true,
+      "parts": "bell/oval/smile/sprout/c7",
+      "bytes": 1414
+    },
+    "Tone Coach": {
+      "seed": "tone coach",
+      "named": true,
+      "parts": "pebble/lens/smile/sprout/c8",
+      "bytes": 1574
+    },
+    "Fact Checker": {
+      "seed": "fact checker",
+      "named": true,
+      "parts": "drop/round/cat-w/antenna/c5",
+      "bytes": 1444
+    },
+    "Localisation Lead": {
+      "seed": "localisation lead",
+      "named": true,
+      "parts": "bell/square/smile/ring/c2",
+      "bytes": 1434
+    },
+    "Pricing Strategist": {
+      "seed": "pricing strategist",
+      "named": true,
+      "parts": "bell/lens/cat-w/antenna/c10",
+      "bytes": 1672
+    },
+    "  MARKET   ANALYST ": {
+      "seed": "market analyst",
+      "named": true,
+      "parts": "pebble/oval/cat-w/antenna/c8",
+      "bytes": 1433
+    },
+    "market-analyst": {
+      "seed": "market analyst",
+      "named": true,
+      "parts": "pebble/oval/cat-w/antenna/c8",
+      "bytes": 1433
+    },
+    "Sentiment Analysts": {
+      "seed": "sentiment analysts",
+      "named": true,
+      "parts": "bean/oval/smile/antenna/c2",
+      "bytes": 1469
+    },
+    "Résumé Writer": {
+      "seed": "resume writer",
+      "named": true,
+      "parts": "bell/lens/smile/sprout/c10",
+      "bytes": 1615
+    },
+    "Resume Writer": {
+      "seed": "resume writer",
+      "named": true,
+      "parts": "bell/lens/smile/sprout/c10",
+      "bytes": 1615
+    },
+    "Senior Analyst": {
+      "seed": "senior analyst",
+      "named": true,
+      "parts": "bell/oval/smile/fin/c4",
+      "bytes": 1419
+    },
+    "": {
+      "seed": "n7 second pass",
+      "named": false,
+      "parts": "drop/lens/smile/ring/c4",
+      "bytes": 1613
+    }
+  }
+}

@@ -11,6 +11,7 @@ import { computed, ref, watch } from 'vue'
 import { Download, History, LoaderCircle, RefreshCw } from 'lucide-vue-next'
 import type { RunHistoryEntry } from '../types/studio'
 import { studioApi } from '../services/studioApi'
+import { runStatusDisplay } from '../data/runStatusDisplay'
 
 const props = defineProps<{
   /**
@@ -101,6 +102,11 @@ function when(value: string): string {
   return Number.isNaN(parsed.getTime()) ? '' : formatter.format(parsed)
 }
 
+/** Words and a tone for a run status, from the one shared table. */
+function status(value: string) {
+  return runStatusDisplay(value)
+}
+
 function money(value: number): string {
   if (!value) return ''
   // Below a tenth of a cent "$0.00" is a lie of rounding; say "<$0.01".
@@ -144,7 +150,15 @@ const isEmpty = computed(() => loaded.value && !loading.value && runs.value.leng
         <div class="run-history-body">
           <span class="run-history-label">{{ run.label || run.run_id.slice(0, 8) }}</span>
           <span class="run-history-meta">
-            <span class="run-history-status" :class="`is-${run.status}`">{{ run.status }}</span>
+            <!-- One vocabulary, shared with the status rail. This row used to
+                 render the UN-normalised `BackendRunStatus`, so the same run
+                 read `failed` here and `error` one panel over, and
+                 `cancelling` here where the rail said `Stopping`. -->
+            <span
+              class="run-history-status"
+              :class="`is-tone-${status(run.status).tone}`"
+              :title="status(run.status).hint"
+            >{{ status(run.status).label }}</span>
             <span>{{ when(run.created_at) }}</span>
             <span v-if="money(run.cost_usd)">{{ money(run.cost_usd) }}</span>
           </span>
@@ -258,10 +272,11 @@ const isEmpty = computed(() => loaded.value && !loading.value && runs.value.leng
   text-transform: uppercase;
 }
 
-.run-history-status.is-completed { color: var(--accent-mint); }
-.run-history-status.is-failed { color: var(--err-text); }
-.run-history-status.is-waiting { color: var(--warn-text); }
-.run-history-status.is-running { color: var(--accent-cyan); }
+.run-history-status.is-tone-done { color: var(--accent-mint); }
+.run-history-status.is-tone-failed { color: var(--err-text); }
+.run-history-status.is-tone-stopped { color: var(--err-text); }
+.run-history-status.is-tone-attention { color: var(--warn-text); }
+.run-history-status.is-tone-active { color: var(--accent-cyan); }
 
 .spin { animation: history-spin 900ms linear infinite; }
 

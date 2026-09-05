@@ -81,7 +81,7 @@ The orchestrator chooses designs and signs the verdict table; it builds nothing.
 | S5 | Reduced motion: state still reads without motion. | `evidence/T2/reduced-motion.png` (shared with T2.7) | RC Q7 |
 | S6 | Narrow viewport (390×844): the shell is usable, characters keep legibility, nothing overflows horizontally. | `evidence/S/narrow.png` and the `document.scrollingElement.scrollWidth <= 390` assertion in `e2e/cast.spec.ts` | RV |
 | R1 | Suites green: Python `unittest discover`, Vitest, `vue-tsc -b --force`, `npm run build`, full Playwright against `SYNTHETIC=1` on :8099 with zero console errors. Visual baselines regenerated only where this work intentionally changed the pixels, each named. | `evidence/R/python.txt`, `vitest.txt`, `typecheck.txt`, `build.txt`, `playwright.txt`, `baselines.md` | RV |
-| R2 | Scope held: the diff touches no file under `src/brief_crew/builder/`, `validator_flow.py`, `schemas/`, guardrails, or scoring constants; the only Python change is the synthetic double's identity fields and its tests. | `evidence/R/diff-stat.txt` | RV |
+| R2 | Scope held: the diff touches no file under `src/brief_crew/builder/` except `descriptor.py` (amended 2026-09-05: it now carries the real agent role, because it carried an id or nothing and a user-authored node would otherwise change character at its first frame), and none of `validator_flow.py`, `schemas/`, guardrails, or scoring constants; the only other Python change is the synthetic double's identity fields and its tests. | `evidence/R/diff-stat.txt` | RV |
 
 ## 6. The cold reader's questions (RC)
 

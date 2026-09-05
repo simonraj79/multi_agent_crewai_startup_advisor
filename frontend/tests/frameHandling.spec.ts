@@ -150,14 +150,41 @@ describe('frame handling', () => {
     expect(stateOf('research_market')).toBe('error')
   })
 
-  it('does not throw on an unknown frame kind and still logs it', async () => {
+  /**
+   * AMENDED with the interpretation layer, and the amendment is the point.
+   *
+   * This used to assert that an unknown kind was logged with `frame.message`
+   * verbatim - which was true of every frame, and is exactly the behaviour
+   * `trace/interpret.ts` replaced. Nothing here can name what a kind from a
+   * newer server MEANS, and a row a reader cannot act on is worse than no row:
+   * the frame is still in the run's log and its NDJSON export either way. What
+   * the composable must still do is not throw and not stall the stream, and
+   * that is what is asserted now.
+   */
+  it('does not throw on an unknown frame kind, and gives it no row it cannot write', async () => {
     const before = run.chatEntries.value.length
     api.emit(build('telemetry_beacon' as unknown as FrameKind, { event_type: 'SOMETHING_NEW', message: 'from a newer server' }))
+    api.emit(build('node_state', { event_type: 'NODE_START', node_id: 'scope_idea' }))
     await flush()
 
     expect(run.lastError.value).toBe('')
+    // No row for the unknown kind; the frame after it still lands, so the
+    // stream was not stalled by the one it could not read.
     expect(run.chatEntries.value).toHaveLength(before + 1)
-    expect(run.chatEntries.value.at(-1)?.message).toBe('from a newer server')
+    expect(run.chatEntries.value.at(-1)?.message).toBe('Scoper started')
+  })
+
+  it('still speaks up when a kind it cannot read arrives as an error', async () => {
+    api.emit(build('telemetry_beacon' as unknown as FrameKind, {
+      event_type: 'SOMETHING_NEW',
+      node_id: 'scope_idea',
+      level: 'ERROR',
+      message: 'the beacon could not be reached.',
+    }))
+    await flush()
+
+    expect(run.chatEntries.value.at(-1)?.message).toBe('Scoper hit an error: the beacon could not be reached')
+    expect(run.chatEntries.value.at(-1)?.tone).toBe('error')
   })
 
   it('records a run error frame and surfaces the message', async () => {

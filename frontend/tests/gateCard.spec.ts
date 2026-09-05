@@ -113,7 +113,7 @@ describe('GateCard expiry is informational, never a lockout', () => {
       }),
     })
 
-    expect(wrapper.get('.verdict-row').text()).toContain('NEEDS_WORK')
+    expect(wrapper.get('.verdict-row').text()).toContain('Needs work')
     expect(wrapper.get('.verdict-row').text()).toContain('62% confidence')
     await actionButtons(wrapper)[0].trigger('click')
     expect(wrapper.emitted('submit')).toEqual([['verdict_ok', undefined]])

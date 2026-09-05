@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { AlertTriangle, Check, Clock3, Lock, RefreshCw, ShieldCheck } from 'lucide-vue-next'
-import type { PendingGate } from '../types/studio'
+import type { GateDerivedField, PendingGate } from '../types/studio'
+import { describeValue, verdictLabel } from '../data/verdictDisplay'
+import { humaniseCode } from '../utils/humanise'
 
 const props = defineProps<{
   gate: PendingGate
@@ -51,10 +53,126 @@ const confidence = computed(() => props.gate.confidence == null ? '' : `${Math.r
  */
 const derived = computed(() => props.gate.derived ?? [])
 
-/** `startup_idea` -> `startup idea`. Every underscore, not just the first. */
+/** `startup_idea` -> `Startup idea`; `evidence_counts` -> `Evidence counts`. */
 function label(key: string): string {
-  return key.replaceAll('_', ' ')
+  return humaniseCode(key) || key
 }
+
+/** The gate's own headline verdict, in words rather than as `NEEDS_WORK`. */
+const verdictWord = computed(() => verdictLabel(props.gate.verdict))
+
+/**
+ * One row of the read-only payload, decoded far enough to be read.
+ *
+ * The verdict gate used to dump this whole payload into a `<pre>`: an operator
+ * was asked to approve or revise a decision presented to them as
+ * `FATAL FLOORS / []`, `DECISION REASON / null` and `NEEDS_WORK`. Every one of
+ * those has an English answer, and none of them needed a new concept to
+ * produce it - `describeValue` in `data/verdictDisplay.ts` is the same table
+ * the report panel reads.
+ *
+ * The decoding stops at one level, deliberately. A `Verdict` dimension is
+ * `{score, anchor_matched, evidence_urls, evidence_thin}` and that flattens
+ * into four readable pairs; anything nested deeper than that is a structure,
+ * not a sentence, and structures go behind a collapsed `<details>` where a
+ * developer can still read them and an operator is not made to.
+ */
+interface DerivedPair {
+  label: string
+  value: string
+}
+
+interface DerivedRow {
+  key: string
+  label: string
+  /** A single value, a list of values, or a one-level key/value list. */
+  shape: 'value' | 'list' | 'pairs'
+  value: string
+  items: string[]
+  pairs: DerivedPair[]
+  /** Pretty JSON for the disclosure, or `null` when nothing is hidden. */
+  raw: string | null
+}
+
+/** A value this card can render inline: not an object, not a nested array. */
+function isFlat(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (Array.isArray(value)) return value.every((entry) => entry === null || typeof entry !== 'object')
+  return typeof value !== 'object'
+}
+
+function decodeRow(item: GateDerivedField): DerivedRow {
+  const row: DerivedRow = {
+    key: item.key,
+    label: label(item.key),
+    shape: 'value',
+    value: '—',
+    items: [],
+    pairs: [],
+    raw: null,
+  }
+  if (item.kind !== 'json') {
+    row.value = describeValue(item.value)
+    return row
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(item.value)
+  } catch {
+    // A `json` value the server could not have produced. Show it as it came
+    // rather than swallowing it: a multi-line blob goes behind the
+    // disclosure, a single line is just a value.
+    if (item.value.includes('\n')) {
+      row.value = 'see below'
+      row.raw = item.value
+    } else {
+      row.value = describeValue(item.value)
+    }
+    return row
+  }
+
+  if (parsed === null || parsed === undefined) return row
+
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) {
+      row.value = 'none'
+      return row
+    }
+    if (parsed.every((entry) => entry === null || typeof entry !== 'object')) {
+      row.shape = 'list'
+      row.items = parsed.map((entry) => describeValue(entry))
+      return row
+    }
+    row.value = `${parsed.length} ${parsed.length === 1 ? 'entry' : 'entries'}`
+    row.raw = item.value
+    return row
+  }
+
+  if (typeof parsed === 'object') {
+    const entries = Object.entries(parsed as Record<string, unknown>)
+    if (entries.length === 0) {
+      row.value = 'none'
+      return row
+    }
+    row.shape = 'pairs'
+    row.pairs = entries
+      .filter(([, value]) => isFlat(value))
+      .map(([key, value]) => ({ label: label(key), value: describeValue(value) }))
+    // Anything this card refused to flatten is still available, collapsed.
+    if (entries.some(([, value]) => !isFlat(value))) row.raw = item.value
+    if (row.pairs.length === 0) {
+      row.shape = 'value'
+      row.value = 'see below'
+    }
+    return row
+  }
+
+  row.value = describeValue(parsed)
+  return row
+}
+
+const derivedRows = computed<DerivedRow[]>(() => derived.value.map(decodeRow))
 const expiryTime = computed(() => props.gate.expiresAt ? Date.parse(props.gate.expiresAt) : 0)
 
 // PRD F03. The server owns expiry: it resolves `expired` on every run-status
@@ -124,8 +242,8 @@ function submit(outcome: string): void {
 
     <p>{{ gate.summary }}</p>
 
-    <div v-if="gate.verdict" class="verdict-row">
-      <strong>{{ gate.verdict }}</strong>
+    <div v-if="verdictWord" class="verdict-row">
+      <strong :data-code="gate.verdict">{{ verdictWord }}</strong>
       <span>{{ confidence }}</span>
     </div>
 
@@ -146,15 +264,30 @@ function submit(outcome: string): void {
         <span>Computed by the validator</span>
       </h3>
       <p class="gate-derived-note">
-        Recomputed from the five dimension scores and the evidence behind them, so an edit here
+        Recomputed by the server from the scores and the evidence behind them, so an edit here
         could not change them. To change the outcome, choose Revise and say what to reconsider.
       </p>
       <dl>
-        <template v-for="item in derived" :key="item.key">
-          <dt>{{ label(item.key) }}</dt>
+        <template v-for="row in derivedRows" :key="row.key">
+          <dt :data-key="row.key">{{ row.label }}</dt>
           <dd>
-            <pre v-if="item.kind === 'json'">{{ item.value }}</pre>
-            <span v-else>{{ item.value }}</span>
+            <ul v-if="row.shape === 'list'" class="derived-list">
+              <li v-for="(entry, index) in row.items" :key="index">{{ entry }}</li>
+            </ul>
+            <ul v-else-if="row.shape === 'pairs'" class="derived-pairs">
+              <li v-for="pair in row.pairs" :key="pair.label">
+                <span class="derived-pair-key">{{ pair.label }}</span>
+                <span class="derived-pair-value">{{ pair.value }}</span>
+              </li>
+            </ul>
+            <span v-else>{{ row.value }}</span>
+            <!-- Anything the card refused to flatten. Collapsed, so the
+                 operator is not made to read a structure, and present, so a
+                 developer never loses one. -->
+            <details v-if="row.raw" class="derived-raw">
+              <summary>Show the raw value</summary>
+              <pre>{{ row.raw }}</pre>
+            </details>
           </dd>
         </template>
       </dl>
@@ -233,9 +366,20 @@ function submit(outcome: string): void {
 .gate-derived h3 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
 .gate-derived-note { margin: 7px 0 10px; color: var(--text-muted); font-size: var(--fs-11); line-height: 1.5; }
 .gate-derived dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0; }
-.gate-derived dt { color: var(--text-40); font: 700 var(--fs-11)/1.3 var(--font-mono); text-transform: uppercase; }
+/* Sentence case, not shouted: `text-transform: uppercase` over a humanised key
+   produced MEDIAN MARKET SOURCE AGE MONTHS, which reads as a constant name
+   even though it no longer is one. */
+.gate-derived dt { color: var(--text-40); font: 700 var(--fs-11)/1.3 var(--font-body); }
 .gate-derived dd { margin: 3px 0 0; color: var(--text-body); font-size: var(--fs-12); line-height: 1.45; overflow-wrap: anywhere; }
-.gate-derived pre { max-height: 140px; margin: 0; padding: 7px 8px; overflow: auto; color: var(--text-muted); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); font: 500 var(--fs-11)/1.5 var(--font-mono); }
+.derived-list { margin: 0; padding-left: 16px; }
+.derived-list li { margin-bottom: 2px; }
+.derived-pairs { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.derived-pairs li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.derived-pair-key { color: var(--text-40); font-size: var(--fs-11); }
+.derived-pair-value { color: var(--text-body); text-align: right; }
+.derived-raw { margin-top: 4px; }
+.derived-raw summary { color: var(--text-40); font-size: var(--fs-11); cursor: pointer; }
+.gate-derived pre { max-height: 140px; margin: 4px 0 0; padding: 7px 8px; overflow: auto; color: var(--text-muted); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); font: 500 var(--fs-11)/1.5 var(--font-mono); }
 /* The server decides how many options a gate has and in what order, so the row
    must not assume two with the primary second. */
 .gate-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 13px; }

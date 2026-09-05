@@ -5,6 +5,8 @@ import { scopedKey } from '../data/identityStorage'
 import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
 import { LANDING_STAGGER_MS, useRunChoreography, type Handoff } from './useRunChoreography'
+import { TRACE_TERMINAL_PRECEDENCE, interpretFrame, traceCallKey } from '../trace/interpret'
+import type { TraceContext, TraceLine } from '../trace/interpret'
 import type {
   RunResult,
   CallChip,
@@ -452,7 +454,35 @@ export function useValidatorRun(
       ?? `${from}-${to}`,
   })
   const seenFrames = new Set<string>()
-  const pendingCallEntries = new Map<string, string[]>()
+  /**
+   * What the interpretation layer is allowed to know.
+   *
+   * Everything it can see about a node comes from the descriptor the SERVER
+   * sent, and the identity ladder is `details.agent_role` -> the node's
+   * declared `agent_role` -> its label. A synthetic run emits no agent frame
+   * at all, so the middle rung is the only identity the no-cost path has, and
+   * a graph an author drew may have only the last.
+   */
+  const traceContext: TraceContext = {
+    node(nodeId) {
+      const node = descriptor.value.nodes.find((candidate) => candidate.id === nodeId)
+      if (!node) return undefined
+      return {
+        label: node.label,
+        kind: node.kind,
+        agentRole: node.agent_role,
+        taskName: node.task_name,
+      }
+    },
+    // Peeked rather than popped: `noteCallLifecycle` retires the entry, and it
+    // runs after the line is built precisely so a completed call can still say
+    // how long it took.
+    startedAt: (key) => openCallStarts.get(key)?.[0],
+  }
+  /** Call key -> the start times of its unfinished `before` frames, in order. */
+  const openCallStarts = new Map<string, number[]>()
+  /** Coalesce key -> the id of the row a later frame may complete. */
+  const coalescedRows = new Map<string, string>()
   /** Active edge id -> the node it feeds, so a finished branch can end it. */
   const edgeTargets = new Map<string, string>()
   const edgeTimers = new Map<string, number>()
@@ -1005,7 +1035,7 @@ export function useValidatorRun(
     if (frame.event_type.includes('END')) setNodeState(nodeId, 'completed')
     if (frame.level === 'ERROR') setNodeState(nodeId, 'error')
     // A node that has settled cannot still have a call in flight. Belt and
-    // braces behind `completeCallEntry`: a dropped or out-of-order `after`
+    // braces behind `noteCallLifecycle`: a dropped or out-of-order `after`
     // frame would otherwise leave a timer counting up forever on a finished
     // node, which is a worse lie than showing nothing.
     if (frame.event_type.includes('END') || frame.level === 'ERROR') {
@@ -1179,105 +1209,175 @@ export function useValidatorRun(
     usage.elapsedMs = Math.max(usage.elapsedMs, runClock.lastMs - runClock.firstMs)
   }
 
+  /**
+   * The trace's one write point, and it no longer decides what a row SAYS.
+   *
+   * It used to build the row itself out of `frame.message`, which is the
+   * framework's sentence about its own internals - "persist started",
+   * "write_report to persist", "AgentExecutor reporting_task". That decision
+   * now lives in `trace/interpret.ts`, which is pure and therefore assertable
+   * over a real frame log; what is left here is the three things a composable
+   * has to do and a pure function cannot: keep the run's per-node bookkeeping,
+   * find the row an earlier frame wrote, and hold the entries.
+   *
+   * A `null` from the interpreter is a decision, not a failure. Token frames,
+   * metrics, edge traversals, stream chunks, utterances, plan statements and a
+   * kind from a newer server all reach the run's log and its NDJSON export
+   * exactly as before; they simply do not get a row in a surface whose job is
+   * to be readable.
+   */
   function appendChat(frame: FrameData): void {
+    const line = interpretFrame(frame, traceContext)
+    noteCallLifecycle(frame)
+    if (!line) return
+    pushTraceLine(frame, line)
+  }
+
+  /**
+   * The per-node bookkeeping a call's two frames drive, whatever the row does.
+   *
+   * Kept deliberately separate from the row: `nodeUsage.elapsedMs` and the
+   * node card's in-flight marker were side effects buried inside the old
+   * `completeCallEntry`, so they only happened when a row happened to be
+   * found. A frame that produced no row silently stopped paying them.
+   */
+  function noteCallLifecycle(frame: FrameData): void {
+    if (frame.kind !== 'llm' && frame.kind !== 'tool' && frame.kind !== 'guardrail') return
     const stage = String(frame.details.stage ?? '')
-    if ((frame.kind === 'llm' || frame.kind === 'tool') && stage === 'chunk') return
-    /*
-     * Three C6 shapes the TRACE does not carry, because another surface owns
-     * each and carrying them twice is how one copy goes stale.
-     *
-     * `utterance` is the dialogue rail's whole subject (D5) - it is what an
-     * agent SAID, rendered with an avatar and a progressive reveal, and a
-     * verbatim copy of the same 4,096 characters in the trace beside it is
-     * noise in the surface whose job is the mechanics. `plan` is the stage
-     * lane's (D4): it is a statement about the graph, made seven times before
-     * anything happens, and in the trace it reads as seven system messages
-     * before the run starts. The trace keeps everything else - the kicker, the
-     * tool chips, the warnings, the errors - which is the half of the run the
-     * rail was always good at.
-     */
-    if (frame.kind === 'llm' && stage === 'utterance') return
-    if (frame.kind === 'run_state' && stage === 'plan') return
-    if ((frame.kind === 'llm' || frame.kind === 'tool') && stage !== 'before' && completeCallEntry(frame)) return
-
-    const call = toCallChip(frame)
-    if (call?.active && (frame.kind === 'tool' || frame.kind === 'llm')) {
-      // `query` has been on this frame all along and nothing read it.
-      const query = frame.details.query
-      setActiveCall(frame.node_id, {
-        label: call.label,
-        kind: frame.kind,
-        query: typeof query === 'string' && query.trim() ? query : undefined,
-        startedAt: call.startedAt,
-      })
+    const key = traceCallKey(frame)
+    if (stage === 'before') {
+      openCallStarts.set(key, [...(openCallStarts.get(key) ?? []), frameTime(frame)])
+      if (frame.kind === 'tool' || frame.kind === 'llm') {
+        // `query` has been on this frame all along and nothing read it.
+        const query = frame.details.query
+        setActiveCall(frame.node_id, {
+          label: String(frame.details.tool ?? frame.details.model ?? frame.kind),
+          kind: frame.kind,
+          query: typeof query === 'string' && query.trim() ? query : undefined,
+          startedAt: frameTime(frame),
+        })
+      }
+      return
     }
-    const entry: ChatEntry = {
-      id: `${frame.run_id}-${frame.seq}`,
-      seq: frame.seq,
-      nodeId: frame.node_id,
-      actor: actorFor(frame),
-      message: frame.message,
-      timestamp: new Date(frame.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      variant: frame.level === 'ERROR' ? 'error' : frame.level === 'WARNING' ? 'warning' : frame.node_id ? 'agent' : 'system',
-      calls: call ? [call] : [],
-    }
-    chatEntries.value.push(entry)
-    if (call?.active) {
-      const key = callKey(frame)
-      pendingCallEntries.set(key, [...(pendingCallEntries.get(key) ?? []), entry.id])
-    }
-  }
-
-  function toCallChip(frame: FrameData): CallChip | null {
-    if (frame.kind !== 'llm' && frame.kind !== 'tool') return null
-    const stage = String(frame.details.stage ?? '')
-    return {
-      id: String(frame.details.call_id ?? `call-${frame.seq}`),
-      kind: frame.kind,
-      label: String(frame.details.tool ?? frame.details.model ?? frame.kind),
-      startedAt: Number.isNaN(Date.parse(frame.ts)) ? Date.now() : Date.parse(frame.ts),
-      durationMs: frame.duration_ms,
-      active: stage === 'before',
-    }
-  }
-
-  function callKey(frame: FrameData): string {
-    const callId = frame.details.call_id
-    if (typeof callId === 'string' && callId) return `${frame.kind}:${callId}`
-    const name = String(frame.details.tool ?? frame.details.model ?? frame.kind)
-    return `${frame.node_id ?? QUARANTINE_NODE_ID}:${frame.kind}:${name}`
-  }
-
-  function completeCallEntry(frame: FrameData): boolean {
-    const key = callKey(frame)
-    const entryIds = pendingCallEntries.get(key)
-    const entryId = entryIds?.shift()
-    if (!entryId) return false
-    if (entryIds?.length) pendingCallEntries.set(key, entryIds)
-    else pendingCallEntries.delete(key)
-
-    const index = chatEntries.value.findIndex((entry) => entry.id === entryId)
-    if (index < 0) return false
-    const entry = chatEntries.value[index]
-    const completedAt = Date.parse(frame.ts)
-    const calls = entry.calls.map((call) => ({
-      ...call,
-      active: false,
-      durationMs: frame.duration_ms ?? Math.max(0, (Number.isNaN(completedAt) ? Date.now() : completedAt) - call.startedAt),
-    }))
-    chatEntries.value[index] = {
-      ...entry,
-      message: frame.message,
-      variant: frame.level === 'ERROR' ? 'error' : frame.level === 'WARNING' ? 'warning' : entry.variant,
-      calls,
-    }
-    if (frame.node_id && nodeUsage[frame.node_id]) {
-      nodeUsage[frame.node_id].elapsedMs += calls[0]?.durationMs ?? 0
+    if (stage !== 'after' && stage !== 'error') return
+    const queue = openCallStarts.get(key)
+    const started = queue?.shift()
+    if (queue && queue.length === 0) openCallStarts.delete(key)
+    if (frame.kind === 'guardrail') return
+    if (started !== undefined && frame.node_id && nodeUsage[frame.node_id]) {
+      nodeUsage[frame.node_id].elapsedMs +=
+        frame.duration_ms ?? Math.max(0, frameTime(frame) - started)
     }
     // The call is done: stop the node reporting it as in flight, and let the
     // shared ticker retire once nothing anywhere is running.
     setActiveCall(frame.node_id, null)
-    return true
+  }
+
+  /**
+   * Append the row, or complete the one an earlier frame already wrote.
+   *
+   * Three rules, and each of them is a defect that shipped:
+   *
+   * - A call's `after` frame REWRITES its `before` row rather than adding a
+   *   second one, so "is searching …" becomes "searched … — 3 results" in
+   *   place. Two rows for one call is how a nine-call run read as eighteen
+   *   events.
+   * - A coarser statement about a moment already narrated is DROPPED. A node
+   *   starting, a crew starting, a task starting and an agent starting are
+   *   four frames about one event; the most specific wins the row whichever
+   *   order they arrive in, which is what `precedence` is for.
+   * - A `tail`-scoped row merges only while it is still the newest. Reasoning
+   *   is the highest-volume kind there is, and a run-scoped key would rewrite
+   *   a row the reader scrolled past ten rows ago.
+   */
+  function pushTraceLine(frame: FrameData, line: TraceLine): void {
+    const entry = toChatEntry(frame, line)
+    const coalesce = line.coalesce
+    if (coalesce) {
+      const knownId = coalescedRows.get(coalesce.key)
+      const index = knownId ? chatEntries.value.findIndex((row) => row.id === knownId) : -1
+      if (index >= 0) {
+        const existing = chatEntries.value[index]
+        const reachable = coalesce.scope === 'run' || index === chatEntries.value.length - 1
+        if (reachable) {
+          if (coalesce.precedence < (existing.precedence ?? 0)) return
+          chatEntries.value[index] = {
+            ...entry,
+            // The row keeps the identity it was born with: its Vue key, its
+            // sequence and the clock it first appeared at. A row that jumped
+            // its own timestamp while sitting still reads as a glitch.
+            id: existing.id,
+            seq: existing.seq,
+            timestamp: existing.timestamp,
+            calls: entry.calls.length ? entry.calls : existing.calls,
+          }
+          // A finished thing is finished: retire the key so the SAME agent
+          // calling the SAME tool again gets its own row. Three calls that
+          // collapsed into one row is two thirds of a branch's spend invisible.
+          if (coalesce.precedence >= TRACE_TERMINAL_PRECEDENCE) coalescedRows.delete(coalesce.key)
+          return
+        }
+      }
+      // A new row, so whatever it declares stale is stale. This is what makes a
+      // second visit to a node read as a second visit rather than as a silent
+      // rewrite of the first.
+      if (coalesce.clears) coalescedRows.delete(coalesce.clears)
+      coalescedRows.set(coalesce.key, entry.id)
+    }
+    chatEntries.value.push(entry)
+  }
+
+  function toChatEntry(frame: FrameData, line: TraceLine): ChatEntry {
+    const started = openCallStarts.get(line.coalesce?.key ?? '')?.[0]
+    const call = toCallChip(frame, started)
+    return {
+      id: `${frame.run_id}-${frame.seq}`,
+      seq: frame.seq,
+      nodeId: line.nodeId,
+      actor: line.identity || actorFor(frame),
+      message: line.text,
+      timestamp: new Date(frame.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      // `you` is a row addressed to the operator, not spoken by an agent, so
+      // it takes the system styling rather than an avatar and a bubble.
+      variant:
+        line.tone === 'error'
+          ? 'error'
+          : line.tone === 'warn'
+            ? 'warning'
+            : line.tone === 'you' || !line.nodeId
+              ? 'system'
+              : 'agent',
+      calls: call ? [call] : [],
+      identity: line.identity,
+      tone: line.tone,
+      raw: line.raw,
+      coalesceKey: line.coalesce?.key,
+      coalesceScope: line.coalesce?.scope,
+      precedence: line.coalesce?.precedence,
+    }
+  }
+
+  function frameTime(frame: FrameData): number {
+    const at = Date.parse(frame.ts)
+    return Number.isFinite(at) ? at : Date.now()
+  }
+
+  function toCallChip(frame: FrameData, startedAt?: number): CallChip | null {
+    if (frame.kind !== 'llm' && frame.kind !== 'tool') return null
+    const stage = String(frame.details.stage ?? '')
+    if (stage !== 'before' && stage !== 'after' && stage !== 'error') return null
+    const at = frameTime(frame)
+    const active = stage === 'before'
+    return {
+      id: String(frame.details.call_id ?? `call-${frame.seq}`),
+      kind: frame.kind,
+      label: String(frame.details.tool ?? frame.details.model ?? frame.kind),
+      startedAt: active ? at : startedAt ?? at,
+      durationMs: active
+        ? frame.duration_ms
+        : frame.duration_ms ?? (startedAt === undefined ? undefined : Math.max(0, at - startedAt)),
+      active,
+    }
   }
 
   function actorFor(frame: FrameData): string {
@@ -1393,7 +1493,8 @@ export function useValidatorRun(
     unsubscribe?.()
     unsubscribe = undefined
     seenFrames.clear()
-    pendingCallEntries.clear()
+    openCallStarts.clear()
+    coalescedRows.clear()
     clearEdgeAnimations()
     choreography.reset()
     resetNodes()

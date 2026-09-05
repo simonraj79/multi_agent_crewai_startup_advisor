@@ -431,6 +431,29 @@ def parse_synthetic_failures(
     return tuple(plans)
 
 
+def _library_agent_role(agent_id: str) -> str | None:
+    """The role a library agent id resolves to - `descriptor`'s function, not a copy.
+
+    The GRAPH NODE and the FRAMES have to name the same agent with the same
+    string, or a console joining one to the other matches nothing and the
+    defect is invisible on both sides in isolation. One function is what makes
+    that true by construction, and
+    `tests/service/test_builder_identity_parity.py` asserts it end to end.
+
+    It lives in `builder/descriptor.py` because that is the module both callers
+    can reach without inverting the dependency: the service imports the
+    builder, never the other way round. Imported inside the call because this
+    module's own `BuilderWorkflow` import is under `TYPE_CHECKING` for the
+    stated reason that it is not free - by the time a factory builds a crew the
+    workflow object already came out of that module, so this is a `sys.modules`
+    hit rather than a second import.
+    """
+
+    from brief_crew.builder.descriptor import library_agent_role
+
+    return library_agent_role(agent_id)
+
+
 class _SyntheticCrew:
     """Whatever a real Crew would have cost, for free - and in the same shape.
 
@@ -441,12 +464,30 @@ class _SyntheticCrew:
     builder that most needs exercising for free - would be untestable.
     """
 
-    __slots__ = ("_node_id", "_produced_by", "_tier")
+    __slots__ = ("_node_id", "_produced_by", "_tier", "_agent_role")
 
-    def __init__(self, *, node_id: str, produced_by: str, tier: str) -> None:
+    def __init__(
+        self,
+        *,
+        node_id: str,
+        produced_by: str,
+        tier: str,
+        agent_role: str | None = None,
+    ) -> None:
         self._node_id = node_id
         self._produced_by = produced_by
         self._tier = tier
+        #: The `Agent.role` a REAL crew at this node would build, or None when
+        #: this node is a multi-agent crew and no single role is the truth.
+        #:
+        #: On the paid path this field costs nothing to have: CrewAI puts
+        #: `agent_role` on every agent, task, tool and LLM event, and
+        #: `events/serializer.py::drafts` merges it into every frame. A
+        #: synthetic crew builds no Agent, so nothing stamps it and every
+        #: builder frame on the free path arrived anonymous - the same
+        #: divergence `SyntheticValidatorRunner` carried until 2026-09-05, in
+        #: the half of the product where the graph is a stranger's.
+        self._agent_role = agent_role or None
 
     def kickoff(self, inputs: Mapping[str, Any] | None = None) -> str:
         payload = json.dumps(
@@ -513,6 +554,7 @@ class _SyntheticCrew:
         from brief_crew.builder.runtime import _emit_frame, _model_for
         from brief_crew.events.models import FrameKind, UIEventType
 
+        stamp = self._identity()
         call_id = f"synthetic:{self._node_id}"
         # The tier's own constant, minus the provider prefix - see the docstring.
         model = _model_for(str(self._tier)).split("/", 1)[-1]
@@ -527,6 +569,7 @@ class _SyntheticCrew:
                     "stage": "chunk",
                     "call_id": call_id,
                     "chunk": text[start : start + size],
+                    **stamp,
                 },
             )
         prompt_tokens = 512
@@ -544,6 +587,7 @@ class _SyntheticCrew:
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "model": model,
+                **stamp,
             },
         )
         self._bill(call_id, model, prompt_tokens, completion_tokens)
@@ -599,8 +643,24 @@ class _SyntheticCrew:
                 "model": model,
                 "usage": usage,
                 "cost_usd": cost_usd,
+                **self._identity(),
             },
         )
+
+    def _identity(self) -> dict[str, str]:
+        """`{"agent_role": ...}`, or nothing at all.
+
+        Only the ONE key, and that is a statement about the paid path rather
+        than an omission. A builder-compiled `Task` is built with a description
+        and an expected output and no `name`
+        (`builder/runtime.py:910`), so `task_name` is absent from a real
+        builder frame too - writing one here would be the double carrying a
+        field its subject does not, which is the mistake this change exists to
+        correct, made in the other direction. `agent_id` and `task_id` are
+        CrewAI's own UUIDs and a synthetic run has no honest value for either.
+        """
+
+        return {"agent_role": self._agent_role} if self._agent_role else {}
 
 
 class SyntheticCrewFactories:
@@ -672,7 +732,12 @@ class SyntheticCrewFactories:
         **_: Any,
     ) -> _SyntheticCrew:
         self._record(node_id, tier)
-        return _SyntheticCrew(node_id=node_id, produced_by=agent_id, tier=tier)
+        return _SyntheticCrew(
+            node_id=node_id,
+            produced_by=agent_id,
+            tier=tier,
+            agent_role=_library_agent_role(agent_id),
+        )
 
     def crew(
         self,
@@ -696,7 +761,15 @@ class SyntheticCrewFactories:
     # what makes the synthetic output identify the node the way a real one would.
     def authored_agent_crew(self, *, node_id: str, spec: Any) -> _SyntheticCrew:
         self._record(node_id, str(dict(spec.llm or {}).get("model") or spec.tier))
-        return _SyntheticCrew(node_id=node_id, produced_by=spec.role, tier=spec.tier)
+        # `spec.role` is what `builder/runtime.py:704` passes to `Agent(role=...)`
+        # on the paid path, so it is the same string CrewAI would stamp on
+        # every frame this node produced - not an approximation of it.
+        return _SyntheticCrew(
+            node_id=node_id,
+            produced_by=spec.role,
+            tier=spec.tier,
+            agent_role=str(spec.role or "") or None,
+        )
 
     def authored_crew(self, *, node_id: str, spec: Any) -> _SyntheticCrew:
         self._record(node_id, str(spec.process))

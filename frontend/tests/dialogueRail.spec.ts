@@ -5,6 +5,8 @@ import {
   characterIndex,
   type DialogueEntry,
 } from '../src/composables/useRunChoreography'
+import { MAX_UTTERANCE_CHARS } from '../src/data/serverLimits'
+import { readSpeech } from '../src/trace/speech'
 
 /**
  * The rail that shows what the agents said.
@@ -85,19 +87,38 @@ describe('the dialogue rail', () => {
     expect(wrapper.findAll('[data-testid="dialogue-text"]')).toHaveLength(2)
   })
 
-  it('names where a trimmed answer went', () => {
-    // "It ends mid-sentence for a reason" versus "it just ends".
+  it('names where a trimmed answer went, at the number the server actually uses', () => {
+    // "It ends mid-sentence for a reason" versus "it just ends". The figure was
+    // written into the sentence as the literal 4,096 and would have gone on
+    // saying 4,096 after the server moved.
     const wrapper = rail([entry({ truncated: true })])
-    expect(wrapper.get('[data-testid="dialogue-trimmed"]').text()).toContain('run log')
+    const note = wrapper.get('[data-testid="dialogue-trimmed"]').text()
+    expect(note).toContain('run log')
+    expect(note).toContain(MAX_UTTERANCE_CHARS.toLocaleString())
+  })
+
+  it('mirrors the server bound it quotes', () => {
+    // Drift here is the whole hazard of a duplicated constant, so it is a test
+    // rather than a comment. `MAX_UTTERANCE_CHARS` in src/brief_crew/config.py.
+    expect(MAX_UTTERANCE_CHARS).toBe(4096)
   })
 
   it('says nothing about trimming on a whole answer', () => {
     expect(rail([entry()]).find('[data-testid="dialogue-trimmed"]').exists()).toBe(false)
   })
 
-  it('shows the token counts, which are the entry\'s own cost', () => {
-    expect(rail([entry()]).text()).toContain('640 in')
-    expect(rail([entry()]).text()).toContain('120 out')
+  it('puts the token counts behind the disclosure, not in front of the answer', () => {
+    // AMENDED: they used to be a visible line under every entry. `640 in ·
+    // 120 out` on every row is the same failure as the trace's raw payloads -
+    // true, unreadable, and in front of the thing somebody came to read.
+    const wrapper = rail([entry()])
+    const tokens = wrapper.get('[data-testid="dialogue-tokens"]')
+    expect(tokens.text()).toContain('640 in')
+    expect(tokens.text()).toContain('120 out')
+    // Inside a `<details>`, which is closed until somebody opens it.
+    const details = tokens.element.closest('details')
+    expect(details).not.toBeNull()
+    expect((details as HTMLDetailsElement).open).toBe(false)
   })
 
   it('hides the list when collapsed but keeps the count', () => {
@@ -118,5 +139,97 @@ describe('the dialogue rail', () => {
   it('makes initials out of a one-word role', () => {
     expect(rail([entry({ role: 'Scoper' })]).get('[data-testid="dialogue-avatar"]').text())
       .toBe('SC')
+  })
+
+  it('names the identity on the entry and the seed on the avatar', () => {
+    // T2.6: the tie-in between the node's character and the trace's is a string
+    // comparison, so both surfaces have to publish the same seed.
+    const wrapper = rail([entry({ role: 'Market Analyst' })])
+    expect(wrapper.get('.dialogue-entry').attributes('data-identity')).toBe('Market Analyst')
+    expect(wrapper.get('[data-testid="dialogue-avatar"]').attributes('data-character-seed'))
+      .toBe('Market Analyst')
+  })
+})
+
+/**
+ * The three shapes an `utterance` frame can carry.
+ *
+ * `events/serializer.py` writes the completed response into `details.text` and
+ * `json.dumps`es anything that is not already a string, so the rail receives
+ * prose, JSON-encoded prose, and structured results that are not speech at all.
+ * Before this it rendered all three as `pre-wrap` raw text, which is how a
+ * guardrail's `{"valid":true,"feedback":null}` ended up on screen as something
+ * an agent said, and how a wrapped response's newlines ended up as a literal
+ * backslash-n.
+ */
+describe('what an utterance actually is', () => {
+  const prose = 'Three of the five claims resolve to the filing.'
+
+  it('renders prose as prose, with its Markdown resolved', () => {
+    const text = '## What I checked\n\nThree claims **resolve**.'
+    const wrapper = rail([entry({ text, revealed: text.length })])
+    const html = wrapper.get('[data-testid="dialogue-text"]').html()
+    expect(html).toContain('<h2>What I checked</h2>')
+    expect(html).toContain('<strong>resolve</strong>')
+    // The wire format is gone from the screen, not merely styled.
+    expect(wrapper.get('[data-testid="dialogue-text"]').text()).not.toContain('**')
+  })
+
+  it('unwraps a response that went through json.dumps on its way here', () => {
+    // The literal backslash-n case, which is what `pre-wrap` was rendering.
+    const encoded = JSON.stringify('Two claims failed.\nBoth cite the same page.')
+    const wrapper = rail([entry({ text: encoded, revealed: encoded.length })])
+    const shown = wrapper.get('[data-testid="dialogue-text"]').text()
+    expect(shown).toContain('Two claims failed.')
+    expect(shown).toContain('Both cite the same page.')
+    expect(shown).not.toContain('\\n')
+    expect(shown).not.toContain('{"')
+  })
+
+  it('refuses to render a structured result as speech', () => {
+    const payload = '{"feedback": null, "valid": true}'
+    const wrapper = rail([entry({ role: 'Fact Checker', text: payload, revealed: payload.length })])
+    expect(wrapper.get('[data-testid="dialogue-structured"]').text())
+      .toBe('Fact Checker returned a structured result')
+    expect(wrapper.find('[data-testid="dialogue-text"]').exists()).toBe(false)
+    // Not dropped - behind the disclosure, closed.
+    const raw = wrapper.get('[data-testid="dialogue-payload"]')
+    expect(raw.text()).toContain('"valid": true')
+    expect((raw.element.closest('details') as HTMLDetailsElement).open).toBe(false)
+  })
+
+  it('lifts a long string out of a one-key wrapper, which is prose in a coat', () => {
+    const wrapped = JSON.stringify({ report: prose.repeat(3) })
+    expect(readSpeech(wrapped).kind).toBe('prose')
+    expect(readSpeech(wrapped).text).toContain('Three of the five claims')
+  })
+
+  it('leaves a sentence that merely begins with a brace alone', () => {
+    // A model that wrote a sentence is far commoner than one that wrote JSON
+    // and got the syntax wrong, so anything that fails to parse is prose.
+    expect(readSpeech('{not json at all').kind).toBe('prose')
+    expect(readSpeech('{not json at all').text).toBe('{not json at all')
+  })
+
+  it('keeps the newest thing anybody SAID open behind a run of structured results', () => {
+    // `collapsed` is decided upstream over every entry, so three machine
+    // answers in a row are enough to fold the last real utterance.
+    const wrapper = rail([
+      entry({ callId: 'said', text: prose, revealed: prose.length, collapsed: true }),
+      entry({ callId: 'j1', text: '{"valid": true}', collapsed: true }),
+      entry({ callId: 'j2', text: '{"valid": true}', collapsed: false }),
+      entry({ callId: 'j3', text: '{"valid": true}', collapsed: false }),
+    ])
+    expect(wrapper.findAll('[data-testid="dialogue-fold"]')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="dialogue-text"]').text()).toContain('Three of the five claims')
+    expect(wrapper.findAll('[data-testid="dialogue-structured"]')).toHaveLength(3)
+  })
+
+  it('escapes model output rather than sanitising it afterwards', () => {
+    const hostile = 'read this <img src=x onerror="alert(1)"> and this'
+    const wrapper = rail([entry({ text: hostile, revealed: hostile.length })])
+    const html = wrapper.get('[data-testid="dialogue-text"]').html()
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&lt;img')
   })
 })

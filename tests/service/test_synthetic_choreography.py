@@ -152,7 +152,18 @@ class UtteranceTests(unittest.TestCase):
         self.assertNotIn("persist", spoke)
 
     def test_the_utterance_details_mirror_the_serializer(self) -> None:
-        """The seven keys `serializer.py` writes at `stage="utterance"`."""
+        """The seven keys `serializer.py` writes at `stage="utterance"`, plus who said it.
+
+        **The identity keys were added on 2026-09-05, and this assertion used
+        to read as the exact key set.** It was right about the LADDER and wrong
+        about the FRAME: `_event_drafts` writes the keys named below, and
+        `FieldBoundedSerializer.drafts` then merges `_actor(event)` into every
+        frame whose node is not the workflow's - so a real frame from an agent
+        node carries the agent's role and task as well. The double omitted
+        them, so nothing on the free path could join a frame to an agent. The
+        set is spelled out here rather than relaxed to a subset check, because
+        the value of this test is that it is exact.
+        """
 
         details = dict(self.execution.capture.staged("utterance")[0]["details"])
         self.assertEqual(
@@ -165,16 +176,27 @@ class UtteranceTests(unittest.TestCase):
                 "prompt_tokens",
                 "completion_tokens",
                 "model",
+                "agent_role",
+                "task_name",
             },
         )
         self.assertFalse(details["truncated"])
         self.assertTrue(details["text"])
 
     def test_the_chunk_details_mirror_the_coalescer(self) -> None:
-        """`_merged_chunk` drops every key but `call_id`, `stage` and `chunk`."""
+        """`_merged_chunk` keeps `call_id`, `stage`, `chunk` - and the actor.
+
+        The coalescer drops every key it does not carry forward, and the two
+        identity keys ARE carried forward: `_merged_chunk` rebuilds the frame
+        from `at.details` minus `chunk` and `stage`, and the actor was stamped
+        before it ever got there. So a real coalesced chunk names its agent and
+        this one does too.
+        """
 
         details = dict(self.execution.capture.staged("chunk")[0]["details"])
-        self.assertEqual(set(details), {"stage", "call_id", "chunk"})
+        self.assertEqual(
+            set(details), {"stage", "call_id", "chunk", "agent_role", "task_name"}
+        )
 
     def test_the_chunks_concatenate_to_the_utterance(self) -> None:
         """The rail's contract: what streamed in equals what was said."""
@@ -274,11 +296,25 @@ class TokenAndCostTests(unittest.TestCase):
         self.assertEqual(len(tokens), len(self.spoke()))
 
     def test_the_details_mirror_the_serializer(self) -> None:
-        """`events/serializer.py:527` - `{call_id, model, usage, cost_usd}`."""
+        """`events/serializer.py:527` - `{call_id, model, usage, cost_usd}` - and the actor.
+
+        **The identity keys were added on 2026-09-05, and this assertion used
+        to read as the exact key set.** It was right about the LADDER and wrong
+        about the FRAME: `_event_drafts` writes the keys named below, and
+        `FieldBoundedSerializer.drafts` then merges `_actor(event)` into every
+        frame whose node is not the workflow's - so a real frame from an agent
+        node carries the agent's role and task as well. The double omitted
+        them, so nothing on the free path could join a frame to an agent. The
+        set is spelled out here rather than relaxed to a subset check, because
+        the value of this test is that it is exact.
+        """
 
         frame = self.execution.capture.of_kind("token")[0]
         details = dict(frame["details"])
-        self.assertEqual(set(details), {"call_id", "model", "usage", "cost_usd"})
+        self.assertEqual(
+            set(details),
+            {"call_id", "model", "usage", "cost_usd", "agent_role", "task_name"},
+        )
         usage = dict(details["usage"])
         self.assertEqual(
             set(usage),

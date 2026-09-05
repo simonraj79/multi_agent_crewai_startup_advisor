@@ -29,6 +29,21 @@ export const MIN_IDEA_CHARS = 12
 export const IDEA_CHARS_WARN_AT = 100
 
 /**
+ * `MAX_UTTERANCE_CHARS` - `src/brief_crew/config.py:1534`.
+ *
+ * How much of a model's completed response the serializer puts on the wire
+ * (`events/serializer.py`, `stage: "utterance"`), and therefore the number the
+ * dialogue rail quotes when it says an answer was trimmed. It was written into
+ * that sentence as the literal "4,096" and would have gone on saying 4,096
+ * after the server moved - a rail that names the wrong bound is worse than one
+ * that names none, because it reads as authoritative.
+ *
+ * The count is rendered with a thousands separator, which is a rendering
+ * decision and not part of the constant.
+ */
+export const MAX_UTTERANCE_CHARS = 4096
+
+/**
  * How much of a node's failure the CARD shows before the ellipsis (12 D2).
  *
  * A client bound and not a server one, and the distinction matters: the frame

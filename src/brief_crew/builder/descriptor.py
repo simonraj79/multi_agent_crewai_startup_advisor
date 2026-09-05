@@ -142,6 +142,78 @@ def _is_routing(node: BuilderNode | None) -> bool:
     return node is not None and node.kind in ROUTING_KINDS
 
 
+def library_agent_role(agent_id: str) -> str | None:
+    """The `Agent.role` a library agent id resolves to, or None.
+
+    `runtime.py:619` builds the real agent with
+    `Agent(config=agents_config[spec.agent_key])`, and `role` is a key of that
+    YAML block - so this reads the identity out of the same file the paid path
+    does rather than restating it. This repository's prompts live in YAML by
+    platform rule, and a role copied into Python would be a second place one
+    of them lives.
+
+    **It lives here rather than in `runtime.py` because two callers need it and
+    this is the one both can reach**: the descriptor, which puts the role on a
+    graph node, and `service/builder_runner.py::SyntheticCrewFactories`, which
+    puts it on every frame a free run emits. Those two strings must be the same
+    string for the same node or the console joins a frame to the wrong card, so
+    there is one function and `tests/service/test_builder_identity_parity.py`
+    asserts the two agree.
+
+    Any failure answers None. This is a label on a card and a field on a
+    telemetry frame; a missing YAML key must never be the reason a graph fails
+    to describe itself or a free run fails to start.
+    """
+
+    try:
+        from brief_crew.builder.runtime import _yaml_config, agent_spec
+
+        spec = agent_spec(agent_id)
+        block = _yaml_config("agents.yaml").get(spec.agent_key) or {}
+        role = str(dict(block).get("role", "")).strip()
+        return role or None
+    except Exception:  # pragma: no cover - defensive, see the docstring
+        return None
+
+
+def node_agent_role(node: BuilderNode) -> str | None:
+    """The role CrewAI will stamp on this node's frames, or None.
+
+    Three arms, and the None is as deliberate as the two strings:
+
+    * an **authored** agent carries its own `role`, which is exactly what
+      `runtime.py:704` passes to `Agent(role=...)`;
+    * a **library** agent carries an `agent_id`, which is a registry KEY and
+      not a role - `market_analyst` is not what CrewAI stamps, "Market evidence
+      analyst" is - so it is resolved through the YAML;
+    * a **crew** node runs several agents and no single role is the truth, so
+      it claims none rather than nominating one arbitrarily.
+
+    **This field used to be `getattr(node.config, "agent_id", None)`**, which
+    was wrong in two different ways at once and neither announced itself. For a
+    library agent it published the id under the name `agent_role`, so anything
+    joining a graph node to a frame by role compared a key against a sentence
+    and never matched. For an authored agent - the half of the builder the
+    gauntlet is actually about - `AuthoredAgentConfig` has no `agent_id` at
+    all, so the answer was silently `None` and the node the author had just
+    named had no identity on it.
+
+    `task_name` stays None for every builder node, and that one is correct:
+    `runtime.py:910` builds an authored `Task` with a description and an
+    expected output and no `name`, so a real builder frame carries no task name
+    either. Writing one here would be the descriptor claiming something
+    production never sends.
+    """
+
+    role = getattr(node.config, "role", None)
+    if isinstance(role, str) and role.strip():
+        return role.strip()
+    agent_id = getattr(node.config, "agent_id", None)
+    if isinstance(agent_id, str) and agent_id.strip():
+        return library_agent_role(agent_id.strip())
+    return None
+
+
 def builder_workflow_id(document: BuilderDocument | str) -> str:
     """The workflow id a compiled document registers under: its own id.
 
@@ -228,7 +300,7 @@ def builder_graph_descriptor(document: BuilderDocument) -> GraphDescriptor:
                 # two namespaces are kept apart deliberately.
                 router_events=list(node.out_ports) if node.kind in ROUTING_KINDS else [],
                 crew=getattr(node.config, "crew_id", None),
-                agent_role=getattr(node.config, "agent_id", None),
+                agent_role=node_agent_role(node),
             )
         )
 

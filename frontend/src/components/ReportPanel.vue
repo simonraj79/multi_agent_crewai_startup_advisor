@@ -12,14 +12,36 @@
  * The scorecard below the header arrived with the `verdict` frame. Before it,
  * the only number that ever reached this panel was a confidence percentage
  * rescued from the verdict gate as it closed - so an unattended (`gates=auto`)
- * run, which never opens that gate, finished under a bare `COMPLETE` badge, and
+ * run, which never opens that gate, finished under a bare fallback badge, and
  * the fatal floors were invisible in every mode. PRD 10.2 calls the
- * free-alternative floor "the most valuable output this system produces"; a
- * REJECT that a floor forced now says which floor, in the loudest block here.
+ * free-alternative floor "the most valuable output this system produces".
+ *
+ * The block that says so is keyed on `decision_reason`, NOT on `fatal_floors`,
+ * and the difference is not cosmetic. The two are computed independently in
+ * `Verdict.compute_mechanical_result`: the floors are collected first and
+ * unconditionally, then a separate ladder picks the reason, and its FIRST
+ * branch is the low-confidence override. A run at 34% confidence with
+ * `market == 0` therefore carries `FLOOR_NO_MARKET` while that floor decided
+ * nothing - and the block this replaces said, in its loudest element, that the
+ * floor "not the arithmetic, is why this run reads NEEDS_WORK". It was false on
+ * exactly the screen it was written for. Floors that did not decide are
+ * demoted to also-rans here, in the conditional tense, because that is what
+ * happened. `data/verdictDisplay.ts` carries the wording and the reasoning.
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { Check, Copy, FileText, Gauge, OctagonAlert, X } from 'lucide-vue-next'
 import type { RunResult, VerdictSummary } from '../types/studio'
+import {
+  DIMENSION_MAX,
+  confidenceChip,
+  describeDecision,
+  dimensionName,
+  dimensionQuestion,
+  thinDimensionKeys,
+  thinEvidencePhrase,
+  verdictLabel,
+  verdictTone as verdictToneFor,
+} from '../data/verdictDisplay'
 import { renderMarkdown } from '../utils/markdown'
 
 const props = defineProps<{
@@ -36,7 +58,7 @@ let copyTimer = 0
 
 const body = computed(() => renderMarkdown(props.report?.markdown_body ?? ''))
 const sources = computed(() => props.report?.sources ?? [])
-const thin = computed(() => props.report?.thin_dimensions ?? [])
+
 /**
  * Either carrier may say so. The report's own flag predates the verdict frame
  * and a gate-sourced summary has no opinion, so the two are OR-ed rather than
@@ -48,17 +70,9 @@ const provisional = computed(
 )
 
 /** `VALIDATE` / `NEEDS_WORK` / `REJECT` drive the badge colour. */
-const verdictTone = computed(() => {
-  const label = props.verdict?.verdict?.toUpperCase() ?? ''
-  if (label.includes('VALIDATE')) return 'is-pass'
-  if (label.includes('REJECT')) return 'is-fail'
-  return 'is-warn'
-})
-
-const confidencePercent = computed(() => {
-  const value = props.verdict?.confidence
-  return typeof value === 'number' ? `${Math.round(value * 100)}%` : null
-})
+const verdictTone = computed(() => `is-${verdictToneFor(props.verdict?.verdict)}`)
+/** Words, never the enum. The badge shouts through CSS, not through the DOM. */
+const verdictWord = computed(() => verdictLabel(props.verdict?.verdict))
 
 /** 0-10, from `2 * (0.30D + 0.20M + 0.20C + 0.15F + 0.15X)`. */
 const compositeScore = computed(() => {
@@ -66,40 +80,54 @@ const compositeScore = computed(() => {
   return typeof value === 'number' ? value.toFixed(1) : null
 })
 
-const confidenceBand = computed(() => props.verdict?.confidenceBand ?? null)
-const bandTone = computed(() => `is-${(confidenceBand.value ?? '').toLowerCase()}`)
+/**
+ * One chip, not two. `34% confidence` beside a shouted `LOW` was two elements
+ * carrying one fact, and `LOW` alone answers "low what?" with nothing.
+ */
+const confidence = computed(() =>
+  confidenceChip(props.verdict?.confidenceBand, props.verdict?.confidence),
+)
 
-const fatalFloors = computed(() => props.verdict?.fatalFloors ?? [])
-const decisionReason = computed(() => props.verdict?.decisionReason ?? null)
-
-function sentenceCase(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
-}
+/** Canonical dimension keys the report flagged as resting on too few sources. */
+const thinKeys = computed(() => thinDimensionKeys(props.report))
+const thinPhrase = computed(() => thinEvidencePhrase(thinKeys.value))
 
 /**
- * `FLOOR_ALREADY_FREE` -> `Already free`. Deliberately a transform rather than
- * a lookup table: the floors live in `config.py`, and a table here would render
- * a newly added one as nothing at all. The raw token is shown beside it so the
- * rubric stays greppable from what is on screen.
+ * The override block, keyed on `decision_reason` and NOT on `fatal_floors`.
+ *
+ * The two are computed independently in `Verdict.compute_mechanical_result`:
+ * the floors are collected unconditionally, then a separate ladder picks the
+ * reason and its first branch is the low-confidence override. So a run can
+ * carry `FLOOR_NO_MARKET` while that floor decided nothing - which is exactly
+ * what the block this replaces used to narrate as the cause. `null` here means
+ * the arithmetic decided and there is nothing to override; the scores below
+ * are then the whole answer and no red box is drawn.
  */
-function floorLabel(floor: string): string {
-  return sentenceCase(floor.replace(/^FLOOR_/, '').replaceAll('_', ' ').toLowerCase())
-}
+const decision = computed(() => describeDecision(props.verdict, props.report))
 
 /** The scorecard, already in rubric order - the composable sorts it. */
 const dimensionRows = computed(() =>
-  Object.entries(props.verdict?.dimensions ?? {}).map(([key, score]) => ({
-    key,
-    label: sentenceCase(key.replaceAll('_', ' ')),
-    score: score as number,
-    // Every ladder is 0-5. Clamped so a score outside that range - a newer
-    // server, a wider ladder - cannot draw a bar past the end of its track.
-    percent: `${Math.min(100, Math.max(0, ((score as number) / 5) * 100))}%`,
-  })),
+  Object.entries(props.verdict?.dimensions ?? {}).map(([key, score]) => {
+    const value = score as number
+    const blocked = decision.value?.blockedDimensions.includes(key) ?? false
+    return {
+      key,
+      label: dimensionName(key),
+      question: dimensionQuestion(key),
+      thin: thinKeys.value.includes(key),
+      // A zero is the score every fatal floor is written about, so it is the
+      // one that earns the error tint whether or not a floor happened to fire.
+      floored: value === 0 || blocked,
+      score: value,
+      // Every ladder is 0-5. Clamped so a score outside that range - a newer
+      // server, a wider ladder - cannot draw a bar past the end of its track.
+      percent: `${Math.min(100, Math.max(0, (value / DIMENSION_MAX) * 100))}%`,
+    }
+  }),
 )
 
 const hasVerdictDetail = computed(
-  () => fatalFloors.value.length > 0 || decisionReason.value !== null || dimensionRows.value.length > 0,
+  () => decision.value !== null || dimensionRows.value.length > 0,
 )
 
 // Move focus into the sheet when it opens so a keyboard user is not left
@@ -144,11 +172,15 @@ async function copyReport(): Promise<void> {
       <div class="report-title-group">
         <span class="report-kicker"><FileText :size="13" aria-hidden="true" />VALIDATION REPORT</span>
         <h2 id="report-title">
-          <span v-if="verdict" class="verdict-badge" :class="verdictTone">{{ verdict.verdict }}</span>
-          <span v-else class="verdict-badge is-warn">COMPLETE</span>
+          <span v-if="verdictWord" class="verdict-badge" :class="verdictTone" :data-code="verdict?.verdict">{{ verdictWord }}</span>
+          <span v-else class="verdict-badge is-warn">Finished</span>
           <span v-if="compositeScore" class="verdict-score">{{ compositeScore }}<small>/10</small></span>
-          <span v-if="confidencePercent" class="verdict-confidence">{{ confidencePercent }} confidence</span>
-          <span v-if="confidenceBand" class="verdict-band" :class="bandTone">{{ confidenceBand }}</span>
+          <span
+            v-if="confidence"
+            class="verdict-confidence"
+            :class="`is-${confidence.tone}`"
+            title="How much evidence the five scores rest on: branch coverage, source freshness, and whether all three research branches came home."
+          >{{ confidence.label }}</span>
         </h2>
       </div>
       <div class="report-actions">
@@ -162,43 +194,71 @@ async function copyReport(): Promise<void> {
       </div>
     </header>
 
-    <div v-if="provisional || thin.length" class="report-flags">
-      <span v-if="provisional" class="report-flag is-provisional">PROVISIONAL</span>
-      <span v-if="thin.length" class="report-flag">
-        Thin evidence: {{ thin.join(', ') }}
-      </span>
+    <div v-if="provisional || thinPhrase" class="report-flags">
+      <!-- `Provisional` is kept as the head word, glossed rather than replaced:
+           the markdown body below is REQUIRED by `validator_guardrails.py` to
+           carry "Provisional" in its title and first summary line, and a chip
+           reading something else over a report headed "(Provisional)" teaches
+           the reader two names for one thing. -->
+      <span
+        v-if="provisional"
+        class="report-flag is-provisional"
+        title="The evidence is too thin to settle this. Re-run with better sources before acting on it."
+      >Provisional · not a final answer</span>
+      <span
+        v-if="thinPhrase"
+        class="report-flag"
+        title="These scores rest on fewer sources than the rubric asks for."
+      >Thin evidence · {{ thinPhrase }}</span>
     </div>
 
     <div v-if="hasVerdictDetail" class="verdict-summary">
-      <!-- Above the scorecard on purpose: a floor overrides the arithmetic, so
-           reading the composite first and the floor afterwards gets the
-           conclusion backwards. -->
-      <section v-if="fatalFloors.length" class="verdict-floors" aria-labelledby="verdict-floors-title">
-        <h3 id="verdict-floors-title">
+      <!-- Above the scorecard on purpose: whatever decided this run overrode
+           the arithmetic, so reading the composite first and the override
+           afterwards gets the conclusion backwards. -->
+      <section
+        v-if="decision"
+        class="verdict-decision"
+        :class="`is-${decision.tone}`"
+        :data-code="decision.code"
+        aria-labelledby="verdict-decision-title"
+      >
+        <h3 id="verdict-decision-title">
           <OctagonAlert :size="13" aria-hidden="true" />
-          <span>{{ fatalFloors.length === 1 ? 'Fatal floor' : 'Fatal floors' }}</span>
+          <span>WHAT DECIDED THIS RUN</span>
         </h3>
-        <p>
-          A floor overrides the composite score outright. It, not the arithmetic, is why this run
-          reads {{ verdict?.verdict ?? 'the way it does' }}.
-        </p>
-        <ul>
-          <li v-for="floor in fatalFloors" :key="floor">
-            <span class="floor-name">{{ floorLabel(floor) }}</span>
-            <code>{{ floor }}</code>
-          </li>
-        </ul>
+        <p class="decision-headline">{{ decision.headline }}</p>
+        <p v-if="decision.meaning" class="decision-meaning">{{ decision.meaning }}</p>
+        <div v-if="decision.alsoBlocking.length" class="decision-also">
+          <span class="decision-also-kicker">ALSO BLOCKING</span>
+          <p
+            v-for="entry in decision.alsoBlocking"
+            :key="entry.code"
+            class="decision-also-line"
+            :data-code="entry.code"
+          >{{ entry.text }}</p>
+        </div>
       </section>
 
-      <p v-if="decisionReason" class="verdict-reason">{{ decisionReason }}</p>
-
-      <section v-if="dimensionRows.length" class="verdict-scorecard" aria-labelledby="verdict-scorecard-title">
-        <h3 id="verdict-scorecard-title">
+      <section v-if="dimensionRows.length" class="verdict-scores" aria-labelledby="verdict-scores-title">
+        <h3 id="verdict-scores-title">
           <Gauge :size="13" aria-hidden="true" />
-          <span>Rubric dimensions</span>
+          <span>Scores</span>
         </h3>
-        <div v-for="row in dimensionRows" :key="row.key" class="score-row">
-          <span class="score-label">{{ row.label }}</span>
+        <div
+          v-for="row in dimensionRows"
+          :key="row.key"
+          class="score-row"
+          :class="{ 'is-floored': row.floored }"
+          :data-dimension="row.key"
+        >
+          <span class="score-label">
+            <span class="score-name">
+              {{ row.label }}
+              <span v-if="row.thin" class="score-thin" title="Fewer sources than the rubric asks for.">thin</span>
+            </span>
+            <span v-if="row.question" class="score-question">{{ row.question }}</span>
+          </span>
           <span class="score-track" aria-hidden="true">
             <span class="score-fill" :style="{ width: row.percent }"></span>
           </span>
@@ -266,42 +326,45 @@ async function copyReport(): Promise<void> {
   font: 800 var(--fs-13)/1.3 var(--font-mono);
   border-radius: var(--r-sm);
   letter-spacing: 0.04em;
+  /* The DOM text is words ("Needs work"); the shout is typography. An
+     unrecognised label from a newer server therefore cannot reach the screen
+     looking like a variable name. */
+  text-transform: uppercase;
 }
 .verdict-badge.is-pass { background: var(--accent-mint); }
 .verdict-badge.is-warn { background: var(--warn-text); }
 .verdict-badge.is-fail { background: #ffb4b4; }
-.verdict-confidence { color: var(--text-muted); font: 500 var(--fs-13)/1 var(--font-mono); }
+
+/* One chip carries the band word and the number, so a reader is never asked
+   to join "34% confidence" to a shouted "LOW" themselves. */
+.verdict-confidence {
+  padding: 3px 8px;
+  color: var(--text-muted);
+  font: 600 var(--fs-12)/1.2 var(--font-mono);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
+.verdict-confidence.is-high { color: var(--accent-mint); border-color: rgba(170, 255, 205, 0.34); }
+.verdict-confidence.is-moderate { color: var(--accent-cyan); border-color: rgba(153, 234, 249, 0.32); }
+.verdict-confidence.is-low { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 
 .verdict-score { color: var(--text-title); font: 700 var(--fs-18)/1 var(--font-display); }
 .verdict-score small { color: var(--text-40); font: 500 var(--fs-12)/1 var(--font-mono); }
-
-.verdict-band {
-  padding: 3px 7px;
-  color: var(--text-muted);
-  font: 700 var(--fs-11)/1.2 var(--font-mono);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-sm);
-  letter-spacing: 0.05em;
-}
-/* `ConfidenceBand` is exactly HIGH / MODERATE / LOW (`schemas/validator.py:33`).
-   Anything else keeps the neutral base style rather than vanishing. */
-.verdict-band.is-high { color: var(--accent-mint); background: rgba(170, 255, 205, 0.1); border-color: rgba(170, 255, 205, 0.34); }
-.verdict-band.is-moderate { color: var(--accent-cyan); background: rgba(153, 234, 249, 0.1); border-color: rgba(153, 234, 249, 0.32); }
-.verdict-band.is-low { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 
 .report-flags { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; padding: 10px 20px 0; }
 .report-flag {
   padding: 4px 8px;
   color: var(--text-muted);
-  font: 600 var(--fs-11)/1.4 var(--font-mono);
+  font: 500 var(--fs-12)/1.4 var(--font-body);
   background: var(--surface-well);
   border: 1px solid var(--border-default);
   border-radius: var(--r-sm);
 }
 .report-flag.is-provisional { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 
-/* Bounded so a long floor list can never squeeze the report body to nothing on
-   a short viewport; it scrolls on its own instead. */
+/* Bounded so a long decision block can never squeeze the report body to
+   nothing on a short viewport; it scrolls on its own instead. */
 .verdict-summary {
   display: flex;
   flex: 0 0 auto;
@@ -312,14 +375,18 @@ async function copyReport(): Promise<void> {
   padding: 12px 20px 0;
 }
 
-.verdict-floors {
-  padding: 11px 13px;
-  background: var(--err-bg);
-  border: 1px solid var(--err-border);
+/* Tone tracks the KIND of decision, and the distinction is the point: red for
+   "this idea is dead", amber for "we could not tell". A reader had to infer
+   that before; the tint states it. Both are existing semantic tokens. */
+.verdict-decision {
+  padding: 12px;
   border-radius: var(--r-md);
 }
-.verdict-floors h3,
-.verdict-scorecard h3 {
+.verdict-decision.is-floor { background: var(--err-bg); border: 1px solid var(--err-border); }
+.verdict-decision.is-evidence { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+
+.verdict-decision h3,
+.verdict-scores h3 {
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -328,34 +395,52 @@ async function copyReport(): Promise<void> {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.verdict-floors h3 { color: var(--err-text); }
-.verdict-floors p { margin: 7px 0 10px; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
-.verdict-floors ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.verdict-floors li {
-  display: inline-flex;
-  gap: 8px;
-  align-items: baseline;
-  padding: 5px 9px;
-  background: var(--surface-well);
-  border: 1px solid var(--err-border);
-  border-radius: var(--r-sm);
+.verdict-decision.is-floor h3 { color: var(--err-text); }
+.verdict-decision.is-evidence h3 { color: var(--warn-text); }
+
+.decision-headline {
+  margin: 8px 0 0;
+  color: var(--text-title);
+  font: 600 var(--fs-18)/1.3 var(--font-display);
 }
-.floor-name { color: var(--text-title); font: 600 var(--fs-13)/1.2 var(--font-body); }
-.verdict-floors code { color: var(--err-text); font: 500 var(--fs-11)/1.2 var(--font-mono); }
+.decision-meaning { margin: 6px 0 0; color: var(--text-body); font-size: var(--fs-13); line-height: 1.55; }
 
-.verdict-reason { margin: 0; color: var(--text-muted); font-size: var(--fs-13); line-height: 1.55; }
+.decision-also {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-default);
+}
+.decision-also-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-40);
+  font: 700 var(--fs-11)/1 var(--font-mono);
+  letter-spacing: 0.06em;
+}
+.decision-also-line { margin: 0 0 4px; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
+.decision-also-line:last-child { margin-bottom: 0; }
 
-.verdict-scorecard {
+.verdict-scores {
   display: grid;
-  gap: 7px;
-  padding: 11px 13px;
+  gap: 10px;
+  padding: 12px;
   background: var(--surface-well);
   border: 1px solid var(--border-default);
   border-radius: var(--r-md);
 }
-.verdict-scorecard h3 { margin-bottom: 3px; color: var(--accent-cyan); }
-.score-row { display: grid; grid-template-columns: minmax(90px, 132px) minmax(48px, 1fr) auto; gap: 10px; align-items: center; }
-.score-label { color: var(--text-muted); font: 500 var(--fs-12)/1.3 var(--font-mono); }
+.verdict-scores h3 { margin-bottom: 2px; color: var(--accent-cyan); }
+.score-row { display: grid; grid-template-columns: minmax(120px, 190px) minmax(48px, 1fr) auto; gap: 10px; align-items: center; }
+.score-label { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.score-name { display: flex; gap: 6px; align-items: baseline; color: var(--text-body); font: 600 var(--fs-13)/1.3 var(--font-body); }
+.score-question { color: var(--text-40); font: 400 var(--fs-11)/1.35 var(--font-body); }
+.score-thin {
+  padding: 1px 5px;
+  color: var(--warn-text);
+  font: 700 var(--fs-11)/1.3 var(--font-mono);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-pill);
+}
 .score-track { height: 6px; overflow: hidden; background: rgba(255, 255, 255, 0.08); border-radius: var(--r-pill); }
 .score-fill {
   display: block;
@@ -364,6 +449,10 @@ async function copyReport(): Promise<void> {
   border-radius: var(--r-pill);
   transition: width var(--motion-medium) var(--ease-out);
 }
+/* The one tie between the red block and the scorecard: a reader who has just
+   read "Market scored 0 of 5" can find the row without hunting. */
+.score-row.is-floored .score-track { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-border); }
+.score-row.is-floored .score-value { color: var(--err-text); }
 .score-value { color: var(--text-primary); font: 700 var(--fs-13)/1 var(--font-mono); }
 .score-value small { color: var(--text-40); font-weight: 500; }
 

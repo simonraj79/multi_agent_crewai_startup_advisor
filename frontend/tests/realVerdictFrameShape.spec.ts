@@ -140,12 +140,15 @@ describe('the verdict frame shape the backend really emits', () => {
     })
     const text = wrapper.text()
 
-    expect(text).toContain('REJECT')
-    expect(text).toContain('Fatal floor')
-    expect(text).toContain('No demand')
-    expect(text).toContain('FLOOR_NO_DEMAND')
+    // Words, not enums: the badge, the block and the band all read as English
+    // while the raw codes stay in `data-code` where a grep can still find them.
+    expect(text).toContain('Reject')
+    expect(text).toContain('WHAT DECIDED THIS RUN')
+    expect(text).toContain('Demand scored 0 of 5.')
+    expect(text).not.toContain('FLOOR_NO_DEMAND')
+    expect(wrapper.get('.verdict-decision').attributes('data-code')).toBe('FLOOR_NO_DEMAND')
     expect(text).toContain('4.2')
-    expect(text).toContain('MODERATE')
+    expect(text).toContain('Moderate confidence · 50%')
     expect(wrapper.findAll('.score-row')).toHaveLength(5)
     // A floored dimension is a real zero, not a missing value.
     expect(wrapper.findAll('.score-value')[0].text()).toBe('0/5')

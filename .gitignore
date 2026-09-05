@@ -106,6 +106,22 @@ db/
 # than diffing against a Windows render of the same page.
 !frontend/e2e/visual/**/*.png
 
+# RUN-SHELL EVIDENCE, which is neither a run artifact nor a baseline.
+#
+# `docs/run-shell/DEFINITION-OF-DONE.md` is binding only if a reader who has
+# not seen the build conversation can execute every check in it and reach the
+# same verdict - and half its rows are answered by a screenshot at a named
+# path, read by a cold reader who is given the PNGs and nothing else. A
+# captured-and-then-ignored screenshot cannot answer anything: it exists on one
+# machine, the verdict table cites a path that is empty on a fresh clone, and
+# the criterion silently becomes an assertion by the builder, which §0 says is
+# never evidence.
+#
+# Scoped to that one directory rather than to `docs/**`, because the global
+# rule above is right about everything else: a plot or a stray capture written
+# somewhere in `docs/` is still disposable.
+!docs/run-shell/evidence/**/*.png
+
 # Lecture source material - 20 MB binary, not application source.
 *.pdf
 

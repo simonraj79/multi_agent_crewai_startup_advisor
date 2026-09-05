@@ -77,6 +77,12 @@ _BRANCH_TOOLS: dict[str, tuple[str, str]] = {
 #: ones this double gives an `utterance` to. The routers decide by reading a
 #: structured reply and `persist` writes a file (PRD §7.0), so neither speaks -
 #: giving them one here would teach the console that a router talks.
+#:
+#: It is the same set as `service/graph.py::VALIDATOR_CREW_WIRING`'s keys, and
+#: `tests/service/test_synthetic_identity_frames.py` asserts that rather than
+#: leaving it to be noticed: an agent node is exactly a node where an agent
+#: runs, so a node that speaks and has no identity - or an identity that never
+#: speaks - is a drift between two files, not a design.
 _SPEAKING_NODES: frozenset[str] = frozenset(
     {
         "scope_idea",
@@ -89,6 +95,48 @@ _SPEAKING_NODES: frozenset[str] = frozenset(
         "write_report",
     }
 )
+
+
+#: `VALIDATOR_CREW_WIRING`, reduced to the two keys a frame carries and cached.
+_IDENTITIES: dict[str, dict[str, str]] | None = None
+
+
+def _validator_identities() -> Mapping[str, Mapping[str, str]]:
+    """Which agent role and task run at each validator Flow method.
+
+    Read from `service/graph.py::VALIDATOR_CREW_WIRING` rather than restated
+    here, because that table is already test-bound: `test_graph_crew_binding`
+    constructs the six crews once and asserts every string in it, so a role
+    renamed in YAML fails a test instead of appearing on a node card. A second
+    copy in this module would be a second thing to rename and the only place
+    the two could disagree is a frame nobody diffs.
+
+    Imported INSIDE the function on purpose. `service/graph.py` imports
+    `brief_crew.main` and `brief_crew.validator_flow` at module scope, and this
+    module defers exactly those imports so that constructing the FastAPI app
+    does not drag six crews in with it (`config.py`'s note beside
+    `GATE_REVISE_TURNS_METADATA_KEY` records the same seam from the other
+    side). Cached, so the cost is paid once per process by the first synthetic
+    run rather than per frame.
+    """
+
+    global _IDENTITIES
+    if _IDENTITIES is None:
+        from brief_crew.service.graph import VALIDATOR_CREW_WIRING
+
+        _IDENTITIES = {
+            node_id: {
+                key: value
+                for key, value in (
+                    ("agent_role", wiring.get("agent_role")),
+                    ("task_name", wiring.get("task_name")),
+                )
+                if value
+            }
+            for node_id, wiring in VALIDATOR_CREW_WIRING.items()
+        }
+    return _IDENTITIES
+
 
 #: Long enough that a progressive reveal is visible and short enough that it
 #: finishes inside one E2E step: at the rail's 120 chars/second this is a
@@ -568,20 +616,113 @@ class SyntheticValidatorRunner:
         *,
         came_from: str | None = None,
     ) -> None:
+        """One node's visit, with the identity a real frame from it would carry.
+
+        `identity` is `{agent_role, task_name}` for the eight agent nodes and
+        `{}` for the routers, the gates and `persist`. It is merged into every
+        frame this visit emits, which is what the paid path does uniformly:
+        `events/serializer.py::drafts` stamps `_actor` onto every frame whose
+        node is not the workflow's, precisely so a branch added later cannot
+        forget. The double stamps at the same breadth for the same reason.
+
+        The one frame deliberately left unstamped is `_traversal`'s
+        `edge_taken`. Its subject is `events/adapter.py::_traversal_for`, which
+        the flow emits about an EDGE rather than about an agent, and the real
+        edge frame the serializer draws (from a router's
+        `MethodExecutionFinishedEvent`) carries no agent either - a flow method
+        is not an agent execution. Stamping it would be the double carrying a
+        field its subject does not.
+        """
+
+        identity = _validator_identities().get(node_id, {})
         SyntheticValidatorRunner._traversal(execution, came_from, node_id)
         execution.capture.emit(
             kind=FrameKind.NODE_STATE,
             event_type=UIEventType.NODE_START,
             node_id=node_id,
             message=f"{label} started",
+            # `stage` as well as the identity, because the real frame carries
+            # it: `MethodExecutionStartedEvent` drafts `{"stage": "before",
+            # "params": ...}` and its `Finished` counterpart `{"stage":
+            # "after", ...}`. The double wrote neither, so a client keyed on
+            # the stage of a node frame - the ordinary way to tell a start from
+            # an end without parsing `event_type` - saw nothing on the free
+            # path. Surfaced by the subset check in
+            # `tests/service/test_synthetic_identity_frames.py`, which is what
+            # that check is for.
+            details={"stage": "before", **identity},
         )
-        SyntheticValidatorRunner._tool_call(execution, node_id, idea)
-        SyntheticValidatorRunner._utterance(execution, node_id, label, idea)
+        SyntheticValidatorRunner._agent_state(execution, node_id, identity, "before")
+        SyntheticValidatorRunner._tool_call(execution, node_id, idea, identity)
+        text = SyntheticValidatorRunner._utterance(
+            execution, node_id, label, idea, identity
+        )
+        SyntheticValidatorRunner._agent_state(
+            execution, node_id, identity, "after", output=text
+        )
         execution.capture.emit(
             kind=FrameKind.NODE_STATE,
             event_type=UIEventType.NODE_END,
             node_id=node_id,
             message=f"{label} completed",
+            details={"stage": "after", **identity},
+        )
+
+    @staticmethod
+    def _agent_state(
+        execution: RunExecution,
+        node_id: str,
+        identity: Mapping[str, str],
+        stage: str,
+        *,
+        output: str = "",
+    ) -> None:
+        """The AGENT pair CrewAI raises around every agent execution.
+
+        `AgentExecutionStartedEvent` and `AgentExecutionCompletedEvent` are the
+        two events that say an AGENT ran, as opposed to a model being called or
+        a tool being hit, and `events/serializer.py:534-537` turns each into an
+        `agent` frame carrying `stage` and `task`. This double emitted neither -
+        so `FrameKind.AGENT` had NO producer on the free path at all, and any
+        surface keyed on "which agent is speaking now" was as unobservable as
+        the tool, llm and token surfaces were before them. That is the same
+        divergence a fourth time (CLAUDE.md closed items 20 and 33, and the
+        `_tool_call` / `_utterance` / `_token_usage` docstrings above), and the
+        argument does not improve with repetition: a double that cannot produce
+        the frame under test certifies nothing about the client that reads it.
+
+        The pair brackets the node's tool and llm frames rather than wrapping
+        the whole visit, because that is where the real one sits: CrewAI raises
+        `AgentExecutionStarted` when the agent begins its loop - inside the
+        method the flow already reported as started - and every tool call and
+        model call it makes happens between the two.
+
+        Only agent nodes get a pair. A router reads a structured reply and
+        `persist` writes a file; neither is an agent execution and neither
+        raises these events on the paid path.
+
+        `output` mirrors the serializer's `clip(event.output)` - the agent's
+        final answer - which here is the utterance it just made. An agent node
+        that produced no text (there is none today) simply omits the key rather
+        than carrying an empty one.
+        """
+
+        role = identity.get("agent_role")
+        if not role:
+            return
+        details: dict[str, Any] = {
+            "stage": stage,
+            "task": identity.get("task_name"),
+            **dict(identity),
+        }
+        if stage == "after" and output:
+            details["output"] = output
+        execution.capture.emit(
+            kind=FrameKind.AGENT,
+            event_type=UIEventType.AGENT_CALL,
+            node_id=node_id,
+            message=f"{role} {'started' if stage == 'before' else 'completed'}",
+            details=details,
         )
 
     @staticmethod
@@ -621,8 +762,12 @@ class SyntheticValidatorRunner:
 
     @staticmethod
     def _utterance(
-        execution: RunExecution, node_id: str, label: str, idea: str
-    ) -> None:
+        execution: RunExecution,
+        node_id: str,
+        label: str,
+        idea: str,
+        identity: Mapping[str, str] | None = None,
+    ) -> str:
         """The streamed chunks and the completed `utterance` a model call makes.
 
         Same argument as `_tool_call` above, one layer up: this runner emitted
@@ -635,17 +780,35 @@ class SyntheticValidatorRunner:
         `events/adapter.py::_merged_chunk` field for field: a coalesced chunk
         carries `{call_id, stage, chunk}` and nothing else, because the adapter
         drops every other key when it merges; the utterance carries the seven
-        keys the serializer writes at `stage="utterance"`. Deliberately NO
-        `agent_role` or `task_name`: the real frame has neither, and a double
-        that carries a field its subject does not would let a console read one
-        that will never arrive in production.
+        keys the serializer writes at `stage="utterance"`.
+
+        **CORRECTED 2026-09-05.** This docstring used to say the identity was
+        "deliberately NO `agent_role` or `task_name`: the real frame has
+        neither". The real frame has BOTH. `FieldBoundedSerializer.drafts`
+        (`events/serializer.py:328-392`) wraps the whole ladder and merges
+        `_actor(event)` into every frame whose node is not the workflow's -
+        CrewAI populates `agent_role`, `task_name`, `agent_id` and `task_id` on
+        `BaseEvent` for every agent, task, tool and LLM event, and that wrapper
+        exists precisely so no branch can forget to stamp itself. So the
+        sentence was exactly backwards, and the cost was the one the file's
+        other docstrings keep recording: a client written against this double
+        could not join a frame to an agent, because the double dropped the one
+        field production always carries.
+
+        The double carries the two identifying keys and not the two id keys:
+        `agent_id` and `task_id` are CrewAI's own UUIDs, which a synthetic run
+        has no honest value for, and inventing one would be the mirror of the
+        mistake being corrected.
 
         Only nodes with a `label` that names an agent get one. The routers and
-        the persistence step call no model on the paid path either.
+        the persistence step call no model on the paid path either. Returns the
+        text it emitted, so the caller's `agent` completion frame can carry the
+        same words as its `output` rather than a second invented string.
         """
 
+        stamp = dict(identity or {})
         if node_id not in _SPEAKING_NODES:
-            return
+            return ""
         text = _SYNTHETIC_UTTERANCE.format(
             label=label, idea=idea or "the idea under test"
         )
@@ -661,7 +824,7 @@ class SyntheticValidatorRunner:
             event_type=UIEventType.MODEL_CALL,
             node_id=node_id,
             message=f"{model} call started",
-            details={"stage": "before", "call_id": call_id, "model": model},
+            details={"stage": "before", "call_id": call_id, "model": model, **stamp},
         )
         for chunk in _chunks(text, 3):
             execution.capture.emit(
@@ -669,7 +832,12 @@ class SyntheticValidatorRunner:
                 event_type=UIEventType.MODEL_CALL,
                 node_id=node_id,
                 message="Model stream chunk",
-                details={"stage": "chunk", "call_id": call_id, "chunk": chunk},
+                details={
+                    "stage": "chunk",
+                    "call_id": call_id,
+                    "chunk": chunk,
+                    **stamp,
+                },
             )
         # `after` BEFORE `utterance`, because that is the order
         # `events/serializer.py:525-527` returns its three-frame tuple in, and a
@@ -686,6 +854,7 @@ class SyntheticValidatorRunner:
                 "model": model,
                 "finish_reason": "stop",
                 "response_id": None,
+                **stamp,
             },
         )
         execution.capture.emit(
@@ -701,9 +870,13 @@ class SyntheticValidatorRunner:
                 "prompt_tokens": 640,
                 "completion_tokens": len(text) // 4,
                 "model": model,
+                **stamp,
             },
         )
-        SyntheticValidatorRunner._token_usage(execution, node_id, call_id, model, text)
+        SyntheticValidatorRunner._token_usage(
+            execution, node_id, call_id, model, text, stamp
+        )
+        return text
 
     @staticmethod
     def _token_usage(
@@ -712,6 +885,7 @@ class SyntheticValidatorRunner:
         call_id: str,
         model: str,
         text: str,
+        identity: Mapping[str, str] | None = None,
     ) -> None:
         """The TOKEN frame that makes the console's spend surface real.
 
@@ -767,11 +941,17 @@ class SyntheticValidatorRunner:
                 "model": model,
                 "usage": usage,
                 "cost_usd": cost_usd,
+                **dict(identity or {}),
             },
         )
 
     @staticmethod
-    def _tool_call(execution: RunExecution, node_id: str, idea: str) -> None:
+    def _tool_call(
+        execution: RunExecution,
+        node_id: str,
+        idea: str,
+        identity: Mapping[str, str] | None = None,
+    ) -> None:
         """Emit the TOOL frame pair a research branch produces, or nothing.
 
         This runner emitted NO tool, llm, token or metrics frames at all, and
@@ -795,6 +975,7 @@ class SyntheticValidatorRunner:
         spec = _BRANCH_TOOLS.get(node_id)
         if spec is None:
             return
+        stamp = dict(identity or {})
         tool_name, query = spec[0], spec[1].format(idea=idea or "synthetic idea")
         execution.capture.emit(
             kind=FrameKind.TOOL,
@@ -806,6 +987,7 @@ class SyntheticValidatorRunner:
                 "tool": tool_name,
                 "query": query,
                 "args": {"query": query},
+                **stamp,
             },
         )
         # A knob rather than a constant: this is the ONLY way to reproduce the
@@ -838,6 +1020,7 @@ class SyntheticValidatorRunner:
                 "retrieved_at": datetime.now(timezone.utc)
                 .isoformat(timespec="seconds")
                 .replace("+00:00", "Z"),
+                **stamp,
             },
         )
 

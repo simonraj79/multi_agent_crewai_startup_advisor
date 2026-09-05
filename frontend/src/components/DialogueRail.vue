@@ -2,6 +2,8 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { ChevronDown, ChevronUp, MessagesSquare, Scissors } from 'lucide-vue-next'
 import { collapsedPreview, type DialogueEntry } from '../composables/useRunChoreography'
+import { readSpeech, renderSpeech } from '../trace/speech'
+import { MAX_UTTERANCE_CHARS } from '../data/serverLimits'
 
 /**
  * What the agents actually SAID.
@@ -62,16 +64,60 @@ watch(
   },
 )
 
+/**
+ * What each entry IS, decided once per entry rather than in the template.
+ *
+ * `readSpeech` is where the three shapes an `utterance` frame can carry get
+ * told apart - see `trace/speech.ts`. The one that matters here is the third:
+ * a guardrail LLM's `{"valid":true,"feedback":null}` was being rendered as
+ * something an agent said, in a rail whose entire subject is speech. It is a
+ * machine answering a machine; it gets one line and its object behind the
+ * disclosure.
+ */
+const read = computed(() => props.entries.map((entry) => readSpeech(entry.text)))
+
+/**
+ * The newest thing anybody actually SAID, which a structured result may not
+ * push out of view.
+ *
+ * `collapsed` is decided upstream over every entry, so three guardrail answers
+ * in a row are enough to fold the last real utterance - the exact failure the
+ * recency rule exists to prevent, arriving through a shape that is not speech.
+ * One clause, and it can only ever open a row that speech is in.
+ */
+const newestProseId = computed(() => {
+  for (let index = props.entries.length - 1; index >= 0; index -= 1) {
+    if (read.value[index].kind === 'prose') return props.entries[index].callId
+  }
+  return ''
+})
+
 const shown = computed(() =>
-  props.entries.map((entry) => ({
-    entry,
-    open: opened.value.has(entry.callId) || !entry.collapsed,
-    preview: collapsedPreview(entry.text),
+  props.entries.map((entry, index) => {
+    const speech = read.value[index]
     // Reveal is a float so the reveal can advance by fractions of a character
     // between frames; the slice is where it becomes text.
-    visible: entry.text.slice(0, Math.floor(entry.revealed)),
-  })),
+    const visible = speech.text.slice(0, Math.floor(entry.revealed))
+    return {
+      entry,
+      speech,
+      structured: speech.kind === 'structured',
+      open:
+        opened.value.has(entry.callId) ||
+        !entry.collapsed ||
+        entry.callId === newestProseId.value,
+      preview: collapsedPreview(speech.text),
+      visible,
+      // Escape-first: every character is escaped BEFORE any structure is
+      // recognised, so model output cannot become markup. See CLAUDE.md's note
+      // on why the renderer is not `marked` + `dompurify`.
+      html: renderSpeech(visible),
+    }
+  }),
 )
+
+/** The trim note's number, from the constant that mirrors the server's. */
+const trimmedAt = MAX_UTTERANCE_CHARS.toLocaleString()
 
 function toggle(callId: string): void {
   const next = new Set(opened.value)
@@ -138,13 +184,15 @@ function clock(at: number): string {
         v-for="row in shown"
         :key="row.entry.callId"
         class="dialogue-entry"
-        :class="{ 'is-folded': !row.open }"
+        :class="{ 'is-folded': !row.open, 'is-structured': row.structured }"
         :data-node="row.entry.nodeId"
+        :data-identity="row.entry.role"
       >
         <span
           class="dialogue-avatar"
           data-testid="dialogue-avatar"
           :data-character="characterOf(row.entry.nodeId)"
+          :data-character-seed="row.entry.role"
           :style="avatarStyle(row.entry.nodeId)"
           aria-hidden="true"
         >{{ initials(row.entry.role) }}</span>
@@ -156,8 +204,24 @@ function clock(at: number): string {
             <time class="dialogue-time">{{ clock(row.entry.at) }}</time>
           </header>
 
+          <!--
+            NOT speech. A guardrail LLM answering `{"valid":true,...}` is a
+            machine talking to a machine, and rendering it in a bubble beside
+            what the crew said is how a rail whose whole subject is speech ended
+            up showing JSON. One line, and the object is one click away.
+          -->
+          <template v-if="row.structured">
+            <p class="dialogue-structured" data-testid="dialogue-structured">
+              {{ row.entry.role }} returned a structured result
+            </p>
+            <details class="dialogue-raw">
+              <summary>Details</summary>
+              <pre data-testid="dialogue-payload">{{ row.speech.payload }}</pre>
+            </details>
+          </template>
+
           <button
-            v-if="!row.open"
+            v-else-if="!row.open"
             class="dialogue-fold"
             type="button"
             data-testid="dialogue-fold"
@@ -166,7 +230,20 @@ function clock(at: number): string {
           >{{ row.preview }}</button>
 
           <template v-else>
-            <p class="dialogue-text" data-testid="dialogue-text">{{ row.visible }}</p>
+            <!--
+              `v-html` over `renderSpeech`, which escapes every character BEFORE
+              it recognises any structure - so there is no path by which model
+              output becomes markup. The models write Markdown; a rail showing
+              `**the point**` with the asterisks is showing the wire format.
+              `.markdown-body` is global rather than scoped for the reason
+              CLAUDE.md gives: Vue's scoped attribute never reaches injected
+              HTML, so a scoped selector would match nothing.
+            -->
+            <div
+              class="dialogue-text markdown-body"
+              data-testid="dialogue-text"
+              v-html="row.html"
+            />
             <button
               v-if="row.entry.collapsed"
               class="text-button"
@@ -182,11 +259,21 @@ function clock(at: number): string {
             -->
             <p v-if="row.entry.truncated" class="dialogue-trimmed" data-testid="dialogue-trimmed">
               <Scissors :size="11" aria-hidden="true" />
-              trimmed to 4,096 characters — the whole of it is in the run log
+              trimmed to {{ trimmedAt }} characters — the whole of it is in the run log
             </p>
-            <p class="dialogue-tokens">
-              {{ row.entry.tokens.prompt }} in · {{ row.entry.tokens.completion }} out
-            </p>
+            <!--
+              The cost of the entry, and it is a detail rather than the entry.
+              `5168 in · 3994 out` on every visible row is the same failure as
+              the trace's raw payloads: true, unreadable, and in front of the
+              thing somebody came to read.
+            -->
+            <details class="dialogue-raw">
+              <summary>Details</summary>
+              <p class="dialogue-tokens" data-testid="dialogue-tokens">
+                {{ row.entry.tokens.prompt.toLocaleString() }} in ·
+                {{ row.entry.tokens.completion.toLocaleString() }} out
+              </p>
+            </details>
           </template>
         </div>
       </article>
@@ -281,13 +368,72 @@ function clock(at: number): string {
 .dialogue-task { flex: 0 1 auto; overflow: hidden; color: var(--text-40); font: 500 10px/1.3 var(--font-mono); white-space: nowrap; text-overflow: ellipsis; }
 .dialogue-time { flex: 0 0 auto; margin-left: auto; color: var(--text-40); font: 400 10px/1.3 var(--font-mono); }
 
+/*
+ * No `white-space: pre-wrap` any more, and its absence is the fix rather than a
+ * simplification: the text is rendered as Markdown now, so paragraphs are
+ * paragraphs and a `json.dumps`ed response's literal backslash-n is resolved
+ * before it ever reaches the DOM. Preserving whitespace here would put the wire
+ * format back on screen one layer down.
+ */
 .dialogue-text {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
   color: var(--text-body);
   font-size: var(--fs-12);
   line-height: 1.55;
+}
+
+/*
+ * `.markdown-body` is sized for the REPORT - 14px body, 22/18/15px headings,
+ * 0.9em paragraph gaps - and this is a 330px rail sharing a column with the
+ * trace. `:deep()` and not a scoped selector, for the reason `studio.css`
+ * already records: Vue's scoped data attribute is never applied to HTML
+ * injected with `v-html`, so a plain scoped rule would match nothing at all.
+ */
+.dialogue-text :deep(h1),
+.dialogue-text :deep(h2),
+.dialogue-text :deep(h3),
+.dialogue-text :deep(h4) { margin: 0.8em 0 0.3em; font-size: var(--fs-12); }
+.dialogue-text :deep(p) { margin: 0 0 0.55em; }
+.dialogue-text :deep(*:last-child) { margin-bottom: 0; }
+.dialogue-text :deep(ul),
+.dialogue-text :deep(ol) { margin: 0 0 0.55em; padding-left: 16px; }
+.dialogue-text :deep(li) { margin-bottom: 0.2em; }
+.dialogue-text :deep(pre) { margin: 0 0 0.55em; padding: 6px 8px; font-size: 10px; }
+.dialogue-text :deep(table) { font-size: 10px; }
+.dialogue-text :deep(hr) { margin: 0.7em 0; }
+
+.dialogue-structured {
+  margin: 4px 0 0;
+  color: var(--text-40);
+  font: 400 var(--fs-11)/1.5 var(--font-body);
+  font-style: italic;
+}
+
+.dialogue-raw { margin-top: 5px; }
+.dialogue-raw > summary {
+  color: var(--text-40);
+  font: 600 10px/1.3 var(--font-body);
+  cursor: pointer;
+  list-style: none;
+}
+.dialogue-raw > summary::-webkit-details-marker { display: none; }
+.dialogue-raw > summary::before { content: '▸ '; }
+.dialogue-raw[open] > summary::before { content: '▾ '; }
+.dialogue-raw > summary:hover { color: var(--text-muted); }
+.dialogue-raw > summary:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+.dialogue-raw pre {
+  max-height: 180px;
+  margin: 5px 0 0;
+  overflow: auto;
+  padding: 6px 7px;
+  color: var(--text-muted);
+  font: 400 10px/1.45 var(--font-mono);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
 }
 
 /* A folded entry is a BUTTON and not a clipped paragraph, so the whole line is
@@ -315,7 +461,7 @@ function clock(at: number): string {
 .text-button { margin-top: 5px; padding: 0; color: var(--link-cyan); background: none; border: 0; font: 600 var(--fs-11)/1.3 var(--font-body); cursor: pointer; }
 
 .dialogue-trimmed { display: flex; align-items: center; gap: 4px; margin: 5px 0 0; color: var(--warn-text); font: 500 10px/1.3 var(--font-mono); }
-.dialogue-tokens { margin: 4px 0 0; color: var(--text-40); font: 500 10px/1.2 var(--font-mono); font-variant-numeric: tabular-nums; }
+.dialogue-tokens { margin: 5px 0 0; color: var(--text-muted); font: 500 10px/1.2 var(--font-mono); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 860px) {
   .dialogue-list { max-height: 30vh; }

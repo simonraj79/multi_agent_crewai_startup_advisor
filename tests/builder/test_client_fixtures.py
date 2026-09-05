@@ -62,11 +62,13 @@ from scripts.emit_builder_fixtures import (  # noqa: E402
     PREVIEW_CREDENTIAL_LABEL,
     PROBLEM_CODES_PATH,
     PROBLEM_SCENARIOS,
+    STATE_PREFIXES_PATH,
     TEMPLATE_DOCUMENTS_PATH,
     build_back_edges,
     build_compiled_preview,
     build_models,
     build_problem_codes,
+    build_state_prefixes,
     build_templates,
     committed,
     render,
@@ -266,6 +268,76 @@ class ProblemCodeFixtureTests(unittest.TestCase):
             "the set of problems carrying NO anchor moved; ProblemsPanel's "
             "document-level group is the only surface that renders these",
         )
+
+
+class StatePrefixFixtureTests(unittest.TestCase):
+    """`builderStatePrefixes.json` still says what the constants say.
+
+    The THIRD mirror, and the one that shipped without a fixture.
+    `useFlowTest.ts::RESERVED_STATE_PREFIXES` restates these to group the test
+    panel's State tab; a namespace the client has never heard of is a group of
+    keys nobody is shown, and nothing else in either suite goes red for it. That
+    is what happened on 2026-09-05, when `decision__` was added under it.
+    """
+
+    def test_the_committed_fixture_is_what_the_generator_produces_now(self) -> None:
+        self.assertEqual(
+            committed(STATE_PREFIXES_PATH),
+            render(build_state_prefixes()),
+            "frontend/tests/fixtures/builderStatePrefixes.json is stale, so the test "
+            "panel is grouping run state by namespaces this build no longer owns. "
+            "Regenerate with:" + NEWLINE + "    " + REGENERATE,
+        )
+
+    def test_it_is_the_constants_and_not_the_generator_s_own_opinion(self) -> None:
+        """Read from the modules rather than from the generator.
+
+        The byte-compare above proves the fixture matches what the generator
+        emits today; this proves what the generator emits is what the compiler
+        actually owns, so a generator that quietly dropped a namespace would
+        fail here rather than be ratified by its own output.
+        """
+
+        from brief_crew.builder.runtime import (
+            BUILDER_STATE_KEY,
+            BUILDER_STATE_TURNS_PREFIX,
+        )
+        from brief_crew.config import (
+            BUILDER_STATE_DECISION_PREFIX,
+            BUILDER_STATE_ERROR_PREFIX,
+            BUILDER_STATE_OUTPUT_PREFIX,
+        )
+
+        payload = json.loads(STATE_PREFIXES_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(
+            payload["membership"],
+            sorted(
+                {
+                    BUILDER_STATE_OUTPUT_PREFIX,
+                    BUILDER_STATE_ERROR_PREFIX,
+                    BUILDER_STATE_TURNS_PREFIX,
+                    BUILDER_STATE_DECISION_PREFIX,
+                    BUILDER_STATE_KEY,
+                }
+            ),
+        )
+
+    def test_a_gate_s_two_halves_are_two_namespaces(self) -> None:
+        """Paid-run defect 3, as a fixture assertion.
+
+        The payload the operator was SHOWN and the decision they GAVE are two
+        questions, and they were one key until 2026-09-05 - the router wrote its
+        answer over the pause's output, so every downstream
+        `${state.out__<gate>}` read reply metadata.
+        """
+
+        payload = json.loads(STATE_PREFIXES_PATH.read_text(encoding="utf-8"))
+        self.assertIn("decision__", payload["membership"])
+        self.assertNotEqual(
+            payload["declared"]["BUILDER_STATE_DECISION_PREFIX"],
+            payload["declared"]["BUILDER_STATE_OUTPUT_PREFIX"],
+        )
+        self.assertIn("decision__", payload["refused_as_declared_key"])
 
 
 class ModelFixtureTests(unittest.TestCase):

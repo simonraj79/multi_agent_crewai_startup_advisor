@@ -77,6 +77,7 @@ BACK_EDGES_PATH = FIXTURES / "builderBackEdges.json"
 PROBLEM_CODES_PATH = FIXTURES / "builderProblemCodes.json"
 MODELS_PATH = FIXTURES / "models.json"
 COMPILED_PREVIEW_PATH = FIXTURES / "builderCompiledPreview.json"
+STATE_PREFIXES_PATH = FIXTURES / "builderStatePrefixes.json"
 TEMPLATES_DIR = FIXTURES / "templates"
 #: What `scripts/dump-templates.mjs` writes: every gallery template in the
 #: `forValidate` shape a browser posts. INPUT to this script, never output -
@@ -1761,6 +1762,54 @@ def committed(path: pathlib.Path) -> bytes | None:
     return path.read_bytes().replace(b"\r\n", b"\n")
 
 
+def build_state_prefixes() -> dict[str, Any]:
+    """The reserved state namespaces, out of the constants that declare them.
+
+    A THIRD mirror, and the one that had no fixture until the `decision__`
+    namespace was added on 2026-09-05. `useFlowTest.ts::RESERVED_STATE_PREFIXES`
+    restates this list to group the test panel's State tab, and spec ruling R7
+    admits a client mirror only on the condition that a Python-generated fixture
+    proves it still agrees. It was admitted without one, on the argument that a
+    prefix which moved would show as an ungrouped key rather than as a wrong
+    answer - true, and beside the point once the SET changes: a namespace the
+    client has never heard of is a group of keys an operator is never shown, and
+    nothing anywhere goes red.
+
+    `membership` is sorted rather than ordered, deliberately. The ORDER the
+    panel groups them in is a design decision the client owns; which prefixes
+    exist is a fact about the server, and only the second belongs in a fixture.
+
+    `refused_as_declared_key` is the same set seen from the other side -
+    `bounds._reserved_state_prefixes()`, what a document may not name a state
+    field. `__builder__` is absent from it because it is an exact key rather
+    than a prefix and `_state_problems` checks it by equality.
+    """
+
+    from brief_crew.builder.bounds import _reserved_state_prefixes
+    from brief_crew.builder.runtime import (
+        BUILDER_STATE_KEY,
+        BUILDER_STATE_TURNS_PREFIX,
+    )
+
+    declared = {
+        "BUILDER_STATE_OUTPUT_PREFIX": project_config.BUILDER_STATE_OUTPUT_PREFIX,
+        "BUILDER_STATE_ERROR_PREFIX": project_config.BUILDER_STATE_ERROR_PREFIX,
+        "BUILDER_STATE_TURNS_PREFIX": BUILDER_STATE_TURNS_PREFIX,
+        "BUILDER_STATE_DECISION_PREFIX": project_config.BUILDER_STATE_DECISION_PREFIX,
+        "BUILDER_STATE_KEY": BUILDER_STATE_KEY,
+    }
+    return {
+        "_source": (
+            "scripts/emit_builder_fixtures.py::build_state_prefixes - the state "
+            "namespaces the compiler owns, read out of config.py and "
+            "builder/runtime.py. Regenerate; never edit."
+        ),
+        "declared": declared,
+        "membership": sorted(declared.values()),
+        "refused_as_declared_key": sorted(_reserved_state_prefixes()),
+    }
+
+
 def build_models() -> dict[str, Any]:
     """The roster exactly as `GET /api/builder/models` serves it.
 
@@ -1959,6 +2008,9 @@ def targets() -> tuple[tuple[pathlib.Path, bytes], ...]:
         (BACK_EDGES_PATH, render(build_back_edges())),
         (PROBLEM_CODES_PATH, render(build_problem_codes())),
         (MODELS_PATH, render(build_models())),
+        # The third client mirror, and the one that shipped without a fixture
+        # until the `decision__` namespace was added under it.
+        (STATE_PREFIXES_PATH, render(build_state_prefixes())),
         # Plan 06 criterion 11. A TEST fixture, never a client catalogue - see
         # `build_tool_catalogue`'s own docstring for why the distinction is
         # cut-list item 17 rather than a naming choice.

@@ -392,9 +392,16 @@ class BuilderGateFeedbackSlotTests(BuilderGateTestCase):
         self.assertEqual(payload["fields"], {"segment": "clinics", "notes": "narrower"})
 
     def test_an_edit_reaches_the_gate_nodes_own_output(self) -> None:
-        # `route_gate` records every non-`decision` key as `out__confirm`, which
-        # is what `${state.out__confirm}` resolves to downstream. That is the
-        # whole reason the slot name matters.
+        """The operator's corrected FIELDS reach `out__confirm`, and nothing else.
+
+        `${state.out__confirm}` is what a node downstream of the gate resolves,
+        and since 2026-09-05 it carries the gate's payload alone - the decision,
+        the `honoured` flag and the turn count live under `decision__confirm`.
+        So the edit arrives at the top level, in the shape `render_gate` showed
+        it, rather than nested under the `fields` key the reply travels in. That
+        is the whole reason the slot name matters.
+        """
+
         registry, record, prompt = self._at_gate()
         self._reply(
             registry,
@@ -406,7 +413,9 @@ class BuilderGateFeedbackSlotTests(BuilderGateTestCase):
         reopened = record.pending_gate
         assert reopened is not None
         shown = json.loads(str(record.pending_context.method_output))
-        self.assertEqual(shown["fields"]["notes"], "narrower")
+        self.assertEqual(shown["notes"], "narrower")
+        self.assertNotIn("decision", shown)
+        self.assertNotIn("honoured", shown)
 
 
 class BuilderGateReviseBudgetTests(BuilderGateTestCase):

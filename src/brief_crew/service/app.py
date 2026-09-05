@@ -1246,11 +1246,25 @@ def create_app(
                         "input, and nothing to replay into without a node"
                     ),
                 )
+            mocks = _test_input_values(request.test_input_id, user)
             return {
                 "node_id": request.node_id,
                 "mode": "node_test",
                 "source": "test_input",
-                "values": _test_input_values(request.test_input_id, user),
+                "values": mocks,
+                # A saved test input carries ONE value per node (C7), and a gate
+                # leaves two things behind: the payload it showed and the
+                # decision it was given. A mock shaped like a decision is offered
+                # as both, so an author who wrote
+                # `{"decision": "approve"}` for a gate gets the branch they asked
+                # for without a second field to fill in. Shape, not node kind:
+                # this function does not read the document, and a mock that is
+                # not decision-shaped must not silently become one.
+                "decisions": {
+                    node_id: value
+                    for node_id, value in mocks.items()
+                    if isinstance(value, Mapping) and "decision" in value
+                },
             }
         if request.resume_from is None:
             return None
@@ -1264,9 +1278,9 @@ def create_app(
                     "a state to replay"
                 ),
             )
-        values, errors = _saved_slices(source)
+        values, errors, decisions = _saved_slices(source)
         undecided = _gate_without_a_decision(
-            request.workflow_id, request.resume_from.node_id, values
+            request.workflow_id, request.resume_from.node_id, decisions
         )
         if undecided is not None:
             raise HTTPException(
@@ -1285,23 +1299,34 @@ def create_app(
             "source_run_id": source.run_id,
             "values": values,
             "errors": errors,
+            "decisions": decisions,
         }
 
-    def _saved_slices(source: RunRecord) -> tuple[dict[str, Any], dict[str, Any]]:
-        """A finished run's `out__<node>` and `err__<node>` slots, by node id.
+    def _saved_slices(
+        source: RunRecord,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """A finished run's `out__`, `err__` and `decision__` slots, by node id.
 
         Read off the last `flow_states` row rather than off the run's result:
-        the result is one node's output and a replay needs every node's. Both
-        prefixes in one pass, because they are one row and an `on_error: route`
-        node is only replayable if its paired router sees the same pair the
-        source run left - the output AND whether it exploded.
+        the result is one node's output and a replay needs every node's. Three
+        prefixes in one pass, because they are one row and a node is only
+        replayable if the router paired with it sees what the source run left:
+        an `on_error: route` node needs its output AND whether it exploded, and
+        a GATE needs the payload the operator saw AND the decision they gave.
+
+        The third slice arrived on 2026-09-05 with the `decision__` namespace.
+        Before it, a gate's decision was written over its own `out__` slot, so
+        the two travelled as one value and a replay told them apart by shape -
+        a mapping meant answered, a string meant paused-and-stopped. They are
+        two questions and they are two keys now.
         """
 
         if registry.persistence is None or not source.flow_id:
-            return {}, {}
+            return {}, {}, {}
         state = registry.persistence.load_state(source.flow_id) or {}
         outputs = project_config.BUILDER_STATE_OUTPUT_PREFIX
         failures = project_config.BUILDER_STATE_ERROR_PREFIX
+        decisions = project_config.BUILDER_STATE_DECISION_PREFIX
         return (
             {
                 key[len(outputs):]: value
@@ -1313,10 +1338,17 @@ def create_app(
                 for key, value in state.items()
                 if isinstance(key, str) and key.startswith(failures) and value is not None
             },
+            {
+                key[len(decisions):]: value
+                for key, value in state.items()
+                if isinstance(key, str)
+                and key.startswith(decisions)
+                and value is not None
+            },
         )
 
     def _gate_without_a_decision(
-        workflow_id: str, node_id: str, values: Mapping[str, Any]
+        workflow_id: str, node_id: str, decisions: Mapping[str, Any]
     ) -> str | None:
         """The first gate this replay would cross whose answer was never recorded.
 
@@ -1326,9 +1358,11 @@ def create_app(
         but it is a queue slot, a `runs` row and a failed run to say a thing the
         caller could have been told for nothing.
 
-        A gate's recorded value is the MAPPING `route_gate` wrote. A run that
-        paused and stopped leaves the rendered payload there instead, which is a
-        string, so the two are told apart by shape rather than by a flag.
+        A gate's recorded decision is the MAPPING `route_gate` wrote under
+        `decision__<node>`. A run that paused and stopped never reached that
+        router, so it wrote nothing there - the rendered payload is under
+        `out__<node>` where it belongs, and the two are told apart by which key
+        they are under rather than by inspecting the shape of one value.
         """
 
         builder = BUILDER_WORKFLOWS.get(workflow_id)
@@ -1341,7 +1375,7 @@ def create_app(
             node = nodes.get(ancestor)
             if node is None or node.kind != "gate":
                 continue
-            recorded = values.get(ancestor)
+            recorded = decisions.get(ancestor)
             if not isinstance(recorded, Mapping) or "decision" not in recorded:
                 return ancestor
         return None

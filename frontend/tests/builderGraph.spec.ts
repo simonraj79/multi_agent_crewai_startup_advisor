@@ -22,6 +22,7 @@ import type {
   TransformConfig,
 } from '../src/types/builder'
 import {
+  STATE_DECISION_PREFIX,
   STATE_TURNS_PREFIX,
   ancestorsOf,
   backEdges,
@@ -384,6 +385,18 @@ describe('the derived state prefixes agree with the python', () => {
     )
     expect(pythonSource('../../src/brief_crew/builder/gates.py')).toContain(
       `_TURNS_PREFIX = "${STATE_TURNS_PREFIX}"`,
+    )
+  })
+
+  it('spells the gate decision prefix the way config.py does', () => {
+    // Added with the namespace itself. `decision__` carries the same silent
+    // failure as `turns__`: the compiler's existence check only looks at
+    // `out__`, so a drift here dangles rather than raises.
+    const declared = /^BUILDER_STATE_DECISION_PREFIX = "([^"]+)"$/m.exec(
+      pythonSource('../../src/brief_crew/config.py'),
+    )
+    expect(declared?.[1], 'BUILDER_STATE_DECISION_PREFIX moved in config.py').toBe(
+      STATE_DECISION_PREFIX,
     )
   })
 

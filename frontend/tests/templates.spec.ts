@@ -381,8 +381,14 @@ describe('news-to-social is the smallest graph that still does a whole job', () 
     expect(roleOf(research.llm.model)).toBe('workhorse')
     expect(write.tier).toBe('escalation')
     expect(roleOf(write.llm.model)).toBe('escalation')
-    // Low on purpose: the tool loop is where one node's price multiplies.
-    expect(research.max_iter).toBe(3)
+    // Six since 2026-09-05, and it was three. The tool loop is where one
+    // node's price multiplies, so this number is not raised for comfort: run
+    // `a9887442` FAILED at the cap, because CrewAI asks for a final answer
+    // there by appending a model turn and Google refuses a request ending in
+    // one. `builder/max_iter.py` makes that request legal; this makes reaching
+    // it rarer. Only the STATIC estimate moves - $0.4284 to $0.6103, still an
+    // order under the ceiling.
+    expect(research.max_iter).toBe(6)
     expect(FIXTURES['news-to-social'].validation.budget.escalation_nodes).toBe(1)
   })
 

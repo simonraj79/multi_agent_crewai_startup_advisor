@@ -32,7 +32,7 @@
         },
         "config": {
           "tier": "cheap",
-          "max_iter": 3,
+          "max_iter": 6,
           "guardrail_max_retries": 2,
           "prompt_inputs": {
             "topic": "${state.subject}"
@@ -742,9 +742,9 @@
     "valid": true,
     "problems": [],
     "budget": {
-      "static_cost_usd": 0.42836850000000004,
-      "floor_cost_usd": 0.3205365,
-      "modelled_calls": 21,
+      "static_cost_usd": 0.6103350000000001,
+      "floor_cost_usd": 0.42162900000000003,
+      "modelled_calls": 30,
       "billable_nodes": 2,
       "escalation_nodes": 1,
       "cycles": 0,

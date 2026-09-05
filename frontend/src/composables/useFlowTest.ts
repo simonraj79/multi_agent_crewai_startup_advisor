@@ -62,17 +62,33 @@ export const PANEL_MAX_FRACTION = 0.6
 export const PANEL_DEFAULT_PX = 260
 
 /**
- * The four reserved state namespaces, in the order the State tab groups them.
+ * The five reserved state namespaces, in the order the State tab groups them.
  *
- * `out__` and `err__` are `config.BUILDER_STATE_OUTPUT_PREFIX` and
- * `BUILDER_STATE_ERROR_PREFIX`; `turns__` is the per-gate revise counter and
- * `__builder__` the compiled graph's own metadata. Restated rather than
- * fetched, the way `data/serverLimits.ts` restates a bound - and, like that
- * one, the prefixes are what the SERVER strips and this only groups, so a
- * prefix that moved would show as an ungrouped key rather than as a wrong
- * answer.
+ * `out__`, `err__` and `decision__` are `config.BUILDER_STATE_OUTPUT_PREFIX`,
+ * `BUILDER_STATE_ERROR_PREFIX` and `BUILDER_STATE_DECISION_PREFIX`; `turns__`
+ * is the per-gate revise counter and `__builder__` the compiled graph's own
+ * metadata.
+ *
+ * `decision__` arrived on 2026-09-05 and is the half of a gate that used to be
+ * written over the other half: the payload the operator was SHOWN is
+ * `out__<gate>` and what they ANSWERED is `decision__<gate>`, where before the
+ * router wrote its answer over the payload and every downstream
+ * `${state.out__<gate>}` read reply metadata. A run that stopped at a gate has
+ * the first key and not the second, which is worth seeing in this panel.
+ *
+ * A generated fixture pins the list - `frontend/tests/fixtures/builderStatePrefixes.json`,
+ * emitted by `scripts/emit_builder_fixtures.py` from the constants themselves
+ * and byte-compared by `tests/builder/test_client_fixtures.py`. Spec ruling R7
+ * admits a client mirror on exactly that condition, and this one was a mirror
+ * with no fixture until the namespace moved under it.
  */
-export const RESERVED_STATE_PREFIXES = ['out__', 'err__', 'turns__', '__builder__'] as const
+export const RESERVED_STATE_PREFIXES = [
+  'out__',
+  'err__',
+  'turns__',
+  'decision__',
+  '__builder__',
+] as const
 
 /**
  * The session id a dry run is posted under.
@@ -559,7 +575,7 @@ export function useFlowTest(options: FlowTestOptions) {
   }
 
   /**
-   * The state, grouped: the author's own keys first, then the four reserved
+   * The state, grouped: the author's own keys first, then the five reserved
    * namespaces in a fixed order.
    *
    * The author's keys first because they are the ones that answer "what is this
@@ -575,6 +591,7 @@ export function useFlowTest(options: FlowTestOptions) {
       { prefix: 'out__', label: 'Node outputs', entries: [] },
       { prefix: 'err__', label: 'Node errors', entries: [] },
       { prefix: 'turns__', label: 'Gate turns', entries: [] },
+      { prefix: 'decision__', label: 'Gate decisions', entries: [] },
       { prefix: '__builder__', label: 'Graph metadata', entries: [] },
     ]
     for (const key of Object.keys(state).sort()) {

@@ -267,6 +267,23 @@ model not in the snapshot with `model-unknown`, over the ceiling with
 
 ## Status
 
+### D-level note — a gate's two methods write TWO state keys (2026-09-05)
+
+09 D4 compiles a gate to a pause and a paired deterministic router, sharing one
+node id. It did not say which state key each one owns, and the answer the code
+took was "both write `out__<gate>`, and the router runs second" — which cost a
+paid run. The router writes `decision__<gate>` now; the rule is
+`config.BUILDER_STATE_DECISION_PREFIX` and the whole finding, the measured run
+and the file list are in `10-runtime.md`'s Status under
+**`decision__` namespace — 2026-09-05**. It is a CONTRACT change (the reserved
+state namespaces, C7/C10) and `00-architecture.md`'s Status carries the dated
+line.
+
+Two things in this file that follow from it: `_RESERVED_STATE_PREFIXES` is three
+entries and refuses an input field under any of them, and `state_default` seeds
+`decision__<gate>` null beside `turns__<gate>` for the same CEL reason as
+everything else it seeds.
+
 **Built · 2026-09-04.** All twelve criteria met. The compiler compiles the thing
 the gauntlet is about: an authored agent, an authored crew, the attachments
 folded into both, an error port, an `or_` join, a declared state schema, a

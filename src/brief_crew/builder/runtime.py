@@ -47,11 +47,13 @@ from typing import Any, Protocol
 import yaml
 
 from brief_crew.builder.gates import gate_decision, gate_payload
+from brief_crew.builder.max_iter import install_max_iter_nudge
 from brief_crew.config import (
     BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
     AGENT_CREDENTIAL_KIND,
     BUILDER_ROUTER_COMPARISONS,
     BUILDER_ROUTER_OTHERWISE,
+    BUILDER_STATE_DECISION_PREFIX,
     BUILDER_STATE_ERROR_PREFIX,
     BUILDER_STATE_OUTPUT_PREFIX,
     BUILDER_TRANSFORM_OPS,
@@ -110,6 +112,15 @@ BUILDER_STATE_KEY = "__builder__"
 # field is the only place this bound can live: `Flow.max_method_calls` is a
 # `PrivateAttr` that every `from_pending()` resume resets to 1.
 BUILDER_STATE_TURNS_PREFIX = "turns__"
+
+# Every agent this module builds runs on a Google-served model, and CrewAI asks
+# for a final answer at `max_iter` by appending an ASSISTANT turn - a request
+# shape Google refuses with a 400, after the tool calls have already billed.
+# `max_iter.py` carries the whole finding, the measured run id and why the hook
+# is the seam. Installed at import rather than per kickoff because the hook list
+# is process-global with no ContextVar in it, so it survives the worker threads a
+# streaming kickoff and a fan-out branch run on.
+install_max_iter_nudge()
 
 
 class BuilderRuntimeError(RuntimeError):
@@ -1000,6 +1011,24 @@ def _record(flow: Any, node_id: str, value: Any) -> Any:
     _state(flow)[f"{BUILDER_STATE_OUTPUT_PREFIX}{node_id}"] = value
     _checkpoint_state(flow, node_id)
     return value
+
+
+def _record_decision(flow: Any, node_id: str, decision: Mapping[str, Any]) -> dict[str, Any]:
+    """Publish what the operator DECIDED at a gate, beside what the gate was about.
+
+    Never `_record`, and that is the whole of paid-run defect 3. A gate is two
+    methods over one node id: the pause writes the payload the operator is shown
+    to `out__<gate>`, and this router runs second. Writing here too meant the
+    reply metadata replaced the subject, so a downstream `${state.out__<gate>}`
+    - the reference an author writes to feed a gate's subject onward - carried
+    `{"decision": "approve", ...}` instead. `config.BUILDER_STATE_DECISION_PREFIX`
+    carries the measured run.
+    """
+
+    recorded = dict(decision)
+    _state(flow)[f"{BUILDER_STATE_DECISION_PREFIX}{node_id}"] = recorded
+    _checkpoint_state(flow, node_id)
+    return recorded
 
 
 def _as_text(value: Any) -> str:
@@ -2023,26 +2052,45 @@ current_replay_errors: ContextVar[Mapping[str, Any] | None] = ContextVar(
 )
 
 
+#: The `decision__<node>` slots of the same source, for the GATES the source run
+#: answered. A third map for the same reason there is a second: a gate's output
+#: is what the operator was shown and its decision is what they said, and a
+#: replayed gate must re-take the branch that was chosen rather than re-read the
+#: question. Absent for a gate the source run never answered, which is exactly
+#: how `_replayed_gate_decision` detects that and refuses.
+current_replay_decisions: ContextVar[Mapping[str, Any] | None] = ContextVar(
+    "brief_crew_builder_replay_decisions", default=None
+)
+
+
 @contextmanager
 def replay_source(
     values: Mapping[str, Any] | None,
     errors: Mapping[str, Any] | None = None,
+    decisions: Mapping[str, Any] | None = None,
 ) -> Iterator[Mapping[str, Any]]:
-    """Scope one derived plan's replayed outputs, and failures, over a kickoff.
+    """Scope one derived plan's replayed outputs, failures and gate decisions.
 
     `errors` is what makes an `on_error: route` node replayable. Its paired
     router reads `err__<node>`, which is a state key the step method writes and
     `out__<node>` does not carry; without it a node that FAILED and took its
     error port on the source run replays as a success and the derived run takes
     the branch the author drew for the other outcome.
+
+    `decisions` is the same argument for a GATE. Its paired router reads
+    `decision__<node>`, and `out__<node>` carries the payload the operator was
+    shown rather than what they answered - so a replay handed only the outputs
+    would find no decision at every gate it crossed.
     """
 
     resolved = dict(values or {})
     token = current_replay_values.set(resolved)
     error_token = current_replay_errors.set(dict(errors or {}))
+    decision_token = current_replay_decisions.set(dict(decisions or {}))
     try:
         yield resolved
     finally:
+        current_replay_decisions.reset(decision_token)
         current_replay_errors.reset(error_token)
         current_replay_values.reset(token)
 
@@ -2189,7 +2237,7 @@ def route_gate(flow: Any, *args: Any, **_: Any) -> str:
         # everything already paid for, and refusing would park the run at a
         # gate with nothing left to do but expire.
         state[turns_key] = used + 1
-    _record(
+    _record_decision(
         flow,
         node_id,
         {
@@ -2199,22 +2247,45 @@ def route_gate(flow: Any, *args: Any, **_: Any) -> str:
             **reply,
         },
     )
+    _apply_gate_edits(flow, node_id, reply)
     if honoured:
         _rearm(flow, entry)
         return str(entry["revise"])
     return str(entry["approve"])
 
 
+def _apply_gate_edits(flow: Any, node_id: str, reply: Mapping[str, Any]) -> None:
+    """Lay the operator's edited fields over the payload the gate rendered.
+
+    The ONLY thing this router ever writes to `out__<gate>`, and it writes the
+    operator's own object - never the decision, never `honoured`, never a turn
+    count. `service/registry.py::_feedback_payload` sends an authored gate's
+    edits back as `fields`, and that mapping is the whole payload with the edits
+    applied, so it replaces the rendered one rather than merging into it.
+
+    A reply with no `fields` leaves `out__<gate>` exactly as `render_gate` left
+    it, which is the payload the operator approved unchanged. Re-serialised as
+    text for the same reason `render_gate` serialises: what a downstream prompt
+    interpolates is a string either way, and two shapes under one key is the
+    drift these namespaces exist to prevent.
+    """
+
+    edited = reply.get("fields")
+    if not isinstance(edited, Mapping):
+        return
+    _record(flow, node_id, json.dumps(dict(edited), default=str))
+
+
 def _replayed_gate_decision(flow: Any, entry: Mapping[str, Any], node_id: str) -> str:
     """The branch the SOURCE run took at this gate, taken again - 10 D5.
 
-    Read out of the replay values rather than out of `out__<node>`, and the two
-    are the same thing said twice: the values map IS the source run's last
-    `flow_states` row, and `replay_output` has just written the same value into
-    state as text. The mapping is the shape `route_gate` left there, so reading
-    it here needs no parsing and cannot mistake a rendered gate PAYLOAD - which
-    is what `out__<node>` holds if the run stopped before the reply - for a
-    decision.
+    Read out of the replay DECISIONS - the source run's `decision__<node>` slots
+    - and never out of its outputs. Since 2026-09-05 those are two different
+    questions in two different namespaces: `out__<node>` is the payload the
+    operator was shown at this gate and `decision__<node>` is what they said
+    about it. A run that paused and stopped has the first and not the second,
+    which is what makes "this gate was never answered" a thing this can detect
+    by ABSENCE rather than by inspecting the shape of a value.
 
     A revise is honoured ONCE. Only the LAST decision at a gate survives in
     state, so a source run with three laps cannot be reproduced lap by lap from
@@ -2225,7 +2296,7 @@ def _replayed_gate_decision(flow: Any, entry: Mapping[str, Any], node_id: str) -
     cap, for the same reason.
     """
 
-    recorded = (current_replay_values.get() or {}).get(node_id)
+    recorded = (current_replay_decisions.get() or {}).get(node_id)
     if not isinstance(recorded, Mapping) or "decision" not in recorded:
         raise ReplayGateUndecided(
             f"the replay has no recorded decision for the gate {node_id!r}. A resume "
@@ -2238,7 +2309,9 @@ def _replayed_gate_decision(flow: Any, entry: Mapping[str, Any], node_id: str) -
     honoured = bool(recorded.get("honoured")) and used < 1
     if honoured:
         state[turns_key] = used + 1
-    _record(flow, node_id, {**dict(recorded), "honoured": honoured, "replayed": True})
+    _record_decision(
+        flow, node_id, {**dict(recorded), "honoured": honoured, "replayed": True}
+    )
     if honoured:
         _rearm(flow, entry)
         return str(entry["revise"])

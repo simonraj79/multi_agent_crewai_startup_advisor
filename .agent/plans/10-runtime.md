@@ -256,6 +256,68 @@ rubric 10 depends on C6 landing.
 
 ## Status
 
+### `decision__` namespace — 2026-09-05
+
+Paid-run defect 3, and it is a CONTRACT change: the reserved state namespaces
+gain a fourth, `decision__<gate>`.
+
+A canvas gate compiles to two flow methods over one node id (09 D4). The pause
+renders what the operator is shown into `out__<gate>`; the paired router runs
+second and used to `_record` `{"decision": …, "honoured": …, "turns_used": …}`
+under the SAME key. So `${state.out__<gate>}` — the reference an author writes
+to carry a gate's subject onward — resolved to reply metadata by the time
+anything downstream read it. Measured in run `877f393f`
+(`benchmarks/paid-runs.md`): the task CrewAI actually ran was
+`Size the market for {'decision': 'approve', 'honoured': False, 'turns_used': 0}
+and name the buyer`, three specialists wrote about credit default swaps, it cost
+$0.029346, and it `completed` with a 1,129-character body that satisfies every
+assertion the suite makes.
+
+**Now:** `route_gate` writes `decision__<gate>` and never `out__<gate>`. The one
+thing it may still put there is the operator's OWN object — the `fields` mapping
+a reply carries when they edited something, re-serialised in the shape
+`render_gate` produced. A reply with no edits leaves the rendered payload
+untouched.
+
+| the two questions | the key |
+| --- | --- |
+| what was this gate about, and what did the operator leave it as | `out__<gate>` |
+| what did they answer, was a revise honoured, how many turns are spent | `decision__<gate>` |
+
+Where it landed: `config.BUILDER_STATE_DECISION_PREFIX`,
+`runtime.py::_record_decision` / `_apply_gate_edits` / `route_gate` /
+`_replayed_gate_decision` / `current_replay_decisions` / `replay_source`,
+`compiler.py::_RESERVED_STATE_PREFIXES` and `state_default`,
+`bounds._reserved_state_prefixes`, `app.py::_saved_slices` (three slices now)
+and `_gate_without_a_decision`, `builder_runner.py`,
+`useFlowTest.ts::RESERVED_STATE_PREFIXES` and the State tab's fifth group,
+`builderGraph.ts::STATE_DECISION_PREFIX` (so renaming a gate carries its
+decision references with it — the silent `turns__` hazard, avoided rather than
+repeated), and a NEW generated fixture,
+`frontend/tests/fixtures/builderStatePrefixes.json`, which is the R7 gate that
+namespace list never had.
+
+**Replay reads the new key.** `_replayed_gate_decision` took the source run's
+decision out of the replay VALUES; it takes it out of the replay DECISIONS. That
+is a repair as well as a move: "this gate was never answered" is now detected by
+the absence of a key rather than by inspecting whether one value is a mapping or
+a string. A saved test input still carries one mock per node (C7), so a mock
+shaped like a decision is offered as both — by SHAPE, never by node kind, since
+`_test_input_values` does not read the document.
+
+**Goldens: one line, one file.** `tests/builder/fixtures/rubric11/a_gate.json`
+gains `"decision__confirm": null` in the compiled state default. It is the only
+one of the 22 with a gate in it. Regenerated with
+`scripts/emit_rubric11_goldens.py`, never by hand.
+
+**Red then green.** `RouteGateTests::test_the_router_never_touches_the_payload_the_operator_was_shown`
+and `DurableGateTests::test_an_approve_reply_completes_the_run`, whose output
+node is `source: "${state.out__confirm}"` — the run's deliverable was
+`{"decision": "approve", "honoured": false, "turns_used": 0}` before this and is
+the operator's payload after it. That test previously asserted
+`result[BODY_KEY] == json.dumps(state["out__confirm"])`, which is true of
+whatever that key holds and therefore proved nothing; it names the payload now.
+
 **Built · 2026-09-04.** All twelve criteria met. A published graph was already
 runnable; it is now inspectable, testable and recoverable — it says what the
 agent said, which edge it took and what the plan is; it retries what is worth

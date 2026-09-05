@@ -84,12 +84,19 @@ const NODES = [
     expected:
       'Three to five numbered items. Each is a short title, then the source URL on its own line, then one sentence saying what happened. Every URL is one the search returned. No preamble.',
     model: 'workhorse',
-    // Three passes rather than the default two. This is the only node in the
+    // Six passes rather than the default two. This is the only node in the
     // graph that calls a tool, and "the last 7 days" is a query worth asking a
-    // second, differently-worded time when the first comes back thin. Three is
-    // also the ceiling that keeps a run of this graph under a few cents - the
-    // tool loop is where an agent's price multiplies.
-    maxIter: 3,
+    // second, differently-worded time when the first comes back thin.
+    //
+    // It was THREE until 2026-09-05, and the raise is a measurement rather than
+    // generosity: run `a9887442` failed at the cap, because CrewAI asks for a
+    // final answer there by appending a MODEL turn and Google refuses a request
+    // that ends in one. `builder/max_iter.py` makes that request legal, and this
+    // makes reaching it rarer - the two are belt and braces, and the belt is the
+    // one that stops it costing money. The cost of the raise is bounded and
+    // small: the static estimate prices every node as if the loop ran to the
+    // cap, so it is the only figure that moves, and it moves inside the ceiling.
+    maxIter: 6,
     // The prompt VARIABLE and the state KEY are different things, and this is
     // the one node in the gallery where they differ visibly: `{topic}` is what
     // the task text interpolates, `${state.subject}` is where the value comes

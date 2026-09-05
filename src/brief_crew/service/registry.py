@@ -3064,8 +3064,10 @@ class RunRegistry:
             # - not under `verdict`. `verdict` is a slot `route_verdict` reads,
             # and there is no `route_verdict` in a builder graph: `route_gate`
             # hands every non-`decision` key of the reply to `gate_decision`,
-            # which records them as the gate node's own output for a downstream
-            # `${state.out__<gate>}` to read. So filing them under `verdict`
+            # which records them under `decision__<gate>` - and lays THIS one,
+            # the whole payload with the edits applied, over `out__<gate>` for a
+            # downstream `${state.out__<gate>}` to read. So filing them under
+            # `verdict`
             # did two things at once - it named the operator's edits after a
             # model this graph has never heard of, and it put a mapping under a
             # key `GatePrompt.verdict` declares to be a string, which is a 500

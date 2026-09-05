@@ -76,10 +76,17 @@ const NODES = [
     expected:
       'Five numbered findings. Each is one sentence, followed by the URL it came from on its own line. No preamble.',
     model: 'workhorse',
-    // Three passes rather than the default two: this is the one node in the
+    // Six passes rather than the default two: this is the one node in the
     // graph that calls a tool, and a search that comes back thin is worth
     // asking a second differently-worded question about.
-    maxIter: 3,
+    //
+    // It was THREE until 2026-09-05, and this is the node that proved the raise
+    // necessary: run `a9887442` exhausted the cap here and FAILED, because
+    // CrewAI asks for a final answer at `max_iter` by appending a MODEL turn and
+    // Google refuses a request ending in one. `builder/max_iter.py` makes that
+    // request legal; this makes reaching it rarer. Only the static estimate
+    // moves, because it prices every node as if the loop ran to the cap.
+    maxIter: 6,
     promptInputs: { topic: stateRef('topic') },
   }),
   // Keyless, deliberately - see the module note. `params: {}` takes the

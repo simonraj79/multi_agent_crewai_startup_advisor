@@ -90,6 +90,63 @@ graph that *could* reach the ceiling, and the run that goes to the cap is the on
 it is written for. What these runs settle is that the ceiling is nowhere near
 binding for a template-shaped graph.
 
+## The verification run — `max_iter` 3 → 6, 2026-09-05
+
+One further paid run, after defects 2 and 3 were repaired. Same backend recipe
+as above (`PORT=8097`, no `SYNTHETIC`, `/docs` → **404**), same subject, same
+template — a **different document**, because `news-to-social`'s researcher now
+carries `max_iter: 6`. It is a verification, not a second sample of the sweep.
+
+| template | run id | status | elapsed | prompt / completion | calls | `cost_usd` | static | measured / static | gates |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `news-to-social` (`max_iter: 6`) | `d69c6986` | **completed** | 31.8 s | 2,835 / 4,579 | 3 | $0.017892 | $0.6103 | **2.93 %** | 0 (ungated by design) |
+
+Per node: `research` on `gemini-3.5-flash-lite:nitro`, **2 calls**, $0.0014868;
+`write` on `gemini-3.8-flash`, 1 call, $0.0164055. Evidence:
+[`live/2026-09-05-news-to-social-maxiter6.json`](live/2026-09-05-news-to-social-maxiter6.json).
+
+**No `max_iter` exhaustion occurred, and that is a measurement rather than a
+grep.** `research` is the only tool-using node in the graph and its cap is now
+6; its usage row records **2 calls**, and exhaustion requires
+`iterations >= max_iter`. The serve log's *"Maximum iterations reached"* line is
+**not** evidence either way here — `handle_max_iterations_exceeded` prints it
+only when the agent is verbose, and an authored agent is not.
+
+**So this run does not exercise the nudge**, and saying otherwise would be the
+kind of claim this page exists to refuse. What it establishes is the other half:
+the raised cap still runs, still completes, and still costs cents — $0.0179
+against a $0.6103 worst case, **2.93 %**, the same order as the 1.49 % the six
+runs above measured and the 2.8 % the acceptance run did. The nudge itself is
+proved red-then-green by `tests/builder/test_max_iter_nudge.py`, against a
+scripted LLM double that records the role of the last message at the call, with
+four guard tests that fail naming the CrewAI symbol the day it moves.
+
+Defect 3 is not exercised here either: `news-to-social` is the one gallery
+template with no gate. It is proved by
+`tests/builder/test_gates.py::RouteGateTests` and `DurableGateTests` through the
+real engine, and `hierarchical-delegation` — the template that met it for money —
+has not been re-run for money since.
+
+**Spend: $0.017892 by the service**, which takes the programme's recorded total
+to **$0.125492** of the $5.00 allowance ($0.0417 acceptance + $0.065893 template
+sweep + this).
+
+| | |
+| --- | --- |
+| balance before | **$27.385625** (`total_usage` 92.614374845) |
+| balance after | **$27.367552** (`total_usage` 92.632447785) |
+| **real spend** | **$0.018073** |
+| the service's own `cost_usd` | **$0.017892** |
+| difference | **$0.000181** |
+
+The "after" row was read ~10 minutes past the run and confirmed unchanged twice;
+an intermediate read four minutes in said $0.001656, which is the lag the
+section above documents. **The difference is 1.0 % and it is larger than the
+sweep's**, which agreed to $0.000049 over six runs — one run, one endpoint, and
+the obvious candidate is `:nitro` routing the cheap-tier calls above the
+published floor, which `NITRO_PRICE_FACTOR` exists for. One sample is not a
+finding; it is a thing to watch on the next paid run.
+
 ## What each run's OUTPUT actually did
 
 The table above says the runs completed. This says whether they did the job,
@@ -196,7 +253,16 @@ the dialogue rail exists to render. A library crew sets no `stream`, so its plai
 
 Everything else on this page was measured **after** that fix.
 
-### 2 — A tool-using agent that exhausts `max_iter` fails on Google, and the message shape is CrewAI's.
+### 2 — A tool-using agent that exhausts `max_iter` fails on Google, and the message shape is CrewAI's. FIXED.
+
+> **Fixed 2026-09-05 in `98ba8e0`**, two layers. `builder/max_iter.py`
+> registers one global `before_llm_call` hook that rewrites a trailing model
+> turn as a user turn immediately before the request is sent — the seam
+> CrewAI exposes, and the only one that works: `LLM.__new__` is a factory
+> returning a native provider instance, so subclassing `LLM` is never
+> instantiated. And the two tool-using researchers go `max_iter` 3 → 6, so
+> the cap is reached less often. The paragraph below, *"Not fixed here"*,
+> was true when it was written.
 
 `sequential-pipeline`'s first attempt, run `a9887442-ff35-4da5-8974-52fa03e81a0f`:
 **failed** after 9 calls and $0.002327, three times over, with
@@ -230,7 +296,16 @@ Not fixed here. It is a CrewAI/provider interaction, and choosing between "raise
 `max_iter`", "move a tier off Google" and "post-process the message list" is a
 decision rather than a repair.
 
-### 3 — A node downstream of a gate reads the gate's REPLY METADATA, not the payload. `hierarchical-delegation` ships wired that way.
+### 3 — A node downstream of a gate reads the gate's REPLY METADATA, not the payload. `hierarchical-delegation` ships wired that way. FIXED.
+
+> **Fixed 2026-09-05 in `8af20c2`**, by the second of the two repairs this
+> entry names — the contract change, not the rewiring. The gate's paired
+> router records under a reserved namespace of its own,
+> `decision__<gate>`, and never writes `out__<gate>`; the one thing it may
+> still put there is the operator's own edited payload. So
+> `hierarchical-delegation` is left wired to `${state.out__confirm}` and
+> that reference now means what its author meant. `10-runtime.md`'s Status
+> carries the whole contract and its file list.
 
 Run `877f393f`, input *"Plan the launch of a keyboard-first task manager for
 engineering teams."* The task CrewAI actually ran was:

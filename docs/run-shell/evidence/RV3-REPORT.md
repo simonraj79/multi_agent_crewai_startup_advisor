@@ -16,6 +16,30 @@ recorded first.
 **NOT VERIFIED BY ME**. A missing artifact is recorded as **FAIL**, not as a
 pass with a note.
 
+> ### ⚠️ Some artifacts on disk are AHEAD of this report. Read this first.
+>
+> A fourth, targeted run was begun at **`fec004d`** (the opaque report sheet and
+> control rail) and was **called off part-way by the orchestrator**, because
+> another fix round was already coming and the run would have been superseded.
+> Nothing was reverted — a verifier deleting its own measurements is worse than
+> a dated one — so the following files are **fourth-pass measurements at
+> `fec004d`** while the table below is the **third pass at `601baef`**:
+>
+> | file | what it now holds |
+> | --- | --- |
+> | `T3/contrast.md`, `T3/contrast-rv3-rerun.txt` | the `fec004d` audit: **236 pairings, 234 in scope, 0 failing, exit 0** (pass 3 read 232 / 230 / 0). Still a PASS, by four more rows. |
+> | `T3/builder-visual.txt` | the `fec004d` run: **16/16 green, no baseline regenerated**, md5s identical before and after. Still a PASS. |
+> | `T1/report-header*.png`, `T2/trace-completed.png`, `T2/tie-in.png`, `T2/reduced-motion.png`, `T3/after-*.png`, `S/*.png`, `S/long-run.md`, `G3/reload-map.json` | rewritten by a `cast.spec.ts` + `studio.spec.ts` run at `fec004d` in which **all 17 tests passed** — including `studio.spec.ts:360`, which is the third pass's stale-copy red. |
+>
+> Two things that run also established, which the table below therefore
+> understates: `e2e/visual/run-canvas.spec.ts` was **green at `fec004d` with no
+> regeneration at all** — the sheet and the rail are not inside those three
+> crops — and **`studio.spec.ts:360` is fixed**. `e2e/cast-perf.spec.ts` was not
+> re-run, so **T2.8's verdict below is still the `601baef` measurement**, and
+> every `R/*.txt` except `builder-1227.md` is still the third pass's.
+>
+> `R/builder-1227.md` is a separate study and stands on its own.
+
 ---
 
 # THIRD PASS — `601baef`, 2026-09-05

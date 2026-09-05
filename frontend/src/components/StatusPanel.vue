@@ -11,12 +11,25 @@ import {
   Square,
   LoaderCircle,
   TriangleAlert,
+  Undo2,
   X,
 } from 'lucide-vue-next'
 import type { ConnectionStatus, GatesMode, LogFormat, TransportMode } from '../services/studioApi'
 import type { RunStatus, UsageMetrics } from '../types/studio'
 import { IDEA_CHARS_WARN_AT, MAX_IDEA_CHARS, MIN_IDEA_CHARS } from '../data/serverLimits'
 import { runStatusDisplay } from '../data/runStatusDisplay'
+
+/**
+ * The workflow this console runs when nobody has handed it another one.
+ *
+ * ONE literal for two jobs that must agree: it is `workflowName`'s default, and
+ * it is the name the "back to" control says while a published graph is loaded.
+ * At that moment the built-in's name is not recoverable from anywhere else -
+ * `descriptor` belongs to the graph on screen, and `workflowName` has been
+ * replaced by the author's - so the alternative to naming it here is naming it
+ * twice.
+ */
+const BUILT_IN_WORKFLOW_NAME = 'Idea Validator'
 
 const props = withDefaults(defineProps<{
   status: RunStatus
@@ -74,10 +87,20 @@ const props = withDefaults(defineProps<{
    */
   workflowName?: string
   inputLabel?: string
+  /**
+   * A published graph is loaded, so there is somewhere to go back TO.
+   *
+   * A boolean rather than an inference from `workflowName`, which would be the
+   * tempting shortcut and is wrong: an author may name their own graph "Idea
+   * Validator", and a control that appeared or vanished on a name collision
+   * would be a defect nobody could reproduce on purpose.
+   */
+  canReturnHome?: boolean
 }>(), {
-  workflowName: 'Idea Validator',
+  workflowName: BUILT_IN_WORKFLOW_NAME,
   inputLabel: 'IDEA TO VALIDATE',
   graphProblem: '',
+  canReturnHome: false,
 })
 
 const emit = defineEmits<{
@@ -88,6 +111,7 @@ const emit = defineEmits<{
   dismissError: []
   selectView: [value: 'graph' | 'activity']
   'update:gatesMode': [value: GatesMode]
+  returnHome: []
 }>()
 
 /**
@@ -239,6 +263,32 @@ const logFormat = ref<LogFormat>('ndjson')
       <div class="read-only-well panel-well">
         <GitBranch :size="15" aria-hidden="true" />
         <span class="workflow-title">{{ workflowName }}</span>
+        <!--
+          THE WAY BACK, and it lives here because the banner that used to carry
+          it now retires itself.
+          The handoff banner was the only route to the built-in validator, and
+          it is hidden once a run reaches a terminal status - which is exactly
+          when an operator who has just watched a published graph fail wants
+          it. The well is the right home anyway: it is the one surface that
+          names the graph the Launch button will spend money on, so the control
+          that changes that graph belongs beside its name rather than in a
+          notice about a launch.
+          `aria-label` carries the destination because the visible word is
+          "Back" and a screen reader reading a list of controls would otherwise
+          hear "back" with no object.
+        -->
+        <button
+          v-if="canReturnHome"
+          class="workflow-home"
+          type="button"
+          :aria-label="`Back to ${BUILT_IN_WORKFLOW_NAME}`"
+          :title="`Back to ${BUILT_IN_WORKFLOW_NAME}`"
+          :disabled="isActive"
+          @click="emit('returnHome')"
+        >
+          <Undo2 :size="13" aria-hidden="true" />
+          Back
+        </button>
       </div>
     </div>
 
@@ -429,6 +479,28 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
    rail. Ellipsis rather than wrap, so the panel's height does not change with
    the length of somebody's title. */
 .read-only-well .workflow-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Pushed to the end by the title's own ellipsis rather than by a margin: the
+   title is the flexible child and this is not, so it keeps its whole width
+   however long somebody's graph name is. */
+.workflow-home {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font: var(--type-meta);
+  background: transparent;
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.workflow-home:hover:not(:disabled) { color: var(--text-title); border-color: var(--border-hover-strong); }
+/* Leaving mid-run would reload the page out from under a run that is spending
+   money; the title says so rather than leaving a dead control. */
+.workflow-home:disabled { cursor: not-allowed; opacity: 0.42; }
 /* `.read-only-well .version` was here and is gone with the element it styled -
    see the comment in the template. A rule for a class nothing renders is the
    thing that makes the next person believe the element still exists. */

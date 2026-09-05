@@ -1,61 +1,39 @@
 $ node scripts/contrast-audit.mjs            # from frontend/, plain reporter
 $ node scripts/contrast-audit.mjs --markdown # from frontend/, the committed artifact
-# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:24:13+08:00
+# RV3 FOURTH PASS (targeted), branch run-shell/cast at fec004d, 2026-09-05T17:58:03+08:00
 
 RESULT
   plain run    exit 0
   --markdown   exit 0
-  232 pairings, 230 in scope, 0 failing.
+  236 pairings, 234 in scope, 0 failing.
+  byte-identical to the committed docs/run-shell/evidence/T3/contrast.md
+    md5  4c0e9142b4e0326685e26bed179c1bab   both
 
-  The --markdown output is BYTE-IDENTICAL to the committed
-  docs/run-shell/evidence/T3/contrast.md:
-    md5  819bfe92e4a8a4ae8afd7511ba2eaa2f   both
+  T3.3 PASSES. The exit code has counted every in-scope row since round two,
+  so a 0 here is the whole criterion and not a subset of it.
 
-  T3.3 PASSES. The exit code counts every in-scope row - W5 removed the
-  owner carve-out in round two - so a 0 here is the whole criterion.
+FOUR PASSES, so a reader can watch the gate tighten and the sheet grow back
 
-THE THREE-PASS ARC, so a reader can see the gate tighten
+  pass 1 (27b256e)   300 pairings, exit 0, 17 below AA  <- exit code counted
+                                                           W5's 80 rows only
+  pass 2 (16f3be5)   330 pairings, exit 1,  1 below AA  <- carve-out removed
+  pass 3 (601baef)   232 pairings, exit 0,  0 below AA  <- 96 character rows
+                                                           re-classed 4.5 -> 3.0
+  pass 4 (fec004d)   236 pairings, exit 0,  0 below AA  <- +4, the script now
+                                                           models each ground
 
-  pass 1 (27b256e)   300 pairings, exit 0, 17 below AA   <- exit code counted
-                                                            W5's 80 rows only
-  pass 2 (16f3be5)   330 pairings, exit 1,  1 below AA   <- carve-out removed
-  pass 3 (601baef)   232 pairings, exit 0,  0 below AA
+  The pass-3 note about the 330 -> 232 shrink still stands and is not
+  repeated here; what pass 4 adds is FOUR MORE ROWS, not fewer. Round four
+  made the report sheet and the control rail opaque, so the surfaces behind
+  them are no longer a composite of whatever the canvas was showing, and the
+  script models each ground rather than one shared stack. A sheet that used
+  to be measured over 'a rail over the canvas' is now measured over its own
+  opaque ground - which is a STRICTER model of what a reader sees, not a
+  looser one, because a translucent surface's real ratio varies with what is
+  under it and an opaque one does not.
 
-THE CATALOGUE SHRANK 330 -> 232, AND A VERIFIER SHOULD NOT WAVE THAT PAST
-
-  98 rows left the sheet in round three and the reasons are in the script:
-
-   * The twelve character colours were measured TWICE against each of four
-     backgrounds - once at 4.5 as small text, once at 3.0 as a UI mark.
-     They are now measured ONCE, as a figure, at 3.0. That removes 48 rows
-     and lowers the bar on the 48 that remain, because the medallion holds
-     the character rather than two initials, and a figure is a graphical
-     object under WCAG 1.4.11 rather than text under 1.4.3. It is a
-     defensible reading and it is still a LOOSENING, so RV3 checked what it
-     bought:
-
-       $ grep 'as a figure on' contrast-human.txt | wc -l            -> 96
-       $ grep 'as a figure on' contrast-human.txt | awk '$1 < 4.5' | wc -l -> 0
-       lowest figure ratio on the sheet: 4.64
-
-     NOT ONE of the 96 figure rows depends on the relaxation. Every one of
-     them clears the old 4.5 text bar as well. The reclassification bought
-     no pass, which is the only thing that makes it safe to accept.
-
-   * Three rows name elements that no longer exist: the M2 workflow version
-     mark, ChatRail's .text-button, and ChatRail's .call-chip. A row for a
-     class nothing declares reports a ratio for a surface nobody paints.
-
-   * One row was ADDED and it is the interesting one: 'the node state chip',
-     measuring node-card.css .node-state (also .quarantine-count) against
-     the card. It exists because e2e/visual/run-canvas.spec.ts:243 caught a
-     round-two rule that had inverted that cascade - the defect RV3's second
-     pass reported. The sheet and the E2E now assert the same fact from
-     opposite sides.
-
-  Two rows are printed and never counted, and both are the BUILDER's own
-  canvas rather than the run shell - SHELL-SCOPE.md 6.6 explains why that
-  is out of scope and what fixing it would cost (eight light baselines).
+  Every row still clears its level, and the two rows printed-but-never-counted
+  are the BUILDER's own canvas rather than the run shell (SHELL-SCOPE.md 6.6).
 
 FULL OUTPUT OF THE PLAIN RUN, from the failures section down
 ===========================================================================
@@ -69,4 +47,4 @@ OUT OF SCOPE - measured, printed, never counted (the builder’s own canvas)
   dark   5.02 >= 4.5  quiet card text, THE BUILDER  node-card.css .node-eyebrow (design canvas)  -> var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6
   light  4.31 < 4.5  quiet card text, THE BUILDER  node-card.css .node-eyebrow (design canvas)  -> var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6
 
-  232 pairings, 230 in scope, 0 failing.
+  236 pairings, 234 in scope, 0 failing.

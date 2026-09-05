@@ -5,7 +5,7 @@
   "hashOf": "sha256(pipSvg(identityFor(role).key, { size: 32, state: 'idle' })), utf8",
   "fallbackNodeId": "n7_second_pass",
   "note": "A mismatch is not a broken test. It means a character changed, and every screenshot, reload and running node changed with it. Regenerate only on purpose, and say so in the commit.",
-  "reminted": "Re-minted 2026-09-05 after two changes a cold reader found: blocked-error gained x_x eyes so colour is not the only thing separating it from blocked, and the crown is drawn 1.3x below 48px with the figure dropped 2 units to fit it. Both change the markup at size 32, so every hash below moved. It was re-minted by running this script - a separate process, plain Node, no Vite and no jsdom - and NOT by copying what the spec produced, which would have made the cross-process claim circular.",
+  "reminted": "Re-minted twice on 2026-09-05, both times by running this script - a separate process, plain Node, no Vite and no jsdom - and NOT by copying what the spec produced, which would have made the cross-process claim circular. (1) Two changes a cold reader found: blocked-error gained x_x eyes so colour is not the only thing separating it from blocked, and the crown is drawn 1.3x below 48px with the figure dropped 2 units to fit it; those moved every hash. (2) Crest slot 3 was REPLACED: two independent cold readers matched its detached halo to the same franchise character, so it is now `bun`, a knob fused to the crown. That moved ONLY the hashes of roles wearing crest 3, which is three of the twenty here - Analyst, Localisation Lead, and the nameless role that falls back to the node id n7_second_pass. The other seventeen are byte-identical across that change, which is the evidence that the hash mapping was left alone. On the sheets the same change repaints Analyst, Localisation Lead and Roster Architect, and nothing else.",
   "snapshots": {
     "Scoper": "580c1087bc34674e31d5e52b45f93c08d7639c53ea9a7b439fd285154cd58511",
     "Market Analyst": "9c571992c820a286cd173d3a8b1093a84ca411b8000faeb379a62555f3d7da27",
@@ -14,11 +14,11 @@
     "Synthesist": "302e58bee77c3b046a6885129b6f443ac183f82ceb5afd1269706668aa9e90b4",
     "Reporter": "863a69b84072c73d1f5539e1871a7add09acdc55c866f17789c3a2503c347a6a",
     "Researcher": "7024f7c3440b2d9f3db3d938ec322ecb7951855b3e3e9a2e73b077d8a8de280f",
-    "Analyst": "596ed1bda2a179421cde62fd65ebfdee47a61b171a09f3abdcea46039cbc526c",
+    "Analyst": "e1b8d9933718fb0857005d86c8e4264863c2f5de65fd34f7a28fb921e142954b",
     "Writer": "98295e5e8d4146b766a7f8245d8120d53bc3fdd93b883b87d255f9deb42b1fc6",
     "Tone Coach": "271c9aa1396c3d098a12941572867c3fa20891d9d7eacd2a843969fa50365527",
     "Fact Checker": "91f32e1f6c6a9870f2941fade1aad1202455b80c926e6667ac8730f0fad85108",
-    "Localisation Lead": "8aaf48b5cbd6e132bcf8af5789ab1655e30c5ee52ed29df4c0637c5ae7633166",
+    "Localisation Lead": "b94733e12cfbab0fc74375927427d2ee5402e8a7510f0891973e465160508644",
     "Pricing Strategist": "efb8b0189a0359d61526ac30517e1b4c379eb5131785d32d48988a20264ec57d",
     "  MARKET   ANALYST ": "9c571992c820a286cd173d3a8b1093a84ca411b8000faeb379a62555f3d7da27",
     "market-analyst": "9c571992c820a286cd173d3a8b1093a84ca411b8000faeb379a62555f3d7da27",
@@ -26,7 +26,7 @@
     "Résumé Writer": "aa8bebdedf3a95e457c921d417baa93d86fba747af75515047c45f8749a48067",
     "Resume Writer": "aa8bebdedf3a95e457c921d417baa93d86fba747af75515047c45f8749a48067",
     "Senior Analyst": "611d91cd49633b5bb0634f64a4f5f15027991f0b51f320dd5454dc1b5b12b6df",
-    "": "9693ca736a4e83e17bf321dfde8ec84f7a79fb8348a412e2628661a05d5ae9f0"
+    "": "5835af80316e708e415bca5fa4a6621b66700e9262737c4ff1ffb34eb759a2bd"
   },
   "diagnostics": {
     "Scoper": {
@@ -74,8 +74,8 @@
     "Analyst": {
       "seed": "analyst",
       "named": true,
-      "parts": "drop/square/cat-w/ring/c2",
-      "bytes": 1694
+      "parts": "drop/square/cat-w/bun/c2",
+      "bytes": 1761
     },
     "Writer": {
       "seed": "writer",
@@ -98,8 +98,8 @@
     "Localisation Lead": {
       "seed": "localisation lead",
       "named": true,
-      "parts": "bell/square/smile/ring/c2",
-      "bytes": 1682
+      "parts": "bell/square/smile/bun/c2",
+      "bytes": 1749
     },
     "Pricing Strategist": {
       "seed": "pricing strategist",
@@ -146,8 +146,8 @@
     "": {
       "seed": "n7 second pass",
       "named": false,
-      "parts": "drop/lens/smile/ring/c4",
-      "bytes": 1860
+      "parts": "drop/lens/smile/bun/c4",
+      "bytes": 1927
     }
   }
 }

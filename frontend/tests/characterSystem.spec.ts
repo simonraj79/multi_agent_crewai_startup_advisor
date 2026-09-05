@@ -244,6 +244,68 @@ describe('the geometry', () => {
     return top
   }
 
+  /**
+   * The lowest point any drawn part of a crest reaches, in its own units.
+   * Local `y = 0` is the crown point, just inside the body outline, so a
+   * crest that fuses with the body must reach at least that far down.
+   */
+  function crestLowestPoint(markup: string): number {
+    let lowest = -Infinity
+    const tagRe = /<(path|circle|ellipse)\b([^>]*)>/g
+    let match: RegExpExecArray | null
+    while ((match = tagRe.exec(markup)) !== null) {
+      const [, tag, attrs] = match
+      if (tag === 'path') {
+        const d = /d="([^"]+)"/.exec(attrs)?.[1] ?? ''
+        const numbers = (d.match(/-?\d*\.?\d+/g) ?? []).map(Number)
+        for (let index = 1; index < numbers.length; index += 2) {
+          lowest = Math.max(lowest, numbers[index])
+        }
+      } else {
+        const attr = (name: string): number => {
+          const hit = new RegExp(`${name}="(-?\\d*\\.?\\d+)"`).exec(attrs)
+          return hit ? Number(hit[1]) : 0
+        }
+        lowest = Math.max(lowest, attr('cy') + (tag === 'circle' ? attr('r') : attr('ry')))
+      }
+    }
+    return lowest
+  }
+
+  it('rejects the shape it was written to reject', () => {
+    /* Proved by the failing case rather than only by the passing ones. This is
+       the retired halo, kept here and nowhere else: a rule that has never been
+       shown to fail is a rule nobody can trust. */
+    const RETIRED_HALO =
+      '<ellipse cx="0" cy="-4.15" rx="4.2" ry="1.3" fill="none" class="pip-stroke" />'
+    expect(crestLowestPoint(RETIRED_HALO)).toBeLessThan(0)
+    expect(crestLowestPoint(RETIRED_HALO)).toBeCloseTo(-2.85, 5)
+  })
+
+  it('cuts every crown from the body and floats none of them above it', () => {
+    /* THE ORIGINALITY RULE, MADE MECHANICAL. Two independent cold readers,
+       given only the evidence sheets, both matched a detached halo hovering
+       over a round body to the same franchise character. The shape was
+       replaced; this is what stops the construction coming back.
+
+       A crown is drawn in the body's own fill and hinged at the crown point,
+       which is local `y = 0` and sits just inside the outline. So a crown that
+       is genuinely PART of the creature must have at least one drawn point at
+       `y >= 0` - it has to reach into the body to fuse with it. A shape that
+       lives entirely at negative y is floating, whatever it looks like.
+
+       The retired halo failed this by a wide margin: its lowest point was
+       -2.85, nearly three units clear of the crown. The antenna passes because
+       its stalk reaches down to 0.8 even though its ball is at -2.85 - which is
+       the distinction exactly, a tethered shape against a detached one. */
+    for (let crest = 0; crest < CREST_COUNT; crest += 1) {
+      expect(
+        crestLowestPoint(crestShape(crest)),
+        `${CREST_NAMES[crest]} floats clear of the body`,
+      ).toBeGreaterThanOrEqual(0)
+    }
+  })
+
   it('keeps every body x crest pair inside the 32-unit viewBox, at BOTH size tiers', () => {
     /* The 32px raster found four pairs poking out of the top of the box - the
        bean wearing a ring was worst, at -0.72 units - and `.pip-svg` sets

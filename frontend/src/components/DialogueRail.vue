@@ -474,7 +474,9 @@ function clock(at: number): string {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  /* The band the scroll box's cut edge stops inside. See `.dialogue-list`. */
+  /* The band the scroll box's cut edge stops inside. See `.dialogue-list`.
+     It is NOT the seam - a padding inside a scroll box scrolls away with the
+     content, and `ChatRail.vue`'s `.rail-list` carries the border that is. */
   padding-bottom: var(--space-2);
   background: var(--surface-well);
   border-bottom: 1px solid var(--border-default);

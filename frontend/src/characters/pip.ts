@@ -320,7 +320,7 @@ export const BODIES: readonly BodyPart[] = [
 export const BODY_NAMES: readonly string[] = ['pebble', 'drop', 'bean', 'bell']
 export const EYE_NAMES: readonly string[] = ['round', 'oval', 'square', 'lens']
 export const MOUTH_NAMES: readonly string[] = ['smile', 'cat-w', 'oh']
-export const CREST_NAMES: readonly string[] = ['antenna', 'sprout', 'curl', 'ring', 'fin', 'ears']
+export const CREST_NAMES: readonly string[] = ['antenna', 'sprout', 'curl', 'bun', 'fin', 'ears']
 
 /**
  * A coordinate, rounded to three decimals and printed without a trailing zero.
@@ -340,7 +340,7 @@ function n(value: number): string {
  * Four eyes. NOT four expressions - expression belongs to the state, and an
  * identity that already looked like it was winking could not then be asked to
  * look worried. These are four SHAPES: a full round, a tall oval, a soft
- * rounded square, and a lens ring. Radius 3.2 puts the pair at ~58% of the
+ * rounded square, and an open lens donut. Radius 3.2 puts the pair at ~58% of the
  * body's width, which is the whole kawaii proportion argument in one number.
  */
 export function eyeShape(variant: number, cx: number, cy: number): string {
@@ -384,15 +384,27 @@ export const REST_MOUTHS: ReadonlyArray<(x: number, y: number) => string> = [
  * the body into a single outline instead of reading as a hat. It is also the
  * part that wilts when the agent is blocked.
  *
- * THE ANTENNA AND THE RING WERE SHORTENED, AND THE BEAN'S `crestScale` CUT
- * FROM 0.94 TO 0.86, because the 32px raster found four of the twenty-four
- * (body x crest) pairs reaching above `y = 0` and being cut flat by the
- * viewBox - bean+ring worst at -0.72 units. `.pip-svg` sets `overflow:
- * visible`, so in the live DOM they were not clipped but spilled out of the
- * figure's own box instead, which is the same defect wearing a different coat
- * on a 32px node slot. Every pair now clears the top edge by at least 0.40
- * units and `characterSystem.spec.ts` measures all twenty-four rather than
- * trusting this paragraph.
+ * EVERY CROWN IS CUT FROM THE BODY AND NONE OF THEM FLOATS ABOVE IT, and that
+ * is a rule with a scar on it. Slot 3 used to hold a detached halo, and two
+ * independent cold readers - given only the evidence sheets, no brief and no
+ * code - both matched it to the same franchise character. A shape hovering
+ * clear of a round creature reads as somebody else's idea however it is drawn,
+ * so it was replaced by `bun`, a knob fused to the crown. The rule is now
+ * mechanical rather than stated: `characterSystem.spec.ts` requires every
+ * crown to have a drawn point at `y >= 0`, which is inside the body, and it
+ * proves the check by running the retired halo through it and watching it
+ * fail. The antenna passes on its stalk even though its ball is high - a
+ * tethered shape is not a floating one.
+ *
+ * THE ANTENNA WAS ALSO SHORTENED AND THE BEAN'S `crestScale` CUT FROM 0.94 TO
+ * 0.86, because the 32px raster found four of the twenty-four (body x crest)
+ * pairs reaching above the top of the viewBox and being cut flat - the bean
+ * wearing the crown then in slot 3 was worst, at -0.72 units. `.pip-svg` sets
+ * `overflow: visible`, so in the live DOM they were not clipped but spilled
+ * out of the figure's own box instead, which is the same defect wearing a
+ * different coat on a 32px node slot. Every pair now clears the top edge by at
+ * least 0.54 units at the large tier and 0.65 at the small one, and the spec
+ * measures all twenty-four at both rather than trusting this paragraph.
  */
 export function crestShape(variant: number): string {
   switch (variant) {
@@ -400,8 +412,31 @@ export function crestShape(variant: number): string {
       return '<path d="M 0 0.6 C 0.5 -2.6 2.9 -4.6 5.5 -4.9 C 5.4 -2.3 3.4 -0.1 0 0.6 Z" />'
     case 2: // curl
       return '<path d="M -3.0 0.6 C -2.7 -3.8 1.4 -6.3 4.3 -4.6 C 2.1 -4.6 -0.3 -3.2 -1.0 -0.2 Z" />'
-    case 3: // ring
-      return '<ellipse cx="0" cy="-4.15" rx="4.2" ry="1.3" fill="none" class="pip-stroke" />'
+    case 3: // bun
+      /* A knob joined to the crown by a short waist, cut from the body's own
+         fill, so the pair is one silhouette with a lump on it.
+
+         IT REPLACED A FLOATING RING, AND THAT REPLACEMENT IS THE POINT. Two
+         independent cold readers, given only the evidence sheets and no brief,
+         both matched a detached halo hovering over a round body to the same
+         franchise character. The brief requires work derived from nothing that
+         exists, so the shape went, and its lesson is written into the rule the
+         others already followed: a crown is CUT FROM THE BODY, never floated
+         above it. A detached shape is the one construction that reads as a
+         separate object, and a separate object over a round creature is
+         somebody else's idea however it is drawn. */
+      /* The waist is BROAD - 1.9 units against the knob's 2.95 - and that is
+         the whole difference between a knob and a balloon. The first draft
+         pinched it to 1.3, which on the tapered `drop` body left the knob
+         standing on a visible stem: a ball on a stick, which is both the
+         floating shape in disguise and a near-miss for the `antenna`. A dome
+         that meets the crown almost as wide as it is tall reads as part of the
+         creature at 32px, which is what the other five crowns already do. */
+      return (
+        '<path d="M -2.2 1.2 C -2.35 -0.3 -3.0 -1.2 -3.0 -2.9 ' +
+        'C -3.0 -4.8 -1.6 -5.5 0 -5.5 C 1.6 -5.5 3.0 -4.8 3.0 -2.9 ' +
+        'C 3.0 -1.2 2.35 -0.3 2.2 1.2 Z" />'
+      )
     case 4: // fin
       return '<path d="M -4.8 0.8 C -3.6 -3.6 -1.3 -5.4 0 -5.4 C 1.3 -5.4 3.6 -3.6 4.8 0.8 Z" />'
     case 5: // ears

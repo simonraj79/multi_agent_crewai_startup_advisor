@@ -167,3 +167,56 @@ describe('Retry-After is finally read', () => {
     expect(retryAfterSentence('-5')).toBe('')
   })
 })
+
+/**
+ * The way back to the built-in validator (2026-09-05).
+ *
+ * It used to live on the handoff banner, which is the only place it lived - and
+ * that banner now retires itself when a run reaches a terminal status, because
+ * a cold reader found it stacked above "Run failed" still saying "Running your
+ * published graph …". Retiring it without moving the control would have removed
+ * the route home at the exact moment somebody who had just watched a published
+ * graph fail would reach for it, so the control moved into the WORKFLOW well:
+ * the one surface that names the graph Launch is about to spend money on.
+ */
+describe('the way back from a published graph', () => {
+  it('is absent when the console is running the built-in workflow', () => {
+    // No handoff, so there is nowhere to go back TO, and a control that did
+    // nothing would be worse than none.
+    expect(mountPanel().find('.workflow-home').exists()).toBe(false)
+  })
+
+  it('appears in the workflow well when a published graph is loaded', () => {
+    const panel = mountPanel({ canReturnHome: true, workflowName: 'News to social post' })
+    const back = panel.get('.read-only-well .workflow-home')
+    // The label names the DESTINATION rather than the direction. A screen
+    // reader listing the controls in this rail would otherwise hear "back"
+    // with no object.
+    expect(back.attributes('aria-label')).toBe('Back to Idea Validator')
+    // And the well still names the graph it is leaving.
+    expect(panel.get('.workflow-title').text()).toBe('News to social post')
+  })
+
+  it('emits once when it is pressed', async () => {
+    const panel = mountPanel({ canReturnHome: true })
+    await panel.get('.workflow-home').trigger('click')
+    expect(panel.emitted('returnHome')).toHaveLength(1)
+  })
+
+  it('is disabled while a run is in flight, because leaving reloads the page', () => {
+    // `backToValidator` rebuilds the composable by reloading - the honest way
+    // to change a workflow that is a construction option - so pressing it
+    // mid-run would drop a run that is spending money.
+    const panel = mountPanel({ canReturnHome: true, isActive: true })
+    expect(panel.get('.workflow-home').attributes('disabled')).toBeDefined()
+  })
+
+  it('is a real button, so it is reachable without a pointer', () => {
+    const back = mountPanel({ canReturnHome: true }).get('.workflow-home')
+    expect(back.element.tagName).toBe('BUTTON')
+    expect(back.attributes('type')).toBe('button')
+    // Not taken out of the tab order: this one is the only route home, unlike
+    // the 640px scrim, whose gesture the rail toggles already carry.
+    expect(back.attributes('tabindex')).toBeUndefined()
+  })
+})

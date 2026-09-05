@@ -129,6 +129,81 @@ function writeEvidence(contents: string, ...parts: string[]): void {
   expect.soft(existsSync(target), `evidence not written: ${target}`).toBe(true)
 }
 
+/**
+ * What is painted at a point, and whether it belongs to the panel that should
+ * own it.
+ *
+ * A SCREENSHOT IS NEVER THE ONLY GUARD. Every layout defect this repository has
+ * recorded was invisible to a green suite and obvious in a picture — and a
+ * picture is only checked when somebody looks at it, which is once, by one
+ * reader, at the end. `document.elementFromPoint` asks the browser the same
+ * question the eye asks and gets an answer a test can hold: at this pixel, whose
+ * element is on top?
+ *
+ * The point is the centre of the target's VISIBLE portion rather than of its
+ * box, because a box that runs past the fold has a centre nobody can see and
+ * `elementFromPoint` answers `null` for it — which would read as "nothing is
+ * covering it", the exact false pass this is here to prevent. A target with no
+ * visible area at all is reported as such rather than silently skipped.
+ */
+interface HitTest {
+  name: string
+  found: boolean
+  visible: boolean
+  point: { x: number; y: number } | null
+  hit: string | null
+  insideOwner: boolean
+  forbidden: string | null
+}
+
+/** Surfaces that must never be on top of the panel under test. */
+const PAINT_ORDER_FORBIDDEN = ['.vue-flow__node', '.crew-progress', '.validator-flow'] as const
+
+async function hitTest(
+  page: Page,
+  owner: string,
+  targets: { name: string; selector: string }[],
+): Promise<HitTest[]> {
+  return page.evaluate(
+    ({ owner: ownerSelector, targets: wanted, forbidden }) => {
+      const describe = (el: Element | null): string | null => {
+        if (!el) return null
+        const classes = typeof el.className === 'string' ? el.className.trim() : ''
+        return `${el.nodeName.toLowerCase()}${classes ? `.${classes.split(/\s+/).join('.')}` : ''}`
+      }
+      return wanted.map(({ name, selector }) => {
+        const el = document.querySelector(selector)
+        if (!el) {
+          return { name, found: false, visible: false, point: null, hit: null, insideOwner: false, forbidden: null }
+        }
+        const box = el.getBoundingClientRect()
+        // The rectangle the reader can actually see: the target intersected
+        // with the viewport.
+        const left = Math.max(box.left, 0)
+        const top = Math.max(box.top, 0)
+        const right = Math.min(box.right, window.innerWidth)
+        const bottom = Math.min(box.bottom, window.innerHeight)
+        if (right <= left || bottom <= top) {
+          return { name, found: true, visible: false, point: null, hit: null, insideOwner: false, forbidden: null }
+        }
+        const x = Math.floor((left + right) / 2)
+        const y = Math.floor((top + bottom) / 2)
+        const at = document.elementFromPoint(x, y)
+        return {
+          name,
+          found: true,
+          visible: true,
+          point: { x, y },
+          hit: describe(at),
+          insideOwner: at !== null && at.closest(ownerSelector) !== null,
+          forbidden: forbidden.find((sel) => at?.closest(sel) !== null && at?.closest(ownerSelector) === null) ?? null,
+        }
+      })
+    },
+    { owner, targets, forbidden: [...PAINT_ORDER_FORBIDDEN] },
+  )
+}
+
 /** The three blocks T1.1's cold reader is given, in the order they are read. */
 const REPORT_HEADER_BLOCKS = ['.report-head', '.report-flags', '.verdict-summary'] as const
 
@@ -234,6 +309,16 @@ const SNAKE_CASE = /\b[A-Z][A-Z0-9]+(_[A-Z0-9]+)+\b/g
 
 /** S3's floor: "a run of ≥ 119 events". See `runLongToCompletion` for how. */
 const S3_MIN_FRAMES = 119
+
+/**
+ * `--surface-strong` in the dark theme, resolved: `#222426`.
+ *
+ * Stated as the resolved value because that is what `getComputedStyle` returns,
+ * and named as the token in the failure message because that is what a builder
+ * would change. If this ever moves, the token moved and this line follows it -
+ * it is not a number to be relaxed.
+ */
+const REPORT_SHEET_DARK = 'rgb(34, 36, 38)'
 
 /**
  * The only SNAKE_CASE the DoD admits anywhere in the run shell: the two log
@@ -394,6 +479,77 @@ async function waitForCompletion(page: Page): Promise<void> {
 async function readSequence(page: Page): Promise<number> {
   const text = await page.locator('.status-panel .stream-line').innerText()
   return Number(/seq\s+(\d+)/.exec(text)?.[1] ?? -1)
+}
+
+/**
+ * How long a reveal may still be running before a capture is taken anyway.
+ * Twenty seconds is a safety net, not an expectation - see `dialogueSettled`.
+ */
+const REVEAL_SETTLE_TIMEOUT_MS = 20_000
+/** The text must hold still this long before the rail counts as settled. */
+const REVEAL_STABLE_MS = 500
+
+interface RevealSettlement {
+  settled: boolean
+  chars: number
+  waitedMs: number
+}
+
+/**
+ * Wait for the dialogue rail to stop growing before photographing it.
+ *
+ * An utterance is revealed at 120 characters a second, paced by
+ * `requestAnimationFrame`, so a capture taken the instant a run goes terminal
+ * catches the newest bubble mid-sentence - `evidence/T2/trace-completed.png`
+ * ended on "...and I am", under a badge reading finished. A picture that
+ * contradicts itself is worse than no picture: the cold reader is asked what
+ * the crew did, and half a sentence is not an answer.
+ *
+ * `useValidatorRun.setStatus` already calls `choreography.revealAll()` on a
+ * terminal status for exactly this reason (plan 11 D7), so in the ordinary case
+ * this returns after one or two polls. What it is really waiting out is the
+ * PAINT: `waitForCompletion` returns the moment the status chip reads finished,
+ * which is the same tick `revealAll` mutates the entries in, and the screenshot
+ * can fire before Vue has re-rendered them.
+ *
+ * ## Why a length probe and not a class
+ *
+ * There is no `.is-revealing` and no `data-revealing` in `DialogueRail.vue` -
+ * the reveal is a float on each entry (`entry.revealed`) sliced into text at
+ * render time, and nothing about it reaches the DOM as a flag. So the honest
+ * instrument is the rendered text itself: total `textContent` length across the
+ * rail, which grows monotonically while any reveal is running and is constant
+ * when none is. `textContent` rather than `innerText`, for the reason
+ * `traceLines` records at length - a row the browser has skipped rendering has
+ * no rendered text at all.
+ *
+ * Bounded, and NON-FATAL on its own: an unsettled rail still gets captured,
+ * because a slightly-early picture beats a missing one, and the fact is
+ * recorded in `long-run.md` and asserted at the end of the test where it costs
+ * no artifact.
+ */
+async function dialogueSettled(page: Page): Promise<RevealSettlement> {
+  const started = Date.now()
+  const measure = (): Promise<number> =>
+    page.evaluate(() => {
+      const rail = document.querySelector('.dialogue-rail')
+      return rail ? (rail.textContent ?? '').length : 0
+    })
+
+  let last = -1
+  let stableSince = Date.now()
+  while (Date.now() - started < REVEAL_SETTLE_TIMEOUT_MS) {
+    const chars = await measure()
+    const now = Date.now()
+    if (chars !== last) {
+      last = chars
+      stableSince = now
+    } else if (now - stableSince >= REVEAL_STABLE_MS) {
+      return { settled: true, chars, waitedMs: now - started }
+    }
+    await page.waitForTimeout(100)
+  }
+  return { settled: false, chars: last, waitedMs: Date.now() - started }
 }
 
 /** Launch, approve both durable gates, and come back when the run is finished. */
@@ -1043,6 +1199,67 @@ test.describe('the completed run', () => {
        * so everything that only needs the run to have finished is written to
        * disk before anything that can fail is evaluated.
        */
+      /*
+       * Let the reveal finish BEFORE the first shutter. Every completed-run
+       * capture below - the trace rail, the long-run page and the three T3
+       * after-* widths - is taken from this one settled state, so one wait
+       * covers all of them.
+       */
+      const reveal = await dialogueSettled(page)
+
+      /*
+       * THE SHEET, AND WHAT IS ON TOP OF IT — asserted before a single capture,
+       * so the pictures below are never the only thing standing between a
+       * regression and a PASS.
+       *
+       * The report panel is the surface the run's conclusion is read off, and it
+       * is drawn OVER the canvas. Two things can go wrong there and neither
+       * shows up in any other test: the sheet can become transparent enough for
+       * the graph to read through it, and a sibling can end up painted on top of
+       * it. Both are one CSS line, both look fine in jsdom, and both make the
+       * report unreadable in exactly the capture a cold reader is handed.
+       */
+      const reportPanel = page.locator('.report-panel')
+      await expect(reportPanel, 'the completed run did not open its report').toBeVisible()
+
+      expect(
+        await reportPanel.evaluate((el) => window.getComputedStyle(el).backgroundColor),
+        'the report sheet is not `--surface-strong` in the dark theme, so the canvas behind it ' +
+          'shows through the surface the verdict is read off',
+      ).toBe(REPORT_SHEET_DARK)
+
+      const painted = await hitTest(page, '.report-panel', [
+        { name: 'the verdict chip', selector: '.report-panel .verdict-badge' },
+        { name: 'a score row', selector: '.report-panel .verdict-scores .score-row' },
+        { name: "the report body's first heading", selector: '.report-panel .report-body :is(h1,h2,h3,h4)' },
+      ])
+
+      /*
+       * The first two are structural — they sit at the top of the panel and are
+       * on screen at every width this test uses — so they are required to have
+       * been testable. The body's first heading legitimately may not be: the
+       * body is long and scrolls, and a heading below the fold is a fact about
+       * the report's length rather than a defect. It is asserted when it is
+       * visible and reported when it is not.
+       */
+      for (const name of ['the verdict chip', 'a score row']) {
+        const probe = painted.find((entry) => entry.name === name)
+        expect(probe?.found, `${name} is not rendered in the report panel`).toBe(true)
+        expect(probe?.visible, `${name} has no visible area to hit-test`).toBe(true)
+      }
+      const covered = painted
+        .filter((entry) => entry.visible && !entry.insideOwner)
+        .map(
+          (entry) =>
+            `${entry.name} at (${entry.point?.x}, ${entry.point?.y}) is covered by ${entry.hit}` +
+            (entry.forbidden ? ` — inside ${entry.forbidden}` : ''),
+        )
+      expect(
+        covered,
+        'something is painted on top of the report panel; the canvas, the crew strip and the ' +
+          'node cards must all sit under it',
+      ).toEqual([])
+
       await shot(page, 'T3', 'after-1440.png')
 
       // S3: the newest line is the one on screen.
@@ -1065,8 +1282,6 @@ test.describe('the completed run', () => {
        * becomes the control: the same header without an override, so a reader
        * can see what the block adds.
        */
-      const report = page.locator('.report-panel')
-      await expect(report, 'the completed run did not open its report').toBeVisible()
       const headerText = await captureReportHeader(page, 'T1', 'report-header-plain.png')
 
       // T3: the other two widths and the light theme, on the same finished run
@@ -1163,6 +1378,12 @@ test.describe('the completed run', () => {
           `- trace rail badge: **${railBadge}**`,
           `- rows audited after expanding the fold: **${auditedRows}**`,
           `- longest line: **${longest}** chars (budget ${MAX_TRACE_LINE_CHARS})`,
+          `- dialogue reveal settled: **${reveal.settled ? 'yes' : 'NO'}** after ` +
+            `${reveal.waitedMs}ms at ${reveal.chars} rendered characters` +
+            (reveal.settled
+              ? ''
+              : ` — the captures were taken with a reveal still running, so the newest bubble ` +
+                'may end mid-sentence'),
           '- disclosures open by default: **0** (asserted below)',
           '',
           "The stream line carries the run's frame high-water mark (`seq N`) and the dropped",
@@ -1274,6 +1495,14 @@ test.describe('the completed run', () => {
         rawCodesIn(headerText),
         'raw SNAKE_CASE reached the report header (T1.3)',
       ).toEqual([])
+
+      expect(
+        reveal.settled,
+        `the dialogue rail was still revealing after ${REVEAL_SETTLE_TIMEOUT_MS}ms, so the ` +
+          'captures above show a bubble mid-sentence under a finished badge. `setStatus` calls ' +
+          '`choreography.revealAll()` on a terminal status, so this failing means either that ' +
+          'call went away or something is still appending to the rail after the run ended.',
+      ).toBe(true)
 
       expect(watch.unexpected).toEqual([])
     },
@@ -1535,6 +1764,18 @@ test.describe('the report names what decided the run', () => {
             'the report shows no "what decided this run" block for a verdict an override decided',
           ).toHaveCount(1)
 
+          /*
+           * Settle before the shutter, for the same reason the long-run captures
+           * do: this is a completed-run capture too, and the console is still
+           * moving for a moment after the terminal frame - a reveal finishing,
+           * the report panel's own entry animation. Used here as a "the page has
+           * stopped changing" wait rather than for the rail specifically, which
+           * is why nothing is asserted about its result: T1.1's subject is the
+           * report, and the rail is only the most reliable thing on the page to
+           * watch for stillness.
+           */
+          await dialogueSettled(page)
+
           // CAPTURED BEFORE THE WORDING IS ASSERTED. T1.1's artifact is the
           // picture, and a red on a sentence must not cost the cold reader the
           // one thing they are asked to read.
@@ -1676,6 +1917,41 @@ test.describe('the shell at 390x844', () => {
         page.locator('.control-rail .control-toggle'),
         'the control rail toggle is not visible at 390px (S6)',
       ).toBeVisible()
+
+      /*
+       * PAINT ORDER IN THE DRAWER, and this is the width where it matters most.
+       *
+       * At 390px the control rail is an overlay rather than a column, so the
+       * canvas and the report are still full width UNDERNEATH it — which is
+       * correct, and which also means one wrong `z-index` puts a node card on
+       * top of the Launch button with nothing on screen saying so. The rail
+       * would still be "visible" to every assertion above it: `toBeVisible`
+       * asks about the element's own box and opacity, not about what is drawn
+       * over it.
+       *
+       * So the same question the eye asks: at the centre of the drawer, and at
+       * the centre of its primary control, whose element is on top?
+       */
+      const drawer = await hitTest(page, '.control-rail', [
+        { name: 'the control rail', selector: '.control-rail' },
+        { name: 'the Launch button', selector: '[data-testid="launch-button"]' },
+        { name: 'the status chip', selector: '.status-panel .status-badge' },
+      ])
+      for (const probe of drawer) {
+        expect(probe.found, `${probe.name} is not rendered at 390px (S6)`).toBe(true)
+        expect(probe.visible, `${probe.name} has no visible area at 390px (S6)`).toBe(true)
+      }
+      expect(
+        drawer
+          .filter((probe) => probe.visible && !probe.insideOwner)
+          .map(
+            (probe) =>
+              `${probe.name} at (${probe.point?.x}, ${probe.point?.y}) is covered by ${probe.hit}` +
+              (probe.forbidden ? ` — inside ${probe.forbidden}` : ''),
+          ),
+        'something is painted on top of the control rail at 390px; the drawer is the one ' +
+          'surface a phone reader has to be able to press (S6)',
+      ).toEqual([])
 
       // The characters survive the width: still one per node, still terminal.
       const cast = await graphCast(page)

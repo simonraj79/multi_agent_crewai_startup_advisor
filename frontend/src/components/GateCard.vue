@@ -362,6 +362,22 @@ function submit(outcome: string): void {
 .gate-field textarea:focus { border-color: var(--on-accent-cyan); box-shadow: var(--glow-input); }
 .gate-field input[readonly],
 .gate-field textarea[readonly] { color: var(--text-muted); }
+/* A single-line `<input>` holding a SENTENCE clips at the box edge with no
+   mark, and at the 346px drawer width of a phone that lands mid-word: a cold
+   reader read "A scheduling assistant for small veterinary clinic" and could
+   not tell whether the value or the rendering was cut
+   (`evidence/S/narrow-rail-open.png`). An ellipsis at least says which.
+   IT IS NOT THE WHOLE FIX, and the rest is recorded rather than smuggled in:
+   an `<input>` cannot wrap at any width, so a value that is prose wants a
+   `<textarea>`. That is a template change, and two assertions count these
+   elements by tag - `tests/gateDerived.spec.ts:178` and
+   `e2e/studio.spec.ts:238` - so it is a decision with a test move in it rather
+   than a stylesheet edit. */
+.gate-field input { text-overflow: ellipsis; }
+/* These two genuinely can wrap, and were squashing instead: a long value in a
+   `space-between` row with `text-align: right` had nowhere to go. */
+.derived-pairs li { flex-wrap: wrap; }
+.derived-pair-value { min-width: 0; overflow-wrap: anywhere; }
 
 /* Deliberately not a form. Nothing here is an input, nothing here is focusable,
    and the lock in the heading says why before the operator reaches for it. */

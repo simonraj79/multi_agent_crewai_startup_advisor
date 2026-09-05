@@ -128,36 +128,133 @@ describe('the compact row', () => {
 
 describe('the seam between the dialogue block and the trace list', () => {
   /*
-   * A cold reader saw a `▸ Details` line cut in half where the two regions
-   * meet, and read it as an overlap. Nothing overlaps: the dialogue list is a
-   * scroll box capped at `40vh`, and at the cap it was ending FLUSH against its
-   * own border with the first trace row a hairline below - which is what a
-   * rendering fault looks like. The fix is a band outside the scroller
-   * (`.dialogue-rail`'s `padding-bottom`) plus a clear gap above the first row
-   * (`.rail-list`'s `padding-top`).
+   * WHAT WAS ACTUALLY WRONG, because two guesses came before it.
    *
-   * THE PIXELS ARE NOT ASSERTED HERE and cannot be: jsdom applies no scoped
-   * stylesheet and lays nothing out, so a mount that claimed to measure this
-   * would be measuring nothing. `e2e/cast.spec.ts`'s captures are where the
-   * seam is looked at. What a mount CAN pin is the structural precondition the
-   * fix rests on - the dialogue sits in its own slot ABOVE the scrolling list,
-   * not inside it - because putting it back inside would make a real overlap
-   * possible again and no amount of padding would help.
+   * A cold reader saw the "Review verdict / You approved" row cut across its
+   * name and apparently sliding UNDER the pinned "WHAT THE CREW SAID" block,
+   * with no avatar. Nothing slides under anything: the slot holding the
+   * dialogue and the trace list are static siblings in a column flex, neither
+   * is positioned, and the assertions below pin that. Two duller things were
+   * happening at once.
+   *
+   * 1. THE LIST IS SCROLLED TO THE BOTTOM, so its topmost visible row is cut by
+   *    the scroller's own top edge - which is what a scrolled list does. It
+   *    read as an overlap because the cut landed flush against the block above
+   *    with no drawn edge between them. Two rounds of padding did not help and
+   *    could not: a padding INSIDE a scroll box scrolls away with the content
+   *    and is not there at the moment of the clip. `.rail-list` now carries a
+   *    `border-top`, which is on the scroller's own box and does not scroll, and
+   *    `.rail-slot` a margin, which is outside both boxes.
+   * 2. THE ROW HAD LOST ITS AVATAR COLUMN. `.trace-entry.is-system` set
+   *    `display: block`, and `is-system` arrives for a `you` row from its
+   *    VARIANT as well as from having no identity - so the gate marker added in
+   *    round three had a column to sit in only on paper. That is the
+   *    `has-mark` case below, and it is the half a reader actually notices.
+   *
+   * WHY THE CSS IS ASSERTED FROM SOURCE AND NOT FROM `getComputedStyle`.
+   * This suite runs Vitest with `css` off: a mounted component puts ZERO
+   * `<style>` tags in the document, measured rather than assumed, so
+   * `getComputedStyle(slot).position` answers `static` and
+   * `getComputedStyle(list).overflowY` answers `visible` whatever the stylesheet
+   * says. Asserting those would be a test that passes for the wrong reason - the
+   * exact failure this repository keeps a section about. So the STRUCTURE is
+   * asserted against the DOM, where it is real, and the two CSS facts that make
+   * an overlap impossible are asserted against the stylesheet text, labelled as
+   * what they are. The pixels are `e2e/cast.spec.ts`'s.
    */
-  it('puts the dialogue in its own slot above the scrolling trace list', () => {
+
+  function styleBlock(component: string): string {
+    const source = readFileSync(resolve(process.cwd(), 'src', 'components', component), 'utf8')
+    const at = source.indexOf('<style')
+    expect(at, `${component} has no style block`).toBeGreaterThan(-1)
+    return source.slice(at)
+  }
+
+  it('keeps the dialogue in its own slot, a sibling above the scrolling list', () => {
     const wrapper = mount(ChatRail, {
       props: { entries: [chatEntry()], collapsed: false },
       slots: { above: '<div class="dialogue-rail">spoken</div>' },
     })
     const slot = wrapper.get('.rail-slot')
+    const list = wrapper.get('.rail-list')
     expect(slot.find('.dialogue-rail').exists()).toBe(true)
-    // The list is a SIBLING of the slot, so the two regions cannot interleave.
-    expect(wrapper.get('.rail-list').find('.dialogue-rail').exists()).toBe(false)
-    const children = Array.from(wrapper.element.children).map((el) => (el as Element).className)
-    expect(children.indexOf('rail-slot')).toBeLessThan(
-      children.findIndex((name) => name.includes('rail-list')),
-    )
+    // The one containment fact that makes an overlap impossible: the scroller
+    // does not hold the block, so the block cannot scroll with the rows or be
+    // pinned over them.
+    expect(list.element.contains(slot.element)).toBe(false)
+    expect(slot.element.contains(list.element)).toBe(false)
+    expect(slot.element.parentElement).toBe(list.element.parentElement)
+    const children = Array.from(wrapper.element.children)
+    expect(children.indexOf(slot.element)).toBeLessThan(children.indexOf(list.element))
     wrapper.unmount()
+  })
+
+  it('positions neither region, and gives the scroller the edge that does not scroll', () => {
+    const chat = styleBlock('ChatRail.vue')
+    const dialogue = styleBlock('DialogueRail.vue')
+    // No rule anywhere in either sheet takes either region out of flow.
+    for (const [name, sheet] of [['ChatRail.vue', chat], ['DialogueRail.vue', dialogue]] as const) {
+      for (const rule of ['.rail-slot', '.rail-list', '.dialogue-rail', '.dialogue-list']) {
+        const at = sheet.indexOf(`${rule} {`)
+        if (at < 0) continue
+        const body = sheet.slice(at, sheet.indexOf('}', at))
+        expect(body, `${name} ${rule} is positioned`).not.toMatch(/position:\s*(sticky|absolute|fixed)/)
+      }
+    }
+    // The list is its own scroller, and its top edge is drawn.
+    const listRule = chat.slice(chat.indexOf('.rail-list {'))
+    const listBody = listRule.slice(0, listRule.indexOf('}'))
+    expect(listBody).toMatch(/overflow-y:\s*auto/)
+    expect(listBody).toMatch(/border-top:\s*1px solid var\(--border-default\)/)
+    // And the gutter between them is outside both scroll boxes.
+    const slotRule = chat.slice(chat.indexOf('.rail-slot {'))
+    expect(slotRule.slice(0, slotRule.indexOf('}'))).toMatch(/margin-bottom:\s*var\(--space-/)
+  })
+
+  it('leaves a gate row its avatar column, and a run row without one', () => {
+    // The half the reader actually noticed. A `you` row is `is-system` by
+    // variant, and that used to drop the two-column grid - so the marker added
+    // in round three had nowhere to sit and the row started hard against the
+    // left edge unlike every row above it.
+    const gate = mount(ChatRail, { props: { entries: [chatEntry()], collapsed: false } })
+    const gateRow = gate.get('.trace-entry')
+    expect(gateRow.classes()).toContain('is-system')
+    expect(gateRow.classes()).toContain('has-mark')
+    expect(gate.find('[data-testid="trace-you"]').exists()).toBe(true)
+    gate.unmount()
+
+    // A row about the run itself has nothing to put in the column and keeps the
+    // full width it always had.
+    const runRow = mount(ChatRail, {
+      props: {
+        entries: [
+          chatEntry({
+            identity: '',
+            actor: 'Run',
+            tone: 'info',
+            variant: 'system',
+            nodeId: undefined,
+            // A run-level frame, not a gate: `isYou` reads the kind as well as
+            // the tone, so a `gate_*` row is about a person even when the
+            // interpreter attributed it to no node.
+            raw: {
+              kind: 'run_state',
+              eventType: 'WORKFLOW_END',
+              seq: 9,
+              message: 'ValidatorFlow completed',
+              details: '{}',
+            },
+          } as Partial<ChatEntry>),
+        ],
+        collapsed: false,
+      },
+    })
+    const row = runRow.get('.trace-entry')
+    expect(row.classes()).toContain('is-system')
+    expect(row.classes()).not.toContain('has-mark')
+    expect(runRow.find('[data-testid="trace-you"]').exists()).toBe(false)
+    expect(runRow.find('[data-testid="trace-avatar"]').exists()).toBe(false)
+    runRow.unmount()
   })
 })
 

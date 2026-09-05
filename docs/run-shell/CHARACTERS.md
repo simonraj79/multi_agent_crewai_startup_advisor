@@ -15,7 +15,7 @@ decides that an agent is `working` rather than `speaking` is W3's and W4's work.
 | Generator | [`frontend/src/characters/pip.ts`](../../frontend/src/characters/pip.ts) — pure, no imports, no DOM, no clock |
 | Component | [`frontend/src/components/AgentCharacter.vue`](../../frontend/src/components/AgentCharacter.vue) |
 | Stylesheet | [`frontend/src/assets/styles/character.css`](../../frontend/src/assets/styles/character.css) |
-| Tests | `frontend/tests/characterSystem.spec.ts` (44), `frontend/tests/characterDeterminism.spec.ts` (30) |
+| Tests | `frontend/tests/characterSystem.spec.ts` (46), `frontend/tests/characterDeterminism.spec.ts` (30) |
 | Sheets | `frontend/scripts/character-sheet.mjs` → `evidence/T2/characters-32px.png`, `evidence/T2/states-32px.png`, `evidence/G4/roles-sheet.png` |
 | Figures below | `frontend/scripts/character-stats.mjs` — **regenerate, never quote** |
 
@@ -45,7 +45,7 @@ other measurement was fitted around it.
 | **Body** | 4 — `pebble`, `drop`, `bean`, `bell` | `mix32(h)` bits **0–7** mod 4 | Silhouette is the only identity cue that survives 32 px, so it carries the widest variation: squat-and-wide, tall-and-tapered, two-lobed-with-a-waist, flared-with-two-feet. All four stand on the same floor (`y = 28`) so a row of Pips lines up, and all four are one closed path so the crest can be cut from the same fill. |
 | **Eyes** | 4 — `round`, `oval`, `square`, `lens` | bits **8–15** mod 4 | **Shapes, not expressions.** Expression belongs to the state; an identity that already looked like it was winking could not then be asked to look worried. `lens` is a donut and is the one variant that needs no sparkle. |
 | **Resting mouth** | 3 — `smile`, `cat-w`, `oh` | bits **16–23** mod 3 | Only `idle` wears it; the other five states override the mouth. That is exactly why this axis gets three variants and not six — two thirds of its value would be spent on states the agent is not in. |
-| **Crown** | 6 — `antenna`, `sprout`, `curl`, `ring`, `fin`, `ears` | bits **24–31** mod 6 | One group, `currentColor`, hinged at the body's own crown point. It is also the part that **wilts** when the agent is blocked, and the part that is drawn **1.3× larger below 48 px** — see §4, where the reason is a cold reader's finding rather than a preference. |
+| **Crown** | 6 — `antenna`, `sprout`, `curl`, `bun`, `fin`, `ears` | bits **24–31** mod 6 | One group, `currentColor`, hinged at the body's own crown point. It is also the part that **wilts** when the agent is blocked, and the part that is drawn **1.3× larger below 48 px** — see §4, where the reason is a cold reader's finding rather than a preference. |
 | **Colour** | 12 — `--character-1 … --character-12` | **raw FNV-1a mod 12** (not the mixed word) | Byte for byte the index `useRunChoreography.characterIndex` already assigns, so a Pip is the colour its node's medallion and handoff token already are. |
 
 **4 × 4 × 3 × 6 × 12 = 3,456 distinct characters**, and all 3,456 are reachable
@@ -305,7 +305,7 @@ distribution over a 450-role natural-language corpus, count per bucket
   body   pebble=109 drop=113 bean=112 bell=116
   eyes   round=130 oval=116 square=97 lens=107
   mouth  smile=146 cat-w=145 oh=159
-  crest  antenna=80 sprout=65 curl=69 ring=77 fin=87 ears=72
+  crest  antenna=80 sprout=65 curl=69 bun=77 fin=87 ears=72
   colour c1=36 c2=45 c3=27 c4=36 c5=53 c6=35 c7=34 c8=38 c9=50 c10=41 c11=23 c12=32
 
 distinct characters reachable            3456 of 3456
@@ -373,15 +373,18 @@ being designed:
 The fourth was found by the first sheet rendered in this repository:
 
 - **Four of the twenty-four (body × crest) pairs poked out of the top of the
-  viewBox** and were cut flat by the raster — `bean` + `ring` worst at −0.72
-  units. Because `.pip-svg` sets `overflow: visible` they were not clipped in
-  the live DOM; they spilled outside the figure's own box instead, which on a
-  32 px node slot is the same defect in a different coat. The antenna and the
-  ring were shortened and the bean's `crestScale` cut from 0.94 to 0.86.
+  viewBox** and were cut flat by the raster — the `bean` wearing the crown
+  then in slot 3 was worst, at −0.72 units. Because `.pip-svg` sets
+  `overflow: visible` they were not clipped in the live DOM; they spilled
+  outside the figure's own box instead, which on a 32 px node slot is the same
+  defect in a different coat. That crown and the antenna were shortened and the
+  bean's `crestScale` cut from 0.94 to 0.86.
 
-The fifth and sixth came from a **cold reader who saw only these sheets** and
-neither the code nor the brief, which is the one instrument this system cannot
-supply for itself:
+The fifth, sixth and seventh came from **cold readers who saw only these
+sheets** and neither the code nor the brief, which is the one instrument this
+system cannot supply for itself. Every one of them is a defect no test in this
+repository could have raised, and the seventh is the reason the sheets are
+worth rendering at all:
 
 - **`blocked` and `blocked-error` differed only in the hue of the outline** —
   amber against red — so a colour-blind viewer saw one state where the product
@@ -399,8 +402,35 @@ supply for itself:
   the spec now measures that the four differ in construction and in width so a
   later edit cannot quietly collapse them.
 
-Every (body × crest) pair clears the top edge by at least **0.45 units at the
-large tier and 0.52 at the small one**, and `characterSystem.spec.ts` measures
+The seventh came from **two** readers independently, and it is the only one
+that replaced a shape rather than tuning one:
+
+- **The crown in slot 3 was a detached halo, and both readers matched it to the
+  same franchise character** from the sheets alone. A shape hovering clear of a
+  round creature reads as somebody else's idea however it is drawn, so it was
+  replaced by **`bun`** — a knob fused to the crown, cut from the body's own
+  fill like the other five. The crest index and the hash mapping are untouched,
+  so exactly the roles that wore the halo changed and nothing else did: on the
+  sheets, `Analyst`, `Localisation Lead` and `Roster Architect`; in the
+  determinism fixture, 3 of its 20 roles moved and the other 17 are
+  byte-identical, which is the evidence that the mapping was left alone.
+
+  The rule the halo broke was already written down — *a crown is cut from the
+  body, never floated above it* — and it is now **mechanical**:
+  `characterSystem.spec.ts` requires every crown to have a drawn point at
+  `y >= 0`, which is inside the outline, and it proves the check by running the
+  retired halo through it and watching it fail. The `antenna` passes on its
+  stalk even though its ball sits at −2.85, which is the distinction exactly: a
+  tethered shape is not a floating one.
+
+  The first draft of the replacement pinched its waist to 1.3 units and was
+  rejected at the raster — on the tapered `drop` body it stood on a visible
+  stem, which is the floating shape in disguise and a near-miss for the
+  `antenna`. The shipped one is 2.2 units at the base against 3.0 across the
+  knob: wider than it is tall, meeting the crown almost as wide as it rises.
+
+Every (body × crest) pair clears the top edge by at least **0.54 units at the
+large tier and 0.65 at the small one**, and `characterSystem.spec.ts` measures
 all twenty-four at both tiers rather than trusting these paragraphs.
 
 ## 8. Regenerating everything

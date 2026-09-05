@@ -107,13 +107,21 @@ const fixture = {
     'screenshot, reload and running node changed with it. Regenerate only on ' +
     'purpose, and say so in the commit.',
   reminted:
-    'Re-minted 2026-09-05 after two changes a cold reader found: blocked-error ' +
-    'gained x_x eyes so colour is not the only thing separating it from ' +
-    'blocked, and the crown is drawn 1.3x below 48px with the figure dropped 2 ' +
-    'units to fit it. Both change the markup at size 32, so every hash below ' +
-    'moved. It was re-minted by running this script - a separate process, ' +
-    'plain Node, no Vite and no jsdom - and NOT by copying what the spec ' +
-    'produced, which would have made the cross-process claim circular.',
+    'Re-minted twice on 2026-09-05, both times by running this script - a ' +
+    'separate process, plain Node, no Vite and no jsdom - and NOT by copying ' +
+    'what the spec produced, which would have made the cross-process claim ' +
+    'circular. (1) Two changes a cold reader found: blocked-error gained x_x ' +
+    'eyes so colour is not the only thing separating it from blocked, and the ' +
+    'crown is drawn 1.3x below 48px with the figure dropped 2 units to fit it; ' +
+    'those moved every hash. (2) Crest slot 3 was REPLACED: two independent ' +
+    'cold readers matched its detached halo to the same franchise character, ' +
+    'so it is now `bun`, a knob fused to the crown. That moved ONLY the hashes ' +
+    'of roles wearing crest 3, which is three of the twenty here - Analyst, ' +
+    'Localisation Lead, and the nameless role that falls back to the node id ' +
+    'n7_second_pass. The other seventeen are byte-identical across that ' +
+    'change, which is the evidence that the hash mapping was left alone. On ' +
+    'the sheets the same change repaints Analyst, Localisation Lead and ' +
+    'Roster Architect, and nothing else.',
   snapshots,
   diagnostics,
 }

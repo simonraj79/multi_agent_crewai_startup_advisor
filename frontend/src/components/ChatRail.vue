@@ -297,7 +297,10 @@ function tokenNote(entry: ChatEntry): string {
         v-memo="[row]"
         class="trace-entry"
         data-testid="trace-entry"
-        :class="[`is-${row.entry.variant}`, { 'is-system': !row.entry.identity }]"
+        :class="[
+          `is-${row.entry.variant}`,
+          { 'is-system': !row.entry.identity, 'has-mark': row.you || !!row.entry.identity },
+        ]"
         :data-node="row.entry.nodeId"
         :data-identity="row.entry.identity"
         :data-tone="row.entry.tone"
@@ -443,17 +446,47 @@ function tokenNote(entry: ChatEntry): string {
 
 /* Sized to its content and never flexed, so the trace below keeps every pixel
    the dialogue does not need. */
-.rail-slot { flex: 0 0 auto; }
+/*
+ * A GUTTER, and it is outside both scroll boxes on purpose.
+ *
+ * See `.rail-list` below for what this is fixing. `margin-bottom` on the slot
+ * is layout rather than content, so unlike the padding either box carries it
+ * cannot scroll away - the rail's own ground shows between the dialogue block's
+ * bottom edge and the trace list's top edge at every scroll position.
+ */
+.rail-slot { flex: 0 0 auto; margin-bottom: var(--space-3); }
 
 .rail-list {
   min-height: 0;
   flex: 1;
-  overflow: auto;
-  /* The other half of the seam: the first trace row starts a clear gap below
-     the dialogue block's border rather than a hairline under it, so the two
-     regions read as two. `--space-6` rather than the 14px that was here,
-     because the value is a token or it does not exist. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  /*
+   * THE BORDER IS THE SEAM, and the padding above it never was.
+   *
+   * What a cold reader saw: the "Review verdict / You approved" row cut across
+   * its name and apparently sliding under the dialogue block. Nothing slides
+   * under anything - the slot and this list are static siblings in a column
+   * flex and neither is positioned - and the mechanism is duller and was mine
+   * to know: THIS LIST IS SCROLLED TO THE BOTTOM, so its topmost visible row is
+   * cut by the scroller's own top edge. That is what a scrolled list does. It
+   * read as an overlap because the cut landed flush against the block above
+   * with no drawn edge to say where one region ended and the other began.
+   *
+   * Round two's fix was `padding-top` here and `padding-bottom` on the dialogue
+   * block. Both are INSIDE their scroll boxes, so both scroll away with the
+   * content and neither is present at the moment the clip happens - the exact
+   * mistake, made twice, that the block's own comment already describes for its
+   * own half. The captures were taken after that fix and the seam was unchanged.
+   *
+   * A `border-top` is on the scroll container's own box and does not scroll, so
+   * the clip now lands ON a drawn line: a half row above a rule reads as a list
+   * scrolled past its start, which is what it is. The padding stays for the
+   * case it really does serve - the first row when the list is scrolled to the
+   * top - and claims nothing about the seam.
+   */
   padding: var(--space-6) 14px 28px;
+  border-top: 1px solid var(--border-default);
   scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
 
@@ -501,7 +534,26 @@ function tokenNote(entry: ChatEntry): string {
   box-shadow: inset 0 0 0 1px var(--warn-border);
 }
 
-.trace-entry.is-system { display: block; }
+/*
+ * A ROW WITH A MARK KEEPS ITS COLUMN, and the exception is the fix for a defect
+ * a cold reader found in `evidence/T2/trace-completed.png`: the
+ * "Review verdict / You approved" row had no avatar at all, while every row
+ * above it had one.
+ *
+ * The cause was two `is-system`es. The class arrives twice - once from the
+ * row's VARIANT (`toChatEntry` gives `tone: 'you'` the system variant) and once
+ * from having no identity - and this rule dropped the two-column grid for both.
+ * That was right while a `you` row had nothing to put in the column; since the
+ * gate marker landed it is wrong, and the row lost its column, started hard
+ * against the left edge unlike its neighbours, and read as a different kind of
+ * thing half-hidden under the block above.
+ *
+ * So the full-width layout is now for rows with nothing in the column: the run
+ * itself, and anything the interpreter could not attribute. `has-mark` is
+ * computed from the same two things the template branches on, so the class and
+ * the markup cannot disagree.
+ */
+.trace-entry.is-system:not(.has-mark) { display: block; }
 
 /* The GROUND a character stands on, not the mark itself.
 

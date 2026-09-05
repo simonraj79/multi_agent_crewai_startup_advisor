@@ -17,6 +17,7 @@ import { useValidatorRun } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
 import type { SignedInUser } from '../composables/useAuthGate'
+import type { RunStatus } from '../types/studio'
 
 /**
  * The run console, moved out of `App.vue` unchanged.
@@ -294,6 +295,26 @@ watch(
  * previous graph, which is how a console comes to draw one workflow's topology
  * over another's frames.
  */
+/**
+ * The handoff banner is about LAUNCHING, so it goes when there is nothing left
+ * to launch.
+ *
+ * A cold reader found it stacked above "Run failed" in the right rail
+ * (`evidence/S/failure.png`): two banners, two dismiss buttons, and the upper
+ * one saying "Running your published graph …" about a run that had already
+ * stopped. Present tense about a finished thing.
+ *
+ * Driven by the run's own status rather than by a timer, so it is exact: the
+ * banner is up while a launch is a live prospect and down the moment the run
+ * reaches an end state, whichever end that is. `handoff` itself is NOT
+ * cleared - the console is still pointed at that graph, Relaunch still runs
+ * it, and the WORKFLOW well still names it. Only the sentence goes.
+ */
+const TERMINAL_RUN_STATUSES: readonly RunStatus[] = ['completed', 'error', 'cancelled']
+const handoffBannerShown = computed(
+  () => handoff.value !== null && !TERMINAL_RUN_STATUSES.includes(status.value),
+)
+
 function backToValidator(): void {
   clearRunHandoff(props.user?.id ?? null)
   handoff.value = null
@@ -547,7 +568,10 @@ function backToValidator(): void {
             saying so, and the whole reason this strip exists is that a silent
             repoint is indistinguishable from the mock-mode failure.
           -->
-          <div v-if="handoff" class="handoff-banner" role="status">
+          <!-- `&& handoff` is for the type narrowing, not for the logic:
+               `handoffBannerShown` already implies it, but a computed does not
+               narrow a ref inside the template the way a direct `v-if` does. -->
+          <div v-if="handoffBannerShown && handoff" class="handoff-banner" role="status">
             <span>
               Running your published graph <strong>{{ handoff.name }}</strong>. It asks for
               <code>{{ handoff.inputField }}</code>.
@@ -570,6 +594,12 @@ function backToValidator(): void {
             :submitting="gateSubmitting"
             @submit="submitGate"
           />
+          <!--
+            `can-return-home` is the way back, and it lives in the panel because
+            the banner that used to carry it retires at a terminal status. The
+            condition is the same one the banner used: a published graph is
+            loaded.
+          -->
           <StatusPanel
             v-model:idea="idea"
             :status="status"
@@ -592,10 +622,12 @@ function backToValidator(): void {
             :download-message="downloadMessage"
             :workflow-name="handoff ? handoff.name : undefined"
             :input-label="handoff ? `${handoff.inputField.replaceAll('_', ' ').toUpperCase()} TO RUN` : undefined"
+            :can-return-home="handoff !== null"
             @launch="launch"
             @cancel="cancel"
             @download="downloadLogs"
             @dismiss-error="dismissError"
+            @return-home="backToValidator"
             @select-view="activeView = $event"
           />
           <RunHistory

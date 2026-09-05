@@ -1047,6 +1047,28 @@ h3 {
     white-space: nowrap;
   }
 
+  /* THE DRAWER IS ITS OWN SCROLLER, and at 390 it had to become one.
+     A cold reader found the Cancel button cut in half at the fold and the
+     WORKFLOW well cut below it (`evidence/S/narrow.png`): the rail is bounded
+     by `bottom: 0`, so its content was clipped at the viewport edge with the
+     last control sliced through the middle - which reads as a broken panel
+     rather than as a list with more below it.
+
+     `100vh` before `100dvh` deliberately: a browser that does not know the
+     dynamic unit takes the static one and is merely a little short when a
+     mobile toolbar is showing, where a browser that knows it gets the right
+     answer. Declaration order is the whole fallback mechanism.
+
+     The bottom rest is what stops the last control from ending flush against
+     the edge, which is the state that made a scrollable panel look truncated
+     in the first place. */
+  .control-scroll {
+    max-height: 100vh;
+    max-height: 100dvh;
+    overflow-y: auto;
+    padding-bottom: var(--space-8);
+  }
+
   /* WHICH LAYER IS LIVE, answered where a cold reader asked it.
      At 390 both rails are overlays and one sat directly on the console: a
      sliver of half-cut console text showed down the edge and nothing said

@@ -22,14 +22,15 @@ Pop-Location
 
 Every part is a path written by hand in
 [`frontend/src/characters/pip.ts`](../../../../frontend/src/characters/pip.ts)
-as SVG numbers. There are twenty-five shapes in the whole system.
+as SVG numbers. There are twenty-five shapes in the whole system, and one
+more was drawn, shown to two cold readers, and removed — see below.
 
 | Part | Variants | Each one is |
 | --- | ---: | --- |
 | **Body** | 4 — `pebble`, `drop`, `bean`, `bell` | one closed `<path>`, 4–6 cubic segments, standing on `y = 28` |
 | **Eyes** | 4 — `round`, `oval`, `square`, `lens` | a `<circle>`, an `<ellipse>`, a rounded `<rect>`, and an even-odd `<path>` donut |
 | **Resting mouth** | 3 — `smile`, `cat-w`, `oh` | a quadratic stroke, a double quadratic stroke, a filled `<ellipse>` |
-| **Crown** | 6 — `antenna`, `sprout`, `curl`, `ring`, `fin`, `ears` | a stroke plus a `<circle>`; four filled `<path>`s; one stroked `<ellipse>`. Drawn 1.3× below 48 px |
+| **Crown** | 6 — `antenna`, `sprout`, `curl`, `bun`, `fin`, `ears` | a stroke plus a `<circle>`; five filled `<path>`s. Every one reaches down into the body's fill; none floats above it. Drawn 1.3× below 48 px |
 | **State mouths** | 4 more | a flat line, a filled oval, a downturned arc, a filled half-disc, beside the resting one |
 | **State eyes** | 2 more | two closed arcs for `done`, and two crosses (`×_×`) for `blocked-error` |
 | **Detail tier** | 2 | two cheek `<ellipse>`s at 20% opacity, two sparkle `<circle>`s — both off below 48 px |
@@ -54,6 +55,48 @@ to none of them. It is drawn as four straight strokes in this file like
 everything else, and it was added because a cold reader found that colour alone
 was separating "waiting for you" from "broken".
 
+## One shape failed this statement, and was replaced
+
+**The statement above is only worth the checking behind it, so here is the
+check that failed.** Crest slot 3 originally held a **floating ring** — a
+detached halo hovering above the head. Two cold readers, working independently
+and given only these sheets, no brief and no code, **both named the same
+franchise character** (a Chao, from *Sonic Adventure*). One match could be a
+coincidence; two independent matches to the same character is a finding, and
+the brief requires work derived from nothing that exists.
+
+**The ring is gone.** Slot 3 now holds **`bun`** — a knob fused to the crown,
+one filled path in the body's own colour, meeting the head almost as wide as it
+rises. It was drawn from nothing: 2.2 units across at the base, 3.0 across the
+knob, 5.5 units tall.
+
+Three things about how it was done are the point:
+
+1. **The hash mapping was not touched.** The crest index, the bit slice and the
+   count are unchanged, so exactly the characters that wore the halo changed
+   and no others did. On these sheets that is `Analyst`, `Localisation Lead`
+   and `Roster Architect`; in the determinism fixture, 3 of 20 roles moved and
+   the remaining 17 hash byte-for-byte as before — which is the evidence, not
+   the claim.
+2. **The first replacement was rejected too.** A knob with a narrow 1.3-unit
+   waist stood on a visible stem on the tapered `drop` body: a ball on a stick,
+   which is the floating shape wearing a disguise. It went back to the drawing
+   board before it reached a sheet.
+3. **The rule is now mechanical.** "A crown is cut from the body, never floated
+   above it" was already written down, and writing it down is exactly what
+   failed to stop this. `frontend/tests/characterSystem.spec.ts` now requires
+   every crown to have a drawn point at `y >= 0` — inside the outline — and
+   proves the check works by running the retired halo through it and watching
+   it fail. The `antenna` passes on its stalk although its ball sits at −2.85,
+   which is the distinction exactly: a tethered shape is not a detached one.
+
+**What this says about the rest of the statement.** Everything below was
+written by the same person who drew the ring and did not see the resemblance,
+so treat the list that follows as a set of claims a reader should test rather
+than as a clearance. The halo is the demonstration that a cold reader is the
+only instrument that finds this class of defect, and that the right response to
+one is to replace the shape, not to argue for it.
+
 **What it is not, structurally rather than by promise.** A Pip has no limbs, no
 feet, no shoes, no face-plate, no visor, no separate head, no accessory and no
 outline. That rules out:
@@ -73,6 +116,10 @@ outline. That rules out:
   reaches a card.
 - **Any Slack, Notion, Figma or Duolingo mascot** — all of which are
   limbed, outlined, or built around a face-plate.
+- **A Chao (*Sonic Adventure*)** — which is what the retired crest slot was
+  matched to, and the match rested entirely on the detached halo. No crown in
+  the shipped set floats: every one reaches down into the body's fill, and a
+  test measures it.
 
 **What it does resemble, and deliberately:** a river stone, a seed pod, an
 acorn. Closed, weighted, sitting on a floor. These are small quiet objects, not
@@ -85,7 +132,9 @@ operator came to read without competing with it.
    the same fill and hinged at the body's own crown point, so 3,456 creatures
    share one silhouette logic and none of them looks accessorised. It is also
    the part that wilts when the agent is blocked, which is the one gesture the
-   figure makes.
+   figure makes. The one crown that broke this rule is the one two cold readers
+   recognised, which is not a coincidence: a detached shape is what makes a
+   creature read as somebody else's.
 2. **The face is only ever three marks** — eye, eye, mouth — with cheeks and
    sparkles switched off below 48 px in code rather than trusted to scale. That
    is what makes it readable at the size the graph actually renders.

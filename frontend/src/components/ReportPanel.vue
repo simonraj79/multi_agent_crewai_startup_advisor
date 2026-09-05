@@ -286,8 +286,36 @@ async function copyReport(): Promise<void> {
 
 <style scoped>
 .report-panel {
+  /* THE SHEET IS ABOVE THE CANVAS, UNCONDITIONALLY.
+
+     `position: absolute` + `isolation: isolate` + the highest z-index in the
+     workspace, and all three are belt to each other's braces rather than one
+     fix: a `z-index` is inert on a static element, an `isolation: isolate`
+     guarantees this element is its own stacking context whatever else changes
+     around it, and `--z-control` clears every sibling in `.graph-workspace`
+     (`.canvas-heading` 8, `.stream-reconnecting` and `.crew-progress` 9, the
+     reopen FAB 11) rather than clearing them by two.
+
+     It does NOT escape the rails, and that is the point of doing it here
+     rather than raising the number globally: `.graph-workspace` declares
+     `position: relative; z-index: 0`, which is a stacking context, so
+     everything in this file is trapped below `.control-rail` and `.chat-rail`
+     at `--z-rail` no matter what number this line carries. The report covers
+     the graph and never the controls.
+
+     WHAT THIS IS NOT. It was proposed as the fix for the report reading as if
+     it were UNDER the canvas after the `backdrop-filter` came off, on the
+     theory that the blur had been creating the panel's stacking context. That
+     theory does not survive reading the rule: the panel was already
+     `position: absolute; z-index: 12`, which creates a stacking context by
+     itself and was already being compared against its siblings in
+     `.graph-workspace`'s context - so removing the blur cannot have changed
+     the paint order. This hardening removes the ambiguity; it does not explain
+     the capture, and the note in `tests/reportVisibility.spec.ts` says what
+     would. */
   position: absolute;
-  z-index: 12;
+  isolation: isolate;
+  z-index: var(--z-control);
   top: 64px;
   right: 0;
   bottom: 0;

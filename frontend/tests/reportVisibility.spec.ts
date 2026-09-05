@@ -1,9 +1,29 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { App } from 'vue'
 import { useValidatorRun } from '../src/composables/useValidatorRun'
 import { FakeStudioApi, flush, frameFactory, withSetup } from './helpers'
 
 type ValidatorRun = ReturnType<typeof useValidatorRun>
+
+/**
+ * The body of the rule whose selector is exactly `selector`, at the start of a
+ * line.
+ *
+ * The anchoring is the point, and it cost two red tests to find.
+ * `.control-rail {` also occurs inside
+ * `.studio-main > .chat-rail, ... > .control-rail {` fifty lines earlier, so an
+ * unanchored `indexOf` reads THAT rule's three-line `min-height: 0` body and
+ * asserts against it. A source-level test that grabs the wrong rule passes or
+ * fails for reasons that have nothing to do with its subject - which is the
+ * one failure mode a source-level test must not have.
+ */
+function ruleFor(source: string, selector: string): string {
+  const at = source.indexOf(`\n${selector} {`)
+  if (at < 0) throw new Error(`no rule declared for ${selector}`)
+  const body = source.slice(at + 1)
+  return body.slice(0, body.indexOf('\n}'))
+}
 
 /**
  * The finished report, and the verdict that goes with it.
@@ -310,5 +330,96 @@ describe('the transport banner', () => {
     await flush()
 
     expect(run.transportProblem.value).toBe('')
+  })
+})
+
+/**
+ * THE SHEET IS ABOVE THE CANVAS, asserted from source because the alternative
+ * is a picture.
+ *
+ * `after-1440.png` showed the graph and the stage lane reading through a report
+ * that the shipped stylesheet paints in `--surface-strong` - an opaque
+ * `#222426` with no alpha at all, verified in the built bundle. Two people
+ * looked at that capture and read it two ways, which is exactly the argument
+ * for an assertion: a ratio or a declaration can be checked, and a picture is
+ * an opinion until somebody re-takes it.
+ *
+ * A unit test cannot compute a stacking order - jsdom lays nothing out - so
+ * what these check is the three DECLARATIONS that make the order unambiguous.
+ * The browser-side half is RV1's, and the exact instrument is:
+ *
+ *     const sheet = page.locator('.report-panel')
+ *     expect(await styleOf(sheet, 'background-color')).toBe('rgb(34, 36, 38)')
+ *     // light theme: rgb(243, 245, 247)
+ *
+ * plus a hit test on a point inside the sheet that sits over a node - if the
+ * element at that point is not the sheet or one of its descendants, the sheet
+ * is under the canvas and no colour assertion will say so.
+ */
+describe('the report sheet cannot be painted through', () => {
+  // `process.cwd()` is `frontend/` under vitest, and a plain relative path is
+  // what survives Windows: `import.meta.url` is not a file: URL here, so
+  // `new URL(...)` throws before a single assertion runs.
+  const source = readFileSync('src/components/ReportPanel.vue', 'utf8')
+  const rule = ruleFor(source, '.report-panel')
+
+  it('is positioned, so its z-index is not inert', () => {
+    // A `z-index` on a `position: static` element does nothing at all, and that
+    // is the failure mode this assertion exists for: the declaration would
+    // still be there, the sheet would still be behind the graph, and the CSS
+    // would look correct to a reader.
+    expect(rule).toMatch(/position:\s*absolute/)
+  })
+
+  it('is its own stacking context whatever changes around it', () => {
+    expect(rule).toMatch(/isolation:\s*isolate/)
+  })
+
+  it('outranks every sibling in the workspace', () => {
+    // `--z-control` (30) against `.canvas-heading` 8, `.stream-reconnecting`
+    // and `.crew-progress` 9, and the reopen FAB 11. Named rather than
+    // numbered so the comparison survives a renumbering of the scale.
+    expect(rule).toMatch(/z-index:\s*var\(--z-control\)/)
+  })
+
+  it('is opaque, with no alpha for a graph to show through', () => {
+    // `--surface-strong` is the only surface token with no alpha channel.
+    // `--surface-overlay` at 94% was tried first and is what produced the
+    // capture this block is named for.
+    expect(rule).toMatch(/background:\s*var\(--surface-strong\)/)
+    expect(rule).not.toMatch(/background:\s*var\(--surface-overlay\)/)
+  })
+
+  it('does not escape the rails, which are a different stacking context', () => {
+    // `.graph-workspace` declares `position: relative; z-index: 0`, so it IS a
+    // stacking context and everything in ReportPanel.vue is trapped below
+    // `--z-rail`. Without this the line above would put a report over the
+    // controls, which is a worse defect than the one it fixes.
+    const shell = readFileSync('src/studio.css', 'utf8')
+    expect(ruleFor(shell, '.graph-workspace')).toMatch(/z-index:\s*var\(--z-base\)/)
+  })
+})
+
+/**
+ * The right rail is above the canvas for the same reason and by a different
+ * route: it is a sibling of `.graph-workspace` rather than a child, so it is
+ * compared with the workspace's own `z-index: 0` and not with anything inside
+ * it. One number covers the rail whether it is a grid column (>= 1180px) or an
+ * overlay (below it).
+ */
+describe('the control rail cannot be painted through', () => {
+  const shell = readFileSync('src/studio.css', 'utf8')
+  const rule = ruleFor(shell, '.control-rail')
+
+  it('is positioned and outranks the workspace', () => {
+    expect(rule).toMatch(/position:\s*relative/)
+    expect(rule).toMatch(/z-index:\s*var\(--z-rail\)/)
+  })
+
+  it('is opaque, because below 1180px it overlays the graph', () => {
+    // `--bg-app`, not `--surface-overlay`: at 94% with the blur gone, the
+    // report panel's own Copy Markdown button ghosted through the GATES and
+    // VIEW controls (`evidence/T3/after-1180.png`).
+    expect(rule).toMatch(/background:\s*var\(--bg-app\)/)
   })
 })

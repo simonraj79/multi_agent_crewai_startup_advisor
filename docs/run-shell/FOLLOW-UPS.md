@@ -19,6 +19,7 @@ refresh anyway.
 
 ## Shell
 
+- Gate card field values are `<input>`s and cannot wrap; a sentence-long value ("STARTUP IDEA", "MARKET QUERY") ellipsises at 346 px in the narrow drawer. A `<textarea>` is the right element and moves two assertions that count inputs (`tests/gateDerived.spec.ts`, `e2e/studio.spec.ts`).
 - The 52 px header against the 64 px panel rhythm (`studio.css:129`, `:171`); moving it changes `.validator-flow`'s height and every run-canvas baseline.
 - `capture-run.spec.ts` switches themes with `emulateMedia` alone, so its `*-light-*.png` captures are dark pixels under a light filename; the run shell reads `data-theme`.
 - Run status is rendered three ways (`StudioView.vue`, `StatusPanel.vue`, `RunHistory.vue`); two now use `runStatusDisplay.ts`, the status-panel connection labels do not.
@@ -50,5 +51,7 @@ refresh anyway.
 - The `run_state` frames' `result` and every `details` payload reach the trace disclosure in full; a lazy `<details>` body would halve the DOM per row but `traceInterpretation.spec.ts` deliberately asserts the payload is present while closed.
 
 ## Builder workspace (LEAVE)
+
+- `e2e/builder.spec.ts:1227` ("paints the target handle green/red") fails **on `main` too** — 4 of 5 runs at `6291fee`, identical failure shape (`evidence/R/builder-1227.md`): the attach port resolves and is stable, then the problems dock's `problem-message` intercepts the hover for the full 15 s. It is an occlusion, not a timing flake, and it is not the case CLAUDE.md item 44 describes (that one passes alone; this fails alone). Fix is in the dock's layout or the test dismissing the dock first; neither is on this branch.
 
 - The builder's `.segmented` had no base rule and rendered as native buttons in its header; the promoted global is guarded off the builder so its baselines stayed green. Lifting the guard is a builder change with a baseline regeneration.

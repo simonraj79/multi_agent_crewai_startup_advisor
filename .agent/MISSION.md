@@ -236,14 +236,26 @@ Three things a later wave must not get wrong:
 
 ## 7. The money rule
 
-**Balance: $27.345242** — `total_credits` 120, `total_usage` 92.654757565,
-measured 2026-09-05 after the gate-payload verification run and confirmed
-unchanged three times. (It read $27.55 on 2026-09-04; an earlier note said
+**Balance: $27.254979** — `total_credits` 120, `total_usage` 92.745020765,
+measured 2026-09-05 after the two prompt-fix verification runs and confirmed
+unchanged twice, 45 s apart. **It moved $0.090263 since the reading below, of
+which only $0.031534 is this programme's recorded spend**: another agent's paid
+backend was listening on 8097 throughout, and a shared OpenRouter account
+cannot attribute a delta to one process. The previous reading was $27.345242
+(`total_usage` 92.654757565), after the gate-payload verification run.
+
+> **This figure was ALREADY STALE when it was written, and by somebody else's
+> spend.** Fifteen minutes after the reading above - with both of this
+> session's backends confirmed stopped by port, and no run of its own in
+> flight - `total_usage` read **92.783887525**, $0.038867 higher. That is the
+> other agent on 8097. **Re-measure; do not quote either number.** What is
+> durable on this page is the spend table below, whose last row is the
+> service's own `cost_usd` and therefore attributable. (It read $27.55 on 2026-09-04; an earlier note said
 $7.55 before the owner topped up. Re-measure rather than quote this — and read
 it LATE: the credits endpoint lags a completion by minutes, and every
 intermediate reading this programme has taken was low, never high.)
 
-**Spend to date on this programme: $0.148038 of the $5.00 allowance**, all of
+**Spend to date on this programme: $0.179572 of the $5.00 allowance**, all of
 it on 2026-09-04 and 2026-09-05:
 
 | what | spend | measured as | where |
@@ -252,13 +264,17 @@ it on 2026-09-04 and 2026-09-05:
 | plan 14's six template runs | $0.065942 | balance delta | §11b, `benchmarks/paid-runs.md` |
 | the `max_iter` verification run | $0.018073 | balance delta | `benchmarks/paid-runs.md` |
 | the gate-payload verification run | $0.022310 | balance delta | `benchmarks/paid-runs.md` |
+| the two prompt-fix verification runs | $0.031534 | the runs' own `cost_usd` | `benchmarks/paid-runs.md` |
 
-The first row is the only one that is not a balance delta — no balance was read
-around that run — and the column says so rather than letting four figures look
-like one kind of measurement. Every later run has both, and the two never differ
-by more than $0.0002.
+The first and last rows are the ones that are **not** balance deltas, and the
+column says so rather than letting five figures look like one kind of
+measurement. No balance was read around the acceptance run; the prompt-fix runs
+had a balance read on both sides, but another agent's paid backend was live on
+8097 at the same time, so the $0.035513 delta they sit inside is an upper bound
+on somebody's spend rather than a measurement of theirs. The three middle rows
+have both, and there the two never differ by more than $0.0002.
 
-**$4.85 of the allowance is unspent**, and the one item left that needs it is
+**$4.82 of the allowance is unspent**, and the one item left that needs it is
 the live fan-out benchmark (§12.3).
 
 Owner's ruling, 2026-09-04:

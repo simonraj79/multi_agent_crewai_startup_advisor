@@ -101,8 +101,10 @@ const MIN_CARD_TITLE_PX = 11
  *  - changing the router's type scale is a design decision about the node
  *    grammar (`is-kind-router` is mono at 13px on purpose) and would move
  *    committed pixel baselines, which is P-02's own subject;
- *  - and it is not a 1920x1080 defect at all. The floor is a constant, so the
- *    same 9.53px is measured at 1440x900.
+ *  - and it is not a 1920x1080 defect at all. The floor is a constant and
+ *    product-1 measured the same 0.733 fit at 1440x900, so `13 * 0.733` gives
+ *    the same 9.53px there. That is arithmetic over two measured facts, not a
+ *    third measurement — nothing in this session ran at 1440x900.
  *
  * The bound below therefore pins TODAY's arithmetic — a regression under it
  * fails — and the shortfall against 10px is carried in the report, not hidden.
@@ -546,7 +548,10 @@ test.describe('2 · versions plus the delete strip', () => {
      * the canvas (rejected by R15, whose whole subject is not covering the
      * graph you are editing), or cap the strips' height, which is a design
      * decision on a row a judge round owns. It is also not a 1920x1080 defect:
-     * the same two strips over a 1440x900 pane leave 325px and hide more.
+     * the strips take a fixed height and 1440x900 has 180px less to give them,
+     * so it can only be worse there. That last sentence is ARITHMETIC over one
+     * measurement, not a second measurement: nothing in this session opened
+     * these two strips at 1440x900.
      *
      * What IS asserted is the pair of properties the product must deliver in
      * that state, and both hold: it SAYS what is hidden, and what it hides is

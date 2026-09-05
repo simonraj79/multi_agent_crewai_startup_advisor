@@ -518,15 +518,59 @@ It also flagged itself honestly: `provisional: true`,
 `thin_dimensions: ['D','C','F','X']`. The ratified rubric — seven changes, four
 Critical — has now scored something for money for the first time.
 
-**Spend to date on this programme: $0.0417 of the $5.00 allowance.**
+**Spend to date on this programme: $0.1076 of the $5.00 allowance.**
+$0.0417 for this acceptance run, plus **$0.0659** for plan 14's six paid
+template runs on 2026-09-05 (§11b). Balance **$27.385711**, measured with the
+credits endpoint after the last run — re-measure rather than quote it.
+
+## 11b. Plan 14's paid template runs — DONE, 2026-09-05
+
+The second of the three money items in §12. One paid run of each of the five
+gallery pattern templates, on the PAID backend, with the four gated ones
+approved through their own human gate.
+[`benchmarks/paid-runs.md`](../benchmarks/paid-runs.md) owns every figure and
+the five `benchmarks/live/2026-09-05-*.json` files carry the frame streams;
+**this section does not restate them.**
+
+```text
+six runs   34 calls   40,421 tokens   $0.065893 by the service
+balance    $27.451601 -> $27.385711   $0.065890 by OpenRouter
+```
+
+Two things a later session needs from it, and neither is a number:
+
+- **The estimate is exact, not merely conservative.** `cost_usd` is tokens x a
+  local price table and had never been checked against a bill. Across six runs
+  and three models the two agree to **$0.000003**. The static worst case for
+  the same graphs is $4.4213, so 1.5 % of it was spent — which is the second
+  data point for the ~2.8 % ratio §11a measured, and the argument that
+  `MAX_RUN_COST_USD` is nowhere near binding for a template-shaped graph.
+- **The money bought four defects, and the first one invalidates a green
+  suite.** `Crew(stream=True)` returns a LAZY `CrewStreamingOutput`; nothing
+  drained it, so every authored builder graph completed in ~1.5 s having called
+  no model, with the object's `repr` as its deliverable — green, terminal,
+  non-empty, and passing `e2e/templates.spec.ts` four times a run. Fixed
+  (`builder/runtime.py::_kickoff`). The other three — Google refusing CrewAI's
+  max-iter message shape, a gate router clobbering the payload downstream nodes
+  read, and `sequential-pipeline` dropping its URLs — are open and are recorded
+  where the evidence is.
+
+**What that costs the rest of this file: any claim resting on a builder E2E
+run's result body predates 2026-09-05 and was measured against a graph that ran
+nothing.** The synthetic path is unaffected — it never builds a `Crew` — so the
+baseline in §10 stands; it is the *paid* meaning of "a template completes" that
+only exists from this date.
 
 ## 12. What cannot be closed here
 
-Three things are money and one is a judgement the owner owes:
+Three things were money and one is a judgement the owner owes. **Two of the
+three are now done**, and the numbering is kept so references resolve:
 
-1. The paid live acceptance run (CLAUDE.md item 1).
-2. Plan 14's four paid template runs (decision 22).
-3. The live fan-out benchmark (CLAUDE.md item 2).
+1. ~~The paid live acceptance run (CLAUDE.md item 1).~~ **DONE 2026-09-04, §11a.**
+2. ~~Plan 14's paid template runs (decision 22).~~ **DONE 2026-09-05, §11b** —
+   five templates, six runs, $0.0659.
+3. The live fan-out benchmark (CLAUDE.md item 2). **Still open**, and it is the
+   only money item left.
 4. **The repository has no `LICENSE`**, which for a public repo means all rights
    reserved. Decision 11 depends on it.
 

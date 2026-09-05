@@ -263,6 +263,71 @@ reads frames and the run result).
 
 ## Status
 
+### Criterion 9 — the paid runs, 2026-09-05
+
+**DONE.** The last criterion on this plan that needed money is closed, and the
+evidence is [`benchmarks/paid-runs.md`](../../benchmarks/paid-runs.md) plus one
+`benchmarks/live/2026-09-05-<template>.json` per run. **That page owns every
+figure and this section does not restate it** — it says what the criterion asked
+for, whether it is met, and the one thing a reader of this plan needs to carry
+away.
+
+| | |
+| --- | --- |
+| what the criterion asked | one paid run per template, run id, `cost_usd`, the fixture's `estimated`, and the estimate must exceed the measured cost |
+| runs | **six** — the five templates, plus one failed first attempt at `sequential-pipeline` that is a finding rather than an accident |
+| real spend | **$0.065890**, balance $27.451601 → $27.385711 |
+| the criterion's test | **met on every template**: measured over static ran 0.14 % to 5.61 %, so the estimate exceeded the cost by between 18x and 730x |
+
+**The estimate is not merely conservative, it is exact where it counts.** The
+service's `cost_usd`, which is tokens x a local `PRICES` table, summed to
+**$0.065893** against **$0.065890** of real OpenRouter billing across six runs
+and three models. `NITRO_PRICE_FACTOR` exists because `:nitro` routes on speed
+and may bill above the published floor; on these runs it did not.
+
+**Criterion 9 asked whether the templates were priced honestly. What the money
+actually bought was four defects, and the first one is why this plan's other
+nine criteria were all met over a product that ran nothing.**
+
+1. **Every authored builder graph completed instantly, called no model, and
+   returned an object's `repr`** — `Crew(stream=True)` returns a lazy
+   `CrewStreamingOutput` that nobody drained. The first paid run was `completed`
+   in 1.5 s at `cost_usd 0.0` with
+   `<crewai.types.streaming.CrewStreamingOutput object at 0x...>` as its
+   `markdown_body`. Green, terminal, non-empty — **which is exactly the shape
+   criterion 7 asserts**, and `e2e/templates.spec.ts` passed over it four times
+   a run. Fixed in `builder/runtime.py::_kickoff`; every figure above is from
+   after the fix.
+2. **A tool-using agent that exhausts `max_iter` gets a 400 from Google**, and
+   the offending message shape is CrewAI's own
+   `handle_max_iterations_exceeded`, which ends the request on an assistant
+   turn. Intermittent, and measured to be so: the one permitted retry completed
+   on an identical document. Open.
+3. **`hierarchical-delegation` briefs its specialists on the gate's reply
+   metadata.** `team.prompt_inputs` reads `${state.out__confirm}`, and a gate's
+   ROUTER records `{"decision": …, "honoured": …, "turns_used": …}` under the
+   gate's node id after the pause has recorded the payload. The three
+   specialists were told to size the market for
+   `{'decision': 'approve', 'honoured': False, 'turns_used': 0}` and wrote about
+   credit default swaps — at $0.029346, the dearest run of the set, and it
+   `completed` with a body that satisfies every criterion-7 assertion. Open: the
+   two repairs are rewiring this template to `${state.brief}` or stopping the
+   router clobbering the pause's output, and the second is a contract change.
+4. **`sequential-pipeline` loses its source URLs** between `analyse` and
+   `write`; the writer says so in its own sources section, which is the honest
+   half.
+
+**Criterion 9's letter is met and its spirit is what found 1, 2 and 3.** None of
+them is visible to 2,441 Python tests, 1,705 frontend tests or 131 E2E tests,
+and the reason is one sentence: the synthetic runner never builds a `Crew`,
+never interpolates a prompt and never calls a provider.
+
+Two things this does **not** establish, said here because the criterion's table
+row is about to read "met": `MAX_RUN_COST_USD` has still never fired on a paid
+run (the dearest run here is $0.029 against a $10.00 ceiling), and one run per
+template is one sample — `sequential-pipeline` needed two attempts to produce
+one success.
+
 ### News template — 2026-09-05
 
 A **fifth** pattern template, `news-to-social`, added on the owner's request:
@@ -329,8 +394,9 @@ Criteria 1-8 hold for the fifth template as they do for the other four, by the
 same tests extended rather than by new ones: `templates.spec.ts` (client and
 server), `test_client_fixtures.py`, `test_templates.py`, `builder-layout.spec.ts`
 and `e2e/templates.spec.ts`. It is in `capture-templates.spec.ts` too, so
-criterion 10's capture run covers it. **Criterion 9 is still the owner's money**
-and this session spent **$0.00**.
+criterion 10's capture run covers it. Criterion 9 was still the owner's money
+when this section was written and that session spent **$0.00**; it was run on
+2026-09-05 — see the section at the head of this Status.
 
 **What a paid run of it needs**, exactly: a signed-in caller (or
 `BUILDER_ALLOW_GATELESS_GRAPHS=1`), `OPENROUTER_API_KEY`, and nothing else - the
@@ -390,7 +456,7 @@ run with a non-empty body from a cold sign-in with nothing configured.
 | 6 | every node of each template inside the canvas pane after fit | **met** | `e2e/builder-layout.spec.ts` "lands every node of every pattern template inside the canvas pane" |
 | 7 | cold sign-in, zero configuration: open, publish, launch, `completed` with a non-empty body, under four minutes | **met** | `e2e/templates.spec.ts`, four `@launch` tests, **1.6-1.7 s each** |
 | 8 | each card renders `teaches`, `modifyFirst`, node/edge counts and a price from `validation.budget` | **met** | `templates.spec.ts` "renders teaches, modifyFirst and both counts on every card", "prices every card from the server answer rather than from a literal" |
-| 9 | one **paid** run per template in `benchmarks/paid-runs.md` | **not done - the owner's money** | decision 22. Costed below. **This session spent $0.00** |
+| 9 | one **paid** run per template in `benchmarks/paid-runs.md` | **met - 2026-09-05** | six paid runs, **$0.065890** real. [`benchmarks/paid-runs.md`](../../benchmarks/paid-runs.md) and five `benchmarks/live/2026-09-05-*.json`. The section at the head of this Status owns the summary |
 | 10 | blind captures under `benchmarks/ours/templates/` | **met** | `e2e/capture-templates.spec.ts` wrote **28 PNGs** - gallery + six templates x 1440x900 and 390x844 x dark and light |
 
 ### Measured, 2026-09-04, in this worktree

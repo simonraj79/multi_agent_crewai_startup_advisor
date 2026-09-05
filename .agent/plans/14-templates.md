@@ -263,6 +263,56 @@ reads frames and the run result).
 
 ## Status
 
+### Two prompt defects, closed for money — 2026-09-05
+
+Paid-run defect 4, and the reasoning leak the `max_iter` verification run left
+behind. Both are defects of the **deliverable** and neither is visible to any
+suite here: every run involved `completed`, billed, and passed
+`e2e/templates.spec.ts`. Both were repaired in the templates' own PROMPTS and
+each was verified by one paid run.
+[`benchmarks/paid-runs.md`](../../benchmarks/paid-runs.md) owns every figure,
+both prompt quotations and both check blocks; **this section does not restate
+them.**
+
+| | `sequential-pipeline` | `news-to-social` |
+| --- | --- | --- |
+| run | `412d6dfb`, completed, 34.7 s | `a85df3b9`, completed, 33.2 s |
+| cost | $0.0142067 (1.69 % of static) | $0.0173274 (2.84 % of static) |
+| what it proves | 5 URLs in / 5 carried / 5 cited, **0 fabricated, 0 dropped** | starts `# Short`, 259 chars, one `# Long`, **0 leak lines**, 0 hashtags, 3 of 3 URLs backed |
+
+Four things a later session needs from it, and none of them is a number:
+
+1. **The prompt change moved NO price.** `budget.py` prices a graph on its
+   shape, not on its prompt length, so `static_cost_usd` is unchanged for both
+   templates ($0.6103350 and $0.8416788) and every figure in the sections below
+   still stands. Regenerated with `node scripts/dump-templates.mjs` then
+   `scripts/emit_builder_fixtures.py --target templates`, never by hand; the
+   only lines that moved in the three fixtures are the four prompt strings. The
+   gallery cards therefore did not move either, and the two visual baselines
+   were **not** re-recorded.
+2. **`task.output_schema` was considered and refused for defect 4.** It is a
+   flat `dict[NodeId, ScalarType]`, so `sources` could only be one string — no
+   more mechanical than a `## Sources` heading — and it would turn
+   `${state.out__analyse}` from readable prose into an escaped JSON blob on the
+   one template whose job is being legible to a first-time author.
+3. **No agent-config control was on that should have been off.** `planning` is
+   already `false` in `data/templates/authoring.ts`, `planning_config` is null,
+   `llm.reasoning_effort` is null, and `reasoning` / `max_reasoning_attempts`
+   are not fields at all — the 00 S9 ruling replaced them. The leak was the
+   model's thinking reaching `content` and a prompt was the only lever.
+4. **The 7-day window is applied and reported, not hard-dropped.** The tool
+   already carries `date` and `date_is_retrieval_time` on every row
+   (`tools/hn_sentiment.py::_comment_date`) and nothing told the agent to read
+   either. It does now. A literal drop was **not** written, because HN
+   Algolia's search is relevance-ranked and the tool passes no numeric filter,
+   so it would routinely leave the writer with nothing; the prompt requires the
+   window to be applied and the ages to be visible instead. Read that as a
+   departure from a literal reading of "drop", because it is one.
+
+`tests/builder/test_paid_run_evidence.py` (**18 tests**, no network) recomputes
+both checks from the committed evidence and is proved against the bodies that
+caused the defects, not only the ones that fixed them.
+
 ### `max_iter` 3 → 6 on the two tool-using researchers — 2026-09-05
 
 Paid-run defect 2. `news-to-social`'s `research` and `sequential-pipeline`'s

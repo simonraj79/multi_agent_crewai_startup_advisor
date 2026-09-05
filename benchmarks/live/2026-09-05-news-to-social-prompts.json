@@ -1,0 +1,1398 @@
+{
+ "template": "news-to-social",
+ "input": {
+  "field": "subject",
+  "value": "AI agents and agentic workflows"
+ },
+ "document_id": "ug_57f156d3",
+ "workflow_id": "ug_57f156d3",
+ "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+ "status": "completed",
+ "created_at": "2026-09-05T04:15:39.457608Z",
+ "completed_at": "2026-09-05T04:16:12.665269Z",
+ "gates_answered": [],
+ "usage": {
+  "successful_requests": 3,
+  "prompt_tokens": 3072,
+  "completion_tokens": 4403,
+  "total_tokens": 7475,
+  "call_count": 3,
+  "elapsed_ms": 28741,
+  "cost_usd": 0.01732735
+ },
+ "node_usage": [
+  {
+   "successful_requests": 2,
+   "prompt_tokens": 2312,
+   "completion_tokens": 358,
+   "total_tokens": 2670,
+   "call_count": 2,
+   "elapsed_ms": 3006,
+   "cost_usd": 0.0015886,
+   "node_id": "research",
+   "model": "google/gemini-3.5-flash-lite:nitro"
+  },
+  {
+   "successful_requests": 1,
+   "prompt_tokens": 760,
+   "completion_tokens": 4045,
+   "total_tokens": 4805,
+   "call_count": 1,
+   "elapsed_ms": 25735,
+   "cost_usd": 0.01573875,
+   "node_id": "write",
+   "model": "google/gemini-3.8-flash"
+  }
+ ],
+ "estimate": {
+  "static_cost_usd": 0.6103350000000001,
+  "measured_over_static_pct": 2.839
+ },
+ "frames": {
+  "total": 64,
+  "token": 3,
+  "tool": 2,
+  "error_level": 0
+ },
+ "error": null,
+ "_what": "One PAID run of the news-to-social gallery template after the 2026-09-05 prompt fix, on a local paid backend (PORT=8096, no SYNTHETIC, GET /docs -> 404). The defect it verifies: the writer leaked its own scratch-pad reasoning into the deliverable, and the researcher ignored the 7-day window because nothing made it read the rows' dates.",
+ "utterances": {
+  "research": "Fewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access."
+ },
+ "shape_check": {
+  "_method": "Mechanical, over this file, and re-run by tests/builder/test_paid_run_evidence.py so a later template edit that regresses the shape fails a test rather than a reading.",
+  "starts_with_short_heading": true,
+  "short_section_chars": 259,
+  "long_heading_count": 1,
+  "short_heading_count": 1,
+  "leak_pattern_matches": [],
+  "hashtags": [],
+  "urls_in_body": [
+   "https://news.ycombinator.com/item?id=45649397",
+   "https://news.ycombinator.com/item?id=46252251",
+   "https://news.ycombinator.com/item?id=47115067"
+  ],
+  "urls_in_research": [
+   "https://news.ycombinator.com/item?id=45649397",
+   "https://news.ycombinator.com/item?id=46252251",
+   "https://news.ycombinator.com/item?id=47115067"
+  ],
+  "urls_not_in_research": [],
+  "dated_items_in_research": 3
+ },
+ "result": {
+  "markdown_body": "# Short\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397).",
+  "node_id": "post"
+ },
+ "frame_stream": [
+  {
+   "v": 1,
+   "seq": 1,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.468Z",
+   "kind": "run_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Stage 1 of 4",
+   "details": {
+    "stage": "plan",
+    "index": 1,
+    "of": 4,
+    "label": "Subject",
+    "node_ids": [
+     "subject"
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "seq": 2,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.468Z",
+   "kind": "run_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Stage 2 of 4",
+   "details": {
+    "stage": "plan",
+    "index": 2,
+    "of": 4,
+    "label": "Find the news",
+    "node_ids": [
+     "research"
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "seq": 3,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.468Z",
+   "kind": "run_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Stage 3 of 4",
+   "details": {
+    "stage": "plan",
+    "index": 3,
+    "of": 4,
+    "label": "Write the post",
+    "node_ids": [
+     "write"
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "seq": 4,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.468Z",
+   "kind": "run_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Stage 4 of 4",
+   "details": {
+    "stage": "plan",
+    "index": 4,
+    "of": 4,
+    "label": "Post",
+    "node_ids": [
+     "post"
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "seq": 5,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.469Z",
+   "kind": "run_state",
+   "event_type": "WORKFLOW_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "builder_ug_57f156d3_v1 started",
+   "details": {
+    "status": "running",
+    "inputs": {
+     "subject": "AI agents and agentic workflows",
+     "id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95"
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 6,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.476Z",
+   "kind": "node_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "subject",
+   "message": "n0_subject started",
+   "details": {
+    "stage": "before",
+    "params": {}
+   }
+  },
+  {
+   "v": 1,
+   "seq": 7,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.480Z",
+   "kind": "node_state",
+   "event_type": "NODE_END",
+   "level": "INFO",
+   "node_id": "subject",
+   "message": "n0_subject completed",
+   "details": {
+    "stage": "after",
+    "result": "AI agents and agentic workflows",
+    "output_preview": "AI agents and agentic workflows"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 8,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.480Z",
+   "kind": "edge_taken",
+   "event_type": "EDGE_PROCESS",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "subject to research",
+   "details": {
+    "stage": "traversal",
+    "from": "subject",
+    "to": "research",
+    "port": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 9,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.480Z",
+   "kind": "node_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "n1_research started",
+   "details": {
+    "stage": "before",
+    "params": {
+     "_0": "AI agents and agentic workflows"
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 10,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.763Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "crew started",
+   "details": {
+    "stage": "before"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 11,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.787Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a `date` and a `date_is_retrieval_time` flag. Drop every row whose `date_is_retrieval_time` is true — that date is the moment of the search, not the item. Of what is left, report the three to five most newsworthy items dated within the last 7 days. For each: what happened, the URL it came from, and its date.\n\nCite ONLY URLs the search tool returned to you. If fewer than three items fall inside the 7 days, say so in one line and then list the most recent ones you did find, each with its own date, so the reader can see how old they are. Do not fill the gap from memory. started",
+   "details": {
+    "stage": "before",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 12,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.791Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "News Researcher started",
+   "details": {
+    "stage": "before",
+    "task": "Task"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 13,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.804Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "AgentExecutor started",
+   "details": {
+    "stage": "before",
+    "flow": "AgentExecutor",
+    "nested": true,
+    "inputs": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 14,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:39.808Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro call started",
+   "details": {
+    "stage": "before",
+    "call_id": "78c4a17e-bca3-4b1f-894a-458e947389ec",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 15,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:40.861Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "78c4a17e-bca3-4b1f-894a-458e947389ec",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9",
+    "stage": "chunk",
+    "chunk": ""
+   }
+  },
+  {
+   "v": 1,
+   "seq": 16,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:40.880Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "78c4a17e-bca3-4b1f-894a-458e947389ec",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "finish_reason": "tool_calls",
+    "response_id": "gen-1788581740-Jp7yW3tMpMgQMQxfHeHQ",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9",
+    "stage": "chunk",
+    "chunk": "{\"query\":\"AI agents OR agentic workflows\",\"comments_per_story\":10,\"story_limit\":5}"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 17,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:40.880Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro call completed",
+   "details": {
+    "stage": "after",
+    "call_id": "78c4a17e-bca3-4b1f-894a-458e947389ec",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "finish_reason": "tool_calls",
+    "response_id": "gen-1788581740-Jp7yW3tMpMgQMQxfHeHQ",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 18,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:40.880Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro said",
+   "details": {
+    "stage": "utterance",
+    "call_id": "78c4a17e-bca3-4b1f-894a-458e947389ec",
+    "text": "[{\"function\": {\"arguments\": \"{\\\"query\\\":\\\"AI agents OR agentic workflows\\\",\\\"comments_per_story\\\":10,\\\"story_limit\\\":5}\", \"name\": \"analyze_community_sentiment\"}, \"id\": \"call_2856338\", \"index\": 0, \"type\": \"function\"}]",
+    "truncated": false,
+    "prompt_tokens": 448,
+    "completion_tokens": 38,
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 19,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:40.880Z",
+   "kind": "token",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Token usage recorded",
+   "details": {
+    "call_id": "78c4a17e-bca3-4b1f-894a-458e947389ec",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "usage": {
+     "successful_requests": 1,
+     "prompt_tokens": 448,
+     "completion_tokens": 38,
+     "total_tokens": 486,
+     "call_count": 1,
+     "cost_usd": 0.0002294
+    },
+    "cost_usd": 0.0002294,
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 20,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:40.882Z",
+   "kind": "tool",
+   "event_type": "TOOL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "analyze_community_sentiment started",
+   "details": {
+    "stage": "before",
+    "tool": "analyze_community_sentiment",
+    "query": "AI agents OR agentic workflows",
+    "args": {
+     "query": "AI agents OR agentic workflows",
+     "comments_per_story": 10,
+     "story_limit": 5
+    },
+    "input_preview": "{\"comments_per_story\": 10, \"query\": \"AI agents OR agentic workflows\", \"story_limit\": 5}",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 21,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:42.056Z",
+   "kind": "metrics",
+   "event_type": "METRICS_UPDATED",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Run metrics updated",
+   "details": {
+    "reason": "interval",
+    "usage": {
+     "successful_requests": 1,
+     "prompt_tokens": 448,
+     "completion_tokens": 38,
+     "total_tokens": 486,
+     "call_count": 1,
+     "elapsed_ms": 1071,
+     "cost_usd": 0.0002294
+    },
+    "nodes": [
+     {
+      "node_id": "research",
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "successful_requests": 1,
+      "prompt_tokens": 448,
+      "completion_tokens": 38,
+      "total_tokens": 486,
+      "call_count": 1,
+      "elapsed_ms": 1071,
+      "cost_usd": 0.0002294
+     }
+    ],
+    "frames": {
+     "captured": 20,
+     "dropped": 0,
+     "gaps": 0,
+     "emit_errors": 0,
+     "subscriber_dropped": 0,
+     "unattributed": 0
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 22,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:44.572Z",
+   "kind": "tool",
+   "event_type": "TOOL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "analyze_community_sentiment completed",
+   "details": {
+    "stage": "after",
+    "tool": "analyze_community_sentiment",
+    "query": "AI agents OR agentic workflows",
+    "from_cache": false,
+    "failure": null,
+    "input_preview": "{\"comments_per_story\": 10, \"query\": \"AI agents OR agentic workflows\", \"story_limit\": 5}",
+    "output_preview": "{\"notes\": \"Inspected 5 HN thread(s) and fetched their comment trees.\", \"output_chars\": 6001, \"result_count\": 5, \"retrieved_at\": \"2026-09-05T04:15:40Z\", \"tool_status\": \"ok\"}",
+    "tool_status": "ok",
+    "result_count": 5,
+    "notes": "Inspected 5 HN thread(s) and fetched their comment trees.",
+    "retrieved_at": "2026-09-05T04:15:40Z",
+    "output_chars": 6001,
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   },
+   "duration_ms": 3689
+  },
+  {
+   "v": 1,
+   "seq": 23,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:44.576Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro call started",
+   "details": {
+    "stage": "before",
+    "call_id": "f2abf9e6-fefa-45cc-b8e0-15df22246a01",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 24,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:45.748Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "f2abf9e6-fefa-45cc-b8e0-15df22246a01",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9",
+    "stage": "chunk",
+    "chunk": "F"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 25,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.032Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "f2abf9e6-fefa-45cc-b8e0-15df22246a01",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9",
+    "stage": "chunk",
+    "chunk": "ewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:2"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 26,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.352Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "f2abf9e6-fefa-45cc-b8e0-15df22246a01",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9",
+    "stage": "chunk",
+    "chunk": "5:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 27,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.511Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "f2abf9e6-fefa-45cc-b8e0-15df22246a01",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "finish_reason": "stop",
+    "response_id": "gen-1788581745-FagiPKqlMEuZBS94HRIG",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9",
+    "stage": "chunk",
+    "chunk": ", isolated remote environments for code, filesystem, and terminal access."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 28,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.511Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro call completed",
+   "details": {
+    "stage": "after",
+    "call_id": "f2abf9e6-fefa-45cc-b8e0-15df22246a01",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "finish_reason": "stop",
+    "response_id": "gen-1788581745-FagiPKqlMEuZBS94HRIG",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 29,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.511Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro said",
+   "details": {
+    "stage": "utterance",
+    "call_id": "f2abf9e6-fefa-45cc-b8e0-15df22246a01",
+    "text": "Fewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access.",
+    "truncated": false,
+    "prompt_tokens": 1864,
+    "completion_tokens": 320,
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 30,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.511Z",
+   "kind": "token",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Token usage recorded",
+   "details": {
+    "call_id": "f2abf9e6-fefa-45cc-b8e0-15df22246a01",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "usage": {
+     "successful_requests": 1,
+     "prompt_tokens": 1864,
+     "completion_tokens": 320,
+     "total_tokens": 2184,
+     "call_count": 1,
+     "cost_usd": 0.0013591999999999999
+    },
+    "cost_usd": 0.0013591999999999999,
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "agent_id": "9422a754-9cc7-4681-ae58-a2e2913604e6",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 31,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.514Z",
+   "kind": "reasoning",
+   "event_type": "THINKING_PROCESS",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Fewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access.",
+   "details": {
+    "stage": "thinking",
+    "agent_role": "News Researcher"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 32,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.517Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "AgentExecutor completed",
+   "details": {
+    "stage": "after",
+    "flow": "AgentExecutor",
+    "nested": true,
+    "result": "completed"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 33,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.520Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "News Researcher completed",
+   "details": {
+    "stage": "after",
+    "task": "Task",
+    "output": "Fewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 34,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.520Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a `date` and a `date_is_retrieval_time` flag. Drop every row whose `date_is_retrieval_time` is true — that date is the moment of the search, not the item. Of what is left, report the three to five most newsworthy items dated within the last 7 days. For each: what happened, the URL it came from, and its date.\n\nCite ONLY URLs the search tool returned to you. If fewer than three items fall inside the 7 days, say so in one line and then list the most recent ones you did find, each with its own date, so the reader can see how old they are. Do not fill the gap from memory. completed",
+   "details": {
+    "stage": "after",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nEvery row the search returns carries a ",
+    "task_id": "5b33a838-518c-4daf-a2cb-975c0e2acbd9"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 35,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.535Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "crew completed",
+   "details": {
+    "stage": "after",
+    "total_tokens": 2670
+   }
+  },
+  {
+   "v": 1,
+   "seq": 36,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.556Z",
+   "kind": "node_state",
+   "event_type": "NODE_END",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "n1_research completed",
+   "details": {
+    "stage": "after",
+    "result": "Fewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access.",
+    "output_preview": "Fewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 37,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.557Z",
+   "kind": "edge_taken",
+   "event_type": "EDGE_PROCESS",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "research to write",
+   "details": {
+    "stage": "traversal",
+    "from": "research",
+    "to": "write",
+    "port": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 38,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.557Z",
+   "kind": "node_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "n2_write started",
+   "details": {
+    "stage": "before",
+    "params": {
+     "_0": "Fewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access."
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 39,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.830Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "crew started",
+   "details": {
+    "stage": "before"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 40,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.849Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-style feed. It must be under 280 including any link.\n2. LONG — a two-to-three sentence variant for a feed with room.\n\nRules: cite the source URLs from the research; skip any item that carries no date; at most three hashtags and none of them generic; invent nothing that is not in the items below. If the research is thin, write the honest short post rather than padding it.\n\nReturn the two sections and nothing else. Do not introduce them, do not explain your choices and do not show your working: no \"Here is\", no \"Okay\", no counting characters out loud, no note about what you skipped.\n\nITEMS:\nFewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access. started",
+   "details": {
+    "stage": "before",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 41,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.851Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Social Editor started",
+   "details": {
+    "stage": "before",
+    "task": "Task"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 42,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.871Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "AgentExecutor started",
+   "details": {
+    "stage": "before",
+    "flow": "AgentExecutor",
+    "nested": true,
+    "inputs": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 43,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:46.873Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "google/gemini-3.8-flash call started",
+   "details": {
+    "stage": "before",
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "model": "google/gemini-3.8-flash",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 44,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:15:57.059Z",
+   "kind": "metrics",
+   "event_type": "METRICS_UPDATED",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Run metrics updated",
+   "details": {
+    "reason": "interval",
+    "usage": {
+     "successful_requests": 2,
+     "prompt_tokens": 2312,
+     "completion_tokens": 358,
+     "total_tokens": 2670,
+     "call_count": 2,
+     "elapsed_ms": 3006,
+     "cost_usd": 0.0015886
+    },
+    "nodes": [
+     {
+      "node_id": "research",
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "successful_requests": 2,
+      "prompt_tokens": 2312,
+      "completion_tokens": 358,
+      "total_tokens": 2670,
+      "call_count": 2,
+      "elapsed_ms": 3006,
+      "cost_usd": 0.0015886
+     }
+    ],
+    "frames": {
+     "captured": 43,
+     "dropped": 0,
+     "gaps": 0,
+     "emit_errors": 0,
+     "subscriber_dropped": 0,
+     "unattributed": 0
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 45,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:10.118Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba",
+    "stage": "chunk",
+    "chunk": "# Short\n"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 46,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:10.556Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba",
+    "stage": "chunk",
+    "chunk": "As developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=4"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 47,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:11.010Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba",
+    "stage": "chunk",
+    "chunk": "6252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 48,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:11.454Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba",
+    "stage": "chunk",
+    "chunk": " and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 49,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:11.906Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba",
+    "stage": "chunk",
+    "chunk": " as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 50,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.372Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba",
+    "stage": "chunk",
+    "chunk": " Protocol (https://news.ycombinator.com/item?id=45649397)."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 51,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.609Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "google/gemini-3.8-flash call completed",
+   "details": {
+    "stage": "after",
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "model": "google/gemini-3.8-flash",
+    "finish_reason": "stop",
+    "response_id": "gen-1788581747-xYecQcb5NWcbmFwFJQmP",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 52,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.609Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "google/gemini-3.8-flash said",
+   "details": {
+    "stage": "utterance",
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "text": "# Short\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397).",
+    "truncated": false,
+    "prompt_tokens": 760,
+    "completion_tokens": 4045,
+    "model": "google/gemini-3.8-flash",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 53,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.609Z",
+   "kind": "token",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Token usage recorded",
+   "details": {
+    "call_id": "78f2e6c6-ae02-4c22-972a-fc6fd9170248",
+    "model": "google/gemini-3.8-flash",
+    "usage": {
+     "successful_requests": 1,
+     "prompt_tokens": 760,
+     "completion_tokens": 4045,
+     "total_tokens": 4805,
+     "call_count": 1,
+     "cost_usd": 0.01573875
+    },
+    "cost_usd": 0.01573875,
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "20bae463-d35d-4ed5-ab7f-204031e92150",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 54,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.611Z",
+   "kind": "reasoning",
+   "event_type": "THINKING_PROCESS",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Failed to parse LLM response",
+   "details": {
+    "stage": "thinking",
+    "agent_role": "Social Editor"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 55,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.613Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "AgentExecutor completed",
+   "details": {
+    "stage": "after",
+    "flow": "AgentExecutor",
+    "nested": true,
+    "result": "completed"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 56,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.615Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Social Editor completed",
+   "details": {
+    "stage": "after",
+    "task": "Task",
+    "output": "# Short\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397)."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 57,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.615Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-style feed. It must be under 280 including any link.\n2. LONG — a two-to-three sentence variant for a feed with room.\n\nRules: cite the source URLs from the research; skip any item that carries no date; at most three hashtags and none of them generic; invent nothing that is not in the items below. If the research is thin, write the honest short post rather than padding it.\n\nReturn the two sections and nothing else. Do not introduce them, do not explain your choices and do not show your working: no \"Here is\", no \"Okay\", no counting characters out loud, no note about what you skipped.\n\nITEMS:\nFewer than three items fall inside the 7 days; here are the most recent ones found:\n\n1. Redefining Human Expertise in Agentic Workflows\nhttps://news.ycombinator.com/item?id=47115067\n2026-02-22T21:47:24.000Z\nAn author published an article discussing how AI agents writing the code in between input and output requires developers to shift from craftsmen to architects of correctness whose primary artifact is the contract defining \"done.\"\n\n2. Browser4: A Browser Automation Engine Built for AI Agents\nhttps://news.ycombinator.com/item?id=46252251\n2025-12-13T05:25:54.000Z\nDevelopers shared an open-source browser automation engine built on the native Chrome DevTools Protocol specifically designed with agent-oriented APIs and coroutine-safe concurrency as first-class citizens.\n\n3. Workbench: Ephemeral Sandbox VMs for AI Agents via MCP\nhttps://news.ycombinator.com/item?id=45649397\n2025-10-20T21:06:58.000Z\nA team launched a private beta for Workbench, a VM-based ephemeral sandbox exposed over the Model Context Protocol to give AI agents secure, isolated remote environments for code, filesystem, and terminal access. completed",
+   "details": {
+    "stage": "after",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "task_id": "f3dc4fea-b22e-4f86-bec4-3a6751c2e1ba"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 58,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.630Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "crew completed",
+   "details": {
+    "stage": "after",
+    "total_tokens": 4805
+   }
+  },
+  {
+   "v": 1,
+   "seq": 59,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.649Z",
+   "kind": "node_state",
+   "event_type": "NODE_END",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "n2_write completed",
+   "details": {
+    "stage": "after",
+    "result": "# Short\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397).",
+    "output_preview": "# Short\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397)."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 60,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.649Z",
+   "kind": "edge_taken",
+   "event_type": "EDGE_PROCESS",
+   "level": "INFO",
+   "node_id": "post",
+   "message": "write to post",
+   "details": {
+    "stage": "traversal",
+    "from": "write",
+    "to": "post",
+    "port": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 61,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.649Z",
+   "kind": "node_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "post",
+   "message": "n3_post started",
+   "details": {
+    "stage": "before",
+    "params": {
+     "_0": "# Short\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397)."
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 62,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.653Z",
+   "kind": "node_state",
+   "event_type": "NODE_END",
+   "level": "INFO",
+   "node_id": "post",
+   "message": "n3_post completed",
+   "details": {
+    "stage": "after",
+    "result": {
+     "markdown_body": "# Short\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397).",
+     "node_id": "post"
+    },
+    "output_preview": "{\"markdown_body\": \"# Short\\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\\n\\n# Long\\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \\\"done\\\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397).\", \"node_id\": \"post\"}"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 63,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.660Z",
+   "kind": "run_state",
+   "event_type": "WORKFLOW_END",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "builder_ug_57f156d3_v1 completed",
+   "details": {
+    "status": "completed",
+    "result": {
+     "markdown_body": "# Short\nAs developers become architects of correctness (https://news.ycombinator.com/item?id=47115067), agents get dedicated browser automation (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes (https://news.ycombinator.com/item?id=45649397).\n\n# Long\nAs AI agents take over writing the code between input and output, developers must shift from craftsmen to architects of correctness whose primary artifact is defining \"done\" (https://news.ycombinator.com/item?id=47115067). That shift relies on dedicated agent infrastructure, such as coroutine-safe browser automation built on the Chrome DevTools Protocol (https://news.ycombinator.com/item?id=46252251) and ephemeral VM sandboxes exposed through the Model Context Protocol (https://news.ycombinator.com/item?id=45649397).",
+     "node_id": "post"
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 64,
+   "run_id": "a85df3b9-813c-426a-b6e7-2059dc5e7a95",
+   "ts": "2026-09-05T04:16:12.665Z",
+   "kind": "metrics",
+   "event_type": "METRICS_UPDATED",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Run metrics updated",
+   "details": {
+    "reason": "run_completed",
+    "usage": {
+     "successful_requests": 3,
+     "prompt_tokens": 3072,
+     "completion_tokens": 4403,
+     "total_tokens": 7475,
+     "call_count": 3,
+     "elapsed_ms": 28741,
+     "cost_usd": 0.01732735
+    },
+    "nodes": [
+     {
+      "node_id": "research",
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "successful_requests": 2,
+      "prompt_tokens": 2312,
+      "completion_tokens": 358,
+      "total_tokens": 2670,
+      "call_count": 2,
+      "elapsed_ms": 3006,
+      "cost_usd": 0.0015886
+     },
+     {
+      "node_id": "write",
+      "model": "google/gemini-3.8-flash",
+      "successful_requests": 1,
+      "prompt_tokens": 760,
+      "completion_tokens": 4045,
+      "total_tokens": 4805,
+      "call_count": 1,
+      "elapsed_ms": 25735,
+      "cost_usd": 0.01573875
+     }
+    ],
+    "frames": {
+     "captured": 63,
+     "dropped": 0,
+     "gaps": 0,
+     "emit_errors": 0,
+     "subscriber_dropped": 0,
+     "unattributed": 0
+    }
+   }
+  }
+ ]
+}

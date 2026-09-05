@@ -38,6 +38,21 @@ export const TEMPLATE_TEST_INPUTS: readonly TemplateTestInput[] = [
     value: 'How small clinics choose scheduling software in 2026',
   },
   {
+    // The subject this template was written for. The researcher's own prompt
+    // supplies the "last 7 days", so the box carries the SUBJECT and nothing
+    // else - and a subject rather than a question, because the tool behind it
+    // is a search and a search does better with nouns.
+    //
+    // Longer than the bare "AI agents" it stands for, and both halves of that
+    // are deliberate: the phrase is a better query on a keyword search, and
+    // `testPanel.spec.ts` requires every committed sample to be more than ten
+    // characters - a sample too short to be a real prompt teaches nothing about
+    // what to type.
+    templateId: 'news-to-social',
+    label: 'Sample subject',
+    value: 'AI agents and agentic workflows',
+  },
+  {
     templateId: 'conditional-router',
     label: 'Sample request',
     value: 'My invoice charged me twice this month and I would like a refund.',
@@ -72,6 +87,12 @@ export const TEMPLATE_TEST_INPUTS: readonly TemplateTestInput[] = [
  */
 export const TEMPLATE_INPUT_FIELDS: Readonly<Record<string, readonly string[]>> = {
   'sequential-pipeline': ['topic'],
+  // `subject` rather than `topic`, and the reason is this map: it is keyed by
+  // FIELD, so a second template declaring `topic` would silently take over the
+  // sequential pipeline's sample - `Object.fromEntries` keeps the last write.
+  // The collision is structural rather than a naming preference; the note in
+  // `newsToSocial.ts` carries it from the template's end.
+  'news-to-social': ['subject'],
   'conditional-router': ['request'],
   'reflection-loop': ['ask'],
   'hierarchical-delegation': ['brief'],
@@ -86,6 +107,7 @@ export const TEMPLATE_INPUT_FIELDS: Readonly<Record<string, readonly string[]>> 
  */
 export const COVERED_TEMPLATE_IDS: readonly string[] = [
   'sequential-pipeline',
+  'news-to-social',
   'conditional-router',
   'reflection-loop',
   'hierarchical-delegation',

@@ -380,18 +380,26 @@ describe('the gallery is the empty state and the way back into saved work', () =
   }
 
   it('shows every template, both rows', async () => {
-    // BOTH rows: the six the gallery leads with and the two library-agent
+    // BOTH rows: the ones the gallery leads with and the two library-agent
     // templates behind the disclosure. `details` keeps its content in the DOM
     // whether it is open or shut, so the card count is all of them.
     const { wrapper } = await gallery()
     expect(wrapper.findAll('.template-card')).toHaveLength(ALL_BUILDER_TEMPLATES.length)
   })
 
-  it('renders the validator caveat verbatim and on that card alone', async () => {
+  it('renders every caveat verbatim and on those cards alone', async () => {
+    // Read off the templates rather than counted, because a caveat is a
+    // per-template judgement and a literal here would have to be edited every
+    // time one is earned. Two carry one today: the flagship, whose shape is not
+    // its judgement, and `news-to-social`, which has no gate.
     const { wrapper } = await gallery()
+    const expected = ALL_BUILDER_TEMPLATES.filter((template) => template.caveat)
     const caveats = wrapper.findAll('.template-caveat')
-    expect(caveats).toHaveLength(1)
-    expect(caveats[0].text()).toBe(IDEA_VALIDATOR.caveat)
+    expect(caveats).toHaveLength(expected.length)
+    for (const [index, template] of expected.entries()) {
+      expect(caveats[index].text()).toBe(template.caveat)
+    }
+    expect(expected.map((template) => template.id)).toContain(IDEA_VALIDATOR.id)
   })
 
   it('prices every card from the server rather than from a constant', async () => {

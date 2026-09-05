@@ -540,25 +540,30 @@ function backToValidator(): void {
 
 .workspace-switch button {
   min-height: 28px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   font-size: var(--fs-12);
 }
 
+/* The same shape as `studio.css`'s `.panel-banner`, in a third colour family:
+   this one is neither a warning nor a fault, it is a fact about which graph
+   the Launch button is pointed at. It keeps its own rule rather than taking a
+   fourth modifier onto the shared class, because the shared class has exactly
+   two families and both are semantic states. */
 .handoff-banner {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  color: var(--accent-cyan);
-  font-size: var(--fs-12);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  color: var(--on-accent-cyan);
+  font: var(--type-label);
   line-height: 1.5;
   background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 
 .handoff-banner strong { color: var(--text-title); }
-.handoff-banner code { padding: 1px 5px; color: var(--accent-mint); font: 500 var(--fs-11)/1.5 var(--font-mono); background: var(--surface-well); border-radius: var(--r-xs); }
+.handoff-banner code { padding: 1px var(--space-2); color: var(--on-accent-mint); font: var(--type-meta); background: var(--surface-well); border-radius: var(--r-xs); }
 .handoff-banner .icon-button { flex: 0 0 auto; }
 /* Disabled only while a run is in flight, because leaving would reload the
    page out from under it. The title says so rather than leaving a dead

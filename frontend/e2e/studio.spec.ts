@@ -198,7 +198,7 @@ test.describe('Validator Studio', () => {
     // a run is in flight (asserted as "connected" in the journey test).
     await expect(page.locator('.live-status')).toHaveText(/ready/i)
     await expect(page.locator('.live-status')).not.toHaveText(/offline/i)
-    await expect(statusBadge(page)).toHaveText(/idle/i)
+    await expect(statusBadge(page)).toHaveText(/ready/i)
   })
 
   test(
@@ -251,7 +251,7 @@ test.describe('Validator Studio', () => {
       await approveGate(page)
 
       // ---- Completion -----------------------------------------------------
-      await expect(statusBadge(page)).toHaveText(/completed/i, { timeout: 60_000 })
+      await expect(statusBadge(page)).toHaveText(/finished/i, { timeout: 60_000 })
       await expect(gateCard(page)).toHaveCount(0)
       await expect(downloadButton(page)).toBeEnabled()
 

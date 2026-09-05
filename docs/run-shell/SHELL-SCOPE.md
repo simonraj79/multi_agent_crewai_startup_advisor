@@ -222,14 +222,14 @@ says it is free.
 | Token | dark | light | Fixes |
 | --- | --- | --- | --- |
 | `--text-meta` | `rgba(255,255,255,.52)` (= `--text-40`) | `rgba(11,13,15,.60)` | 4.26 / 4.25 / 4.11 / 4.07 → ≥ 4.78 |
-| `--border-control` | `rgba(255,255,255,.34)` | `rgba(15,20,25,.47)` | 1.31–1.37 → 3.00 / 3.07 |
+| `--border-control` | `rgba(255,255,255,.34)` | `rgba(15,20,25,.49)` | 1.31–1.37 → 3.11 / 3.16 |
 | `--border-hover-strong` | `rgba(255,255,255,.42)` | `rgba(15,20,25,.56)` | 2.71 / 2.18 → 3.81 / 4.02 (hover only) |
 | `--on-accent-cyan` | `var(--accent-cyan)` | `#0e6b7d` | 1.14–1.36 → ≥ 5.15 |
 | `--on-accent-mint` | `var(--accent-mint)` | `#0f6b42` | 1.01–1.12 → ≥ 5.50 |
 | `--on-accent-blue` | `var(--accent-blue)` | `#2f5fa8` | 1.69 → 5.30 |
 | `--link-strong` | `#7dc6ff` (= `--link-cyan`) | `#1a6099` | 4.38–4.41 → 5.54 |
 | `--warn-text-strong` | `#ffe082` (= `--warn-text`) | `#865700` | 4.30 → 4.51 |
-| `--warn-border-strong` | `rgba(255,204,0,.46)` | `rgba(150,100,0,.85)` | 2.70 / 1.69 → 3.10 / 3.26 |
+| `--warn-border-strong` | `rgba(255,204,0,.46)` | `rgba(150,100,0,.95)` | 2.70 / 1.69 → 3.07 / 3.44 |
 | `--err-border-strong` | `rgba(255,82,82,.70)` | `rgba(190,40,40,.70)` | 1.85 / 2.04 → 3.03 / 3.12 |
 | `--brand-wash` / `--brand-rim` | `rgba(153,234,249,.08)` / `.28` | same | the two literals at three sites |
 | `--ink-on-brand` | `#10201c` | same | the three near-identical inks on one gradient |

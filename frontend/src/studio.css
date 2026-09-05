@@ -29,6 +29,12 @@
    source order alone. Import this before `node-card.css` and an errored card
    goes back to glowing. */
 @import './assets/styles/motion.css';
+/* The cast: the character parts, their five states and the sheet that draws
+   them. LAST, per §0 of docs/design.md - a sheet joins the end of this list,
+   never the middle, because the last two before it are at identical
+   specificity on the same element and source order is the only thing that
+   decides. */
+@import './assets/styles/character.css';
 
 *,
 *::before,
@@ -79,10 +85,10 @@ h3 {
 .skip-link {
   position: fixed;
   z-index: 1000;
-  top: 8px;
-  left: 8px;
-  padding: 8px 12px;
-  color: #0d1715;
+  top: var(--space-3);
+  left: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  color: var(--ink-on-brand);
   background: var(--accent-mint);
   border-radius: var(--r-md);
   transform: translateY(-150%);
@@ -90,8 +96,16 @@ h3 {
 
 .skip-link:focus { transform: translateY(0); }
 
+/* THE FOCUS RING, and it is a UI component under WCAG 1.4.11.
+   `--accent-cyan` on the light ground measures 1.17:1 against a needed 3.0 -
+   a ring a keyboard user cannot see is not a ring. `--on-accent-cyan` is the
+   same colour with enough ink to be seen, and in the dark theme it IS
+   `--accent-cyan`, so nothing there moves. Not guarded against the builder
+   like the two brand marks above, because a ring is only painted while
+   something has KEYBOARD focus and no screenshot in either baseline set is
+   taken in that state - the improvement is free to reach both workspaces. */
 :focus-visible {
-  outline: 2px solid var(--accent-cyan);
+  outline: 2px solid var(--on-accent-cyan);
   outline-offset: 3px;
 }
 
@@ -114,7 +128,7 @@ h3 {
   left: 8%;
   height: 1px;
   background: var(--gradient-brand);
-  box-shadow: 0 0 90px 32px rgba(153, 234, 249, 0.08);
+  box-shadow: 0 0 90px 32px var(--brand-wash);
   content: '';
   pointer-events: none;
 }
@@ -129,7 +143,7 @@ h3 {
   height: 52px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 var(--space-6);
   background: var(--header-bg);
   border-bottom: 1px solid var(--border-default);
   -webkit-backdrop-filter: var(--blur-panel);
@@ -140,19 +154,35 @@ h3 {
 .header-context,
 .workflow-name,
 .live-status { display: flex; align-items: center; }
-.brand-lockup { gap: 10px; }
-.brand-mark { display: grid; width: 32px; height: 32px; place-items: center; color: var(--accent-cyan); background: rgba(153, 234, 249, 0.08); border: 1px solid rgba(153, 234, 249, 0.28); border-radius: var(--r-lg); }
-.brand-lockup > div:last-child { display: flex; align-items: baseline; gap: 8px; }
-.brand-lockup span { color: var(--accent-mint); font: 700 var(--fs-11)/1 var(--font-mono); }
-.brand-lockup h1 { margin: 0; font-size: var(--fs-18); line-height: 1; }
+.brand-lockup { gap: var(--space-4); }
+.brand-mark { display: grid; width: 32px; height: 32px; place-items: center; color: var(--accent-cyan); background: var(--brand-wash); border: 1px solid var(--brand-rim); border-radius: var(--r-lg); }
+.brand-lockup > div:last-child { display: flex; align-items: baseline; gap: var(--space-3); }
+.brand-lockup span { color: var(--accent-mint); font: var(--type-kicker); }
+.brand-lockup h1 { margin: 0; font: var(--type-display); }
+/* 14px, and it stays 14px. `.header-context` is the builder's header too and
+   sixteen full-page baselines have it at this width; SHELL-SCOPE.md §2a
+   records it as frozen rather than as a house value. */
 .header-context { gap: 14px; }
 .workflow-name,
-.live-status { gap: 6px; color: var(--text-muted); font-size: var(--fs-12); }
-.workflow-name { padding-right: 14px; border-right: 1px solid var(--border-default); }
-.live-status { color: var(--text-40); text-transform: capitalize; }
-.live-status.is-connected { color: var(--accent-mint); }
+.live-status { gap: var(--space-2); color: var(--text-muted); font: var(--type-label); }
+.workflow-name { padding-right: var(--space-5); border-right: 1px solid var(--border-default); }
+.live-status { color: var(--text-meta); text-transform: capitalize; }
+.live-status.is-connected { color: var(--on-accent-mint); }
 .live-status.is-reconnecting,
-.live-status.is-connecting { color: var(--warn-text); }
+.live-status.is-connecting { color: var(--warn-text-strong); }
+
+/* THE BRAND MARK, READABLE - in the run console only, and the guard is a
+   baseline rather than a preference.
+
+   `--on-accent-*` is the same colour with enough ink to be read on paper: the
+   shared pastels measure 1.02-1.17:1 against the light header, and this pair
+   is the first thing anyone reads. `.brand-mark` and the `M2` span are the
+   BUILDER's header as well, and its sixteen baselines include eight light
+   ones, so the swap is scoped here and SHELL-SCOPE.md §6.5 is the commit that
+   drops the guard. In the dark theme `--on-accent-*` IS the accent, so this
+   rule changes nothing there at all. */
+.studio-shell:not(.is-builder) .brand-mark { color: var(--on-accent-cyan); }
+.studio-shell:not(.is-builder) .brand-lockup span { color: var(--on-accent-mint); }
 
 .studio-main {
   position: relative;
@@ -233,12 +263,12 @@ h3 {
  */
 .stream-reconnecting {
   z-index: 9;
-  margin: 0 40px 4px;
-  padding: 6px 14px;
-  color: var(--warn-text);
-  font: 600 var(--fs-11)/1.4 var(--font-mono);
+  margin: 0 40px var(--space-1);
+  padding: var(--space-2) var(--space-5);
+  color: var(--warn-text-strong);
+  font: var(--type-meta);
   background: var(--warn-bg);
-  border: 1px solid var(--warn-border);
+  border: 1px solid var(--warn-border-strong);
   border-radius: var(--r-pill);
 }
 
@@ -263,17 +293,23 @@ h3 {
   pointer-events: none;
 }
 
-.canvas-heading h2 { margin: 3px 0 0; font-size: 17px; }
-.canvas-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
-.canvas-meta { display: flex; align-items: center; gap: 8px; }
-.canvas-meta span { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font: 600 var(--fs-11)/1 var(--font-mono); text-transform: capitalize; }
-.canvas-meta code { padding: 4px 6px; color: var(--text-40); font: 500 10px/1 var(--font-mono); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-sm); }
+/* 17px was a SEVENTH type step, which design.md §2 refuses. `--type-title` is
+   15px of Space Grotesk at 600 - smaller in px and stronger in hierarchy,
+   because the display face against the body face is a family contrast rather
+   than a size one. That distinction is what makes it usable here: this strip
+   is pinned to a 64px grid row, so the hierarchy could not be bought with
+   height. */
+.canvas-heading h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+.canvas-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
+.canvas-meta { display: flex; align-items: center; gap: var(--space-3); }
+.canvas-meta span { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font: var(--type-meta); text-transform: capitalize; }
+.canvas-meta code { padding: var(--space-1) var(--space-2); color: var(--text-meta); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); }
 
 .validator-flow { width: 100%; height: 100%; }
 .vue-flow__pane { cursor: grab; }
 .vue-flow__pane:active { cursor: grabbing; }
 .vue-flow__node { cursor: default; }
-.vue-flow__controls { overflow: hidden; background: var(--controls-bg); border: 1px solid var(--border-default); border-radius: var(--r-lg); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
+.vue-flow__controls { overflow: hidden; background: var(--controls-bg); border: 1px solid var(--border-default); border-radius: var(--r-lg); box-shadow: var(--shadow-controls); }
 .vue-flow__controls-button { width: 34px; height: 34px; color: var(--text-body); background: transparent; border-color: var(--border-default); }
 .vue-flow__controls-button:hover { background: var(--surface-raised); }
 .vue-flow__controls-button svg { fill: currentColor; }
@@ -305,7 +341,14 @@ h3 {
   transition: color var(--motion-fast) ease, background var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 
-.icon-button:hover { color: var(--text-title); background: var(--surface-strong); border-color: var(--border-hover); }
+/* A HOVER STATE IS IN NO SCREENSHOT, which is exactly why this one can be
+   fixed today. `--border-hover` measures 2.71:1 in dark and 2.18:1 in light
+   against the 3.0 a UI boundary needs, and raising the token itself would move
+   up to sixteen builder baselines - but nothing captures a pointer sitting on
+   a control, so the stronger token can be adopted at the hover sites now and
+   merged into `--border-hover` when those baselines are regenerated
+   (SHELL-SCOPE.md §6.3). */
+.icon-button:hover { color: var(--text-title); background: var(--surface-strong); border-color: var(--border-hover-strong); }
 
 .button {
   display: inline-flex;
@@ -323,16 +366,217 @@ h3 {
   transition: filter var(--motion-fast) ease, background var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 
-.button:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--border-hover); }
+.button:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--border-hover-strong); }
 .button:active:not(:disabled) { filter: brightness(0.94); }
 .button:disabled { cursor: not-allowed; opacity: 0.42; }
-.button-primary { color: #10201c; background: var(--gradient-brand); border-color: transparent; }
+.button-primary { color: var(--ink-on-brand); background: var(--gradient-brand); border-color: transparent; }
 .button-secondary { background: var(--surface-raised); }
 .button-quiet { color: var(--text-muted); background: transparent; }
 
+/* ---------------------------------------------------------------------------
+   THE PANEL CLASS CONTRACT (docs/run-shell/SHELL-SCOPE.md §4)
+
+   Global, because the improvement has to reach files this task must not open.
+   `ChatRail.vue`, `DialogueRail.vue`, `ReportPanel.vue`, `GateCard.vue`,
+   `CrewProgress.vue` and `RunHistory.vue` belong to W1, W3 and W4 and are being
+   rewritten in parallel; between them they hold 63 of the run shell's 234
+   literal spacings, five of its five panel-header treatments and ten of its ten
+   panel-body paddings. A spacing edit in any of them is a guaranteed merge
+   conflict for zero benefit - so the shell's chrome is declared here once, and
+   a component adopts it by adding a class in its own commit.
+
+   EVERY RULE BELOW IS SPECIFICITY (0,1,0). A component's own scoped rule
+   carries a `[data-v-...]` attribute and therefore outranks it on every
+   property they share, so adopting a class is ADDITIVE: the component keeps
+   whatever it already says and gains only what it never said. That is what
+   makes this contract safe to publish while four other people are typing.
+   --------------------------------------------------------------------------- */
+
+/* A bordered region inside a rail. `.control-section` and `.run-history-body`
+   are this; so is a gate card's body. */
+.panel-section { padding: var(--space-6); border-bottom: 1px solid var(--border-default); }
+
+/* The header strip every panel has a different version of - five treatments for
+   one thing, measured. 64px is the shared height and it is load-bearing: it is
+   grid row 1 of `.graph-workspace` and the height `.rail-header` and
+   `.canvas-heading` already agree on. */
+.panel-header {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--border-default);
+}
+.panel-heading { margin: 0; font: var(--type-title); }
+
+/* The uppercase mono eyebrow, written out independently at TWELVE sites - ten
+   at `--fs-11`, one at 10px, one at 9px, with four different tracking values
+   between them. `.section-kicker` is the spelling `ChatRail`, `DialogueRail`
+   and `GateCard` already use, so those three adopt the role by deleting their
+   own copy rather than by adding anything. */
+.panel-kicker,
+.section-kicker {
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
+  text-transform: uppercase;
+}
+/* The role carries the TYPE; the colour is a separate decision, because the
+   same eyebrow is quiet over a control ("IDEA TO VALIDATE") and loud over a
+   panel ("LIVE ACTIVITY"). `.section-kicker`'s three owners already declare
+   their own accent in their own scoped block and keep it. */
+.panel-kicker { color: var(--text-meta); }
+.panel-kicker.is-accent { color: var(--on-accent-cyan); }
+
+/* Timestamps, sequence numbers, ids, counts - the fourteen raw 10px sites. */
+.panel-meta { color: var(--text-meta); font: var(--type-meta); }
+
+/* A scrolling list that does not simply STOP at its edge: a bottom rest so the
+   last row clears the border, and a soft mask so a cut-off row reads as more
+   content rather than as a rendering fault. `min-height: 0` is the other half
+   of `.studio-main`'s own lesson - a flex item's automatic minimum size is its
+   content, which re-inflates the parent unless it is overridden. */
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-8);
+  /* `black` rather than a hex, and it is not a colour: a mask reads only the
+     ALPHA of each stop, so the opaque stops are opaque and their hue is never
+     painted. Writing #000 here would put a colour literal in a sheet for a
+     value that is not one. */
+  mask-image: linear-gradient(to bottom, transparent 0, black var(--space-3), black calc(100% - var(--space-6)), transparent 100%);
+}
+
+/* Something recessed INTO a panel: a field, a code chip, a metric cell. The
+   border is `--border-control` rather than `--border-default` because a
+   control's own boundary has to meet 3.0 (WCAG 1.4.11) and the default
+   measures 1.31:1 against a rail. */
+.panel-well {
+  background: var(--surface-well);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-inset-well);
+}
+
+/* The one rule that replaces three near-identical banners differing only in
+   colour family. The WORDING of each is W1's under T1; this is the chrome. */
+.panel-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  color: var(--text-body);
+  font: var(--type-label);
+  border-bottom: 1px solid var(--border-default);
+}
+.panel-banner > svg { flex: 0 0 auto; margin-top: 1px; }
+.panel-banner.is-warn { color: var(--warn-text-strong); background: var(--warn-bg); border-bottom-color: var(--warn-border-strong); }
+.panel-banner.is-error { color: var(--err-text); background: var(--err-bg); border-bottom-color: var(--err-border-strong); }
+
+/* A small bordered token: a call chip, a report flag, an entry count, a lap. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font: var(--type-meta);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
+
+/* THE METRIC TILE, promoted out of `StatusPanel.vue` so any panel can state a
+   number the same way.
+
+   Five things were wrong with it and all five are here. The label was a raw
+   10px at `--text-40`, which is 4.11:1 in light - an AA failure on the panel
+   that carries the run's cost. The value was `--fs-13` in the same weight as
+   the word above it, so there was no hierarchy at all between "Cost" and what
+   the run cost. The gap between them was 5px and the cell padding 9px, neither
+   a house value. And the 1px rule that draws the grid was painted in
+   `--border-default` at 1.34:1 - a divider nobody can see.
+
+   `auto-fit` rather than `1fr 1fr`: at the rail's 310px that is two columns and
+   pixel-identical, and at the 320px overlay width of the 860px breakpoint it
+   stays two rather than crushing each cell to 108px. One line, no new
+   breakpoint. */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: var(--space-5) 0 0;
+  background: var(--border-control);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+}
+.metrics-grid div { padding: var(--space-5); background: var(--surface-well); }
+.metrics-grid dt { color: var(--text-meta); font: var(--type-kicker); letter-spacing: var(--track-kicker); text-transform: uppercase; }
+.metrics-grid dd {
+  margin: var(--space-2) 0 0;
+  color: var(--text-title);
+  font: var(--type-metric);
+  /* AFTER the shorthand, which resets it. This is what stops ELAPSED from
+     jittering as the digits change width. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   THE SEGMENTED PAIR - one declaration, and it had none.
+
+   The base rule was declared ONLY inside `StatusPanel.vue`'s scoped block, so
+   it compiled to `.segmented[data-v-...]` and reached nothing outside that one
+   component. The header's `class="segmented workspace-switch"` - in BOTH
+   workspaces - therefore inherited no `display`, no background, no border and
+   no radius, and its two buttons rendered as NATIVE buttons: light grey
+   `ButtonFace` boxes in a dark header. It is visible in
+   `docs/run-shell/evidence/T3/before-1440.png` and in the committed
+   `gallery-dark` baseline, which is how long it has been shipping.
+
+   `:where()` CONTRIBUTES NO SPECIFICITY, so this whole selector is (0,1,0) -
+   `.workspace-switch` and `.format-picker` still outrank it and keep their own
+   columns and padding, exactly as they do today. And the guard is a baseline
+   rather than a preference: the builder's sixteen full-page screenshots contain
+   its header, so giving its pair the chrome it has always lacked is a
+   sixteen-baseline change. SHELL-SCOPE.md §6.5 is the commit that drops the
+   `:not()` and regenerates them.
+   --------------------------------------------------------------------------- */
+:where(.studio-shell:not(.is-builder)) .segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  background: var(--surface-well);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-inset-well);
+}
+:where(.studio-shell:not(.is-builder)) .segmented button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: color var(--motion-fast) ease, background var(--motion-fast) ease;
+}
+:where(.studio-shell:not(.is-builder)) .segmented button:hover:not(:disabled) { color: var(--text-body); }
+:where(.studio-shell:not(.is-builder)) .segmented button[aria-pressed='true'] {
+  color: var(--text-title);
+  background: var(--surface-raised);
+  box-shadow: var(--ring-pressed);
+}
+:where(.studio-shell:not(.is-builder)) .segmented button:disabled { cursor: not-allowed; opacity: 0.5; }
+
 @media (max-width: 1180px) {
   .studio-main { grid-template-columns: var(--chat-width) minmax(0, 1fr); }
-  .control-rail { position: absolute; top: 0; right: 0; bottom: 0; width: 310px; box-shadow: -18px 0 38px rgba(0, 0, 0, 0.34); transform: translateX(0); transition: transform var(--motion-medium) var(--ease-out); }
+  .control-rail { position: absolute; top: 0; right: 0; bottom: 0; width: 310px; box-shadow: var(--shadow-rail-end); transform: translateX(0); transition: transform var(--motion-medium) var(--ease-out); }
   .controls-are-collapsed .control-rail { transform: translateX(100%); }
 }
 
@@ -341,7 +585,7 @@ h3 {
   body,
   #app { min-width: 640px; }
   .studio-main { grid-template-columns: minmax(0, 1fr); }
-  .studio-main > .chat-rail { position: absolute !important; top: 0; bottom: 0; left: 0; width: min(340px, 52vw); box-shadow: 18px 0 38px rgba(0, 0, 0, 0.34); transform: translateX(0); transition: transform var(--motion-medium) var(--ease-out), width var(--motion-medium) var(--ease-out); }
+  .studio-main > .chat-rail { position: absolute !important; top: 0; bottom: 0; left: 0; width: min(340px, 52vw); box-shadow: var(--shadow-rail-start); transform: translateX(0); transition: transform var(--motion-medium) var(--ease-out), width var(--motion-medium) var(--ease-out); }
   .chat-is-collapsed .chat-rail { transform: translateX(-100%); }
   .chat-rail.is-collapsed .rail-header { display: none; }
   .activity-is-active .chat-rail { width: min(520px, calc(100vw - 120px)); }
@@ -380,9 +624,9 @@ h3 {
 .markdown-body ul,
 .markdown-body ol { margin: 0 0 0.9em; padding-left: 22px; }
 .markdown-body li { margin-bottom: 0.35em; }
-.markdown-body a { color: var(--link-cyan); overflow-wrap: anywhere; }
+.markdown-body a { color: var(--link-strong); overflow-wrap: anywhere; }
 .markdown-body strong { color: var(--text-title); font-weight: 700; }
-.markdown-body code { padding: 2px 5px; color: var(--accent-mint); font: 500 0.88em/1.4 var(--font-mono); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); }
+.markdown-body code { padding: 2px 5px; color: var(--on-accent-mint); font: 500 0.88em/1.4 var(--font-mono); background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-xs); }
 .markdown-body pre { margin: 0 0 1em; overflow-x: auto; padding: 12px 14px; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); }
 .markdown-body pre code { padding: 0; color: var(--text-body); background: none; border: 0; }
 .markdown-body blockquote { margin: 0 0 1em; padding: 2px 0 2px 14px; color: var(--text-muted); border-left: 2px solid var(--accent-cyan); }
@@ -396,18 +640,18 @@ h3 {
 .report-reopen {
   position: absolute;
   z-index: 11;
-  right: 18px;
-  bottom: 18px;
+  right: var(--space-7);
+  bottom: var(--space-7);
   display: inline-flex;
-  gap: 7px;
+  gap: var(--space-3);
   align-items: center;
-  padding: 10px 15px;
-  color: #101a18;
+  padding: var(--space-4) var(--space-6);
+  color: var(--ink-on-brand);
   font: 700 var(--fs-13)/1 var(--font-body);
   background: var(--gradient-brand);
   border: 0;
   border-radius: var(--r-pill);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-overlay);
   cursor: pointer;
 }
 .report-reopen:hover { filter: brightness(1.08); }
@@ -425,7 +669,7 @@ h3 {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 14px;
+  gap: var(--space-5);
   min-height: 100vh;
   color: var(--text-muted);
   font: 500 var(--fs-13)/1 var(--font-body);
@@ -437,9 +681,9 @@ h3 {
   width: 40px;
   height: 40px;
   place-items: center;
-  color: var(--accent-cyan);
-  background: rgba(153, 234, 249, 0.08);
-  border: 1px solid rgba(153, 234, 249, 0.28);
+  color: var(--on-accent-cyan);
+  background: var(--brand-wash);
+  border: 1px solid var(--brand-rim);
   border-radius: var(--r-lg);
 }
 
@@ -448,9 +692,9 @@ h3 {
 .account-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
   max-width: 220px;
-  padding: 4px 4px 4px 8px;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
   border-radius: var(--r-pill);
@@ -575,7 +819,7 @@ h3 {
     right: 0;
     bottom: 0;
     width: 340px;
-    box-shadow: -18px 0 38px rgba(0, 0, 0, 0.34);
+    box-shadow: var(--shadow-rail-end);
     transform: translateX(0);
     transition: transform var(--motion-medium) var(--ease-out);
   }
@@ -589,7 +833,7 @@ h3 {
     bottom: 0;
     left: 0;
     width: min(236px, 52vw);
-    box-shadow: 18px 0 38px rgba(0, 0, 0, 0.34);
+    box-shadow: var(--shadow-rail-start);
     transform: translateX(0);
     transition: transform var(--motion-medium) var(--ease-out);
   }
@@ -637,7 +881,7 @@ h3 {
     border-right: 0;
     border-top: 1px solid var(--border-default);
     border-radius: var(--r-2xl) var(--r-2xl) 0 0;
-    box-shadow: 0 -18px 38px rgba(0, 0, 0, 0.34);
+    box-shadow: var(--shadow-sheet);
     transform: translateY(0);
     transition: transform var(--motion-medium) var(--ease-out);
   }
@@ -673,5 +917,63 @@ h3 {
      cards must not be squeezed into two. */
   .studio-shell.is-builder.is-gallery .template-gallery {
     padding: 12px;
+  }
+
+  /* -------------------------------------------------------------------------
+     THE RUN CONSOLE AT 390x844 (DEFINITION-OF-DONE S6, SHELL-SCOPE.md §5).
+
+     The builder answered this question two plans ago and the console never
+     did: it inherits the 860px block's overlays and stops there, so at 390 the
+     two rails are 52vw and 48vw - 202px and 187px - which between them cover
+     the canvas completely and clip the right rail's own words ("Unattende").
+     `docs/run-shell/evidence/T3/before-390.png` is that, captured.
+
+     EVERY SELECTOR HERE IS RUN-CONSOLE-ONLY. `.chat-rail` and `.control-rail`
+     exist in no builder view, and the two rules that touch a shared element
+     carry `:not(.is-builder)` - because the builder's eight 390px baselines
+     are screenshots of this same sheet at this same width, and a rule that
+     reached them would be eight red tests.
+     ------------------------------------------------------------------------- */
+
+  /* Near-full-width, with 44px left for the toggle. At 202px the right rail
+     could not finish the word "Unattended"; at 346px it can, and the canvas
+     is one thumb away rather than hidden. */
+  .studio-main > .chat-rail,
+  .activity-is-active .chat-rail,
+  .control-rail {
+    width: min(360px, calc(100vw - 44px));
+  }
+
+  /* 44x44, which is the target size this viewport exists for. The chat rail's
+     toggle lives in `ChatRail.vue` - W3's file - so it is reached by a
+     descendant selector from here rather than by an edit; the two are written
+     together because they are one control seen from either side. */
+  .studio-main > .chat-rail .rail-toggle,
+  .control-rail .control-toggle {
+    width: 44px;
+    height: 44px;
+  }
+  .studio-main > .chat-rail .rail-toggle { right: -44px; }
+  .control-rail .control-toggle { left: -44px; }
+
+  /* THE INLINE-AXIS FIX, for the console this time. `.graph-workspace`
+     declares rows and leaves its column implicit, and an implicit column is
+     `auto` - which resolves to its content's MIN-CONTENT width, not to the
+     track it sits in. Measured in the builder at 390: an 802px canvas inside a
+     390px workspace, clipped rather than scrolled, so nothing said so and
+     every fit was computed against the wrong box. The builder has carried this
+     line since; the console has the same element and the same defect. */
+  .studio-shell:not(.is-builder) .graph-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The bar is 52px and the title wrapped out of it. Ellipsis rather than a
+     smaller step: the shell has six type steps and this is not the place to
+     invent a seventh. */
+  .studio-shell:not(.is-builder) .brand-lockup h1 {
+    overflow: hidden;
+    max-width: 42vw;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

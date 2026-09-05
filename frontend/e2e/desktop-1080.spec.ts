@@ -907,12 +907,12 @@ test.describe('5 · a published graph, mid-run and completed', () => {
     // Answer whatever gates the template raises until it finishes.
     const badge = page.locator('.status-panel .status-badge')
     for (let i = 0; i < 60; i += 1) {
-      if (/completed/i.test((await badge.textContent()) ?? '')) break
+      if (/finished/i.test((await badge.textContent()) ?? '')) break
       const approve = page.locator('.gate-card').getByRole('button', { name: /^Approve/ })
       if (await approve.count()) await approve.first().click()
       await page.waitForTimeout(1_000)
     }
-    await expect(badge).toHaveText(/completed/i, { timeout: 60_000 })
+    await expect(badge).toHaveText(/finished/i, { timeout: 60_000 })
 
     const done = await metrics(page)
     await shot(page, `5b-run-completed-${suffix}`)

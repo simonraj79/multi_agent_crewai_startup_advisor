@@ -121,6 +121,144 @@
   --z-rail: 20;
   --z-control: 30;
   --z-toast: 50;
+
+  /* =========================================================================
+     THE RUN SHELL'S TOKEN LAYER (docs/run-shell/SHELL-SCOPE.md §2)
+     =========================================================================
+
+     Everything below this line is ADDITIVE. Not one token above it changes
+     value, and the reason is a gate rather than a preference:
+     `e2e/visual/builder-canvas.spec.ts` screenshots the WHOLE PAGE in four
+     states, two themes and two viewports - sixteen committed baselines with no
+     `maxDiffPixels` - so a shipped token that moves is sixteen red tests and
+     the loss of the only regression net the other workers have. Where a new
+     token stands beside an old one, its DARK value is deliberately identical:
+     no dark pixel anywhere moves, and the light theme is where the corrections
+     land. SHELL-SCOPE.md §6 is the commit that merges each pair back. */
+
+  /* THE SPACING SCALE. docs/design.md §3's eight house values, named.
+
+     Eight steps and not a tighter 4/8/12/16/24 set: 6 and 10 carry 48 of the
+     run shell's 234 spacing declarations between them - the segmented pair's
+     gap, every chip's vertical padding, the account chip - and collapsing them
+     changes the height of three surfaces the builder shares. Eight is the set
+     that tokenises the whole shell without moving a builder pixel. */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+
+  /* TYPE ROLES. Six steps, three families, seven roles, one tracking value.
+
+     A role says what a piece of text IS; the step is only how big it happens
+     to be. Adding a role is a pull request against docs/design.md §2; adding a
+     STEP is refused there, and none of these adds one.
+
+     A whole `font` shorthand per role rather than five properties per role,
+     for three reasons that are facts rather than taste. `var()` substitution
+     into `font:` is textual, so it resolves through the nested `var(--fs-11)`
+     and `var(--font-mono)` exactly as if written out - and the shell ALREADY
+     writes every one of these as a shorthand at nine sites, which is what
+     makes a role token a one-for-one substitution and therefore provable
+     against a pixel baseline. The shorthand also RESETS `font-variant`,
+     `font-stretch` and `line-height`, which is what stops one role inheriting
+     half of another; the single site that wants `font-variant-numeric:
+     tabular-nums` declares it after the shorthand, as it already does.
+
+     `letter-spacing` is not part of `font`. That is why tracking is its own
+     token, and it is the whole reason the four tracking values in use can
+     collapse to one: the role cannot carry it, so it has to be named.
+
+     `--type-display` is `/1` and not the audit's proposed `/1.15`: the
+     header's `h1` is inside sixteen baselines and 1.15 moves it. This is
+     exactly what that element computes today. */
+  --type-display: 700 var(--fs-18)/1 var(--font-display);
+  --type-title: 600 var(--fs-15)/1.25 var(--font-display);
+  --type-body: 400 var(--fs-13)/1.5 var(--font-body);
+  --type-label: 500 var(--fs-12)/1.4 var(--font-body);
+  --type-kicker: 700 var(--fs-11)/1 var(--font-mono);
+  --type-meta: 500 var(--fs-11)/1.2 var(--font-mono);
+  --type-metric: 600 var(--fs-15)/1.1 var(--font-mono);
+  --track-kicker: 0.06em;
+
+  /* ON-SURFACE TEXT AND BOUNDARIES, measured rather than judged.
+
+     Each ratio below is `frontend/scripts/contrast-audit.mjs`'s, composited
+     over the real stack the shell paints - `bg-app -> shell-bg -> rail ->
+     well` - because a hex-against-hex reading of a translucent token is wrong
+     in the direction that flatters it.
+
+     `--text-meta` exists rather than a correction to `--text-40` because 21
+     `builder.css` sites, 5 in `node-card.css` and 16 builder components read
+     that token. 4.26 / 4.25 / 4.11 / 4.07 in light, all against 4.5. */
+  --text-meta: rgba(255, 255, 255, 0.52);
+  /* A form control's own boundary, WCAG 1.4.11, needs 3.0 and
+     `--border-default` measures 1.31-1.37 against every surface the shell
+     puts a control on - so the idea textarea, the segmented track and the
+     metrics grid's dividing rule were all invisible outlines. */
+  --border-control: rgba(255, 255, 255, 0.34);
+  /* Hover only, and that is what makes it free: `:hover` is in no screenshot,
+     so this may be adopted at `.button`/`.icon-button` without touching a
+     baseline. 2.71 dark / 2.18 light against a needed 3.0. */
+  --border-hover-strong: rgba(255, 255, 255, 0.42);
+  /* THE ACCENT, READABLE. design.md §7 and plan 02 D6 rule that an accent is
+     IDENTITY and is shared across themes - "a kind that is one colour in the
+     dark and another in the light is a kind an author has to learn twice" -
+     and the comment at the foot of this file already counts the cost of that:
+     109 sites across 32 files where an accent is used as small text. These
+     three are the second token that comment proposes. The identity colour
+     stays; the READABLE version carries the text. 1.01-1.69:1 in light. */
+  --on-accent-cyan: var(--accent-cyan);
+  --on-accent-mint: var(--accent-mint);
+  --on-accent-blue: var(--accent-blue);
+  /* `--link-cyan` is 0.1 short of its own stated contract in light (4.38-4.41
+     against 4.5) and this is that correction with a different carrier, because
+     the token itself is read by `builder.css` at six sites and moving it moves
+     the eight light builder baselines. */
+  --link-strong: #7dc6ff;
+  /* The status colours, at the two sites where the tint is under them. */
+  --warn-text-strong: #ffe082;
+  --warn-border-strong: rgba(255, 204, 0, 0.46);
+  --err-border-strong: rgba(255, 82, 82, 0.7);
+
+  /* THE BRAND MARK'S WASH AND RIM, and the ink that sits on the gradient.
+
+     Two literals written out twice (`.brand-mark`, `.auth-splash-mark`) plus a
+     third copy inside the shell's hairline glow; and three near-identical inks
+     - #10201c, #101a18, #0d1715 - on one shared gradient. One value each. The
+     ink is #10201c because that is `.button-primary`'s, and `.button-primary`
+     is the one of the three that a baseline captures. */
+  --brand-wash: rgba(153, 234, 249, 0.08);
+  --brand-rim: rgba(153, 234, 249, 0.28);
+  --ink-on-brand: #10201c;
+  /* The pressed segment's inner ring. `color-mix` at 20% of #99eaf9 is
+     rgba(153,234,249,.2) exactly, which is the literal it replaces. */
+  --ring-pressed: inset 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+
+  /* ELEVATION. Three levels and a recess, over five background tints.
+
+     There was no elevation system before this, only 21 distinct one-off shadow
+     literals across 26 sites - seven depths for three jobs. These four are
+     theme-aware and are adopted at run-shell-only sites; the four FROZEN ones
+     below them are pure extractions with no light value at all, because their
+     sites are inside the builder's baselines and a themed shadow moves them.
+     That asymmetry is the honest shape of the additive construction, not an
+     oversight: SHELL-SCOPE.md §6.4 is the commit that unifies them.
+
+     `--shadow-overlay`'s dark value is exactly the report FAB's shipped
+     shadow, so adopting it there costs nothing. */
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.28);
+  --shadow-raised: 0 2px 6px rgba(0, 0, 0, 0.22), 0 14px 34px rgba(0, 0, 0, 0.34);
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-inset-well: inset 0 1px 0 rgba(0, 0, 0, 0.28);
+  --shadow-controls: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-rail-start: 18px 0 38px rgba(0, 0, 0, 0.34);
+  --shadow-rail-end: -18px 0 38px rgba(0, 0, 0, 0.34);
+  --shadow-sheet: 0 -18px 38px rgba(0, 0, 0, 0.34);
 }
 
 /* ===========================================================================
@@ -205,6 +343,38 @@
      learns twice. This one is a LINK: a router branch label, the `otherwise`
      port's word, the loop rim. It is read, so it has to be readable. */
   --link-cyan: #1d6fb8;
+
+  /* ---------------------------------------------------------------------
+     THE RUN SHELL'S TOKEN LAYER, in light (SHELL-SCOPE.md §2c).
+
+     This block is where the additive construction earns its keep: every
+     token here has a DARK value identical to the shipped token it stands
+     beside, so the whole correction is a light-theme correction and the eight
+     dark builder baselines cannot move. Every ratio is measured by
+     `frontend/scripts/contrast-audit.mjs` over the composited stack.
+
+     The four `--shadow-controls` / `--shadow-rail-*` / `--shadow-sheet`
+     tokens are deliberately ABSENT from this block. Their sites are in the
+     builder's eight light baselines, and a shadow that changes with the
+     theme is exactly the change those baselines exist to catch.
+     --------------------------------------------------------------------- */
+  --text-meta: rgba(11, 13, 15, 0.6);
+  --border-control: rgba(15, 20, 25, 0.49);
+  --border-hover-strong: rgba(15, 20, 25, 0.56);
+  /* The accents as READABLE text on paper. Same hue, enough ink to be read:
+     5.15 / 5.50 / 5.30 where the shared pastels measure 1.01-1.69. */
+  --on-accent-cyan: #0e6b7d;
+  --on-accent-mint: #0f6b42;
+  --on-accent-blue: #2f5fa8;
+  --link-strong: #1a6099;
+  --warn-text-strong: #865700;
+  --warn-border-strong: rgba(150, 100, 0, 0.95);
+  --err-border-strong: rgba(190, 40, 40, 0.7);
+  /* A shadow on paper is shorter, softer and cooler than one in the dark. */
+  --shadow-panel: 0 1px 2px rgba(15, 20, 25, 0.06), 0 8px 24px rgba(15, 20, 25, 0.1);
+  --shadow-raised: 0 2px 6px rgba(15, 20, 25, 0.08), 0 14px 34px rgba(15, 20, 25, 0.12);
+  --shadow-overlay: 0 8px 24px rgba(15, 20, 25, 0.16);
+  --shadow-inset-well: inset 0 1px 0 rgba(15, 20, 25, 0.08);
 }
 
 /* ---------------------------------------------------------------------------

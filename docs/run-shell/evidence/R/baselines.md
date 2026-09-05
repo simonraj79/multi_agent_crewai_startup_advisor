@@ -1,19 +1,51 @@
-# R1 — the visual baselines, across four RV3 passes
+# R1 — the visual baselines, across five RV3 passes
 
 Written by RV3 (verification worker) on branch `run-shell/cast`. RV3 built none
 of this work. The only product-tree edit RV3 is permitted is regenerating the
 three PNGs under `frontend/e2e/visual/run-canvas.spec.ts-snapshots/`, and only
-after first recording the failing diff. That is what this file records, pass by
-pass.
+after first recording the failing diff.
 
-Backend for every run below: the free `SYNTHETIC=1` one on :8099, full line in
-`evidence/R/playwright.txt`. Playwright drove its own Vite on :5273 — and in
-this pass that was **verified rather than assumed**, because
-`playwright.config.ts` sets `reuseExistingServer: true` and a stale Vite would
-have made every capture below a picture of an older bundle. Before anything ran:
-`netstat -ano | findstr :527` showed no listener on 5273/5274/5275, no
-node/serve/python process was listening on any port, `Stop-Process -Name serve`
-found nothing to stop, and all three ports answered nothing.
+Backend for every run below: the free `SYNTHETIC=1` one on :8099. Playwright
+drove its own Vite on :5273, and from the fourth pass onward that was **verified
+rather than assumed** — `playwright.config.ts` sets `reuseExistingServer: true`
+and a stale Vite would have made every capture a picture of an older bundle.
+
+---
+
+# FIFTH PASS — `c2966e7`, 2026-09-05
+
+## Nothing moved, and nothing was regenerated
+
+```
+$ cd frontend
+$ npx playwright test e2e/visual/run-canvas.spec.ts
+# exit 0  ·  3 passed (21.9s)
+
+  ✓ :204  looks the same idle, and the card shell resolves as authored
+  ✓ :272  with a branch in flight, and still animates
+  ✓ :390  paused at a gate
+```
+
+**Green on the first run, so `--update-snapshots` was never invoked** and the
+three baselines are byte-for-byte the fourth pass's:
+
+| PNG | md5, unchanged |
+| --- | --- |
+| `run-canvas-idle-chromium-win32.png` | `c0372c68b79f5862cf423d8f59bbaef1` |
+| `run-canvas-running-chromium-win32.png` | `68995bbcb458e3df2ce9f7bbd0789baf` |
+| `run-canvas-gate-waiting-chromium-win32.png` | `2833bddbbbe40cbd554d9121838366e3` |
+
+That is the right answer and it was worth checking rather than assuming. Round
+six inset the report sheet and the reopen control by an overlay rail's width at
+≤ 1180 and ≤ 860 (`--rail-cover-*`) and humanised the failing node card's error
+text. The first is geometry outside these crops — they photograph the
+`.validator-flow` canvas, and the sheet is not in it. The second **is** inside
+them in principle, since the node card is on the canvas; it did not move a pixel
+because the crops are of an idle canvas, a running branch and a gate pause, none
+of which has a failed node in it.
+
+`e2e/visual/builder-canvas.spec.ts` was also green, 16/16, with its sixteen md5s
+identical before and after — five passes, five greens, no regeneration in any.
 
 ---
 

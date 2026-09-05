@@ -1,5 +1,5 @@
 $ git diff main...HEAD --stat -- src/brief_crew/schemas src/brief_crew/validator_guardrails.py src/brief_crew/validator_flow.py
-# RV3 FOURTH PASS, branch run-shell/cast at 8ae40ec, merge-base 6291fee, 2026-09-05T18:30:28+08:00
+# RV3 FIFTH PASS, branch run-shell/cast at c2966e7, merge-base 6291fee, 2026-09-05T19:10:16+08:00
 
 <<< end of output (empty above means no diff) >>>
 
@@ -10,8 +10,6 @@ $ git diff main...HEAD -- src/brief_crew/config.py | grep -E "RUBRIC|FLOOR|CONFI
 $ git diff main...HEAD --stat -- src/brief_crew/config.py
 <<< end of output (empty means config.py has no diff at all) >>>
 
-Four passes, four empty answers. The only verdict-shaped thing this branch
-added is a THIRD real-serializer verdict frame (INSUFFICIENT_EVIDENCE with a
-listed floor) which T1.1's capture replays - a fixture and a test
-(tests/events/test_verdict_frame.py, frontend/tests/fixtures/backendVerdictFrames.json),
-not a change to anything that computes a verdict.
+Five passes, five empty answers. Round six humanised the node card's error
+text, which is frontend/src/trace/interpret.ts reshaping a string the
+backend already sent - no verdict, no floor and no constant moved to do it.

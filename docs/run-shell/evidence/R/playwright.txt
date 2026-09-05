@@ -1,3 +1,28 @@
+# ================================================================
+# FIFTH PASS (c2966e7) WAS TARGETED. THE FULL SUITE BELOW IS 8ae40ec's.
+# ================================================================
+#
+# Round six changed five frontend files and no test, fixture or Python, so
+# the fifth pass re-ran the four specs it could reach and cited this run for
+# R1 rather than pretending to a sweep it did not do. What the fifth pass
+# measured at c2966e7, all green:
+#
+#   e2e/visual/run-canvas.spec.ts       3/3, 21.9s, NO regeneration
+#   e2e/visual/builder-canvas.spec.ts  16/16, 41.1s, no regeneration
+#   e2e/cast.spec.ts + studio.spec.ts  17/17, 2.9m
+#   e2e/cast-perf.spec.ts alone         2/2, 1.8m  (T2.8 passes)
+#   npx vitest run                     93 files / 1987 tests
+#   npx vue-tsc -b --force             exit 0
+#   npm run build                      exit 0, 614ms
+#   node scripts/contrast-audit.mjs    exit 0, 236 pairings, 0 failing
+#
+# 38 Playwright tests across four specs, zero failures. Of the three reds in
+# the full run below, cast-perf.spec.ts:550 now passes and the other two are
+# the builder drag pair - one proved pre-existing on main
+# (evidence/R/builder-1227.md), one that passes when run alone.
+#
+# ================================================================
+
 $ npx playwright test        # from frontend/, the WHOLE suite, both projects
 # RV3 FOURTH PASS, branch run-shell/cast at 8ae40ec
 # npx playwright test exit code: 1   (163 tests: 160 passed, 3 failed, 0 skipped, 12.8m)

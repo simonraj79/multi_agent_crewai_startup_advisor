@@ -1,4 +1,10 @@
 $ .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
+# CARRIED INTO THE FIFTH PASS UNCHANGED. Round six (c2966e7) changed five
+# frontend files and no Python at all - evidence/R/diff-stat.txt proves it
+# with an empty `git diff 16f3be5..HEAD -- src/` - so this measurement, taken
+# at 8ae40ec, is still the current one. Re-running it would have produced the
+# same 2544 over byte-identical code.
+#
 # RV3 FOURTH PASS, from the repo root D:\MultiAgentSystem
 # branch run-shell/cast at 8ae40ec, 2026-09-05, Windows 11, Python 3.13.5, CrewAI 1.15.18
 # exit code: 0

@@ -9,7 +9,7 @@ at the scope gate, one at the verdict gate, all inside the synthetic double's ow
 96–97 frames, and S3 asks for 119; a revise is a reply the console really offers and
 the double really models, so the run is longer rather than the number relaxed.
 
-- captured at: 2026-09-05T10:37:18.064Z
+- captured at: 2026-09-05T11:04:35.516Z
 - frames the run emitted (`seq`): **152** (S3 floor: 119)
 - stream line: `connected seq 152 0 dropped`
 - trace rows: **44** = 44 mounted + 0 folded behind
@@ -17,7 +17,7 @@ the double really models, so the run is longer rather than the number relaxed.
 - trace rail badge: **44**
 - rows audited after expanding the fold: **44**
 - longest line: **106** chars (budget 140)
-- dialogue reveal settled: **yes** after 544ms at 1724 rendered characters
+- dialogue reveal settled: **yes** after 529ms at 1724 rendered characters
 - disclosures open by default: **0** (asserted below)
 
 The stream line carries the run's frame high-water mark (`seq N`) and the dropped

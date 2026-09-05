@@ -1,6 +1,7 @@
 $ git log --format='%h %ad %s' --date=iso -- docs/run-shell/SHELL-SCOPE.md frontend/src/studio.css
-# RV3 FOURTH PASS, branch run-shell/cast at 8ae40ec, 2026-09-05T18:30:47+08:00
+# RV3 FIFTH PASS, branch run-shell/cast at c2966e7, 2026-09-05T19:13:20+08:00
 
+c2966e7 2026-09-05 19:00:52 +0800 fix(run-shell): the sheet steps aside for an overlay rail, and the node card's error is humanised and word-clipped
 8ae40ec 2026-09-05 18:19:48 +0800 fix(run-shell): the bun crest replaces the halo, the trace seam is a drawn edge, the drawer scrolls, the way back lives on the workflow well, and the sheet is isolated
 fec004d 2026-09-05 17:56:58 +0800 fix(shell): the report sheet and the control rail are opaque; the perf spec grades medians of alternating arms
 601baef 2026-09-05 17:19:27 +0800 fix(run-shell): the run console drops its four backdrop blurs, and T2.8 measures the console against a hidden-console control
@@ -23,12 +24,11 @@ b1a9c19 2026-09-01 18:58:03 +0800 feat(auth): sign in with Google, and own every
 ===========================================================================
 The two first-commits on this branch, isolated
 ===========================================================================
-$ git log --reverse --format='%h %ad %s' --date=iso main..HEAD -- docs/run-shell/SHELL-SCOPE.md | head -1
 fcdbadf 2026-09-05 14:09:00 +0800 docs(run-shell): the shell scope, proposed before it is built
-$ git log --reverse --format='%h %ad %s' --date=iso main..HEAD -- frontend/src/studio.css | head -1
 fd84f57 2026-09-05 14:25:50 +0800 feat(shell): a token layer the rails inherit, and a phone the console fits on
 
 T3.1 holds and cannot stop holding: the scope document's first commit
 precedes the first studio.css change on this branch by sixteen minutes and
-fifty seconds. studio.css has been touched in four rounds since and the
-ORDER is a fact about the first two commits, which no later edit can alter.
+fifty seconds. studio.css has now been touched in five rounds since - the
+last of them adding the --rail-cover-* variables - and the ORDER is a fact
+about the first two commits that no later edit can alter.

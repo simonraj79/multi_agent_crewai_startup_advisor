@@ -1,18 +1,18 @@
 $ grep -rniE "Scoper|Market Analyst|Sentiment|Feasibility|Synthesist|Reporter|market_task|scope_idea|research_market|MarketCrew|demand|headroom" frontend/src/characters frontend/src/trace frontend/src/components/AgentCharacter.vue frontend/src/composables/useRunChoreography.ts
-# RV3 FOURTH PASS, from the repo root, branch run-shell/cast at 8ae40ec, 2026-09-05T18:30:19+08:00
+# RV3 FIFTH PASS, from the repo root, branch run-shell/cast at c2966e7, 2026-09-05T19:09:41+08:00
 
-frontend/src/composables/useRunChoreography.ts:137: * Deliberately generous rather than clever: `Scoper` passes on the capital and
+frontend/src/composables/useRunChoreography.ts:138: * Deliberately generous rather than clever: `Scoper` passes on the capital and
 
 ---------------------------------------------------------------------------
-RV3's judgement of every hit  (fourth pass, 8ae40ec)
+RV3's judgement of every hit  (fifth pass, c2966e7)
 ---------------------------------------------------------------------------
 
-1 hit, 0 product hits. Re-run and re-judged for the fourth time, not carried
-forward - round five rewrote 61 lines of frontend/src/characters/pip.ts (the
-bun crest replaces the halo), which is exactly the kind of edit that types a
-role name into a shape table by accident.
+1 hit, 0 product hits. Re-run and re-judged for the fifth time. Round six
+touched TWO of the four files this grep covers - interpret.ts (+27, the node
+card's error text is humanised and word-clipped) and useRunChoreography.ts
+(+24) - which is exactly when a role name gets typed into a humaniser.
 
-  frontend/src/composables/useRunChoreography.ts:137
+  frontend/src/composables/useRunChoreography.ts:138
 
     " * Deliberately generous rather than clever: `Scoper` passes on the
       capital and `market research analyst` passes on the spaces. What it
@@ -31,22 +31,29 @@ role name into a shape table by accident.
   No role list, no lookup, no branch on any name. Deleting the word
   `Scoper` from the comment would change no behaviour. Not product logic.
 
+  Worth saying about round six specifically: the error humaniser it added
+  to interpret.ts turns 'SYNTHETIC_FAILURE' into 'Synthetic failure' by
+  RESHAPING whatever matches a regex, not by looking a token up -
+  interpret.ts:192 is /[A-Z][A-Z0-9_]{3,}/g and :195 the same shape at
+  the front of a sentence, handed to utils/humanise.ts::humaniseCode. A
+  lookup table of known codes would have shown here as a hit. There is none.
+
 VERDICT: G2 PASS. No Idea Validator role, task name, crew name, node id or
 dimension name reaches the logic of frontend/src/characters/*,
 frontend/src/trace/*, AgentCharacter.vue or useRunChoreography.ts.
 
-Files covered by the grep (all of them, none excluded) at 8ae40ec:
+Files covered by the grep (all of them, none excluded) at c2966e7:
      612 frontend/src/characters/pip.ts
-     860 frontend/src/trace/interpret.ts
+     879 frontend/src/trace/interpret.ts
      106 frontend/src/trace/speech.ts
      197 frontend/src/components/AgentCharacter.vue
-    1024 frontend/src/composables/useRunChoreography.ts
-    2799 total
+    1046 frontend/src/composables/useRunChoreography.ts
+    2840 total
 
-Growth across the four passes, which is why this is re-run and not cited:
-  pip.ts                  526 -> 526 -> 577 -> 612
-  interpret.ts            783 -> 783 -> 860 -> 860
-  AgentCharacter.vue       92 -> 197 -> 197 -> 197
-  useRunChoreography.ts   958 -> 1024 -> 1024 -> 1024
+Growth across the five passes, which is why this is re-run and not cited:
+  pip.ts                  526 -> 526 -> 577 -> 612 -> 612
+  interpret.ts            783 -> 783 -> 860 -> 860 -> 879
+  AgentCharacter.vue       92 -> 197 -> 197 -> 197 -> 197
+  useRunChoreography.ts   958 -> 1024 -> 1024 -> 1024 -> 1046
 
 No test fixture was excluded, because the grep's paths contain no fixtures.

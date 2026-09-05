@@ -1,21 +1,192 @@
 # RV3 — verification report
 
-Four passes. **The fourth, at `8ae40ec`, is the current verdict**; the third
-(`601baef`), second (`16f3be5`) and first (`27b256e`) are kept below it under
-their own headings, because what each round fixed is only legible against what
-the previous pass found.
+Five passes. **The fifth, at `c2966e7`, is the current verdict**; the fourth
+(`8ae40ec`), third (`601baef`), second (`16f3be5`) and first (`27b256e`) are kept
+below it under their own headings, because what each round fixed is only legible
+against what the previous pass found.
 
 RV3 built none of this work and edited no product code. The one product-tree
-change RV3 is permitted, and made, is regenerating the PNGs under
+change RV3 is permitted is regenerating the PNGs under
 `frontend/e2e/visual/run-canvas.spec.ts-snapshots/` — two in the first pass, one
-in the second, all three in the third and again in the fourth, each named with a
-reason in [`evidence/R/baselines.md`](R/baselines.md) and each after the failing
-diff was recorded first.
+in the second, all three in the third and again in the fourth, and **none in the
+fifth**, each named with a reason in [`evidence/R/baselines.md`](R/baselines.md)
+and each after the failing diff was recorded first.
 
 `G1`, `G4`'s sheet and every `RC` row belong to other workers and are marked
 **NOT VERIFIED BY ME**. A missing artifact is recorded as **FAIL**, not as a
 pass with a note.
 
+---
+
+# FIFTH PASS — `c2966e7`, 2026-09-05 (targeted)
+
+A **targeted** re-run of the surfaces round six touched, not a full sweep. The
+full Playwright suite was last run at `8ae40ec` (163 tests, 160 passed, 3 failed,
+0 skipped, 12.8 m) and R1 below cites it explicitly rather than pretending
+otherwise.
+
+Round six is five files: `ReportPanel.vue`, `WorkflowNode.vue`,
+`useRunChoreography.ts`, `studio.css` (+46, the new `--rail-cover-*` variables)
+and `interpret.ts` (+27, the error humaniser). No Python.
+
+## 0. No stale dev server, checked before anything ran
+
+`playwright.config.ts` sets `reuseExistingServer: true`, so a Vite left over
+from an earlier session would serve an older bundle to every capture and nothing
+would say so.
+
+```
+listeners on 5273 / 5274 / 5275 / 8099 / 8791   -> all free, none to stop
+GET http://127.0.0.1:{5273,5274,5275,8099,8791} -> no answer, all five
+```
+
+## 1. What was run, and what it said
+
+| | |
+| --- | --- |
+| `e2e/visual/run-canvas.spec.ts` | **3/3 passed, 21.9 s, NO regeneration** — the three baselines are byte-for-byte the fourth pass's |
+| `e2e/visual/builder-canvas.spec.ts` | **16/16 passed, 41.1 s, no regeneration** — md5s identical before and after |
+| `e2e/cast.spec.ts` + `e2e/studio.spec.ts` | **17/17 passed, 2.9 m** — rewrote every T1/T2/T3/S capture |
+| `e2e/cast-perf.spec.ts` alone | **2/2 passed** — T2.8's graded comparison passes |
+| Vitest | **93 files, 1987 tests, 0 failed**, exit 0 |
+| Types | `npx vue-tsc -b --force` — **exit 0** |
+| Build | `npm run build` — **exit 0**, built in 614 ms |
+| Contrast | `node scripts/contrast-audit.mjs` — **exit 0**, 236 pairings, 234 in scope, **0 failing** |
+
+Backend: `SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099` with
+`CREDENTIALS_MASTER_KEY`, `BUILDER_ALLOW_GATELESS_GRAPHS=1`,
+`RUN_RATE_LIMIT_MAX_RUNS=100`, `MCP_ALLOW_INSECURE_LOCAL=1`, `SKILLS_ROOT` and
+the six-mode `SYNTHETIC_FAILURE`. It survived the whole pass this time
+(`/healthz` 200 after the cast run). Money spent: **zero**.
+
+## 2. T2.8 — PASSES, and here is every arm and every sample
+
+`over34ms(painted) ≤ over34ms(hidden)` on the **median** of six alternating arms,
+and `p95(painted) ≤ p95(hidden) + 4 ms`. From `evidence/T2/perf.json`:
+
+| arm | samples (over 34 ms) | median over 34 ms | median p95 | median max | intervals |
+| --- | --- | ---: | ---: | ---: | ---: |
+| **idle** — page at rest | — (single, 600 intervals) | **0** | 17.8 | 20.5 | 600 |
+| **hidden** — replay, console `visibility: hidden` | 3, 4, 4 | **4** | 18.2 | 66.4 | 554 |
+| **painted** — identical replay, everything drawn | 4, 4, 3 | **4** | 18.3 | 65.2 | 553 |
+
+**`addedDrops = 0`, `p95Delta = 0.1 ms` against 4 ms of headroom,
+`passes: true`.** Live arm, recorded and not graded: 152 frames, p50 16.6,
+p95 18.1, max 69.0, 3 over 34 ms.
+
+The painted arm's absolute p95 of 18.3 ms also clears the **retired** bar of
+≤ 20 ms; only its 4 drops keep `meetsLegacyBar` false, and the hidden control
+drops the same 4 with nothing of ours painted, which is the whole reason the
+criterion was amended.
+
+**Across five measurements of this comparison on three commits:**
+
+| commit | context | hidden median | painted median | addedDrops | verdict |
+| --- | --- | ---: | ---: | ---: | :---: |
+| `601baef` | alone | 4 | 5 | 1 | FAIL |
+| `8ae40ec` | alone (1st) | 3 | 3 | **0** | PASS |
+| `8ae40ec` | full suite | 3 | 4 | 1 | FAIL |
+| `8ae40ec` | alone (2nd) | 6 | 7 | 1 | FAIL |
+| **`c2966e7`** | **alone** | **4** | **4** | **0** | **PASS** |
+
+RV3 grades T2.8 **PASS** on this pass's measurement, and says plainly what that
+is worth: the effect being measured is 0–1 dropped frames out of ~550 intervals,
+and the control's own median has ranged 3 to 6 across five runs on one machine.
+The honest summary is that **the console's own cost is at or below the noise
+floor of the instrument**, which is what the amended criterion asks and is a
+weaker claim than "zero".
+
+## 3. The two captures the round was about
+
+**`T3/after-1180.png` — fixed.** The sheet now ends clear of the control rail
+instead of running under it. Its **`Copy Markdown` and `✕` row is visible**, all
+six score bars are complete with their `3/5` readouts inside the sheet, and
+nothing is cut mid-word at the right edge. At `8ae40ec` this same capture had the
+bars running under the rail, the header row gone entirely, and the body cut at
+"…was called and r". The `--rail-cover-*` inset does what it says.
+
+*(One thing unchanged and not a regression: the sticky `2 CITED SOURCES` footer
+sits over the scrolling body, so the paragraph continues underneath it. That is
+the same at 1440 and in every earlier pass.)*
+
+**`S/failure.png` — the raw code is gone.** The failing node card's error now
+reads `SyntheticRefusal: Synthetic failure: fm_cast_refusal attempt 1
+(SyntheticRefusal)`. At `8ae40ec` it read `SYNTHETIC_FAILURE:` in that position —
+the observation RV3 filed as fourth-pass note 2, **now closed**. The text wraps
+at word boundaries onto three lines with no mid-word cut, and the trace rail's
+matching row clips with an ellipsis at a word boundary
+(`…: fm_cast_refusal…`). One `Run failed` banner, not stacked; the phase lane
+names the failing step; the status rail says `Failed`.
+
+Two things still visible and still not defects: the lane label renders the
+node id upcased as `FM_CAST_REFUSAL`, which is the **author's own** id from the
+spec's graph rather than an internal code; and the four nodes are drawn on top
+of one another because that spec gives every node `position: {x: 0, y: 0}`.
+
+## 4. The table
+
+Rows this pass re-measured are marked *(re-run)*. Every other row **carries its
+fourth-pass verdict unchanged**, and says so — round six touched five frontend
+files and no test, fixture or Python, so a row it cannot reach is not re-argued.
+
+| Id | Verdict | Evidence | What RV3 saw at `c2966e7` |
+| --- | :---: | --- | --- |
+| **G1** | NOT VERIFIED BY ME | `evidence/G1/` | RV2's. Untouched in all five passes. |
+| **G2** | **PASS** *(re-run)* | `G2/grep.txt` | **1 hit, 0 product hits** — the `readsAsRole()` JSDoc example, now at `:138`. Re-run because round six touched **two** of the four files it covers. Worth naming: the new error humaniser turns `SYNTHETIC_FAILURE` into `Synthetic failure` by **reshaping whatever matches `/\b[A-Z][A-Z0-9_]{3,}\b/`** (`interpret.ts:192`), not by looking a token up — a lookup table of known codes would have shown here as a hit, and there is none. |
+| **G3** | **PASS** *(re-run)* | `G3/vitest.txt`, `R/playwright.txt` | `cast.spec.ts:998`'s reload check green (15.3 s); the 20-role cross-process snapshot green inside 1987/1987. |
+| **G4** | NOT VERIFIED BY ME | `G4/roles-sheet.png` | RC's Q4. |
+| **T1.1** | NOT VERIFIED BY ME | both report headers, `T1/cold-read.md`, `RC/answers.md` | `cast.spec.ts:1682` green; both headers rewritten this pass. The verdict is the orchestrator's grading of RC's answers. |
+| **T1.2** | **PASS** *(re-run)* | `T1/vitest.txt`, `T3/after-1180.png` | Unit green, and now legible at 1180 as well as 1440: `NEEDS WORK 6.0/10`, `Moderate confidence · 62%`, `Provisional · not a final answer`, `Thin evidence · Demand and Headroom over free`, every dimension in words with a `thin` chip where the evidence is thin. |
+| **T1.3** | **PASS** *(re-run)* | `R/playwright.txt`, `S/failure.png`, `T1/enum-audit.md` | `cast.spec.ts:2095` green, and the fourth pass's one observation is closed: the raw `SYNTHETIC_FAILURE` is off the node card too, not just out of the trace line. |
+| **T1.4** | **PASS** *(carried, pass 4)* | `T1/vitest.txt` | Unknown floor code / dimension key / band render as words; green inside this pass's 1987/1987. |
+| **T1.5** | **PASS** *(re-run)* | `T1/data-layer-diff.txt` | All three diffs **empty**, `config.py` untouched. Five passes, five empty answers. |
+| **T2.1** | **PASS** *(re-run)* | `T2/interpretation-vitest.txt`, `T2/trace-completed.png` | `cast.spec.ts:1183` green in a browser; the unit half green inside 1987/1987. |
+| **T2.2** | **PASS** *(re-run)* | `T2/vocabulary.md` | The serializer's ladder has never changed on this branch. `interpret.ts` gained 27 lines — an error humaniser, not a new row — and all sixteen `FrameKind` values still have a row. |
+| **T2.3** | NOT VERIFIED BY ME | `T2/characters-32px.png`, `T2/states-32px.png` | RC's Q4; the sheets predate the bun crest (note 3). |
+| **T2.4** | **PASS** *(carried, pass 4)* | `CHARACTERS.md`, `G3/vitest.txt` | Round six did not touch `pip.ts` or the identity ladder. |
+| **T2.5** | **PASS** *(re-run)* | `T2/no-timers.txt` | Re-run because round six added 24 lines to the one file the hits live in. Still **exactly three**, now at `:254`, `:285`, `:821`; `frontend/src/characters/` and `AgentCharacter.vue` return **zero** for all five clock routes. |
+| **T2.6** | **PASS** *(re-run)* | `T2/tie-in.png` | `cast.spec.ts:907` green (2.9 s). |
+| **T2.7** | **PASS** *(re-run)* | `T2/reduced-motion.png` | `:1062` and `:1101` green. |
+| **T2.8** | **PASS** *(re-run)* | `T2/perf.json` | Section 2. `addedDrops = 0`, `p95Delta = 0.1`, `passes: true`. |
+| **T2.9** | **PASS** *(carried, pass 4)* | `T2/rowers-grep.txt`, `T2/node-running.png` | The three real class names return **zero** across `frontend/src`; round six did not reintroduce them (`WorkflowNode.vue` +17 lines, all error text). |
+| **T3.1** | **PASS** *(carried, pass 4)* | `T3/scope-order.txt` | A fact about the branch's first two commits; six rounds of `studio.css` edits cannot alter it. |
+| **T3.2** | **PASS** *(re-run)* | `T3/literals.txt` | `designTokens.spec.ts` green inside this pass's 1987/1987, after a round that added 46 lines of `studio.css` and new `--rail-cover-*` variables. |
+| **T3.3** | **PASS** *(re-run)* | `T3/contrast.md`, `T3/contrast-rv3-rerun.txt` | **exit 0**, 236 pairings, 234 in scope, **0 failing**, byte-identical to the committed file. The `--rail-cover-*` work is geometry, not colour, and the sheet measures exactly as it did. |
+| **T3.4** | **PASS** *(re-run)* | all `before-*` and `after-*` | All four "after" captures rewritten and looked at; 1180 is the one that changed and it changed for the better (section 3). |
+| **T3.5** | **PASS** *(re-run)* | `T3/builder-visual.txt` | **16/16 green, no regeneration**, md5s identical. Five passes, five greens, no regeneration in any. |
+| **S1–S6** | **PASS** *(re-run)* | `S/*.png`, `S/long-run.md` | All ten `cast.spec.ts` tests green. `S/failure.png` is section 3. |
+| **R1** | **FAIL** | `R/*` | **This pass is targeted, and R1 is the one row that needs the full suite.** Cited from `8ae40ec`: **163 tests, 160 passed, 3 failed, 0 skipped, 12.8 m** — `builder.spec.ts:1227` (proved pre-existing on `main`, `R/builder-1227.md`), `builder.spec.ts:1552` (item-44, passes alone) and `cast-perf.spec.ts:550` (which passes alone, and passes again here). Everything targeted at `c2966e7` is green: **38 Playwright tests across four specs, 1987 Vitest, `vue-tsc` 0, `npm run build` 0, contrast 0.** On this evidence the only red a full suite would still show is the builder drag pair, one of which is not this branch's. |
+| **R2** | **PASS** *(re-run)* | `R/diff-stat.txt` | Four forbidden surfaces each **NO DIFF**; `git diff 16f3be5..HEAD -- src/` **empty** — no `src/brief_crew` file has changed since the first pass, six rounds ago. |
+
+## 5. Things a reader should know that no criterion asks for
+
+1. **The Python suite was not re-run this pass**, and does not need to be: no
+   Python changed, which `R/diff-stat.txt` proves with an empty
+   `git diff 16f3be5..HEAD -- src/`. `R/python.txt` therefore carries the fourth
+   pass's **2544 / OK / 6 skipped** and says so at the top.
+2. **`builder.spec.ts:1227` is pre-existing, and measured.**
+   `evidence/R/builder-1227.md`: five runs at HEAD and five on a worktree of
+   `main`, one shared backend, byte-identical spec, and the `main` arm proved to
+   be `main`. **HEAD 0/5 pass, `main` 1/5 pass**, identical call log — the
+   problems dock's `problem-message` span intercepts pointer events over the
+   attach port. It should be split out of remaining-work item 44, which records
+   this class as flaky-but-passing-alone.
+3. **Three artifacts still predate the character they show.** `RC/answers.md`
+   and `T1/cold-read.md` are timestamped 16:33, and `G4/roles-sheet.png`,
+   `T2/characters-32px.png` and `T2/states-32px.png` were last written before the
+   bun crest replaced the halo. G4, T2.3 and T1.1 all turn on a reader looking at
+   those; they should be regenerated and re-read before they are graded. None is
+   RV3's.
+4. **`benchmarks/perf/canvas.json` is modified in the working tree**, by
+   `e2e/builder-perf.spec.ts` on the fourth pass's full run. A suite side-effect,
+   left as written.
+5. **Tally: 26 PASS, 1 FAIL, 4 NOT VERIFIED BY ME** over the 31 rows.
+   Pass 4 was 25 / 2 / 4; pass 3 was 25 / 2 / 4; pass 2 was 22 / 5 / 4; pass 1
+   was 19 / 8 / 4. **T2.8 has gone green**, and the single remaining FAIL is
+   **R1** — which now rests on one test proved pre-existing on `main` and one
+   that passes when run alone.
+
+---
 ---
 
 # FOURTH PASS — `8ae40ec`, 2026-09-05

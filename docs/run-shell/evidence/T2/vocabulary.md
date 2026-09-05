@@ -311,3 +311,27 @@ assertion that the trace is one short human sentence per row
 (`cast.spec.ts:1183`) passes.
 
 **T2.2 PASS, fourth pass.**
+
+### Fifth pass, `c2966e7`
+
+Re-checked, because round six added 27 lines to `frontend/src/trace/interpret.ts`
+— the file this table describes.
+
+What it added is an **error humaniser**, not a row: `errorSentence()` now runs
+its first sentence through `humaniseErrorText()`, which strips a leading
+`SHOUTY_CODE:` prefix and reshapes any remaining `/\b[A-Z][A-Z0-9_]{3,}\b/`
+through `utils/humanise.ts::humaniseCode`. So the two `error` rows and the
+`node_state` / `agent` error rows still produce the sentences this table names;
+what changed is that the `{first sentence}` inside them can no longer carry a
+shouted code. `evidence/S/failure.png` is the proof from the other side — the
+failing node card read `SYNTHETIC_FAILURE:` at `8ae40ec` and reads
+`Synthetic failure:` now.
+
+The serializer's ladder has never changed on this branch
+(`git diff main...HEAD -- src/brief_crew/events/` is empty), all sixteen
+`FrameKind` values still have a row, and `traceInterpretation.spec.ts` +
+`traceRow.spec.ts` are green inside this pass's `npx vitest run`
+(93 files / 1987 tests). The browser assertion that every trace row is one short
+human sentence (`cast.spec.ts:1183`) passes.
+
+**T2.2 PASS, fifth pass.**

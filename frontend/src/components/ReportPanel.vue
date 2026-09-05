@@ -297,10 +297,32 @@ async function copyReport(): Promise<void> {
   overflow: hidden;
   background: var(--surface-overlay);
   border-top: 1px solid var(--border-default);
-  -webkit-backdrop-filter: var(--blur-rail);
-  backdrop-filter: var(--blur-rail);
   animation: report-rise var(--motion-medium) var(--ease-out);
 }
+
+/* NO `backdrop-filter` here, and its removal is a MEASUREMENT rather than a
+   preference.
+
+   W4's round-three bisect (`docs/run-shell/evidence/T2/perf-notes.md` §2) ran
+   the 131-frame replay once per suppressed suspect. Every other arm moved the
+   count of over-budget frames by at most 13; suppressing every
+   `backdrop-filter` moved it from **77 to 13**, and p95 from 81.8 ms to
+   28.3 ms. Headless Chromium rasterises in software here and a blur re-reads
+   everything behind the element on every frame that touches it.
+
+   And it was buying nothing. This surface is 94% opaque, so the blur was
+   filtering a background that is already almost entirely covered - the
+   coordinator's phrase for it is "a twentieth of a pixel". The alpha is
+   deliberately NOT raised to compensate: there is nothing to compensate for at
+   this opacity, and every token that could carry the rise is shared with the
+   builder, whose sixteen baselines would move to correct a difference nobody
+   can see.
+
+   `--blur-panel` and `--blur-rail` still exist and the builder still uses both
+   (its minimap, its two dialogs, its shortcut sheet) - see `docs/design.md`
+   §3. A design canvas is still; a run console is not, and that is the whole
+   difference. */
+
 
 @keyframes report-rise {
   from { opacity: 0; transform: translateY(12px); }

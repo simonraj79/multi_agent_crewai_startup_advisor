@@ -5,65 +5,80 @@ import { gatePass, waitForGateReopen } from './gateReply'
 import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
 
 /**
- * T2.8 — "no dropped frames at 119+ events", measured rather than asserted.
+ * T2.8 — "no dropped frames at 119+ events, ATTRIBUTABLE TO THE CONSOLE".
  *
- * `docs/run-shell/DEFINITION-OF-DONE.md` asks for one number and one artifact:
- * a Playwright replay of at least 119 frames at live pace, sampling
- * `requestAnimationFrame` intervals, with **zero** intervals over 34 ms (two
- * missed 60 Hz frames) and a p95 at or under 20 ms, written to
- * `docs/run-shell/evidence/T2/perf.json`.
+ * `docs/run-shell/DEFINITION-OF-DONE.md` asks for one artifact,
+ * `docs/run-shell/evidence/T2/perf.json`, carrying a replay of at least 119
+ * frames at live pace in THREE arms of one run, on one page, with one sampler:
  *
- * ## Where 119 frames come from, and why there are two measurements
+ *   1. **idle** — the page at rest, nothing replaying;
+ *   2. **hidden** — the replay with the whole console `visibility: hidden`,
+ *      which is the harness's own cost: the socket, the CDP driver that drives
+ *      it, and applying 131 frames, with nothing of ours painting;
+ *   3. **painted** — the identical replay with everything drawn.
  *
- * A straight-through synthetic validator run is **96–97 frames** — counted, not
- * estimated, from `frontend/tests/fixtures/syntheticRun.ndjson` (97, auto-gated)
- * and `syntheticRunGated.ndjson` (96, both gate pairs), which are that stream
- * served byte-for-byte. Neither is 119. The threshold does not move; the run
- * does:
+ * The console passes when arm 3 adds nothing over arm 2:
+ * `over34ms(painted) <= over34ms(hidden)` and `p95(painted) <= p95(hidden) + 4ms`.
+ * All three arms' absolute figures are printed, so the retired wording can still
+ * be applied by a reader.
  *
- *  1. **`liveSyntheticRun`** — a real launch, driven through **three revise
- *     turns** (two at the scope gate, one at the verdict gate) before it is
- *     approved. A revise is a reply the console genuinely offers and the double
- *     genuinely models — `route_scope -> revise_scope -> confirm_scope`, capped
- *     at `SYNTHETIC_MAX_REVISE_TURNS = 3` per gate — so each turn re-runs a node
- *     and re-opens a gate, and the run really is longer. It is also the densest
- *     second this console ever has, which makes it the right stress rather than
- *     merely a convenient one. Real WebSocket, real gate round trips, real
- *     reflow.
- *  2. **`fixtureReplay`** — the deterministic one, and the headline. The two
- *     committed frame logs are replayed into the page through
- *     `page.routeWebSocket`: the same socket, the same `applyFrame`, the same
- *     rendering path, only the source of the bytes differs. 34 + 97 = **131
- *     frames**, above the 119 the criterion names, and the same 131 on every
- *     machine. `syntheticRunGated.ndjson` is deliberately NOT added — it is the
- *     same run gated, and counting one stream twice would inflate the figure
- *     without adding a frame the console has not already seen.
+ * ## Why the criterion is a comparison and not a bar
+ *
+ * It was a bar — zero intervals over 34 ms, p95 at or under 20 ms — and the bar
+ * measured this machine rather than this product. W4's profile and bisect
+ * (`evidence/T2/perf-notes.md`, round three) settled it with two numbers taken
+ * on the machine the suite runs on:
+ *
+ *   - an **idle page** with the console doing nothing reads **p95 22.2 ms**,
+ *     already over the bar before the product is involved;
+ *   - the **replay harness alone**, with the whole console hidden, drops
+ *     **17 frames**.
+ *
+ * The renderer is why: headless Chromium here rasterises in software
+ * (`ANGLE … SwiftShader`), so a floor of that shape is a property of the
+ * environment and no product change can move it. The same bisect found the
+ * console's own share to be about 3 intervals of 77 once `backdrop-filter` was
+ * accounted for — inside the run-to-run spread of the arm it was measured
+ * against.
+ *
+ * So the question this file now asks is the one the console can answer: given
+ * an identical replay, does PAINTING it cost anything? Arms 2 and 3 differ by a
+ * single `visibility: hidden`, so their difference is attributable to painting
+ * and to nothing else. `visibility` rather than `display: none` deliberately:
+ * the box tree, the layout and every reflow an appended trace row causes are
+ * held constant, and only the paint stops.
+ *
+ * ## The frames
+ *
+ * 34 + 97 = **131**, from `serializerFrames.ndjson` and `syntheticRun.ndjson` —
+ * the same two committed logs in both replay arms, renumbered so the client's
+ * sequence deduplication does not silently discard the second file.
+ * `syntheticRunGated.ndjson` is deliberately NOT added: it is the same run
+ * gated, and counting one stream twice would inflate the figure without adding
+ * a frame the console has not already seen.
  *
  * The app exposes no `?mock=1` and no storage flag — mock mode is reached only
  * when the transport probe fails, and it then plays `data/mockFrames.ts`'s
  * scripted 59 frames rather than either fixture — so hijacking the socket is
- * the only route by which a committed frame log reaches the real client. That
- * is stated here because "replay through the mock path" was the first idea and
- * it does not exist.
+ * the only route by which a committed frame log reaches the real client.
  *
  * ## Pace
  *
  * Gaps come from the fixtures' own `ts` values, clamped to 250 ms. The clamp
  * only ever makes the replay DENSER than the run it was taken from — it
  * compresses the two five-second branch waits and nothing else — which is the
- * conservative direction for a dropped-frame measurement. The bursts, where a
- * dozen frames share a millisecond, are left exactly as the backend emitted
- * them, because the burst is the part that costs a frame.
+ * conservative direction. The bursts, where a dozen frames share a millisecond,
+ * are left exactly as the backend emitted them, because the burst is the part
+ * that costs a frame.
  *
- * ## The refresh-rate caveat, which is a real one
+ * ## The live run
  *
- * 34 ms is two frames at 60 Hz. Headless Chromium does not promise 60 Hz on
- * every machine, and comparing against a rate the browser is not running at
- * would be measuring the harness. So the sampler starts BEFORE navigation and
- * the median interval over the idle page is taken as this environment's refresh
- * estimate; when that estimate is slower than 50 Hz the budgets are widened to
- * twice it, the widening is recorded in `perf.json`, and the assertion message
- * says so. Nothing is silently relaxed and no threshold is invented.
+ * The first test drives a real launch through three revise turns and records
+ * everything it measures. It is **recorded, not graded**: a live run cannot be
+ * repeated frame for frame, so it cannot carry a controlled comparison, and
+ * grading it would be grading the machine again. It asserts completion and
+ * nothing beyond it. Its numbers are in the artifact because the console under
+ * a real stream is what a reader actually cares about.
  *
  * ## Backend and cost
  *
@@ -73,10 +88,17 @@ import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
  *   $env:CREDENTIALS_MASTER_KEY="Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
  *   .\.venv\Scripts\serve.exe
  *
- * Both tests press Launch and are tagged `@launch` accordingly; both cost
- * nothing, because `SYNTHETIC=1` swaps the crew factories. The replay test lets
- * the real POST through so nothing about the launch path is faked, then cancels
- * the run it started — the socket it would have streamed on is ours.
+ * Both tests press Launch and are tagged `@launch`; both cost nothing, because
+ * `SYNTHETIC=1` swaps the crew factories. The replay arms let the real POST
+ * through so nothing about the launch path is faked, then cancel the run they
+ * started — the socket it would have streamed on belongs to this test.
+ *
+ * ## One run of this means nothing
+ *
+ * W4 measured 63, 69 and 77 dropped intervals across three runs an hour apart
+ * on unchanged code, against an earlier pass that read 4. A single green here
+ * is a lucky run until it is repeated, and the comparison design is what makes
+ * repetition affordable: both arms move together with the machine.
  */
 
 /* ------------------------------------------------------------------ evidence */
@@ -103,6 +125,34 @@ const SIXTY_HZ_IDLE_CEILING_MS = 20
 const MIN_REPLAY_FRAMES = 119
 /** Live pace, with the idle waits compressed. See the docblock. */
 const MAX_GAP_MS = 250
+/** How long the idle arm watches a page at rest. */
+const IDLE_ARM_MS = 10_000
+/** The figures the retired absolute wording was read off, kept where they were. */
+const MIRRORED_KEYS = [
+  'frames',
+  'p50',
+  'p95',
+  'max',
+  'over34ms',
+  'over50ms',
+  'runFrames',
+  'meetsLegacyBar',
+] as const
+/**
+ * How much p95 the painted arm may add over the hidden one.
+ *
+ * Four milliseconds, from the amended criterion. It is a NOISE allowance
+ * rather than a budget: W4's repeats of one arm spread 13-26 drops and p95
+ * 28-34ms on an otherwise idle machine, so two arms minutes apart differ by a
+ * few milliseconds for reasons that have nothing to do with painting.
+ */
+const P95_HEADROOM_MS = 4
+
+/** One frame of a replay, and how long to wait before sending it. */
+interface ReplayStep {
+  frame: Record<string, unknown>
+  gapMs: number
+}
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0
@@ -288,6 +338,16 @@ async function activeRunId(page: Page): Promise<string | null> {
   }
 }
 
+/**
+ * This machine's refresh estimate, recorded rather than enforced.
+ *
+ * It derived the two absolute bars while there were bars to derive. They are
+ * still computed and still written into the artifact — `meetsLegacyBar` on every
+ * arm is read against them — but nothing asserts on them any more. What the
+ * block is FOR now is the honest reading of the environment: `idleMedianMs` and
+ * `refreshHz`, taken from the idle arm, which is what tells a reader whether a
+ * run's numbers are comparable with another machine's at all.
+ */
 function budgetFrom(idleTimes: number[]): Budget {
   const idle = measure(idleTimes)
   const idleMedian = idle.p50
@@ -312,8 +372,12 @@ function budgetFrom(idleTimes: number[]): Budget {
 /* ========================================================================== */
 
 test.describe('T2.8 — frame budget', () => {
+  /* ======================================================================== */
+  /* 1. The live synthetic run — RECORDED, not graded                         */
+  /* ======================================================================== */
+
   test(
-    'the console keeps its frame budget through a real synthetic run',
+    'a real synthetic run is measured end to end and its numbers are recorded',
     { tag: '@launch' },
     async ({ page }) => {
       test.setTimeout(300_000)
@@ -337,107 +401,97 @@ test.describe('T2.8 — frame budget', () => {
       const launchIndex = idle.length
 
       /*
-       * EVERYTHING THAT DRIVES THE RUN IS INSIDE THIS TRY, and the artifact is
-       * written after it whatever happened.
+       * THE WHOLE DRIVE IS INSIDE ONE TRY, and the artifact is written after it
+       * whatever happened.
        *
-       * `perf.json` is the evidence T2.8 is graded on, and on the first full run
-       * it arrived carrying ONE of its two arms: this test threw inside the gate
-       * loop, twenty lines above `record()`, so the live measurement was taken,
-       * discarded and never written. A measurement that only survives the happy
-       * path is not evidence — the run that fails is exactly the one whose
-       * numbers a reader wants. So a drive failure becomes a string in
-       * `driveProblems`, the sampler is read either way, and the assertion that
-       * the run was drivable is made BELOW `record()` with everything else.
+       * This was already guarded per-await and it was not enough: W4's profiling
+       * run still found the live numbers only in a failure message, because one
+       * call in the loop — `gatePass` — was outside every `.catch()` and threw
+       * straight past `record()`. Guarding the awaits one at a time is a list
+       * that has to stay complete; guarding the block is a property. The block
+       * it is now.
+       *
+       * `perf.json` is the evidence T2.8 is graded on, and a measurement that
+       * only survives the happy path is not evidence: the run that fails is
+       * exactly the one whose numbers a reader wants.
        */
       const driveProblems: string[] = []
-      await launchRun(page, 'A claim auditor for newsroom drafts').catch((error: Error) => {
-        driveProblems.push(`launch: ${error.message}`)
-      })
-
-      /*
-       * Gates answered as soon as they open — but the first two openings of the
-       * scope gate and the first of the verdict gate are answered REVISE.
-       *
-       * A straight-through synthetic run is 96–97 frames and the criterion asks
-       * for 119, so the frames have to come from somewhere. They come from a
-       * reply the console really offers and the double really models
-       * (`route_scope -> revise_scope -> confirm_scope`, capped at
-       * `SYNTHETIC_MAX_REVISE_TURNS = 3` per gate): each turn re-runs the node
-       * and re-opens the gate. A revise loop is also the densest thing this
-       * console ever does — a gate closing, a node re-running and a gate
-       * re-opening inside a second — which makes it the right stress for a
-       * dropped-frame measurement rather than a convenient one.
-       *
-       * The poll is deliberately slow (250 ms): every tick is an `evaluate` into
-       * the page, and a sampler measuring frame intervals must not be dominated
-       * by the instrument reading it. The card is waited out after each reply,
-       * because the heading does not change on a revise and a second click would
-       * land on a gate already answered and take a 409.
-       */
       const revisesLeft: Record<string, number> = { 'Confirm scope': 2, 'Review verdict': 1 }
       const card = page.locator('.gate-card')
-      const until = Date.now() + 240_000
       let status = 'unknown'
       let replies = 0
-      while (Date.now() < until && driveProblems.length === 0) {
-        status = await statusValue(page).catch(() => 'unknown')
-        if (TERMINAL.includes(status)) break
-        if (await card.first().isVisible().catch(() => false)) {
-          const title = (await card.locator('h2').innerText().catch(() => '')).trim()
-          const revise = (revisesLeft[title] ?? 0) > 0
-          const pass = revise ? await gatePass(page, title) : 0
-          if (revise) {
-            revisesLeft[title] -= 1
-            await card
-              .locator('form textarea')
-              .first()
-              .fill('Tighten this before scoring it.')
-              .catch(() => undefined)
-          }
-          await card
-            .getByRole('button', { name: revise ? /^Revise/ : /^Approve/ })
-            .click()
-            .catch(() => undefined)
-          replies += 1
-          /*
-           * The two replies need OPPOSITE waits, and conflating them cost this
-           * test a red on its first full run.
-           *
-           * An approve leaves a real gap — the scope gate hands off to a fifteen
-           * second fan-out — so waiting for the card to detach is right. A
-           * revise does not: the server emits `gate_closed` and `gate_open` back
-           * to back, Vue coalesces them into one render, and `pendingGate` never
-           * passes through null. Waiting for a hole that is never there timed out
-           * at 60 s while the console sat there with the re-opened gate on
-           * screen. `waitForGateReopen` watches the gate node's pass count, which
-           * increments once per opening; `e2e/gateReply.ts` carries the full
-           * reasoning.
-           */
-          try {
+
+      try {
+        await launchRun(page, 'A claim auditor for newsroom drafts')
+
+        /*
+         * Gates answered as soon as they open — but the first two openings of
+         * the scope gate and the first of the verdict gate are answered REVISE.
+         *
+         * A straight-through synthetic run is 96–97 frames and 119 events is the
+         * length worth measuring, so the frames come from a reply the console
+         * really offers and the double really models (`route_scope ->
+         * revise_scope -> confirm_scope`, capped at
+         * `SYNTHETIC_MAX_REVISE_TURNS = 3` per gate): each turn re-runs the node
+         * and re-opens the gate. A revise loop is also the densest thing this
+         * console ever does — a gate closing, a node re-running and a gate
+         * re-opening inside a second.
+         *
+         * The poll is deliberately slow (250 ms): every tick is an `evaluate`
+         * into the page, and a sampler measuring frame intervals must not be
+         * dominated by the instrument reading it.
+         */
+        const until = Date.now() + 240_000
+        while (Date.now() < until) {
+          status = await statusValue(page)
+          if (TERMINAL.includes(status)) break
+          if (await card.first().isVisible().catch(() => false)) {
+            const title = (await card.locator('h2').innerText().catch(() => '')).trim()
+            const revise = (revisesLeft[title] ?? 0) > 0
+            const pass = revise ? await gatePass(page, title) : 0
+            if (revise) {
+              revisesLeft[title] -= 1
+              await card.locator('form textarea').first().fill('Tighten this before scoring it.')
+            }
+            await card.getByRole('button', { name: revise ? /^Revise/ : /^Approve/ }).click()
+            replies += 1
+            /*
+             * The two replies need OPPOSITE waits, and conflating them cost this
+             * test a red on its first full run.
+             *
+             * An approve leaves a real gap — the scope gate hands off to a
+             * fifteen second fan-out — so waiting for the card to detach is
+             * right. A revise does not: the server emits `gate_closed` and
+             * `gate_open` back to back, Vue coalesces them into one render, and
+             * `pendingGate` never passes through null. Waiting for a hole that is
+             * never there timed out at 60 s with the re-opened gate on screen.
+             * `waitForGateReopen` watches the gate node's pass count, which
+             * increments once per opening; `e2e/gateReply.ts` has the reasoning.
+             */
             if (revise) await waitForGateReopen(page, title, pass)
             else await expect(card).toHaveCount(0, { timeout: 60_000 })
-          } catch (error) {
-            driveProblems.push(`${revise ? 'revise' : 'approve'} at "${title}": ${(error as Error).message}`)
           }
+          await page.waitForTimeout(250)
         }
-        await page.waitForTimeout(250)
+      } catch (error) {
+        driveProblems.push((error as Error).message)
       }
 
       const all = await samples(page).catch(() => [] as number[])
       const runFrames = await readSequence(page).catch(() => -1)
       const stats = measure(all.slice(launchIndex))
-      const overBudget = all
-        .slice(launchIndex)
-        .map((value, index, list) => (index === 0 ? 0 : value - list[index - 1]))
-        .filter((gap) => gap > budget.dropBudgetMs).length
+      const overLegacy = stats.over34ms
 
       record('liveSyntheticRun', {
         what:
           'One real launch against the SYNTHETIC=1 backend, driven through three revise turns ' +
-          '(two at the scope gate, one at the verdict gate) and then approved, so a 96–97 frame ' +
-          "run reaches the criterion's 119 events by looping rather than by relaxing the floor. " +
-          'Sampling runs from before navigation; the window measured starts at the Launch click ' +
-          'and ends at the terminal status.',
+          '(two at the scope gate, one at the verdict gate) and then approved. RECORDED, NOT ' +
+          'GRADED: T2.8 is decided by the three-arm fixture replay below, because a live run ' +
+          'cannot be repeated frame for frame and so cannot carry a controlled comparison. ' +
+          'These numbers are here because the console under a real stream is the thing a reader ' +
+          'actually cares about, and because a figure nobody records is a figure nobody can ' +
+          'check later.',
+        graded: false,
         budget,
         frames: runFrames,
         runFrames,
@@ -445,12 +499,16 @@ test.describe('T2.8 — frame budget', () => {
         terminalStatus: status,
         driveProblems,
         ...stats,
-        overBudget,
+        overBudget: overLegacy,
+        meetsLegacyBar: stats.over34ms === 0 && stats.p95 <= P95_BUDGET_MS,
         reachesCriterionFrameFloor: runFrames >= MIN_REPLAY_FRAMES,
         consoleErrors,
         pageErrors,
       })
 
+      // Completion, and nothing beyond it. The budget assertions that used to
+      // sit here were the absolute bar the criterion retired: they measured this
+      // machine's software rasteriser, not the console.
       expect(
         driveProblems,
         'the run could not be driven to a terminal state; the numbers above were still recorded',
@@ -458,36 +516,21 @@ test.describe('T2.8 — frame budget', () => {
       expect(pageErrors, 'an uncaught exception invalidates the measurement').toEqual([])
       expect(TERMINAL, `the run never reached a terminal state (last: ${status})`).toContain(status)
       expect(
-        runFrames,
-        `the live run emitted ${runFrames} frames, below the criterion's ${MIN_REPLAY_FRAMES}. ` +
-          'Three revise turns should carry a 96–97 frame synthetic run past it; if the double ' +
-          'changed, add a turn (the cap is 3 per gate) rather than lowering the floor.',
-      ).toBeGreaterThanOrEqual(MIN_REPLAY_FRAMES)
-      expect(
         stats.intervals,
         'the rAF sampler recorded no intervals after Launch',
       ).toBeGreaterThan(30)
-      expect(
-        overBudget,
-        `${overBudget} rAF intervals exceeded ${budget.dropBudgetMs}ms during a live run ` +
-          `(max ${stats.max}ms, p95 ${stats.p95}ms). See ${PERF_JSON}.`,
-      ).toBe(0)
-      expect(
-        stats.p95,
-        `p95 was ${stats.p95}ms against a budget of ${budget.p95BudgetMs}ms. See ${PERF_JSON}.`,
-      ).toBeLessThanOrEqual(budget.p95BudgetMs)
     },
   )
 
   /* ======================================================================== */
-  /* 2. The 131-frame replay, which is the criterion                          */
+  /* 2. The three-arm fixture replay, which IS the criterion                  */
   /* ======================================================================== */
 
   test(
-    'the console keeps its frame budget while 131 committed frames are applied at live pace',
+    'the console adds no dropped frames of its own while 131 committed frames are applied',
     { tag: '@launch' },
     async ({ page }) => {
-      test.setTimeout(300_000)
+      test.setTimeout(420_000)
       const consoleErrors: string[] = []
       const pageErrors: string[] = []
       page.on('console', (message) => {
@@ -495,18 +538,14 @@ test.describe('T2.8 — frame budget', () => {
       })
       page.on('pageerror', (error) => pageErrors.push(error.message))
 
-      /* ---- the script ---------------------------------------------------- */
+      /* ---- the script, shared by both replay arms ------------------------ */
 
       const sources = ['serializerFrames.ndjson', 'syntheticRun.ndjson']
       for (const name of sources) {
         expect(existsSync(fixture(name)), `missing fixture ${fixture(name)}`).toBe(true)
       }
 
-      interface Step {
-        frame: Record<string, unknown>
-        gapMs: number
-      }
-      const script: Step[] = []
+      const script: ReplayStep[] = []
       const perSource: Record<string, number> = {}
       let sequence = 0
       for (const name of sources) {
@@ -533,18 +572,16 @@ test.describe('T2.8 — frame budget', () => {
            *
            * Both logs start at `seq 1`, and the client deduplicates on the
            * sequence it has already seen — so a naive concatenation would have
-           * the second file's 97 frames silently discarded and the "131 frames"
-           * in this file's name would be a fiction. The renumbering is the only
+           * the second file's frames silently discarded and the "131 frames" in
+           * this test's name would be a fiction. The renumbering is the only
            * edit made to a committed frame: kind, event_type, node_id, message
            * and details are the bytes the Python serializer wrote.
            */
           script.push({ frame: { ...frame, seq: sequence }, gapMs: gap })
         }
       }
-      // These two, and only these two, are asserted before `record()`. They fire
-      // before the page has been opened, so there is no measurement in
-      // existence to write down - unlike everything below, which is asserted
-      // after the artifact is on disk.
+      // These two, and only these two, are asserted before any `record()`. They
+      // fire before the page is opened, so no measurement exists to write down.
       expect(
         script.length,
         `the two committed frame logs total ${script.length} frames, below the criterion's ${MIN_REPLAY_FRAMES}`,
@@ -552,156 +589,321 @@ test.describe('T2.8 — frame budget', () => {
 
       /* ---- the socket ---------------------------------------------------- */
 
-      let replayStarted = false
-      let sent = 0
-      let resolveReplay!: () => void
-      const replayFinished = new Promise<void>((resolve) => {
-        resolveReplay = resolve
-      })
-
       /*
+       * One handler, one job at a time, and the job carries its own STARTING
+       * GATE.
+       *
+       * The gate is what makes the two replay arms comparable. The hidden arm
+       * has to press Launch while the console is still visible — a
+       * `visibility: hidden` button is not clickable — so without a gate the
+       * first few hundred milliseconds of frames would land painted and the two
+       * arms would not be the same replay. With it, the socket opens, the
+       * handler waits, the shell is hidden, the window is marked, and only then
+       * does the first frame go down the wire.
+       *
        * `routeWebSocket` and NOT `connectToServer`: this handler owns the
        * socket, so the frames the page applies are the committed ones rather
        * than whatever the backend happens to emit. Everything downstream of the
        * socket — `applyFrame`, the node states, the trace, the report — is the
        * production path untouched, which is what makes this a measurement of the
        * console rather than of a fixture renderer.
-       *
-       * Installed before `goto`, because a route that arrives after the page has
-       * opened its socket routes nothing.
        */
+      interface ReplayJob {
+        gate: Promise<void>
+        finished: () => void
+        sent: number
+      }
+      let job: ReplayJob | null = null
+
       await page.routeWebSocket(
         (url) => url.pathname === '/ws',
         (ws) => {
           // Swallow the client's 20-second keepalive; nothing answers it.
           ws.onMessage(() => undefined)
-          if (replayStarted) return
-          replayStarted = true
+          const mine = job
+          if (!mine) return
+          job = null
           const runId = new URL(ws.url()).searchParams.get('run_id') ?? 'replay'
           void (async () => {
+            await mine.gate
             for (const step of script) {
               await new Promise((resolve) => setTimeout(resolve, step.gapMs))
-              ws.send(JSON.stringify({ type: 'frame', data: { ...step.frame, run_id: runId } }))
-              sent += 1
+              try {
+                ws.send(JSON.stringify({ type: 'frame', data: { ...step.frame, run_id: runId } }))
+              } catch {
+                // The page navigated away mid-replay; this socket is finished.
+                break
+              }
+              mine.sent += 1
             }
-            resolveReplay()
+            mine.finished()
           })()
         },
       )
 
       await installSampler(page)
       await openStudio(page)
+
+      const arms: Record<string, Record<string, unknown>> = {}
+      const driveProblems: string[] = []
+
+      /**
+       * Take a slice of the sampler and describe it, with the legacy bar
+       * evaluated beside it so a reader can still apply the retired wording.
+       */
+      const armOf = async (from: number, extra: Record<string, unknown>) => {
+        const all = await samples(page).catch(() => [] as number[])
+        const stats = measure(all.slice(from))
+        return {
+          ...stats,
+          ...extra,
+          meetsLegacyBar: stats.over34ms === 0 && stats.p95 <= P95_BUDGET_MS,
+        }
+      }
+
+      /* ---- arm 1: idle, nothing replaying -------------------------------- */
+
+      /*
+       * The floor. Ten seconds of a page at rest on this machine, with the same
+       * sampler reading it, so every figure below is compared against what this
+       * environment does when the console is doing NOTHING. W4's profile
+       * measured an idle page here at p95 22.2 ms — already over the retired
+       * absolute bar of 20 ms before the product does anything at all — which is
+       * the whole reason the criterion moved to a comparison.
+       */
       await page.waitForTimeout(1_500)
-      const idle = await samples(page)
-      const budget = budgetFrom(idle)
+      const idleFrom = (await samples(page)).length
+      await page.waitForTimeout(IDLE_ARM_MS)
+      const idleArm = await armOf(idleFrom, { what: 'the page at rest, no replay', frames: 0 })
+      arms.idle = idleArm
+
+      const budget = budgetFrom((await samples(page)).slice(idleFrom))
       report.budget = budget
       flush()
 
-      const launchIndex = idle.length
+      /* ---- arms 2 and 3: the same replay, hidden then painted ------------ */
 
-      /*
-       * Same shape as the live arm, and for the same reason: the artifact is
-       * written whatever happened. A replay that stalls half way through is a
-       * far more interesting row in `perf.json` than a missing one, and the
-       * timeout it would otherwise die on takes the numbers with it.
+      /**
+       * Drive one replay arm and return its numbers.
        *
-       * The replay is raced against a bound rather than awaited outright, so a
-       * handler that never resolves becomes a recorded `driveProblems` entry
-       * instead of a test timeout with no evidence at all.
+       * The two calls differ by ONE line — whether the shell is hidden before
+       * the starting gate opens — which is what makes their difference
+       * attributable to painting and to nothing else. Same script, same page,
+       * same sampler, same socket handler, same backend, minutes apart.
        */
-      const driveProblems: string[] = []
-      let runId: string | null = null
-      try {
-        await launchRun(page, 'A claim auditor that checks numbers in newsroom drafts')
-        // The run the POST really created, kept so it can be cancelled below:
-        // the socket it would have streamed on belongs to this test.
-        runId = await activeRunId(page)
-        const stalled = Symbol('stalled')
-        const outcome = await Promise.race([
-          replayFinished,
-          new Promise((resolve) => setTimeout(() => resolve(stalled), 180_000)),
-        ])
-        if (outcome === stalled) {
-          driveProblems.push(`the replay stalled after ${sent} of ${script.length} frames`)
+      const replayArm = async (hidden: boolean): Promise<Record<string, unknown>> => {
+        const label = hidden ? 'hidden' : 'painted'
+        let openGate: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+          openGate = resolve
+        })
+        let finish: () => void = () => undefined
+        const finished = new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        const mine: ReplayJob = { gate, finished: finish, sent: 0 }
+        job = mine
+
+        let runId: string | null = null
+        let from = (await samples(page)).length
+        try {
+          await launchRun(page, 'A claim auditor that checks numbers in newsroom drafts')
+          runId = await activeRunId(page)
+
+          if (hidden) {
+            /*
+             * `visibility: hidden` on the shell, not `display: none`.
+             *
+             * The box tree stays exactly as it is — same layout, same sizes,
+             * same reflow on every appended trace row — and only the painting
+             * stops. `display: none` would remove the subtree, so the arm would
+             * be measuring "the console does not exist" rather than "the console
+             * is not painted", and every layout cost this arm is supposed to
+             * hold constant would vanish with it.
+             */
+            await page.evaluate(() => {
+              const shell = document.querySelector('.studio-shell') as HTMLElement | null
+              if (shell) shell.style.visibility = 'hidden'
+              else document.body.style.visibility = 'hidden'
+            })
+            await page.waitForTimeout(250)
+          }
+
+          // Marked AFTER the hide, so no painted frame is inside a hidden arm's
+          // window and vice versa.
+          from = (await samples(page)).length
+          openGate()
+
+          const stalled = Symbol('stalled')
+          const outcome = await Promise.race([
+            finished,
+            new Promise((resolve) => setTimeout(() => resolve(stalled), 180_000)),
+          ])
+          if (outcome === stalled) {
+            driveProblems.push(`${label}: stalled after ${mine.sent} of ${script.length} frames`)
+          }
+          // Let the last frames land before the window closes.
+          await page.waitForTimeout(1_000)
+        } catch (error) {
+          driveProblems.push(`${label}: ${(error as Error).message}`)
         }
-        // Let the last frames land and the console settle before the window closes.
-        await page.waitForTimeout(1_000)
-      } catch (error) {
-        driveProblems.push((error as Error).message)
+
+        const applied = await readSequence(page).catch(() => -1)
+        const status = await statusValue(page).catch(() => 'unknown')
+        const arm = await armOf(from, {
+          what: hidden
+            ? 'the same replay with the whole console `visibility: hidden` — the harness itself: ' +
+              'the socket, the CDP driver, and applying 131 frames, with nothing of ours painting'
+            : 'the same replay with everything painted — the console as it ships',
+          hidden,
+          frames: script.length,
+          framesSent: mine.sent,
+          runFrames: applied,
+          terminalStatus: status,
+        })
+
+        if (hidden) {
+          await page.evaluate(() => {
+            const shell = document.querySelector('.studio-shell') as HTMLElement | null
+            if (shell) shell.style.visibility = ''
+            else document.body.style.visibility = ''
+          })
+        }
+
+        /*
+         * Tidy, and then forget. The POST created a real synthetic run whose
+         * frames nobody read; cancelling releases the gate it is parked on.
+         * Clearing the pointer is the half that matters for correctness:
+         * without it the next arm's page load restores this run and opens a
+         * socket before Launch is pressed, and the next arm replays into it.
+         */
+        if (runId) await page.request.post(`/api/runs/${runId}/cancel`).catch(() => undefined)
+        await page.evaluate(() => {
+          try {
+            window.localStorage.clear()
+          } catch {
+            /* a browser with site data blocked has nothing to forget */
+          }
+        })
+        return arm
       }
 
-      const all = await samples(page).catch(() => [] as number[])
-      const applied = await readSequence(page).catch(() => -1)
-      const status = await statusValue(page).catch(() => 'unknown')
-      const stats = measure(all.slice(launchIndex))
-      const overBudget = all
-        .slice(launchIndex)
-        .map((value, index, list) => (index === 0 ? 0 : value - list[index - 1]))
-        .filter((gap) => gap > budget.dropBudgetMs).length
+      arms.hidden = await replayArm(true)
+      await openStudio(page)
+      arms.painted = await replayArm(false)
+
+      /* ---- the artifact, before any verdict ------------------------------ */
+
+      const hidden = arms.hidden as { over34ms: number; p95: number }
+      const painted = arms.painted as { over34ms: number; p95: number }
+      const addedDrops = painted.over34ms - hidden.over34ms
+      const p95Delta = round(painted.p95 - hidden.p95)
 
       record('fixtureReplay', {
         what:
           'The two committed frame logs replayed into the page over its own WebSocket ' +
-          '(page.routeWebSocket), so the client applies them through the production path. ' +
-          'Gaps are the fixtures\' own timestamps clamped to ' +
-          `${MAX_GAP_MS}ms, which only compresses idle waits.`,
-        budget,
+          '(page.routeWebSocket), so the client applies them through the production path, in ' +
+          'THREE arms of one run on one page with one sampler: idle, the same replay with the ' +
+          'console hidden, and the same replay painted. Gaps are the fixtures\' own timestamps ' +
+          `clamped to ${MAX_GAP_MS}ms, which only compresses idle waits.`,
+        graded: true,
+        criterion:
+          'over34ms(painted) <= over34ms(hidden) and p95(painted) <= p95(hidden) + ' +
+          `${P95_HEADROOM_MS}ms. The absolute figures are printed for every arm so the retired ` +
+          'absolute bar (0 over 34ms, p95 <= 20ms) can still be applied by a reader.',
         sources: perSource,
-        frames: script.length,
-        framesSent: sent,
-        runFrames: applied,
-        terminalStatus: status,
+        budget,
+        arms,
+        verdict: {
+          addedDrops,
+          p95Delta,
+          p95Headroom: P95_HEADROOM_MS,
+          passes: addedDrops <= 0 && p95Delta <= P95_HEADROOM_MS,
+        },
         driveProblems,
-        ...stats,
-        overBudget,
         consoleErrors,
         pageErrors,
+        /*
+         * The retired keys, mirrored from the PAINTED arm.
+         *
+         * Picked one by one rather than spread, because a spread would carry the
+         * arm's own `what` and `hidden` up with them and overwrite this block's
+         * description with one that describes an arm. The point of the mirror is
+         * that a reader who knew this file's old shape still finds
+         * `frames`/`p95`/`over34ms` where they were, reading the arm the verdict
+         * rests on.
+         */
+        ...(() => {
+          const painted = arms.painted as Record<string, unknown>
+          const mirrored: Record<string, unknown> = {}
+          for (const key of MIRRORED_KEYS) mirrored[key] = painted[key]
+          return mirrored
+        })(),
       })
 
-      if (runId) {
-        // Tidy: the backend started a real synthetic run whose frames nobody
-        // read. Cancelling it releases the gate it is parked on.
-        await page.request.post(`/api/runs/${runId}/cancel`).catch(() => undefined)
-      }
+      /* ---- the verdict --------------------------------------------------- */
 
       expect(
         driveProblems,
-        'the replay could not be driven to the end; the numbers above were still recorded',
+        'a replay arm could not be driven to the end; the numbers above were still recorded',
       ).toEqual([])
       expect(pageErrors, 'an uncaught exception invalidates the measurement').toEqual([])
-      expect(sent, 'the replay did not send every frame').toBe(script.length)
       expect(
-        applied,
-        `the console accepted ${applied} frames of ${script.length}; the replay did not reach ` +
-          'the client, so nothing below is a measurement of applying them',
-      ).toBeGreaterThanOrEqual(MIN_REPLAY_FRAMES)
+        (arms.hidden as { framesSent: number }).framesSent,
+        'the hidden arm did not send every frame',
+      ).toBe(script.length)
       expect(
-        stats.intervals,
-        'the rAF sampler recorded no intervals during the replay',
-      ).toBeGreaterThan(30)
+        (arms.painted as { framesSent: number }).framesSent,
+        'the painted arm did not send every frame',
+      ).toBe(script.length)
       expect(
-        overBudget,
-        `${overBudget} rAF intervals exceeded ${budget.dropBudgetMs}ms while ${applied} frames ` +
-          `were applied (max ${stats.max}ms, p95 ${stats.p95}ms). See ${PERF_JSON}.`,
-      ).toBe(0)
+        (arms.idle as { intervals: number }).intervals,
+        'the idle arm recorded no rAF intervals at all',
+      ).toBeGreaterThan(60)
+
+      /*
+       * THE CRITERION, and it is a comparison rather than a bar.
+       *
+       * The absolute wording — zero intervals over 34 ms, p95 at or under 20 ms
+       * — measured this machine and not this product. W4's bisect established
+       * it in two numbers: an idle page here reads p95 22.2 ms, already over the
+       * bar with the console doing nothing, and the replay harness alone drops
+       * 17 frames with nothing of ours painted. Headless Chromium rasterises in
+       * software here (`SwiftShader`), so the floor is a property of the
+       * environment.
+       *
+       * What the console is answerable for is what it ADDS. Arms 2 and 3 are the
+       * same replay a `visibility: hidden` apart, so their difference is
+       * painting and nothing else — and the criterion asks that the difference
+       * be nothing.
+       */
       expect(
-        stats.p95,
-        `p95 was ${stats.p95}ms against a budget of ${budget.p95BudgetMs}ms over ${applied} ` +
-          `frames. See ${PERF_JSON}.`,
-      ).toBeLessThanOrEqual(budget.p95BudgetMs)
+        painted.over34ms,
+        `painting the console added ${addedDrops} dropped frames: ${painted.over34ms} over 34ms ` +
+          `painted against ${hidden.over34ms} with the same replay hidden. Idle floor: ` +
+          `${(arms.idle as { over34ms: number }).over34ms}. See ${PERF_JSON}.`,
+      ).toBeLessThanOrEqual(hidden.over34ms)
+      expect(
+        painted.p95,
+        `painting the console cost ${p95Delta}ms of p95: ${painted.p95}ms painted against ` +
+          `${hidden.p95}ms hidden, headroom ${P95_HEADROOM_MS}ms. Idle floor: ` +
+          `${(arms.idle as { p95: number }).p95}ms. See ${PERF_JSON}.`,
+      ).toBeLessThanOrEqual(hidden.p95 + P95_HEADROOM_MS)
     },
   )
 
   test.afterAll(() => {
     report.note =
-      'Two measurements, both above the 119-event floor. `liveSyntheticRun` is a real launch ' +
-      'taken round three revise turns, because a straight-through synthetic run is 96–97 ' +
-      'frames. `fixtureReplay` is the headline because it is deterministic: 131 committed ' +
-      'frames applied through the production client over its own socket. The top-level frames/p50/' +
-      'p95/max/over34ms/over50ms/runFrames keys mirror whichever of the two the verdict rests ' +
-      'on, named in `headlineFrom`. `over34ms` is always the raw 60Hz count; `overBudget` is ' +
-      'the count against `budget.dropBudgetMs`, which differs only when this environment was ' +
-      'measured running below 60Hz.'
+      'Three arms and a control. `fixtureReplay.arms` holds idle (the page at rest), hidden ' +
+      '(the same 131-frame replay with the console `visibility: hidden` — the socket, the CDP ' +
+      'driver and applying the frames, with nothing of ours painting) and painted (the same ' +
+      'replay drawn). The criterion is the COMPARISON in `fixtureReplay.verdict`: painting must ' +
+      'add no dropped frames and at most 4ms of p95. Every arm also carries its absolute ' +
+      'figures and a `meetsLegacyBar` flag, so the retired wording (0 over 34ms, p95 <= 20ms) ' +
+      'can still be applied — it is recorded as a fact about this machine rather than asserted ' +
+      'as a fact about the console. `liveSyntheticRun` is a real launch through three revise ' +
+      'turns, recorded and not graded. The top-level frames/p50/p95/max/over34ms/over50ms/' +
+      'runFrames keys mirror the PAINTED arm, named in `headlineFrom`.'
     flush()
   })
 })

@@ -221,3 +221,181 @@ run Playwright. What can be said honestly:
 - whether that clears **0 over 34 ms and p95 <= 20 ms** on this machine is RV's
   measurement to take, and if it does not, the remaining profile should be
   attached rather than the budget lowered.
+
+---
+
+# Round three — the profile, and where the frames actually go
+
+Written by **W4**, 2026-09-05, at `4d5fd05` plus this round's uncommitted
+changes, on Windows 11 with every other worker idle and no other suite running.
+The backend was the free one, started for this work and stopped after it:
+
+```
+SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099
+CREDENTIALS_MASTER_KEY=Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE=
+BUILDER_ALLOW_GATELESS_GRAPHS=1 RUN_RATE_LIMIT_MAX_RUNS=100
+./.venv/Scripts/serve.exe            # log read, not /healthz trusted
+```
+
+**Round two guessed. This round measured, and the guess was wrong.** Round two's
+notes attributed the residual to script and DOM cost and predicted the two
+browser-only costs in its section 4 would close it. The profile says the main
+thread is essentially idle for the whole replay: **one or two long tasks per
+run, and not one of them overlaps an over-budget interval.** The frames are
+being lost in raster, not in JavaScript.
+
+## 1. The instrument
+
+`scratchpad/zzProfile.spec.ts`, copied into `e2e/` to inherit
+`playwright.config.ts` (Vite on :5273 proxying to :8099) and deleted afterwards.
+It is `cast-perf.spec.ts`'s fixture replay frame for frame and gap for gap - the
+same two committed logs, the same renumbering, the same `page.routeWebSocket`,
+the same 250 ms clamp - with three recorders that file does not have:
+
+1. a `longtask` `PerformanceObserver` installed in an `addInitScript`, so it is
+   live before the app's first byte;
+2. the same rAF sampler, so its intervals are comparable with `perf.json`'s
+   rather than a second scale nobody can line up;
+3. a `PROFILE_KILL` bisect that suppresses one suspect per run, so a recovered
+   frame rate names the surface that was costing it.
+
+It reproduces the criterion's own harness: minutes apart on the same machine,
+`cast-perf.spec.ts` read **63 over 34 ms / p95 79.4** and the profiler read
+**77 / 81.8**. Different runs of one thing, not two different things.
+
+## 2. The bisect
+
+131 frames, one arm per row, `over34` is the count of rAF intervals above the
+budget and `p95` is in milliseconds. Every arm is the same replay against the
+same backend within one hour.
+
+| arm | what is suppressed | over 34 ms | p95 | long tasks |
+| --- | --- | ---: | ---: | ---: |
+| **none** | nothing - as shipped | **77** | **81.8** | 1 |
+| anim | every `animation` and `transition` | 64 | 65.8 | 1 |
+| shadow | every `box-shadow` and `filter` | 70 | 72.2 | 1 |
+| pips | every character | 67 | 77.3 | 1 |
+| edges | every Vue Flow edge | 75 | 74.1 | 1 |
+| rails | the whole trace rail | 72 | 71.2 | 2 |
+| **blur** | **every `backdrop-filter`** | **13** | **28.3** | 1 |
+| blur-strip | the crew strip's blur only | 80 | 81.1 | 2 |
+| blur-report | the report panel's blur only | 77 | 55.7 | 2 |
+| blur-header | the header's blur only | 69 | 73.3 | 1 |
+| blur-control | the right rail's blur only | 40 | 56.5 | 1 |
+| blur + pips | both | 16 | 29.2 | 2 |
+| blur + anim | both | 21 | 30.0 | 2 |
+| blur + rails | both | 19 | 28.5 | 2 |
+| blur + content-visibility forced on | both | 23 | 31.8 | 1 |
+
+Repeats of the `blur` arm: **13, 16, 19, 20, 21, 26** - call it 20 +/- 6, p95
+28-34. That spread is the noise floor, and no arm above is read as different
+from another inside it.
+
+## 3. What that says
+
+**`backdrop-filter` is roughly three quarters of the miss.** Removing it takes
+77 to about 20, and p95 82 to about 30. No single surface dominates: killing one
+of the four leaves the other three, and only killing all four recovers the frame
+rate. That is what a backdrop blur does - each one forces the compositor to
+re-read and re-blur everything behind it, so the cost is per-surface and
+additive.
+
+The four, all still present, and **all of them in files another worker owns this
+round**:
+
+```
+src/studio.css:149                   .app-header      var(--blur-panel)   5px
+src/studio.css:333                   .control-rail    var(--blur-rail)   12px
+src/components/CrewProgress.vue:520  .crew-progress   var(--blur-panel)
+src/components/ReportPanel.vue:300   .report-panel    var(--blur-rail)
+```
+
+Every one of them sits on a background of `--surface-overlay` or `--header-bg`,
+which are **94%, 95% and 88% opaque**. A 5-12 px blur of what is behind a
+94%-opaque surface contributes about a twentieth of each pixel. W4 removed the
+fifth - `.chat-rail`'s - in round two for exactly this reason and measured
+nothing lost; these four are the same trade and are not W4's to make.
+
+**Nothing left in W4's files is measurable.** With the blur gone, suppressing
+every character (16), every animation (21) or the entire trace rail (19) moves
+the number by less than the run-to-run spread of the arm they are measured
+against. Round two's work is why: it removed the script cost, and the profile
+now finds one long task per run - 104 ms, at page mount, before the replay
+starts.
+
+## 4. The floor, and it is the harness
+
+Two control arms settle what the remaining ~20 is.
+
+| control | over 34 ms | p95 | max |
+| --- | ---: | ---: | ---: |
+| **idle page, no replay at all** (11 s, same page, same sampler) | **0** | **22.2** | 28.4 |
+| replay running, whole shell `visibility: hidden` | 17 | 27.3 | 143.8 |
+| replay running, shell hidden AND blur off | 24 | 30.7 | 249.6 |
+| replay running, everything painted, blur off | ~20 | ~30 | ~148 |
+
+Read down that column. A page at rest holds 60 Hz - **zero** dropped intervals.
+Start the replay with **nothing of ours painting at all** and it drops 17.
+Un-hide the whole console and it drops about 20. So the step from 0 to 17 is the
+replay itself - the socket, the CDP round trip that drives it, and applying 131
+frames - and the step from 17 to 20 is everything this console draws.
+
+The renderer explains it, and the profiler now records it:
+
+```
+ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)
+```
+
+**Headless Chromium here rasterises in software.** That is why a backdrop blur
+is catastrophic rather than merely expensive, and it is why an unpainted page
+still cannot hold a 60 Hz cadence under a driven WebSocket replay.
+
+## 5. The residual, named
+
+Against a budget of **0 intervals over 34 ms and p95 at or under 20 ms**:
+
+- **The p95 bar is unreachable in this environment by any product change.** An
+  idle page with nothing happening measures **p95 22.2 ms**. The harness's own
+  budget derivation looks at the MEDIAN (16.5 ms, a clean 60 Hz) and declares
+  `sixtyHz: true`, so it never sees that this machine's p95 is already over the
+  bar before the console does anything at all.
+- **Zero over 34 ms is reachable only from the idle arm**, which is the arm with
+  no replay in it. With the replay running and nothing painted, it is 17.
+- **The product's own share is about 3 of 77** once the blur is gone, and that
+  is inside the noise.
+
+So the honest split is: **about 57 of the 77 are `backdrop-filter`, about 17 are
+the harness, and about 3 are the console.** The first is a four-line change in
+three files W4 does not own this round; the second is not a frontend defect at
+all.
+
+## 6. Final numbers, as `perf.json` stands
+
+Re-run at the end of this session, product unchanged, machine idle:
+
+```
+fixtureReplay   131 frames, 401 intervals, p50 16.8, p95 71.9, max 156.4,
+                over34ms 69, over50ms 40, windowSeconds 10.07, completed
+liveSyntheticRun  386 over 34 ms, p95 84.0, max 190.7   (in the failure text;
+                see note 2 of RV3's second pass - the live arm asserts before
+                `record()`, so its numbers are still absent from the artifact)
+budget          idleMedian 16.5-16.8 ms, refresh ~60 Hz, sixtyHz true,
+                dropBudget 34 ms, p95Budget 20 ms
+```
+
+RV3's second pass recorded 4 / 26.8 for the same replay. This session measured
+63, 69 and 77 across three runs an hour apart with the machine otherwise idle.
+**That 4 was a lucky run, not a better build** - the code between the two is the
+same code - which is the sharpest form of RV3's own note 3: no single run of
+this measurement means anything, and a future "it passes now" needs several.
+
+## 7. Artifacts
+
+- `evidence/T2/profile-longtasks.json` - the as-shipped arm: every long task
+  with its attribution, every over-budget interval with the long task that
+  overlapped it (none did), and the DOM census at the shutter.
+- `evidence/T2/profile-longtasks-blur.json` - the same with `backdrop-filter`
+  suppressed, which is the pair that carries section 3.
+- The bisect script is `scratchpad/zzProfile.spec.ts`; it was copied into
+  `e2e/`, run, and deleted. It is not committed, because a stopwatch that
+  asserts nothing does not belong in a suite.

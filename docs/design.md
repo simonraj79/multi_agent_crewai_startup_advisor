@@ -191,8 +191,35 @@ surfaces the builder shares and two baselines capture.
 | `--r-2xl` | 12 px — the house radius, lifted from DevAll |
 | `--r-fab` / `-pill` / `-full` | 16 px / 20 px / 50 % |
 | `--glow-input`, `--glow-bubble` | the two glows |
-| `--blur-panel` / `--blur-rail` | `blur(5px)` / `blur(12px)` |
+| `--blur-panel` / `--blur-rail` | `blur(5px)` / `blur(12px)` — **the builder only**, see below |
 | `--z-base` / `-rail` / `-control` / `-toast` | 0 / 20 / 30 / 50 |
+
+### The two blur tokens, and where they may be used
+
+**The run console uses neither.** Both still exist and the builder still uses
+both — its minimap, its publish and conflict dialogs, its shortcut sheet — but
+every `backdrop-filter` in the run shell was removed on 2026-09-05 and the
+reason is a measurement, not a taste:
+
+W4's round-three bisect (`docs/run-shell/evidence/T2/perf-notes.md` §2) ran a
+131-frame replay once per suppressed suspect. Suppressing animation moved the
+count of over-budget frames from 77 to 64; shadows, 70; the characters, 67; the
+whole trace rail, 72. **Suppressing every `backdrop-filter` moved it to 13**,
+and p95 from 81.8 ms to 28.3 ms. A blur re-reads everything behind the element
+on every frame that touches it, and headless Chromium rasterises in software.
+
+It was also buying nothing. Every one of those surfaces is 88–95 % opaque, so
+the blur was filtering a background that is already almost entirely covered. No
+alpha was raised to compensate: there is nothing to compensate for at that
+opacity, and every token that could carry the rise is shared with the builder.
+
+**The asymmetry is the point rather than an inconsistency.** A design canvas is
+still (`docs/flow-builder-spec.md` §5.5) — a blur behind a dialog on a static
+page is composited once. A run console is a surface with a graph moving on it,
+and the same declaration there is a per-frame cost. `.app-header` is shared, so
+the run console turns it off behind `.studio-shell:not(.is-builder)` rather
+than deleting it; `docs/run-shell/SHELL-SCOPE.md` §6.5 is the commit that
+unifies that family of guards.
 
 ### Elevation
 

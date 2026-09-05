@@ -43,6 +43,12 @@ refresh anyway.
 - The gate's operator-facing `summary` says "Reply with JSON: decision=approve" while `GateReplyRequest` takes `outcome` and is `extra="forbid"`, so following the on-screen instruction over HTTP is a 422. The browser path is unaffected.
 - The synthetic builder runner has no per-node delay (`SYNTHETIC_BRANCH_DELAY_SECONDS` paces only the validator's branches), so a published graph's post-gate half completes in under a second and a mid-run capture needs socket throttling.
 
+## Performance (measured 2026-09-05, `evidence/T2/perf-notes.md`)
+
+- Headless Chromium on this machine rasterises with SwiftShader, and `backdrop-filter` costs a full re-blur of everything behind each surface per frame. The run shell's four blurs are removed; the builder workspace still uses `--blur-panel` / `--blur-rail` on its rails and palette and was not measured — the same bisect would say whether it should keep them.
+- The replay harness (`page.routeWebSocket` + CDP) drops ~17 frames per 131 with nothing painted; a harness that feeds frames from inside the page (a worker or a scripted socket) would measure the console more tightly.
+- The `run_state` frames' `result` and every `details` payload reach the trace disclosure in full; a lazy `<details>` body would halve the DOM per row but `traceInterpretation.spec.ts` deliberately asserts the payload is present while closed.
+
 ## Builder workspace (LEAVE)
 
 - The builder's `.segmented` had no base rule and rendered as native buttons in its header; the promoted global is guarded off the builder so its baselines stayed green. Lifting the guard is a builder change with a baseline regeneration.

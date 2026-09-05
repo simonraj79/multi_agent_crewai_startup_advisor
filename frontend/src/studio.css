@@ -150,6 +150,25 @@ h3 {
   backdrop-filter: var(--blur-panel);
 }
 
+/* THE HEADER'S BLUR IS OFF IN THE RUN CONSOLE, and it is the one of the four
+   that could not simply be deleted.
+
+   `.app-header` is the BUILDER's header too, and the builder's sixteen
+   full-page baselines contain it - so removing the declaration would be a
+   sixteen-screenshot change to fix a run-console frame budget. The declaration
+   stays; the run console overrides it. Same construction as `.segmented` and
+   the two brand marks above, same reason, and `docs/run-shell/SHELL-SCOPE.md`
+   §6.5 is the commit that unifies all of them.
+
+   The header is 88% opaque and what it was blurring is the page's own 32px
+   grid at alpha .016. That is the cost side of the trade in full: the grid
+   lines behind the bar are now crisp instead of smeared, at 1.6% of a pixel's
+   worth of ink, and the bar still reads as a bar because it has a border. */
+.studio-shell:not(.is-builder) .app-header {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 .brand-lockup,
 .header-context,
 .workflow-name,
@@ -330,9 +349,31 @@ h3 {
   height: 100%;
   background: var(--surface-overlay);
   border-left: 1px solid var(--border-default);
-  -webkit-backdrop-filter: var(--blur-rail);
-  backdrop-filter: var(--blur-rail);
 }
+
+/* NO `backdrop-filter` here, and its removal is a MEASUREMENT rather than a
+   preference.
+
+   W4's round-three bisect (`docs/run-shell/evidence/T2/perf-notes.md` §2) ran
+   the 131-frame replay once per suppressed suspect. Every other arm moved the
+   count of over-budget frames by at most 13; suppressing every
+   `backdrop-filter` moved it from **77 to 13**, and p95 from 81.8 ms to
+   28.3 ms. Headless Chromium rasterises in software here and a blur re-reads
+   everything behind the element on every frame that touches it.
+
+   And it was buying nothing. This surface is 94% opaque, so the blur was
+   filtering a background that is already almost entirely covered - the
+   coordinator's phrase for it is "a twentieth of a pixel". The alpha is
+   deliberately NOT raised to compensate: there is nothing to compensate for at
+   this opacity, and every token that could carry the rise is shared with the
+   builder, whose sixteen baselines would move to correct a difference nobody
+   can see.
+
+   `--blur-panel` and `--blur-rail` still exist and the builder still uses both
+   (its minimap, its two dialogs, its shortcut sheet) - see `docs/design.md`
+   §3. A design canvas is still; a run console is not, and that is the whole
+   difference. */
+
 
 .control-scroll { height: 100%; overflow: auto; }
 .control-toggle { position: absolute; z-index: 2; top: 13px; left: -32px; width: 32px; height: 38px; border-right: 0; border-radius: var(--r-lg) 0 0 var(--r-lg); }

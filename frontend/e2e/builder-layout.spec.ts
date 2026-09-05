@@ -178,6 +178,7 @@ async function openValidatorTemplate(page: Page): Promise<void> {
  */
 const FIRST_ROW = [
   { title: 'Sequential pipeline', nodes: 7 },
+  { title: 'News to social post', nodes: 5 },
   { title: 'Conditional router', nodes: 10 },
   { title: 'Reflection loop', nodes: 8 },
   { title: 'Hierarchical delegation', nodes: 7 },
@@ -317,9 +318,9 @@ test.describe('Flow builder layout', () => {
     // rails are absent first is what makes the width assertion meaningful: a
     // 236px gallery is only possible while a column that holds nothing is
     // still being reserved for it.
-    // EIGHT: plan 14's six pattern cards plus the two library-agent templates
-    // in the demoted second row.
-    await expect(gallery(page).locator('.template-card')).toHaveCount(8)
+    // NINE: plan 14's seven first-row cards plus the two library-agent
+    // templates in the demoted second row.
+    await expect(gallery(page).locator('.template-card')).toHaveCount(9)
     await expect(page.locator('.builder-palette')).toHaveCount(0)
     await expect(page.locator('.builder-inspector')).toHaveCount(0)
 
@@ -349,7 +350,9 @@ test.describe('Flow builder layout', () => {
      * AMENDED 2026-09-04 (plan 14). This asserted the gallery did not scroll
      * VERTICALLY either - `scrollHeight - clientHeight <= 1`, and the LAST card
      * fully on screen - and both were right about four templates and wrong
-     * about eight.
+     * about eight. Nine now, and the amendment holds unchanged: the fifth
+     * pattern template added a card to the first row and no new row anywhere,
+     * because `auto-fill` had already spilled to two.
      *
      * The grid is `repeat(auto-fill, minmax(232px, 1fr))` inside
      * `width: min(1080px, 100%)`, so it resolves to four columns: four cards
@@ -370,7 +373,10 @@ test.describe('Flow builder layout', () => {
 
     const firstRow = gallery(page).locator('.template-grid').first()
     const firstRowCards = firstRow.locator('.template-card')
-    await expect(firstRowCards).toHaveCount(6)
+    await expect(firstRowCards).toHaveCount(7)
+    // The first and fourth card: the ends of the grid's FIRST VISUAL row, which
+    // is four wide at this viewport. Both must be whole and above the fold, and
+    // they stay the right two whether the section holds six cards or seven.
     for (const index of [0, 3]) {
       const cardBox = await firstRowCards.nth(index).boundingBox()
       expect(cardBox, `template card ${index} should have a box`).not.toBeNull()

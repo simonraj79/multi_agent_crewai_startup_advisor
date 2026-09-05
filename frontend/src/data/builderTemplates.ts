@@ -1,6 +1,7 @@
 import { BUILDER_SCHEMA_ID, documentId, edgeId, nodeId } from '../types/builder'
 import type { BuilderDocument, BuilderEdge, BuilderNode } from '../types/builder'
 import { IDEA_VALIDATOR_CAVEAT, IDEA_VALIDATOR_DOCUMENT } from './templates/ideaValidator'
+import { NEWS_TO_SOCIAL_CAVEAT, NEWS_TO_SOCIAL_DOCUMENT } from './templates/newsToSocial'
 import { CONDITIONAL_ROUTER_DOCUMENT } from './templates/conditionalRouter'
 import { HIERARCHICAL_DELEGATION_DOCUMENT } from './templates/hierarchicalDelegation'
 import { REFLECTION_LOOP_DOCUMENT } from './templates/reflectionLoop'
@@ -472,14 +473,14 @@ export const IDEA_VALIDATOR: BuilderTemplate = {
 }
 
 /**
- * The four PATTERN templates - agents this repository does not own the prompts
+ * The five PATTERN templates - agents this repository does not own the prompts
  * for, models named by role, and one lesson each.
  *
  * The two older templates above are built out of LIBRARY agents, whose role,
  * goal and task are fixed in `crews/validator_crew/config/*.yaml`. That makes
  * them excellent proofs that the compiler works and poor teachers: a new author
  * opening one sees six dropdown choices rather than a team they could have
- * written. These four are authored end to end, so every prompt on the canvas is
+ * written. These five are authored end to end, so every prompt on the canvas is
  * a prompt the author may edit, which is what the builder is for.
  */
 export const SEQUENTIAL_PIPELINE: BuilderTemplate = {
@@ -490,6 +491,26 @@ export const SEQUENTIAL_PIPELINE: BuilderTemplate = {
     'That an edge is a listener, ${state.out__x} is how one step reaches the next, and a tool is dropped onto an agent.',
   modifyFirst: "The writer's expected output. One sentence there changes the whole deliverable.",
   document: SEQUENTIAL_PIPELINE_DOCUMENT,
+}
+
+/**
+ * The smallest graph in the gallery that still does a whole job.
+ *
+ * It sits after `sequential-pipeline` rather than before it because the line of
+ * three is what teaches the syntax, and this is what an author does with the
+ * syntax an hour later. It is the only pattern template with NO gate, which is
+ * a decision its caveat states rather than a shape it inherited - see
+ * `templates/newsToSocial.ts`.
+ */
+export const NEWS_TO_SOCIAL: BuilderTemplate = {
+  id: 'news-to-social',
+  title: 'News to social post',
+  blurb: 'Search this week’s discussion of a topic and write the post about it.',
+  teaches:
+    'That two agents and one tool are a whole product, and that a graph with no gate runs unattended for whoever is signed in.',
+  modifyFirst: 'The subject. One box, everything downstream changes, nothing else has to.',
+  caveat: NEWS_TO_SOCIAL_CAVEAT,
+  document: NEWS_TO_SOCIAL_DOCUMENT,
 }
 
 export const CONDITIONAL_ROUTER: BuilderTemplate = {
@@ -525,17 +546,26 @@ export const HIERARCHICAL_DELEGATION: BuilderTemplate = {
 }
 
 /**
- * The gallery's six cards, in the order they are shown.
+ * The gallery's seven cards, in the order they are shown.
  *
  * Ordered by how much a reader has to understand before the card helps them:
- * nothing, one line, one fork, one loop, one team, then the whole product. Not
- * by size and not alphabetically - the flagship last is deliberate, because a
- * gallery that opens on the biggest graph teaches an author that the builder is
- * for transcribing something rather than for drawing.
+ * nothing, one line, one line put to work, one fork, one loop, one team, then
+ * the whole product. Not by size and not alphabetically - the flagship last is
+ * deliberate, because a gallery that opens on the biggest graph teaches an
+ * author that the builder is for transcribing something rather than for
+ * drawing.
+ *
+ * `news-to-social` is SMALLER than `sequential-pipeline` and still sits after
+ * it, which is the ordering rule doing its job rather than an exception to it:
+ * the line of three is where the syntax is explained, and the news graph is
+ * what somebody builds once they have it. It also carries one idea neither of
+ * its neighbours does - a graph with no gate - and that is a thing to meet
+ * second rather than first.
  */
 export const BUILDER_TEMPLATES: readonly BuilderTemplate[] = [
   BLANK,
   SEQUENTIAL_PIPELINE,
+  NEWS_TO_SOCIAL,
   CONDITIONAL_ROUTER,
   REFLECTION_LOOP,
   HIERARCHICAL_DELEGATION,

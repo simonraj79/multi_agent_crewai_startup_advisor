@@ -6,6 +6,7 @@ import fanOutJoinFixture from './fixtures/templates/fan-out-join.json'
 import hierarchicalDelegationFixture from './fixtures/templates/hierarchical-delegation.json'
 import ideaValidatorFixture from './fixtures/templates/idea-validator.json'
 import minimalGatedAgentFixture from './fixtures/templates/minimal-gated-agent.json'
+import newsToSocialFixture from './fixtures/templates/news-to-social.json'
 import reflectionLoopFixture from './fixtures/templates/reflection-loop.json'
 import sequentialPipelineFixture from './fixtures/templates/sequential-pipeline.json'
 import rosterFixture from './fixtures/models.json'
@@ -19,6 +20,8 @@ import {
 import { resetModels } from '../src/data/models'
 import { roster } from '../src/data/modelRoster'
 import { MODEL_ROLES, resolvedRoles, roleOf } from '../src/data/templates/modelRoles'
+import { NEWS_TO_SOCIAL_DOCUMENT } from '../src/data/templates/newsToSocial'
+import { templateTestInputFor } from '../src/data/templates/testInputs'
 import { forValidate } from '../src/utils/builderSerialize'
 import type { BuilderDocument, ModelRoster } from '../src/types/builder'
 
@@ -79,6 +82,7 @@ interface TemplateFixture {
 const FIXTURES = {
   blank: blankFixture,
   'sequential-pipeline': sequentialPipelineFixture,
+  'news-to-social': newsToSocialFixture,
   'conditional-router': conditionalRouterFixture,
   'reflection-loop': reflectionLoopFixture,
   'hierarchical-delegation': hierarchicalDelegationFixture,
@@ -99,17 +103,21 @@ beforeEach(() => {
   roster.value = rosterFixture as unknown as ModelRoster
 })
 
-describe('the gallery ships six templates and keeps two more', () => {
+describe('the gallery ships seven templates and keeps two more', () => {
   it('offers them in the order plan 14 D7 declares', () => {
     expect(BUILDER_TEMPLATES.map((template) => template.id)).toEqual([
       'blank',
       'sequential-pipeline',
+      // Smaller than the pipeline above it and still after it: the ordering
+      // rule is conceptual load, not node count, and this one carries an idea
+      // neither neighbour does - a graph with no gate.
+      'news-to-social',
       'conditional-router',
       'reflection-loop',
       'hierarchical-delegation',
       'idea-validator',
     ])
-    expect(BUILDER_TEMPLATES).toHaveLength(6)
+    expect(BUILDER_TEMPLATES).toHaveLength(7)
   })
 
   it('keeps the two library-agent templates in a second row', () => {
@@ -120,7 +128,7 @@ describe('the gallery ships six templates and keeps two more', () => {
       'minimal-gated-agent',
       'fan-out-join',
     ])
-    expect(ALL_BUILDER_TEMPLATES).toHaveLength(8)
+    expect(ALL_BUILDER_TEMPLATES).toHaveLength(9)
   })
 
   it('has a fixture for every template and a template for every fixture', () => {
@@ -296,15 +304,25 @@ describe('the gallery card says what the picture cannot', () => {
     expect(card.text()).toContain(`$${budget.static_cost_usd.toFixed(2)}`)
   })
 
-  it('renders the validator caveat verbatim and gives nobody else one', async () => {
+  it('renders both caveats verbatim and gives nobody else one', async () => {
     const { api } = galleryApi()
     const wrapper = mount(TemplateGallery, { props: { api: api as never } })
     await wrapper.vm.$nextTick()
 
+    // Two, and both earn it: the flagship's shape is not its judgement, and
+    // `news-to-social` has no gate, so a link handed to somebody signed out
+    // answers 403 rather than running. Asserted VERBATIM because R14's whole
+    // point is that a caveat is not summarised on the way to the screen.
+    const withCaveat = ALL_BUILDER_TEMPLATES.filter((template) => template.caveat)
+    expect(withCaveat.map((template) => template.id)).toEqual([
+      'news-to-social',
+      'idea-validator',
+    ])
     const caveats = wrapper.findAll('.template-caveat')
-    expect(caveats).toHaveLength(1)
-    const validator = ALL_BUILDER_TEMPLATES.find((t) => t.id === 'idea-validator')!
-    expect(caveats[0].text()).toBe(validator.caveat)
+    expect(caveats).toHaveLength(withCaveat.length)
+    for (const [index, template] of withCaveat.entries()) {
+      expect(caveats[index].text()).toBe(template.caveat)
+    }
   })
 
   it('puts the two library templates in a demoted second row', async () => {
@@ -324,5 +342,80 @@ describe('the gallery card says what the picture cannot', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0].findAll('.template-card')).toHaveLength(BUILDER_TEMPLATES.length)
     expect(rows[1].findAll('.template-card')).toHaveLength(MORE_BUILDER_TEMPLATES.length)
+  })
+})
+
+/* ── the news template, asserted as a graph rather than as a row ──────────── */
+
+describe('news-to-social is the smallest graph that still does a whole job', () => {
+  const document = NEWS_TO_SOCIAL_DOCUMENT
+  const byId = new Map(document.nodes.map((node) => [String(node.id), node]))
+
+  it('is a line of two billable nodes with one tool hung off the first', () => {
+    expect(document.nodes.map((node) => `${node.id}:${node.kind}`)).toEqual([
+      'subject:input',
+      'research:agent',
+      'search:tool',
+      'write:agent',
+      'post:output',
+    ])
+    expect(document.edges.map((edge) => `${edge.source}->${edge.target}@${edge.target_port}`)).toEqual([
+      'subject->research@in',
+      'research->write@in',
+      'write->post@in',
+      'search->research@attach',
+    ])
+    // Nothing waits for anything, and there is no cycle to bound.
+    expect(document.joins).toEqual({})
+    expect(FIXTURES['news-to-social'].validation.budget.cycles).toBe(0)
+    expect(FIXTURES['news-to-social'].validation.budget.billable_nodes).toBe(2)
+  })
+
+  it('researches on the cheap tier and writes on the escalation one', () => {
+    // The tier is a DECLARATION the document is bounded and counted on, and the
+    // model is what it is actually priced from - so a template that let the two
+    // disagree would be counted at one tier and billed at another.
+    const research = byId.get('research')!.config as { tier: string; max_iter: number; llm: { model: string } }
+    const write = byId.get('write')!.config as { tier: string; llm: { model: string } }
+    expect(research.tier).toBe('cheap')
+    expect(roleOf(research.llm.model)).toBe('workhorse')
+    expect(write.tier).toBe('escalation')
+    expect(roleOf(write.llm.model)).toBe('escalation')
+    // Low on purpose: the tool loop is where one node's price multiplies.
+    expect(research.max_iter).toBe(3)
+    expect(FIXTURES['news-to-social'].validation.budget.escalation_nodes).toBe(1)
+  })
+
+  it('attaches a KEYLESS search, which is what makes it cold-sign-in runnable', () => {
+    // Not `firecrawl_search`, and the reason is measured rather than stylistic:
+    // that entry is `credential_optional=False` unconditionally, so a template
+    // naming it opens with `tool-credential-required` on a graph nobody has
+    // touched. The recorded answer below is what proves this one does not.
+    const tool = byId.get('search')!.config as { tool_id: string; params: Record<string, unknown> }
+    expect(tool.tool_id).toBe('analyze_community_sentiment')
+    expect(tool.params).toEqual({})
+    expect(FIXTURES['news-to-social'].validation.valid).toBe(true)
+    expect(FIXTURES['news-to-social'].validation.problems).toEqual([])
+  })
+
+  it('has no gate, and says so where somebody about to share a link reads it', () => {
+    expect(document.nodes.some((node) => node.kind === 'gate')).toBe(false)
+    const card = BUILDER_TEMPLATES.find((template) => template.id === 'news-to-social')!
+    expect(card.caveat).toContain('403')
+    expect(card.caveat).toContain('signed-in')
+  })
+
+  it('names its own input field, because a sample resolves by field', () => {
+    // `sequential-pipeline` already declares `topic`, and `SAMPLE_BY_FIELD` is
+    // keyed by field - so sharing one would silently hand one template the
+    // other's prompt. The prompt VARIABLE is still `{topic}`; only the state
+    // key differs, which is the distinction the node exists to show.
+    expect(String(document.input_field)).toBe('subject')
+    const research = byId.get('research')!.config as { prompt_inputs: Record<string, string> }
+    expect(research.prompt_inputs).toEqual({ topic: '${state.subject}' })
+    expect(templateTestInputFor('subject')?.value).toBe('AI agents and agentic workflows')
+    expect(templateTestInputFor('topic')?.value).not.toBe(
+      templateTestInputFor('subject')?.value,
+    )
   })
 })

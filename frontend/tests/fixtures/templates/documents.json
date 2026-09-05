@@ -9,6 +9,7 @@
   "order": [
     "blank",
     "sequential-pipeline",
+    "news-to-social",
     "conditional-router",
     "reflection-loop",
     "hierarchical-delegation",
@@ -338,6 +339,201 @@
         },
         {
           "id": "e6",
+          "source": "search",
+          "source_port": "attach",
+          "target": "research",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "news-to-social": {
+      "schema": "builder.flow/v1",
+      "name": "News to social post",
+      "version": 1,
+      "input_field": "subject",
+      "nodes": [
+        {
+          "id": "subject",
+          "kind": "input",
+          "label": "Subject",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "subject",
+            "label": "What should the post be about?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "research",
+          "kind": "agent",
+          "label": "Find the news",
+          "position": {
+            "x": 340,
+            "y": 180
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 3,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "topic": "${state.subject}"
+            },
+            "role": "News Researcher",
+            "goal": "Find what has actually happened lately, and the page each item was reported on.",
+            "backstory": "You are the person on the desk who reads everything so nobody else has to. You would rather file three items you can link to than eight you half remember, and you have never once written \"reportedly\" about something you did not read.",
+            "task": {
+              "description": "Search for what has been said in the last 7 days about {topic}.\n\nReport the three to five most newsworthy items — the ones somebody following this would be behind without. For each: what happened, and the URL it came from.\n\nCite ONLY URLs the search tool returned to you. If the search comes back thin, say so and report what you found; do not fill the gap from memory.",
+              "expected_output": "Three to five numbered items. Each is a short title, then the source URL on its own line, then one sentence saying what happened. Every URL is one the search returned. No preamble.",
+              "output_schema": null,
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "search",
+          "kind": "tool",
+          "label": "Search the discussion",
+          "position": {
+            "x": 40,
+            "y": 180
+          },
+          "config": {
+            "tool_id": "analyze_community_sentiment",
+            "params": {}
+          }
+        },
+        {
+          "id": "write",
+          "kind": "agent",
+          "label": "Write the post",
+          "position": {
+            "x": 340,
+            "y": 360
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "items": "${state.out__research}"
+            },
+            "role": "Social Editor",
+            "goal": "Turn a handful of sourced items into one post somebody stops scrolling for.",
+            "backstory": "You write the account people actually follow. You know the first line is the whole of the decision to read on, that a link is worth more than an adjective, and that a wall of hashtags reads as somebody who has nothing to say.",
+            "task": {
+              "description": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-style feed. It must be under 280 including any link.\n2. LONG — a two-to-three sentence variant for a feed with room.\n\nRules: cite the source URLs from the research; at most three hashtags and none of them generic; invent nothing that is not in the items below. If the research is thin, write the honest short post rather than padding it.\n\nITEMS:\n{items}",
+              "expected_output": "Markdown with two headed sections, \"Short\" and \"Long\". The short one is a single post of at most 280 characters. Both carry the source URLs. At most three hashtags in total.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "post",
+          "kind": "output",
+          "label": "Post",
+          "position": {
+            "x": 340,
+            "y": 540
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "subject",
+          "source_port": "out",
+          "target": "research",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "research",
+          "source_port": "out",
+          "target": "write",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "write",
+          "source_port": "out",
+          "target": "post",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
           "source": "search",
           "source_port": "attach",
           "target": "research",
@@ -2212,6 +2408,13 @@
       "teaches": "That an edge is a listener, ${state.out__x} is how one step reaches the next, and a tool is dropped onto an agent.",
       "modifyFirst": "The writer's expected output. One sentence there changes the whole deliverable.",
       "caveat": null
+    },
+    "news-to-social": {
+      "title": "News to social post",
+      "blurb": "Search this week’s discussion of a topic and write the post about it.",
+      "teaches": "That two agents and one tool are a whole product, and that a graph with no gate runs unattended for whoever is signed in.",
+      "modifyFirst": "The subject. One box, everything downstream changes, nothing else has to.",
+      "caveat": "No human gate, so it runs unattended — which means only a signed-in caller may launch it. Hand the link to somebody signed out and the service answers 403; add a gate above the researcher if you need that. The search is Hacker News, which needs no key; swap it for a Firecrawl web search in the inspector once you have added one."
     },
     "conditional-router": {
       "title": "Conditional router",

@@ -56,6 +56,7 @@ from scripts.emit_builder_fixtures import (  # noqa: E402
 GALLERY_ORDER = (
     "blank",
     "sequential-pipeline",
+    "news-to-social",
     "conditional-router",
     "reflection-loop",
     "hierarchical-delegation",
@@ -70,15 +71,24 @@ MORE_ROW = ("minimal-gated-agent", "fan-out-join")
 #: and nothing between them.
 LAUNCHABLE = tuple(t for t in GALLERY_ORDER + MORE_ROW if t != "blank")
 
-#: The one launchable template that is NOT gated above its first billable node,
-#: and it is a shape rather than an oversight: the evaluator scopes first,
-#: exactly as `validator_flow.py` does, and its scope GATE reads what the Scoper
-#: produced. Publishing it answers `gated_before_spend: false`, and an anonymous
-#: launch is refused with 403 - measured against a synthetic backend on
-#: 2026-09-04. `PublishDialog` renders that refusal in full, which is the right
-#: place for it; what is wrong is a template SILENTLY not launching, and this one
-#: does not do that.
-UNGATED_BY_DESIGN = ("idea-validator",)
+#: The two launchable templates that are NOT gated above their first billable
+#: node. Both are shapes rather than oversights, and they arrive at the same
+#: place from opposite directions.
+#:
+#: `idea-validator` scopes first, exactly as `validator_flow.py` does, and its
+#: scope GATE reads what the Scoper produced - so the billing has to come first
+#: for the gate to have anything to ask about.
+#:
+#: `news-to-social` has no gate at all, on purpose: it is the template written
+#: to run UNATTENDED, and a gate is the one thing that makes that impossible.
+#: What it pays for that is precise and stated on its own card - only a
+#: signed-in caller may launch it, because `create_run` answers 403 otherwise
+#: unless `BUILDER_ALLOW_GATELESS_GRAPHS` is set.
+#:
+#: Publishing either answers `gated_before_spend: false`, and `PublishDialog`
+#: renders the refusal in full - which is the right place for it. What is wrong
+#: is a template SILENTLY not launching, and neither of these does that.
+UNGATED_BY_DESIGN = ("news-to-social", "idea-validator")
 
 
 def documents() -> dict[str, BuilderDocument]:
@@ -132,9 +142,17 @@ class GalleryTests(unittest.TestCase):
                         10,
                         f"{template_id}.{field} is the card's whole explanation",
                     )
-                # R14: only the validator earns a caveat, and it must be there.
+                # R14: a caveat is a truth the picture cannot carry, and only
+                # two graphs have one. The flagship's is that its shape is not
+                # its judgement; `news-to-social`'s is that it has no gate, so
+                # a signed-out visitor handed the link gets a 403 rather than a
+                # run. Each is asserted by the WORD that makes it that caveat,
+                # so a card whose text was replaced with a different truth fails
+                # here rather than passing on a non-empty string.
                 if template_id == "idea-validator":
                     self.assertIn("judgement", card["caveat"])
+                elif template_id in UNGATED_BY_DESIGN:
+                    self.assertIn("403", card["caveat"])
                 else:
                     self.assertIsNone(card["caveat"])
 
@@ -198,12 +216,15 @@ class ValidationTests(unittest.TestCase):
                     f"{template_id} reaches {targets[start]!r} straight from its input",
                 )
 
-    def test_the_evaluator_is_the_only_one_that_bills_before_its_gate(self) -> None:
+    def test_only_the_declared_two_bill_before_a_gate(self) -> None:
         """Named rather than merely skipped above.
 
-        A test that quietly excluded a case would let a SECOND template become
-        ungated without anybody noticing; this fails if one does, and it fails if
-        the evaluator is ever gated first and the exclusion is left behind.
+        A test that quietly excluded a case would let a THIRD template become
+        ungated without anybody noticing; this fails if one does, and it fails
+        if either declared one is ever gated and the exclusion is left behind.
+
+        The order is `LAUNCHABLE`'s, which is gallery order - so this also pins
+        that `news-to-social` sits before the flagship.
         """
 
         ungated: list[str] = []

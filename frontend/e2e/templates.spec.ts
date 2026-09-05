@@ -41,19 +41,36 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 const ALLOWED_CONSOLE_ERROR: RegExp | null = null
 
 /**
- * The four patterns, and the shape each one is expected to reach.
+ * The five patterns, and the shape each one is expected to reach.
  *
  * `gates` is how many pauses an approve-only operator answers, and it is stated
  * rather than discovered: a template that stopped gating would otherwise pass
  * this file silently, and a gate above the first billable node is the whole
- * reason these are launchable by somebody who is not signed in.
+ * reason four of these are launchable by somebody who is not signed in.
+ *
+ * `news-to-social` is the one with **zero**, and that is a decision rather than
+ * an omission - it is the template written to run unattended.
+ *
+ * WHAT ITS GREEN LINE DOES AND DOES NOT MEAN, because the distinction is the
+ * whole of what a gate buys and a careless reader would take the opposite
+ * lesson. Every request this file makes goes through the e2e Vite proxy, which
+ * forwards `X-Synthetic-User: e2e-user` (`e2e/syntheticUser.ts`), so the API
+ * sees a SIGNED-IN caller - and a signed-in caller may launch a gateless graph
+ * with no flag set. That is the case this template was written for and it is
+ * what is measured here. It is NOT evidence that anybody may launch it: the
+ * anonymous 403 is proved where it can actually be reached, in
+ * `tests/service/test_workflow_ownership.py::test_an_anonymous_launch_of_a_gateless_graph_is_still_403`.
+ * What this file adds on that side is the AUTHOR-facing half - that the publish
+ * dialog says so before anyone hands the link on.
  */
 const PATTERNS = [
   { id: 'sequential-pipeline', title: 'Sequential pipeline', nodes: 7, gates: 1 },
+  { id: 'news-to-social', title: 'News to social post', nodes: 5, gates: 0 },
   { id: 'conditional-router', title: 'Conditional router', nodes: 10, gates: 1 },
   { id: 'reflection-loop', title: 'Reflection loop', nodes: 8, gates: 1 },
   { id: 'hierarchical-delegation', title: 'Hierarchical delegation', nodes: 7, gates: 1 },
 ] as const
+
 
 interface ConsoleWatch {
   unexpected: string[]
@@ -186,10 +203,18 @@ test.describe('Templates run from a cold sign-in', () => {
       await expect(publish).toBeVisible()
       await publish.getByRole('button', { name: /^(Publish|Republish)$/ }).click()
 
-      // Every one of these gates above its first billable node, so the dialog
-      // says the link is safe to share rather than quoting the 403 an anonymous
-      // launch of a gateless graph would get.
-      await expect(publish).toContainText(/anyone with the link can launch it/i)
+      // The dialog's two mutually exclusive sentences, and which one a template
+      // gets is the whole of what its gate buys. Four gate above the first
+      // billable node and the dialog says the link is safe to share; the
+      // unattended one quotes the 403 instead, which is the warning an author
+      // needs BEFORE they hand the link to anybody.
+      if (pattern.gates === 0) {
+        await expect(publish.locator('.gateless-warning')).toBeVisible()
+        await expect(publish).toContainText(/anyone signed out is refused/i)
+        await expect(publish).toContainText(/403/)
+      } else {
+        await expect(publish).toContainText(/anyone with the link can launch it/i)
+      }
 
       // 4. Launch it. `input_field` comes off the published contract rather
       //    than from this file, so a template that renamed its input node is a
@@ -202,12 +227,25 @@ test.describe('Templates run from a cold sign-in', () => {
       const launched = await request.post(`/api/sessions/e2e-templates/runs`, {
         data: {
           workflow_id: id,
+          // One value for every template, and it has to read as a plausible
+          // answer to five different questions - a topic, a subject, a customer
+          // message, an ask and a brief. `input_field` is read off the
+          // published contract above rather than named here, so a template that
+          // renamed its input fails in the RUN and not in this file's literal.
           inputs: { [inputField]: 'A weekly digest of what changed in our codebase.' },
         },
       })
+      // 202 for every one of them, INCLUDING the gateless one - because this
+      // context is signed in (see the note at the top). A 403 here would mean
+      // the proxy had stopped forwarding the synthetic user, not that the
+      // template had stopped working, and that is worth saying in the failure
+      // rather than leaving somebody to add a flag that was never the cause.
       expect(
         launched.status(),
-        'the published template was refused by the endpoint it was published for',
+        pattern.gates === 0
+          ? 'a gateless template was refused: this context should be signed in, '
+            + 'so check the e2e proxy still forwards X-Synthetic-User'
+          : 'the published template was refused by the endpoint it was published for',
       ).toBe(202)
       const runId = ((await launched.json()) as { run_id: string }).run_id
 
@@ -215,7 +253,12 @@ test.describe('Templates run from a cold sign-in', () => {
       expect(snapshot.status, `${pattern.id} ended ${snapshot.status}: ${snapshot.error}`).toBe(
         'completed',
       )
-      expect(gatesAnswered, 'the template did not pause for a human').toBe(pattern.gates)
+      expect(
+        gatesAnswered,
+        pattern.gates === 0
+          ? 'the unattended template paused for a human'
+          : 'the template did not pause for a human',
+      ).toBe(pattern.gates)
 
       // 5. A BODY, not merely a completed run. This is the assertion the first
       //    paid run of an authored graph existed to add: that run succeeded,

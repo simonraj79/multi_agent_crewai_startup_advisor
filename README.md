@@ -32,6 +32,7 @@ limited to approved test accounts, so the fastest way to try the product is the
 - [Running against real models](#running-against-real-models)
 - [Project layout](#project-layout)
 - [Testing](#testing)
+- [Observability](#observability)
 - [Deployment](#deployment)
 - [Getting help](#getting-help)
 - [Contributing](#contributing)
@@ -462,6 +463,31 @@ Notes that will otherwise cost you an afternoon:
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the Python suite,
 the frontend type-check, build and unit tests on every push, plus a two-writer
 PostgreSQL 18 concurrency job on `main`. It carries no credentials by design.
+
+---
+
+## Observability
+
+The app writes **one Langfuse trace per run** — the Langfuse session id *is* the
+run id, so a console URL takes you straight to the trace. Under it sit the run,
+its nodes, agents, tasks, tools and model calls, with durations, token counts,
+the per-generation cost OpenRouter actually billed, and the exception class on
+anything that failed.
+
+It is **off by default** and turns on when `LANGFUSE_PUBLIC_KEY`,
+`LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` are set; with any of them missing
+the exporter is a no-op that logs one line at startup. `GET /readyz` reports its
+state. Nothing it does can fail a run: it is a second consumer of the same
+bounded event pipeline the UI reads, and an unreachable Langfuse changes only
+the exporter's own counters.
+
+**Content is not sent.** A model call carries a fingerprint of its rendered
+prompt plus message and character counts, never the text. Setting
+`LANGFUSE_CAPTURE_CONTENT=1` adds completions and tool payloads, and everything
+outbound is scrubbed for credential shapes either way.
+
+The audit, the trace contract, the definition of done and the full evidence tree
+live in [`docs/observability/`](docs/observability/).
 
 ---
 

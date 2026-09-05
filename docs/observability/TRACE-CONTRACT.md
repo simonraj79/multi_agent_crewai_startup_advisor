@@ -139,7 +139,7 @@ ceilings the frame serializer uses.
 | `LANGFUSE_ENVIRONMENT` | derived (`synthetic` / `live`) | override |
 | `LANGFUSE_RESOLVE_BILLED_COST` | `1` | §4 |
 | `LANGFUSE_QUEUE_CAPACITY` | bounded, same order as the frame writer's | drop-oldest with a counter |
-| `LANGFUSE_FLUSH_INTERVAL_SECONDS` | ≈ 1.0 | batch cadence |
+| `LANGFUSE_FLUSH_INTERVAL_SECONDS` | 0.25 | drain cadence; it is also the span-start error bound the DoD B4 revision names (the SDK cannot set a start time), which is why it is small rather than a throughput tuning |
 | `LANGFUSE_HTTP_TIMEOUT_SECONDS` | small (≤ 5) | never let a slow host hold the thread |
 
 ## 10. Exporter self-report

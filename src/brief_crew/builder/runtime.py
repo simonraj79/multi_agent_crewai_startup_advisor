@@ -1017,6 +1017,51 @@ def _as_text(value: Any) -> str:
     return str(value)
 
 
+def _kickoff(crew: Any, inputs: Mapping[str, Any]) -> Any:
+    """Run one crew and hand back its `CrewOutput`, streaming or not.
+
+    THIS IS THE CONSUMER `stream=True` ALWAYS ASSUMED AND NEVER HAD. Every
+    authored crew carries `Crew(stream=True)` (10 D7, `runtime.py:677` and
+    `:763`), and CrewAI answers that with a LAZY `CrewStreamingOutput`: a
+    generator over a worker thread that has not been started
+    (`crewai/crew.py::kickoff`, verified at 1.15.18). Nothing executes until
+    somebody iterates it. A caller that only stringifies the return value gets
+    the object's `repr` and never calls a model at all.
+
+    Measured on the FIRST paid builder run, 2026-09-05, run
+    `c5df456d-27e0-4e91-9309-e232aceaa5d2`: the five-node `news-to-social`
+    template reported `completed` in **1.5 s** with `cost_usd 0.0`, zero
+    tokens, zero `successful_requests`, and
+
+        <crewai.types.streaming.CrewStreamingOutput object at 0x...>
+
+    as `result.markdown_body` - a green run, a terminal status, seventeen
+    frames, and no work done. Nothing in the suite could see it: the synthetic
+    runner never builds a `Crew`, and every unit double returns a string or a
+    `CrewOutput` from a stubbed kickoff, so the one shape that breaks is the
+    one shape no test constructs.
+
+    Draining the iterator is both halves of the fix: it is what RUNS the crew,
+    and it is what raises the per-token `LLMStreamChunkEvent`s the dialogue
+    rail exists to render (`events/serializer.py:531`). `.result` is valid only
+    after the drain - CrewAI raises `RuntimeError` if it is read early - and a
+    failure inside the worker thread is re-raised out of the loop, so
+    `_attempted`'s retry and `on_error` policy still see it.
+
+    A library crew from `crews/validator_crew/` sets no `stream`, so its
+    kickoff returns a plain `CrewOutput`; that path is returned untouched.
+    """
+
+    from crewai.types.streaming import StreamingOutputBase
+
+    streamed = crew.kickoff(inputs=dict(inputs))
+    if not isinstance(streamed, StreamingOutputBase):
+        return streamed
+    for _chunk in streamed:
+        pass
+    return streamed.result
+
+
 def _routing_entry(flow: Any, method_name: str | None) -> Mapping[str, Any]:
     """This router's own row of the compiled routing table.
 
@@ -1757,7 +1802,7 @@ def run_agent(
             **resolved_key,
         )
         try:
-            return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+            return _record(flow, node_id, _as_text(_kickoff(crew, inputs)))
         finally:
             # `cleanup()` in a `finally`, always. CrewAI's MCP resolver opens a
             # client when the agent binds its tools, and a client that outlives
@@ -1788,7 +1833,7 @@ def _run_authored_agent(
             return _record(
                 flow,
                 node_id,
-                _as_text(crew.kickoff(inputs=dict(spec.prompt_inputs))),
+                _as_text(_kickoff(crew, spec.prompt_inputs)),
             )
         finally:
             release_mcp_clients(crew)
@@ -1897,7 +1942,7 @@ def run_crew(
         def _authored(_fallback_model: str | None) -> str:
             crew = _factories().authored_crew(node_id=node_id, spec=spec)
             try:
-                return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+                return _record(flow, node_id, _as_text(_kickoff(crew, inputs)))
             finally:
                 release_mcp_clients(crew)
 
@@ -1919,7 +1964,7 @@ def run_crew(
             max_iter=max_iter,
             guardrail_max_retries=guardrail_max_retries,
         )
-        return _record(flow, node_id, _as_text(crew.kickoff(inputs=inputs)))
+        return _record(flow, node_id, _as_text(_kickoff(crew, inputs)))
 
     return _attempted(flow, node_id=node_id, retry=retry, on_error=on_error, work=_library)
 

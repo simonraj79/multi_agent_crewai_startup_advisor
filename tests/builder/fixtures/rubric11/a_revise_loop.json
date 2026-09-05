@@ -367,6 +367,11 @@
     ],
     [
       "left",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.TOKEN"
+    ],
+    [
+      "left",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],
@@ -469,6 +474,11 @@
       "right",
       "UIEventType.MODEL_CALL",
       "FrameKind.LLM"
+    ],
+    [
+      "right",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.TOKEN"
     ],
     [
       "right",

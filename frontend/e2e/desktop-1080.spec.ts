@@ -946,36 +946,42 @@ test.describe('5 · a published graph, mid-run and completed', () => {
     /*
      * MEASURED, AND THE TWO HALVES HAVE DIFFERENT ANSWERS.
      *
-     * The panel reads `ELAPSED 00:00 · CALLS 0 · TOKENS 0 · $0.0000`, which is
-     * P-08's sentence exactly. The server's own frames say why, and they say
-     * two different things:
+     * The panel used to read `ELAPSED 00:00 · CALLS 0 · TOKENS 0 · $0.0000`,
+     * which was P-08's sentence exactly. The server's own frames said why, and
+     * they said two different things:
      *
-     *   ELAPSED 00:00   HONEST. 46 frames spanning 0.45 s — a synthetic builder
-     *                   run really is that short, and `mm:ss` floors it. Nothing
-     *                   is lost here; `feee876`'s frame-clock fallback is doing
-     *                   its job and the run was under a second.
-     *   TOKENS 0        NOT honest. Three agents ran and the run produced
-     *   CALLS 0         **zero frames of kind `token`**. `feee876` fixed this by
-     *   COST $0.0000    making the synthetic VALIDATOR runner
-     *                   (`service/runner.py`) emit the serializer's three-frame
-     *                   token sequence; `builder_runner.py` is a different
-     *                   runner and was not touched, so a published graph
-     *                   somebody DREW still gets the panel P-08 described. It is
-     *                   the cost surface on the one thing `MAX_RUN_COST_USD`
-     *                   exists to bound.
+     *   ELAPSED 00:00   HONEST, and still is. 46 frames spanning 0.45 s — a
+     *                   synthetic builder run really is that short, and `mm:ss`
+     *                   floors it. `feee876`'s frame-clock fallback is doing its
+     *                   job and the run was under a second.
+     *   TOKENS 0        NOT honest, and FIXED 2026-09-05. Three agents ran and
+     *   CALLS 0         the run produced **zero frames of kind `token`**.
+     *   COST $0.0000    `feee876` had fixed this for the synthetic VALIDATOR
+     *                   runner (`service/runner.py`) and `builder_runner.py` is
+     *                   a different runner, so a published graph somebody DREW
+     *                   still got the panel P-08 described — on the one thing
+     *                   `MAX_RUN_COST_USD` exists to bound.
      *
-     * Not fixed here: the fix is under `src/brief_crew/`, which this session may
-     * not touch, and it is not a 1920x1080 defect. Recorded in the report with
-     * the `tokenFrames: 0` measurement, which is what turns "the console reads
-     * zero" into something somebody can act on.
+     * `_SyntheticCrew._bill` now emits the serializer's TOKEN frame after the
+     * `utterance`, priced through `compute_cost_usd` off the tier's real model
+     * constant rather than the tier NAME, which is why the cost was
+     * unrecoverable even in principle before. So the assertion below is now the
+     * strong one on both halves that were dishonest, and stays lenient on
+     * `elapsed`, which is floored rather than wrong.
      *
-     * So what is asserted is the honest pair: the panel renders all four cells
-     * at this viewport, and the run really did complete.
+     * `tokenFrames` is still measured and still asserted, because "the panel
+     * shows a number" and "the server sent the frames it is computed from" are
+     * different claims and this file has already been wrong about which it was
+     * making.
      */
     expect(Object.keys(done).sort()).toEqual(['calls', 'cost', 'elapsed', 'tokens'])
     for (const [key, value] of Object.entries(done)) {
       expect(value, `the ${key} cell rendered nothing`).not.toBe('')
     }
+    expect(server.tokenFrames, 'the run produced no frames of kind `token`').toBeGreaterThan(0)
+    expect(done.tokens, 'TOKENS on a completed builder run').not.toBe('0')
+    expect(done.calls, 'CALLS on a completed builder run').not.toBe('0')
+    expect(done.cost, 'COST on a completed builder run').not.toBe('$0.0000')
   }
 
   test('the run console at 1920x1080 — dark', { tag: '@launch' }, async ({ page, request }) => {

@@ -236,6 +236,11 @@
     ],
     [
       "team",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.TOKEN"
+    ],
+    [
+      "team",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],

@@ -480,13 +480,38 @@ class _SyntheticCrew:
         `runtime._emit_frame`, which is what every other builder-side frame
         goes through and which already degrades to a debug log if no capture
         context is scoped - telemetry must never fail a run.
+
+        AND THE TOKEN FRAME, WHICH WAS MISSING - the same defect
+        `SyntheticValidatorRunner._token_usage` records one layer up, met a
+        second time in the half of the product where a stranger's graph spends
+        the money. Chunks and an `utterance` carrying `prompt_tokens` reached
+        the dialogue rail, which rendered `512 in - 78 out`; the client's
+        `applyTokenUsage` fires on `kind === 'token'` and nothing else, so the
+        status panel beside it read `TOKENS 0 - $0.0000` on a COMPLETED builder
+        run. Emitting TOKEN also gets METRICS for free: `_on_frames` routes a
+        token frame into `_record_usage`, which is what marks the run's usage
+        dirty and what `metrics_frame` snapshots, so `CALLS` and `ELAPSED` come
+        back through the production path rather than a second one written for
+        the double.
+
+        THE MODEL IS RESOLVED FROM THE TIER, and that is not cosmetic either.
+        This double reported `model: "cheap"` - a tier name where the serializer
+        writes a model id - so nothing downstream could price it, and
+        `compute_cost_usd("cheap", ...)` correctly answers `None`. `_model_for`
+        is the same tier -> constant map the real factory uses, and the
+        `openrouter/` prefix is dropped because CrewAI's `LLM.__new__` strips it
+        before `LLMCallCompletedEvent` is raised - which is why the paid run's
+        frames say `google/gemini-3.5-flash-lite:nitro`. `compute_cost_usd`
+        resolves both spellings, so the price is right either way; the SPELLING
+        is what a double has to match.
         """
 
-        from brief_crew.builder.runtime import _emit_frame
+        from brief_crew.builder.runtime import _emit_frame, _model_for
         from brief_crew.events.models import FrameKind, UIEventType
 
         call_id = f"synthetic:{self._node_id}"
-        model = str(self._tier)
+        # The tier's own constant, minus the provider prefix - see the docstring.
+        model = _model_for(str(self._tier)).split("/", 1)[-1]
         size = max(1, -(-len(text) // 3))
         for start in range(0, len(text), size):
             _emit_frame(
@@ -500,6 +525,8 @@ class _SyntheticCrew:
                     "chunk": text[start : start + size],
                 },
             )
+        prompt_tokens = 512
+        completion_tokens = max(1, len(text) // 4)
         _emit_frame(
             FrameKind.LLM,
             UIEventType.MODEL_CALL,
@@ -510,9 +537,64 @@ class _SyntheticCrew:
                 "call_id": call_id,
                 "text": text,
                 "truncated": False,
-                "prompt_tokens": 512,
-                "completion_tokens": max(1, len(text) // 4),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
                 "model": model,
+            },
+        )
+        self._bill(call_id, model, prompt_tokens, completion_tokens)
+
+    def _bill(
+        self,
+        call_id: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> None:
+        """The TOKEN frame, last, exactly as the serializer orders it.
+
+        Chunks, then `utterance`, then TOKEN - `events/serializer.py` drafts
+        them in that order for one call, and a console that renders the spend
+        before the words would be a double teaching the client a sequence the
+        real path never produces.
+
+        `cost_usd` is NESTED inside `usage` as well as sitting beside it, and
+        that duplication is load-bearing: the client reads
+        `details.usage.cost_usd` and narrows to `usage` the moment that key is
+        an object, so a cost written only alongside totals `$0.0000` with every
+        token frame present. CLAUDE.md section 8 records that as one of the two
+        independent bugs behind the first paid run's `$0.00`.
+
+        `compute_cost_usd` rather than a literal, so a synthetic run prices the
+        way a paid one does and a `PRICES` edit moves both. It returns `None`
+        for a model with no price on file, which is not `0.0` - the same
+        distinction the real path draws, and the reason a tier name here used to
+        make the panel unpriceable rather than merely wrong.
+        """
+
+        from brief_crew.builder.runtime import _emit_frame
+        from brief_crew.config import compute_cost_usd
+        from brief_crew.events.models import FrameKind, UIEventType
+
+        cost_usd = compute_cost_usd(model, prompt_tokens, completion_tokens)
+        usage: dict[str, Any] = {
+            "successful_requests": 1,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "call_count": 1,
+            "cost_usd": cost_usd,
+        }
+        _emit_frame(
+            FrameKind.TOKEN,
+            UIEventType.MODEL_CALL,
+            node_id=self._node_id,
+            message="Token usage recorded",
+            details={
+                "call_id": call_id,
+                "model": model,
+                "usage": usage,
+                "cost_usd": cost_usd,
             },
         )
 

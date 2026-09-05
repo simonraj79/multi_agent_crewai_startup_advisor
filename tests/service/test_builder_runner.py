@@ -232,6 +232,171 @@ class SyntheticCrewFactoriesTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------
+# The spend surface, on the free path
+# --------------------------------------------------------------------------
+class _Recorder:
+    """The adapter half of a `CaptureContext`, recording instead of ringing."""
+
+    def __init__(self) -> None:
+        self.frames: list[dict[str, Any]] = []
+
+    def emit(self, **kwargs: Any) -> None:
+        self.frames.append(kwargs)
+
+    def kinds(self) -> list[str]:
+        return [str(getattr(f["kind"], "value", f["kind"])) for f in self.frames]
+
+    def of_kind(self, kind: str) -> list[dict[str, Any]]:
+        return [f for f, k in zip(self.frames, self.kinds()) if k == kind]
+
+
+class SyntheticSpendFrameTests(unittest.TestCase):
+    """The TOKEN frame a synthetic builder run now emits, and why it must.
+
+    `_SyntheticCrew` emitted chunks and an `utterance` carrying `prompt_tokens`,
+    so the dialogue rail showed real numbers - and emitted **no TOKEN frame at
+    all**. The client's `applyTokenUsage` fires on `kind === 'token'` and
+    nothing else, so the status panel beside that rail read `TOKENS 0 -
+    $0.0000` on a COMPLETED builder run. That panel is what an operator watches
+    while a graph somebody else drew spends against `MAX_RUN_COST_USD`, and
+    every E2E run, every capture and every local `SYNTHETIC=1` session saw it
+    empty. Same defect as `SyntheticValidatorRunner._token_usage` fixed one
+    layer up (round product-1, P-08); this is the builder's half.
+
+    These tests assert the double against its SUBJECT - `events/serializer.py`
+    at `:527` - rather than against itself, because a double whose shape has
+    drifted teaches the client to read a key that will never arrive.
+    """
+
+    def _spoken(self, tier: str = "cheap") -> _Recorder:
+        from brief_crew.events.context import CaptureContext, current_capture
+
+        recorder = _Recorder()
+        token = current_capture.set(CaptureContext(run_id="r", adapter=recorder))
+        try:
+            SyntheticCrewFactories().agent_crew(
+                node_id="scoper",
+                agent_id="scoper",
+                tier=tier,
+                tools=(),
+                max_iter=1,
+                guardrail_max_retries=0,
+            ).kickoff(inputs={"idea": IDEA})
+        finally:
+            current_capture.reset(token)
+        return recorder
+
+    def test_a_synthetic_node_emits_exactly_one_token_frame(self) -> None:
+        self.assertEqual(1, len(self._spoken().of_kind("token")))
+
+    def test_the_token_frame_comes_last_as_the_serializer_orders_it(self) -> None:
+        """chunks, then `utterance`, then TOKEN - one call, one order.
+
+        A console that rendered the spend before the words would be a double
+        teaching the client a sequence the real path never produces.
+        """
+
+        kinds = self._spoken().kinds()
+
+        self.assertEqual("token", kinds[-1])
+        self.assertEqual(1, kinds.count("token"))
+        self.assertTrue(all(kind == "llm" for kind in kinds[:-1]))
+
+    def test_the_details_mirror_the_serializers_token_draft(self) -> None:
+        """`events/serializer.py:527` writes exactly these four keys."""
+
+        details = dict(self._spoken().of_kind("token")[0]["details"])
+
+        self.assertEqual({"call_id", "model", "usage", "cost_usd"}, set(details))
+        self.assertEqual(
+            {
+                "successful_requests",
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "call_count",
+                "cost_usd",
+            },
+            set(details["usage"]),
+        )
+
+    def test_the_cost_is_nested_inside_usage_as_well_as_beside_it(self) -> None:
+        """The duplication is load-bearing, not an oversight.
+
+        The client reads `details.usage.cost_usd` and narrows to `usage` the
+        moment that key is an object, so a cost written only alongside totals
+        `$0.0000` with every token frame present - one of the two independent
+        bugs behind the first paid run reporting `$0.00` over 128,069 real
+        tokens.
+        """
+
+        details = dict(self._spoken().of_kind("token")[0]["details"])
+
+        self.assertEqual(details["cost_usd"], details["usage"]["cost_usd"])
+        self.assertIsNotNone(details["cost_usd"])
+        self.assertGreater(details["cost_usd"], 0.0)
+
+    def test_the_token_counts_agree_with_the_utterance_beside_them(self) -> None:
+        """One call reported twice must not report two different calls."""
+
+        recorder = self._spoken()
+        utterance = next(
+            dict(f["details"])
+            for f in recorder.of_kind("llm")
+            if dict(f["details"]).get("stage") == "utterance"
+        )
+        usage = dict(recorder.of_kind("token")[0]["details"])["usage"]
+
+        self.assertEqual(utterance["prompt_tokens"], usage["prompt_tokens"])
+        self.assertEqual(utterance["completion_tokens"], usage["completion_tokens"])
+        self.assertEqual(
+            usage["prompt_tokens"] + usage["completion_tokens"], usage["total_tokens"]
+        )
+
+    def test_the_model_is_a_priceable_slug_and_not_the_tier_name(self) -> None:
+        """The reason the panel could not have been priced even with a frame.
+
+        This double reported `model: "cheap"`, and `compute_cost_usd` correctly
+        answers `None` for that - not `0.0`. The tier now resolves through the
+        same `_MODEL_BY_TIER` map the real factory uses, minus the `openrouter/`
+        prefix that CrewAI's `LLM.__new__` strips before the event is raised.
+        """
+
+        from brief_crew.config import CHEAP_MODEL, ESCALATION_MODEL, compute_cost_usd
+
+        for tier, constant in (("cheap", CHEAP_MODEL), ("escalation", ESCALATION_MODEL)):
+            with self.subTest(tier=tier):
+                details = dict(self._spoken(tier).of_kind("token")[0]["details"])
+                self.assertEqual(constant.split("/", 1)[-1], details["model"])
+                self.assertNotIn("openrouter/", details["model"])
+                self.assertIsNotNone(compute_cost_usd(details["model"], 1, 1))
+
+    def test_the_two_tiers_do_not_price_the_same(self) -> None:
+        """A control: without it every assertion above passes on a constant."""
+
+        cheap = dict(self._spoken("cheap").of_kind("token")[0]["details"])["cost_usd"]
+        escalation = dict(
+            self._spoken("escalation").of_kind("token")[0]["details"]
+        )["cost_usd"]
+
+        self.assertNotEqual(cheap, escalation)
+
+    def test_a_node_with_no_capture_scoped_still_runs(self) -> None:
+        """Telemetry must never fail a run, and `_bill` is telemetry."""
+
+        raw = SyntheticCrewFactories().agent_crew(
+            node_id="scoper",
+            agent_id="scoper",
+            tier="cheap",
+            tools=(),
+            max_iter=1,
+            guardrail_max_retries=0,
+        ).kickoff(inputs={"idea": IDEA})
+
+        self.assertEqual("scoper", json.loads(raw)["node_id"])
+
+
+# --------------------------------------------------------------------------
 # The runner, driven directly
 # --------------------------------------------------------------------------
 class BuilderFlowRunnerTests(unittest.TestCase):

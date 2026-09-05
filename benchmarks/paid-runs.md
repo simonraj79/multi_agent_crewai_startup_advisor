@@ -113,7 +113,9 @@ grep.** `research` is the only tool-using node in the graph and its cap is now
 only when the agent is verbose, and an authored agent is not.
 
 **So this run does not exercise the nudge**, and saying otherwise would be the
-kind of claim this page exists to refuse. What it establishes is the other half:
+kind of claim this page exists to refuse. *(A later run on 2026-09-05 does —
+`bd1c82ec`, with `max_iter` forced to 1. See *The verification run — `max_iter`
+EXHAUSTED*.)* What it establishes is the other half:
 the raised cap still runs, still completes, and still costs cents — $0.0179
 against a $0.6103 worst case, **2.93 %**, the same order as the 1.49 % the six
 runs above measured and the 2.8 % the acceptance run did. The nudge itself is
@@ -226,11 +228,15 @@ that figure and its four rows.
 
 Two residuals, neither of them defect 3 and neither of them new:
 
-- **The payload reaches the prompt as its JSON envelope**, not as prose — the
+- ~~**The payload reaches the prompt as its JSON envelope**, not as prose — the
   task literally reads `Size the market for {"summary": "…"} and name the
   buyer.` Every model handled it and every output is on topic, so this costs
   nothing today; it is a shape nobody chose, and the first author who writes a
-  gate whose payload has three keys will find out what it renders as.
+  gate whose payload has three keys will find out what it renders as.~~
+  **FIXED and verified for money — the next section.** Run `5556ec33` on the
+  same template with the same input reads
+  `Size the market for Plan the launch of a keyboard-first task manager for
+  engineering teams. and name the buyer.`
 - **The crew node's result is the LAST task's output**, so the deliverable is
   the Risk specialist's three failure modes and not a synthesis of market,
   product and risk. That is `CrewOutput.raw`'s semantics, it was recorded as a
@@ -449,6 +455,190 @@ shipped, and against four lines of real deliverable that must not match — a
 leak check whose pattern matches nothing is the failure mode this repository
 already has a section about.
 
+## The verification run — the gate payload as PROSE, 2026-09-05
+
+The first residual the section above names, closed. It said the payload reaches
+the prompt *"as its JSON envelope, not as prose"*, that every model handled it
+anyway, and that *"the first author who writes a gate whose payload has three
+keys will find out what it renders as"*. They will not.
+
+`runtime.state_ref_text` renders a JSON OBJECT — a string that parses to one, or
+a mapping — as prose at the ONE seam where a state reference becomes text a
+model reads: `prompt_inputs`, for both arms of `run_agent` and both arms of
+`run_crew`. A single-key object becomes its bare value, a multi-key object
+becomes `key: value` lines in the payload's own order, a nested value is compact
+JSON, and everything else — a plain string, a number, a list, a string that
+merely LOOKS like JSON — is returned as the SAME object.
+
+**`out__<gate>` is unchanged, and that is the design rather than an omission.**
+Replay, the State tab, the export and `gate_payload` all read the stored form
+and all of them want the object back; `route_branch` compares `state.get(key)`
+against a literal and a router that started comparing prose would answer
+differently for the same document; and `emit_output` writes a deliverable a
+client parses. Three of those four are pinned by a negative test in
+`tests/builder/test_prompt_interpolation.py` (23 tests).
+
+Same backend recipe (`PORT=8097`, no `SYNTHETIC`, `/docs` → **404**), same
+template, same saved input, same `approve` at the same gate. Against
+`wd/payload-prose` = **`6233ad0`**.
+
+| template | run id | status | elapsed | prompt / completion | calls | `cost_usd` | static | measured / static | gates |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `hierarchical-delegation` | `5556ec33` | **completed** | 55.0 s | 6,808 / 4,579 | 9 | $0.020923 | $0.5235 | **4.00 %** | 1 approve |
+
+Per node, both on `team` because the members are priced inside the crew:
+`gemini-3.5-flash-lite:nitro` 3 calls $0.0021148; `gemini-3.8-flash` 6 calls
+$0.0188078. Evidence:
+[`live/2026-09-05-hierarchical-delegation-prose.json`](live/2026-09-05-hierarchical-delegation-prose.json),
+which carries all 151 frames, the full flow state and the checks below.
+
+### The three task names, read out of the frames
+
+These are the exact strings CrewAI interpolated, taken from the `task_name` on
+this run's own `agent` and `llm` frames. The previous run's are quoted two
+sections above; the difference is the whole change.
+
+```text
+Size the market for Plan the launch of a keyboard-first task manager for engineering teams. and name the buyer.
+Define the v1 scope for Plan the launch of a keyboard-first task manager for engineering teams. in five bullets.
+List the three ways Plan the launch of a keyboard-first task manager for engineering teams. fails, and the early signal for each
+```
+
+*(The third is cut at the frame's own preview bound, exactly as the earlier
+run's third was.)* Six distinct task names appear across the stream — those
+three and the hierarchical manager's own delegation prose — and **none of the
+six carries a JSON envelope**, which is the check the evidence file computes
+rather than a reading of the list.
+
+**And the store did not move.** From `GET /api/runs/5556ec33…/state`:
+
+```json
+"out__confirm":      "{\"summary\": \"Plan the launch of a keyboard-first task manager for engineering teams.\"}",
+"decision__confirm": {"decision": "approve", "honoured": false, "turns_used": 0}
+```
+
+Byte-identical to run `d1fdeea6`'s. The rendering is the reader's and the
+stored payload is still the object a form can be built from.
+
+**The body is on topic**: 1,311 characters on command-palette adoption among
+non-power users, GitHub webhook latency corrupting cycle-time metrics, and
+multi-seat provisioning — the same subject as `d1fdeea6`'s, which is what says
+this changed the prompt's shape and not its subject.
+
+**One limitation, stated because it is not obvious.** CrewAI renders a whole
+`with:` block, so a reference EMBEDDED in a longer string —
+`task.description: "work from ${state.out__draft}"` — is already spliced into
+that sentence before any entrypoint is called, and there is no seam left at
+which the reference can be told from the prose around it. The shape that works,
+and the one every gallery template uses, is a `prompt_inputs` value that is
+exactly one reference, read by a `{name}` placeholder in the prompt.
+
+## The verification run — `max_iter` EXHAUSTED, 2026-09-05
+
+Defect 2's fix, proved against the thing it was written for. The 2026-09-05
+`max_iter: 6` run above says in its own words that it *"does not exercise the
+nudge"*, because the researcher finished in 2 calls and exhaustion requires
+`iterations >= max_iter`. This run makes exhaustion unavoidable.
+
+**The document is a throwaway, authored through the API and not a template.**
+`news-to-social` with the researcher's `max_iter` set to **1** and its
+`guardrail_max_retries` to **0** (`retry.max_retries` was already 0), so the one
+tool-using agent in the graph spends its whole cap on its first tool call and
+CrewAI's `handle_max_iterations_exceeded` path runs on the very next turn. Same
+backend recipe, `/docs` → **404**.
+
+| template | run id | status | elapsed | prompt / completion | calls | `cost_usd` | static | measured / static | gates |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `news-to-social` (`max_iter: 1`) | `bd1c82ec` | **completed** | 37.5 s | 2,700 / 4,598 | 3 | $0.017927 | $0.2262 | **7.93 %** | 0 (ungated by design) |
+
+Per node: `research` on `gemini-3.5-flash-lite:nitro`, **2 calls**, $0.0014353 —
+one tool turn and the forced answer; `write` on `gemini-3.8-flash`, 1 call,
+$0.0164918. Evidence:
+[`live/2026-09-05-news-to-social-maxiter1.json`](live/2026-09-05-news-to-social-maxiter1.json).
+
+### Exhaustion happened, and it was measured rather than inferred
+
+**`handle_max_iterations_exceeded` ran exactly once, and there was no 400.**
+
+```text
+NUDGE 2026-09-05 12:26:46,700 rewrote a trailing model turn as a user turn before the model call
+```
+
+That line is `builder/max_iter.py`'s own DEBUG log, and it is reached only from
+the max-iter call, so **one NUDGE line is one exhaustion**. It is the direct
+evidence the previous section could not get: CrewAI's own *"Maximum iterations
+reached"* printer line is gated on agent verbosity and an authored agent is not
+verbose — grepped, and absent, exactly as that section predicted.
+
+**It does not appear in an ordinary serve log**, and that is worth knowing
+before somebody greps for it and concludes nothing happened. The hook logs at
+`DEBUG` and uvicorn does not raise that logger, so this backend was started with
+
+```python
+logging.getLogger("brief_crew.builder.max_iter").setLevel(logging.DEBUG)
+```
+
+and its own stdout handler. Nothing else about the backend differs from the
+recipe at the head of this page.
+
+Corroborated three ways from the run itself: the researcher's usage row records
+**2 calls** against `max_iter: 1`; the frame stream carries one
+`analyze_community_sentiment` tool call, `tool_status: ok`, `result_count: 4`;
+and the second call is the only one that could have followed it.
+
+Grep over the whole serve log:
+
+| pattern | hits |
+| --- | ---: |
+| `Maximum iterations` | **0** |
+| `400` | **0** |
+| `INVALID_ARGUMENT` | **0** |
+| `model turn` | 1 — the NUDGE line's own sentence |
+
+**Terminal status `completed`**, `error: null`, `stop_reason: null`. The forced
+final answer is real work rather than a stub: four numbered items with four
+Hacker News item URLs, which is what the researcher had after its single tool
+call. The post the Social Editor then wrote is thin — 374 characters, and it
+leaks its own character-counting scratch into the body — but the post was never
+the subject.
+
+Two things this does not establish. It is **one** run: the failure it verifies
+against was itself intermittent, and `sequential-pipeline` needed two attempts
+to produce one success. And the nudge is proved on the **Google** tiers this
+product uses; a provider that dislikes a trailing *user* turn instead would be
+a different finding.
+
+### Spend, both runs
+
+| | |
+| --- | --- |
+| balance before the first | **$27.254979** (`total_usage` 92.745020765) |
+| balance after the second | **$27.216078** (`total_usage` 92.783921845) |
+| **real spend** | **$0.038901** |
+| the service's own two `cost_usd` rows | **$0.038850** |
+| difference | **$0.000051** |
+
+**The lag caught this page out again, and the correction is left visible.** A
+reading three minutes past the second run said `total_usage` 92.783887525 and
+was confirmed unchanged twice — $0.038867, a difference of $0.000017. A reading
+about twenty-five minutes later, after the suites had run, said 92.783921845.
+The settled figure is the later one, and it is $0.000034 dearer. Every
+intermediate reading this programme has taken has been low, never high; two
+confirmations is evidently not settlement.
+
+**The difference is 0.13 %**, between the previous section's 0.10 % and the
+`max_iter: 6` run's 1.0 %, and the same order as the sweep's $0.000049 over six
+runs. Four samples now sit either side of zero, which is the reading the
+`:nitro` question deserves: no drift has been observed, and none of these runs
+is a measurement of one.
+
+> **A discrepancy this task did not cause, recorded rather than smoothed over.**
+> MISSION.md §7 recorded `total_usage` **92.654757565** after the gate-payload
+> run. The first reading taken here, before either of these runs, was
+> **92.745020765** — $0.090263 higher. Neither run above can account for it;
+> something else on this account spent it between the two readings. The rows
+> above are balance deltas around this task's own runs and are unaffected.
+
 ## What each run's OUTPUT actually did
 
 The table above says the runs completed. This says whether they did the job,
@@ -571,6 +761,13 @@ Everything else on this page was measured **after** that fix.
 > instantiated. And the two tool-using researchers go `max_iter` 3 → 6, so
 > the cap is reached less often. The paragraph below, *"Not fixed here"*,
 > was true when it was written.
+>
+> **Verified for money 2026-09-05 on a run that actually exhausted the cap** —
+> `bd1c82ec`, `news-to-social` with the researcher's `max_iter` set to 1:
+> `handle_max_iterations_exceeded` ran once, no `400` and no
+> `INVALID_ARGUMENT` anywhere in the serve log, and the run reached
+> `completed`. *The verification run — `max_iter` EXHAUSTED* above carries the
+> log line and the three corroborations.
 
 `sequential-pipeline`'s first attempt, run `a9887442-ff35-4da5-8974-52fa03e81a0f`:
 **failed** after 9 calls and $0.002327, three times over, with

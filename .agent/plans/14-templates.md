@@ -342,6 +342,16 @@ and it moves inside the ceiling.
 | `hierarchical-delegation` | 30 | $0.5235 | $0.5235 | $0.6543 | `true`, 0 problems |
 | **five, summed** | **204** | **$2.7041** | **$4.1255** | **$5.1568** | |
 
+**The nudge has now met a run that actually exhausted the cap** — and this
+section's raise is what made that hard to arrange, which is the honest reading
+of it. The `max_iter: 6` verification run finished in 2 calls and exercised
+nothing, so a THROWAWAY document was authored through the API on 2026-09-05
+with `news-to-social`'s researcher at `max_iter: 1` and its guardrail retries at
+0. Run `bd1c82ec`: `handle_max_iterations_exceeded` ran once, no `400`, no
+`INVALID_ARGUMENT`, terminal status `completed`, $0.017927. The gallery
+templates are unchanged by it — the document was never saved as one — and
+`benchmarks/paid-runs.md` owns the log line and the corroborations.
+
 The dearest single template is `reflection-loop` at **$1.92 with the margin**,
 against the $10.00 ceiling — unchanged, and still the binding one. `unpriced_models`
 is empty on all five. **The figures above are the STATIC worst case, and the six

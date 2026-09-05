@@ -256,6 +256,84 @@ rubric 10 depends on C6 landing.
 
 ## Status
 
+### Gate payloads as prose — 2026-09-05
+
+The residual paid run `d1fdeea6` left behind. The `decision__` section below
+fixed *which* value a downstream prompt reads; this fixes *what it reads as*.
+`${state.out__confirm}` resolves to the payload, `render_gate` stores that
+payload as JSON so `gate_payload` can parse it back into the fields an operator
+edits, and CrewAI then interpolated the string verbatim:
+
+```text
+Size the market for {"summary": "Plan the launch of a keyboard-first task manager for engineering teams."} and name the buyer.
+```
+
+Every model answered on topic, so it cost nothing — which is why it is a
+residual and not a defect. It is fixed anyway, because the first author to write
+a gate with three fields finds out what a three-key envelope reads as, and they
+find out for money.
+
+**The rule, and it is the READER's and never the store's.**
+`runtime.state_ref_text` renders a JSON OBJECT — a string that parses to one, or
+a mapping — as prose:
+
+| the value | what a prompt now reads |
+| --- | --- |
+| `{"summary": "…"}` | the bare value |
+| `{"segment": "clinics", "notes": "…"}` | `segment: clinics` / `notes: …`, one line per key, in the payload's OWN order |
+| a nested value inside either | compact JSON — flattening a tree would be inventing a format |
+| a plain string, a number, a list, a string that only LOOKS like JSON | the SAME object, untouched |
+
+It returns `Any` rather than `str` for that last row: CrewAI's
+`interpolate_only` type-checks what it is handed, and stringifying an int here
+would be a second change nobody asked for.
+
+**One seam**, `runtime._prompt_inputs`, serving both arms of `run_agent` and
+both arms of `run_crew` — between them every reader that turns a state
+reference into text a model sees. **Four readers deliberately do not get it**,
+and three are pinned by a negative test:
+
+| reader | why not |
+| --- | --- |
+| `render_gate`, `_apply_gate_edits` | they WRITE `out__<gate>`; 10 D5's replay restores that form and `gate_payload` parses it back |
+| `route_branch` | it compares `state.get(key)` against a literal — a router comparing prose would answer differently for the same document |
+| `replay_output` | a replay that rendered would not reproduce the run it replays |
+| `emit_output` | the run's deliverable is an artefact a client parses, not a prompt a model reads |
+
+**One shape this cannot reach**, stated because it is not obvious. CrewAI
+renders a whole `with:` block, so a reference EMBEDDED in a longer string —
+`task.description: "work from ${state.out__draft}"` — is spliced into that
+sentence before any entrypoint is called, and there is no seam left at which the
+reference can be told from the prose around it. The shape that works, and the
+one every gallery template uses, is a `prompt_inputs` value that is exactly one
+reference read by a `{name}` placeholder.
+
+**Goldens: none moved.** All 22 rubric-11 artefacts regenerated with
+`scripts/emit_rubric11_goldens.py` and byte-identical, because no fixture chains
+a structured output into a prompt input — `_library`'s `prompt_inputs` reads
+`${state.out__idea}`, and an `input` node's output is the seeded string.
+
+**Proved for money.** Run `5556ec33`, `hierarchical-delegation`, same template
+and same input as `d1fdeea6`, `completed` in 55.0 s for **$0.020923**. The three
+declared task names, out of the frames:
+
+```text
+Size the market for Plan the launch of a keyboard-first task manager for engineering teams. and name the buyer.
+Define the v1 scope for Plan the launch of a keyboard-first task manager for engineering teams. in five bullets.
+List the three ways Plan the launch of a keyboard-first task manager for engineering teams. fails, and the early signal for each
+```
+
+None of the six task names in the stream carries a JSON envelope, and
+`out__confirm` is byte-identical to `d1fdeea6`'s — the rendering moved and the
+store did not. [`benchmarks/paid-runs.md`](../../benchmarks/paid-runs.md) owns
+every figure; the evidence is
+`benchmarks/live/2026-09-05-hierarchical-delegation-prose.json`.
+
+**Tests.** `tests/builder/test_prompt_interpolation.py`, **23**: eight rules,
+seven `assertIs` cases proving nothing else moved, five through the real
+compiler and the real flow engine, and three negatives over the store, the
+deliverable and the router's operand.
+
 ### `decision__` namespace — 2026-09-05
 
 Paid-run defect 3, and it is a CONTRACT change: the reserved state namespaces

@@ -92,6 +92,7 @@ __all__ = [
     "run_crew",
     "replay_source",
     "seed_input",
+    "state_ref_text",
     "transform",
     "unbuildable_crew_reason",
     "use_crew_factories",
@@ -1046,6 +1047,132 @@ def _as_text(value: Any) -> str:
     return str(value)
 
 
+def state_ref_text(value: Any) -> Any:
+    """A `${state.*}` reference, as the text an authored PROMPT should carry.
+
+    **The defect this exists for was found by spending money.** Run `d1fdeea6`
+    (`benchmarks/paid-runs.md`, "What is still off topic") put a gate's payload
+    into three specialists' task descriptions and CrewAI interpolated it
+    verbatim, so what the models were actually asked was
+
+        Size the market for {"summary": "Plan the launch of a keyboard-first
+        task manager for engineering teams."} and name the buyer.
+
+    Every model answered on topic anyway, which is why this cost nothing that
+    day and is exactly why it had to be fixed before an author writes a gate
+    whose payload has three keys. The envelope is a shape nobody chose: a gate
+    stores its payload as JSON because `gate_payload` parses JSON into the
+    fields an operator edits, and a node with an `output_schema` stores JSON for
+    the same reason CrewAI's `output_pydantic` does. Both are the right STORED
+    form and neither is a sentence.
+
+    **This is the reader's job and not the store's**, and that boundary is the
+    whole design. `out__<node>` keeps the JSON: 10 D5's replay restores it, the
+    State tab shows it, the export carries it and `gate_payload` parses it back
+    into a form. Only the moment a value becomes text a MODEL reads is prose.
+
+    The rules, and each one is a test in `tests/builder/test_prompt_interpolation.py`:
+
+    * a single-key object becomes its bare value - the operator wrote one thing
+      and the prompt should say that thing, not name the box it came in;
+    * a multi-key object becomes `key: value` lines, one per key, in the
+      payload's OWN order, so a gate form's field order is the order the model
+      reads them in;
+    * a nested value inside either is compact JSON, because flattening a tree
+      into prose would be inventing a format;
+    * anything else - a plain string, a number, a list, a string that merely
+      LOOKS like JSON and does not parse - is returned UNTOUCHED, the same
+      object, so nothing that works today renders differently.
+
+    It returns `Any` rather than `str` for that last reason: CrewAI's
+    `interpolate_only` type-checks what it is handed, and stringifying an int
+    here would be a second change nobody asked for.
+
+    **One shape this cannot reach, stated because it is not obvious.** CrewAI
+    renders a whole `with:` block, so a reference EMBEDDED in a longer string -
+    `task.description: "work from ${state.out__draft}"` - is already spliced
+    into that sentence by the time any entrypoint is called, and there is no
+    seam left at which the reference can be told from the prose around it. The
+    shape that works, and the one every gallery template uses, is a
+    `prompt_inputs` value that is exactly one reference, read by a `{name}`
+    placeholder in the prompt.
+    """
+
+    payload = _json_object(value)
+    if payload is None:
+        return value
+    if len(payload) == 1:
+        return _prose_value(next(iter(payload.values())))
+    return "\n".join(f"{key}: {_prose_value(item)}" for key, item in payload.items())
+
+
+def _json_object(value: Any) -> dict[str, Any] | None:
+    """This value as a JSON OBJECT, or `None` if it is not one.
+
+    A mapping is already one. A string is one only if it parses to a mapping -
+    checked with `json.loads` and never with a regex, because "looks like JSON"
+    is the question `gate_payload` answers the same way at the other end of the
+    same value. The `{`/`}` guard in front of it is not the test; it is what
+    keeps every ordinary prompt string off `json.loads` entirely.
+    """
+
+    if isinstance(value, Mapping):
+        return {str(key): item for key, item in value.items()}
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not (text.startswith("{") and text.endswith("}")):
+        return None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(parsed, Mapping):
+        return None
+    return {str(key): item for key, item in parsed.items()}
+
+
+def _prose_value(value: Any) -> str:
+    """One field of a rendered payload, as the text that stands for it.
+
+    `None` is the empty string and not the word `null`: an unfilled gate field
+    is a blank the author left, and a prompt that says `null` is asserting
+    something. Everything else that is not already a string is compact JSON,
+    which is the one rendering that survives a nested object without inventing
+    a layout for it.
+    """
+
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, default=str, separators=(",", ":"))
+
+
+def _prompt_inputs(prompt_inputs: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Every `${state.*}` a node feeds its prompt, as the text it should read.
+
+    The ONE place this rendering is applied, for both arms of `run_agent` and
+    both arms of `run_crew` - which between them are every reader that turns a
+    state reference into text a model sees. Four other readers deliberately do
+    NOT get it:
+
+    * `render_gate` and `_apply_gate_edits` WRITE `out__<gate>`; rendering there
+      would change the stored form, and `gate_payload` parses that form back.
+    * `route_branch` compares `state.get(key)` against a literal. A router that
+      started comparing prose would answer differently for the same document.
+    * `replay_output` restores a saved value; a replay that rendered would not
+      reproduce the run it replays.
+    * `emit_output` writes the run's DELIVERABLE, which is an artefact a client
+      parses rather than a prompt a model reads.
+    """
+
+    return {
+        str(key): state_ref_text(value)
+        for key, value in dict(prompt_inputs or {}).items()
+    }
+
+
 def _kickoff(crew: Any, inputs: Mapping[str, Any]) -> Any:
     """Run one crew and hand back its `CrewOutput`, streaming or not.
 
@@ -1757,7 +1884,7 @@ def run_agent(
     """
 
     checkpoint(node_id)
-    inputs = dict(prompt_inputs or {})
+    inputs = _prompt_inputs(prompt_inputs)
     if role is not None:
         return _run_authored_agent(
             flow,
@@ -1944,7 +2071,7 @@ def run_crew(
     """
 
     checkpoint(node_id)
-    inputs = dict(prompt_inputs or {})
+    inputs = _prompt_inputs(prompt_inputs)
     if process is not None:
         specs = tuple(_member_spec(member) for member in members)
         spec = AuthoredCrewSpec(

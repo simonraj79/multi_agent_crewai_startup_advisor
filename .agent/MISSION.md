@@ -236,26 +236,18 @@ Three things a later wave must not get wrong:
 
 ## 7. The money rule
 
-**Balance: $27.254979** — `total_credits` 120, `total_usage` 92.745020765,
-measured 2026-09-05 after the two prompt-fix verification runs and confirmed
-unchanged twice, 45 s apart. **It moved $0.090263 since the reading below, of
-which only $0.031534 is this programme's recorded spend**: another agent's paid
-backend was listening on 8097 throughout, and a shared OpenRouter account
-cannot attribute a delta to one process. The previous reading was $27.345242
-(`total_usage` 92.654757565), after the gate-payload verification run.
+**Balance: $27.216078** — `total_credits` 120, `total_usage` 92.783921845,
+measured 2026-09-05 about twenty-five minutes after the gate-payload-as-prose
+and `max_iter`-exhaustion verification runs. An earlier reading three minutes
+past the second run said $27.216112 and was confirmed unchanged TWICE before
+moving by $0.000034, so read this one as the settled figure and read the lag
+warning below as meaning more than two confirmations. (It read $27.345242 earlier
+that day, $27.55 on 2026-09-04; an earlier note said $7.55 before the owner
+topped up. Re-measure rather than quote this — and read it LATE: the credits
+endpoint lags a completion by minutes, and every intermediate reading this
+programme has taken was low, never high.)
 
-> **This figure was ALREADY STALE when it was written, and by somebody else's
-> spend.** Fifteen minutes after the reading above - with both of this
-> session's backends confirmed stopped by port, and no run of its own in
-> flight - `total_usage` read **92.783887525**, $0.038867 higher. That is the
-> other agent on 8097. **Re-measure; do not quote either number.** What is
-> durable on this page is the spend table below, whose last row is the
-> service's own `cost_usd` and therefore attributable. (It read $27.55 on 2026-09-04; an earlier note said
-$7.55 before the owner topped up. Re-measure rather than quote this — and read
-it LATE: the credits endpoint lags a completion by minutes, and every
-intermediate reading this programme has taken was low, never high.)
-
-**Spend to date on this programme: $0.179572 of the $5.00 allowance**, all of
+**Spend to date on this programme: $0.218422 of the $5.00 allowance** by the service's own `cost_usd` (the four earlier rows $0.148038, the two prompt-fix runs $0.031534, the prose run $0.020923 and the exhaustion run $0.017927 - two agents ran on one account in parallel on the afternoon of 2026-09-05, so their balance deltas overlap and only the summed `cost_usd` is attributable), all of
 it on 2026-09-04 and 2026-09-05:
 
 | what | spend | measured as | where |
@@ -265,16 +257,27 @@ it on 2026-09-04 and 2026-09-05:
 | the `max_iter` verification run | $0.018073 | balance delta | `benchmarks/paid-runs.md` |
 | the gate-payload verification run | $0.022310 | balance delta | `benchmarks/paid-runs.md` |
 | the two prompt-fix verification runs | $0.031534 | the runs' own `cost_usd` | `benchmarks/paid-runs.md` |
+| the gate-payload-as-PROSE run | $0.020923 | the run's own `cost_usd` | `benchmarks/paid-runs.md` |
+| the `max_iter` EXHAUSTION run | $0.017927 | the run's own `cost_usd` | `benchmarks/paid-runs.md` |
 
-The first and last rows are the ones that are **not** balance deltas, and the
-column says so rather than letting five figures look like one kind of
-measurement. No balance was read around the acceptance run; the prompt-fix runs
-had a balance read on both sides, but another agent's paid backend was live on
-8097 at the same time, so the $0.035513 delta they sit inside is an upper bound
-on somebody's spend rather than a measurement of theirs. The three middle rows
-have both, and there the two never differ by more than $0.0002.
+The acceptance run is the only row with no balance reading at all around it, and
+the column says so rather than letting six figures look like one kind of
+measurement. **The last two rows share ONE balance delta** — they ran back to
+back and only the pair was bracketed: **$0.038901** against **$0.038850**
+summed, a difference of $0.000051 — 0.13 %, the same order as every other
+measurement of this kind on that page.
 
-**$4.82 of the allowance is unspent**, and the one item left that needs it is
+> **$0.090263 moved between two readings, and $0.054750 of it is unattributed.**
+> `total_usage` read 92.654757565 after the gate-payload run and 92.745020765
+> before the prose run. Of that gap, $0.035513 is the two prompt-fix runs'
+> bracketed delta (their `cost_usd` sums to $0.031534, and the other agent's
+> backend was live during the bracket). The remaining **$0.054750** matches no
+> recorded run on either agent's report - a retry nobody logged, or something
+> else on the shared account. It is in no table because nothing in this
+> programme is known to have caused it; the allowance is measured against the
+> balance, so it counts against it anyway. Re-measure before the next paid run.
+
+**$4.78 of the allowance is unspent**, and the one item left that needs it is
 the live fan-out benchmark (§12.3).
 
 Owner's ruling, 2026-09-04:

@@ -169,6 +169,11 @@
     ],
     [
       "draft",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.TOKEN"
+    ],
+    [
+      "draft",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],

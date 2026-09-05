@@ -234,6 +234,11 @@
     ],
     [
       "three",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.TOKEN"
+    ],
+    [
+      "three",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],

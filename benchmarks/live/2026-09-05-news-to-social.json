@@ -1,0 +1,1347 @@
+{
+ "_what": "One PAID run of the news-to-social gallery template against real OpenRouter, on a local paid backend (no SYNTHETIC), 2026-09-05. Plan 14 criterion 9.",
+ "template": "news-to-social",
+ "input": {
+  "field": "subject",
+  "value": "AI agents and agentic workflows"
+ },
+ "document_id": "ug_b2c0230e",
+ "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+ "status": "completed",
+ "created_at": "2026-09-05T01:05:54.517625Z",
+ "completed_at": "2026-09-05T01:06:27.471738Z",
+ "elapsed_s": 33.0,
+ "gates_answered": [],
+ "usage": {
+  "call_count": 3,
+  "prompt_tokens": 2558,
+  "completion_tokens": 4445,
+  "total_tokens": 7003,
+  "cost_usd": 0.0173235
+ },
+ "node_usage": [
+  {
+   "successful_requests": 2,
+   "prompt_tokens": 1950,
+   "completion_tokens": 309,
+   "total_tokens": 2259,
+   "call_count": 2,
+   "elapsed_ms": 3626,
+   "cost_usd": 0.0013575,
+   "node_id": "research",
+   "model": "google/gemini-3.5-flash-lite:nitro"
+  },
+  {
+   "successful_requests": 1,
+   "prompt_tokens": 608,
+   "completion_tokens": 4136,
+   "total_tokens": 4744,
+   "call_count": 1,
+   "elapsed_ms": 23831,
+   "cost_usd": 0.015966,
+   "node_id": "write",
+   "model": "google/gemini-3.8-flash"
+  }
+ ],
+ "estimate": {
+  "static_cost_usd": 0.42836850000000004,
+  "floor_cost_usd": 0.3205365,
+  "measured_over_static_pct": 4.044
+ },
+ "frames": {
+  "total": 63,
+  "token": 3,
+  "tool": 2,
+  "error_level": 0
+ },
+ "citations": {
+  "urls_in_body": [
+   "https://news.ycombinator.com/item?id=41984257",
+   "https://news.ycombinator.com/item?id=43603324",
+   "https://news.ycombinator.com/item?id=44433537",
+   "https://news.ycombinator.com/item?id=45714551"
+  ],
+  "backed_by_a_tool_frame": [],
+  "not_in_any_tool_frame": [
+   "https://news.ycombinator.com/item?id=41984257",
+   "https://news.ycombinator.com/item?id=43603324",
+   "https://news.ycombinator.com/item?id=44433537",
+   "https://news.ycombinator.com/item?id=45714551"
+  ],
+  "_note": "A tool frame carries a BOUNDED output_preview - notes, counts, status - and never the tool's result rows, so URL-to-tool closure is not answerable from the frame stream. news-to-social's four ids were checked against the live Hacker News item API instead and all four are real stories whose titles match the post; see benchmarks/paid-runs.md."
+ },
+ "error": null,
+ "result": {
+  "markdown_body": "# Short\n\nAgent frameworks tackling real production limits:\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails"
+ },
+ "frame_stream": [
+  {
+   "v": 1,
+   "seq": 1,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.297Z",
+   "kind": "run_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Stage 1 of 4",
+   "details": {
+    "stage": "plan",
+    "index": 1,
+    "of": 4,
+    "label": "Subject",
+    "node_ids": [
+     "subject"
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "seq": 2,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.297Z",
+   "kind": "run_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Stage 2 of 4",
+   "details": {
+    "stage": "plan",
+    "index": 2,
+    "of": 4,
+    "label": "Find the news",
+    "node_ids": [
+     "research"
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "seq": 3,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.297Z",
+   "kind": "run_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Stage 3 of 4",
+   "details": {
+    "stage": "plan",
+    "index": 3,
+    "of": 4,
+    "label": "Write the post",
+    "node_ids": [
+     "write"
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "seq": 4,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.297Z",
+   "kind": "run_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Stage 4 of 4",
+   "details": {
+    "stage": "plan",
+    "index": 4,
+    "of": 4,
+    "label": "Post",
+    "node_ids": [
+     "post"
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "seq": 5,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.314Z",
+   "kind": "run_state",
+   "event_type": "WORKFLOW_START",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "builder_ug_b2c0230e_v1 started",
+   "details": {
+    "status": "running",
+    "inputs": {
+     "subject": "AI agents and agentic workflows",
+     "id": "e32a7914-b88e-4171-8505-d9319cf65da6"
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 6,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.323Z",
+   "kind": "node_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "subject",
+   "message": "n0_subject started",
+   "details": {
+    "stage": "before",
+    "params": {}
+   }
+  },
+  {
+   "v": 1,
+   "seq": 7,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.328Z",
+   "kind": "node_state",
+   "event_type": "NODE_END",
+   "level": "INFO",
+   "node_id": "subject",
+   "message": "n0_subject completed",
+   "details": {
+    "stage": "after",
+    "result": "AI agents and agentic workflows",
+    "output_preview": "AI agents and agentic workflows"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 8,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.329Z",
+   "kind": "edge_taken",
+   "event_type": "EDGE_PROCESS",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "subject to research",
+   "details": {
+    "stage": "traversal",
+    "from": "subject",
+    "to": "research",
+    "port": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 9,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.329Z",
+   "kind": "node_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "n1_research started",
+   "details": {
+    "stage": "before",
+    "params": {
+     "_0": "AI agents and agentic workflows"
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 10,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.631Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "crew started",
+   "details": {
+    "stage": "before"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 11,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.650Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworthy items — the ones somebody following this would be behind without. For each: what happened, and the URL it came from.\n\nCite ONLY URLs the search tool returned to you. If the search comes back thin, say so and report what you found; do not fill the gap from memory. started",
+   "details": {
+    "stage": "before",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 12,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.654Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "News Researcher started",
+   "details": {
+    "stage": "before",
+    "task": "Task"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 13,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.657Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "AgentExecutor started",
+   "details": {
+    "stage": "before",
+    "flow": "AgentExecutor",
+    "nested": true,
+    "inputs": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 14,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:55.660Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro call started",
+   "details": {
+    "stage": "before",
+    "call_id": "458a1bbc-d734-4a64-a89e-ad5c6c6392ab",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 15,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:57.411Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "458a1bbc-d734-4a64-a89e-ad5c6c6392ab",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce",
+    "stage": "chunk",
+    "chunk": ""
+   }
+  },
+  {
+   "v": 1,
+   "seq": 16,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:57.414Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "458a1bbc-d734-4a64-a89e-ad5c6c6392ab",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "finish_reason": "tool_calls",
+    "response_id": "gen-1788570356-DR4tFbdpWtIrHooP7Y7z",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce",
+    "stage": "chunk",
+    "chunk": "{\"comments_per_story\":5,\"story_limit\":5,\"query\":\"AI agents agentic workflows\"}"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 17,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:57.414Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro call completed",
+   "details": {
+    "stage": "after",
+    "call_id": "458a1bbc-d734-4a64-a89e-ad5c6c6392ab",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "finish_reason": "tool_calls",
+    "response_id": "gen-1788570356-DR4tFbdpWtIrHooP7Y7z",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 18,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:57.414Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro said",
+   "details": {
+    "stage": "utterance",
+    "call_id": "458a1bbc-d734-4a64-a89e-ad5c6c6392ab",
+    "text": "[{\"function\": {\"arguments\": \"{\\\"comments_per_story\\\":5,\\\"story_limit\\\":5,\\\"query\\\":\\\"AI agents agentic workflows\\\"}\", \"name\": \"analyze_community_sentiment\"}, \"id\": \"call_1948595\", \"index\": 0, \"type\": \"function\"}]",
+    "truncated": false,
+    "prompt_tokens": 344,
+    "completion_tokens": 36,
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 19,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:57.414Z",
+   "kind": "token",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Token usage recorded",
+   "details": {
+    "call_id": "458a1bbc-d734-4a64-a89e-ad5c6c6392ab",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "usage": {
+     "successful_requests": 1,
+     "prompt_tokens": 344,
+     "completion_tokens": 36,
+     "total_tokens": 380,
+     "call_count": 1,
+     "cost_usd": 0.00019319999999999998
+    },
+    "cost_usd": 0.00019319999999999998,
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 20,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:05:57.415Z",
+   "kind": "tool",
+   "event_type": "TOOL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "analyze_community_sentiment started",
+   "details": {
+    "stage": "before",
+    "tool": "analyze_community_sentiment",
+    "query": "AI agents agentic workflows",
+    "args": {
+     "comments_per_story": 5,
+     "story_limit": 5,
+     "query": "AI agents agentic workflows"
+    },
+    "input_preview": "{\"comments_per_story\": 5, \"query\": \"AI agents agentic workflows\", \"story_limit\": 5}",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 21,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:01.378Z",
+   "kind": "tool",
+   "event_type": "TOOL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "analyze_community_sentiment completed",
+   "details": {
+    "stage": "after",
+    "tool": "analyze_community_sentiment",
+    "query": "AI agents agentic workflows",
+    "from_cache": false,
+    "failure": null,
+    "input_preview": "{\"comments_per_story\": 5, \"query\": \"AI agents agentic workflows\", \"story_limit\": 5}",
+    "output_preview": "{\"notes\": \"Inspected 5 HN thread(s) and fetched their comment trees.\", \"output_chars\": 5152, \"result_count\": 4, \"retrieved_at\": \"2026-09-05T01:05:57Z\", \"tool_status\": \"ok\"}",
+    "tool_status": "ok",
+    "result_count": 4,
+    "notes": "Inspected 5 HN thread(s) and fetched their comment trees.",
+    "retrieved_at": "2026-09-05T01:05:57Z",
+    "output_chars": 5152,
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   },
+   "duration_ms": 3962
+  },
+  {
+   "v": 1,
+   "seq": 22,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:01.382Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro call started",
+   "details": {
+    "stage": "before",
+    "call_id": "85b92cf7-3de7-4277-8e85-715e054c3c5c",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 23,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:02.337Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "85b92cf7-3de7-4277-8e85-715e054c3c5c",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce",
+    "stage": "chunk",
+    "chunk": "1."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 24,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:02.679Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "85b92cf7-3de7-4277-8e85-715e054c3c5c",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce",
+    "stage": "chunk",
+    "chunk": " Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 25,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.021Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "85b92cf7-3de7-4277-8e85-715e054c3c5c",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce",
+    "stage": "chunk",
+    "chunk": " AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=4"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 26,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.256Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "85b92cf7-3de7-4277-8e85-715e054c3c5c",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "finish_reason": "stop",
+    "response_id": "gen-1788570361-WYeWtR21CT53pt4VHYu6",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce",
+    "stage": "chunk",
+    "chunk": "4433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 27,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.256Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro call completed",
+   "details": {
+    "stage": "after",
+    "call_id": "85b92cf7-3de7-4277-8e85-715e054c3c5c",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "finish_reason": "stop",
+    "response_id": "gen-1788570361-WYeWtR21CT53pt4VHYu6",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 28,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.256Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "google/gemini-3.5-flash-lite:nitro said",
+   "details": {
+    "stage": "utterance",
+    "call_id": "85b92cf7-3de7-4277-8e85-715e054c3c5c",
+    "text": "1. Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=44433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith.",
+    "truncated": false,
+    "prompt_tokens": 1606,
+    "completion_tokens": 273,
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 29,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.256Z",
+   "kind": "token",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Token usage recorded",
+   "details": {
+    "call_id": "85b92cf7-3de7-4277-8e85-715e054c3c5c",
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "usage": {
+     "successful_requests": 1,
+     "prompt_tokens": 1606,
+     "completion_tokens": 273,
+     "total_tokens": 1879,
+     "call_count": 1,
+     "cost_usd": 0.0011643
+    },
+    "cost_usd": 0.0011643,
+    "agent_role": "News Researcher",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "agent_id": "80a94b81-661f-4451-b4b7-6cfa33208811",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 30,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.258Z",
+   "kind": "reasoning",
+   "event_type": "THINKING_PROCESS",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "1. Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=44433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith.",
+   "details": {
+    "stage": "thinking",
+    "agent_role": "News Researcher"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 31,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.263Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "AgentExecutor completed",
+   "details": {
+    "stage": "after",
+    "flow": "AgentExecutor",
+    "nested": true,
+    "result": "completed"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 32,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.267Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "News Researcher completed",
+   "details": {
+    "stage": "after",
+    "task": "Task",
+    "output": "1. Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=44433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 33,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.267Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworthy items — the ones somebody following this would be behind without. For each: what happened, and the URL it came from.\n\nCite ONLY URLs the search tool returned to you. If the search comes back thin, say so and report what you found; do not fill the gap from memory. completed",
+   "details": {
+    "stage": "after",
+    "task_name": "Search for what has been said in the last 7 days about AI agents and agentic workflows.\n\nReport the three to five most newsworth",
+    "task_id": "30fc30ce-f376-4195-98f3-f02cdad8a7ce"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 34,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.272Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "crew completed",
+   "details": {
+    "stage": "after",
+    "total_tokens": 2259
+   }
+  },
+  {
+   "v": 1,
+   "seq": 35,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.295Z",
+   "kind": "node_state",
+   "event_type": "NODE_END",
+   "level": "INFO",
+   "node_id": "research",
+   "message": "n1_research completed",
+   "details": {
+    "stage": "after",
+    "result": "1. Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=44433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith.",
+    "output_preview": "1. Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=44433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith."
+   }
+  },
+  {
+   "v": 1,
+   "seq": 36,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.296Z",
+   "kind": "edge_taken",
+   "event_type": "EDGE_PROCESS",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "research to write",
+   "details": {
+    "stage": "traversal",
+    "from": "research",
+    "to": "write",
+    "port": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 37,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.296Z",
+   "kind": "node_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "n2_write started",
+   "details": {
+    "stage": "before",
+    "params": {
+     "_0": "1. Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=44433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith."
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 38,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.575Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "crew started",
+   "details": {
+    "stage": "before"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 39,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.595Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-style feed. It must be under 280 including any link.\n2. LONG — a two-to-three sentence variant for a feed with room.\n\nRules: cite the source URLs from the research; at most three hashtags and none of them generic; invent nothing that is not in the items below. If the research is thin, write the honest short post rather than padding it.\n\nITEMS:\n1. Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=44433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith. started",
+   "details": {
+    "stage": "before",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 40,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.599Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Social Editor started",
+   "details": {
+    "stage": "before",
+    "task": "Task"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 41,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.600Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "AgentExecutor started",
+   "details": {
+    "stage": "before",
+    "flow": "AgentExecutor",
+    "nested": true,
+    "inputs": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 42,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:03.603Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "google/gemini-3.8-flash call started",
+   "details": {
+    "stage": "before",
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "model": "google/gemini-3.8-flash",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 43,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:05.420Z",
+   "kind": "metrics",
+   "event_type": "METRICS_UPDATED",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Run metrics updated",
+   "details": {
+    "reason": "interval",
+    "usage": {
+     "successful_requests": 2,
+     "prompt_tokens": 1950,
+     "completion_tokens": 309,
+     "total_tokens": 2259,
+     "call_count": 2,
+     "elapsed_ms": 3626,
+     "cost_usd": 0.0013575
+    },
+    "nodes": [
+     {
+      "node_id": "research",
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "successful_requests": 2,
+      "prompt_tokens": 1950,
+      "completion_tokens": 309,
+      "total_tokens": 2259,
+      "call_count": 2,
+      "elapsed_ms": 3626,
+      "cost_usd": 0.0013575
+     }
+    ],
+    "frames": {
+     "captured": 42,
+     "dropped": 0,
+     "gaps": 0,
+     "emit_errors": 0,
+     "subscriber_dropped": 0,
+     "unattributed": 0
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 44,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:25.931Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794",
+    "stage": "chunk",
+    "chunk": "# Short\n\nAgent frameworks tackling real production limits:"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 45,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:26.210Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794",
+    "stage": "chunk",
+    "chunk": "\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 46,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:26.595Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794",
+    "stage": "chunk",
+    "chunk": "?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 47,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:26.908Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794",
+    "stage": "chunk",
+    "chunk": "://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 48,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.242Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794",
+    "stage": "chunk",
+    "chunk": " (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 49,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.434Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Model stream chunk",
+   "details": {
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "model": "google/gemini-3.8-flash",
+    "finish_reason": "stop",
+    "response_id": "gen-1788570363-nxzhptKVKZn2XkxGB1Hc",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794",
+    "stage": "chunk",
+    "chunk": " UI support. #RubyOnRails"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 50,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.434Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "google/gemini-3.8-flash call completed",
+   "details": {
+    "stage": "after",
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "model": "google/gemini-3.8-flash",
+    "finish_reason": "stop",
+    "response_id": "gen-1788570363-nxzhptKVKZn2XkxGB1Hc",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 51,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.434Z",
+   "kind": "llm",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "google/gemini-3.8-flash said",
+   "details": {
+    "stage": "utterance",
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "text": "# Short\n\nAgent frameworks tackling real production limits:\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails",
+    "truncated": false,
+    "prompt_tokens": 608,
+    "completion_tokens": 4136,
+    "model": "google/gemini-3.8-flash",
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 52,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.434Z",
+   "kind": "token",
+   "event_type": "MODEL_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Token usage recorded",
+   "details": {
+    "call_id": "1cbe4e84-0d3d-43b7-9a03-422600eaf573",
+    "model": "google/gemini-3.8-flash",
+    "usage": {
+     "successful_requests": 1,
+     "prompt_tokens": 608,
+     "completion_tokens": 4136,
+     "total_tokens": 4744,
+     "call_count": 1,
+     "cost_usd": 0.015966
+    },
+    "cost_usd": 0.015966,
+    "agent_role": "Social Editor",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "agent_id": "57b77ffb-dfd4-4c1b-a05d-2766211f93c1",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 53,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.435Z",
+   "kind": "reasoning",
+   "event_type": "THINKING_PROCESS",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Failed to parse LLM response",
+   "details": {
+    "stage": "thinking",
+    "agent_role": "Social Editor"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 54,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.438Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "AgentExecutor completed",
+   "details": {
+    "stage": "after",
+    "flow": "AgentExecutor",
+    "nested": true,
+    "result": "completed"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 55,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.440Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Social Editor completed",
+   "details": {
+    "stage": "after",
+    "task": "Task",
+    "output": "# Short\n\nAgent frameworks tackling real production limits:\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 56,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.440Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-style feed. It must be under 280 including any link.\n2. LONG — a two-to-three sentence variant for a feed with room.\n\nRules: cite the source URLs from the research; at most three hashtags and none of them generic; invent nothing that is not in the items below. If the research is thin, write the honest short post rather than padding it.\n\nITEMS:\n1. Oqlous AI’s RAG Agentic Framework\nhttps://news.ycombinator.com/item?id=43603324\nDevelopers announced a new RAG Agentic Framework designed to address limitations in Model Context Protocol (MCP) such as token inefficiency and lack of native UI support.\n\n2. Agno Multi-Agent Framework and Runtime\nhttps://news.ycombinator.com/item?id=45714551\nAn introduction was shared for Agno, a FastAPI-inspired, private-by-design framework and runtime for managing AI agents and step-based agentic workflows.\n\n3. Durable Swarm Open-Source Project\nhttps://news.ycombinator.com/item?id=41984257\nCreators released Durable Swarm, a drop-in replacement for OpenAI’s Swarm adding durable execution capabilities to make agentic workflows resilient to interruptions and server restarts.\n\n4. Chatwoot AI Agents SDK for Ruby on Rails\nhttps://news.ycombinator.com/item?id=44433537\nThe team at Chatwoot shared a new provider-agnostic, thread-safe SDK built to run AI agents and agentic workflows directly within a Rails monolith. completed",
+   "details": {
+    "stage": "after",
+    "task_name": "Write a social post from the items below.\n\nGive two things:\n1. SHORT — one post of at most 280 characters, for an X or LinkedIn-",
+    "task_id": "7ebf4f69-1ee1-4cdd-a945-8cb8d4d83794"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 57,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.453Z",
+   "kind": "agent",
+   "event_type": "AGENT_CALL",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "crew completed",
+   "details": {
+    "stage": "after",
+    "total_tokens": 4744
+   }
+  },
+  {
+   "v": 1,
+   "seq": 58,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.456Z",
+   "kind": "node_state",
+   "event_type": "NODE_END",
+   "level": "INFO",
+   "node_id": "write",
+   "message": "n2_write completed",
+   "details": {
+    "stage": "after",
+    "result": "# Short\n\nAgent frameworks tackling real production limits:\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails",
+    "output_preview": "# Short\n\nAgent frameworks tackling real production limits:\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 59,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.456Z",
+   "kind": "edge_taken",
+   "event_type": "EDGE_PROCESS",
+   "level": "INFO",
+   "node_id": "post",
+   "message": "write to post",
+   "details": {
+    "stage": "traversal",
+    "from": "write",
+    "to": "post",
+    "port": null
+   }
+  },
+  {
+   "v": 1,
+   "seq": 60,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.456Z",
+   "kind": "node_state",
+   "event_type": "NODE_START",
+   "level": "INFO",
+   "node_id": "post",
+   "message": "n3_post started",
+   "details": {
+    "stage": "before",
+    "params": {
+     "_0": "# Short\n\nAgent frameworks tackling real production limits:\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails"
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 61,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.460Z",
+   "kind": "node_state",
+   "event_type": "NODE_END",
+   "level": "INFO",
+   "node_id": "post",
+   "message": "n3_post completed",
+   "details": {
+    "stage": "after",
+    "result": {
+     "markdown_body": "# Short\n\nAgent frameworks tackling real production limits:\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails",
+     "node_id": "post"
+    },
+    "output_preview": "{\"markdown_body\": \"# Short\\n\\nAgent frameworks tackling real production limits:\\n\\u2022 Durable Swarm: https://news.ycombinator.com/item?id=41984257\\n\\u2022 Agno: https://news.ycombinator.com/item?id=45714551\\n\\u2022 Chatwoot: https://news.ycombinator.com/item?id=44433537\\n\\u2022 Oqlous: https://news.ycombinator.com/item?id=43603324\\n\\n# Long\\n\\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails\", \"node_id\": \"post\"}"
+   }
+  },
+  {
+   "v": 1,
+   "seq": 62,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.467Z",
+   "kind": "run_state",
+   "event_type": "WORKFLOW_END",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "builder_ug_b2c0230e_v1 completed",
+   "details": {
+    "status": "completed",
+    "result": {
+     "markdown_body": "# Short\n\nAgent frameworks tackling real production limits:\n• Durable Swarm: https://news.ycombinator.com/item?id=41984257\n• Agno: https://news.ycombinator.com/item?id=45714551\n• Chatwoot: https://news.ycombinator.com/item?id=44433537\n• Oqlous: https://news.ycombinator.com/item?id=43603324\n\n# Long\n\nAgent frameworks are shifting focus to solve gritty production bottlenecks like server restarts, token bloat, and monolith integration. Developers can now lean on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551) for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK (https://news.ycombinator.com/item?id=44433537) for native execution inside Rails monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324) tackles Model Context Protocol constraints directly by cutting token inefficiency and adding native UI support. #RubyOnRails",
+     "node_id": "post"
+    }
+   }
+  },
+  {
+   "v": 1,
+   "seq": 63,
+   "run_id": "e32a7914-b88e-4171-8505-d9319cf65da6",
+   "ts": "2026-09-05T01:06:27.471Z",
+   "kind": "metrics",
+   "event_type": "METRICS_UPDATED",
+   "level": "INFO",
+   "node_id": "workflow",
+   "message": "Run metrics updated",
+   "details": {
+    "reason": "run_completed",
+    "usage": {
+     "successful_requests": 3,
+     "prompt_tokens": 2558,
+     "completion_tokens": 4445,
+     "total_tokens": 7003,
+     "call_count": 3,
+     "elapsed_ms": 27457,
+     "cost_usd": 0.0173235
+    },
+    "nodes": [
+     {
+      "node_id": "research",
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "successful_requests": 2,
+      "prompt_tokens": 1950,
+      "completion_tokens": 309,
+      "total_tokens": 2259,
+      "call_count": 2,
+      "elapsed_ms": 3626,
+      "cost_usd": 0.0013575
+     },
+     {
+      "node_id": "write",
+      "model": "google/gemini-3.8-flash",
+      "successful_requests": 1,
+      "prompt_tokens": 608,
+      "completion_tokens": 4136,
+      "total_tokens": 4744,
+      "call_count": 1,
+      "elapsed_ms": 23831,
+      "cost_usd": 0.015966
+     }
+    ],
+    "frames": {
+     "captured": 62,
+     "dropped": 0,
+     "gaps": 0,
+     "emit_errors": 0,
+     "subscriber_dropped": 0,
+     "unattributed": 0
+    }
+   }
+  }
+ ]
+}

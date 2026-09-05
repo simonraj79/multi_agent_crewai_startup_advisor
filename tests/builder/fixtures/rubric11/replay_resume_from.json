@@ -305,6 +305,11 @@
     ],
     [
       "three",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.TOKEN"
+    ],
+    [
+      "three",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],
@@ -337,6 +342,11 @@
       "four",
       "UIEventType.MODEL_CALL",
       "FrameKind.LLM"
+    ],
+    [
+      "four",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.TOKEN"
     ],
     [
       "four",

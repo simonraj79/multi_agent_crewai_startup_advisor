@@ -279,6 +279,11 @@
     ],
     [
       "a",
+      "UIEventType.MODEL_CALL",
+      "FrameKind.TOKEN"
+    ],
+    [
+      "a",
       "UIEventType.NODE_END",
       "FrameKind.NODE_STATE"
     ],

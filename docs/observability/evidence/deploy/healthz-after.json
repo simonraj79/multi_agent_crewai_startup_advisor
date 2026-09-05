@@ -1,0 +1,30 @@
+{
+  "_probe": {
+    "url": "https://agentic-crew-ai-api.onrender.com/healthz",
+    "taken_at": "2026-09-05T22:27:58Z",
+    "http_status": 200
+  },
+  "body": {
+    "status": "ok",
+    "dependencies": {
+      "executor": {
+        "status": "ok",
+        "backend": null,
+        "workers": 1
+      },
+      "storage": {
+        "status": "ok",
+        "backend": "postgresql",
+        "workers": null
+      }
+    },
+    "gates": {
+      "open": 1,
+      "expired": 1,
+      "alerting": 1,
+      "expiries": 0,
+      "alerts": 0,
+      "sweeps": 2
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "_note": "GET /v1/services/{id}/deploys?limit=3 on agentic-crew-ai-api. The newest is the one this change triggered; the two below it are what it replaced. No env-var value appears in this endpoint.",
+  "service": "agentic-crew-ai-api (srv-da9qe7p42hec738l26og)",
+  "deploys": [
+    {
+      "id": "dep-dae9dpp7lnhs73em082g",
+      "status": "live",
+      "trigger": "new_commit",
+      "commit_id": "bf48eeb70ed8f284d8845e9b4ac2e23ca5d26dfc",
+      "commit_subject": [
+        "deploy(observability): the three Langfuse keys on the API service, and the deploy that carries them"
+      ],
+      "createdAt": "2026-09-05T22:25:43.901102Z",
+      "startedAt": "2026-09-05T22:25:43.87922Z",
+      "finishedAt": "2026-09-05T22:27:21.489534Z"
+    },
+    {
+      "id": "dep-dae95sc9v7es73b0qm3g",
+      "status": "deactivated",
+      "trigger": "new_commit",
+      "commit_id": "bdf284c52c29a925e001c6dbdd49246be20befe3",
+      "commit_subject": [
+        "docs: the README's observability section, and the contract's flush interval matches config"
+      ],
+      "createdAt": "2026-09-05T22:08:49.283554Z",
+      "startedAt": "2026-09-05T22:08:49.261831Z",
+      "finishedAt": "2026-09-05T22:10:19.578184Z"
+    },
+    {
+      "id": "dep-dae8vd95efls739pg4kg",
+      "status": "deactivated",
+      "trigger": "new_commit",
+      "commit_id": "0a48b25bc5fad7ba06cf78b7756212e30e4453dc",
+      "commit_subject": [
+        "docs(observability): the commit-hash map after the planted-key rewrite"
+      ],
+      "createdAt": "2026-09-05T21:55:01.784106Z",
+      "startedAt": "2026-09-05T21:55:01.759567Z",
+      "finishedAt": "2026-09-05T21:56:43.452734Z"
+    }
+  ]
+}

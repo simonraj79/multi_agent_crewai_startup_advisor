@@ -1,0 +1,40 @@
+{
+  "_probe": {
+    "url": "https://agentic-crew-ai-api.onrender.com/readyz",
+    "taken_at": "2026-09-05T22:27:58Z",
+    "http_status": 200,
+    "deploy": "dep-dae9dpp7lnhs73em082g",
+    "commit": "bf48eeb",
+    "note": "AFTER the three LANGFUSE_* variables were set and the deploy that snapshotted them went live. /readyz carries no key and no base URL, so this body is saved verbatim."
+  },
+  "body": {
+    "status": "ok",
+    "dependencies": {
+      "executor": {
+        "status": "ok",
+        "backend": null,
+        "workers": 1
+      },
+      "storage": {
+        "status": "ok",
+        "backend": "postgresql",
+        "workers": null
+      }
+    },
+    "gates": {
+      "open": 1,
+      "expired": 1,
+      "alerting": 1,
+      "expiries": 0,
+      "alerts": 0,
+      "sweeps": 2
+    },
+    "observability": {
+      "exporter": "enabled",
+      "reason": null,
+      "environment": "live",
+      "capture_content": false,
+      "resolve_billed_cost": true
+    }
+  }
+}

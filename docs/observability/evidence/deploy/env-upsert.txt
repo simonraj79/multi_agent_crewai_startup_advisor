@@ -1,0 +1,14 @@
+# Upsert of the three LANGFUSE_* variables on the Render API service.
+# One PUT per key (never the bulk PUT, which replaces the whole set).
+# NAMES, HTTP statuses and value LENGTHS only - no value is recorded here
+# or anywhere else. The lengths distinguish 'wrote something' from
+# 'wrote an empty string'; they are not a credential.
+#
+# service : agentic-crew-ai-api (srv-da9qe7p42hec738l26og)
+# started : 2026-09-05T22:24:37Z
+
+PUT /services/srv-da9qe7p42hec738l26og/env-vars/LANGFUSE_PUBLIC_KEY -> HTTP 200 (value length 42)
+PUT /services/srv-da9qe7p42hec738l26og/env-vars/LANGFUSE_SECRET_KEY -> HTTP 200 (value length 42)
+PUT /services/srv-da9qe7p42hec738l26og/env-vars/LANGFUSE_BASE_URL -> HTTP 200 (value length 29)
+
+# re-listed at 2026-09-05T22:24:38Z: 19 variables, all three present = True

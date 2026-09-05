@@ -1,0 +1,24 @@
+# Environment variable NAMES on the Render API service, before the change.
+# Values are deliberately absent: this file records WHICH keys are set,
+# never what they are set to. Read from GET /services/{id}/env-vars.
+#
+# service : agentic-crew-ai-api (srv-da9qe7p42hec738l26og)
+# taken   : 2026-09-05T22:24:14Z
+# count   : 16
+
+AUTH_BASE_URL
+BUILDER_PLATFORM_FIRECRAWL_DEFAULT
+COHERE_API_KEY
+CORS_ALLOW_ORIGINS
+CREDENTIALS_MASTER_KEY
+CREWAI_DISABLE_TELEMETRY
+CREWAI_STORAGE_DIR
+CREWAI_TRACING_ENABLED
+DATABASE_URL
+FIRECRAWL_API_KEY
+GITHUB_TOKEN
+OPENROUTER_API_KEY
+PINECONE_API_KEY
+PINECONE_INDEX_NAME
+PYTHON_VERSION
+RUN_CONCURRENCY

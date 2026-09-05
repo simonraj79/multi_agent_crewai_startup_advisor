@@ -1,0 +1,31 @@
+$ cd frontend && npx playwright test e2e/visual/builder-canvas.spec.ts
+#
+# DEFINITION-OF-DONE.md T3.5: the builder workspace is unchanged by the token
+# work. Sixteen committed baselines - four states x two themes x two viewports
+# (1440x900 chromium, 390x844 mobile) - and none carries maxDiffPixels, so
+# these are byte comparisons.
+#
+# Run 2026-09-05 on run-shell/cast at 40e17dc, against a
+# local SYNTHETIC=1 backend on :8099. No baseline was regenerated.
+
+
+Running 16 tests using 1 worker
+
+  ✓   1 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.8s)
+  ✓   2 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (3.0s)
+  ✓   3 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (4.1s)
+  ✓   4 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.9s)
+  ✓   5 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.3s)
+  ✓   6 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.6s)
+  ✓   7 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (3.6s)
+  ✓   8 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (4.7s)
+  ✓   9 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.9s)
+  ✓  10 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.6s)
+  ✓  11 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (3.8s)
+  ✓  12 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (4.2s)
+  ✓  13 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.2s)
+  ✓  14 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.2s)
+  ✓  15 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.4s)
+  ✓  16 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.3s)
+
+  16 passed (56.6s)

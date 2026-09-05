@@ -263,6 +263,41 @@ reads frames and the run result).
 
 ## Status
 
+### `max_iter` 3 → 6 on the two tool-using researchers — 2026-09-05
+
+Paid-run defect 2. `news-to-social`'s `research` and `sequential-pipeline`'s
+`research` are the only two nodes in the gallery that call a tool, and both sat
+at `max_iter: 3`. Run `a9887442` **failed** at that cap: CrewAI asks for a final
+answer when the loop is exhausted by appending a **model** turn, and Google
+refuses a request that ends in one — after the tool calls have billed.
+
+The repair is two layers and this is the second. `src/brief_crew/builder/max_iter.py`
+makes the exhausted request legal for every builder agent; the raise makes
+reaching it rarer. Six rather than four because `BUILDER_MAX_AGENT_ITER` is 8
+and the whole cost of the raise is the static estimate, which prices every node
+as if the loop ran to the cap — so the figure that moves is the pessimistic one,
+and it moves inside the ceiling.
+
+**Regenerated from the committed fixtures at this commit**, never typed:
+`node scripts/dump-templates.mjs` then
+`scripts/emit_builder_fixtures.py --target templates`, then read back out of
+`frontend/tests/fixtures/templates/<id>.json`.
+
+| template | calls | floor | static | × 1.25 | valid |
+| --- | ---: | ---: | ---: | ---: | :---: |
+| `news-to-social` | 21 → **30** | $0.3205 → **$0.4216** | $0.4284 → **$0.6103** | **$0.7629** | `true`, 0 problems |
+| `sequential-pipeline` | 30 → **39** | $0.4618 → **$0.5629** | $0.6597 → **$0.8417** | **$1.0521** | `true`, 0 problems |
+| `conditional-router` | 33 | $0.3414 | $0.6116 | $0.7645 | `true`, 0 problems |
+| `reflection-loop` | 72 | $0.8547 | $1.5384 | $1.9230 | `true`, 0 problems |
+| `hierarchical-delegation` | 30 | $0.5235 | $0.5235 | $0.6543 | `true`, 0 problems |
+| **five, summed** | **204** | **$2.7041** | **$4.1255** | **$5.1568** | |
+
+The dearest single template is `reflection-loop` at **$1.92 with the margin**,
+against the $10.00 ceiling — unchanged, and still the binding one. `unpriced_models`
+is empty on all five. **The figures above are the STATIC worst case, and the six
+paid runs of 2026-09-05 measured 1.49 % of it; do not read the raise as $0.36 of
+real spend.**
+
 ### Criterion 9 — the paid runs, 2026-09-05
 
 **DONE.** The last criterion on this plan that needed money is closed, and the
@@ -342,6 +377,13 @@ $0.4284 static, $0.5355 with the 1.25x margin** against the $10.00 ceiling, all
 regenerated from the committed fixture rather than typed. `validate_document`
 answers `[]`.
 
+> **SUPERSEDED 2026-09-05 by the `max_iter` 3 → 6 section at the head of this
+> Status: $0.4216 floor, $0.6103 static, $0.7629 with the margin.** It is still
+> the cheapest graph in the gallery. The three figures in the paragraph above
+> and the `max_iter: 3` in the table below are what was measured before the
+> raise; they are kept because the paid runs of 2026-09-05 were priced against
+> them.
+
 | | |
 | --- | --- |
 | `subject` | input, `What should the post be about?` |
@@ -404,7 +446,8 @@ attached search is keyless. `POST /api/sessions/{id}/runs` with
 `{"workflow_id": "<published id>", "inputs": {"subject": "AI agents"}}`. No
 gate reply is needed. Projecting the paid acceptance run's measured 2.8% of
 static onto $0.4284 gives roughly **$0.012**; the figure to authorise against is
-the static $0.4284.
+the static $0.4284. (Both figures are pre-raise; the static is **$0.6103** since
+2026-09-05, and the run that was actually made cost $0.017323.)
 
 ### Measured, 2026-09-05
 
@@ -500,6 +543,9 @@ margin 1.25×, applied to `static` and never to `floor`.
 | template | nodes | edges | billable | esc | cycles | calls | floor | static | × 1.25 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `sequential-pipeline` | 7 | 6 | 3 | 1 | 0 | 30 | $0.4618 | $0.6597 | $0.8246 |
+<!-- sequential-pipeline is 39 calls / $0.5629 / $0.8417 / $1.0521 since the
+     2026-09-05 max_iter raise; this table is the 2026-09-04 measurement and is
+     left as it was taken. The current five are at the head of this Status. -->
 | `conditional-router` | 10 | 11 | 4 | 0 | 0 | 33 | $0.3414 | $0.6116 | $0.7645 |
 | `reflection-loop` | 8 | 9 | 2 | 0 | **1** | 72 | $0.8547 | $1.5384 | $1.9230 |
 | `hierarchical-delegation` | 7 | 6 | 1 | 1 | 0 | 30 | $0.5235 | $0.5235 | $0.6543 |

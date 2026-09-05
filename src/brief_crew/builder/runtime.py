@@ -47,6 +47,7 @@ from typing import Any, Protocol
 import yaml
 
 from brief_crew.builder.gates import gate_decision, gate_payload
+from brief_crew.builder.max_iter import install_max_iter_nudge
 from brief_crew.config import (
     BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
     AGENT_CREDENTIAL_KIND,
@@ -110,6 +111,15 @@ BUILDER_STATE_KEY = "__builder__"
 # field is the only place this bound can live: `Flow.max_method_calls` is a
 # `PrivateAttr` that every `from_pending()` resume resets to 1.
 BUILDER_STATE_TURNS_PREFIX = "turns__"
+
+# Every agent this module builds runs on a Google-served model, and CrewAI asks
+# for a final answer at `max_iter` by appending an ASSISTANT turn - a request
+# shape Google refuses with a 400, after the tool calls have already billed.
+# `max_iter.py` carries the whole finding, the measured run id and why the hook
+# is the seam. Installed at import rather than per kickoff because the hook list
+# is process-global with no ContextVar in it, so it survives the worker threads a
+# streaming kickoff and a fan-out branch run on.
+install_max_iter_nudge()
 
 
 class BuilderRuntimeError(RuntimeError):

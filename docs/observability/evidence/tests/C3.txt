@@ -219,3 +219,119 @@ nothing else. A run whose terminal frame comes from the REGISTRY rather than
 from a flow event (an operator cancel, a cost-ceiling abort, the orphan sweep's
 service_restart) carries no tally, so exactly the runs a reader is most likely
 to be investigating are the ones that do not say what was dropped.
+
+PROVENANCE CORRECTION, added at the end of this pass
+----------------------------------------------------
+The header above was generated while the programme was still working-tree
+state. It was COMMITTED mid-pass, in two commits, and the header's
+"THE TREE IS UNCOMMITTED" sentence is therefore stale for this file:
+
+  b65bd65  the tree at the start of this pass (no observability code)
+  e68dac4  feat(observability): app-side Langfuse exporter, the audit, the
+           definition of done and the reconciliation tooling
+  7417270  feat(observability): the synthetic double carries a prompt digest,
+           and the trace fixture carries messages   <- HEAD when this pass ended
+
+Nothing measured here moved. `git diff HEAD -- src/brief_crew/observability/`
+is EMPTY at 7417270, so the code every command above exercised is the committed
+code. The md5 sums in the header are of the WORKING-TREE files, and five of the
+seven differ from `git show <commit>:<path> | md5sum` for one reason only:
+core.autocrlf is true here, so the index holds LF and the working copy holds
+CRLF (`git ls-files --eol` says i/lf w/crlf for those five, and i/lf w/lf for
+content.py and billed_cost.py - whose md5s consequently DO match the blobs).
+Compare on `git diff`, or on a normalised checkout, never on a raw md5 across
+that boundary. This repository has already paid for that once, in the builder's
+client-fixture byte comparison.
+
+
+################################################################################
+# FINAL RE-VERIFICATION OF ROW C3 AT 58a1c0b - 2026-09-06
+################################################################################
+
+generated (UTC)   : 2026-09-05T18:09:34Z
+git rev-parse HEAD: 58a1c0b5c3147d36ddbace4481bd9d526c2f92db
+commit            : 58a1c0b fix(observability): the exception class reaches
+                    every error observation, a generation held for its price is
+                    never marked failed, and identity fields are scrubbed by
+                    value only
+code tree         : clean - `git diff HEAD -- src/ tests/` is empty
+
+md5 of src/brief_crew/observability/*.py at run time:
+  7e9e34c4021f968fb43eb93146556b2d *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  5cf15a07fd2260ae32496c0114e3c1e0 *src/brief_crew/observability/content.py
+  aac1c2d256a67045398dc8a0187e2de3 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1; Windows 11
+verifier : V-REVIEW, who built none of this code and edited none of it
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_event_coverage.py" -v
+
+test_every_declared_event_is_mapped_or_has_a_reason (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_declared_event_is_mapped_or_has_a_reason) ... ok
+test_every_disposition_names_a_reason (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_disposition_names_a_reason) ... ok
+test_every_handled_name_is_a_real_class (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_handled_name_is_a_real_class) ... ok
+test_every_handled_name_is_named_by_the_frame_pipeline (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_handled_name_is_named_by_the_frame_pipeline)
+The anti-rot half: the table cannot claim a branch that is not there. ... ok
+test_every_unmapped_class_carries_a_non_empty_reason (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_unmapped_class_carries_a_non_empty_reason) ... ok
+test_the_enumeration_looks_outside_crewai_events_types (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_the_enumeration_looks_outside_crewai_events_types)
+Two classes lived outside every count until it did. ... ok
+test_the_table_is_written_out_rather_than_derived (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_the_table_is_written_out_rather_than_derived)
+The control for the test above, and the only one that can catch a ... ok
+test_the_two_tables_partition_the_declared_classes (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_the_two_tables_partition_the_declared_classes)
+The assertion row C3 rests on, and it can now actually fail. ... ok
+test_the_helper_builds_the_real_frame_type (tests.observability.test_event_coverage.FrameKindShapeTests.test_the_helper_builds_the_real_frame_type) ... ok
+test_a_run_that_converted_everything_adds_no_key (tests.observability.test_event_coverage.UnhandledTallyTests.test_a_run_that_converted_everything_adds_no_key) ... ok
+test_the_exporter_puts_the_tally_on_the_trace (tests.observability.test_event_coverage.UnhandledTallyTests.test_the_exporter_puts_the_tally_on_the_trace) ... ok
+test_the_serializer_reports_its_tally_on_the_terminal_frame (tests.observability.test_event_coverage.UnhandledTallyTests.test_the_serializer_reports_its_tally_on_the_terminal_frame) ... ok
+test_a_frame_kind_this_exporter_has_never_seen_becomes_an_event (tests.observability.test_event_coverage.UnknownFrameTests.test_a_frame_kind_this_exporter_has_never_seen_becomes_an_event) ... ok
+test_a_stage_this_exporter_has_never_seen_becomes_an_event (tests.observability.test_event_coverage.UnknownFrameTests.test_a_stage_this_exporter_has_never_seen_becomes_an_event) ... ok
+test_nothing_is_dropped_without_a_disposition (tests.observability.test_event_coverage.UnknownFrameTests.test_nothing_is_dropped_without_a_disposition)
+Every kind the frame contract declares has an entry, not a default. ... ok
+test_the_disposition_for_an_unknown_kind_is_event_and_says_so (tests.observability.test_event_coverage.UnknownFrameTests.test_the_disposition_for_an_unknown_kind_is_event_and_says_so) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.004s
+
+OK
+
+process exit code: 0; wall clock around the interpreter: 2s
+
+--------------------------------------------------------------------------------
+V-REVIEW's own partition check, re-run UNEDITED at 58a1c0b
+--------------------------------------------------------------------------------
+
+$ ./.venv/Scripts/python.exe docs/observability/evidence/tests/c3_partition_check.py
+
+C3 PARTITION
+========================================================================
+independent enumeration          : 165
+mapping.crewai_event_classes()   : 165
+  they agree                     : True
+FRAME_PIPELINE_EVENTS (mapped)   : 36
+UNMAPPED_WITH_REASON (unmapped)  : 129
+mapped + unmapped                : 165
+overlap (must be empty)          : []
+in NEITHER table (must be empty) : []
+stale mapped rows                : []
+stale unmapped rows              : []
+
+broader text sweep of the crewai package: 43 declarations
+  declared but OUTSIDE the enumeration   : 0
+
+mapped names that are NOT an isinstance branch in serializer.py: 0
+
+========================================================================
+UNMAPPED REASONS, grouped (spot-check for placeholders)
+  (the 21 grouped reason sentences are pasted in full in the pass above and are
+   unchanged at this commit; only the partition is re-printed here)
+
+Unchanged at 58a1c0b: 165 = 36 + 129, no overlap, nothing in neither table, no
+stale row, no BaseEvent subclass outside the enumeration on the text sweep, and
+every mapped name a real isinstance branch by AST. The four reasons that say in
+their own words that they are gaps rather than decisions (knowledge, MCP,
+reasoning, hook) are also unchanged - see this row's entry in VERDICTS.md, where
+it stays named as the one thing on C3 an orchestrator should rule on rather than
+inherit.

@@ -1,0 +1,520 @@
+{
+  "source": "app",
+  "generated_at": "2026-09-05T17:26:10Z",
+  "base_url": "http://127.0.0.1:8000",
+  "run_id": "6342e33f-268e-4b67-87ae-1574a2fffbeb",
+  "session_id": "proof2-toolfail",
+  "workflow_id": "ug_4e7e952f",
+  "graph_version": "c3b393e1a89362dd",
+  "status": "failed",
+  "stop_reason": null,
+  "mode": "run",
+  "error": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+  "created_at": "2026-09-05T17:25:40.868400Z",
+  "started_at": "2026-09-05T17:25:40.871118Z",
+  "completed_at": "2026-09-05T17:25:43.236579Z",
+  "wall_clock_seconds": 2.365461,
+  "frame_counters": {
+    "count": 43,
+    "captured": 43,
+    "dropped": 0,
+    "gaps": 0,
+    "emit_errors": 0,
+    "subscriber_dropped": 0,
+    "unattributed": 0,
+    "first_seq": 1,
+    "last_seq": 43
+  },
+  "frames_downloaded": 43,
+  "totals": {
+    "calls": 2,
+    "input_tokens": 788,
+    "output_tokens": 53,
+    "total_tokens": 841,
+    "cost_usd": 0.00036889999999999997,
+    "calls_without_cost": 0
+  },
+  "snapshot_usage": {
+    "successful_requests": 2,
+    "prompt_tokens": 788,
+    "completion_tokens": 53,
+    "total_tokens": 841,
+    "call_count": 2,
+    "elapsed_ms": 1973,
+    "cost_usd": 0.0003689
+  },
+  "totals_vs_snapshot": [
+    {
+      "metric": "calls",
+      "from_frames": 2,
+      "from_snapshot": 2,
+      "agree": true
+    },
+    {
+      "metric": "input_tokens",
+      "from_frames": 788,
+      "from_snapshot": 788,
+      "agree": true
+    },
+    {
+      "metric": "output_tokens",
+      "from_frames": 53,
+      "from_snapshot": 53,
+      "agree": true
+    },
+    {
+      "metric": "total_tokens",
+      "from_frames": 841,
+      "from_snapshot": 841,
+      "agree": true
+    },
+    {
+      "metric": "cost_usd",
+      "from_frames": 0.00036889999999999997,
+      "from_snapshot": 0.0003689,
+      "agree": true
+    }
+  ],
+  "by_node": {
+    "chart_the_shoals": {
+      "calls": 2,
+      "input_tokens": 788,
+      "output_tokens": 53,
+      "total_tokens": 841,
+      "cost_usd": 0.00036889999999999997,
+      "calls_without_cost": 0
+    }
+  },
+  "by_agent_role": {
+    "Tidewater Cartographer": {
+      "calls": 2,
+      "input_tokens": 788,
+      "output_tokens": 53,
+      "total_tokens": 841,
+      "cost_usd": 0.00036889999999999997,
+      "calls_without_cost": 0
+    }
+  },
+  "by_task_name": {
+    "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS": {
+      "calls": 2,
+      "input_tokens": 788,
+      "output_tokens": 53,
+      "total_tokens": 841,
+      "cost_usd": 0.00036889999999999997,
+      "calls_without_cost": 0
+    }
+  },
+  "by_model": {
+    "google/gemini-3.5-flash-lite": {
+      "calls": 2,
+      "input_tokens": 788,
+      "output_tokens": 53,
+      "total_tokens": 841,
+      "cost_usd": 0.00036889999999999997,
+      "calls_without_cost": 0
+    }
+  },
+  "node_usage": [
+    {
+      "successful_requests": 2,
+      "prompt_tokens": 788,
+      "completion_tokens": 53,
+      "total_tokens": 841,
+      "call_count": 2,
+      "elapsed_ms": 1973,
+      "cost_usd": 0.0003689,
+      "node_id": "chart_the_shoals",
+      "model": "google/gemini-3.5-flash-lite"
+    }
+  ],
+  "calls": [
+    {
+      "call_id": "db2b35d1-435d-4107-a38d-674243a546bf",
+      "response_id": "gen-1788629144-qvru4njB9kPXmnVf8O0S",
+      "model": "google/gemini-3.5-flash-lite",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "input_tokens": 338,
+      "output_tokens": 24,
+      "total_tokens": 362,
+      "cost_usd": 0.00016139999999999997,
+      "ts": "2026-09-05T17:25:42.274Z",
+      "seq": 25
+    },
+    {
+      "call_id": "d4b4db73-7a71-4ec1-b0f3-b37e10d5a2f3",
+      "response_id": "gen-1788629145-x0yiZwP4EgITJkubSUUh",
+      "model": "google/gemini-3.5-flash-lite",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "input_tokens": 450,
+      "output_tokens": 29,
+      "total_tokens": 479,
+      "cost_usd": 0.0002075,
+      "ts": "2026-09-05T17:25:43.199Z",
+      "seq": 33
+    }
+  ],
+  "failed_calls": [],
+  "response_ids": [
+    "gen-1788629144-qvru4njB9kPXmnVf8O0S",
+    "gen-1788629145-x0yiZwP4EgITJkubSUUh"
+  ],
+  "calls_without_response_id": 0,
+  "tool_calls": [
+    {
+      "tool": "sounding_line_lookup",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "stage": "before",
+      "tool_status": null,
+      "result_count": null,
+      "duration_ms": null,
+      "level": "INFO",
+      "ts": "2026-09-05T17:25:42.276Z"
+    },
+    {
+      "tool": "sounding_line_lookup",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "stage": "after",
+      "tool_status": "failed",
+      "result_count": 0,
+      "duration_ms": 12,
+      "level": "INFO",
+      "ts": "2026-09-05T17:25:42.288Z"
+    },
+    {
+      "tool": "read_website_content",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "stage": "before",
+      "tool_status": null,
+      "result_count": null,
+      "duration_ms": null,
+      "level": "INFO",
+      "ts": "2026-09-05T17:25:43.201Z"
+    },
+    {
+      "tool": "read_website_content",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "stage": "error",
+      "tool_status": null,
+      "result_count": null,
+      "duration_ms": null,
+      "level": "ERROR",
+      "ts": "2026-09-05T17:25:43.201Z"
+    }
+  ],
+  "tool_call_count": 2,
+  "spans": [
+    {
+      "kind": "node",
+      "label": "the_brief",
+      "node_id": "the_brief",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 6,
+      "start_ts": "2026-09-05T17:25:40.882Z",
+      "end_seq": 7,
+      "end_ts": "2026-09-05T17:25:40.886Z",
+      "duration_seconds": 0.004,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "start_survey",
+      "node_id": "start_survey",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 9,
+      "start_ts": "2026-09-05T17:25:40.886Z",
+      "end_seq": 10,
+      "end_ts": "2026-09-05T17:25:40.890Z",
+      "duration_seconds": 0.004,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "start_survey",
+      "node_id": "start_survey",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 11,
+      "start_ts": "2026-09-05T17:25:40.890Z",
+      "end_seq": 12,
+      "end_ts": "2026-09-05T17:25:40.893Z",
+      "duration_seconds": 0.003,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "chart_the_shoals",
+      "node_id": "chart_the_shoals",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 15,
+      "start_ts": "2026-09-05T17:25:40.893Z",
+      "end_seq": 40,
+      "end_ts": "2026-09-05T17:25:43.231Z",
+      "duration_seconds": 2.338,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "task",
+      "label": "crew",
+      "node_id": "chart_the_shoals",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 16,
+      "start_ts": "2026-09-05T17:25:41.189Z",
+      "end_seq": 38,
+      "end_ts": "2026-09-05T17:25:43.207Z",
+      "duration_seconds": 2.018,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "task",
+      "label": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "node_id": "chart_the_shoals",
+      "agent_role": null,
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "tool": null,
+      "start_seq": 17,
+      "start_ts": "2026-09-05T17:25:41.201Z",
+      "end_seq": 37,
+      "end_ts": "2026-09-05T17:25:43.205Z",
+      "duration_seconds": 2.004,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "agent",
+      "label": "Tidewater Cartographer",
+      "node_id": "chart_the_shoals",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 18,
+      "start_ts": "2026-09-05T17:25:41.204Z",
+      "end_seq": null,
+      "end_ts": null,
+      "duration_seconds": null,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": true
+    },
+    {
+      "kind": "task",
+      "label": "AgentExecutor",
+      "node_id": "chart_the_shoals",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 19,
+      "start_ts": "2026-09-05T17:25:41.206Z",
+      "end_seq": 36,
+      "end_ts": "2026-09-05T17:25:43.202Z",
+      "duration_seconds": 1.996,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "llm",
+      "label": "db2b35d1-435d-4107-a38d-674243a546bf",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "tool": null,
+      "start_seq": 20,
+      "start_ts": "2026-09-05T17:25:41.209Z",
+      "end_seq": 23,
+      "end_ts": "2026-09-05T17:25:42.274Z",
+      "duration_seconds": 1.065,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "tool",
+      "label": "sounding_line_lookup",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "tool": "sounding_line_lookup",
+      "start_seq": 26,
+      "start_ts": "2026-09-05T17:25:42.276Z",
+      "end_seq": 27,
+      "end_ts": "2026-09-05T17:25:42.288Z",
+      "duration_seconds": 0.012,
+      "duration_ms_reported": 12,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "llm",
+      "label": "d4b4db73-7a71-4ec1-b0f3-b37e10d5a2f3",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "tool": null,
+      "start_seq": 28,
+      "start_ts": "2026-09-05T17:25:42.291Z",
+      "end_seq": 31,
+      "end_ts": "2026-09-05T17:25:43.199Z",
+      "duration_seconds": 0.908,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "tool",
+      "label": "read_website_content",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "tool": "read_website_content",
+      "start_seq": 34,
+      "start_ts": "2026-09-05T17:25:43.201Z",
+      "end_seq": 35,
+      "end_ts": "2026-09-05T17:25:43.201Z",
+      "duration_seconds": 0.0,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    }
+  ],
+  "open_spans": [
+    {
+      "kind": "agent",
+      "label": "Tidewater Cartographer",
+      "node_id": "chart_the_shoals",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 18,
+      "start_ts": "2026-09-05T17:25:41.204Z",
+      "end_seq": null,
+      "end_ts": null,
+      "duration_seconds": null,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": true
+    }
+  ],
+  "durations": {
+    "by_node": [
+      {
+        "label": "chart_the_shoals",
+        "spans": 1,
+        "total_seconds": 2.338,
+        "max_seconds": 2.338,
+        "open": 0
+      },
+      {
+        "label": "start_survey",
+        "spans": 2,
+        "total_seconds": 0.007,
+        "max_seconds": 0.004,
+        "open": 0
+      },
+      {
+        "label": "the_brief",
+        "spans": 1,
+        "total_seconds": 0.004,
+        "max_seconds": 0.004,
+        "open": 0
+      }
+    ],
+    "by_agent_role": [
+      {
+        "label": "Tidewater Cartographer",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 1
+      }
+    ],
+    "by_task_name": [
+      {
+        "label": "crew",
+        "spans": 1,
+        "total_seconds": 2.018,
+        "max_seconds": 2.018,
+        "open": 0
+      },
+      {
+        "label": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+        "spans": 1,
+        "total_seconds": 2.004,
+        "max_seconds": 2.004,
+        "open": 0
+      },
+      {
+        "label": "AgentExecutor",
+        "spans": 1,
+        "total_seconds": 1.996,
+        "max_seconds": 1.996,
+        "open": 0
+      }
+    ],
+    "by_tool": [
+      {
+        "label": "sounding_line_lookup",
+        "spans": 1,
+        "total_seconds": 0.012,
+        "max_seconds": 0.012,
+        "open": 0
+      },
+      {
+        "label": "read_website_content",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      }
+    ],
+    "by_llm_call": [
+      {
+        "label": "db2b35d1-435d-4107-a38d-674243a546bf",
+        "spans": 1,
+        "total_seconds": 1.065,
+        "max_seconds": 1.065,
+        "open": 0
+      },
+      {
+        "label": "d4b4db73-7a71-4ec1-b0f3-b37e10d5a2f3",
+        "spans": 1,
+        "total_seconds": 0.908,
+        "max_seconds": 0.908,
+        "open": 0
+      }
+    ]
+  }
+}

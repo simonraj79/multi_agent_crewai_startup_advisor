@@ -1,0 +1,153 @@
+2026-09-06 00:46:53,693 INFO crewai_core.settings Using config path: C:\Users\Simon\.config\crewai\settings.json
+2026-09-06 00:46:55,606 INFO brief_crew.observability langfuse export is on: environment=synthetic content=off billed-cost=off
+INFO:     Started server process [5972]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8098 (Press CTRL+C to quit)
+INFO:     127.0.0.1:63711 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63716 - "GET /readyz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "POST /api/sessions/perf-bh-b1-1-dc968c01/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+2026-09-06 00:47:00,714 ERROR opentelemetry.exporter.otlp.proto.http.trace_exporter Failed to export span batch due to timeout, max retries or shutdown.
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63718 - "GET /api/runs/8a28d64c-c216-40a5-9b91-0789a279183e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "POST /api/sessions/perf-bh-b1-2-35a48e44/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+2026-09-06 00:47:03,572 ERROR langfuse Unexpected error occurred. Please check your request and contact support: https://langfuse.com/support.
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+2026-09-06 00:47:05,080 ERROR opentelemetry.exporter.otlp.proto.http.trace_exporter Failed to export span batch due to timeout, max retries or shutdown.
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /api/runs/1f84825e-6bcd-46b2-8271-75ff01198a14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "POST /api/sessions/perf-bh-b1-3-caba6e29/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+2026-09-06 00:47:09,153 WARNING opentelemetry.exporter.otlp.proto.http.trace_exporter Transient error HTTPConnectionPool(host='127.0.0.1', port=9): Max retries exceeded with url: /api/public/otel/v1/traces (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it")) encountered while exporting span batch, retrying in 0.84s.
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+2026-09-06 00:47:10,193 ERROR opentelemetry.exporter.otlp.proto.http.trace_exporter Failed to export span batch due to timeout, max retries or shutdown.
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+2026-09-06 00:47:11,789 ERROR langfuse Unexpected error occurred. Please check your request and contact support: https://langfuse.com/support.
+2026-09-06 00:47:11,790 WARNING brief_crew.observability.summary langfuse-exporter run=8a28d64c-c216-40a5-9b91-0789a279183e frames_enqueued=96 frames_dropped=0 observations_sent=41 http_errors=6 lookup_ok=0 lookup_failed=0 enqueue_p50_us=2 enqueue_p95_us=7
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63738 - "GET /api/runs/10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "POST /api/sessions/perf-bh-b1-4-d8957ca9/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+2026-09-06 00:47:16,126 ERROR opentelemetry.exporter.otlp.proto.http.trace_exporter Failed to export span batch due to timeout, max retries or shutdown.
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+2026-09-06 00:47:20,048 ERROR langfuse Unexpected error occurred. Please check your request and contact support: https://langfuse.com/support.
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+2026-09-06 00:47:20,234 ERROR opentelemetry.exporter.otlp.proto.http.trace_exporter Failed to export span batch due to timeout, max retries or shutdown.
+2026-09-06 00:47:20,235 WARNING brief_crew.observability.summary langfuse-exporter run=1f84825e-6bcd-46b2-8271-75ff01198a14 frames_enqueued=96 frames_dropped=0 observations_sent=41 http_errors=8 lookup_ok=0 lookup_failed=0 enqueue_p50_us=1 enqueue_p95_us=10
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/runs/196bcad5-2331-4ecb-8251-736038b65745 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "POST /api/sessions/perf-bh-b1-5-d7749961/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+2026-09-06 00:47:24,625 ERROR opentelemetry.exporter.otlp.proto.http.trace_exporter Failed to export span batch due to timeout, max retries or shutdown.
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63753 - "GET /api/runs/4476d6cb-b4bf-40e9-a77d-8ebbf15df9ac HTTP/1.1" 200 OK
+2026-09-06 00:47:27,553 ERROR langfuse Unexpected error occurred. Please check your request and contact support: https://langfuse.com/support.
+2026-09-06 00:47:28,703 ERROR opentelemetry.exporter.otlp.proto.http.trace_exporter Failed to export span batch due to timeout, max retries or shutdown.
+2026-09-06 00:47:28,704 WARNING brief_crew.observability.summary langfuse-exporter run=10274c2f-0fbf-4dc2-bc09-0d9c0806ad4a frames_enqueued=97 frames_dropped=0 observations_sent=41 http_errors=6 lookup_ok=0 lookup_failed=0 enqueue_p50_us=2 enqueue_p95_us=3

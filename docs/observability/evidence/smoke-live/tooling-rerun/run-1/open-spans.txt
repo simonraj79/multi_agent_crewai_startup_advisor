@@ -1,5 +1,21 @@
-open observations (endTime is null): 0
-run_id: 4548c884-6e5c-404c-a28a-bbf5a8ce8cf7   checked: 2026-09-05T15:14:51Z
+unfinished spans (non-EVENT observations with endTime null): 0
+
+run_id: 4548c884-6e5c-404c-a28a-bbf5a8ce8cf7   checked: 2026-09-05T17:47:10Z
 observations examined: 33
 
-  (none - DoD D3 is satisfied for this run)
+The split, because these are three different numbers:
+  observations with endTime null, ALL types  : 0
+  of those, EVENT (no endTime by construction): 0
+  of those, able to end and still open (D3)   : 0
+
+  by type: (nothing open)
+  by role: (nothing open)
+
+A Langfuse EVENT is a point in time and carries no endTime:
+TRACE-CONTRACT.md section 2 makes it the catch-all for a gate opening or
+an unknown frame kind. Counting one as an unfinished span is a category
+error, and it is the one this file made until 2026-09-06 - it read 38 on
+a paid run whose unfinished-span count was 0. See
+evidence/proof/cancelled/open-spans-by-type.txt.
+
+  (no unfinished span - DoD D3 is satisfied for this run)

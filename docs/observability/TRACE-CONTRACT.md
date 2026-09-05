@@ -70,15 +70,18 @@ frame does not carry is `null`, never an absent key.
 | `metadata.openrouter_cost_usd` | set only by the resolution below |
 | `metadata.prompt_fingerprint` | sha256 over the rendered messages (role + content, in order), computed by the FRAME SERIALIZER on the LLM `before` frame (`events/serializer.py`) from `LLMCallStartedEvent.messages`; the exporter copies it. The content itself never enters a frame. `metadata.prompt_fingerprint_basis` names what was hashed (`messages`), or, when the event carried no messages, `node|agent_role|task_name|model` |
 | `metadata.message_count`, `metadata.prompt_chars`, `metadata.completion_chars` | always; the first two from the same `before` frame, `completion_chars` from the utterance frame (true length, before the frame's own truncation) |
-| `input` / `output` | ABSENT under the default policy; present, redacted, when `LANGFUSE_CAPTURE_CONTENT=1` |
-| `level` / `statusMessage` | `ERROR` + `ExceptionClass: redacted message` on a failed call; `DEFAULT` otherwise |
+| `input` / `output` | `input` is ABSENT under EVERY policy: prompt content never enters the frame pipeline (the app's own run store would otherwise persist every prompt, a wider disclosure than Langfuse), so a generation is identified by `prompt_fingerprint` + `message_count` + `prompt_chars`. `output` is ABSENT under the default policy and is the redacted utterance text when `LANGFUSE_CAPTURE_CONTENT=1` |
+| `level` / `statusMessage` / `metadata.error_class` on ANY error observation (generation, tool, agent, task, node, run) | `ERROR`; `statusMessage` = `ExceptionClass: redacted message` when the frame carries an error class (the NODE_END / AGENT / LLM error frames carry `error_class`), else the redacted message alone; `metadata.error_class` = the class name or null |
 | `metadata.finish_reason` | when the frame carries it |
 | `metadata.attempt` | 1-based index of this generation within its task (retries are legible as attempt 2, 3 …) |
 
 **Billed-cost resolution.** When `LANGFUSE_RESOLVE_BILLED_COST` is on, the
 exporter thread resolves each `response_id` against OpenRouter
-`GET /api/v1/generation?id=` after the generation has been sent, bounded by a
-per-run count and a per-request timeout, and UPDATES the observation's
+`GET /api/v1/generation?id=` after the generation has been sent. OpenRouter
+indexes a generation tens of seconds after it completes (measured 404 for
+60 s+ on the proof runs), so the resolution is a DEFERRED, RETRIED lookup on
+the export thread - bounded by a per-run count, a per-request timeout and a
+total attempt window - and it UPDATES the observation's
 `costDetails.total`, `metadata.openrouter_cost_usd`, `metadata.cost_source`, and
 `metadata.provider` (the serving provider). A failed lookup leaves the estimate
 and says so in `metadata.cost_source = "app-estimate (lookup failed)"`.

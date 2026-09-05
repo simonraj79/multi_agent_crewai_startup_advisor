@@ -363,3 +363,399 @@ ALSO STILL OPEN, both LOW and both unchanged from the first pass:
 Under capture-ON the planted IDEA appears in the tool input, the generation
 output and the unknown EVENT's details, with the key blanked in each. That is
 the switch working as section 8 describes and is NOT a finding.
+
+PROVENANCE CORRECTION, added at the end of this pass
+----------------------------------------------------
+The header above was generated while the programme was still working-tree
+state. It was COMMITTED mid-pass, in two commits, and the header's
+"THE TREE IS UNCOMMITTED" sentence is therefore stale for this file:
+
+  b65bd65  the tree at the start of this pass (no observability code)
+  e68dac4  feat(observability): app-side Langfuse exporter, the audit, the
+           definition of done and the reconciliation tooling
+  7417270  feat(observability): the synthetic double carries a prompt digest,
+           and the trace fixture carries messages   <- HEAD when this pass ended
+
+Nothing measured here moved. `git diff HEAD -- src/brief_crew/observability/`
+is EMPTY at 7417270, so the code every command above exercised is the committed
+code. The md5 sums in the header are of the WORKING-TREE files, and five of the
+seven differ from `git show <commit>:<path> | md5sum` for one reason only:
+core.autocrlf is true here, so the index holds LF and the working copy holds
+CRLF (`git ls-files --eol` says i/lf w/crlf for those five, and i/lf w/lf for
+content.py and billed_cost.py - whose md5s consequently DO match the blobs).
+Compare on `git diff`, or on a normalised checkout, never on a raw md5 across
+that boundary. This repository has already paid for that once, in the builder's
+client-fixture byte comparison.
+
+
+################################################################################
+# RE-VERIFICATION OF ROW E3 AT ad6a696 - 2026-09-06
+################################################################################
+
+generated (UTC)  : 2026-09-05T17:02:51Z
+git rev-parse HEAD: ad6a6963ffe3a575442129d3107c235c5c8f789e
+commit           : ad6a696 fix(observability): every outbound string goes
+                   through the scrub, the unhandled tally reaches every
+                   terminal, and the C1 test can fail
+working tree     : clean for all code -
+                   `git diff HEAD -- src/brief_crew/ tests/observability/` empty
+
+md5 of src/brief_crew/observability/*.py at run time:
+  48de73e1d21df1f5532833324f01460f *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  46c8147381cb4efcd74490d15de59798 *src/brief_crew/observability/content.py
+  9be6db2fee52d6acd58543d5006c510e *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+ONE file moved since the pass above: langfuse_exporter.py
+  7f5f8982adaaa2144c2b938726173a76 -> 9be6db2fee52d6acd58543d5006c510e
+  (the left-hand value is the one this file's own header records; the six other
+   files are byte-identical, md5 for md5, so this re-verification is scoped to
+   one changed module)
+
+THE PROBE SCRIPTS ARE UNEDITED. Same files, same md5s as the run above:
+  2f450261d3c9b10bcb29521f31c380be *docs/observability/evidence/tests/e3_planted_key_probe.py
+  76761afbb76c20f1c8e97241bc8507b9 *docs/observability/evidence/tests/e3_leak_locator.py
+
+--------------------------------------------------------------------------------
+1. The committed test, which gained one
+--------------------------------------------------------------------------------
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_content_policy.py" -v
+
+test_it_scrubs_before_it_bounds (tests.observability.test_content_policy.SafeMessageTests.test_it_scrubs_before_it_bounds)
+The opposite order from `scrub_text`, and the reason is the edge. ... ok
+test_a_secret_named_key_is_redacted_even_under_capture (tests.observability.test_content_policy.ScrubberTests.test_a_secret_named_key_is_redacted_even_under_capture) ... ok
+test_a_string_under_an_unknown_key_is_described_not_sent (tests.observability.test_content_policy.ScrubberTests.test_a_string_under_an_unknown_key_is_described_not_sent) ... ok
+test_a_value_held_in_this_process_is_blanked_by_comparison (tests.observability.test_content_policy.ScrubberTests.test_a_value_held_in_this_process_is_blanked_by_comparison) ... ok
+test_a_vocabulary_key_passes_through (tests.observability.test_content_policy.ScrubberTests.test_a_vocabulary_key_passes_through) ... ok
+test_every_prefix_the_contract_names_is_blanked (tests.observability.test_content_policy.ScrubberTests.test_every_prefix_the_contract_names_is_blanked) ... ok
+test_the_allowlist_carries_the_identity_the_contract_requires (tests.observability.test_content_policy.ScrubberTests.test_the_allowlist_carries_the_identity_the_contract_requires)
+Section 3 puts agent role and task name on EVERY observation. ... ok
+test_the_environment_scan_selects_by_the_rule_already_in_force (tests.observability.test_content_policy.ScrubberTests.test_the_environment_scan_selects_by_the_rule_already_in_force)
+It reuses `events.redaction.is_secret_key` over the variable NAME. ... ok
+test_a_url_with_userinfo_is_held_even_though_its_name_is_not_secret (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_a_url_with_userinfo_is_held_even_though_its_name_is_not_secret) ... ok
+test_a_url_without_userinfo_is_not_treated_as_a_credential (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_a_url_without_userinfo_is_not_treated_as_a_credential)
+Over-collecting here is not free: every value is blanked wherever it ... ok
+test_both_forms_are_blanked_by_the_scrubber (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_both_forms_are_blanked_by_the_scrubber) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 0.020s
+
+OK
+
+23 -> 24. The new one is
+MetricsSnapshotTests::test_the_run_metrics_snapshot_is_scrubbed_too, which is
+this row's residual pinned so it cannot come back.
+
+--------------------------------------------------------------------------------
+2. The planted-key probe, re-run unedited
+--------------------------------------------------------------------------------
+
+$ ./.venv/Scripts/python.exe docs/observability/evidence/tests/e3_planted_key_probe.py
+
+========================================================================
+E3 PLANTED-CREDENTIAL PROBE
+========================================================================
+planted key      : sk-or-v1- + 64 zeros  (len 73)
+planted DSN      : postgresql://studio:not-a-real-password@127.0.0.1:5432/validator
+planted idea text: 'a lopsided orrery for counting rainfall in disused lighthouses'
+
+clean capture_content=0 terminal=failed     payload 33595 chars
+clean capture_content=0 terminal=cancelled  payload 33551 chars
+clean capture_content=0 terminal=completed  payload 32233 chars
+clean capture_content=1 terminal=failed     payload 31652 chars
+clean capture_content=1 terminal=cancelled  payload 31608 chars
+clean capture_content=1 terminal=completed  payload 30290 chars
+
+control - the same search over an UNSCRUBBED string:
+   KEY in a raw message           : True
+   DSN password in a raw message  : True
+
+RESULT: CLEAN
+
+exit code 0. Six conditions, all CLEAN, where the same script found six
+LEAKING conditions an hour earlier.
+
+--------------------------------------------------------------------------------
+3. The locator, re-run unedited - which FIELD, on both policies
+--------------------------------------------------------------------------------
+
+$ cd docs/observability/evidence/tests && ../../../../.venv/Scripts/python.exe e3_leak_locator.py
+
+========================================================================
+capture_content=0   distinct leaking fields: 0
+========================================================================
+  none
+
+========================================================================
+capture_content=1   distinct leaking fields: 3
+========================================================================
+  [IDEA] obs[4](tool:a tool).payload_input.query = 'a lopsided orrery for counting rainfall in disused lighthouses'
+  [IDEA] obs[6](generation:provider/model).payload_output = 'I used *** against *** for a lopsided orrery for counting rainfall in disused lighthouses'
+  [IDEA] obs[8](event:NODE_START).metadata.details.anything = 'a lopsided orrery for counting rainfall in disused lighthouses *** ***'
+
+
+--------------------------------------------------------------------------------
+4. Are the three remaining hits EXACTLY and ONLY the capture feature?
+--------------------------------------------------------------------------------
+
+YES, and it is worth showing rather than asserting. Under the DEFAULT policy the
+locator reports ZERO fields - the planted key, the DSN, its password and the
+user's own sentence are all absent from every observation, every score and the
+trace output. Under capture_content=1 it reports three, all of them the IDEA
+sentence, and the planted credentials INSIDE those same strings are already ***.
+
+The fields, printed directly on both policies (V-REVIEW, same frames):
+
+======================================================================
+capture_content = 0
+======================================================================
+run.metadata.run_metrics : {"usage": {"call_count": 2}, "frames": {"emitted": 12}, "reason": "ConnectionError: *** refused, and the provider echoed ***"}
+tool.payload_input       : {"arg_chars": 214, "arg_fingerprint": "2a0acc92eec5e2d72f9503b623298faac9bec03cfa933e1d48f635e7575ea34f", "arg_keys": ["query", "note", "dsn"]}
+tool.status_message      : ConnectionError: *** refused, and the provider echoed ***
+unknown EVENT details    : {"anything": {"chars": 201, "sha256": "5ae15d1522444c1053251b1762b7298d8f9fceba08410d0f921e830252a3ce30"}, "reason": "ConnectionError: *** refused, and the provider echoed ***"}
+gate name                : gate:gate-***
+trace_output             : {"11111111222243338444555555555555": {"status": "failed", "reason": "ConnectionError: ConnectionError: *** refused, and the provider echoed ***"}}
+
+======================================================================
+capture_content = 1
+======================================================================
+run.metadata.run_metrics : {"usage": {"call_count": 2}, "frames": {"emitted": 12}, "reason": "ConnectionError: *** refused, and the provider echoed ***"}
+tool.payload_input       : {"query": "a lopsided orrery for counting rainfall in disused lighthouses", "note": "***", "dsn": "***"}
+tool.status_message      : ConnectionError: *** refused, and the provider echoed ***
+unknown EVENT details    : {"anything": "a lopsided orrery for counting rainfall in disused lighthouses *** ***", "reason": "ConnectionError: *** refused, and the provider echoed ***"}
+gate name                : gate:gate-***
+trace_output             : {"11111111222243338444555555555555": {"status": "failed", "reason": "ConnectionError: ConnectionError: *** refused, and the provider echoed ***"}}
+
+Read the two blocks against each other:
+
+  run_metrics.reason  - THE RESIDUAL. Verbatim on both policies an hour ago;
+                        now "ConnectionError: *** refused, and the provider
+                        echoed ***" on both. Fixed by putting the snapshot
+                        through policy_details where it is selected, which is
+                        the same treatment its sibling computed_result already
+                        had.
+  tool.payload_input  - DEFAULT: arg_chars/arg_fingerprint/arg_keys, no values
+                        at all. CAPTURE: the query is the user's sentence, and
+                        the two credential-bearing arguments beside it are ***.
+                        So the capture switch releases the USER's text and not
+                        the credentials in it.
+  unknown EVENT       - DEFAULT: {chars, sha256}. CAPTURE: the sentence, with
+                        both plants ***. The fail-closed allowlist working on a
+                        key nothing has ever seen.
+  gate name           - gate:gate-*** on both, so an identifier a caller
+                        controls cannot smuggle a key into an observation NAME.
+  trace_output.reason - scrubbed on both.
+
+So the answer to the orchestrator's question is exactly yes: under capture the
+remaining hits are the user's idea text and nothing else, and every planted
+credential inside those very strings is already blanked. Nothing in the
+DEFAULT-policy payload carries any of the four markers.
+
+--------------------------------------------------------------------------------
+5. The five further copy sites the audit found, and why they are the same bug
+--------------------------------------------------------------------------------
+
+ad6a696 did not only fix the field this pass measured. It applied the rule at
+every site that copies a value out of a frame or off the run record:
+
+  langfuse_exporter.py  _open_trace      run_id, workflow_id, app_session_id,
+                                         gates, mode, user_id, graph_version
+                                         -> _safe
+                        _handle_run_level  the metrics snapshot -> policy_details
+                        _absorb_unhandled  the tally's CLASS NAMES -> safe_message
+                        _base_metadata     node_id -> _safe
+                        the generation     finish_reason, response_id, call_id
+                                           -> _safe / _safe_or_none
+
+The docstring added at _safe names the rule as a rule about SITES rather than
+about fields, and says why this one was missed: `reason` is "interval" or
+"run_completed" on every frame this application emits, so a reader of the
+branch saw vocabulary rather than free text. That is the right lesson. Three of
+the five - workflow_id, node_id, call_id - are values a BUILDER-authored graph's
+author chooses, which is the population this whole programme is generalising
+for, so they are exactly the ones that could carry something a person pasted.
+
+
+################################################################################
+# FINAL RE-VERIFICATION OF ROW E3 AT 58a1c0b - 2026-09-06
+################################################################################
+
+generated (UTC)   : 2026-09-05T18:10:53Z
+git rev-parse HEAD: 58a1c0b5c3147d36ddbace4481bd9d526c2f92db
+commit            : 58a1c0b fix(observability): the exception class reaches
+                    every error observation, a generation held for its price is
+                    never marked failed, and identity fields are scrubbed by
+                    value only
+code tree         : clean - `git diff HEAD -- src/ tests/` is empty
+
+md5 of src/brief_crew/observability/*.py at run time:
+  7e9e34c4021f968fb43eb93146556b2d *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  5cf15a07fd2260ae32496c0114e3c1e0 *src/brief_crew/observability/content.py
+  aac1c2d256a67045398dc8a0187e2de3 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1; Windows 11
+verifier : V-REVIEW, who built none of this code and edited none of it
+
+THE PROBE SCRIPTS ARE STILL UNEDITED across all three passes:
+  2f450261d3c9b10bcb29521f31c380be *docs/observability/evidence/tests/e3_planted_key_probe.py
+  76761afbb76c20f1c8e97241bc8507b9 *docs/observability/evidence/tests/e3_leak_locator.py
+
+--------------------------------------------------------------------------------
+1. The committed test: 24 -> 33
+--------------------------------------------------------------------------------
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_content_policy.py" -v
+
+The opposite order from `scrub_text`, and the reason is the edge. ... ok
+test_the_boundary_applies_to_fc_and_only_to_fc (tests.observability.test_content_policy.SafeMessageTests.test_the_boundary_applies_to_fc_and_only_to_fc)
+The narrowing, asserted from both sides. ... ok
+test_a_secret_named_key_is_redacted_even_under_capture (tests.observability.test_content_policy.ScrubberTests.test_a_secret_named_key_is_redacted_even_under_capture) ... ok
+test_a_string_under_an_unknown_key_is_described_not_sent (tests.observability.test_content_policy.ScrubberTests.test_a_string_under_an_unknown_key_is_described_not_sent) ... ok
+test_a_value_held_in_this_process_is_blanked_by_comparison (tests.observability.test_content_policy.ScrubberTests.test_a_value_held_in_this_process_is_blanked_by_comparison) ... ok
+test_a_vocabulary_key_passes_through (tests.observability.test_content_policy.ScrubberTests.test_a_vocabulary_key_passes_through) ... ok
+test_every_prefix_the_contract_names_is_blanked (tests.observability.test_content_policy.ScrubberTests.test_every_prefix_the_contract_names_is_blanked)
+Each prefix with a tail of the shape a real key of that kind has. ... ok
+test_the_allowlist_carries_the_identity_the_contract_requires (tests.observability.test_content_policy.ScrubberTests.test_the_allowlist_carries_the_identity_the_contract_requires)
+Section 3 puts agent role and task name on EVERY observation. ... ok
+test_the_environment_scan_selects_by_the_rule_already_in_force (tests.observability.test_content_policy.ScrubberTests.test_the_environment_scan_selects_by_the_rule_already_in_force)
+It reuses `events.redaction.is_secret_key` over the variable NAME. ... ok
+test_a_url_with_userinfo_is_held_even_though_its_name_is_not_secret (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_a_url_with_userinfo_is_held_even_though_its_name_is_not_secret) ... ok
+test_a_url_without_userinfo_is_not_treated_as_a_credential (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_a_url_without_userinfo_is_not_treated_as_a_credential)
+Over-collecting here is not free: every value is blanked wherever it ... ok
+test_both_forms_are_blanked_by_the_scrubber (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_both_forms_are_blanked_by_the_scrubber) ... ok
+
+----------------------------------------------------------------------
+Ran 33 tests in 0.029s
+
+OK
+
+--------------------------------------------------------------------------------
+2. The planted-key probe, re-run unedited
+--------------------------------------------------------------------------------
+
+$ ./.venv/Scripts/python.exe docs/observability/evidence/tests/e3_planted_key_probe.py
+
+========================================================================
+E3 PLANTED-CREDENTIAL PROBE
+========================================================================
+planted key      : sk-or-v1- + 64 zeros  (len 73)
+planted DSN      : postgresql://studio:not-a-real-password@127.0.0.1:5432/validator
+planted idea text: 'a lopsided orrery for counting rainfall in disused lighthouses'
+
+clean capture_content=0 terminal=failed     payload 34551 chars
+clean capture_content=0 terminal=cancelled  payload 34394 chars
+clean capture_content=0 terminal=completed  payload 33076 chars
+clean capture_content=1 terminal=failed     payload 32608 chars
+clean capture_content=1 terminal=cancelled  payload 32451 chars
+clean capture_content=1 terminal=completed  payload 31133 chars
+
+control - the same search over an UNSCRUBBED string:
+   KEY in a raw message           : True
+   DSN password in a raw message  : True
+
+RESULT: CLEAN
+
+--------------------------------------------------------------------------------
+3. The locator, re-run unedited
+--------------------------------------------------------------------------------
+
+$ cd docs/observability/evidence/tests && ../../../../.venv/Scripts/python.exe e3_leak_locator.py
+
+========================================================================
+capture_content=0   distinct leaking fields: 0
+========================================================================
+  none
+
+========================================================================
+capture_content=1   distinct leaking fields: 3
+========================================================================
+  [IDEA] obs[4](tool:a tool).payload_input.query = 'a lopsided orrery for counting rainfall in disused lighthouses'
+  [IDEA] obs[6](generation:provider/model).payload_output = 'I used *** against *** for a lopsided orrery for counting rainfall in disused lighthouses'
+  [IDEA] obs[8](event:NODE_START).metadata.details.anything = 'a lopsided orrery for counting rainfall in disused lighthouses *** ***'
+
+
+--------------------------------------------------------------------------------
+4. The new thing: the credential-prefix BOUNDARY, and why the two copies differ
+--------------------------------------------------------------------------------
+
+58a1c0b gives both the redactor and the scanner a token boundary, to stop a hex
+UUID being mangled - a real defect, and a bad one: run id
+1a0bea14-ffb3-459d-b5fc-f714a76e5f71 contains 'fc-' at offset 21 and was written
+to disk as ...-b5<redacted> in eleven committed files, one of them the
+langfuse-session.json 'id' that row A1 is verified on.
+
+But the two copies apply it DIFFERENTLY, and the divergence is deliberate and
+documented at content.py:63-84:
+
+  src/brief_crew/observability/content.py   boundary on 'fc-' ONLY
+  scripts/observability/_common.py          boundary on EVERY prefix
+
+V-REVIEW ran both patterns over eight strings rather than reading them:
+
+  string                                   | content.py (redactor) | _common.py (scanner)
+  -----------------------------------------+-----------------------+----------------------
+  a planted key INSIDE an id (my probe)    | BLANKED               | NOT blanked   <-- differs
+  a key in JSON                            | BLANKED               | BLANKED
+  a UUID that contains fc-                 | NOT blanked           | NOT blanked
+  a firecrawl key, quoted                  | BLANKED               | BLANKED
+  a firecrawl key glued after hex          | NOT blanked           | NOT blanked
+  an fc- key with a NON-hex tail           | NOT blanked           | NOT blanked
+  a github token inside an id              | BLANKED               | NOT blanked   <-- differs
+  a bare prefix written in prose           | NOT blanked           | NOT blanked
+
+V-REVIEW AGREES WITH THE NARROWING, and would have raised it as a finding had it
+not been made. Three reasons, in the order they matter:
+
+1. **A blanket boundary is a false NEGATIVE in a redactor, and a redactor's
+   false negative is a disclosure.** Rows 1 and 7 above are the measurement: a
+   credential glued after a hyphen inside an identifier - `gate-sk-or-v1-...`,
+   `user-ghp_...` - survives the scanner's pattern and is caught by the
+   exporter's. That is not a hypothetical: `e3_planted_key_probe.py` has planted
+   exactly `gate-<key>` since its first run, an hour before this rule existed,
+   because a gate id is author-controlled and an author can paste anything into
+   one. Under a blanket boundary that probe would have reported six leaking
+   conditions again.
+2. **The narrowing costs nothing it was buying.** The boundary exists to protect
+   a hex UUID, and a UUID contains nothing but hex and hyphens, so `fc-` is the
+   only one of these prefixes that can occur inside one. Row 3 shows the UUID is
+   still safe with the boundary applied to `fc-` alone. Applying it to `sk-or-`
+   or `ghp_` protects nothing that exists.
+3. **The asymmetry is stated where a reader meets it**, in both files, with the
+   argument and the measurement rather than a cross-reference. Two spellings of
+   one rule that agree by accident is the failure mode this repository has paid
+   for; two that differ ON PURPOSE and say so is the opposite.
+
+WHAT THE SCANNER'S BLANKET BOUNDARY DOES COST, and it is worth a note in
+INDEX.md because `_common.py` wears two hats in one module:
+
+* As a SCANNER (secret_scan.py's WARN channel), a false negative costs a warning
+  nobody needed. Harmless, and it is what the boundary was for.
+* As a REDACTOR - `CREDENTIAL_REDACTION_PATTERN`, reached through
+  `redact_string` and `redact_for_disk`, which is what `pull_langfuse_run.py`
+  uses to write pulled Langfuse exports INTO `docs/observability/evidence/` - a
+  false negative writes a credential into a committed file. Rows 1 and 7 are
+  that class.
+
+Bounded, and this is why it is LOW rather than MEDIUM: `redact_string` runs the
+exact-VALUE rule FIRST and unconditionally, so any credential this process holds
+is blanked wherever it sits, boundary or no boundary. The residual is a
+credential the process does NOT hold - a key a user pasted, echoed back by the
+Langfuse API - sitting glued after an alphanumeric or a hyphen. And the app-side
+exporter now scrubs exactly that on the way OUT, so it should never have reached
+Langfuse to be pulled back. The tooling redactor is the second line here, not
+the first. Worth one line in INDEX.md so the next person to touch _common.py
+knows which of its two hats the boundary was chosen for.
+
+ONE FALSE NEGATIVE BOTH COPIES SHARE, and neither documents: row 6. `fc-` now
+requires 20+ HEX characters, so a Firecrawl key whose tail is not hex - or a
+future key format that is base62 - is invisible to both. A real fc- key is
+32 hex today, so this is a bet on the vendor's format rather than a defect, but
+it is a bet, and the exact-value rule is what covers it in the meantime.

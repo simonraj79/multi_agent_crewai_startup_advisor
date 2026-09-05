@@ -1,0 +1,77 @@
+DoD A2 / D5 on the FINAL code (`58a1c0b`) - do the pass-3 pair genuinely overlap?
+=================================================================================
+Measured 2026-09-06 by V-RECON from the two saved frame logs and the two saved
+Langfuse observation exports. `membership-check-vrecon.txt` beside it is the
+live half; `membership-check.txt` is V-PROOF's, from the saved directories.
+
+launch (concurrent-3/launch-times.txt), RUN_CONCURRENCY=2
+(readyz-before-pass3.json: executor.workers = 2):
+  validator-live-3    POST sent 2026-09-05T18:07:35.207Z
+  builder-toolfail-3  POST sent 2026-09-05T18:07:35.212Z    (+5 ms)
+
+1. APP FRAMES - windows, from each run's own frames.ndjson
+------------------------------------------------------------------
+  validator-live-3    f146e846-7e32-4276-9c9d-d79909a02eec
+                      167 frames  18:07:35.262Z .. 18:08:36.634Z   span 61.372 s
+  builder-toolfail-3  f0297951-e1ff-49a1-90f6-725d06d9b112
+                       44 frames  18:07:36.203Z .. 18:07:38.938Z   span  2.735 s
+
+  overlap window            18:07:36.203Z .. 18:07:38.938Z = 2.735 s   OVERLAP: YES
+  builder-toolfail-3 frames inside validator-live-3's window  44 / 44  (100.0 %)
+  validator-live-3   frames inside builder-toolfail-3's window 0 / 167 (  0.0 %)
+  interleavings (adjacent frames from different runs, merged order): 2
+
+  The 0/167 is not idleness. validator-live-3's scope_idea model call was IN
+  FLIGHT for the whole of builder-toolfail-3's life - LLM `before` frame seq 7
+  at 18:07:35.958Z, `after` partner seq 8 at 18:07:45.627Z, one 9.669 s gap in
+  the frame stream that strictly CONTAINS builder-toolfail-3's entire 2.735 s
+  run. Serial execution cannot produce a containing span.
+
+     validator-live-3   seq 7  18:07:35.958Z llm/MODEL_CALL   stage=before
+     builder-toolfail-3 seq 1  18:07:36.203Z (first frame)
+     builder-toolfail-3 seq 44 18:07:38.938Z (terminal)
+     validator-live-3   seq 8  18:07:45.627Z llm/MODEL_CALL   stage=after
+
+  Identical in shape to the pass-1 pair (13.904 s containing span there), on
+  code four commits newer.
+
+2. CROSS-MEMBERSHIP - independent of membership_check.py
+------------------------------------------------------------------
+Walked over the two saved `langfuse-observations.json` files directly, so the
+check and its instrument are not the same program:
+
+  validator-live-3    sessionId = f146e846-7e32-4276-9c9d-d79909a02eec  == run id: YES
+                      81 observations  SPAN 18  EVENT 42  GENERATION 11  AGENT 7  TOOL 3
+                      distinct metadata.run_id: exactly one value, the true id
+                      observations with no run_id: 0
+                      trace metadata.run_id: f146e846-7e32-4276-9c9d-d79909a02eec (WHOLE)
+  builder-toolfail-3  sessionId = f0297951-e1ff-49a1-90f6-725d06d9b112  == run id: YES
+                      21 observations  EVENT 10  SPAN 6  TOOL 2  GENERATION 2  AGENT 1
+                      distinct metadata.run_id: exactly one value, the true id
+                      observations with no run_id: 0
+                      trace metadata.run_id: f0297951-e1ff-49a1-90f6-725d06d9b112 (WHOLE)
+
+  observation-id intersection between the two sessions : 0
+  trace-id intersection                                : 0 (empty set)
+  total observations walked                            : 102
+
+3. THE ONE THING THIS PAIR DOES NOT PROVE
+------------------------------------------------------------------
+Neither pass-3 run id contains the substring `fc-`:
+
+  f146e846-7e32-4276-9c9d-d79909a02eec   contains 'fc-': NO
+  f0297951-e1ff-49a1-90f6-725d06d9b112   contains 'fc-': NO
+  f371b3b9-6ca5-4b8b-9f63-9c34249ef440   contains 'fc-': NO   (the third pass-3 run)
+
+So this pair is CLEAN, and it is not itself a test of the `58a1c0b` scrub fix -
+it never presents the scrub with the string that used to break it. What it does
+establish is what A2 asks: two genuinely concurrent runs, 102 observations, zero
+mismatches and zero cross-membership, measured on the code that carries the fix.
+The direct evidence for the fix is elsewhere: `validator-live-2` re-pulled with
+the `58a1c0b` tooling now writes its run id WHOLE
+(`validator-live-2/langfuse-session.json.id` =
+`1a0bea14-ffb3-459d-b5fc-f714a76e5f71`, and the only `<redacted>` strings left
+in that directory's observation export are the 86 legitimate
+`metadata.scope.attributes.public_key` ones, one per observation).
+
+VERDICT: PASS. This is the pair A2's final verdict rests on.

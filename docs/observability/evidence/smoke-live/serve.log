@@ -1,0 +1,38 @@
+INFO:     Started server process [15956]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8097 (Press CTRL+C to quit)
+langfuse-exporter run=4548c884-6e5c-404c-a28a-bbf5a8ce8cf7 frames_enqueued=97 frames_dropped=0 observations_sent=41 http_errors=0 lookup_ok=0 lookup_failed=0 enqueue_p50_us=2 enqueue_p95_us=7
+langfuse-exporter run=036ace4e-8b58-4a9b-9d46-0b78448684f9 frames_enqueued=96 frames_dropped=0 observations_sent=41 http_errors=0 lookup_ok=0 lookup_failed=0 enqueue_p50_us=0 enqueue_p95_us=3
+langfuse-exporter run=9d356fcb-aadd-4d41-ab06-7ffcd50c78ea frames_enqueued=96 frames_dropped=0 observations_sent=41 http_errors=0 lookup_ok=0 lookup_failed=0 enqueue_p50_us=0 enqueue_p95_us=2
+INFO:     127.0.0.1:55713 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55714 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55715 - "GET /readyz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50477 - "POST /api/sessions/smoke-live-1/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:52023 - "GET /api/runs/4548c884-6e5c-404c-a28a-bbf5a8ce8cf7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52120 - "GET /api/runs/4548c884-6e5c-404c-a28a-bbf5a8ce8cf7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54586 - "POST /api/sessions/smoke-live-2/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:54587 - "GET /api/runs/036ace4e-8b58-4a9b-9d46-0b78448684f9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54598 - "GET /api/runs/036ace4e-8b58-4a9b-9d46-0b78448684f9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54620 - "GET /api/runs/036ace4e-8b58-4a9b-9d46-0b78448684f9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54622 - "GET /api/runs/036ace4e-8b58-4a9b-9d46-0b78448684f9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54960 - "GET /api/runs/4548c884-6e5c-404c-a28a-bbf5a8ce8cf7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54960 - "GET /api/runs/4548c884-6e5c-404c-a28a-bbf5a8ce8cf7/logs?format=ndjson HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55108 - "GET /api/runs/036ace4e-8b58-4a9b-9d46-0b78448684f9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55108 - "GET /api/runs/036ace4e-8b58-4a9b-9d46-0b78448684f9/logs?format=ndjson HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60791 - "POST /api/sessions/smoke-live-3/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60792 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60795 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60796 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60797 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60798 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60799 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60800 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60801 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60802 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60803 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60804 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60806 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60807 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56167 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56167 - "GET /api/runs/9d356fcb-aadd-4d41-ab06-7ffcd50c78ea/logs?format=ndjson HTTP/1.1" 200 OK

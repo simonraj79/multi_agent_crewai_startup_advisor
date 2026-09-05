@@ -148,3 +148,4 @@ data/skills/users/
 !docs/observability/**/*.jpg
 !docs/observability/**/*.json
 !docs/observability/**/*.txt
+!docs/observability/**/*.log

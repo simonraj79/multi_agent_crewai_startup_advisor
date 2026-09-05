@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-09-05T17:14:00Z",
+  "run_ids": [
+    "9becf713-e984-45a9-b9c0-5b229a15cb60",
+    "f4c8c779-52f2-40e1-9351-2668ea276ae4"
+  ],
+  "runs": [
+    {
+      "run_id": "f4c8c779-52f2-40e1-9351-2668ea276ae4",
+      "source": "langfuse API",
+      "session_found": true,
+      "traces": 1,
+      "trace_ids": [
+        "f4c8c77952f240e193512668ea276ae4"
+      ],
+      "observations": 76,
+      "mismatched": 0,
+      "missing_run_id": 0,
+      "traces_without_session_id": [],
+      "traces_with_a_different_session_id": []
+    },
+    {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "source": "langfuse API",
+      "session_found": true,
+      "traces": 1,
+      "trace_ids": [
+        "9becf713e98445a9b9c05b229a15cb60"
+      ],
+      "observations": 21,
+      "mismatched": 0,
+      "missing_run_id": 0,
+      "traces_without_session_id": [],
+      "traces_with_a_different_session_id": []
+    }
+  ],
+  "mismatches": [],
+  "cross_membership": [],
+  "missing_run_id": [],
+  "mismatch_count": 0,
+  "cross_membership_count": 0,
+  "missing_run_id_count": 0,
+  "verdict": "PASS",
+  "totals": {
+    "sessions": 2,
+    "traces": 2,
+    "observations": 97,
+    "mismatches": 0,
+    "cross_membership": 0,
+    "missing_run_id": 0,
+    "verdict": "PASS"
+  }
+}

@@ -137,3 +137,91 @@ the summary still reports a clean export - the exact lie this row forbids, and
 no test can see it because the test's own doubles raise. attach() also adds the
 handler to PROCESS-GLOBAL loggers, so two backends in one process each count
 the other's failures.
+
+PROVENANCE CORRECTION, added at the end of this pass
+----------------------------------------------------
+The header above was generated while the programme was still working-tree
+state. It was COMMITTED mid-pass, in two commits, and the header's
+"THE TREE IS UNCOMMITTED" sentence is therefore stale for this file:
+
+  b65bd65  the tree at the start of this pass (no observability code)
+  e68dac4  feat(observability): app-side Langfuse exporter, the audit, the
+           definition of done and the reconciliation tooling
+  7417270  feat(observability): the synthetic double carries a prompt digest,
+           and the trace fixture carries messages   <- HEAD when this pass ended
+
+Nothing measured here moved. `git diff HEAD -- src/brief_crew/observability/`
+is EMPTY at 7417270, so the code every command above exercised is the committed
+code. The md5 sums in the header are of the WORKING-TREE files, and five of the
+seven differ from `git show <commit>:<path> | md5sum` for one reason only:
+core.autocrlf is true here, so the index holds LF and the working copy holds
+CRLF (`git ls-files --eol` says i/lf w/crlf for those five, and i/lf w/lf for
+content.py and billed_cost.py - whose md5s consequently DO match the blobs).
+Compare on `git diff`, or on a normalised checkout, never on a raw md5 across
+that boundary. This repository has already paid for that once, in the builder's
+client-fixture byte comparison.
+
+
+################################################################################
+# FINAL RE-VERIFICATION OF ROW E2 AT 58a1c0b - 2026-09-06
+################################################################################
+
+generated (UTC)   : 2026-09-05T18:09:41Z
+git rev-parse HEAD: 58a1c0b5c3147d36ddbace4481bd9d526c2f92db
+commit            : 58a1c0b fix(observability): the exception class reaches
+                    every error observation, a generation held for its price is
+                    never marked failed, and identity fields are scrubbed by
+                    value only
+code tree         : clean - `git diff HEAD -- src/ tests/` is empty
+
+md5 of src/brief_crew/observability/*.py at run time:
+  7e9e34c4021f968fb43eb93146556b2d *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  5cf15a07fd2260ae32496c0114e3c1e0 *src/brief_crew/observability/content.py
+  aac1c2d256a67045398dc8a0187e2de3 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1; Windows 11
+verifier : V-REVIEW, who built none of this code and edited none of it
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_exporter_isolation.py" -v
+
+test_the_control_run_completes (tests.observability.test_exporter_isolation.ControlTests.test_the_control_run_completes) ... D:\MultiAgentSystem\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+D:\MultiAgentSystem\.venv\Lib\site-packages\crewai_tools\rag\core.py:8: DeprecationWarning: crewai.utilities.lock_store is deprecated; import from crewai_core.lock_store.
+  from crewai.utilities.lock_store import lock as store_lock
+ok
+test_a_backend_that_raises_on_every_call_never_reaches_the_caller (tests.observability.test_exporter_isolation.ExporterSurfaceTests.test_a_backend_that_raises_on_every_call_never_reaches_the_caller) ... ok
+test_closing_twice_is_harmless (tests.observability.test_exporter_isolation.ExporterSurfaceTests.test_closing_twice_is_harmless) ... ok
+test_the_hook_drops_the_oldest_when_the_queue_is_full (tests.observability.test_exporter_isolation.ExporterSurfaceTests.test_the_hook_drops_the_oldest_when_the_queue_is_full) ... ok
+test_the_no_op_answers_every_call_the_service_makes (tests.observability.test_exporter_isolation.ExporterSurfaceTests.test_the_no_op_answers_every_call_the_service_makes) ... ok
+test_an_exporter_that_is_off_with_keys_present_says_so_at_warning (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_an_exporter_that_is_off_with_keys_present_says_so_at_warning)
+The misconfiguration a person needs to see, at a level they will. ... ok
+test_no_keys_at_all_stays_at_info (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_no_keys_at_all_stays_at_info) ... ok
+test_readyz_carries_no_key_and_no_url (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_readyz_carries_no_key_and_no_url)
+The one field this answer must never grow. ... ok
+test_readyz_says_the_exporter_is_on_and_in_which_environment (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_readyz_says_the_exporter_is_on_and_in_which_environment) ... ok
+test_readyz_says_why_when_it_is_off (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_readyz_says_why_when_it_is_off) ... ok
+test_an_exporter_with_no_keys_is_a_no_op_that_says_so_once (tests.observability.test_exporter_isolation.MissingKeysTests.test_an_exporter_with_no_keys_is_a_no_op_that_says_so_once) ... ok
+test_no_credential_is_ever_named_in_the_reason (tests.observability.test_exporter_isolation.MissingKeysTests.test_no_credential_is_ever_named_in_the_reason) ... ok
+test_the_run_is_identical_with_no_exporter_at_all (tests.observability.test_exporter_isolation.MissingKeysTests.test_the_run_is_identical_with_no_exporter_at_all) ... ok
+test_a_black_hole_host_leaves_the_run_alone_and_is_counted (tests.observability.test_exporter_isolation.UnreachableBackendTests.test_a_black_hole_host_leaves_the_run_alone_and_is_counted) ... the langfuse backend did not flush within 3.0s
+the langfuse exporter did not flush within 5.0s
+ok
+test_a_slow_host_leaves_the_run_alone_and_is_counted (tests.observability.test_exporter_isolation.UnreachableBackendTests.test_a_slow_host_leaves_the_run_alone_and_is_counted) ... the langfuse backend did not flush within 3.0s
+the langfuse exporter did not flush within 5.0s
+ok
+test_the_summary_line_carries_the_failure_count (tests.observability.test_exporter_isolation.UnreachableBackendTests.test_the_summary_line_carries_the_failure_count)
+The line is logged after the final flush, so it can report the truth. ... the langfuse backend did not flush within 3.0s
+the langfuse exporter did not flush within 5.0s
+the langfuse backend did not flush within 3.0s
+ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 23.250s
+
+OK
+
+process exit code: 0; wall clock around the interpreter: 26s

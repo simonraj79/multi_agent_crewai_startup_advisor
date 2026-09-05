@@ -1,0 +1,20 @@
+redaction: 0 credential-shaped value(s) replaced before writing (F3)
+Membership check - DoD A2 / D5
+============================================================
+checked at: 2026-09-05T15:17:43Z
+run ids:    036ace4e-8b58-4a9b-9d46-0b78448684f9, 4548c884-6e5c-404c-a28a-bbf5a8ce8cf7, 9d356fcb-aadd-4d41-ab06-7ffcd50c78ea
+
+TOTALS: sessions=3 traces=3 observations=99 mismatches=0 cross-membership=0 no-run_id=0 VERDICT=PASS
+
+MISMATCHES (must be 0):        0
+CROSS-MEMBERSHIP (must be 0):  0
+observations with no run_id:   0
+observations walked:           99
+VERDICT: PASS
+
+| run_id | session | traces | observations | mismatched | no run_id |
+| --- | --- | --- | --- | --- | --- |
+| 4548c884-6e5c-404c-a28a-bbf5a8ce8cf7 | dir | 1 | 33 | 0 | 0 |
+| 036ace4e-8b58-4a9b-9d46-0b78448684f9 | dir | 1 | 33 | 0 | 0 |
+| 9d356fcb-aadd-4d41-ab06-7ffcd50c78ea | dir | 1 | 33 | 0 | 0 |
+

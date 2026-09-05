@@ -1,0 +1,14 @@
+INFO:crewai_core.settings:Using config path: C:\Users\Simon\.config\crewai\settings.json
+INFO:brief_crew.observability:langfuse export is on: environment=synthetic content=off billed-cost=off
+INFO:     Started server process [26740]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8099 (Press CTRL+C to quit)
+INFO:     127.0.0.1:63283 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63284 - "GET /readyz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63285 - "POST /api/sessions/proof-cancel/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63290 - "POST /api/runs/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba/cancel HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:63291 - "GET /api/runs/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba HTTP/1.1" 200 OK
+WARNING:brief_crew.observability.summary:langfuse-exporter run=073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba frames_enqueued=82 frames_dropped=0 observations_sent=35 http_errors=0 lookup_ok=0 lookup_failed=0 enqueue_p50_us=0 enqueue_p95_us=1
+INFO:     127.0.0.1:63293 - "GET /api/runs/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63293 - "GET /api/runs/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba/logs?format=ndjson HTTP/1.1" 200 OK

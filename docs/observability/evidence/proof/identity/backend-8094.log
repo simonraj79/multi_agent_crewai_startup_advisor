@@ -1,0 +1,22 @@
+langfuse export is off: LANGFUSE_EXPORT_ENABLED is off
+INFO:     Started server process [27452]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8094 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50774 - "GET /readyz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50775 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50778 - "GET /docs HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51255 - "POST /api/builder/tools/custom HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51260 - "POST /api/builder/tools/custom HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51659 - "POST /api/builder/tools/custom HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51663 - "POST /api/builder/tools/custom HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51847 - "POST /api/builder/tools/custom HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52555 - "POST /api/builder/validate HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:52556 - "POST /api/builder/validate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52806 - "POST /api/builder/validate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53188 - "POST /api/builder/workflows HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60111 - "POST /api/builder/workflows/ug_4e7e952f/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60112 - "POST /api/builder/workflows/ug_4e7e952f/publish HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:60691 - "GET /api/workflows/ug_4e7e952f/graph HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60692 - "GET /api/workflows/ug_4e7e952f/graph HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60693 - "GET /api/workflows/ug_4e7e952f/graph HTTP/1.1" 404 Not Found

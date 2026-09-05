@@ -1,0 +1,52 @@
+ingestion: 6 polls, 33 observations, first visible after 1.611 s, stable=True (3 rate-limited)
+redaction: 36 credential-named field(s) and credential-shaped value(s) replaced with '<redacted>' across 11 file(s) BEFORE writing (F3)
+# Langfuse figures - run `036ace4e-8b58-4a9b-9d46-0b78448684f9`
+
+| field | value |
+| --- | --- |
+| session found | yes |
+| traces | 1 |
+| trace names | idea-validator |
+| environment | synthetic |
+| userId | anonymous |
+| tags | gates:auto, idea-validator, mode:run |
+| trace output.status | completed |
+| observations | 33 |
+| observation types | AGENT:6, GENERATION:6, SPAN:18, TOOL:3 |
+| observation roles | agent:6, generation:6, node:11, run:1, task:6, tool:3 |
+| open observations | 0 |
+| scores | 8 |
+| wall clock (s) | 6.024 |
+
+## Totals
+
+| metric | value |
+| --- | --- |
+| generations | 6 |
+| input tokens | 3840 |
+| output tokens | 437 |
+| total tokens | 4277 |
+| cost | $0.002244 |
+| generations with no cost | 0 |
+| tool observations | 3 |
+| generation ids present | 0 |
+| generations with no id | 6 |
+| DUPLICATE generation ids (E1) | 0 |
+
+## Ingestion visibility (measured by polling, not assumed)
+
+| field | value |
+| --- | --- |
+| polls | 6 |
+| rate-limited polls (429) | 3 |
+| other poll errors | 0 |
+| first observation visible after (s, from poll start) | 1.611 |
+| count stable after (s, from poll start) | 59.969 |
+| first visible after the run's terminal frame (s) | n/a |
+| stable after the run's terminal frame (s) | n/a |
+| stable within the timeout | yes |
+| observation count at that point | 33 |
+| stability window (s) | 5.000 |
+| timeout (s) | 120.000 |
+
+wrote docs\observability\evidence\smoke-live\tooling-rerun\run-2

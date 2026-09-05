@@ -92,3 +92,108 @@ pass (InterruptedRunTests, and OperatorCancelTests for the fourth), and
 ReasonConstantMirrorTests asserts the two constants in mapping.py still equal
 the registry's own - which is the mirror-drift failure mode this repository has
 already paid for once with the builder's problem codes.
+
+PROVENANCE CORRECTION, added at the end of this pass
+----------------------------------------------------
+The header above was generated while the programme was still working-tree
+state. It was COMMITTED mid-pass, in two commits, and the header's
+"THE TREE IS UNCOMMITTED" sentence is therefore stale for this file:
+
+  b65bd65  the tree at the start of this pass (no observability code)
+  e68dac4  feat(observability): app-side Langfuse exporter, the audit, the
+           definition of done and the reconciliation tooling
+  7417270  feat(observability): the synthetic double carries a prompt digest,
+           and the trace fixture carries messages   <- HEAD when this pass ended
+
+Nothing measured here moved. `git diff HEAD -- src/brief_crew/observability/`
+is EMPTY at 7417270, so the code every command above exercised is the committed
+code. The md5 sums in the header are of the WORKING-TREE files, and five of the
+seven differ from `git show <commit>:<path> | md5sum` for one reason only:
+core.autocrlf is true here, so the index holds LF and the working copy holds
+CRLF (`git ls-files --eol` says i/lf w/crlf for those five, and i/lf w/lf for
+content.py and billed_cost.py - whose md5s consequently DO match the blobs).
+Compare on `git diff`, or on a normalised checkout, never on a raw md5 across
+that boundary. This repository has already paid for that once, in the builder's
+client-fixture byte comparison.
+
+
+################################################################################
+# FINAL RE-VERIFICATION OF ROW D6 AT 58a1c0b - 2026-09-06
+################################################################################
+
+generated (UTC)   : 2026-09-05T18:09:38Z
+git rev-parse HEAD: 58a1c0b5c3147d36ddbace4481bd9d526c2f92db
+commit            : 58a1c0b fix(observability): the exception class reaches
+                    every error observation, a generation held for its price is
+                    never marked failed, and identity fields are scrubbed by
+                    value only
+code tree         : clean - `git diff HEAD -- src/ tests/` is empty
+
+md5 of src/brief_crew/observability/*.py at run time:
+  7e9e34c4021f968fb43eb93146556b2d *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  5cf15a07fd2260ae32496c0114e3c1e0 *src/brief_crew/observability/content.py
+  aac1c2d256a67045398dc8a0187e2de3 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1; Windows 11
+verifier : V-REVIEW, who built none of this code and edited none of it
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_terminal_states.py" -v
+
+test_nothing_is_left_without_an_end_time (tests.observability.test_terminal_states.BudgetStopTests.test_nothing_is_left_without_an_end_time) ... ok
+test_the_reason_names_the_ceiling_and_the_figure (tests.observability.test_terminal_states.BudgetStopTests.test_the_reason_names_the_ceiling_and_the_figure) ... ok
+test_the_run_span_is_at_error_level (tests.observability.test_terminal_states.BudgetStopTests.test_the_run_span_is_at_error_level) ... ok
+test_the_run_status_score_says_failed (tests.observability.test_terminal_states.BudgetStopTests.test_the_run_status_score_says_failed) ... ok
+test_the_trace_ends_failed_and_not_cancelled (tests.observability.test_terminal_states.BudgetStopTests.test_the_trace_ends_failed_and_not_cancelled) ... ok
+test_the_work_still_open_is_ended_at_the_terminal_timestamp (tests.observability.test_terminal_states.BudgetStopTests.test_the_work_still_open_is_ended_at_the_terminal_timestamp)
+The node and the unfinished model call end where the run did. ... ok
+test_a_held_span_is_released_even_if_the_node_never_names_a_class (tests.observability.test_terminal_states.BuilderAgentFailureTests.test_a_held_span_is_released_even_if_the_node_never_names_a_class)
+The other exit: the run terminal releases whatever is still held. ... ok
+test_all_four_observations_name_the_exception_class (tests.observability.test_terminal_states.BuilderAgentFailureTests.test_all_four_observations_name_the_exception_class)
+The row, in one assertion. Pass 2 had `None` on every one of these. ... ok
+test_every_span_still_ends_at_its_own_closing_frames_timestamp (tests.observability.test_terminal_states.BuilderAgentFailureTests.test_every_span_still_ends_at_its_own_closing_frames_timestamp)
+The property holding a span open must not cost (D3, and B4). ... ok
+test_nothing_is_left_without_an_end_time (tests.observability.test_terminal_states.BuilderAgentFailureTests.test_nothing_is_left_without_an_end_time) ... ok
+test_the_class_is_not_prefixed_twice (tests.observability.test_terminal_states.BuilderAgentFailureTests.test_the_class_is_not_prefixed_twice)
+Seq 47 has already written `BadRequestError: …` into its own text. ... ok
+test_the_frame_that_closed_nothing_is_still_recorded (tests.observability.test_terminal_states.BuilderAgentFailureTests.test_the_frame_that_closed_nothing_is_still_recorded)
+Seq 47 carries `attempt`, `will_retry` and `routed` - a retry story ... ok
+test_the_trace_output_names_it_too (tests.observability.test_terminal_states.BuilderAgentFailureTests.test_the_trace_output_names_it_too) ... ok
+test_a_completed_run_scores_one (tests.observability.test_terminal_states.CompletionTests.test_a_completed_run_scores_one) ... ok
+test_the_trace_ends_completed_with_no_reason (tests.observability.test_terminal_states.CompletionTests.test_the_trace_ends_completed_with_no_reason) ... ok
+test_the_late_snapshot_reopens_nothing (tests.observability.test_terminal_states.FinalMetricsTests.test_the_late_snapshot_reopens_nothing)
+A frame after the terminal one must not resurrect a node or add a span. ... ok
+test_the_run_span_carries_the_final_snapshot_not_the_interval_one (tests.observability.test_terminal_states.FinalMetricsTests.test_the_run_span_carries_the_final_snapshot_not_the_interval_one) ... ok
+test_the_run_span_still_ends_at_the_terminal_frames_timestamp (tests.observability.test_terminal_states.FinalMetricsTests.test_the_run_span_still_ends_at_the_terminal_frames_timestamp)
+The thing the deferral must not change. ... ok
+test_a_gate_is_not_terminal_and_leaves_the_spans_open (tests.observability.test_terminal_states.GatePauseTests.test_a_gate_is_not_terminal_and_leaves_the_spans_open) ... ok
+test_an_unrecognised_reason_stays_a_cancel_and_is_reported (tests.observability.test_terminal_states.InterruptedRunTests.test_an_unrecognised_reason_stays_a_cancel_and_is_reported)
+Neither of the two known reasons: it is still a cancel, and the word ... ok
+test_it_ends_failed_because_nobody_chose_it (tests.observability.test_terminal_states.InterruptedRunTests.test_it_ends_failed_because_nobody_chose_it) ... ok
+test_it_is_reported_as_an_interruption_and_not_as_a_budget_stop (tests.observability.test_terminal_states.InterruptedRunTests.test_it_is_reported_as_an_interruption_and_not_as_a_budget_stop) ... ok
+test_a_cancel_with_no_reason_stays_cancelled (tests.observability.test_terminal_states.OperatorCancelTests.test_a_cancel_with_no_reason_stays_cancelled) ... ok
+test_open_work_is_ended_and_marked_cancelled (tests.observability.test_terminal_states.OperatorCancelTests.test_open_work_is_ended_and_marked_cancelled) ... ok
+test_both_reasons_match_the_registrys_own_constants (tests.observability.test_terminal_states.ReasonConstantMirrorTests.test_both_reasons_match_the_registrys_own_constants) ... D:\MultiAgentSystem\.venv\Lib\site-packages\crewai_tools\rag\core.py:8: DeprecationWarning: crewai.utilities.lock_store is deprecated; import from crewai_core.lock_store.
+  from crewai.utilities.lock_store import lock as store_lock
+ok
+test_open_work_is_ended_at_error_level (tests.observability.test_terminal_states.RunFailureTests.test_open_work_is_ended_at_error_level) ... ok
+test_the_trace_ends_failed_with_the_class_and_the_message (tests.observability.test_terminal_states.RunFailureTests.test_the_trace_ends_failed_with_the_class_and_the_message) ... ok
+test_a_run_with_a_snapshot_still_uses_the_apps_own_figures (tests.observability.test_terminal_states.RunMetricsFallbackTests.test_a_run_with_a_snapshot_still_uses_the_apps_own_figures) ... ok
+test_a_run_with_no_metrics_frame_gets_the_exporters_own_tally (tests.observability.test_terminal_states.RunMetricsFallbackTests.test_a_run_with_no_metrics_frame_gets_the_exporters_own_tally) ... ok
+test_the_tally_totals_what_the_exporter_actually_emitted (tests.observability.test_terminal_states.RunMetricsFallbackTests.test_the_tally_totals_what_the_exporter_actually_emitted) ... ok
+test_a_budget_stopped_run_carries_the_tally (tests.observability.test_terminal_states.UnhandledTallyOnEveryTerminalTests.test_a_budget_stopped_run_carries_the_tally) ... ok
+test_a_cancelled_run_carries_the_tally (tests.observability.test_terminal_states.UnhandledTallyOnEveryTerminalTests.test_a_cancelled_run_carries_the_tally) ... ok
+test_a_failed_run_carries_the_tally (tests.observability.test_terminal_states.UnhandledTallyOnEveryTerminalTests.test_a_failed_run_carries_the_tally) ... ok
+test_an_interrupted_run_carries_the_tally (tests.observability.test_terminal_states.UnhandledTallyOnEveryTerminalTests.test_an_interrupted_run_carries_the_tally) ... ok
+test_the_registry_spreads_the_tally_into_every_terminal_it_writes (tests.observability.test_terminal_states.UnhandledTallyOnEveryTerminalTests.test_the_registry_spreads_the_tally_into_every_terminal_it_writes)
+The producer half, read off the source. ... ok
+
+----------------------------------------------------------------------
+Ran 35 tests in 1.286s
+
+OK
+
+process exit code: 0; wall clock around the interpreter: 3s

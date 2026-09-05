@@ -64,58 +64,58 @@ blank. Every non-PASS gets a sentence in §6.
 
 | # | Question the data must answer | Evidence (on disk) | Verifier | Status |
 | --- | --- | --- | --- | --- |
-| A1 | Does one app run appear as exactly one Langfuse **session**, whose id is the app's own run id, for every flow kind the app can launch (hand-written validator, hand-written brief, builder-authored graph)? | `evidence/proof/<run>/langfuse-session.json` for each proof run with `id == run_id`; console screenshot of the Sessions list showing them. | V-PROOF | |
-| A2 | Do two runs launched **concurrently** produce two sessions with **zero** cross-membership — every observation's run-id metadata equals the session it sits in? | Two proof runs overlapping in time; both session exports; `evidence/proof/concurrent/membership-check.txt` from a script that walks every observation and reports mismatches (must be 0). | V-RECON | |
-| A3 | From the session alone, can a reader tell WHICH flow ran, WHO launched it, in WHAT mode (gates human/auto; synthetic/live), and WHEN it started and ended with WHAT terminal status? | Trace JSON showing workflow id, flow kind, user id (or `anonymous`), gates mode, Langfuse `environment`, run start/end, terminal status in a run-level observation. | V-PROOF | |
+| A1 | Does one app run appear as exactly one Langfuse **session**, whose id is the app's own run id, for every flow kind the app can launch (hand-written validator, hand-written brief, builder-authored graph)? | `evidence/proof/<run>/langfuse-session.json` for each proof run with `id == run_id`; console screenshot of the Sessions list showing them. | V-PROOF | **PASS** |
+| A2 | Do two runs launched **concurrently** produce two sessions with **zero** cross-membership — every observation's run-id metadata equals the session it sits in? | Two proof runs overlapping in time; both session exports; `evidence/proof/concurrent/membership-check.txt` from a script that walks every observation and reports mismatches (must be 0). | V-RECON | **PASS** |
+| A3 | From the session alone, can a reader tell WHICH flow ran, WHO launched it, in WHAT mode (gates human/auto; synthetic/live), and WHEN it started and ended with WHAT terminal status? | Trace JSON showing workflow id, flow kind, user id (or `anonymous`), gates mode, Langfuse `environment`, run start/end, terminal status in a run-level observation. | V-PROOF | **PASS** |
 
 ### B. Attribution — the questions the audit says fail today
 
 | # | Question | Evidence | Verifier | Status |
 | --- | --- | --- | --- | --- |
-| B1 | **Cost and tokens per agent.** For one proof run, can a per-agent table (role → calls, input tokens, output tokens, cost) be produced FROM LANGFUSE, and does it sum to the run total? | `evidence/proof/<run>/per-agent.md` computed from the Langfuse API grouping generations by their agent-role attribute, plus a console screenshot of the observation tree where each generation sits under its agent. | V-RECON | |
-| B2 | **Cost and tokens per task.** Same, grouped by task name. | `evidence/proof/<run>/per-task.md` + screenshot. | V-RECON | |
-| B3 | **Which step failed, and why.** For the run containing a failing agent: is the failure on the specific agent's and task's observation, at `level=ERROR`, with a `statusMessage` naming the exception class and a redacted message, and does the run-level observation end with status `failed` rather than the trace just stopping? | `evidence/proof/<failing-run>/failure.png` and the trace JSON; the observation ids named in the caption. | V-PROOF | |
-| B4 | **Why was the run slow.** Can the slowest agent, task and tool call be ranked from span durations, and do those durations agree with the app's own frame timestamps within 1 s? | `evidence/proof/<run>/durations.md` (Langfuse spans vs app frames side by side) + timeline screenshot. | V-RECON | |
-| B5 | **Which prompt produced a bad output.** Under the default content policy (§5), does every generation carry the task name, agent role, model, a stable prompt fingerprint and the completion length, so that a bad output can be traced to a specific task+agent+model+prompt-version WITHOUT the content being stored? And with `LANGFUSE_CAPTURE_CONTENT=1`, is the redacted content present? | Trace JSON from a default-policy run showing the fingerprint fields and no content; trace JSON from one synthetic run with capture on showing content, with the redaction visible on a planted marker. | V-PROOF | |
-| B6 | **Is quality drifting.** Are generic quality signals recorded as Langfuse **scores** — per task: guardrail passed/failed and retry count; per run: terminal outcome — such that a rate over time is chartable in Langfuse? (Flow-specific scores like the validator's composite are OUT of scope for the instrumentation path; see C1.) | Scores JSON export for the proof runs; console screenshot of the Scores surface non-empty. | V-PROOF | |
+| B1 | **Cost and tokens per agent.** For one proof run, can a per-agent table (role → calls, input tokens, output tokens, cost) be produced FROM LANGFUSE, and does it sum to the run total? | `evidence/proof/<run>/per-agent.md` computed from the Langfuse API grouping generations by their agent-role attribute, plus a console screenshot of the observation tree where each generation sits under its agent. | V-RECON | **PASS** |
+| B2 | **Cost and tokens per task.** Same, grouped by task name. | `evidence/proof/<run>/per-task.md` + screenshot. | V-RECON | **PASS** |
+| B3 | **Which step failed, and why.** For the run containing a failing agent: is the failure on the specific agent's and task's observation, at `level=ERROR`, with a `statusMessage` naming the exception class and a redacted message, and does the run-level observation end with status `failed` rather than the trace just stopping? | `evidence/proof/<failing-run>/failure.png` and the trace JSON; the observation ids named in the caption. | V-PROOF | **PASS** |
+| B4 | **Why was the run slow.** Can the slowest agent, task and tool call be ranked from span durations, and do those durations agree with the app's own frame timestamps within 1 s? | `evidence/proof/<run>/durations.md` (Langfuse spans vs app frames side by side) + timeline screenshot. | V-RECON | **PASS** |
+| B5 | **Which prompt produced a bad output.** Under the default content policy (§5), does every generation carry the task name, agent role, model, a stable prompt fingerprint and the completion length, so that a bad output can be traced to a specific task+agent+model+prompt-version WITHOUT the content being stored? And with `LANGFUSE_CAPTURE_CONTENT=1`, is the redacted content present? | Trace JSON from a default-policy run showing the fingerprint fields and no content; trace JSON from one synthetic run with capture on showing content, with the redaction visible on a planted marker. | V-PROOF | **PASS** |
+| B6 | **Is quality drifting.** Are generic quality signals recorded as Langfuse **scores** — per task: guardrail passed/failed and retry count; per run: terminal outcome — such that a rate over time is chartable in Langfuse? (Flow-specific scores like the validator's composite are OUT of scope for the instrumentation path; see C1.) | Scores JSON export for the proof runs; console screenshot of the Scores surface non-empty. | V-PROOF | **PASS** |
 
 ### C. Generalisation — a flow built later is traced completely
 
 | # | Question | Evidence | Verifier | Status |
 | --- | --- | --- | --- | --- |
-| C1 | Does the instrumentation path contain **no** agent role, task name, tool name, crew name or flow name from any flow in this repository? | A committed test that greps `src/brief_crew/observability/**` for every role/task/tool/crew identifier in `agents.yaml`/`tasks.yaml` of both hand-written crews and the four built-in skill packs, asserting zero hits; its output in `evidence/tests/`. | V-REVIEW | |
-| C2 | Is a **builder-authored graph with an agent role, a task name and an author-named tool invented during Task 3** (strings that appear nowhere in the repo before that day) traced with those strings appearing verbatim as the agent, task and tool observation names? The one tool an author can NAME in this product is the custom HTTP tool (a library tool carries a server-owned id); the raising tool of D2 is therefore a library tool and its own id must appear verbatim. | The graph's document JSON, the proof run's trace JSON, a screenshot; `git grep` output proving the strings were absent at the pre-Task-3 commit (`evidence/proof/builder-toolfail/absent-before.txt`). | V-PROOF | |
-| C3 | Is every CrewAI 1.15.18 event type either mapped to an observation or listed as deliberately unmapped with a reason, and does an event type the exporter has never seen become a generic EVENT observation instead of being dropped? | A committed test that enumerates `crewai.events.types` classes against the exporter's mapping; a test feeding a synthetic unknown event; both outputs in `evidence/tests/`. | V-REVIEW | |
+| C1 | Does the instrumentation path contain **no** agent role, task name, tool name, crew name or flow name from any flow in this repository? | A committed test that greps `src/brief_crew/observability/**` for every role/task/tool/crew identifier in `agents.yaml`/`tasks.yaml` of both hand-written crews and the four built-in skill packs, asserting zero hits; its output in `evidence/tests/`. | V-REVIEW | **PASS** |
+| C2 | Is a **builder-authored graph with an agent role, a task name and an author-named tool invented during Task 3** (strings that appear nowhere in the repo before that day) traced with those strings appearing verbatim as the agent, task and tool observation names? The one tool an author can NAME in this product is the custom HTTP tool (a library tool carries a server-owned id); the raising tool of D2 is therefore a library tool and its own id must appear verbatim. | The graph's document JSON, the proof run's trace JSON, a screenshot; `git grep` output proving the strings were absent at the pre-Task-3 commit (`evidence/proof/builder-toolfail/absent-before.txt`). | V-PROOF | **PASS** |
+| C3 | Is every CrewAI 1.15.18 event type either mapped to an observation or listed as deliberately unmapped with a reason, and does an event type the exporter has never seen become a generic EVENT observation instead of being dropped? | A committed test that enumerates `crewai.events.types` classes against the exporter's mapping; a test feeding a synthetic unknown event; both outputs in `evidence/tests/`. | V-REVIEW | **PASS** |
 
 ### D. The paths that are easy to skip
 
 | # | Question | Evidence | Verifier | Status |
 | --- | --- | --- | --- | --- |
-| D1 | **Failed agent** (real run): as B3. | Same artifact as B3. | V-PROOF | |
-| D2 | **Raising tool** (real run): does the tool observation carry `level=ERROR` and the error text, nested under the agent that called it, and does the agent's subsequent behaviour (retry or give up) remain visible after it? | `evidence/proof/<run>/tool-error.png` + trace JSON with the tool observation id. | V-PROOF | |
-| D3 | **Cancelled run**: after `POST /api/runs/{id}/cancel`, does the trace end with a run-level observation whose status is `cancelled`, with **no observation left without an end time**? | Trace JSON for a cancelled run (synthetic is acceptable here, and the report says which) + `evidence/proof/cancelled/open-spans.txt` = 0. | V-PROOF | |
-| D4 | **Retried call**: when a guardrail fails and CrewAI re-runs the task, are both generations present under the same task with the guardrail result and the retry index legible, and when CrewAI retries a transport failure is that visible as a failed generation followed by a successful one? | A committed test replaying a recorded event sequence containing a guardrail retry and a transport retry, asserting the observation shape; output in `evidence/tests/`. If a proof run happens to retry, its screenshot too. | V-REVIEW | |
-| D5 | **Concurrent runs**: as A2. | Same artifact as A2. | V-RECON | |
-| D6 | **Cost-ceiling abort** (`MAX_RUN_COST_USD` → `HookAborted`): does the trace end with status `failed` and the ceiling named as the reason? | A committed test driving the abort path through the exporter; output in `evidence/tests/`. | V-REVIEW | |
+| D1 | **Failed agent** (real run): as B3. | Same artifact as B3. | V-PROOF | **PASS** |
+| D2 | **Raising tool** (real run): does the tool observation carry `level=ERROR` and the error text, nested under the agent that called it, and does the agent's subsequent behaviour (retry or give up) remain visible after it? | `evidence/proof/<run>/tool-error.png` + trace JSON with the tool observation id. | V-PROOF | **PASS** |
+| D3 | **Cancelled run**: after `POST /api/runs/{id}/cancel`, does the trace end with a run-level observation whose status is `cancelled`, with **no observation left without an end time**? | Trace JSON for a cancelled run (synthetic is acceptable here, and the report says which) + `evidence/proof/cancelled/open-spans.txt` = 0. | V-PROOF | **PASS** |
+| D4 | **Retried call**: when a guardrail fails and CrewAI re-runs the task, are both generations present under the same task with the guardrail result and the retry index legible, and when CrewAI retries a transport failure is that visible as a failed generation followed by a successful one? | A committed test replaying a recorded event sequence containing a guardrail retry and a transport retry, asserting the observation shape; output in `evidence/tests/`. If a proof run happens to retry, its screenshot too. | V-REVIEW | **PASS** |
+| D5 | **Concurrent runs**: as A2. | Same artifact as A2. | V-RECON | **PASS** |
+| D6 | **Cost-ceiling abort** (`MAX_RUN_COST_USD` → `HookAborted`): does the trace end with status `failed` and the ceiling named as the reason? | A committed test driving the abort path through the exporter; output in `evidence/tests/`. | V-REVIEW | **PASS** |
 
 ### E. Observability must not change what the app does, and must not lie
 
 | # | Question | Evidence | Verifier | Status |
 | --- | --- | --- | --- | --- |
-| E1 | **Nothing reaches Langfuse twice.** For each proof run, is the count of GENERATION observations in its session equal to the app's LLM-call count for the run, with no second copy of any call arriving from the OpenRouter-side integration? | `RECONCILIATION.md` row per run: Langfuse generations, app `LLM` frames, OpenRouter activity rows for the window; and the recorded OpenRouter-side configuration change (or non-change) that makes this hold. | V-RECON | |
-| E2 | **Langfuse down, misconfigured or slow → runs unaffected.** With `LANGFUSE_BASE_URL` pointed at a black-hole port, at a host that answers slowly, and with the keys missing, does a synthetic run complete with the same status, result and frame count as with Langfuse healthy, with the exporter failure logged once and never surfaced as a run error? | A committed test for each of the three conditions; output in `evidence/tests/`. | V-REVIEW | |
-| E3 | **Content policy enforced.** Under defaults, does the exported payload contain no message content, no user-entered idea text, and no string matching the credential shapes the app already knows (`events/redaction.py` rules plus OpenRouter/Langfuse/Firecrawl/GitHub key prefixes), even when a tool argument or prompt contains a planted fake key? | A committed test that plants markers and asserts absence from the captured exporter payload; output in `evidence/tests/`. | V-REVIEW | |
-| E4 | **Overhead measured.** On a full synthetic run with a fixed branch delay, what is the wall-clock delta and the per-frame handler latency (p50/p95) with the exporter on versus off, n ≥ 3 each? | `evidence/perf/overhead.md` with the raw numbers and the command. | V-RECON | |
-| E5 | **The app's figures and Langfuse's agree, or the difference is diagnosed.** For each proof run: call count, input/output tokens, cost — app snapshot vs Langfuse session vs OpenRouter's own activity/generation records, side by side. Every difference has a named cause; "close enough" is not a status. | `RECONCILIATION.md`. | V-RECON | |
+| E1 | **Nothing reaches Langfuse twice.** For each proof run, is the count of GENERATION observations in its session equal to the app's LLM-call count for the run, with no second copy of any call arriving from the OpenRouter-side integration? | `RECONCILIATION.md` row per run: Langfuse generations, app `LLM` frames, OpenRouter activity rows for the window; and the recorded OpenRouter-side configuration change (or non-change) that makes this hold. | V-RECON | **PASS** |
+| E2 | **Langfuse down, misconfigured or slow → runs unaffected.** With `LANGFUSE_BASE_URL` pointed at a black-hole port, at a host that answers slowly, and with the keys missing, does a synthetic run complete with the same status, result and frame count as with Langfuse healthy, with the exporter failure logged once and never surfaced as a run error? | A committed test for each of the three conditions; output in `evidence/tests/`. | V-REVIEW | **PASS** |
+| E3 | **Content policy enforced.** Under defaults, does the exported payload contain no message content, no user-entered idea text, and no string matching the credential shapes the app already knows (`events/redaction.py` rules plus OpenRouter/Langfuse/Firecrawl/GitHub key prefixes), even when a tool argument or prompt contains a planted fake key? | A committed test that plants markers and asserts absence from the captured exporter payload; output in `evidence/tests/`. | V-REVIEW | **PASS** |
+| E4 | **Overhead measured.** On a full synthetic run with a fixed branch delay, what is the wall-clock delta and the per-frame handler latency (p50/p95) with the exporter on versus off, n ≥ 3 each? | `evidence/perf/overhead.md` with the raw numbers and the command. | V-RECON | **PASS** |
+| E5 | **The app's figures and Langfuse's agree, or the difference is diagnosed.** For each proof run: call count, input/output tokens, cost — app snapshot vs Langfuse session vs OpenRouter's own activity/generation records, side by side. Every difference has a named cause; "close enough" is not a status. | `RECONCILIATION.md`. | V-RECON | **PASS** |
 
 ### F. Process
 
 | # | Question | Evidence | Verifier | Status |
 | --- | --- | --- | --- | --- |
-| F1 | Was the OpenRouter-side configuration's **exact prior state** recorded before anything touched it, and is every change to it stated with its reason? | `audit/openrouter-forwarding.md` §1 (prior state) and `AUDIT.md` (change + reason). | ORCH | |
-| F2 | Are the committed tests only those the rows above require? | V-REVIEW's list of test files against the rows they serve, in `evidence/tests/INDEX.md`. | V-REVIEW | |
-| F3 | Does no committed artifact contain a credential value? | `evidence/tests/secret-scan.txt`: a grep over `docs/observability/` and the diff for `sk-or-`, `sk-lf-`, `pk-lf-`, `fc-`, `ghp_`, `github_pat_`, `pcsk_`, and the actual key values read from `.env` at check time (compared, never printed) — zero hits. | V-REVIEW | |
-| F4 | Were the three real proof runs (≥ 2 flows, one with tools, one with a failing agent) run against paid models, and is the money spent recorded? | `evidence/proof/RUNS.md`: run ids, flow, model tier, OpenRouter cost per run, total. | ORCH | |
+| F1 | Was the OpenRouter-side configuration's **exact prior state** recorded before anything touched it, and is every change to it stated with its reason? | `audit/openrouter-forwarding.md` §1 (prior state) and `AUDIT.md` (change + reason). | ORCH | **PASS** |
+| F2 | Are the committed tests only those the rows above require? | V-REVIEW's list of test files against the rows they serve, in `evidence/tests/INDEX.md`. | V-REVIEW | **PASS** |
+| F3 | Does no committed artifact contain a credential value? | `evidence/tests/secret-scan.txt`: a grep over `docs/observability/` and the diff for `sk-or-`, `sk-lf-`, `pk-lf-`, `fc-`, `ghp_`, `github_pat_`, `pcsk_`, and the actual key values read from `.env` at check time (compared, never printed) — zero hits. | V-REVIEW | **PASS** |
+| F4 | Were the three real proof runs (≥ 2 flows, one with tools, one with a failing agent) run against paid models, and is the money spent recorded? | `evidence/proof/RUNS.md`: run ids, flow, model tier, OpenRouter cost per run, total. | ORCH | **PASS** |
 
 ## 5. Decisions taken in advance (the instrumentation is built to these)
 
@@ -151,7 +151,59 @@ does, §7 says so.
 
 ## 6. Rows that are not a plain PASS
 
-Filled at the end. One sentence each: what was measured, what was short.
+Filled 2026-09-06 at commit `58a1c0b` from the three verifiers' verdict files
+(`evidence/proof/VERDICTS.md`, `evidence/tests/VERDICTS.md`,
+`RECONCILIATION.md` §8, `evidence/perf/VERDICT.md`). **Every row is PASS**, and
+each row's verifier built nothing it verified. The rows below are PASS with a
+qualification a reader should know, one sentence each.
+
+- **A2 / D5** — rests on the pass-3 pair (`concurrent-3`, 5 ms apart,
+  102 observations, 0 cross-membership), because the pass-2 pair's run id
+  contained `fc-` and the exporter's own scrub had truncated it in the stored
+  trace (fixed at `58a1c0b`); the pass-1 pair also read 0/0/0.
+- **B3 / D1** — the exception class is on every error SPAN, AGENT and TOOL and
+  on `trace.output.error_class`, which is what the row asks; it is absent on
+  the six ERROR GENERATIONs and the error EVENTs of the refused-call run,
+  because CrewAI stringifies the error before the LLM-failed event and the
+  frame carries no class. Follow-up: derive it from the message where the
+  provider's error shape allows.
+- **B4** — 94 of 95 paired rows within 1 s; the one outside is an agent
+  executed twice (a retry) that the exporter drew as ONE agent observation
+  spanning both executions (attempt 1 and 2 both under it), because the
+  agent-started frame carries no role and the exporter keys the agent span on
+  its first LLM frame. The envelope agrees to 9 ms; the slowest-agent figure is
+  inflated for a retried agent. Follow-up: one agent observation per execution.
+- **B5** — PASS against §4 as revised on 2026-09-06: a generation's `input` is
+  absent under every policy by decision; the capture half is judged on
+  `output`, tool payloads and the trace input, all present and redacted.
+- **C2** — the invented tool name is the author-named custom HTTP tool
+  (`sounding_line_lookup`), which reports rather than raises; the raising tool
+  of D2 is a library tool whose own id (`read_website_content`) appears
+  verbatim. A product fact, not a tracing shortfall.
+- **D3** — the cancelled run is synthetic, as the row permits; the instrument
+  reads 0 unfinished spans on all three paid pass-3 runs as well.
+- **E5** — the app's own estimate is wrong by −10 % to +13 % on three of the
+  seven priced runs, attributed to the cent (a prompt-cache discount; the
+  `:nitro` route landing on a `priority` endpoint at exactly 1.8× list, per
+  call, not per run). Langfuse carries the billed figure beside the estimate
+  since pass 2; no fixed multiplier can correct the estimate.
+- **E4** — measured on a synthetic run whose model calls are instantaneous, so
+  the ratio overstates the relative cost against a paid run; the absolute cost
+  (≈1.5 µs per frame on the capture path) is what transfers.
+- **F3** — 0 credential values; the WARN count is dominated by older scan
+  reports that predate the inert rendering and by the scan patterns written as
+  prose in this file and the contract.
+- **Whole-suite note (not a row)** — the full Python suite crashes with a
+  Windows access violation in roughly a quarter of runs at the
+  pre-observability baseline too (`evidence/tests/stability/REPORT.md`,
+  base 2/6, current 1/6, identical 1,164-thread census); the one complete run
+  on this tree reports 2,707 tests, 0 failures, 0 errors, and every module the
+  rows depend on passes alone and repeatedly.
+- **Ingestion lag (not a row)** — Langfuse shows a run ~15 s after it ends;
+  its cost fields keep settling for up to ~8 min while the deferred billed-cost
+  lookups land (measured 73 s, 210 s, 466 s to completeness across the passes).
+  `pull_langfuse_run.py` polls until every generation is billed or the counts
+  hold; a fresh trace read with `--no-poll` can carry the estimate.
 
 ## 7. Revision log
 
@@ -170,3 +222,7 @@ Filled at the end. One sentence each: what was measured, what was short.
 | 2026-09-05 | F3 | Langfuse's API echoes the project public key (`metadata.scope.attributes.public_key`) on every object; the pull tooling redacts it at write time. | Smoke: 36 occurrences per run in the raw export; the F3 scan failed until redacted by hand. |
 | 2026-09-05 | C2 | The invented strings are the agent role, the task name and an author-named custom HTTP tool; the raising tool is a library tool whose own id must appear verbatim. | Proof-doc preparation: a builder `tool` node carries only a server-owned `tool_id`, and the only author-named tool (custom HTTP) reports rather than raises by design (`builder/tools.py`), so "invented name" and "throws" cannot be one tool. The generalisation claim is unchanged: whatever name the frame carries is what Langfuse shows. |
 | 2026-09-05 | proof plan | Tool failure = library `scrape_website` with `tool_failure_policy: raise` against an unresolvable host (a real `ValueError`); agent failure = `llm.max_tokens` far above the model's context, refused by OpenRouter with HTTP 400 at zero cost. | The plan's credential injection is impossible for an anonymous launch on an auth-off backend (401 on the credential route; `CredentialNotYours` on an unowned run), and an unserved model id is refused at validate/publish (`model-unknown`). Recorded in `evidence/proof/*/inject.md`. |
+| 2026-09-06 | B5 / contract §4 | A generation's `input` is absent under every policy; capture-on governs `output`, tool arguments/results and the trace input. | Paid proof: prompt content never enters the frame pipeline, and putting it there would persist every prompt into the app's own run store. The question B5 asks is answered by fingerprint + counts (10 distinct fingerprints on 10 generations of `validator-live`). |
+| 2026-09-06 | B3 / D1 / contract §6 | `statusMessage` on every error observation is `ExceptionClass: redacted message` and `metadata.error_class` is set, from the frame's `error_class`. | Paid proof `builder-agentfail`: the app's NODE_END frame carried `error_class: BadRequestError` and no Langfuse observation named it. |
+| 2026-09-06 | contract §4 | Billed-cost resolution is deferred and retried, because OpenRouter indexes a generation tens of seconds after completion. | Paid proof: 22 of 22 lookups failed inside a 3 s single-attempt deadline while the endpoint answered 404 for 60 s+. |
+

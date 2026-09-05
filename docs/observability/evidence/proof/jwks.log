@@ -1,0 +1,9 @@
+JWKS   http://127.0.0.1:8093/api/auth/jwks
+issuer http://127.0.0.1:8093   (set AUTH_BASE_URL to exactly this)
+kid    proof-identity-1
+key    C:\Users\Simon\AppData\Local\Temp\brief-crew-proof-identity\ed25519.pem   (private; outside the repo; delete after)
+
+Start the backend AFTER this and kill it BEFORE this: the app caches these keys for AUTH_JWKS_CACHE_SECONDS and a failed refresh keeps serving the stale set, so the failure is late and reads like an expiry.
+
+00:31:35  "GET /api/auth/jwks HTTP/1.1" 200 -
+00:32:10  "GET /api/auth/jwks HTTP/1.1" 200 -

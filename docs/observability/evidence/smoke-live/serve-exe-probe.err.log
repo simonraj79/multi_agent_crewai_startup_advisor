@@ -1,0 +1,7 @@
+INFO:     Started server process [15956]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8097 (Press CTRL+C to quit)
+langfuse-exporter run=4548c884-6e5c-404c-a28a-bbf5a8ce8cf7 frames_enqueued=97 frames_dropped=0 observations_sent=41 http_errors=0 lookup_ok=0 lookup_failed=0 enqueue_p50_us=2 enqueue_p95_us=7
+langfuse-exporter run=036ace4e-8b58-4a9b-9d46-0b78448684f9 frames_enqueued=96 frames_dropped=0 observations_sent=41 http_errors=0 lookup_ok=0 lookup_failed=0 enqueue_p50_us=0 enqueue_p95_us=3
+langfuse-exporter run=9d356fcb-aadd-4d41-ab06-7ffcd50c78ea frames_enqueued=96 frames_dropped=0 observations_sent=41 http_errors=0 lookup_ok=0 lookup_failed=0 enqueue_p50_us=0 enqueue_p95_us=2

@@ -1,0 +1,121 @@
+[
+  {
+    "id": "f146e8467e3242769c9dd79909a02eec",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "name": "idea-validator",
+    "timestamp": "2026-09-05T18:07:35.263Z",
+    "environment": "live",
+    "tags": [
+      "gates:auto",
+      "idea-validator",
+      "mode:run"
+    ],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "proof-runner",
+    "sessionId": "f146e846-7e32-4276-9c9d-d79909a02eec",
+    "public": false,
+    "input": {
+      "input_chars": 255,
+      "input_fingerprint": "d044c04c41fbbef40f28556b30063609c13ee796d70ac64e5c8786e23f9601be",
+      "input_keys": [
+        "idea",
+        "no_gates"
+      ]
+    },
+    "output": {
+      "status": "completed",
+      "reason": null,
+      "error_class": null
+    },
+    "metadata": {
+      "run_id": "f146e846-7e32-4276-9c9d-d79909a02eec",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "WORKFLOW_START",
+      "frame_ts": "2026-09-05T18:07:35.262Z",
+      "null_fields": "agent_role,task_name",
+      "workflow_id": "idea-validator",
+      "app_session_id": "proof3-a",
+      "gates": "auto",
+      "mode": "run",
+      "synthetic": false,
+      "user_id": "proof-runner",
+      "graph_version": "9c6ca8a6fefbfffd",
+      "observation_role": "run",
+      "computed_result": {
+        "verdict": "NEEDS_WORK",
+        "composite_score": 4,
+        "confidence": 0.12,
+        "confidence_band": {
+          "chars": 3,
+          "sha256": "5fbdda1b8c72e849493a8534652682ed35b5bde51896cd1f457278883b0c5cf4"
+        },
+        "provisional": true,
+        "fatal_floors": [],
+        "decision_reason": "INSUFFICIENT_EVIDENCE",
+        "dimensions": {
+          "demand": 1,
+          "market": 2,
+          "competitive_room": 2,
+          "feasibility": 3,
+          "headroom_over_free": 3
+        },
+        "anchor_margins": {
+          "M": 1,
+          "C": 1,
+          "F": 1,
+          "X": 1
+        }
+      },
+      "run_metrics": {
+        "reason": "run_completed",
+        "usage": {
+          "successful_requests": 11,
+          "prompt_tokens": 37379,
+          "completion_tokens": 8678,
+          "total_tokens": 46057,
+          "call_count": 11,
+          "elapsed_ms": 53417,
+          "cost_usd": 0.05268975
+        },
+        "frames": {
+          "captured": 166,
+          "dropped": 0,
+          "gaps": 0,
+          "emit_errors": 0,
+          "subscriber_dropped": 0,
+          "unattributed": 0
+        },
+        "source": "app-snapshot"
+      },
+      "unhandled_event_counts": {
+        "hook_dispatched": 28,
+        "agent_logs_started": 7,
+        "cc_env": 1,
+        "flow_created": 1,
+        "lite_agent_execution_completed": 1,
+        "lite_agent_execution_started": 1
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "createdAt": "2026-09-05T18:07:40.000Z",
+    "updatedAt": "2026-09-05T18:08:40.606Z",
+    "externalId": null
+  }
+]

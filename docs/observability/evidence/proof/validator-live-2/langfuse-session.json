@@ -1,0 +1,138 @@
+{
+  "id": "1a0bea14-ffb3-459d-b5fc-f714a76e5f71",
+  "createdAt": "2026-09-05T17:26:58.937Z",
+  "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+  "environment": "live",
+  "traces": [
+    {
+      "id": "1a0bea14ffb3459db5fcf714a76e5f71",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "name": "idea-validator",
+      "timestamp": "2026-09-05T17:25:53.331Z",
+      "environment": "live",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "bookmarked": false,
+      "release": null,
+      "version": null,
+      "userId": "proof-runner",
+      "sessionId": "1a0bea14-ffb3-459d-b5fc-f714a76e5f71",
+      "public": false,
+      "input": {
+        "input_chars": 255,
+        "input_fingerprint": "d044c04c41fbbef40f28556b30063609c13ee796d70ac64e5c8786e23f9601be",
+        "input_keys": [
+          "idea",
+          "no_gates"
+        ]
+      },
+      "output": {
+        "status": "completed",
+        "reason": null,
+        "error_class": null
+      },
+      "metadata": {
+        "run_id": "1a0bea14-ffb3-459d-b5***",
+        "node_id": "workflow",
+        "frame_seq": 1,
+        "frame_kind": "run_state",
+        "event_type": "WORKFLOW_START",
+        "frame_ts": "2026-09-05T17:25:53.331Z",
+        "null_fields": "agent_role,task_name",
+        "workflow_id": "idea-validator",
+        "app_session_id": "proof2-validator",
+        "gates": "auto",
+        "mode": "run",
+        "synthetic": false,
+        "user_id": "proof-runner",
+        "graph_version": "9c6ca8a6fefbfffd",
+        "observation_role": "run",
+        "computed_result": {
+          "verdict": "NEEDS_WORK",
+          "composite_score": 3.2,
+          "confidence": 0.16,
+          "confidence_band": {
+            "chars": 3,
+            "sha256": "5fbdda1b8c72e849493a8534652682ed35b5bde51896cd1f457278883b0c5cf4"
+          },
+          "provisional": true,
+          "fatal_floors": [
+            {
+              "chars": 15,
+              "sha256": "fbfb427faf389ad4a0672fa44520d7d42eb3cb5780aaea1a33e218f2bb2dc573"
+            }
+          ],
+          "decision_reason": "INSUFFICIENT_EVIDENCE",
+          "dimensions": {
+            "demand": 1,
+            "market": 0,
+            "competitive_room": 2,
+            "feasibility": 3,
+            "headroom_over_free": 3
+          },
+          "anchor_margins": {
+            "M": 1,
+            "C": 1,
+            "F": 1,
+            "X": 1
+          }
+        },
+        "run_metrics": {
+          "reason": "run_completed",
+          "usage": {
+            "successful_requests": 12,
+            "prompt_tokens": 42194,
+            "completion_tokens": 9340,
+            "total_tokens": 51534,
+            "call_count": 12,
+            "elapsed_ms": 55863,
+            "cost_usd": 0.0562551
+          },
+          "frames": {
+            "captured": 177,
+            "dropped": 0,
+            "gaps": 0,
+            "emit_errors": 0,
+            "subscriber_dropped": 0,
+            "unattributed": 0
+          },
+          "source": "app-snapshot"
+        },
+        "unhandled_event_counts": {
+          "hook_dispatched": 29,
+          "agent_logs_started": 8,
+          "cc_env": 1,
+          "flow_created": 1,
+          "lite_agent_execution_completed": 1,
+          "lite_agent_execution_started": 1
+        },
+        "resourceAttributes": {
+          "telemetry.sdk.language": "python",
+          "telemetry.sdk.name": "opentelemetry",
+          "telemetry.sdk.version": "1.42.1",
+          "langfuse.environment": "live",
+          "service.name": "unknown_service"
+        },
+        "scope": {
+          "name": "langfuse-sdk",
+          "version": "4.15.1",
+          "attributes": {
+            "public_key": "<redacted>"
+          }
+        }
+      },
+      "createdAt": "2026-09-05T17:26:08.000Z",
+      "updatedAt": "2026-09-05T17:26:58.935Z",
+      "externalId": null
+    }
+  ],
+  "_deprecation": {
+    "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read session data via GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>.",
+    "replacement": "GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>",
+    "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+    "sunsetAt": "2026-11-16"
+  }
+}

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "60c25a24e0b242bc",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "run_status",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T17:25:48.000Z",
+    "updatedAt": "2026-09-05T17:25:52.108Z",
+    "timestamp": "2026-09-05T17:25:43.234Z",
+    "traceId": "6342e33f268e4b6787ae1574a2fffbeb",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": "failed",
+    "dataType": "CATEGORICAL",
+    "trace": {
+      "userId": "proof-runner",
+      "tags": [
+        "gates:auto",
+        "mode:run",
+        "ug_4e7e952f"
+      ],
+      "environment": "live",
+      "sessionId": "6342e33f-268e-4b67-87ae-1574a2fffbeb"
+    }
+  },
+  {
+    "id": "b29628d83d394fc9",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "run_succeeded",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T17:25:48.000Z",
+    "updatedAt": "2026-09-05T17:25:52.089Z",
+    "timestamp": "2026-09-05T17:25:43.234Z",
+    "traceId": "6342e33f268e4b6787ae1574a2fffbeb",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "proof-runner",
+      "tags": [
+        "gates:auto",
+        "mode:run",
+        "ug_4e7e952f"
+      ],
+      "environment": "live",
+      "sessionId": "6342e33f-268e-4b67-87ae-1574a2fffbeb"
+    }
+  },
+  {
+    "id": "0ddd5c132cf1d098",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "task_attempts",
+    "value": 2,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T17:25:48.000Z",
+    "updatedAt": "2026-09-05T17:25:52.092Z",
+    "timestamp": "2026-09-05T17:25:43.205Z",
+    "traceId": "6342e33f268e4b6787ae1574a2fffbeb",
+    "observationId": "9c2c4fa032e6a7fa",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "proof-runner",
+      "tags": [
+        "gates:auto",
+        "mode:run",
+        "ug_4e7e952f"
+      ],
+      "environment": "live",
+      "sessionId": "6342e33f-268e-4b67-87ae-1574a2fffbeb"
+    }
+  }
+]

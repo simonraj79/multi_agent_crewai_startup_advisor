@@ -71,3 +71,71 @@ The failure text on the failed generation is now scrubbed on its way out
 first pass's finding 1 landing on this row's own path: this module's
 assertions were written against the verbatim behaviour and still pass, because
 scrubbing changes a credential-shaped substring and nothing else.
+
+PROVENANCE CORRECTION, added at the end of this pass
+----------------------------------------------------
+The header above was generated while the programme was still working-tree
+state. It was COMMITTED mid-pass, in two commits, and the header's
+"THE TREE IS UNCOMMITTED" sentence is therefore stale for this file:
+
+  b65bd65  the tree at the start of this pass (no observability code)
+  e68dac4  feat(observability): app-side Langfuse exporter, the audit, the
+           definition of done and the reconciliation tooling
+  7417270  feat(observability): the synthetic double carries a prompt digest,
+           and the trace fixture carries messages   <- HEAD when this pass ended
+
+Nothing measured here moved. `git diff HEAD -- src/brief_crew/observability/`
+is EMPTY at 7417270, so the code every command above exercised is the committed
+code. The md5 sums in the header are of the WORKING-TREE files, and five of the
+seven differ from `git show <commit>:<path> | md5sum` for one reason only:
+core.autocrlf is true here, so the index holds LF and the working copy holds
+CRLF (`git ls-files --eol` says i/lf w/crlf for those five, and i/lf w/lf for
+content.py and billed_cost.py - whose md5s consequently DO match the blobs).
+Compare on `git diff`, or on a normalised checkout, never on a raw md5 across
+that boundary. This repository has already paid for that once, in the builder's
+client-fixture byte comparison.
+
+
+################################################################################
+# FINAL RE-VERIFICATION OF ROW D4 AT 58a1c0b - 2026-09-06
+################################################################################
+
+generated (UTC)   : 2026-09-05T18:09:36Z
+git rev-parse HEAD: 58a1c0b5c3147d36ddbace4481bd9d526c2f92db
+commit            : 58a1c0b fix(observability): the exception class reaches
+                    every error observation, a generation held for its price is
+                    never marked failed, and identity fields are scrubbed by
+                    value only
+code tree         : clean - `git diff HEAD -- src/ tests/` is empty
+
+md5 of src/brief_crew/observability/*.py at run time:
+  7e9e34c4021f968fb43eb93146556b2d *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  5cf15a07fd2260ae32496c0114e3c1e0 *src/brief_crew/observability/content.py
+  aac1c2d256a67045398dc8a0187e2de3 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1; Windows 11
+verifier : V-REVIEW, who built none of this code and edited none of it
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_retry_legibility.py" -v
+
+test_both_calls_are_generations_under_the_same_task (tests.observability.test_retry_legibility.GuardrailRetryTests.test_both_calls_are_generations_under_the_same_task) ... ok
+test_no_observation_is_left_open (tests.observability.test_retry_legibility.GuardrailRetryTests.test_no_observation_is_left_open) ... ok
+test_the_guardrail_verdict_is_a_score_on_the_task (tests.observability.test_retry_legibility.GuardrailRetryTests.test_the_guardrail_verdict_is_a_score_on_the_task) ... ok
+test_the_retry_index_is_on_each_generation (tests.observability.test_retry_legibility.GuardrailRetryTests.test_the_retry_index_is_on_each_generation) ... ok
+test_the_task_carries_its_attempt_count_as_a_score (tests.observability.test_retry_legibility.GuardrailRetryTests.test_the_task_carries_its_attempt_count_as_a_score) ... ok
+test_a_failed_call_carries_no_provider_generation_id (tests.observability.test_retry_legibility.TransportRetryTests.test_a_failed_call_carries_no_provider_generation_id)
+CrewAI's failure event has no field for one, so neither has this. ... ok
+test_the_failed_call_has_no_usage_and_the_next_one_does (tests.observability.test_retry_legibility.TransportRetryTests.test_the_failed_call_has_no_usage_and_the_next_one_does) ... ok
+test_the_failed_call_is_a_generation_at_error_level (tests.observability.test_retry_legibility.TransportRetryTests.test_the_failed_call_is_a_generation_at_error_level) ... ok
+test_the_order_is_failure_then_success (tests.observability.test_retry_legibility.TransportRetryTests.test_the_order_is_failure_then_success) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.004s
+
+OK
+
+process exit code: 0; wall clock around the interpreter: 2s

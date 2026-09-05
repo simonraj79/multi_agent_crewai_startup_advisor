@@ -22,4 +22,11 @@ observations on their `metadata.agent_role` attribute.
 | trace metadata `run_metrics` (reason: interval) | 3 |  |  | 2145 | $0.001138 | **NO** |
 | the APP's own frame-derived total | 6 | 3840 | 449 | 4289 | $0.002275 | **YES** |
 
-Generations whose identity came from an ANCESTOR rather than their own metadata: 0; with no identity at all: 0.
+## Where each generation's identity came from
+
+| identity key | own metadata | an ANCESTOR | nowhere | not recorded |
+| --- | --- | --- | --- | --- |
+| `agent_role`  <- this table groups on it | 6 | 0 | 0 |  |
+| `task_name` | 6 | 0 | 0 |  |
+
+TRACE-CONTRACT.md section 3 puts both keys on every observation, so a non-zero ANCESTOR column is a finding about the exporter - even though the grouping above is still correct, because the walk found the value.

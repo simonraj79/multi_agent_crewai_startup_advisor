@@ -1,0 +1,66 @@
+unfinished spans (non-EVENT observations with endTime null): 0
+
+run_id: f146e846-7e32-4276-9c9d-d79909a02eec   checked: 2026-09-05T18:16:25Z
+observations examined: 81
+
+The split, because these are three different numbers:
+  observations with endTime null, ALL types  : 42
+  of those, EVENT (no endTime by construction): 42
+  of those, able to end and still open (D3)   : 0
+
+  by type: EVENT=42
+  by role: event=42
+
+A Langfuse EVENT is a point in time and carries no endTime:
+TRACE-CONTRACT.md section 2 makes it the catch-all for a gate opening or
+an unknown frame kind. Counting one as an unfinished span is a category
+error, and it is the one this file made until 2026-09-06 - it read 38 on
+a paid run whose unfinished-span count was 0. See
+evidence/proof/cancelled/open-spans-by-type.txt.
+
+  (no unfinished span - DoD D3 is satisfied for this run)
+
+The 42 EVENT observation(s) with no endTime, listed for
+completeness. None of these is a D3 finding:
+  EVENT AGENT_CALL id=4a48f7107a2e1eeb start=2026-09-05T18:08:36.602Z
+  EVENT AGENT_CALL id=a7839aea1ea991fb start=2026-09-05T18:08:36.581Z
+  EVENT AGENT_CALL id=623ca30a8b7e65ce start=2026-09-05T18:08:34.872Z
+  EVENT AGENT_CALL id=ae923e763484fc62 start=2026-09-05T18:08:34.866Z
+  EVENT AGENT_CALL id=44cb2d9b5d3c2110 start=2026-09-05T18:08:34.864Z
+  EVENT AGENT_CALL id=7730e11c15f3ef2f start=2026-09-05T18:08:21.705Z
+  EVENT AGENT_CALL id=0aa5abeaf4c7dc1e start=2026-09-05T18:08:21.703Z
+  EVENT AGENT_CALL id=0862fa15cb2ce32d start=2026-09-05T18:08:21.699Z
+  EVENT AGENT_CALL id=bca8fef7ea3b5c46 start=2026-09-05T18:08:21.696Z
+  EVENT AGENT_CALL id=862d00c2071a6a4f start=2026-09-05T18:08:07.021Z
+  EVENT AGENT_CALL id=d293b4166e7e7871 start=2026-09-05T18:08:07.018Z
+  EVENT AGENT_CALL id=3ba5975f27c1bf3d start=2026-09-05T18:08:07.005Z
+  EVENT AGENT_CALL id=33e13c8a35acbf87 start=2026-09-05T18:08:06.720Z
+  EVENT AGENT_CALL id=6dc4b1d1a5e0658f start=2026-09-05T18:08:06.702Z
+  EVENT AGENT_CALL id=6e5d2fb849645306 start=2026-09-05T18:08:06.699Z
+  EVENT AGENT_CALL id=8f6ec1aedc14b6a1 start=2026-09-05T18:08:01.455Z
+  EVENT AGENT_CALL id=0535307c7c0f82d1 start=2026-09-05T18:08:01.453Z
+  EVENT AGENT_CALL id=663a42b9cbcda3b9 start=2026-09-05T18:08:01.436Z
+  EVENT AGENT_CALL id=f70eada692e6ebbf start=2026-09-05T18:07:58.511Z
+  EVENT AGENT_CALL id=1f72c0040c97509b start=2026-09-05T18:07:58.496Z
+  EVENT AGENT_CALL id=99ce93391e4920a2 start=2026-09-05T18:07:58.493Z
+  EVENT AGENT_CALL id=b50673d53b3ba3f9 start=2026-09-05T18:07:54.289Z
+  EVENT AGENT_CALL id=4a25da3928f02864 start=2026-09-05T18:07:54.275Z
+  EVENT AGENT_CALL id=694a341ce3f7c9ff start=2026-09-05T18:07:54.271Z
+  EVENT AGENT_CALL id=c5f4aa40634c528f start=2026-09-05T18:07:49.411Z
+  EVENT AGENT_CALL id=f57597da2ed5c018 start=2026-09-05T18:07:49.400Z
+  EVENT AGENT_CALL id=1158564fcdcaa8a2 start=2026-09-05T18:07:49.398Z
+  EVENT AGENT_CALL id=34993f5f65ff5fe6 start=2026-09-05T18:07:48.618Z
+  EVENT AGENT_CALL id=671ff002080e703f start=2026-09-05T18:07:48.615Z
+  EVENT AGENT_CALL id=f5b92d7c3c3e72dc start=2026-09-05T18:07:48.569Z
+  EVENT AGENT_CALL id=48e5c976a4763a78 start=2026-09-05T18:07:46.380Z
+  EVENT AGENT_CALL id=569d5e572880bdd8 start=2026-09-05T18:07:46.370Z
+  EVENT AGENT_CALL id=a07ff5004c4fe527 start=2026-09-05T18:07:46.088Z
+  EVENT AGENT_CALL id=04e9442d0dfe54b8 start=2026-09-05T18:07:46.086Z
+  EVENT AGENT_CALL id=84dbc4fb43a6f17d start=2026-09-05T18:07:46.070Z
+  EVENT AGENT_CALL id=28ad29fa1f0508c8 start=2026-09-05T18:07:46.066Z
+  EVENT AGENT_CALL id=9629158a895e8494 start=2026-09-05T18:07:45.652Z
+  EVENT AGENT_CALL id=3c7e728625512362 start=2026-09-05T18:07:45.637Z
+  EVENT AGENT_CALL id=f6ab16ece977ca14 start=2026-09-05T18:07:45.634Z
+  EVENT AGENT_CALL id=c13b35e2f8ed3ee1 start=2026-09-05T18:07:35.719Z
+  EVENT AGENT_CALL id=11f76ddfdd2615f4 start=2026-09-05T18:07:35.637Z
+  EVENT AGENT_CALL id=bc7955bb83c5bc85 start=2026-09-05T18:07:35.589Z

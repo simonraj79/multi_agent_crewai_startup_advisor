@@ -76,3 +76,65 @@ is never added to its parent's: the contract nests node -> task -> agent
 | node | SPAN | index_content | 3.351 | 181a917f049120a0 |
 | tool | TOOL | firecrawl_web_scrape_tool | 3.166 | ce589664114cd63a |
 | node | SPAN | retrieve_cached | 2.842 | 572d55bdc31f4c79 |
+
+---
+
+## V-RECON — B4 on the second flow
+
+Added 2026-09-06 by **V-RECON**, the named verifier for B4. Everything above is
+the Langfuse side alone and was regenerated from the live API on 2026-09-06
+**byte-identical** to the committed copy. The side-by-side is
+`durations-app-vs-langfuse.md` beside this file.
+
+### The B4 answer — the slowest of each kind
+
+| the slowest | label | Langfuse s | app s | delta s |
+| --- | --- | ---: | ---: | ---: |
+| **agent** | Business Brief Writer producing decision-ready one-pagers … (`8d9904bdcb1e2057`) | 29.096 | 29.093 | 0.003 |
+| **task** | writing_task (`6c7beb27e6e5d462`) | 88.725 | 88.726 | 0.001 |
+| **tool** | firecrawl_web_scrape_tool #3 (`ce589664114cd63a`) | 3.166 | 3.166 | 0.000 |
+
+Behind them: agents — Strategy Analyst 23.875 s, Brief Writer (2nd pass)
+23.666 s, Guardrail 18.557 s and 17.391 s, Senior Research Analyst 17.576 s;
+tools — scrape #2 2.744 s, `firecrawl_web_search_tool` 1.776 s, scrape #1
+1.744 s. `writing_task` at 88.7 s of a 137.3 s run is the answer to "why was this
+run slow", and its four generations (two writer passes, two guardrail passes)
+are the reason.
+
+### Rows outside the 1 s tolerance: **0** of 17 paired rows
+
+| | |
+| --- | --- |
+| paired rows | 17 |
+| **outside 1 s** | **0** |
+| largest delta | **0.008 s** — AGENT `Senior Research Analyst …` (`6d20dc39728ed85c`) |
+| median delta | 0.001 s |
+| sum of all deltas | 0.032 s |
+
+### The §7 timing model, measured on this run
+
+`startTime − metadata.frame_ts` over all 52 observations that carry a
+`frame_ts`: max **+0.004 s**, median **+0.001 s**, none above 10 ms. The
+≤ 0.25 s drain allowance is essentially unused, and on this run the
+frame-choice effect that costs `validator-live` 0.119 s costs at most 0.008 s,
+because every agent here makes its first model call within milliseconds of
+starting.
+
+### The unpaired rows
+
+- **2 "Langfuse only" agent rows** — both `Guardrail Agent`
+  (`3489692d258d8d2f` 18.557 s, `480a491eac1ecdc2` 17.391 s). Same cause as on
+  `validator-live`: CrewAI emits only an `AgentExecutor` frame pair for a
+  guardrail agent, so the app-side span carries that label (rows
+  `AgentExecutor` #4 18.549 s and #6 17.393 s, within 10 ms of the Langfuse
+  figures) while the exporter names the observation from the LLM frame's
+  `agent_role`. One interval, two labels, two unmatched rows.
+- **7 "app only" task rows** — `BriefCrew` 130.248 s plus six `AgentExecutor`
+  boundaries; the exporter gives a crew boundary no observation of its own.
+- **22 "Langfuse only" node rows** — **exactly** the 22 EVENT observations
+  (verified by id), which have no `endTime` by construction and are classified
+  as `node` by the HEAD version of `pull_langfuse_run.py`. Tooling artifact,
+  already fixed in the working tree.
+
+**B4 verdict on this run: PASS**, 17 of 17 paired rows within 1 s, worst
+0.008 s.

@@ -1,0 +1,552 @@
+{
+  "source": "app",
+  "generated_at": "2026-09-05T17:26:10Z",
+  "base_url": "http://127.0.0.1:8000",
+  "run_id": "45cc3736-ed0b-466a-9dc6-e7f69ff0eea0",
+  "session_id": "proof2-agentfail",
+  "workflow_id": "ug_fd12e0a6",
+  "graph_version": "4a1ba2a50916d665",
+  "status": "failed",
+  "stop_reason": null,
+  "mode": "run",
+  "error": "Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000311 tokens (311 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}",
+  "created_at": "2026-09-05T17:25:31.829680Z",
+  "started_at": "2026-09-05T17:25:31.842827Z",
+  "completed_at": "2026-09-05T17:25:33.991691Z",
+  "wall_clock_seconds": 2.148864,
+  "frame_counters": {
+    "count": 50,
+    "captured": 50,
+    "dropped": 0,
+    "gaps": 0,
+    "emit_errors": 0,
+    "subscriber_dropped": 0,
+    "unattributed": 0,
+    "first_seq": 1,
+    "last_seq": 50
+  },
+  "frames_downloaded": 50,
+  "totals": {
+    "calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cost_usd": 0.0,
+    "calls_without_cost": 0
+  },
+  "snapshot_usage": {
+    "successful_requests": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "call_count": 0,
+    "elapsed_ms": 0,
+    "cost_usd": 0.0
+  },
+  "totals_vs_snapshot": [
+    {
+      "metric": "calls",
+      "from_frames": 0,
+      "from_snapshot": 0,
+      "agree": true
+    },
+    {
+      "metric": "input_tokens",
+      "from_frames": 0,
+      "from_snapshot": 0,
+      "agree": true
+    },
+    {
+      "metric": "output_tokens",
+      "from_frames": 0,
+      "from_snapshot": 0,
+      "agree": true
+    },
+    {
+      "metric": "total_tokens",
+      "from_frames": 0,
+      "from_snapshot": 0,
+      "agree": true
+    },
+    {
+      "metric": "cost_usd",
+      "from_frames": 0.0,
+      "from_snapshot": 0.0,
+      "agree": true
+    }
+  ],
+  "by_node": {},
+  "by_agent_role": {},
+  "by_task_name": {},
+  "by_model": {},
+  "node_usage": [],
+  "calls": [],
+  "failed_calls": [
+    {
+      "call_id": "8e4769ca-ad68-4b84-8609-f65462b352f7",
+      "model": "google/gemini-3.5-flash-lite",
+      "node_id": "sound_the_channel",
+      "agent_role": "Channel Sounder",
+      "task_name": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+      "ts": "2026-09-05T17:25:33.648Z",
+      "error": "OpenAI API call failed: Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000137 tokens (137 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}"
+    },
+    {
+      "call_id": "a02bde6f-1076-4f3e-ab9b-df955c090c0c",
+      "model": "google/gemini-3.5-flash-lite",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "ts": "2026-09-05T17:25:33.697Z",
+      "error": "OpenAI API call failed: Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000311 tokens (311 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}"
+    },
+    {
+      "call_id": "5f2b6668-5d5e-4bd5-85aa-049e78975b28",
+      "model": "google/gemini-3.5-flash-lite",
+      "node_id": "sound_the_channel",
+      "agent_role": "Channel Sounder",
+      "task_name": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+      "ts": "2026-09-05T17:25:33.782Z",
+      "error": "OpenAI API call failed: Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000137 tokens (137 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}"
+    },
+    {
+      "call_id": "df3e955e-a394-4543-925c-482d6fd2d92b",
+      "model": "google/gemini-3.5-flash-lite",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "ts": "2026-09-05T17:25:33.820Z",
+      "error": "OpenAI API call failed: Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000311 tokens (311 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}"
+    },
+    {
+      "call_id": "73116b20-30b2-4869-8f84-4bc4c7992571",
+      "model": "google/gemini-3.5-flash-lite",
+      "node_id": "sound_the_channel",
+      "agent_role": "Channel Sounder",
+      "task_name": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+      "ts": "2026-09-05T17:25:33.914Z",
+      "error": "OpenAI API call failed: Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000137 tokens (137 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}"
+    },
+    {
+      "call_id": "9c6c6f02-46c9-4f0a-8f52-f92b3e84257b",
+      "model": "google/gemini-3.5-flash-lite",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "ts": "2026-09-05T17:25:33.979Z",
+      "error": "OpenAI API call failed: Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000311 tokens (311 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}"
+    }
+  ],
+  "response_ids": [],
+  "calls_without_response_id": 0,
+  "tool_calls": [],
+  "tool_call_count": 0,
+  "spans": [
+    {
+      "kind": "node",
+      "label": "the_brief",
+      "node_id": "the_brief",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 6,
+      "start_ts": "2026-09-05T17:25:32.745Z",
+      "end_seq": 7,
+      "end_ts": "2026-09-05T17:25:32.750Z",
+      "duration_seconds": 0.005,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "start_sounding",
+      "node_id": "start_sounding",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 9,
+      "start_ts": "2026-09-05T17:25:32.751Z",
+      "end_seq": 10,
+      "end_ts": "2026-09-05T17:25:32.755Z",
+      "duration_seconds": 0.004,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "start_sounding",
+      "node_id": "start_sounding",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 11,
+      "start_ts": "2026-09-05T17:25:32.755Z",
+      "end_seq": 12,
+      "end_ts": "2026-09-05T17:25:32.758Z",
+      "duration_seconds": 0.003,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "sound_the_channel",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 15,
+      "start_ts": "2026-09-05T17:25:32.758Z",
+      "end_seq": 48,
+      "end_ts": "2026-09-05T17:25:33.986Z",
+      "duration_seconds": 1.228,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "task",
+      "label": "crew",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 16,
+      "start_ts": "2026-09-05T17:25:33.036Z",
+      "end_seq": 46,
+      "end_ts": "2026-09-05T17:25:33.984Z",
+      "duration_seconds": 0.948,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "task",
+      "label": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+      "tool": null,
+      "start_seq": 17,
+      "start_ts": "2026-09-05T17:25:33.048Z",
+      "end_seq": 45,
+      "end_ts": "2026-09-05T17:25:33.983Z",
+      "duration_seconds": 0.935,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "agent",
+      "label": "Channel Sounder",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 18,
+      "start_ts": "2026-09-05T17:25:33.053Z",
+      "end_seq": 26,
+      "end_ts": "2026-09-05T17:25:33.702Z",
+      "duration_seconds": 0.649,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "task",
+      "label": "AgentExecutor",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 19,
+      "start_ts": "2026-09-05T17:25:33.055Z",
+      "end_seq": 25,
+      "end_ts": "2026-09-05T17:25:33.698Z",
+      "duration_seconds": 0.643,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "llm",
+      "label": "8e4769ca-ad68-4b84-8609-f65462b352f7",
+      "node_id": "sound_the_channel",
+      "agent_role": "Channel Sounder",
+      "task_name": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+      "tool": null,
+      "start_seq": 20,
+      "start_ts": "2026-09-05T17:25:33.058Z",
+      "end_seq": 21,
+      "end_ts": "2026-09-05T17:25:33.648Z",
+      "duration_seconds": 0.59,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "llm",
+      "label": "a02bde6f-1076-4f3e-ab9b-df955c090c0c",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 23,
+      "start_ts": "2026-09-05T17:25:33.652Z",
+      "end_seq": 24,
+      "end_ts": "2026-09-05T17:25:33.697Z",
+      "duration_seconds": 0.045,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "agent",
+      "label": "Channel Sounder",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 27,
+      "start_ts": "2026-09-05T17:25:33.715Z",
+      "end_seq": 35,
+      "end_ts": "2026-09-05T17:25:33.824Z",
+      "duration_seconds": 0.109,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "task",
+      "label": "AgentExecutor",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 28,
+      "start_ts": "2026-09-05T17:25:33.733Z",
+      "end_seq": 34,
+      "end_ts": "2026-09-05T17:25:33.821Z",
+      "duration_seconds": 0.088,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "llm",
+      "label": "5f2b6668-5d5e-4bd5-85aa-049e78975b28",
+      "node_id": "sound_the_channel",
+      "agent_role": "Channel Sounder",
+      "task_name": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+      "tool": null,
+      "start_seq": 29,
+      "start_ts": "2026-09-05T17:25:33.738Z",
+      "end_seq": 30,
+      "end_ts": "2026-09-05T17:25:33.782Z",
+      "duration_seconds": 0.044,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "llm",
+      "label": "df3e955e-a394-4543-925c-482d6fd2d92b",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 32,
+      "start_ts": "2026-09-05T17:25:33.784Z",
+      "end_seq": 33,
+      "end_ts": "2026-09-05T17:25:33.820Z",
+      "duration_seconds": 0.036,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "agent",
+      "label": "Channel Sounder",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 36,
+      "start_ts": "2026-09-05T17:25:33.844Z",
+      "end_seq": 44,
+      "end_ts": "2026-09-05T17:25:33.982Z",
+      "duration_seconds": 0.138,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "task",
+      "label": "AgentExecutor",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 37,
+      "start_ts": "2026-09-05T17:25:33.859Z",
+      "end_seq": 43,
+      "end_ts": "2026-09-05T17:25:33.980Z",
+      "duration_seconds": 0.121,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "llm",
+      "label": "73116b20-30b2-4869-8f84-4bc4c7992571",
+      "node_id": "sound_the_channel",
+      "agent_role": "Channel Sounder",
+      "task_name": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+      "tool": null,
+      "start_seq": 38,
+      "start_ts": "2026-09-05T17:25:33.862Z",
+      "end_seq": 39,
+      "end_ts": "2026-09-05T17:25:33.914Z",
+      "duration_seconds": 0.052,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    },
+    {
+      "kind": "llm",
+      "label": "9c6c6f02-46c9-4f0a-8f52-f92b3e84257b",
+      "node_id": "sound_the_channel",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 41,
+      "start_ts": "2026-09-05T17:25:33.917Z",
+      "end_seq": 42,
+      "end_ts": "2026-09-05T17:25:33.979Z",
+      "duration_seconds": 0.062,
+      "duration_ms_reported": null,
+      "level": "ERROR",
+      "open": false,
+      "errored": true
+    }
+  ],
+  "open_spans": [],
+  "durations": {
+    "by_node": [
+      {
+        "label": "sound_the_channel",
+        "spans": 1,
+        "total_seconds": 1.228,
+        "max_seconds": 1.228,
+        "open": 0
+      },
+      {
+        "label": "start_sounding",
+        "spans": 2,
+        "total_seconds": 0.007,
+        "max_seconds": 0.004,
+        "open": 0
+      },
+      {
+        "label": "the_brief",
+        "spans": 1,
+        "total_seconds": 0.005,
+        "max_seconds": 0.005,
+        "open": 0
+      }
+    ],
+    "by_agent_role": [
+      {
+        "label": "Channel Sounder",
+        "spans": 3,
+        "total_seconds": 0.896,
+        "max_seconds": 0.649,
+        "open": 0
+      }
+    ],
+    "by_task_name": [
+      {
+        "label": "crew",
+        "spans": 1,
+        "total_seconds": 0.948,
+        "max_seconds": 0.948,
+        "open": 0
+      },
+      {
+        "label": "Write one short paragraph about the depth of the north reach of the estuary. Use no tools.",
+        "spans": 1,
+        "total_seconds": 0.935,
+        "max_seconds": 0.935,
+        "open": 0
+      },
+      {
+        "label": "AgentExecutor",
+        "spans": 3,
+        "total_seconds": 0.852,
+        "max_seconds": 0.643,
+        "open": 0
+      }
+    ],
+    "by_tool": [],
+    "by_llm_call": [
+      {
+        "label": "8e4769ca-ad68-4b84-8609-f65462b352f7",
+        "spans": 1,
+        "total_seconds": 0.59,
+        "max_seconds": 0.59,
+        "open": 0
+      },
+      {
+        "label": "9c6c6f02-46c9-4f0a-8f52-f92b3e84257b",
+        "spans": 1,
+        "total_seconds": 0.062,
+        "max_seconds": 0.062,
+        "open": 0
+      },
+      {
+        "label": "73116b20-30b2-4869-8f84-4bc4c7992571",
+        "spans": 1,
+        "total_seconds": 0.052,
+        "max_seconds": 0.052,
+        "open": 0
+      },
+      {
+        "label": "a02bde6f-1076-4f3e-ab9b-df955c090c0c",
+        "spans": 1,
+        "total_seconds": 0.045,
+        "max_seconds": 0.045,
+        "open": 0
+      },
+      {
+        "label": "5f2b6668-5d5e-4bd5-85aa-049e78975b28",
+        "spans": 1,
+        "total_seconds": 0.044,
+        "max_seconds": 0.044,
+        "open": 0
+      },
+      {
+        "label": "df3e955e-a394-4543-925c-482d6fd2d92b",
+        "spans": 1,
+        "total_seconds": 0.036,
+        "max_seconds": 0.036,
+        "open": 0
+      }
+    ]
+  }
+}

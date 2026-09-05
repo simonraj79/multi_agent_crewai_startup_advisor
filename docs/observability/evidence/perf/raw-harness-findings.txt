@@ -1,0 +1,14 @@
+# Two findings about the E4 harness, proved rather than asserted.
+# Run 2026-09-06 by V-RECON. No credential value is printed by either proof.
+
+$ .venv/Scripts/python.exe -c "<parse one real ON log with measure_overhead's own parser and summariser keys>"
+summary lines parsed: 5
+keys the exporter emits : ['enqueue_p50_us', 'enqueue_p95_us', 'frames_dropped', 'frames_enqueued', 'http_errors', 'lookup_failed', 'lookup_ok', 'observations_sent']
+what measure_overhead.render() would print: {'enqueued': 0, 'sent': 0, 'dropped': 0, 'http_errors': 0, 'lookup_ok': 0, 'lookup_failed': 0}
+the truth from the same lines: {'frames_enqueued': 482, 'observations_sent': 205, 'frames_dropped': 0}
+
+$ LANGFUSE_BASE_URL=http://127.0.0.1:9 .venv/Scripts/python.exe -c "<import brief_crew, then compare>"
+injected into the child environment : http://127.0.0.1:9
+config.LANGFUSE_BASE_URL == injected : False
+os.environ after brief_crew import == injected : False
+(the value config actually holds is not printed: it is a .env value)

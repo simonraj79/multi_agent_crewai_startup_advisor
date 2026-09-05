@@ -1,0 +1,22 @@
+2026-09-05 21:40:57,465 INFO crewai_core.settings Using config path: C:\Users\Simon\.config\crewai\settings.json
+2026-09-05 21:40:59,036 INFO brief_crew.observability langfuse export is off: LANGFUSE_EXPORT_ENABLED is off
+INFO:     Started server process [28208]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8111 (Press CTRL+C to quit)
+INFO:     127.0.0.1:64345 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "POST /api/sessions/perf-off-1-259a42cf/runs HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64351 - "GET /api/runs/a6df5901-712a-40c6-a73c-2eea225d36da HTTP/1.1" 200 OK

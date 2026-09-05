@@ -1,0 +1,85 @@
+[
+  {
+    "id": "f371b3b96ca54b8b9f639c34249ef440",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "name": "ug_fd12e0a6",
+    "timestamp": "2026-09-05T18:16:03.702Z",
+    "environment": "live",
+    "tags": [
+      "gates:auto",
+      "mode:run",
+      "ug_fd12e0a6"
+    ],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "proof-runner",
+    "sessionId": "f371b3b9-6ca5-4b8b-9f63-9c34249ef440",
+    "public": false,
+    "input": {
+      "input_chars": 48,
+      "input_fingerprint": "3d453a1c9a1438cc582902a9e126f3e51d227c8120f30f79b4388c397b70207f",
+      "input_keys": [
+        "idea",
+        "no_gates"
+      ]
+    },
+    "output": {
+      "status": "failed",
+      "reason": "BadRequestError: Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000311 tokens (311 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}",
+      "error_class": "BadRequestError"
+    },
+    "metadata": {
+      "run_id": "f371b3b9-6ca5-4b8b-9f63-9c34249ef440",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T18:16:03.702Z",
+      "null_fields": "agent_role,task_name",
+      "workflow_id": "ug_fd12e0a6",
+      "app_session_id": "proof3-c",
+      "gates": "auto",
+      "mode": "run",
+      "synthetic": false,
+      "user_id": "proof-runner",
+      "graph_version": "4a1ba2a50916d665",
+      "observation_role": "run",
+      "run_metrics": {
+        "source": "exporter-tally",
+        "reason": "failed",
+        "usage": {
+          "call_count": 6,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0,
+          "cost_usd": null
+        }
+      },
+      "error_class": "BadRequestError",
+      "unhandled_event_counts": {
+        "hook_dispatched": 11,
+        "agent_logs_started": 3,
+        "cc_env": 1,
+        "flow_created": 1
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "createdAt": "2026-09-05T18:16:08.000Z",
+    "updatedAt": "2026-09-05T18:16:08.376Z",
+    "externalId": null
+  }
+]

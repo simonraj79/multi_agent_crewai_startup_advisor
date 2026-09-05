@@ -1,0 +1,95 @@
+[
+  {
+    "id": "6342e33f268e4b6787ae1574a2fffbeb",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "name": "ug_4e7e952f",
+    "timestamp": "2026-09-05T17:25:40.878Z",
+    "environment": "live",
+    "tags": [
+      "gates:auto",
+      "mode:run",
+      "ug_4e7e952f"
+    ],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "proof-runner",
+    "sessionId": "6342e33f-268e-4b67-87ae-1574a2fffbeb",
+    "public": false,
+    "input": {
+      "input_chars": 57,
+      "input_fingerprint": "78d4bd54f34d469727af8fe2565d580006b7b9a7e7c1b05a56cded30424c779a",
+      "input_keys": [
+        "idea",
+        "no_gates"
+      ]
+    },
+    "output": {
+      "status": "failed",
+      "reason": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+      "error_class": null
+    },
+    "metadata": {
+      "run_id": "6342e33f-268e-4b67-87ae-1574a2fffbeb",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T17:25:40.877Z",
+      "null_fields": "agent_role,task_name",
+      "workflow_id": "ug_4e7e952f",
+      "app_session_id": "proof2-toolfail",
+      "gates": "auto",
+      "mode": "run",
+      "synthetic": false,
+      "user_id": "proof-runner",
+      "graph_version": "c3b393e1a89362dd",
+      "observation_role": "run",
+      "run_metrics": {
+        "reason": "run_failed",
+        "usage": {
+          "successful_requests": 2,
+          "prompt_tokens": 788,
+          "completion_tokens": 53,
+          "total_tokens": 841,
+          "call_count": 2,
+          "elapsed_ms": 1973,
+          "cost_usd": 0.0003689
+        },
+        "frames": {
+          "captured": 42,
+          "dropped": 0,
+          "gaps": 0,
+          "emit_errors": 0,
+          "subscriber_dropped": 0,
+          "unattributed": 0
+        },
+        "source": "app-snapshot"
+      },
+      "unhandled_event_counts": {
+        "hook_dispatched": 7,
+        "agent_logs_started": 1,
+        "cc_env": 1,
+        "flow_created": 1,
+        "tool_failure_detected": 1
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "createdAt": "2026-09-05T17:26:03.000Z",
+    "updatedAt": "2026-09-05T17:26:03.889Z",
+    "externalId": null
+  }
+]

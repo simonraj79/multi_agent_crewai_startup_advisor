@@ -1,0 +1,108 @@
+{
+  "id": "f0297951-e1ff-49a1-90f6-725d06d9b112",
+  "createdAt": "2026-09-05T18:07:42.613Z",
+  "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+  "environment": "live",
+  "traces": [
+    {
+      "id": "f0297951e1ff49a190f6725d06d9b112",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "name": "ug_4e7e952f",
+      "timestamp": "2026-09-05T18:07:36.203Z",
+      "environment": "live",
+      "tags": [
+        "gates:auto",
+        "mode:run",
+        "ug_4e7e952f"
+      ],
+      "bookmarked": false,
+      "release": null,
+      "version": null,
+      "userId": "proof-runner",
+      "sessionId": "f0297951-e1ff-49a1-90f6-725d06d9b112",
+      "public": false,
+      "input": {
+        "input_chars": 57,
+        "input_fingerprint": "78d4bd54f34d469727af8fe2565d580006b7b9a7e7c1b05a56cded30424c779a",
+        "input_keys": [
+          "idea",
+          "no_gates"
+        ]
+      },
+      "output": {
+        "status": "failed",
+        "reason": "ToolExecutionFailedError: Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+        "error_class": "ToolExecutionFailedError"
+      },
+      "metadata": {
+        "run_id": "f0297951-e1ff-49a1-90f6-725d06d9b112",
+        "node_id": "workflow",
+        "frame_seq": 1,
+        "frame_kind": "run_state",
+        "event_type": "NODE_START",
+        "frame_ts": "2026-09-05T18:07:36.203Z",
+        "null_fields": "agent_role,task_name",
+        "workflow_id": "ug_4e7e952f",
+        "app_session_id": "proof3-b",
+        "gates": "auto",
+        "mode": "run",
+        "synthetic": false,
+        "user_id": "proof-runner",
+        "graph_version": "c3b393e1a89362dd",
+        "observation_role": "run",
+        "run_metrics": {
+          "reason": "run_failed",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 788,
+            "completion_tokens": 53,
+            "total_tokens": 841,
+            "call_count": 2,
+            "elapsed_ms": 2359,
+            "cost_usd": 0.0003689
+          },
+          "frames": {
+            "captured": 43,
+            "dropped": 0,
+            "gaps": 0,
+            "emit_errors": 0,
+            "subscriber_dropped": 0,
+            "unattributed": 0
+          },
+          "source": "app-snapshot"
+        },
+        "error_class": "ToolExecutionFailedError",
+        "unhandled_event_counts": {
+          "hook_dispatched": 7,
+          "agent_logs_started": 1,
+          "cc_env": 1,
+          "flow_created": 1,
+          "tool_failure_detected": 1
+        },
+        "resourceAttributes": {
+          "telemetry.sdk.language": "python",
+          "telemetry.sdk.name": "opentelemetry",
+          "telemetry.sdk.version": "1.42.1",
+          "langfuse.environment": "live",
+          "service.name": "unknown_service"
+        },
+        "scope": {
+          "name": "langfuse-sdk",
+          "version": "4.15.1",
+          "attributes": {
+            "public_key": "<redacted>"
+          }
+        }
+      },
+      "createdAt": "2026-09-05T18:07:41.000Z",
+      "updatedAt": "2026-09-05T18:07:42.612Z",
+      "externalId": null
+    }
+  ],
+  "_deprecation": {
+    "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read session data via GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>.",
+    "replacement": "GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>",
+    "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+    "sunsetAt": "2026-11-16"
+  }
+}

@@ -1,0 +1,202 @@
+{
+  "run_id": "f146e846-7e32-4276-9c9d-d79909a02eec",
+  "session_id": "proof3-a",
+  "workflow_id": "idea-validator",
+  "graph_version": "9c6ca8a6fefbfffd",
+  "status": "completed",
+  "created_at": "2026-09-05T18:07:35.231896Z",
+  "started_at": "2026-09-05T18:07:35.246131Z",
+  "completed_at": "2026-09-05T18:08:36.634608Z",
+  "pending_gate": null,
+  "frames": {
+    "count": 167,
+    "captured": 167,
+    "dropped": 0,
+    "gaps": 0,
+    "emit_errors": 0,
+    "subscriber_dropped": 0,
+    "unattributed": 0,
+    "first_seq": 1,
+    "last_seq": 167
+  },
+  "usage": {
+    "successful_requests": 11,
+    "prompt_tokens": 37379,
+    "completion_tokens": 8678,
+    "total_tokens": 46057,
+    "call_count": 11,
+    "elapsed_ms": 53417,
+    "cost_usd": 0.05268975
+  },
+  "node_usage": [
+    {
+      "successful_requests": 2,
+      "prompt_tokens": 3736,
+      "completion_tokens": 656,
+      "total_tokens": 4392,
+      "call_count": 2,
+      "elapsed_ms": 3864,
+      "cost_usd": 0.0027608,
+      "node_id": "research_feasibility",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 2,
+      "prompt_tokens": 5692,
+      "completion_tokens": 704,
+      "total_tokens": 6396,
+      "call_count": 2,
+      "elapsed_ms": 3735,
+      "cost_usd": 0.0034676,
+      "node_id": "research_market",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 2,
+      "prompt_tokens": 4032,
+      "completion_tokens": 104,
+      "total_tokens": 4136,
+      "call_count": 2,
+      "elapsed_ms": 1426,
+      "cost_usd": 0.0014696,
+      "node_id": "research_sentiment",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 1698,
+      "completion_tokens": 1188,
+      "total_tokens": 2886,
+      "call_count": 1,
+      "elapsed_ms": 9668,
+      "cost_usd": 0.0057285,
+      "node_id": "scope_idea",
+      "model": "google/gemini-3.8-flash"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 7938,
+      "completion_tokens": 583,
+      "total_tokens": 8521,
+      "call_count": 1,
+      "elapsed_ms": 5226,
+      "cost_usd": 0.00813975,
+      "node_id": "synthesize",
+      "model": "google/gemini-3.8-flash"
+    },
+    {
+      "successful_requests": 3,
+      "prompt_tokens": 14283,
+      "completion_tokens": 5443,
+      "total_tokens": 19726,
+      "call_count": 3,
+      "elapsed_ms": 29498,
+      "cost_usd": 0.0311235,
+      "node_id": "write_report",
+      "model": "google/gemini-3.8-flash"
+    }
+  ],
+  "result": {
+    "markdown_body": "# Provisional Validation Report: Elevator Predictive Maintenance Retrofit\n\n## Summary\n**Provisional verdict**: The concept receives a provisional verdict of **NEEDS_WORK** with a composite score of **4.0** and **LOW confidence (0.12)**. The assessment decision reason is **INSUFFICIENT_EVIDENCE**. While technical partial feasibility exists in open repositories and predictive elevator maintenance IoT solutions are active in the market, community demand signals returned completely empty, and legal/regulatory inspection displacement remains an unaddressed gap.\n\n## Approved Scope\n- **Startup Idea**: A subscription service that fits retrofit vibration sensors to commercial building lifts and warns facilities managers of bearing wear weeks before a breakdown, replacing the fixed quarterly inspection contracts most landlords buy today.\n- **Category**: Elevator predictive maintenance\n- **Target User**: Commercial building facilities managers\n- **Problem**: Lifts suffer unexpected bearing failures and downtime between scheduled visits, while building operators pay for fixed quarterly maintenance contracts that do not provide continuous health visibility.\n- **Technology Claim**: Non-invasive retrofit vibration sensors and vibration anomaly algorithms can identify bearing wear weeks before mechanical breakdown occurs.\n- **As of Date**: 2026-09-06\n\n## Five-Score Rubric Breakdown\n- **Demand (D): 1/5** (Evidence thin)\n  - *Anchor*: Evidence does not reach this question — the sentiment branch returned fewer than 5 usable threads and no problem thread.\n- **Market (M): 2/5** (Evidence thin)\n  - *Anchor*: At least 1 market source names a buyer segment for this problem ([OXMaint](https://oxmaint.com/industries/facility-management/connected-elevator-maintenance-iot-monitoring)). Additional industry commentary points to retrofit IoT modules detecting abnormal readings before breakdown ([LinkedIn](https://www.linkedin.com/pulse/from-reactive-predictive-future-elevator-maintenance-india-pmknf), [Medium](https://medium.com/uptime-ac/elevator-predictive-maintenance-from-words-to-reality-5f7de43b951c)).\n- **Competitive Room (C): 2/5** (Evidence thin)\n  - *Anchor*: No source states an axis of beatability, and either no competitor is named or at least 1 named competitor is not shown to be vendor owned ([OXMaint](https://oxmaint.com/industries/facility-management/connected-elevator-maintenance-iot-monitoring)).\n- **Feasibility (F): 3/5** (Evidence thin)\n  - *Anchor*: At least 1 repository in the feasibility evidence is reusable: marked SOLVES_ENTIRELY or PARTIAL, licensed for commercial use, and pushed within 12 months ([holden-mcgorin/UniPHM](https://github.com/holden-mcgorin/UniPHM)). Multiple other repos lack commercial licenses or are unmaintained ([zhangxiaoling/Bearing-fault-detection](https://github.com/zhangxiaoling/Bearing-fault-detection), [wargod797/Fault_diagnosis_ballbearing_wavelet](https://github.com/wargod797/Fault_diagnosis_ballbearing_wavelet), [LGDiMaggio/predictive-maintenance-mcp](https://github.com/LGDiMaggio/predictive-maintenance-mcp)).\n- **Headroom Over Free (X): 3/5** (Evidence thin)\n  - *Anchor*: No free substitute repository exists, and free coverage is unsettled or settled at no more than a separable part of the core job ([OXMaint](https://oxmaint.com/industries/facility-management/connected-elevator-maintenance-iot-monitoring)).\n\n## Verdict & Confidence\n- **Verdict**: NEEDS_WORK\n- **Decision Reason**: INSUFFICIENT_EVIDENCE\n- **Composite Score**: 4.0\n- **Confidence**: 0.12 (LOW)\n- **Provisional**: true\n\n## Evidence Gaps\n- Legal and insurance requirements governing whether statutory physical elevator inspections can legally be displaced or reduced by continuous monitoring systems.\n- The sentiment tool branch returned tool_status `empty` with zero usable threads or comments from the query `predictive maintenance IoT`.\n\n## Risks\n- **Thin Evidence Across All Dimensions**: Evidence thin flags are active across Demand, Market, Competitive Room, Feasibility, and Headroom Over Free.\n- **Failed Sentiment Branch**: The sentiment branch returned no usable discussions or validation signals (`tool_status: empty`), leaving organic buyer pull unverified.\n- **Unresolved Legal/Insurance Scoping Gap**: The evidence does not show whether statutory scheduled physical maintenance can legally or contractually be replaced by continuous monitoring.\n- **Licensing and Maintenance Hazards in Tech Base**: Repositories such as [zhangxiaoling/Bearing-fault-detection](https://github.com/zhangxiaoling/Bearing-fault-detection) (89 months unmaintained), [wargod797/Fault_diagnosis_ballbearing_wavelet](https://github.com/wargod797/Fault_diagnosis_ballbearing_wavelet) (74 months unmaintained), and [LGDiMaggio/predictive-maintenance-mcp](https://github.com/LGDiMaggio/predictive-maintenance-mcp) do not permit commercial use.\n- **Existing Market Solutions**: Incumbents such as [OXMaint](https://oxmaint.com/industries/facility-management/connected-elevator-maintenance-iot-monitoring) already market IoT motor health, ride quality, and predictive maintenance alerts to facilities managers.\n\n## Kill Criteria\n- Elevator safety codes or municipal jurisdictional laws mandate physical quarterly inspections by certified technicians regardless of continuous IoT vibration monitoring.\n- Commercial building property insurance policies deny liability coverage or increase premiums if scheduled physical technician visits are replaced or reduced.\n- Elevator OEMs legally void equipment warranties or claim exclusive maintenance rights when third-party retrofit vibration sensors are attached to hoist machinery.\n\n## Cheapest Next Test\nInterview 5 commercial facilities managers and review standard elevator service contracts to verify whether statutory regulations and insurer policies allow reducing physical quarterly technician inspections when continuous vibration monitoring is present.\n\n## Sources\n- [LinkedIn](https://www.linkedin.com/pulse/from-reactive-predictive-future-elevator-maintenance-india-pmknf): \"A predictive system detects abnormal sensor readings and increasing resistance patterns before breakdown. retrofit IoT modules.\"\n- [OXMaint](https://oxmaint.com/industries/facility-management/connected-elevator-maintenance-iot-monitoring): \"Prevent elevator breakdowns with IoT monitoring and AI. Track ride quality, door cycles & motor health for proactive maintenance alerts.\"\n- [Medium](https://medium.com/uptime-ac/elevator-predictive-maintenance-from-words-to-reality-5f7de43b951c): \"Elevator predictive maintenance: from words to reality How predictive maintenance can solve the global elevator problem, if executed with the right product vision. Our previous article explored how …\"\n- [GitHub - holden-mcgorin/UniPHM](https://github.com/holden-mcgorin/UniPHM): Reusable partial bearing fault detection repository, pushed within 10 months and commercially licensed.\n- [GitHub - zhangxiaoling/Bearing-fault-detection](https://github.com/zhangxiaoling/Bearing-fault-detection): Bearing fault detection repository, non-commercial license, 89 months unmaintained.\n- [GitHub - wargod797/Fault_diagnosis_ballbearing_wavelet](https://github.com/wargod797/Fault_diagnosis_ballbearing_wavelet): Bearing fault diagnosis repository, non-commercial license, 74 months unmaintained.\n- [GitHub - LGDiMaggio/predictive-maintenance-mcp](https://github.com/LGDiMaggio/predictive-maintenance-mcp): Predictive maintenance repository, non-commercial license.\n- [GitHub - VictorBauler/awesome-bearing-dataset](https://github.com/VictorBauler/awesome-bearing-dataset): Bearing dataset repository, commercially licensed.",
+    "provisional": true,
+    "thin_dimensions": [
+      "D",
+      "M",
+      "C",
+      "F",
+      "X"
+    ],
+    "sources": [
+      {
+        "claim": "A predictive system detects abnormal sensor readings and increasing resistance patterns before breakdown. retrofit IoT modules.",
+        "url": "https://www.linkedin.com/pulse/from-reactive-predictive-future-elevator-maintenance-india-pmknf",
+        "publisher": "www.linkedin.com",
+        "dated": "2026-09-05T18:07:49Z",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "firecrawl"
+      },
+      {
+        "claim": "Prevent elevator breakdowns with IoT monitoring and AI. Track ride quality, door cycles & motor health for proactive maintenance alerts.",
+        "url": "https://oxmaint.com/industries/facility-management/connected-elevator-maintenance-iot-monitoring",
+        "publisher": "OXMaint",
+        "dated": "2026-09-05T18:07:49Z",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "firecrawl"
+      },
+      {
+        "claim": "Elevator predictive maintenance: from words to reality How predictive maintenance can solve the global elevator problem, if executed with the right product vision. Our previous article explored how …",
+        "url": "https://medium.com/uptime-ac/elevator-predictive-maintenance-from-words-to-reality-5f7de43b951c",
+        "publisher": "Medium",
+        "dated": "2022-07-06T15:29:30.152Z",
+        "dated_is_retrieval_time": false,
+        "retrieved_via": "firecrawl"
+      },
+      {
+        "claim": "UniPHM repository is reusable: relevance PARTIAL, commercially licensed, pushed 10 months ago.",
+        "url": "https://github.com/holden-mcgorin/UniPHM",
+        "publisher": "GitHub",
+        "dated": "2026-09-06",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      },
+      {
+        "claim": "Bearing-fault-detection repository: relevance IRRELEVANT, non-commercial license, pushed 89 months ago.",
+        "url": "https://github.com/zhangxiaoling/Bearing-fault-detection",
+        "publisher": "GitHub",
+        "dated": "2026-09-06",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      },
+      {
+        "claim": "Fault_diagnosis_ballbearing_wavelet repository: relevance IRRELEVANT, non-commercial license, pushed 74 months ago.",
+        "url": "https://github.com/wargod797/Fault_diagnosis_ballbearing_wavelet",
+        "publisher": "GitHub",
+        "dated": "2026-09-06",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      },
+      {
+        "claim": "predictive-maintenance-mcp repository: relevance IRRELEVANT, non-commercial license, pushed 0 months ago.",
+        "url": "https://github.com/LGDiMaggio/predictive-maintenance-mcp",
+        "publisher": "GitHub",
+        "dated": "2026-09-06",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      },
+      {
+        "claim": "awesome-bearing-dataset repository: relevance IRRELEVANT, commercial license permitted, pushed 5 months ago.",
+        "url": "https://github.com/VictorBauler/awesome-bearing-dataset",
+        "publisher": "GitHub",
+        "dated": "2026-09-06",
+        "dated_is_retrieval_time": true,
+        "retrieved_via": "github"
+      }
+    ]
+  },
+  "verdict": {
+    "verdict": "NEEDS_WORK",
+    "composite_score": 4.0,
+    "confidence": 0.12,
+    "confidence_band": "LOW",
+    "provisional": true,
+    "fatal_floors": [],
+    "decision_reason": "INSUFFICIENT_EVIDENCE",
+    "dimensions": {
+      "demand": 1,
+      "market": 2,
+      "competitive_room": 2,
+      "feasibility": 3,
+      "headroom_over_free": 3
+    },
+    "anchor_margins": {
+      "M": 1.0,
+      "C": 1.0,
+      "F": 1.0,
+      "X": 1.0
+    }
+  },
+  "error": null,
+  "stop_reason": null,
+  "mode": "run",
+  "resume_from": null
+}

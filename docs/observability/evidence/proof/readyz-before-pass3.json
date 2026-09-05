@@ -1,0 +1,1 @@
+{"status":"ok","dependencies":{"executor":{"status":"ok","backend":null,"workers":2},"storage":{"status":"ok","backend":"sqlite","workers":null}},"gates":{"open":0,"expired":0,"alerting":0,"expiries":0,"alerts":0,"sweeps":0},"observability":{"exporter":"enabled","reason":null,"environment":"live","capture_content":false,"resolve_billed_cost":true}}

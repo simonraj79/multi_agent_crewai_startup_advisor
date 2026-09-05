@@ -1,0 +1,24 @@
+Membership check - DoD A2 / D5
+============================================================
+checked at: 2026-09-05T17:46:11Z
+run ids:    1a0bea14-ffb3-459d-b5fc-f714a76e5f71, 45cc3736-ed0b-466a-9dc6-e7f69ff0eea0, 6342e33f-268e-4b67-87ae-1574a2fffbeb
+
+TOTALS: sessions=3 traces=3 observations=139 mismatches=1 cross-membership=0 no-run_id=0 VERDICT=FAIL
+
+MISMATCHES (must be 0):        1
+CROSS-MEMBERSHIP (must be 0):  0
+observations with no run_id:   0
+observations walked:           139
+VERDICT: FAIL
+
+| run_id | session | traces | observations | mismatched | no run_id |
+| --- | --- | --- | --- | --- | --- |
+| 1a0bea14-ffb3-459d-b5fc-f714a76e5f71 | found | 1 | 86 | 1 | 0 |
+| 6342e33f-268e-4b67-87ae-1574a2fffbeb | found | 1 | 21 | 0 | 0 |
+| 45cc3736-ed0b-466a-9dc6-e7f69ff0eea0 | found | 1 | 32 | 0 | 0 |
+
+
+MISMATCHES
+------------------------------------------------------------
+  SPAN run id=589fbd68245bd87a
+    trace 1a0bea14ffb3459db5fcf714a76e5f71 sessionId=1a0bea14-ffb3-459d-b5fc-f714a76e5f71 but metadata.run_id=1a0bea14-ffb3-459d-b5***

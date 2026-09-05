@@ -1,0 +1,7 @@
+{
+  "workflow_id": "idea-validator",
+  "inputs": {
+    "idea": "A subscription service that fits retrofit vibration sensors to commercial building lifts and warns facilities managers of bearing wear weeks before a breakdown, replacing the fixed quarterly inspection contracts most landlords buy today."
+  },
+  "gates": "auto"
+}

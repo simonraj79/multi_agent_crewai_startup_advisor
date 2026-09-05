@@ -1,0 +1,18 @@
+open observations by TYPE, all six proof runs (V-PROOF, 2026-09-06)
+
+A Langfuse EVENT observation is a point in time and carries no endTime by
+construction. open-spans.txt counts every observation with a null endTime, so
+on a run that produced EVENTs it reads non-zero even when every SPAN is closed.
+This file is the split. D3 is about spans.
+
+| run | slug | observations | open TOTAL | open EVENT | open NON-EVENT |
+| --- | --- | ---: | ---: | ---: | ---: |
+| f4c8c779-52f2-40e1-9351-2668ea276ae4 | validator-live | 76 | 38 | 38 | **0** |
+| 9becf713-e984-45a9-b9c0-5b229a15cb60 | builder-toolfail | 21 | 10 | 10 | **0** |
+| ca13fc73-0ca9-4a31-bc8c-6e53ed1d562d | builder-agentfail | 32 | 19 | 19 | **0** |
+| 6586c854-3ca3-44c4-a587-eb6a3ef01962 | brief-live | 52 | 22 | 22 | **0** |
+| 073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba | cancelled | 28 | 0 | 0 | **0** |
+| c5d1dde9-c22d-4621-a171-9a7e85803105 | capture-on | 33 | 0 | 0 | **0** |
+
+Every NON-EVENT column reads 0: no span, agent, generation or tool was left
+without an end time on any of the six runs, terminal states included.

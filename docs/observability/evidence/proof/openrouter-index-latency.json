@@ -235,5 +235,10 @@
       404
     ]
   ],
-  "exporter_deadline_seconds": 3.0
+  "exporter_deadline_seconds": 3.0,
+  "recheck_after_about_20_minutes": {
+    "status": 404,
+    "total_cost": null,
+    "checked_at": "2026-09-05T16:57:16Z"
+  }
 }

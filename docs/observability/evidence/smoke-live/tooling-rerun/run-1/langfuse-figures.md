@@ -12,7 +12,9 @@
 | observations | 33 |
 | observation types | AGENT:6, GENERATION:6, SPAN:18, TOOL:3 |
 | observation roles | agent:6, generation:6, node:11, run:1, task:6, tool:3 |
-| open observations | 0 |
+| unfinished spans (D3: non-EVENT, endTime null) | 0 |
+| observations with endTime null, all types | 0 |
+| of those, EVENT (no endTime by construction) | 0 |
 | scores | 8 |
 | wall clock (s) | 6.026 |
 
@@ -35,11 +37,11 @@
 
 | field | value |
 | --- | --- |
-| polls | 3 |
+| polls | 2 |
 | rate-limited polls (429) | 0 |
 | other poll errors | 0 |
-| first observation visible after (s, from poll start) | 1.401 |
-| count stable after (s, from poll start) | 8.440 |
+| first observation visible after (s, from poll start) | 2.068 |
+| count stable after (s, from poll start) | 11.756 |
 | first visible after the run's terminal frame (s) | n/a |
 | stable after the run's terminal frame (s) | n/a |
 | stable within the timeout | yes |

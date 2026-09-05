@@ -349,3 +349,195 @@ not 'market_analyst'/'Market evidence analyst'/'Startup validation scoper', not
 The positive mechanism is real code and not a comment: langfuse_exporter.py
 reads details.get("agent_role") / details.get("task_name") at :1251-1252 and
 takes the trace tags from facts.workflow_id, copied off the run record.
+
+PROVENANCE CORRECTION, added at the end of this pass
+----------------------------------------------------
+The header above was generated while the programme was still working-tree
+state. It was COMMITTED mid-pass, in two commits, and the header's
+"THE TREE IS UNCOMMITTED" sentence is therefore stale for this file:
+
+  b65bd65  the tree at the start of this pass (no observability code)
+  e68dac4  feat(observability): app-side Langfuse exporter, the audit, the
+           definition of done and the reconciliation tooling
+  7417270  feat(observability): the synthetic double carries a prompt digest,
+           and the trace fixture carries messages   <- HEAD when this pass ended
+
+Nothing measured here moved. `git diff HEAD -- src/brief_crew/observability/`
+is EMPTY at 7417270, so the code every command above exercised is the committed
+code. The md5 sums in the header are of the WORKING-TREE files, and five of the
+seven differ from `git show <commit>:<path> | md5sum` for one reason only:
+core.autocrlf is true here, so the index holds LF and the working copy holds
+CRLF (`git ls-files --eol` says i/lf w/crlf for those five, and i/lf w/lf for
+content.py and billed_cost.py - whose md5s consequently DO match the blobs).
+Compare on `git diff`, or on a normalised checkout, never on a raw md5 across
+that boundary. This repository has already paid for that once, in the builder's
+client-fixture byte comparison.
+
+
+################################################################################
+# FINAL RE-VERIFICATION OF ROW C1 AT 58a1c0b - 2026-09-06
+################################################################################
+
+generated (UTC)   : 2026-09-05T18:09:31Z
+git rev-parse HEAD: 58a1c0b5c3147d36ddbace4481bd9d526c2f92db
+commit            : 58a1c0b fix(observability): the exception class reaches
+                    every error observation, a generation held for its price is
+                    never marked failed, and identity fields are scrubbed by
+                    value only
+code tree         : clean - `git diff HEAD -- src/ tests/` is empty
+
+md5 of src/brief_crew/observability/*.py at run time:
+  7e9e34c4021f968fb43eb93146556b2d *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  5cf15a07fd2260ae32496c0114e3c1e0 *src/brief_crew/observability/content.py
+  aac1c2d256a67045398dc8a0187e2de3 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1; Windows 11
+verifier : V-REVIEW, who built none of this code and edited none of it
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_no_flow_identifiers.py" -v
+
+test_no_agent_role_or_key_from_either_crew (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_agent_role_or_key_from_either_crew) ... <frozen importlib._bootstrap>:1342: ImportWarning: Cannot set an attribute on 'crewai.rag' for child module 'embeddings'
+ok
+test_no_builder_library_key_action_ref_or_platform_tool_id (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_builder_library_key_action_ref_or_platform_tool_id) ... ok
+test_no_built_in_skill_pack_name (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_built_in_skill_pack_name) ... ok
+test_no_crew_class_name (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_crew_class_name) ... ok
+test_no_flow_method_name_which_is_to_say_no_node_id (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_flow_method_name_which_is_to_say_no_node_id)
+The gap a second review found, closed. ... D:\MultiAgentSystem\.venv\Lib\site-packages\crewai_tools\rag\core.py:8: DeprecationWarning: crewai.utilities.lock_store is deprecated; import from crewai_core.lock_store.
+  from crewai.utilities.lock_store import lock as store_lock
+ok
+test_no_registered_workflow_id (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_registered_workflow_id) ... ok
+test_no_tool_name_or_tool_class (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_tool_name_or_tool_class) ... ok
+test_the_extraction_found_the_things_it_claims_to_check (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_the_extraction_found_the_things_it_claims_to_check)
+A grep that finds nothing to grep for passes for the wrong reason. ... ok
+test_the_package_reads_identity_from_frame_details_only (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_the_package_reads_identity_from_frame_details_only)
+The positive half of C1: it does read identity, from one place. ... ok
+test_the_search_can_actually_find_a_planted_node_id (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_the_search_can_actually_find_a_planted_node_id)
+The control for the three tests above, and the one that matters. ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 2.906s
+
+OK
+
+process exit code: 0; wall clock around the interpreter: 3s
+
+--------------------------------------------------------------------------------
+V-REVIEW's own wider grep, re-run UNEDITED at 58a1c0b
+--------------------------------------------------------------------------------
+
+md5 of the script (unchanged since the first pass): 77a5bac5d0a7d2a28a98142626117ebe
+
+$ ./.venv/Scripts/python.exe docs/observability/evidence/tests/c1_identifier_grep.py
+
+========================================================================
+IDENTIFIERS EXTRACTED  (total 134, over 10 groups)
+========================================================================
+  (the full 134-identifier dump is in the first pass above; unchanged)
+HAYSTACK: 10 sources
+    observability/__init__.py (6916 chars)
+    observability/backend.py (29021 chars)
+    observability/billed_cost.py (5658 chars)
+    observability/content.py (21680 chars)
+    observability/langfuse_exporter.py (114910 chars)
+    observability/mapping.py (22435 chars)
+    observability/policy.py (6128 chars)
+    serializer.prompt_digest (2517 chars)
+    serializer._unhandled_report (1768 chars)
+    serializer.record_unhandled (578 chars)
+========================================================================
+
+RAW HITS: 33
+  [builder crew library] 'report'
+      observability/__init__.py:92  # set. Reporting the knob said `true` for a process that would never
+  [builder crew library] 'report'
+      observability/backend.py:42  The OTLP exporter runs on its own thread inside the SDK and reports success or
+  [builder crew library] 'report'
+      observability/content.py:74  # plants exactly that, and a blanket boundary reported six leaking
+  [builder crew library] 'report'
+      observability/langfuse_exporter.py:125  #: measured run came back reporting nothing. A dedicated logger means an
+  [builder crew library] 'report'
+      observability/mapping.py:286  "a tool that ran and reported failure under a warn policy, which reaches "
+  [builder crew library] 'report'
+      serializer._unhandled_report:1  def unhandled_report(self) -> dict[str, Any]:
+  [builder crew library] 'scope'
+      observability/langfuse_exporter.py:298  class _NodeScope:
+  [flow ids, classes and method (node) names] 'flush'
+      observability/backend.py:180  def flush(self) -> bool: ...
+  [flow ids, classes and method (node) names] 'flush'
+      observability/langfuse_exporter.py:21  counts it, a daemon thread that wakes on a short interval, a bounded `flush()`
+  [flow ids, classes and method (node) names] 'flush'
+      observability/policy.py:61  flush_interval_seconds: float = 0.25
+  [flow ids, classes and method (node) names] 'kickoff'
+      observability/langfuse_exporter.py:2011  The frame pipeline gives an agent execution, a task and a crew kickoff
+  [flow ids, classes and method (node) names] 'kickoff'
+      observability/mapping.py:194  "CrewKickoffStartedEvent": ACTOR,
+  [flow ids, classes and method (node) names] 'persist'
+      observability/langfuse_exporter.py:19  The shape is the frame-persistence queue's in `service/registry.py`,
+  [flow ids, classes and method (node) names] 'plot'
+      observability/mapping.py:242  "flow creation, plotting, conversational turns and input requests; none "
+  [flow ids, classes and method (node) names] 'served'
+      observability/billed_cost.py:37  """What the provider says one generation cost, and who served it.
+  [flow ids, classes and method (node) names] 'served'
+      observability/langfuse_exporter.py:133  #: every run a long-lived process ever served is a leak.
+  [flow ids, classes and method (node) names] 'sink'
+      observability/langfuse_exporter.py:5  `RunRegistry._enqueue_frames` - the callback the run's own `StreamSinkAdapter`
+  [flow ids, classes and method (node) names] 'sink'
+      serializer._unhandled_report:5  died with the process: ~130 CrewAI event classes reach the sink, this
+  [flow ids, classes and method (node) names] 'turn'
+      observability/__init__.py:16  character lengths go instead. `LANGFUSE_CAPTURE_CONTENT=1` turns text on, and
+  [flow ids, classes and method (node) names] 'turn'
+      observability/backend.py:84  return UUID(str(run_id)).hex
+  [flow ids, classes and method (node) names] 'turn'
+      observability/billed_cost.py:1  """Turning the app's cost ESTIMATE into what was actually billed (section 4).
+  [flow ids, classes and method (node) names] 'turn'
+      observability/content.py:24  never returned into a message, and a match is replaced with the same `***`
+  [flow ids, classes and method (node) names] 'turn'
+      observability/langfuse_exporter.py:270  # The service turns `gates="auto"` into exactly one reserved input key,
+  [flow ids, classes and method (node) names] 'turn'
+      observability/mapping.py:14  cannot see them however it is written. Listing them with a reason is what turns
+  [flow ids, classes and method (node) names] 'turn'
+      observability/policy.py:40  return fallback
+  [flow ids, classes and method (node) names] 'turn'
+      serializer.prompt_digest:10  Nothing readable is returned or retained. The hash is fed the role and the
+  [flow ids, classes and method (node) names] 'turn'
+      serializer._unhandled_report:29  return {}
+  [flow ids, classes and method (node) names] 'validate'
+      observability/mapping.py:204  "ToolValidateInputErrorEvent": TOOL,
+  [flow ids, classes and method (node) names] 'write'
+      observability/backend.py:473  except Exception:  # pragma: no cover - a span type that forbids the write
+  [flow ids, classes and method (node) names] 'write'
+      observability/content.py:25  marker every other walk in this repository writes.
+  [flow ids, classes and method (node) names] 'write'
+      observability/langfuse_exporter.py:378  #: `_finish_run` until `_close_out` writes them onto the run span. The
+  [flow ids, classes and method (node) names] 'write'
+      observability/mapping.py:22  exporter writes them onto the trace as `unhandled_event_counts`, so the gap is
+  [flow ids, classes and method (node) names] 'write'
+      serializer._unhandled_report:21  orphaned by a service restart ends on a frame `RunRegistry` writes
+
+The script runs UNEDITED against this commit only because the builder kept
+ as an alias of the now-public  for
+exactly that reason, and said so at the site. Same 134 identifiers; the hits are
+the same coincidental English words as every previous run (turn, write, report,
+flush, sink, served, kickoff, validate, plot, persist, scope) and not one
+distinctive identifier - no workflow id, no node id, no role, no task key, no
+crew class, no skill pack, no builder library key or action ref.
+
+The script runs UNEDITED against this commit only because the builder kept
+_unhandled_report as an alias of the now-public unhandled_report() for exactly
+that reason, and said so at the site. Same 134 identifiers; 33 hits, and they
+are the same coincidental English words as every previous run - turn (9),
+report (6), write (5), flush (3), sink (2), served (2), kickoff (2), validate,
+plot, persist, scope - and not one distinctive identifier: no workflow id, no
+node id, no agent role, no task key, no crew class, no skill pack, no builder
+library key and no action ref.
+
+The count has gone 31 -> 32 -> 33 across the three passes, and every increment
+is one more occurrence of an English word in a docstring that grew. That is the
+argument for the committed test's new _is_distinctive filter rather than for a
+raw grep: this script's hit list is noise by construction and a reader has to
+re-clear it every time, where the test searches only identifiers carrying _, a
+space, - , : or an internal capital and therefore has none.

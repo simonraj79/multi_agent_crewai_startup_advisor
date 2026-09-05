@@ -1,0 +1,17 @@
+Membership check - DoD A2 / D5
+============================================================
+checked at: 2026-09-05T17:14:00Z
+run ids:    9becf713-e984-45a9-b9c0-5b229a15cb60, f4c8c779-52f2-40e1-9351-2668ea276ae4
+
+TOTALS: sessions=2 traces=2 observations=97 mismatches=0 cross-membership=0 no-run_id=0 VERDICT=PASS
+
+MISMATCHES (must be 0):        0
+CROSS-MEMBERSHIP (must be 0):  0
+observations with no run_id:   0
+observations walked:           97
+VERDICT: PASS
+
+| run_id | session | traces | observations | mismatched | no run_id |
+| --- | --- | --- | --- | --- | --- |
+| f4c8c779-52f2-40e1-9351-2668ea276ae4 | found | 1 | 76 | 0 | 0 |
+| 9becf713-e984-45a9-b9c0-5b229a15cb60 | found | 1 | 21 | 0 | 0 |

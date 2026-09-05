@@ -69,21 +69,21 @@ is never added to its parent's: the contract nests node -> task -> agent
 | --- | --- | --- | --- | --- |
 | run | SPAN | run | 6.020 | 9ead1d3dd4cc2dcc |
 | agent | AGENT | Technical feasibility analyst | 2.005 | c268471fc550fc0f |
-| node | SPAN | research_feasibility | 2.005 | a5029a841ef9e8a1 |
 | task | SPAN | feasibility_task | 2.005 | 557d7f2c71b2da8f |
+| node | SPAN | research_feasibility | 2.005 | a5029a841ef9e8a1 |
 | tool | TOOL | assess_technical_feasibility | 2.004 | 8aacb501648f9c00 |
+| agent | AGENT | Market evidence analyst | 1.999 | 44142966c5aa55d9 |
 | task | SPAN | market_task | 1.999 | 3096aa6e7a841032 |
 | node | SPAN | research_market | 1.999 | b0459be489c380bf |
-| agent | AGENT | Market evidence analyst | 1.999 | 44142966c5aa55d9 |
 | tool | TOOL | research_market_landscape | 1.999 | c75b32d29976070c |
+| agent | AGENT | Community demand analyst | 1.999 | d390cec95bfae0e5 |
 | task | SPAN | sentiment_task | 1.999 | bed4a1b2aad8ef14 |
 | node | SPAN | research_sentiment | 1.999 | c167d33de4847229 |
-| agent | AGENT | Community demand analyst | 1.999 | d390cec95bfae0e5 |
 | tool | TOOL | analyze_community_sentiment | 1.998 | f9415efb15acd3b6 |
+| agent | AGENT | Startup validation scoper | 0.000 | 4026066f4d647fcf |
+| generation | GENERATION | google/gemini-3.5-flash-lite:nitro | 0.000 | 057e7b99b18d69a9 |
 | node | SPAN | scope_idea | 0.000 | ba2bd058a7221478 |
 | task | SPAN | scoping_task | 0.000 | c89c2a8db0d02938 |
-| generation | GENERATION | google/gemini-3.5-flash-lite:nitro | 0.000 | 057e7b99b18d69a9 |
-| agent | AGENT | Startup validation scoper | 0.000 | 4026066f4d647fcf |
 | node | SPAN | route_scope | 0.000 | b6f8ce01dab8e0b9 |
 | node | SPAN | confirm_scope | 0.000 | eafcef350557ccc0 |
 | generation | GENERATION | google/gemini-3.5-flash-lite:nitro | 0.000 | e21fdd6f4e89ae90 |

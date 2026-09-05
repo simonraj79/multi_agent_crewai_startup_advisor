@@ -1,0 +1,70 @@
+DoD A2 / D5 - do the two concurrently launched runs GENUINELY overlap?
+======================================================================
+Measured 2026-09-06 by V-RECON from the two saved frame logs and the two
+saved Langfuse observation exports. No network was needed for this file;
+`membership-check-vrecon.txt` beside it is the live half.
+
+launch (proof/concurrent/launch-times.txt), RUN_CONCURRENCY=2:
+  validator-live   POST sent 2026-09-05T16:33:04.161Z
+  builder-toolfail POST sent 2026-09-05T16:33:04.166Z    (+5 ms)
+
+1. APP FRAMES - windows, from each run's own frames.ndjson
+------------------------------------------------------------------
+  validator-live    f4c8c779-52f2-40e1-9351-2668ea276ae4
+                    155 frames   16:33:04.229Z .. 16:33:54.540Z   span 50.311 s
+  builder-toolfail  9becf713-e984-45a9-b9c0-5b229a15cb60
+                     43 frames   16:33:05.199Z .. 16:33:07.873Z   span  2.674 s
+
+  overlap window            16:33:05.199Z .. 16:33:07.873Z = 2.674 s   OVERLAP: YES
+  builder-toolfail frames inside validator-live's window   43 / 43  (100.0 %)
+  validator-live   frames inside builder-toolfail's window  0 / 155 (  0.0 %)
+  interleavings (adjacent frames from different runs, merged order): 2
+
+  The 0/155 is NOT idleness and must not be read as one. validator-live's
+  scope_idea model call was IN FLIGHT for the whole of builder-toolfail's
+  life: its LLM `before` frame is seq 7 at 16:33:04.728Z and its `after`
+  partner is seq 8 at 16:33:18.632Z - one 13.904 s gap in the frame stream
+  that strictly CONTAINS builder-toolfail's entire 2.674 s run. An open app
+  span of run A containing the whole of run B is a stronger statement of
+  concurrency than interleaved frames would be, because it cannot be produced
+  by serial execution.
+
+     validator-live   seq 7  16:33:04.728Z llm/MODEL_CALL   stage=before
+     builder-toolfail seq 1  16:33:05.199Z run_state/NODE_START
+     builder-toolfail seq 43 16:33:07.873Z metrics/METRICS_UPDATED
+     validator-live   seq 8  16:33:18.632Z llm/MODEL_CALL   stage=after
+
+2. LANGFUSE - the same overlap, from the observation exports
+------------------------------------------------------------------
+  validator-live    run SPAN 16:33:04.230Z -> 16:33:54.536Z   76 observations
+  builder-toolfail  run SPAN 16:33:05.199Z -> 16:33:07.870Z   21 observations
+  overlap 16:33:05.199Z .. 16:33:07.870Z = 2.671 s            OVERLAP: YES
+  builder-toolfail observations starting inside validator-live's window: 21/21
+
+3. CROSS-MEMBERSHIP - independent of membership_check.py
+------------------------------------------------------------------
+Walked verbatim over the two saved `langfuse-observations.json` files,
+without using the tooling that A2 cites, so the check and its instrument
+are not the same program:
+
+  validator-live    sessionId = f4c8c779-52f2-40e1-9351-2668ea276ae4  == run id: YES
+                    traces in session: ['f4c8c77952f240e193512668ea276ae4']
+                    76 observations   SPAN 18  EVENT 38  AGENT 7  GENERATION 10  TOOL 3
+                    distinct metadata.run_id over all 76: exactly one value,
+                      f4c8c779-52f2-40e1-9351-2668ea276ae4
+                    observations with no run_id metadata: 0
+  builder-toolfail  sessionId = 9becf713-e984-45a9-b9c0-5b229a15cb60  == run id: YES
+                    traces in session: ['9becf713e98445a9b9c05b229a15cb60']
+                    21 observations   SPAN 6  EVENT 10  AGENT 1  GENERATION 2  TOOL 2
+                    distinct metadata.run_id over all 21: exactly one value,
+                      9becf713-e984-45a9-b9c0-5b229a15cb60
+                    observations with no run_id metadata: 0
+
+  observation-id intersection between the two sessions : 0
+  trace-id intersection                                : 0 (empty set)
+  observations of A naming B's run id                  : none
+  observations of B naming A's run id                  : none
+  total observations walked                            : 97
+
+VERDICT: PASS. Two runs whose wall-clock lives overlap, in two sessions,
+with 97 observations between them, zero mismatches and zero cross-membership.

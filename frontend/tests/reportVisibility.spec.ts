@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
+import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { App } from 'vue'
+import ReportPanel from '../src/components/ReportPanel.vue'
 import { useValidatorRun } from '../src/composables/useValidatorRun'
 import { FakeStudioApi, flush, frameFactory, withSetup } from './helpers'
 
@@ -447,5 +449,76 @@ describe('the control rail cannot be painted through', () => {
     // report panel's own Copy Markdown button ghosted through the GATES and
     // VIEW controls (`evidence/T3/after-1180.png`).
     expect(rule).toMatch(/background:\s*var\(--bg-app\)/)
+  })
+})
+
+/**
+ * The citations must not cost the reader the report.
+ *
+ * `.report-sources` was a flex SIBLING of the scrolling body with
+ * `max-height: 26%`, so for as long as a report was open it reserved up to a
+ * quarter of the panel whatever it held - and the body's viewport was whatever
+ * was left. When the scores panel above it grew a rubric question under each
+ * of the five rows, a cold reader at 1440x900 and at 1180x800 was left with a
+ * window tall enough for the markdown "Score breakdown" table's header row and
+ * nothing beneath it. The table was still reachable by scrolling. A
+ * deliverable reachable by scrolling a hundred-pixel window is hidden in every
+ * sense that matters, and a footer that hides the deliverable is the wrong
+ * trade.
+ *
+ * Body and sources now share ONE scroll container and the sources are a plain
+ * block at the end of it, which is also what they are: the report's citations,
+ * read after the report. Nothing overlays anything, so there is no footer
+ * height to measure and no padding rule to keep in step with it.
+ *
+ * Asserted at SOURCE level because a jsdom mount applies no scoped CSS: the
+ * structural half of this is visible to a mount and the half that actually
+ * caused the defect - `max-height`, `overflow`, a `position` - is not.
+ */
+describe('the citations do not cover the report', () => {
+  const sheet = readFileSync('src/components/ReportPanel.vue', 'utf8')
+
+  it('puts the body and the sources in one scroll container', () => {
+    const wrapper = mount(ReportPanel, {
+      props: {
+        report: {
+          markdown_body: '# Verdict\n\n## Score breakdown\n\n| D | M |\n| - | - |\n| 2 | 0 |',
+          sources: [{ url: 'https://example.com/a', title: 'A' }],
+        },
+        verdict: null,
+        open: true,
+      },
+    })
+
+    // Both inside the one scroller, in reading order: the report, then what it
+    // cites. Neither is a sibling of the other's scroll box any more.
+    expect(wrapper.find('.report-scroll > .report-body').exists()).toBe(true)
+    expect(wrapper.find('.report-scroll > .report-sources').exists()).toBe(true)
+    expect(wrapper.get('.report-scroll').element.lastElementChild).toBe(
+      wrapper.get('.report-sources').element,
+    )
+  })
+
+  it('scrolls in exactly one place', () => {
+    const scroll = ruleFor(sheet, '.report-scroll')
+    expect(scroll).toMatch(/overflow:\s*auto/)
+    // A flex item's automatic minimum size is its content, so without this the
+    // scroller grows to fit the whole report and the PANEL scrolls instead.
+    expect(scroll).toMatch(/min-height:\s*0/)
+
+    for (const selector of ['.report-body', '.report-sources']) {
+      expect(ruleFor(sheet, selector), selector).not.toMatch(/overflow:/)
+    }
+  })
+
+  it('gives the sources no way to reserve space or to overlay the body', () => {
+    const rule = ruleFor(sheet, '.report-sources')
+
+    // The three properties that made it a footer rather than a block. Any one
+    // of them coming back reinstates the defect, and none is visible to a
+    // mount.
+    expect(rule).not.toMatch(/position:\s*(sticky|fixed|absolute)/)
+    expect(rule).not.toMatch(/max-height:/)
+    expect(rule).not.toMatch(/flex:/)
   })
 })

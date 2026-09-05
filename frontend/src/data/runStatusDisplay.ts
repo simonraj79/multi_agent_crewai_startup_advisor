@@ -138,3 +138,43 @@ export function runStatusDisplay(status: string | null | undefined): RunStatusDi
     hint: '',
   }
 }
+
+/**
+ * What the console says about its CONNECTION, in one place for the two
+ * surfaces that say it.
+ *
+ * The header chip and the status rail's stream line answer the same question
+ * and used to answer it differently: the chip carried closed item 31's logic -
+ * "the backend is down" and "you have not launched anything yet" are not the
+ * same word - while the small line below it rendered the raw socket state. So
+ * at rest the header read `ready` and the rail read `offline`, beside an
+ * enabled Launch button, on the first screen a visitor sees
+ * (`evidence/S/empty.png`). Two surfaces contradicting each other about one
+ * fact is the defect `runStatusDisplay` exists to prevent one layer up; this is
+ * the same fix for the same reason.
+ *
+ * The three rules, and each is a decision rather than a default:
+ *
+ * - A MOCK transport says so, always and first. Nothing else on screen is real
+ *   while it is set, and no other reading of the connection matters.
+ * - A PROBE in flight is `connecting`, not `offline`. It is a question that has
+ *   not been answered yet.
+ * - `offline` WHILE NOTHING IS RUNNING is `ready`. No socket is opened until a
+ *   run is launched, so the socket's own state is not evidence about the
+ *   backend at that moment - and the word it produced was the most alarming one
+ *   available, on a page where nothing is wrong.
+ *
+ * Once a run is in flight the socket IS the truth and its state is returned
+ * verbatim: `connecting`, `connected`, `reconnecting`, and `offline` meaning
+ * offline.
+ */
+export function connectionLabel(
+  transportMode: string,
+  connection: string,
+  isActive: boolean,
+): string {
+  if (transportMode === 'mock') return 'Mock mode'
+  if (transportMode === 'probing') return 'connecting'
+  if (!isActive && connection === 'offline') return 'ready'
+  return connection
+}

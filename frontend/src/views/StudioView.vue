@@ -16,6 +16,7 @@ import WorkflowNode from '../components/WorkflowNode.vue'
 import { useValidatorRun } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
+import { connectionLabel as transportWord, runStatusDisplay } from '../data/runStatusDisplay'
 import type { SignedInUser } from '../composables/useAuthGate'
 import type { RunStatus } from '../types/studio'
 
@@ -158,12 +159,9 @@ const {
  * claim to make at that moment. Once a run is in flight the socket is the
  * truth again and its own state wins.
  */
-const connectionLabel = computed(() => {
-  if (transportMode.value === 'mock') return 'Mock mode'
-  if (transportMode.value === 'probing') return 'connecting'
-  if (!isActive.value && connection.value === 'offline') return 'ready'
-  return connection.value
-})
+const connectionLabel = computed(() =>
+  transportWord(transportMode.value, connection.value, isActive.value),
+)
 
 /**
  * The report sheet opens itself the first time a body arrives and stays
@@ -432,6 +430,7 @@ function backToValidator(): void {
           <DialogueRail
             :entries="dialogue"
             :collapsed="dialogueCollapsed"
+            :status="status"
             :character-of="characterIndex"
             :identity-of="identityFor"
             :state-of="castState"
@@ -456,7 +455,13 @@ function backToValidator(): void {
             <h2 id="graph-title">{{ canvasTitle }}</h2>
           </div>
           <div class="canvas-meta">
-            <span><Activity :size="13" aria-hidden="true" />{{ status }}</span>
+            <!--
+              The same word the status rail uses. The heading said "Completed"
+              beside a rail saying "Finished" - one state, two words, eighteen
+              inches apart - which is the defect `runStatusDisplay` was written
+              for and this surface had never been routed through it.
+            -->
+            <span><Activity :size="13" aria-hidden="true" />{{ runStatusDisplay(status).label }}</span>
             <code>{{ descriptor.version }}</code>
           </div>
         </div>

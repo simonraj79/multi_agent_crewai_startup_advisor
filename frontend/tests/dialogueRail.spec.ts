@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import DialogueRail from '../src/components/DialogueRail.vue'
 import { characterSeed, type PipState } from '../src/characters/pip'
+import type { RunStatus } from '../src/types/studio'
 import {
   characterIndex,
   type DialogueEntry,
@@ -38,12 +39,45 @@ function entry(overrides: Partial<DialogueEntry> = {}): DialogueEntry {
 function rail(
   entries: DialogueEntry[],
   collapsed = false,
-  cast?: { identityOf?: (nodeId: string) => string; stateOf?: (nodeId: string) => PipState },
+  cast?: {
+    identityOf?: (nodeId: string) => string
+    stateOf?: (nodeId: string) => PipState
+    status?: RunStatus
+  },
 ) {
   return mount(DialogueRail, {
     props: { entries, collapsed, characterOf: characterIndex, ...cast },
   })
 }
+
+/**
+ * A scroller jsdom can answer questions about.
+ *
+ * jsdom lays nothing out - `scrollHeight` and `clientHeight` are 0 and
+ * `Element.scrollTo` does not exist - so a rail mounted here can neither
+ * overflow nor scroll. These three are defined on the list so the component's
+ * own arithmetic has real numbers to work with, and the `scrollTo` calls are
+ * recorded rather than performed. What is asserted is therefore the INTENT: the
+ * component asked to go to the end. Whether the pixels land there is
+ * `e2e/cast.spec.ts`'s question.
+ */
+function measurable(
+  wrapper: ReturnType<typeof rail>,
+  { scrollHeight = 1000, clientHeight = 360, scrollTop = 0 } = {},
+): Array<Record<string, unknown>> {
+  const list = wrapper.get('[data-testid="dialogue-list"]').element as HTMLElement
+  const calls: Array<Record<string, unknown>> = []
+  Object.defineProperty(list, 'scrollHeight', { value: scrollHeight, configurable: true })
+  Object.defineProperty(list, 'clientHeight', { value: clientHeight, configurable: true })
+  Object.defineProperty(list, 'scrollTop', { value: scrollTop, writable: true, configurable: true })
+  ;(list as unknown as { scrollTo: (o: Record<string, unknown>) => void }).scrollTo = (options) => {
+    calls.push(options)
+  }
+  return calls
+}
+
+/** One `requestAnimationFrame` turn, which is how `follow()` coalesces. */
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
 
 describe('the dialogue rail', () => {
   it('says so when nothing has been said', () => {
@@ -297,5 +331,98 @@ describe('what an utterance actually is', () => {
     const html = wrapper.get('[data-testid="dialogue-text"]').html()
     expect(html).not.toContain('<img')
     expect(html).toContain('&lt;img')
+  })
+})
+
+describe('a finished run lands at the end of the transcript', () => {
+  /*
+   * Two cold readers saw the same thing in `evidence/S/long-run.png` and
+   * `T2/trace-completed.png`: a completed run whose NEWEST entry was cut mid
+   * sentence - "...and I am" - with a bare "Details" toggle peeking below it.
+   * The list was wherever the reveal's pin had last allowed, which on a long
+   * entry is short of the end, and the 40vh cap then cut it.
+   *
+   * The reveal must not yank a reader who has scrolled up, so the pin stays for
+   * that. A run STOPPING is one event rather than a stream of them, and the
+   * newest entry is the run's conclusion, so the terminal nudge ignores the pin.
+   */
+  it('scrolls to the end when the status crosses into terminal', async () => {
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    // The mount measured a 0x0 box, which is jsdom's, so the state is
+    // established from the fake metrics the way a real scroll would establish
+    // it from a real one.
+    await wrapper.get('[data-testid="dialogue-list"]').trigger('scroll')
+    expect(wrapper.attributes('data-at-end')).toBe('false')
+
+    await wrapper.setProps({ status: 'completed' })
+    await frame()
+
+    // `scrollHeight`, which the browser clamps to `scrollHeight - clientHeight`.
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ top: 1000, behavior: 'auto' })
+    expect(wrapper.attributes('data-at-end')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('does it for a cancelled and an errored run too, not only a completed one', async () => {
+    for (const status of ['cancelled', 'error'] as const) {
+      const wrapper = rail([entry()], false, { status: 'running' })
+      const calls = measurable(wrapper)
+      await wrapper.setProps({ status })
+      await frame()
+      expect(calls, `a ${status} run did not land at its end`).toHaveLength(1)
+      wrapper.unmount()
+    }
+  })
+
+  it('ignores the reader-has-scrolled-up pin, which the reveal obeys', async () => {
+    // 640px from the end is far past `PIN_SLACK_PX`, so a reveal would decline
+    // to follow. The run finishing is the one moment that overrides it.
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await wrapper.setProps({ status: 'completed' })
+    await frame()
+    expect(calls).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('does not scroll while the run is still going and the reader is away', async () => {
+    // The other half of the same decision: an append or a reveal tick must not
+    // move a reader who has scrolled up to read something earlier.
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await wrapper.setProps({ entries: [entry(), entry({ callId: 'call-2' })] })
+    await frame()
+    expect(calls).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('follows an append while the reader is at the end', async () => {
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 640 })
+    await wrapper.setProps({ entries: [entry(), entry({ callId: 'call-2' })] })
+    await frame()
+    expect(calls).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('marks the cut edge only while there is something below it', async () => {
+    // The affordance is a fade on the root's `::after`, gated by this class. A
+    // pseudo-element on the scroller itself would scroll with the content and
+    // sit at the bottom of the transcript rather than at the bottom of the
+    // window onto it.
+    const wrapper = rail([entry()], false, { status: 'running' })
+    measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await wrapper.get('[data-testid="dialogue-list"]').trigger('scroll')
+    expect(wrapper.classes()).not.toContain('is-at-end')
+    expect(wrapper.attributes('data-at-end')).toBe('false')
+
+    const list = wrapper.get('[data-testid="dialogue-list"]').element as HTMLElement
+    ;(list as unknown as { scrollTop: number }).scrollTop = 640
+    await wrapper.get('[data-testid="dialogue-list"]').trigger('scroll')
+    expect(wrapper.classes()).toContain('is-at-end')
+    expect(wrapper.attributes('data-at-end')).toBe('true')
+    wrapper.unmount()
   })
 })

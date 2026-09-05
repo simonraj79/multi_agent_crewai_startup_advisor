@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AgentCharacter from './AgentCharacter.vue'
 import type { PipState } from '../characters/pip'
+import type { RunStatus } from '../types/studio'
 import { ChevronDown, ChevronUp, MessagesSquare, Scissors } from 'lucide-vue-next'
-import { collapsedPreview, type DialogueEntry } from '../composables/useRunChoreography'
+import { TERMINAL, collapsedPreview, type DialogueEntry } from '../composables/useRunChoreography'
 import { readSpeech, renderSpeech, type Speech } from '../trace/speech'
 import { humaniseTask } from '../utils/humanise'
 import { MAX_UTTERANCE_CHARS } from '../data/serverLimits'
@@ -54,6 +55,14 @@ const props = defineProps<{
    */
   identityOf?: (nodeId: string) => string
   stateOf?: (nodeId: string) => PipState
+  /**
+   * The run's status, so the rail can land at its end when the run stops.
+   *
+   * Optional: a rail mounted with entries alone still follows a reveal, it
+   * simply never gets the terminal nudge. The comparison uses the choreography's
+   * own `TERMINAL` rather than a fourth copy of the same three words.
+   */
+  status?: RunStatus
 }>()
 
 const emit = defineEmits<{ toggle: [] }>()
@@ -95,7 +104,35 @@ const opened = ref(new Set<string>())
 const PIN_SLACK_PX = 120
 let followHandle = 0
 
-function follow(): void {
+/**
+ * Whether the scroller is at its end, published on the root as a class and an
+ * attribute.
+ *
+ * On the ROOT and not on the list, because the affordance it gates is a
+ * `::after` and a pseudo-element on a scroll box scrolls away with the content
+ * - the fade has to be painted by the element that CLIPS, not by the one that
+ * moves. The attribute rides along so a spec can read the state without a
+ * layout engine.
+ */
+const atEnd = ref(true)
+
+function measureEnd(): void {
+  const element = list.value
+  if (!element) return
+  atEnd.value = element.scrollHeight - element.scrollTop - element.clientHeight <= 1
+}
+
+/**
+ * Land at the end, at most once per animation frame.
+ *
+ * `force` is the terminal case and it ignores the pin. That is a deliberate
+ * asymmetry with the reveal, which must never yank a reader who has scrolled
+ * up: a run STOPPING is one event, not a stream of them, and the newest entry
+ * is the run's conclusion. Two cold readers met the alternative - a finished
+ * run whose last entry was cut mid-sentence with a bare "Details" below it,
+ * because the list had been left wherever the reveal's pin last allowed.
+ */
+function follow(force = false): void {
   if (props.collapsed || followHandle) return
   const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null
   const run = () => {
@@ -103,8 +140,12 @@ function follow(): void {
     const element = list.value
     if (!element || typeof element.scrollTo !== 'function') return
     const distance = element.scrollHeight - element.scrollTop - element.clientHeight
-    if (distance > PIN_SLACK_PX) return
+    if (!force && distance > PIN_SLACK_PX) return
     element.scrollTo({ top: element.scrollHeight, behavior: 'auto' })
+    // jsdom does not move `scrollTop` for a `scrollTo`, and a real browser does
+    // not report the new position until the scroll lands, so the flag is set
+    // from the intent rather than read back from the box.
+    atEnd.value = true
   }
   if (!raf) {
     run()
@@ -116,6 +157,10 @@ function follow(): void {
 onBeforeUnmount(() => {
   if (followHandle && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(followHandle)
 })
+
+// The first measurement, so a rail that opens already overflowing shows the
+// affordance rather than waiting for the reader to scroll it once.
+onMounted(measureEnd)
 
 /*
  * Watched on the REVEALED length as well as the count, because an entry
@@ -129,6 +174,22 @@ onBeforeUnmount(() => {
 watch(
   () => [props.entries.length, props.entries.at(-1)?.revealed ?? 0] as const,
   () => follow(),
+)
+
+/*
+ * The run stopped: land at the end whatever the reveal left behind, so the
+ * newest entry and its `Details` toggle are whole. Watched on the STATUS
+ * crossing into terminal rather than on the last frame, because a run can stop
+ * on a frame that adds no entry at all - a cancel, or an error after the last
+ * thing anybody said.
+ */
+watch(
+  () => props.status,
+  (next, previous) => {
+    if (!next || next === previous) return
+    if (!TERMINAL.includes(next)) return
+    follow(true)
+  },
 )
 
 /**
@@ -298,7 +359,12 @@ function clock(at: number): string {
 </script>
 
 <template>
-  <section class="dialogue-rail" :class="{ 'is-collapsed': collapsed }" aria-label="Agent dialogue">
+  <section
+    class="dialogue-rail"
+    :class="{ 'is-collapsed': collapsed, 'is-at-end': atEnd }"
+    :data-at-end="atEnd ? 'true' : 'false'"
+    aria-label="Agent dialogue"
+  >
     <button
       class="dialogue-head"
       type="button"
@@ -324,6 +390,7 @@ function clock(at: number): string {
       ref="list"
       class="dialogue-list"
       data-testid="dialogue-list"
+      @scroll.passive="measureEnd"
       tabindex="0"
       role="log"
       aria-live="polite"
@@ -470,6 +537,7 @@ function clock(at: number): string {
  * whatever is running last.
  */
 .dialogue-rail {
+  position: relative;
   display: flex;
   min-height: 0;
   flex-direction: column;
@@ -481,6 +549,35 @@ function clock(at: number): string {
   background: var(--surface-well);
   border-bottom: 1px solid var(--border-default);
 }
+
+/*
+ * THE CUT EDGE, MARKED.
+ *
+ * The list is capped at `40vh`, so when the transcript is longer than that its
+ * last visible entry is cut - and two cold readers read that cut as a defect
+ * rather than as "there is more below", because nothing said which it was. A
+ * 24px fade over the bottom of the scroller says it.
+ *
+ * On the ROOT's `::after` and not the list's, because a pseudo-element on a
+ * scroll box scrolls with the content: it would sit at the bottom of the
+ * TRANSCRIPT rather than at the bottom of the WINDOW onto it. `--fade-soft` is
+ * the token the shell already fades with, and the affordance is gone the moment
+ * the list is at its end, which is where a finished run now lands.
+ */
+.dialogue-rail::after {
+  position: absolute;
+  right: 0;
+  bottom: var(--space-2);
+  left: 0;
+  height: 24px;
+  content: '';
+  background: linear-gradient(to bottom, transparent, var(--fade-soft));
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.dialogue-rail.is-at-end::after,
+.dialogue-rail.is-collapsed::after { opacity: 0; }
 
 .dialogue-head {
   display: flex;

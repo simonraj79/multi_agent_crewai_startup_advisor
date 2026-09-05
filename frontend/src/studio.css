@@ -343,7 +343,11 @@ h3 {
 .canvas-heading h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
 .canvas-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
 .canvas-meta { display: flex; align-items: center; gap: var(--space-3); }
-.canvas-meta span { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font: var(--type-meta); text-transform: capitalize; }
+/* NO `text-transform: capitalize`. It was there while this span rendered a
+   raw status - `completed` wanted a capital - and `runStatusDisplay` hands it
+   sentence case already. Left in place it would title-case the multi-word
+   labels: "Waiting For You". */
+.canvas-meta span { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font: var(--type-meta); }
 .canvas-meta code { padding: var(--space-1) var(--space-2); color: var(--text-meta); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); }
 
 .validator-flow { width: 100%; height: 100%; }

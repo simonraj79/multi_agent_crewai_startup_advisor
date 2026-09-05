@@ -1,66 +1,88 @@
-# Cold read — T1 report header (questions 1–3)
+# T1 cold read — the three report headers
 
-A cold reader who has seen only `T1/report-header.png` and
-`T1/report-header-insufficient.png`. No source, no brief, no other document.
+Reader: RC (cold). Inputs: the three PNGs only — no source, no brief, no other
+notes. Answers to questions 1–3, copied from
+`docs/run-shell/evidence/RC/answers-3.md`.
 
 ---
 
-## 1. `report-header.png` — what is the verdict, and why that rather than what the score suggests?
+## 1. `T1/report-header.png`
 
-The verdict is **REJECT**.
+**Verdict: REJECT.** Score 4.2/10, "Moderate confidence · 50%".
 
-The score sitting next to it is **4.2/10** at "Moderate confidence · 50%", which on its
-own reads like a middling, arguable result — not a kill. The panel headed **"WHAT
-DECIDED THIS RUN"** explains the gap in one sentence: **"Demand scored 0 of 5. Nobody in
-the evidence describes having this problem. A zero on Demand rejects the idea whatever
-the other scores say."** So it is a rejection by rule, not by arithmetic — a single
-dimension bottoming out overrides the average, and the page says so in plain words
-before showing me any numbers.
+It is a REJECT *despite* a middling 4.2 because one dimension bottomed out. The
+red panel headed **WHAT DECIDED THIS RUN** says it in plain words:
+**"Demand scored 0 of 5."** and underneath, "Nobody in the evidence describes
+having this problem. A zero on Demand rejects the idea whatever the other scores
+say."
 
-Worth noting: this is the first screenshot of this kind I have had to read where I did
-not have to work out *why* the badge and the number disagree. The red-bordered box tells
-me, unprompted, in a sentence a non-specialist can read.
+**Dimension that caused it: Demand. It scored 0 of 5** (the scores list confirms
+`Demand 0/5`, with a small amber **thin** badge beside it; Market, Competitive
+room and Feasibility are all 3/5, which is what pulls the composite up to 4.2).
 
-## 2. Same image — which dimension caused it, and what did it score?
+The header also carries two chips: "Provisional · not a final answer" and
+"Thin evidence · Demand".
 
-**Demand**, and it scored **0 out of 5**.
+I understood this in one pass without knowing anything about the product. The
+override block is doing the whole job — the number alone would have misled me.
 
-Three separate things on screen agree on this and I did not have to cross-reference
-them: the callout names Demand explicitly; the chip near the top reads "Thin evidence ·
-Demand"; and in the SCORES list the Demand row carries a small amber **"thin"** pill, an
-empty red-tinted bar, and **0/5** at the right. Its question is printed under the label —
-"Is anyone actively trying to solve this today?" — which makes the zero intelligible
-rather than abstract.
+---
 
-## 3. `report-header-insufficient.png`
+## 2. `T1/report-header-insufficient.png`
 
-**What is the verdict, and why.** The verdict is **NEEDS WORK**, score **3.8/10**, "Low
-confidence · 34%". The "WHAT DECIDED THIS RUN" box (amber here, not red) reads: **"Too
-little evidence to judge. Confidence came out at 34%, under the bar this system needs
-before it will call anything final. The five scores below stand, but the answer does
-not."** So the deciding factor is *insufficient confidence*, not any particular score —
-the run is refusing to commit rather than delivering a judgement. The chip "Provisional
-· not a final answer" says the same thing a second time.
+**Verdict: NEEDS WORK.** Score 3.8/10, "Low confidence · 34%".
 
-**Is a dimension named as blocking, and did it decide the verdict?** Yes, one is named,
-and no, it did not decide it. Below a divider inside the same box, under a quieter
-heading **"ALSO BLOCKING"**, it says: **"Market scored 0 of 5 — no buyer segment was
-named and no price was found. On stronger evidence that alone would reject the idea."**
+**Why:** the amber panel says **"Too little evidence to judge."** — "Confidence
+came out at 34%, under the bar this system needs before it will call anything
+final. The five scores below stand, but the answer does not."
 
-The wording is doing careful work and I think it succeeds. "ALSO BLOCKING" is visually
-subordinate — smaller, greyer, under a rule — so I read it as secondary before I read a
-word of it. And the sentence itself gives me the counterfactual: this zero *would* have
-been a rejection if the evidence had been stronger, but it was not, so it is not the
-reason. I could not have got that from a badge and a number; I only know it because the
-page wrote it down. Compare with image 1, where the equivalent statement was the
-headline and phrased as decided fact ("rejects the idea whatever the other scores say").
-The two boxes are the same component saying two genuinely different things, and the
-difference is legible.
+**Is a dimension named as blocking?** Yes. There is a separate sub-row inside the
+same panel, ruled off and labelled **ALSO BLOCKING**: "Market scored 0 of 5 — no
+buyer segment was named and no price was found. On stronger evidence that alone
+would reject the idea."
 
-**Which dimensions have thin evidence?** **Market** — and only Market, as far as the
-image shows. The chip at the top reads "Thin evidence · Market" (singular, and it names
-the dimension in words rather than an initial), and the Market row carries the amber
-"thin" pill next to its label. Demand above it is 2/5 with no pill. The image is cut off
-partway through "Competitive room", so I cannot see the remaining rows — but the chip
-names only Market, and in the other image the chip and the pills agreed, so I take the
-chip as the complete list.
+**Did it decide the verdict?** **No** — and the wording makes that unusually
+clear. The word "ALSO", the position below the main reason, and especially the
+conditional "**On stronger evidence** that alone **would** reject the idea" all
+say this is a second finding that did *not* get to decide, because the
+low-confidence rule got there first. I read that correctly on the first pass and
+did not have to guess. It is the one thing I would have expected a screen like
+this to muddle, and it doesn't.
+
+**Which dimensions have thin evidence?** Just one: **Market**. The chip at the
+top reads "Thin evidence · Market" (spelled out, not abbreviated), and in the
+scores list **Market** carries the amber **thin** badge and reads 0/5. Demand
+reads 2/5 with no badge. Competitive room, Feasibility and Headroom over free
+are below the crop of this screenshot, so I cannot see whether they carry badges
+— but the header chip names only Market, so I would take that as the full list.
+
+---
+
+## 3. `T1/report-header-plain.png`
+
+**No, there is no override block here.** Nothing between the chip row and the
+`SCORES` panel — the layout goes straight from "Provisional · not a final
+answer" / "Thin evidence · Demand and Headroom over free" into the five score
+rows. Its absence is clean; there is no empty container or stray rule where the
+red/amber box sat in the other two, so I would not have known a block *could*
+appear if I had only seen this one.
+
+**Does the header still tell me why the verdict is what it is?** Partly, and I
+want to be precise about the gap.
+
+- It tells me the **verdict** (NEEDS WORK), the **score** (6.0/10), the
+  **confidence** ("Moderate confidence · 62%"), that the answer is
+  **provisional**, and **which two dimensions are thin** (Demand, Headroom over
+  free) — both of which carry a `thin` badge in the list, and all five score
+  3/5.
+- What it does **not** tell me is the *rule*. Nothing states the threshold — why
+  6.0 lands on NEEDS WORK rather than on the neighbouring verdicts, or where the
+  boundaries are. In the other two screens a sentence did that work for me. Here
+  I have to assume "the verdict is just the score band", which is a reasonable
+  inference but is nowhere written down.
+
+So: it tells me **what**, and it tells me **what was weak**, but not **why that
+number means that word**. For an ordinary run that is probably the right amount
+of chrome — the interesting cases are the two above, and those are the ones that
+explain themselves. But if a reader ever asks "why NEEDS WORK and not the next
+band up", this screen has no answer for them.

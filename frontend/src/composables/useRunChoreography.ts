@@ -233,7 +233,12 @@ export interface RunChoreographyOptions {
   now?: () => number
 }
 
-const TERMINAL: readonly RunStatus[] = ['completed', 'cancelled', 'error']
+/**
+ * The three statuses a run stops at. Exported because `DialogueRail` needs the
+ * same answer to know when to land at its end, and a second list in a component
+ * is a second list to forget.
+ */
+export const TERMINAL: readonly RunStatus[] = ['completed', 'cancelled', 'error']
 const LIVE: readonly RunStatus[] = ['queued', 'running', 'waiting', 'stopping']
 
 function read<T>(source: Ref<T> | (() => T)): T {

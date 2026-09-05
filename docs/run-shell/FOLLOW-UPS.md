@@ -50,6 +50,11 @@ refresh anyway.
 - The replay harness (`page.routeWebSocket` + CDP) drops ~17 frames per 131 with nothing painted; a harness that feeds frames from inside the page (a worker or a scripted socket) would measure the console more tightly.
 - The `run_state` frames' `result` and every `details` payload reach the trace disclosure in full; a lazy `<details>` body would halve the DOM per row but `traceInterpretation.spec.ts` deliberately asserts the payload is present while closed.
 
+## The synthetic double's prose (found by the cold readers)
+
+- `service/runner.py`'s `_SYNTHETIC_UTTERANCE` splices the idea into the sentence without quotes ("I read A claim auditor that checks…") and every branch says the same sentence, so the dialogue rail on a synthetic run reads as four identical entries. Quote the idea and vary the template per branch; it is the double's text, not the console's.
+- RV2's mid-run G1 capture throttles the socket and re-launches on a rate-limit retry, so the trace can pool two runs ("Run started" twice) while the graph shows one — a capture-method artefact recorded in `evidence/G1/notes.md`, not a product state.
+
 ## Builder workspace (LEAVE)
 
 - `e2e/builder.spec.ts:1227` ("paints the target handle green/red") fails **on `main` too** — 4 of 5 runs at `6291fee`, identical failure shape (`evidence/R/builder-1227.md`): the attach port resolves and is stable, then the problems dock's `problem-message` intercepts the hover for the full 15 s. It is an occlusion, not a timing flake, and it is not the case CLAUDE.md item 44 describes (that one passes alone; this fails alone). Fix is in the dock's layout or the test dismissing the dock first; neither is on this branch.

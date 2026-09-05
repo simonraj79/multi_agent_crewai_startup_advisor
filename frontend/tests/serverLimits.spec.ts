@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import StatusPanel from '../src/components/StatusPanel.vue'
 import {
   IDEA_CHARS_WARN_AT,
@@ -218,5 +218,88 @@ describe('the way back from a published graph', () => {
     // Not taken out of the tab order: this one is the only route home, unlike
     // the 640px scrim, whose gesture the rail toggles already carry.
     expect(back.attributes('tabindex')).toBeUndefined()
+  })
+})
+
+/**
+ * The two things the status block says about a run that is not a number.
+ *
+ * Both were found by a cold reader on the FIRST screen a visitor sees, which
+ * is the screen this project has now been caught by twice.
+ */
+describe('the connection line agrees with the header chip', () => {
+  it('says ready at rest, not offline', () => {
+    // No socket is opened until a run is launched, so `offline` there was never
+    // a claim about the backend - and it sat beside an enabled Launch button
+    // while the chip eight inches above read `ready` (evidence/S/empty.png).
+    const panel = mountPanel({ connection: 'offline', isActive: false })
+    expect(panel.get('.stream-line').text()).toContain('ready')
+    expect(panel.get('.stream-line').text()).not.toContain('offline')
+  })
+
+  it('says offline once a run is in flight and the socket really is down', () => {
+    // Then the socket IS the truth, and the alarming word is the correct one.
+    const panel = mountPanel({ connection: 'offline', isActive: true })
+    expect(panel.get('.stream-line').text()).toContain('offline')
+  })
+
+  it('says a probe in flight is connecting rather than offline', () => {
+    const panel = mountPanel({ transportMode: 'probing', connection: 'offline' })
+    expect(panel.get('.stream-line').text()).toContain('connecting')
+  })
+
+  it('says mock mode first, whatever the socket is doing', () => {
+    const panel = mountPanel({ transportMode: 'mock', connection: 'connected' })
+    expect(panel.get('.stream-line').text()).toContain('Mock mode')
+  })
+})
+
+describe('the elapsed clock', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('renders the recorded span when nothing is running', () => {
+    const panel = mountPanel({ usage: { ...zeroUsage(), elapsedMs: 75_000 } })
+    expect(panel.get('.metrics-grid dd').text()).toBe('01:15')
+  })
+
+  it('ticks while a run is in flight rather than waiting for the next frame', async () => {
+    // `usage.elapsedMs` is the span between the first and last FRAME, so it
+    // advances only when one arrives: a run whose frames so far fall inside one
+    // second reported that it had taken no time at all, beside CALLS 1 and
+    // TOKENS 708 (evidence/T2/reduced-motion.png).
+    //
+    // Fake timers are installed AFTER the mount on purpose - gotchas 41, fake
+    // timers around a mount.
+    const panel = mountPanel({ isActive: false })
+    vi.useFakeTimers()
+    await panel.setProps({ isActive: true })
+    vi.advanceTimersByTime(4_000)
+    await panel.vm.$nextTick()
+    expect(panel.get('.metrics-grid dd').text()).toBe('00:04')
+  })
+
+  it('freezes where it stopped when the run ends, and does not reset', async () => {
+    // A failed run showed 00:00 (evidence/S/failure.png). It should say how
+    // long it ran before it failed.
+    const panel = mountPanel({ isActive: false })
+    vi.useFakeTimers()
+    await panel.setProps({ isActive: true })
+    vi.advanceTimersByTime(9_000)
+    await panel.setProps({ isActive: false, status: 'error' })
+    vi.advanceTimersByTime(60_000)
+    await panel.vm.$nextTick()
+    expect(panel.get('.metrics-grid dd').text()).toBe('00:09')
+  })
+
+  it('lets a real recorded span win, because it can see queue time this cannot', async () => {
+    const panel = mountPanel({ isActive: false })
+    vi.useFakeTimers()
+    await panel.setProps({ isActive: true })
+    vi.advanceTimersByTime(2_000)
+    await panel.setProps({ usage: { ...zeroUsage(), elapsedMs: 31_000 } })
+    await panel.vm.$nextTick()
+    expect(panel.get('.metrics-grid dd').text()).toBe('00:31')
   })
 })

@@ -267,20 +267,38 @@ async function copyReport(): Promise<void> {
       </section>
     </div>
 
-    <!-- eslint-disable-next-line vue/no-v-html -->
-    <article class="report-body markdown-body" v-html="body"></article>
+    <!--
+      ONE scroll container for the body and its sources, and that is the fix
+      rather than a tidy-up. As two flex siblings the sources footer reserved
+      up to 26% of the panel for as long as the report was open, so the body's
+      viewport shrank by that much whatever was in it - and when the scores
+      panel above grew a question line per row, a cold reader at 1440 and 1180
+      was left with a window tall enough for the "Score breakdown" table's
+      header row and nothing under it. The table was still reachable by
+      scrolling; a deliverable reachable by scrolling a hundred-pixel window is
+      hidden in every sense that matters.
 
-    <footer v-if="sources.length" class="report-sources">
-      <h3>{{ sources.length }} cited source{{ sources.length === 1 ? '' : 's' }}</h3>
-      <ol>
-        <li v-for="(source, i) in sources" :key="source.url ?? i">
-          <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer nofollow">
-            {{ source.title || source.url }}
-          </a>
-          <span v-else>{{ source.title || 'Untitled source' }}</span>
-        </li>
-      </ol>
-    </footer>
+      The sources are now a normal block at the END of the deliverable, in the
+      same scroller, which is also what they are: the report's citations, read
+      after the report. Nothing overlays anything, so there is no footer height
+      to measure and no padding to keep in step with it.
+    -->
+    <div class="report-scroll">
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <article class="report-body markdown-body" v-html="body"></article>
+
+      <footer v-if="sources.length" class="report-sources">
+        <h3>{{ sources.length }} cited source{{ sources.length === 1 ? '' : 's' }}</h3>
+        <ol>
+          <li v-for="(source, i) in sources" :key="source.url ?? i">
+            <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer nofollow">
+              {{ source.title || source.url }}
+            </a>
+            <span v-else>{{ source.title || 'Untitled source' }}</span>
+          </li>
+        </ol>
+      </footer>
+    </div>
   </section>
 </template>
 
@@ -597,15 +615,29 @@ async function copyReport(): Promise<void> {
 .report-button:hover { color: var(--text-title); border-color: var(--border-hover); }
 .report-button.is-icon { padding: 7px; }
 
-.report-body {
+/* The only scrolling box below the header. `min-height: 0` is load-bearing:
+   a flex item's automatic minimum size is its content, so without it this
+   grows to fit the whole report and the panel scrolls instead - the same trap
+   `studio.css` records against `.studio-main`. */
+.report-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 18px 20px 28px;
   scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
 
-.report-sources { flex: 0 0 auto; max-height: 26%; overflow: auto; padding: 12px 20px 18px; border-top: 1px solid var(--border-default); }
+.report-body {
+  padding: 18px 20px 28px;
+}
+
+/* A block at the end of the body, NOT a footer over it: no `position`, no
+   `max-height`, no `overflow` of its own. `reportVisibility.spec.ts` asserts
+   all three against this file's own stylesheet, because a jsdom mount applies
+   no scoped CSS and therefore cannot see a rule that would hide the report. */
+.report-sources {
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--border-default);
+}
 .report-sources h3 { margin: 0 0 var(--space-3); color: var(--on-accent-cyan); font: var(--type-kicker); text-transform: uppercase; }
 .report-sources ol { margin: 0; padding-left: 20px; color: var(--text-muted); font-size: var(--fs-12); }
 .report-sources li { margin-bottom: 4px; overflow-wrap: anywhere; }

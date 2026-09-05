@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   Activity,
   Download,
@@ -17,7 +17,7 @@ import {
 import type { ConnectionStatus, GatesMode, LogFormat, TransportMode } from '../services/studioApi'
 import type { RunStatus, UsageMetrics } from '../types/studio'
 import { IDEA_CHARS_WARN_AT, MAX_IDEA_CHARS, MIN_IDEA_CHARS } from '../data/serverLimits'
-import { runStatusDisplay } from '../data/runStatusDisplay'
+import { connectionLabel as transportWord, runStatusDisplay } from '../data/runStatusDisplay'
 
 /**
  * The workflow this console runs when nobody has handed it another one.
@@ -171,9 +171,77 @@ const MID_RUN_VERBS: Readonly<Record<string, string>> = {
 }
 const primaryWord = computed(() => MID_RUN_VERBS[props.status] ?? props.primaryLabel)
 
-const connectionLabel = computed(() => props.transportMode === 'mock' ? 'Mock stream' : props.connection)
+/**
+ * The same words the header chip uses, from the same function.
+ *
+ * This line used to render the raw socket state, so at rest it read `offline`
+ * beside an enabled Launch while the chip eight inches above read `ready` -
+ * two surfaces contradicting each other about one fact, on the first screen a
+ * visitor sees. No socket is opened until a run is launched, so `offline`
+ * there was never a claim about the backend.
+ */
+const connectionWord = computed(() =>
+  transportWord(props.transportMode, props.connection, props.isActive),
+)
+/**
+ * ELAPSED, and why it read `00:00` beside CALLS 1 and TOKENS 708.
+ *
+ * `usage.elapsedMs` is the span between the FIRST and LAST frame this console
+ * has seen (`useValidatorRun.noteFrameClock`). That is exactly right as a
+ * record - it replays identically after a reload, and a real METRICS elapsed
+ * still wins over it - but it is not a clock: it advances only when a frame
+ * arrives, so a run whose frames so far fall inside one second reports that it
+ * has taken no time at all. A run that fails in under a second froze at
+ * `00:00` (`evidence/S/failure.png`), and a run mid-flight sat at whatever the
+ * last frame said until the next one landed
+ * (`evidence/T2/reduced-motion.png`).
+ *
+ * So this ticks. `Math.max` of the recorded span and the console's own wall
+ * clock since the run became active: the record wins whenever it is larger
+ * (it can see queue time this cannot), and between frames the seconds still
+ * move. It stops the moment the run does, which is the other half of the
+ * report - a failed run now freezes at the time it failed instead of resetting.
+ *
+ * NOT GATED BY `prefers-reduced-motion`, deliberately and against the obvious
+ * instinct: a ticking number looks like an animation and is not one. It is the
+ * only thing on this panel that says the run is still alive, and a reader who
+ * has asked for less motion has not asked to be told less.
+ */
+const liveMs = ref(0)
+let tickHandle: ReturnType<typeof setInterval> | null = null
+let startedAt = 0
+
+function stopTicking(): void {
+  if (tickHandle === null) return
+  clearInterval(tickHandle)
+  tickHandle = null
+}
+
+watch(
+  () => props.isActive,
+  (active) => {
+    if (!active) {
+      // Freeze, do not clear: the last reading is the run's duration and the
+      // panel goes on showing it until another run starts.
+      stopTicking()
+      return
+    }
+    // `elapsedMs` is what the run has already accounted for - a restored run
+    // resumes from its recorded span rather than from zero.
+    startedAt = Date.now() - props.usage.elapsedMs
+    liveMs.value = props.usage.elapsedMs
+    stopTicking()
+    tickHandle = setInterval(() => {
+      liveMs.value = Date.now() - startedAt
+    }, 1000)
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(stopTicking)
+
 const elapsed = computed(() => {
-  const totalSeconds = Math.floor(props.usage.elapsedMs / 1000)
+  const totalSeconds = Math.floor(Math.max(props.usage.elapsedMs, liveMs.value) / 1000)
   return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`
 })
 const tokens = computed(() => new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(props.usage.totalTokens))
@@ -376,7 +444,7 @@ const logFormat = ref<LogFormat>('ndjson')
         <div><dt>Cost</dt><dd>${{ usage.costUsd.toFixed(4) }}</dd></div>
       </dl>
       <div class="stream-line">
-        <span><i :class="`is-${connection}`" aria-hidden="true" />{{ connectionLabel }}</span>
+        <span><i :class="`is-${connection}`" aria-hidden="true" />{{ connectionWord }}</span>
         <span>seq {{ lastSequence }}</span>
         <span :class="{ 'has-drops': droppedFrames > 0 }">{{ droppedFrames }} dropped</span>
       </div>

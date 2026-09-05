@@ -297,11 +297,16 @@
      scrim exists to place them in. A scrim answers "which layer is live" by
      leaving the other one legible and quiet.
 
-     .58 in dark is enough to take the canvas below the rail's own text without
-     taking it away. It is deliberately not a `--fade-*`: those three are the
+     .72 in dark, raised from .58 on 2026-09-05 because two cold readers said
+     "no scrim" of the same capture. .58 was chosen to dim without erasing and
+     it dimmed so little that neither reader saw a layer at all - and a scrim
+     nobody notices is not a subtle scrim, it is an absent one. The rail's own
+     text is unaffected either way: the rail is OPAQUE `--bg-app` and sits
+     above this, so the scrim contributes nothing to any pairing the contrast
+     audit measures. It is deliberately not a `--fade-*`: those three are the
      canvas heading's gradient stops and this is a different job that only
      happens to be a translucent black. */
-  --scrim: rgba(10, 10, 10, 0.58);
+  --scrim: rgba(10, 10, 10, 0.72);
 }
 
 /* ===========================================================================
@@ -427,7 +432,7 @@
   --shadow-inset-well: inset 0 1px 0 rgba(15, 20, 25, 0.08);
   /* Cooler and lighter on paper: ink at .34 reads as a dimmed page, where the
      dark theme's .58 would read as a hole cut in one. */
-  --scrim: rgba(15, 20, 25, 0.34);
+  --scrim: rgba(15, 20, 25, 0.42);
 }
 
 /* ---------------------------------------------------------------------------

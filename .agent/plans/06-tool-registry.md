@@ -655,3 +655,12 @@ was set on the Render API service through the Render API that day, the daily
 cap at its default 50 per user per UTC day, the per-user override honoured.
 Without it a cold sign-in cannot run a research template, and rubric 15 asks
 exactly that. PLANS.md carries the same wording.
+
+**Decision 9, the measured limit (2026-09-05).** The flag reaches one catalogue
+entry, `research_market_landscape`; the three `firecrawl_*` entries are
+`credential_optional=False` unconditionally and `_firecrawl` raises without a
+credential. So "platform key as everyone's default" is true of the market
+research tool and not of web search or scrape, and a card naming one of those
+three still says a key is required. Widening it means a fallback in
+`_firecrawl` plus regenerating every template fixture (the flag lands in each
+fixture's embedded vocabulary at import time). Follow-up, not done.

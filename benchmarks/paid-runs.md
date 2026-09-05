@@ -1,0 +1,287 @@
+# Paid template runs — plan 14, criterion 9
+
+**2026-09-05.** One paid run of every gallery pattern template against real
+OpenRouter, on a local **paid** backend — no `SYNTHETIC` variable, `/docs`
+answering 404, which is the check that proves it. This is the file plan 14
+criterion 9 names, and it did not exist until now.
+
+**The evidence is committed beside this file**, one
+`benchmarks/live/2026-09-05-<template>.json` per run, each carrying the whole
+frame stream, the run's own usage row, the document and run ids, the citation
+check and the verbatim result body. Nothing on this page is retyped from memory;
+every figure came out of `GET /api/runs/{id}` or out of the OpenRouter credits
+endpoint.
+
+```text
+backend   PORT=8097  BUILDER_ALLOW_GATELESS_GRAPHS=1  BUILDER_PLATFORM_FIRECRAWL_DEFAULT=1
+          RUN_RATE_LIMIT_MAX_RUNS=100  CREWAI_TRACING_ENABLED=false
+          PYTHONPATH=D:\MultiAgentSystem-wt\s1-15-api\src   (no SYNTHETIC)
+proof     GET /readyz -> ok, storage sqlite;  GET /docs -> 404
+models    cheap  openrouter/google/gemini-3.5-flash-lite:nitro
+          escal. openrouter/google/gemini-3.8-flash
+```
+
+## The five runs
+
+Every row is one run. `static` is what `POST /api/builder/validate` answered for
+that exact document at run time — not the fixture's copy, though the two agree.
+`cost_usd` is what the service computed from its own `PRICES` table. The
+right-hand column is the thing criterion 9 is actually about: **the estimate must
+exceed the measured cost.** It does, by between 18x and 730x.
+
+| template | run id | status | elapsed | prompt / completion | calls | `cost_usd` | static | measured / static | gates |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `news-to-social` | `e32a7914` | **completed** | 33.0 s | 2,558 / 4,445 | 3 | $0.017323 | $0.4284 | **4.04 %** | 0 (ungated by design) |
+| `sequential-pipeline` | `eac19d14` | **completed** | 42.7 s | 2,849 / 3,639 | 5 | $0.013944 | $0.6597 | **2.11 %** | 1 approve |
+| `conditional-router` | `eb837836` | **completed** | 8.7 s | 521 / 515 | 2 | $0.000840 | $0.6116 | **0.14 %** | 1 approve |
+| `reflection-loop` | `4ec8bfd5` | **completed** | 11.4 s | 1,746 / 635 | 4 | $0.002111 | $1.5384 | **0.14 %** | 1 approve |
+| `hierarchical-delegation` | `877f393f` | **completed** | 60.9 s | 10,956 / 6,207 | 11 | $0.029346 | $0.5235 | **5.61 %** | 1 approve |
+| `sequential-pipeline` (first attempt) | `a9887442` | **failed** | 53.4 s | 5,022 / 328 | 9 | $0.002327 | $0.6597 | 0.35 % | 1 approve |
+| **six runs, summed** | | | | **24,652 / 15,769** | **34** | **$0.065893** | **$4.4213** | **1.49 %** | |
+
+Document ids, frame totals and per-node usage are in the evidence files; the run
+ids above are the first eight characters of the full uuid each file carries.
+
+### Spend, measured twice and agreeing
+
+| | |
+| --- | --- |
+| balance before | **$27.451601** (`total_usage` 92.548398535) |
+| balance after | **$27.385711** (`total_usage` 92.614289045) |
+| **real spend** | **$0.065890** |
+| sum of the six `cost_usd` rows | **$0.065893** |
+| difference | **$0.000003** |
+
+**That is the interesting number on this page.** `cost_usd` is tokens x a local
+price table, and CLAUDE.md has said for months that it is therefore an estimate,
+because OpenRouter's own per-generation cost "never reaches the process".
+Measured against OpenRouter's own accounting across six runs, three models and
+40,421 tokens, the arithmetic is right to five decimal places.
+
+The `NITRO_PRICE_FACTOR` worry — that `:nitro` routes on speed and may bill above
+the published floor — did **not** materialise on any of these runs. That is a
+statement about these six and not a guarantee: the endpoint spread is real
+(`docs/tech-stack.md` measured 3.6x across eight endpoints for one model), and a
+run that routed to `priority` would move this. What is now established is that
+the computation itself is correct, which was the open half.
+
+### Static estimates are ~60x the truth, and that is by construction
+
+The worst case for the five templates is **$3.7615**; they cost **$0.0636**
+between them — **1.7 %**. The paid acceptance run measured 2.8 % on the
+validator, so this is the second data point for that ratio and it is the same
+order.
+
+The estimate prices every node as if every guardrail retried, every tool loop ran
+to `max_iter` and every cycle went round three times. `reflection-loop` is the
+clearest case: priced at **$1.5384** for four laps of two agents, it went round
+**twice** and cost **$0.002111** — 0.14 %. `conditional-router` prices all three
+desks although exactly one runs, and exactly one ran.
+
+**None of this argues for lowering the margin.** The bound exists to refuse a
+graph that *could* reach the ceiling, and the run that goes to the cap is the one
+it is written for. What these runs settle is that the ceiling is nowhere near
+binding for a template-shaped graph.
+
+## What each run's OUTPUT actually did
+
+The table above says the runs completed. This says whether they did the job,
+which is a different question and the one worth the money.
+
+| template | verdict on the output |
+| --- | --- |
+| `news-to-social` | **Did its job.** Four real Hacker News stories, four correct item URLs, both variants written to the prompt's shape. One liberty and one miss, below. |
+| `sequential-pipeline` | **Did its job, minus its sources.** A 5,265-character brief with a headline and three sections, on topic and genuinely readable. But its sources list reads *"the source analysis did not carry external URLs"* — the URLs the researcher found do not survive `research -> analyse -> write`. |
+| `conditional-router` | **Routed correctly.** "charged me twice … refund" classified `billing`; the billing desk answered and the other two never ran — 2 calls for the whole graph. The reply then invents an account history ($29.00 on 1 November 2023, a gateway timeout, a refund it says it has processed), which is what a support-desk prompt with no tools and no account data will do. |
+| `reflection-loop` | **Looped.** `generate` ran twice and `critique` twice: the first draft scored under 8, the second passed, and the router took `done`. A decent 1,247-character PM explainer. The card's claim is accurate. |
+| `hierarchical-delegation` | **Completed, and answered the wrong question.** Defect 3. The three specialists were briefed on a Python dict and wrote about credit default swaps. |
+
+### The news post, verbatim
+
+`news-to-social`, run `e32a7914-b88e-4171-8505-d9319cf65da6`, subject
+*"AI agents and agentic workflows"*, 33 seconds, $0.017323, no gate.
+
+```markdown
+# Short
+
+Agent frameworks tackling real production limits:
+• Durable Swarm: https://news.ycombinator.com/item?id=41984257
+• Agno: https://news.ycombinator.com/item?id=45714551
+• Chatwoot: https://news.ycombinator.com/item?id=44433537
+• Oqlous: https://news.ycombinator.com/item?id=43603324
+
+# Long
+
+Agent frameworks are shifting focus to solve gritty production bottlenecks like
+server restarts, token bloat, and monolith integration. Developers can now lean
+on Durable Swarm (https://news.ycombinator.com/item?id=41984257) for
+interruption-proof execution, Agno (https://news.ycombinator.com/item?id=45714551)
+for private, FastAPI-style step runtimes, and Chatwoot's thread-safe SDK
+(https://news.ycombinator.com/item?id=44433537) for native execution inside Rails
+monoliths. Meanwhile, Oqlous AI (https://news.ycombinator.com/item?id=43603324)
+tackles Model Context Protocol constraints directly by cutting token
+inefficiency and adding native UI support. #RubyOnRails
+```
+
+*(The bullet is U+2022 and the file is UTF-8. A terminal that renders it as a
+replacement character is the terminal, not the body — checked by codepoint.)*
+
+**Zero fabricated citations.** All four item ids were checked against the live
+Hacker News item API, which is free and — for the reason two paragraphs down —
+the only check available:
+
+| id | HN title |
+| --- | --- |
+| 41984257 | Show HN: Durable Swarm — A Framework for Building Reliable AI Agents |
+| 45714551 | Show HN: Agno — multi-agent framework, runtime and control plane |
+| 44433537 | Show HN: AI Agents — Ruby SDK for building multi-agent AI workflows |
+| 43603324 | Alternative of MCP with AI RAG Agentic Framework |
+
+The tool reported `result_count: 4` and the post cites four. Three of the four
+names are the story's own. **"Oqlous" is the writer's**: the story is titled
+"Alternative of MCP with AI RAG Agentic Framework" and names no product, so that
+one is a name asserted where the source gave none. And the researcher's prompt
+asks for *"the last 7 days"*, which HN Algolia's relevance search does not
+honour — item 41984257 is from 2024. Neither is a defect in the builder; both
+are what this template's prompts currently produce, and both are the kind of
+thing only a paid run shows.
+
+**Citation closure is not answerable from the frame stream, and that is
+structural.** A tool frame carries a bounded `output_preview` — `notes`,
+`result_count`, `tool_status`, `output_chars` — and never the result rows, so
+"every URL in the body appears in a tool result frame" cannot be evaluated
+against this evidence for any template. Recorded because the alternative is a
+citation check that reports "4 unbacked" and means "the frames do not carry
+URLs". Each evidence file states this next to its own citation block.
+
+## Four defects, every one of them found by spending money
+
+None is visible to the 2,441-test Python suite, the 1,705 frontend tests or the
+131 E2E tests, and the reason is the same in every case: the synthetic runner
+never builds a `Crew`, never interpolates a prompt and never calls a provider.
+
+### 1 — Every authored builder graph completed instantly, called no model, and returned an object's `repr`. FIXED.
+
+The first paid run, `c5df456d-27e0-4e91-9309-e232aceaa5d2`, reported
+**`completed` in 1.5 seconds** with `cost_usd 0.0`, zero tokens, zero
+`successful_requests`, seventeen frames, a terminal `WORKFLOW_END`, and this as
+the deliverable:
+
+```json
+"result": {"markdown_body": "<crewai.types.streaming.CrewStreamingOutput object at 0x0000026581AAC050>", "node_id": "post"}
+```
+
+Every node's `NODE_END` carried the same string, and each was handed to the next
+node as its prompt input. A green run, a terminal status and a non-empty body —
+which is exactly what `e2e/templates.spec.ts` asserts for criterion 7.
+
+**Cause.** Every authored crew carries `Crew(stream=True)` (plan 10 D7,
+`builder/runtime.py:677` and `:763`). CrewAI answers that with a **lazy**
+`CrewStreamingOutput`: a generator over a worker thread that has not been started
+(`crewai/crew.py::kickoff`, verified at 1.15.18). Nothing executes until somebody
+iterates it, and `_as_text` fell through to `str(value)`.
+
+**Fix.** `builder/runtime.py::_kickoff` — one helper, used at all four kickoff
+sites — drains the iterator and returns `.result`. The drain is both halves: it
+is what runs the crew, and it is what raises the per-token `LLMStreamChunkEvent`s
+the dialogue rail exists to render. A library crew sets no `stream`, so its plain
+`CrewOutput` is returned untouched.
+
+Everything else on this page was measured **after** that fix.
+
+### 2 — A tool-using agent that exhausts `max_iter` fails on Google, and the message shape is CrewAI's.
+
+`sequential-pipeline`'s first attempt, run `a9887442-ff35-4da5-8974-52fa03e81a0f`:
+**failed** after 9 calls and $0.002327, three times over, with
+
+```text
+Error code: 400 - Provider returned error
+  Google / Google AI Studio:
+  "Requests ending with a model turn are not supported."   INVALID_ARGUMENT
+```
+
+**Cause, read out of CrewAI rather than guessed.**
+`crewai/utilities/agent_utils.py::handle_max_iterations_exceeded` appends an
+**assistant** message and calls the LLM once more to force a final answer:
+
+```python
+messages.append(format_message_for_llm(assistant_message, role="assistant"))
+answer = llm.call(messages, callbacks=callbacks)
+```
+
+Google's chat API refuses a request whose last message is a model turn. Both
+tiers in this product are Google-served, so **any authored agent with tools that
+runs its tool loop to the cap fails** — after the tool calls have already billed.
+
+**It is intermittent, and that was measured rather than assumed.** The one
+permitted retry, run `eac19d14`, **completed** on an identical document with an
+identical input: the HN tool returned usable rows earlier that time, the agent
+finished inside `max_iter`, and the extra call never happened. The trigger is
+exhausting `max_iter`, not the template.
+
+Not fixed here. It is a CrewAI/provider interaction, and choosing between "raise
+`max_iter`", "move a tier off Google" and "post-process the message list" is a
+decision rather than a repair.
+
+### 3 — A node downstream of a gate reads the gate's REPLY METADATA, not the payload. `hierarchical-delegation` ships wired that way.
+
+Run `877f393f`, input *"Plan the launch of a keyboard-first task manager for
+engineering teams."* The task CrewAI actually ran was:
+
+```text
+Size the market for {'decision': 'approve', 'honoured': False, 'turns_used': 0} and name the buyer.
+```
+
+and the deliverable is three paragraphs about counterparty default, credit
+default swap spreads and AML/sanctions screening. It cost **$0.029346** — the
+dearest run on this page — and it `completed`, with a 1,129-character body that
+satisfies every assertion criterion 7 makes.
+
+**Cause.** A canvas gate compiles to two flow methods sharing one node id. Method
+1 pauses and records the payload; method 2, `route_gate`
+(`builder/runtime.py:2191`), records the decision and **runs second**:
+
+```python
+_record(flow, node_id, {"decision": decision, "honoured": honoured,
+                        "turns_used": state.get(turns_key, used), **reply})
+```
+
+So `${state.out__<gate>}` is the reply metadata by the time anything downstream
+reads it. The gate's own `NODE_END` frame shows the payload was there and was
+then overwritten:
+
+```text
+seq 16  confirm NODE_END  HumanFeedbackResult(output='{"summary": "Plan the launch of a
+        keyboard-first task manager for engineering teams."}', feedback='{"decision": "approve"}', …)
+```
+
+`hierarchical-delegation` is the only template that reads a gate:
+`team.prompt_inputs = {"brief": "${state.out__confirm}"}`. Its own three members
+read `${state.brief}`, and every other template reads `${state.<field>}` — which
+is why this is the only one affected and why nothing caught it.
+
+Two candidate repairs, and they are not equivalent: rewire the template to
+`${state.brief}`, or stop the router clobbering the pause's output. The second is
+a contract change. **Neither is made here**, because a paid-run session is not
+where a contract moves.
+
+### 4 — `sequential-pipeline` loses its sources between the analyst and the writer.
+
+Not a crash, and visible only in the output. The brief's sources section says
+*"the source analysis did not carry external URLs"*, and the body contains zero
+links after a research step that fetched three HN threads. The analyst's prompt
+asks for tensions and evidence; nothing in the chain requires it to carry a URL
+forward. The writer then says so honestly, which is the good half.
+
+## What this does not establish
+
+- **Nothing here ran against the deployed origin.** All six runs are local,
+  against `127.0.0.1:8097`.
+- **`MAX_RUN_COST_USD` has still never fired on a paid run.** The dearest run
+  here is $0.029 against a $10.00 ceiling, so the mid-flight `HookAborted` path
+  remains proved by tests only.
+- **The two library-agent templates and `idea-validator` were not run here.**
+  `idea-validator`'s paid evidence is the 2026-09-04 acceptance run.
+- **One run per template is one sample.** `sequential-pipeline` needed two
+  attempts to produce one success, which is the sharpest available argument that
+  a single green run is not a measurement of reliability.

@@ -1,0 +1,3141 @@
+{
+  "note": "Langfuse traces produced by the OpenRouter broadcast for each probe. Fetched with the Langfuse public API using basic auth pk:sk; no key values appear here.",
+  "probe_ts": 1788612874,
+  "generation_ids": {
+    "a": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ",
+    "b": "gen-1788612877-6twjdYtfRyDna6jxINoG",
+    "c": "gen-1788612878-oTc3QVmsoeEkV5BSEscd",
+    "d1": "gen-1788612880-8wpoqatoJCppvLlOOwVy",
+    "d2": "gen-1788612882-VIwPVS3nYy8r0FBUH6Xi",
+    "e": null,
+    "f": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk"
+  },
+  "langfuse_project": "cmto3mj7t06ykad0ipon3ksbw",
+  "list_query": "GET https://us.cloud.langfuse.com/api/public/traces?fromTimestamp=2026-09-05T12:52:34Z&limit=100",
+  "trace_ids_by_probe": {
+    "probe-f (stream:true)": "dbd49206c2c8a478fcf97ce967645760",
+    "probe-d1 + probe-d2 (shared trace.trace_id)": "8b15b51c4f6c36711f217e68ad5c99ac",
+    "probe-c (top-level user)": "eaeafed19b1950dd9094add7388c32c7",
+    "probe-b (HTTP-Referer + X-Title)": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+    "probe-a (plain)": "7bb1830b2921c9336483b844723fccfd"
+  },
+  "traces": {
+    "probe-f (stream:true)": {
+      "trace_id": "dbd49206c2c8a478fcf97ce967645760",
+      "trace": {
+        "id": "dbd49206c2c8a478fcf97ce967645760",
+        "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+        "name": "obs-probe-streamtrace-1788612874",
+        "timestamp": "2026-09-05T12:54:45.536Z",
+        "environment": "default",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": null,
+        "public": false,
+        "input": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "obsprobe-f-1788612874"
+            }
+          ]
+        },
+        "output": {
+          "completion": "It looks like you",
+          "reasoning": null,
+          "rawRequest": {
+            "model": "google/gemini-3.5-flash-lite:nitro",
+            "max_tokens": 8,
+            "stream": true,
+            "trace": {
+              "trace_id": "obsprobe-stream-1788612874",
+              "trace_name": "obs-probe-streamtrace-1788612874",
+              "run_id": "obs-probe-run-1788612874"
+            },
+            "_skin": "chat-completions"
+          }
+        },
+        "metadata": {
+          "openrouter.provider_name": "Google",
+          "resourceAttributes": {
+            "service.name": "openrouter",
+            "openrouter.trace.id": "obsprobe-stream-1788612874"
+          },
+          "scope": {
+            "name": "openrouter",
+            "attributes": {}
+          },
+          "run_id": "obs-probe-run-1788612874",
+          "provider_responses": [
+            {
+              "id": "FRGcasGPJOiI694PoOqxoQw",
+              "provider_name": "Google",
+              "status": 200,
+              "latency": 611,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+            }
+          ],
+          "openrouter.source": "openrouter",
+          "openrouter.api_key_name": "MultiAgentCrewAI",
+          "openrouter.entity_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.creator_user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.router_latency_ms": 8,
+          "openrouter.provider_request_ms": 8,
+          "openrouter.provider_headers_ms": 619,
+          "openrouter.first_token_ms": 619,
+          "openrouter.provider_body_end_ms": 706,
+          "openrouter.provider_time_to_first_token_ms": 611,
+          "openrouter.provider_slug": "google-vertex/global",
+          "openrouter.finish_reason": "MAX_TOKENS",
+          "openrouter.input_unit_price": 3e-07,
+          "openrouter.output_unit_price": 2.5e-06,
+          "attributes": {
+            "langfuse.trace.name": "obs-probe-streamtrace-1788612874",
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.level": "DEFAULT",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.system": "google",
+            "gen_ai.provider.name": "google",
+            "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.id": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk",
+            "gen_ai.usage.input_tokens": "16",
+            "gen_ai.usage.output_tokens": "4",
+            "gen_ai.usage.total_tokens": "20",
+            "gen_ai.usage.input_cost": "0.0000048",
+            "gen_ai.usage.output_cost": "0.00001",
+            "gen_ai.usage.total_cost": "0.0000148",
+            "gen_ai.usage.input_tokens.cached": "0",
+            "gen_ai.usage.input_tokens.audio": "0",
+            "gen_ai.usage.input_tokens.video": "0",
+            "gen_ai.usage.output_tokens.reasoning": "0",
+            "gen_ai.usage.output_tokens.image": "0",
+            "gen_ai.response.finish_reasons": "[\"length\"]",
+            "gen_ai.response.finish_reason": "length",
+            "langfuse.observation.completion_start_time": "2026-09-05T12:54:46.155Z",
+            "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+            "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+            "gen_ai.usage.cost": "0.0000148",
+            "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+          }
+        },
+        "createdAt": "2026-09-05T12:54:47.000Z",
+        "updatedAt": "2026-09-05T12:54:46.640Z",
+        "externalId": null,
+        "scores": [],
+        "latency": 1.309,
+        "observations": [
+          {
+            "id": "64bb8ca423dcfefe",
+            "traceId": "dbd49206c2c8a478fcf97ce967645760",
+            "startTime": "2026-09-05T12:54:45.536Z",
+            "endTime": "2026-09-05T12:54:46.242Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": null,
+            "type": "GENERATION",
+            "environment": "default",
+            "name": "LLM Generation",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:46.558Z",
+            "updatedAt": "2026-09-05T12:54:46.558Z",
+            "input": {
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "obsprobe-f-1788612874"
+                }
+              ]
+            },
+            "output": {
+              "completion": "It looks like you",
+              "reasoning": null,
+              "rawRequest": {
+                "model": "google/gemini-3.5-flash-lite:nitro",
+                "max_tokens": 8,
+                "stream": true,
+                "trace": {
+                  "trace_id": "obsprobe-stream-1788612874",
+                  "trace_name": "obs-probe-streamtrace-1788612874",
+                  "run_id": "obs-probe-run-1788612874"
+                },
+                "_skin": "chat-completions"
+              }
+            },
+            "metadata": {
+              "run_id": "obs-probe-run-1788612874",
+              "provider_responses": [
+                {
+                  "id": "FRGcasGPJOiI694PoOqxoQw",
+                  "provider_name": "Google",
+                  "status": 200,
+                  "latency": 611,
+                  "is_byok": false,
+                  "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                  "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+                }
+              ],
+              "attributes": {
+                "langfuse.trace.name": "obs-probe-streamtrace-1788612874",
+                "langfuse.observation.type": "generation",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.system": "google",
+                "gen_ai.provider.name": "google",
+                "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.id": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk",
+                "gen_ai.usage.input_tokens": "16",
+                "gen_ai.usage.output_tokens": "4",
+                "gen_ai.usage.total_tokens": "20",
+                "gen_ai.usage.input_cost": "0.0000048",
+                "gen_ai.usage.output_cost": "0.00001",
+                "gen_ai.usage.total_cost": "0.0000148",
+                "gen_ai.usage.input_tokens.cached": "0",
+                "gen_ai.usage.input_tokens.audio": "0",
+                "gen_ai.usage.input_tokens.video": "0",
+                "gen_ai.usage.output_tokens.reasoning": "0",
+                "gen_ai.usage.output_tokens.image": "0",
+                "gen_ai.response.finish_reasons": "[\"length\"]",
+                "gen_ai.response.finish_reason": "length",
+                "langfuse.observation.completion_start_time": "2026-09-05T12:54:46.155Z",
+                "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+                "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+                "gen_ai.usage.cost": "0.0000148",
+                "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "obsprobe-stream-1788612874"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": "google/gemini-3.5-flash-lite",
+            "modelParameters": {},
+            "completionStartTime": "2026-09-05T12:54:46.155Z",
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.706,
+            "timeToFirstToken": 0.619,
+            "usageDetails": {
+              "input": 16,
+              "output": 4,
+              "total": 20
+            },
+            "costDetails": {
+              "input": 4.8e-06,
+              "output": 1e-05,
+              "total": 1.48e-05
+            },
+            "usagePricingTierId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e_tier_default",
+            "usagePricingTierName": "Standard",
+            "inputPrice": 3e-07,
+            "outputPrice": 2.5e-06,
+            "totalPrice": 0,
+            "calculatedInputCost": 4.8e-06,
+            "calculatedOutputCost": 1e-05,
+            "calculatedTotalCost": 1.48e-05,
+            "unit": "TOKENS",
+            "promptTokens": 16,
+            "completionTokens": 4,
+            "totalTokens": 20,
+            "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+            "usage": {
+              "unit": "TOKENS",
+              "input": 16,
+              "output": 4,
+              "total": 20
+            }
+          },
+          {
+            "id": "26156f24f6b90573",
+            "traceId": "dbd49206c2c8a478fcf97ce967645760",
+            "startTime": "2026-09-05T12:54:45.536Z",
+            "endTime": "2026-09-05T12:54:46.147Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": "64bb8ca423dcfefe",
+            "type": "SPAN",
+            "environment": "default",
+            "name": "provider attempt 1: Google",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:46.558Z",
+            "updatedAt": "2026-09-05T12:54:46.558Z",
+            "input": null,
+            "output": null,
+            "metadata": {
+              "attempt_index": 0,
+              "status_code": 200,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+              "attributes": {
+                "langfuse.observation.type": "span",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.response.id": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk:attempt-0"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "obsprobe-stream-1788612874"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": null,
+            "modelParameters": null,
+            "completionStartTime": null,
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.611,
+            "timeToFirstToken": null,
+            "usageDetails": {},
+            "costDetails": {},
+            "usagePricingTierId": null,
+            "usagePricingTierName": null,
+            "inputPrice": 0,
+            "outputPrice": 0,
+            "totalPrice": 0,
+            "calculatedInputCost": null,
+            "calculatedOutputCost": null,
+            "calculatedTotalCost": null,
+            "unit": "TOKENS",
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0,
+            "modelId": null,
+            "usage": {
+              "unit": "TOKENS",
+              "input": 0,
+              "output": 0,
+              "total": 0
+            }
+          },
+          {
+            "id": "9ee548cfb7bba237",
+            "traceId": "dbd49206c2c8a478fcf97ce967645760",
+            "startTime": "2026-09-05T12:54:46.147Z",
+            "endTime": "2026-09-05T12:54:46.845Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": "64bb8ca423dcfefe",
+            "type": "SPAN",
+            "environment": "default",
+            "name": "generation",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:46.558Z",
+            "updatedAt": "2026-09-05T12:54:46.558Z",
+            "input": null,
+            "output": null,
+            "metadata": {
+              "attributes": {
+                "langfuse.observation.type": "span",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.response.id": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk:generation"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "obsprobe-stream-1788612874"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": null,
+            "modelParameters": null,
+            "completionStartTime": null,
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.698,
+            "timeToFirstToken": null,
+            "usageDetails": {},
+            "costDetails": {},
+            "usagePricingTierId": null,
+            "usagePricingTierName": null,
+            "inputPrice": 0,
+            "outputPrice": 0,
+            "totalPrice": 0,
+            "calculatedInputCost": null,
+            "calculatedOutputCost": null,
+            "calculatedTotalCost": null,
+            "unit": "TOKENS",
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0,
+            "modelId": null,
+            "usage": {
+              "unit": "TOKENS",
+              "input": 0,
+              "output": 0,
+              "total": 0
+            }
+          }
+        ],
+        "htmlPath": "/project/cmto3mj7t06ykad0ipon3ksbw/traces/dbd49206c2c8a478fcf97ce967645760",
+        "totalCost": 1.48e-05,
+        "_deprecation": {
+          "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read span and trace data via GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>.",
+          "replacement": "GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>",
+          "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+          "sunsetAt": "2026-11-16"
+        }
+      },
+      "observations": [
+        {
+          "id": "9ee548cfb7bba237",
+          "traceId": "dbd49206c2c8a478fcf97ce967645760",
+          "startTime": "2026-09-05T12:54:46.147Z",
+          "endTime": "2026-09-05T12:54:46.845Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": "64bb8ca423dcfefe",
+          "type": "SPAN",
+          "environment": "default",
+          "name": "generation",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:46.558Z",
+          "updatedAt": "2026-09-05T12:54:46.558Z",
+          "input": null,
+          "output": null,
+          "metadata": {
+            "attributes": {
+              "langfuse.observation.type": "span",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.response.id": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk:generation"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "obsprobe-stream-1788612874"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": null,
+          "modelParameters": null,
+          "completionStartTime": null,
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.698,
+          "timeToFirstToken": null,
+          "usageDetails": {},
+          "costDetails": {},
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "calculatedInputCost": null,
+          "calculatedOutputCost": null,
+          "calculatedTotalCost": null,
+          "unit": "TOKENS",
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 0,
+            "output": 0,
+            "total": 0
+          }
+        },
+        {
+          "id": "64bb8ca423dcfefe",
+          "traceId": "dbd49206c2c8a478fcf97ce967645760",
+          "startTime": "2026-09-05T12:54:45.536Z",
+          "endTime": "2026-09-05T12:54:46.242Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": null,
+          "type": "GENERATION",
+          "environment": "default",
+          "name": "LLM Generation",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:46.558Z",
+          "updatedAt": "2026-09-05T12:54:46.558Z",
+          "input": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "obsprobe-f-1788612874"
+              }
+            ]
+          },
+          "output": {
+            "completion": "It looks like you",
+            "reasoning": null,
+            "rawRequest": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "max_tokens": 8,
+              "stream": true,
+              "trace": {
+                "trace_id": "obsprobe-stream-1788612874",
+                "trace_name": "obs-probe-streamtrace-1788612874",
+                "run_id": "obs-probe-run-1788612874"
+              },
+              "_skin": "chat-completions"
+            }
+          },
+          "metadata": {
+            "run_id": "obs-probe-run-1788612874",
+            "provider_responses": [
+              {
+                "id": "FRGcasGPJOiI694PoOqxoQw",
+                "provider_name": "Google",
+                "status": 200,
+                "latency": 611,
+                "is_byok": false,
+                "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+              }
+            ],
+            "attributes": {
+              "langfuse.trace.name": "obs-probe-streamtrace-1788612874",
+              "langfuse.observation.type": "generation",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.system": "google",
+              "gen_ai.provider.name": "google",
+              "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.id": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk",
+              "gen_ai.usage.input_tokens": "16",
+              "gen_ai.usage.output_tokens": "4",
+              "gen_ai.usage.total_tokens": "20",
+              "gen_ai.usage.input_cost": "0.0000048",
+              "gen_ai.usage.output_cost": "0.00001",
+              "gen_ai.usage.total_cost": "0.0000148",
+              "gen_ai.usage.input_tokens.cached": "0",
+              "gen_ai.usage.input_tokens.audio": "0",
+              "gen_ai.usage.input_tokens.video": "0",
+              "gen_ai.usage.output_tokens.reasoning": "0",
+              "gen_ai.usage.output_tokens.image": "0",
+              "gen_ai.response.finish_reasons": "[\"length\"]",
+              "gen_ai.response.finish_reason": "length",
+              "langfuse.observation.completion_start_time": "2026-09-05T12:54:46.155Z",
+              "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+              "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+              "gen_ai.usage.cost": "0.0000148",
+              "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "obsprobe-stream-1788612874"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": "google/gemini-3.5-flash-lite",
+          "modelParameters": {},
+          "completionStartTime": "2026-09-05T12:54:46.155Z",
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.706,
+          "timeToFirstToken": 0.619,
+          "usageDetails": {
+            "input": 16,
+            "output": 4,
+            "total": 20
+          },
+          "costDetails": {
+            "input": 4.8e-06,
+            "output": 1e-05,
+            "total": 1.48e-05
+          },
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "inputPrice": 3e-07,
+          "outputPrice": 2.5e-06,
+          "totalPrice": null,
+          "calculatedInputCost": 4.8e-06,
+          "calculatedOutputCost": 1e-05,
+          "calculatedTotalCost": 1.48e-05,
+          "unit": "TOKENS",
+          "promptTokens": 16,
+          "completionTokens": 4,
+          "totalTokens": 20,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 16,
+            "output": 4,
+            "total": 20
+          }
+        },
+        {
+          "id": "26156f24f6b90573",
+          "traceId": "dbd49206c2c8a478fcf97ce967645760",
+          "startTime": "2026-09-05T12:54:45.536Z",
+          "endTime": "2026-09-05T12:54:46.147Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": "64bb8ca423dcfefe",
+          "type": "SPAN",
+          "environment": "default",
+          "name": "provider attempt 1: Google",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:46.558Z",
+          "updatedAt": "2026-09-05T12:54:46.558Z",
+          "input": null,
+          "output": null,
+          "metadata": {
+            "attempt_index": 0,
+            "status_code": 200,
+            "is_byok": false,
+            "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+            "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+            "attributes": {
+              "langfuse.observation.type": "span",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.response.id": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk:attempt-0"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "obsprobe-stream-1788612874"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": null,
+          "modelParameters": null,
+          "completionStartTime": null,
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.611,
+          "timeToFirstToken": null,
+          "usageDetails": {},
+          "costDetails": {},
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "calculatedInputCost": null,
+          "calculatedOutputCost": null,
+          "calculatedTotalCost": null,
+          "unit": "TOKENS",
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 0,
+            "output": 0,
+            "total": 0
+          }
+        }
+      ]
+    },
+    "probe-d1 + probe-d2 (shared trace.trace_id)": {
+      "trace_id": "8b15b51c4f6c36711f217e68ad5c99ac",
+      "trace": {
+        "id": "8b15b51c4f6c36711f217e68ad5c99ac",
+        "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+        "name": "obs-probe-tracename-1788612874",
+        "timestamp": "2026-09-05T12:54:40.543Z",
+        "environment": "obsprobe-env",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": "obs-probe-user-1788612874",
+        "sessionId": "obs-probe-session-1788612874",
+        "public": false,
+        "input": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "obsprobe-d2-1788612874"
+            }
+          ]
+        },
+        "output": {
+          "completion": "It looks like you",
+          "reasoning": null,
+          "rawRequest": {
+            "model": "google/gemini-3.5-flash-lite:nitro",
+            "max_tokens": 8,
+            "session_id": "obs-probe-session-1788612874",
+            "trace": {
+              "trace_id": "obsprobe-trace-1788612874",
+              "trace_name": "obs-probe-tracename-1788612874",
+              "span_name": "obs-probe-spanname2-1788612874",
+              "generation_name": "obs-probe-genname2-1788612874",
+              "run_id": "obs-probe-run-1788612874",
+              "agent_role": "Sentiment signal analyst",
+              "task_name": "sentiment_task"
+            },
+            "_skin": "chat-completions"
+          }
+        },
+        "metadata": {
+          "openrouter.provider_name": "Google",
+          "resourceAttributes": {
+            "service.name": "openrouter",
+            "openrouter.trace.id": "obsprobe-trace-1788612874",
+            "langfuse.environment": "obsprobe-env",
+            "langfuse.release": "obsprobe-release-9.9.9"
+          },
+          "scope": {
+            "name": "openrouter",
+            "attributes": {}
+          },
+          "environment": "obsprobe-env",
+          "release": "obsprobe-release-9.9.9",
+          "tags": [
+            "obs-probe-tracetag-1788612874"
+          ],
+          "run_id": "obs-probe-run-1788612874",
+          "agent_role": "Sentiment signal analyst",
+          "task_name": "sentiment_task",
+          "provider_responses": [
+            {
+              "id": "EhGcarv7Jf2mrtoP7_aboAc",
+              "provider_name": "Google",
+              "status": 200,
+              "latency": 694,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+            }
+          ],
+          "openrouter.source": "openrouter",
+          "openrouter.api_key_name": "MultiAgentCrewAI",
+          "openrouter.entity_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.user_id": "obs-probe-user-1788612874",
+          "openrouter.creator_user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.router_latency_ms": 9,
+          "openrouter.provider_request_ms": 9,
+          "openrouter.provider_headers_ms": 703,
+          "openrouter.first_token_ms": 703,
+          "openrouter.provider_body_end_ms": 776,
+          "openrouter.provider_time_to_first_token_ms": 694,
+          "openrouter.provider_slug": "google-vertex/global",
+          "openrouter.finish_reason": "MAX_TOKENS",
+          "openrouter.input_unit_price": 3e-07,
+          "openrouter.output_unit_price": 2.5e-06,
+          "attributes": {
+            "langfuse.trace.name": "obs-probe-tracename-1788612874",
+            "langfuse.session.id": "obs-probe-session-1788612874",
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.level": "DEFAULT",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.system": "google",
+            "gen_ai.provider.name": "google",
+            "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.id": "gen-1788612882-VIwPVS3nYy8r0FBUH6Xi",
+            "gen_ai.usage.input_tokens": "17",
+            "gen_ai.usage.output_tokens": "4",
+            "gen_ai.usage.total_tokens": "21",
+            "gen_ai.usage.input_cost": "0.0000051",
+            "gen_ai.usage.output_cost": "0.00001",
+            "gen_ai.usage.total_cost": "0.0000151",
+            "gen_ai.usage.input_tokens.cached": "0",
+            "gen_ai.usage.input_tokens.audio": "0",
+            "gen_ai.usage.input_tokens.video": "0",
+            "gen_ai.usage.output_tokens.reasoning": "0",
+            "gen_ai.usage.output_tokens.image": "0",
+            "gen_ai.response.finish_reasons": "[\"length\"]",
+            "gen_ai.response.finish_reason": "length",
+            "langfuse.observation.completion_start_time": "2026-09-05T12:54:43.263Z",
+            "langfuse.observation.usage_details": "{\"input\":17,\"output\":4,\"total\":21}",
+            "langfuse.observation.cost_details": "{\"input\":0.0000051,\"output\":0.00001,\"total\":0.0000151}",
+            "gen_ai.usage.cost": "0.0000151",
+            "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+          }
+        },
+        "createdAt": "2026-09-05T12:54:43.000Z",
+        "updatedAt": "2026-09-05T12:54:44.139Z",
+        "externalId": null,
+        "scores": [],
+        "latency": 2.793,
+        "observations": [
+          {
+            "id": "bfdd7a538241b627",
+            "traceId": "8b15b51c4f6c36711f217e68ad5c99ac",
+            "startTime": "2026-09-05T12:54:40.543Z",
+            "endTime": "2026-09-05T12:54:41.480Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": "0123456789abcdef",
+            "type": "GENERATION",
+            "environment": "obsprobe-env",
+            "name": "obs-probe-genname-1788612874",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:42.389Z",
+            "updatedAt": "2026-09-05T12:54:42.389Z",
+            "input": {
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "obsprobe-d1-1788612874"
+                }
+              ]
+            },
+            "output": {
+              "completion": "It looks like you",
+              "reasoning": null,
+              "rawRequest": {
+                "model": "google/gemini-3.5-flash-lite:nitro",
+                "max_tokens": 8,
+                "user": "obs-probe-user-1788612874",
+                "session_id": "obs-probe-session-1788612874",
+                "tags": [
+                  "obs-probe-tag-1788612874",
+                  "audit"
+                ],
+                "trace": {
+                  "trace_id": "obsprobe-trace-1788612874",
+                  "trace_name": "obs-probe-tracename-1788612874",
+                  "span_name": "obs-probe-spanname-1788612874",
+                  "generation_name": "obs-probe-genname-1788612874",
+                  "environment": "obsprobe-env",
+                  "release": "obsprobe-release-9.9.9",
+                  "parent_span_id": "0123456789abcdef",
+                  "tags": [
+                    "obs-probe-tracetag-1788612874"
+                  ],
+                  "run_id": "obs-probe-run-1788612874",
+                  "agent_role": "Market evidence analyst",
+                  "task_name": "market_task"
+                },
+                "_skin": "chat-completions"
+              }
+            },
+            "metadata": {
+              "environment": "obsprobe-env",
+              "release": "obsprobe-release-9.9.9",
+              "tags": [
+                "obs-probe-tracetag-1788612874"
+              ],
+              "run_id": "obs-probe-run-1788612874",
+              "agent_role": "Market evidence analyst",
+              "task_name": "market_task",
+              "provider_responses": [
+                {
+                  "id": "EBGcao-bJb-Kk7QP9OrwgQ0",
+                  "provider_name": "Google",
+                  "status": 200,
+                  "latency": 814,
+                  "is_byok": false,
+                  "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                  "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+                }
+              ],
+              "attributes": {
+                "langfuse.trace.name": "obs-probe-tracename-1788612874",
+                "langfuse.user.id": "obs-probe-user-1788612874",
+                "langfuse.session.id": "obs-probe-session-1788612874",
+                "langfuse.observation.type": "generation",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.system": "google",
+                "gen_ai.provider.name": "google",
+                "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.id": "gen-1788612880-8wpoqatoJCppvLlOOwVy",
+                "gen_ai.usage.input_tokens": "17",
+                "gen_ai.usage.output_tokens": "4",
+                "gen_ai.usage.total_tokens": "21",
+                "gen_ai.usage.input_cost": "0.0000051",
+                "gen_ai.usage.output_cost": "0.00001",
+                "gen_ai.usage.total_cost": "0.0000151",
+                "gen_ai.usage.input_tokens.cached": "0",
+                "gen_ai.usage.input_tokens.audio": "0",
+                "gen_ai.usage.input_tokens.video": "0",
+                "gen_ai.usage.output_tokens.reasoning": "0",
+                "gen_ai.usage.output_tokens.image": "0",
+                "gen_ai.response.finish_reasons": "[\"length\"]",
+                "gen_ai.response.finish_reason": "length",
+                "langfuse.release": "obsprobe-release-9.9.9",
+                "langfuse.environment": "obsprobe-env",
+                "langfuse.observation.completion_start_time": "2026-09-05T12:54:41.372Z",
+                "langfuse.observation.usage_details": "{\"input\":17,\"output\":4,\"total\":21}",
+                "langfuse.observation.cost_details": "{\"input\":0.0000051,\"output\":0.00001,\"total\":0.0000151}",
+                "gen_ai.usage.cost": "0.0000151",
+                "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "obsprobe-trace-1788612874",
+                "langfuse.environment": "obsprobe-env",
+                "langfuse.release": "obsprobe-release-9.9.9"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": "google/gemini-3.5-flash-lite",
+            "modelParameters": {},
+            "completionStartTime": "2026-09-05T12:54:41.372Z",
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.937,
+            "timeToFirstToken": 0.829,
+            "usageDetails": {
+              "input": 17,
+              "output": 4,
+              "total": 21
+            },
+            "costDetails": {
+              "input": 5.1e-06,
+              "output": 1e-05,
+              "total": 1.51e-05
+            },
+            "usagePricingTierId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e_tier_default",
+            "usagePricingTierName": "Standard",
+            "inputPrice": 3e-07,
+            "outputPrice": 2.5e-06,
+            "totalPrice": 0,
+            "calculatedInputCost": 5.1e-06,
+            "calculatedOutputCost": 1e-05,
+            "calculatedTotalCost": 1.51e-05,
+            "unit": "TOKENS",
+            "promptTokens": 17,
+            "completionTokens": 4,
+            "totalTokens": 21,
+            "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+            "usage": {
+              "unit": "TOKENS",
+              "input": 17,
+              "output": 4,
+              "total": 21
+            }
+          },
+          {
+            "id": "f372b9df854e85e9",
+            "traceId": "8b15b51c4f6c36711f217e68ad5c99ac",
+            "startTime": "2026-09-05T12:54:42.560Z",
+            "endTime": "2026-09-05T12:54:43.336Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": null,
+            "type": "GENERATION",
+            "environment": "default",
+            "name": "obs-probe-genname2-1788612874",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:44.053Z",
+            "updatedAt": "2026-09-05T12:54:44.054Z",
+            "input": {
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "obsprobe-d2-1788612874"
+                }
+              ]
+            },
+            "output": {
+              "completion": "It looks like you",
+              "reasoning": null,
+              "rawRequest": {
+                "model": "google/gemini-3.5-flash-lite:nitro",
+                "max_tokens": 8,
+                "session_id": "obs-probe-session-1788612874",
+                "trace": {
+                  "trace_id": "obsprobe-trace-1788612874",
+                  "trace_name": "obs-probe-tracename-1788612874",
+                  "span_name": "obs-probe-spanname2-1788612874",
+                  "generation_name": "obs-probe-genname2-1788612874",
+                  "run_id": "obs-probe-run-1788612874",
+                  "agent_role": "Sentiment signal analyst",
+                  "task_name": "sentiment_task"
+                },
+                "_skin": "chat-completions"
+              }
+            },
+            "metadata": {
+              "run_id": "obs-probe-run-1788612874",
+              "agent_role": "Sentiment signal analyst",
+              "task_name": "sentiment_task",
+              "provider_responses": [
+                {
+                  "id": "EhGcarv7Jf2mrtoP7_aboAc",
+                  "provider_name": "Google",
+                  "status": 200,
+                  "latency": 694,
+                  "is_byok": false,
+                  "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                  "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+                }
+              ],
+              "attributes": {
+                "langfuse.trace.name": "obs-probe-tracename-1788612874",
+                "langfuse.session.id": "obs-probe-session-1788612874",
+                "langfuse.observation.type": "generation",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.system": "google",
+                "gen_ai.provider.name": "google",
+                "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.id": "gen-1788612882-VIwPVS3nYy8r0FBUH6Xi",
+                "gen_ai.usage.input_tokens": "17",
+                "gen_ai.usage.output_tokens": "4",
+                "gen_ai.usage.total_tokens": "21",
+                "gen_ai.usage.input_cost": "0.0000051",
+                "gen_ai.usage.output_cost": "0.00001",
+                "gen_ai.usage.total_cost": "0.0000151",
+                "gen_ai.usage.input_tokens.cached": "0",
+                "gen_ai.usage.input_tokens.audio": "0",
+                "gen_ai.usage.input_tokens.video": "0",
+                "gen_ai.usage.output_tokens.reasoning": "0",
+                "gen_ai.usage.output_tokens.image": "0",
+                "gen_ai.response.finish_reasons": "[\"length\"]",
+                "gen_ai.response.finish_reason": "length",
+                "langfuse.observation.completion_start_time": "2026-09-05T12:54:43.263Z",
+                "langfuse.observation.usage_details": "{\"input\":17,\"output\":4,\"total\":21}",
+                "langfuse.observation.cost_details": "{\"input\":0.0000051,\"output\":0.00001,\"total\":0.0000151}",
+                "gen_ai.usage.cost": "0.0000151",
+                "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "obsprobe-trace-1788612874"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": "google/gemini-3.5-flash-lite",
+            "modelParameters": {},
+            "completionStartTime": "2026-09-05T12:54:43.263Z",
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.776,
+            "timeToFirstToken": 0.703,
+            "usageDetails": {
+              "input": 17,
+              "output": 4,
+              "total": 21
+            },
+            "costDetails": {
+              "input": 5.1e-06,
+              "output": 1e-05,
+              "total": 1.51e-05
+            },
+            "usagePricingTierId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e_tier_default",
+            "usagePricingTierName": "Standard",
+            "inputPrice": 3e-07,
+            "outputPrice": 2.5e-06,
+            "totalPrice": 0,
+            "calculatedInputCost": 5.1e-06,
+            "calculatedOutputCost": 1e-05,
+            "calculatedTotalCost": 1.51e-05,
+            "unit": "TOKENS",
+            "promptTokens": 17,
+            "completionTokens": 4,
+            "totalTokens": 21,
+            "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+            "usage": {
+              "unit": "TOKENS",
+              "input": 17,
+              "output": 4,
+              "total": 21
+            }
+          },
+          {
+            "id": "2dba811f0ab1fda8",
+            "traceId": "8b15b51c4f6c36711f217e68ad5c99ac",
+            "startTime": "2026-09-05T12:54:42.560Z",
+            "endTime": "2026-09-05T12:54:43.254Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": "f372b9df854e85e9",
+            "type": "SPAN",
+            "environment": "default",
+            "name": "provider attempt 1: Google",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:44.054Z",
+            "updatedAt": "2026-09-05T12:54:44.055Z",
+            "input": null,
+            "output": null,
+            "metadata": {
+              "attempt_index": 0,
+              "status_code": 200,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+              "attributes": {
+                "langfuse.observation.type": "span",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.response.id": "gen-1788612882-VIwPVS3nYy8r0FBUH6Xi:attempt-0"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "obsprobe-trace-1788612874"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": null,
+            "modelParameters": null,
+            "completionStartTime": null,
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.694,
+            "timeToFirstToken": null,
+            "usageDetails": {},
+            "costDetails": {},
+            "usagePricingTierId": null,
+            "usagePricingTierName": null,
+            "inputPrice": 0,
+            "outputPrice": 0,
+            "totalPrice": 0,
+            "calculatedInputCost": null,
+            "calculatedOutputCost": null,
+            "calculatedTotalCost": null,
+            "unit": "TOKENS",
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0,
+            "modelId": null,
+            "usage": {
+              "unit": "TOKENS",
+              "input": 0,
+              "output": 0,
+              "total": 0
+            }
+          },
+          {
+            "id": "aaebbd0abf6e57c1",
+            "traceId": "8b15b51c4f6c36711f217e68ad5c99ac",
+            "startTime": "2026-09-05T12:54:40.543Z",
+            "endTime": "2026-09-05T12:54:41.357Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": "bfdd7a538241b627",
+            "type": "SPAN",
+            "environment": "obsprobe-env",
+            "name": "provider attempt 1: Google",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:42.389Z",
+            "updatedAt": "2026-09-05T12:54:42.390Z",
+            "input": null,
+            "output": null,
+            "metadata": {
+              "attempt_index": 0,
+              "status_code": 200,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+              "attributes": {
+                "langfuse.observation.type": "span",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.response.id": "gen-1788612880-8wpoqatoJCppvLlOOwVy:attempt-0",
+                "langfuse.environment": "obsprobe-env"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "obsprobe-trace-1788612874",
+                "langfuse.environment": "obsprobe-env",
+                "langfuse.release": "obsprobe-release-9.9.9"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": null,
+            "modelParameters": null,
+            "completionStartTime": null,
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.814,
+            "timeToFirstToken": null,
+            "usageDetails": {},
+            "costDetails": {},
+            "usagePricingTierId": null,
+            "usagePricingTierName": null,
+            "inputPrice": 0,
+            "outputPrice": 0,
+            "totalPrice": 0,
+            "calculatedInputCost": null,
+            "calculatedOutputCost": null,
+            "calculatedTotalCost": null,
+            "unit": "TOKENS",
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0,
+            "modelId": null,
+            "usage": {
+              "unit": "TOKENS",
+              "input": 0,
+              "output": 0,
+              "total": 0
+            }
+          }
+        ],
+        "htmlPath": "/project/cmto3mj7t06ykad0ipon3ksbw/traces/8b15b51c4f6c36711f217e68ad5c99ac",
+        "totalCost": 3.02e-05,
+        "_deprecation": {
+          "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read span and trace data via GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>.",
+          "replacement": "GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>",
+          "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+          "sunsetAt": "2026-11-16"
+        }
+      },
+      "observations": [
+        {
+          "id": "f372b9df854e85e9",
+          "traceId": "8b15b51c4f6c36711f217e68ad5c99ac",
+          "startTime": "2026-09-05T12:54:42.560Z",
+          "endTime": "2026-09-05T12:54:43.336Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": null,
+          "type": "GENERATION",
+          "environment": "default",
+          "name": "obs-probe-genname2-1788612874",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:44.053Z",
+          "updatedAt": "2026-09-05T12:54:44.054Z",
+          "input": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "obsprobe-d2-1788612874"
+              }
+            ]
+          },
+          "output": {
+            "completion": "It looks like you",
+            "reasoning": null,
+            "rawRequest": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "max_tokens": 8,
+              "session_id": "obs-probe-session-1788612874",
+              "trace": {
+                "trace_id": "obsprobe-trace-1788612874",
+                "trace_name": "obs-probe-tracename-1788612874",
+                "span_name": "obs-probe-spanname2-1788612874",
+                "generation_name": "obs-probe-genname2-1788612874",
+                "run_id": "obs-probe-run-1788612874",
+                "agent_role": "Sentiment signal analyst",
+                "task_name": "sentiment_task"
+              },
+              "_skin": "chat-completions"
+            }
+          },
+          "metadata": {
+            "run_id": "obs-probe-run-1788612874",
+            "agent_role": "Sentiment signal analyst",
+            "task_name": "sentiment_task",
+            "provider_responses": [
+              {
+                "id": "EhGcarv7Jf2mrtoP7_aboAc",
+                "provider_name": "Google",
+                "status": 200,
+                "latency": 694,
+                "is_byok": false,
+                "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+              }
+            ],
+            "attributes": {
+              "langfuse.trace.name": "obs-probe-tracename-1788612874",
+              "langfuse.session.id": "obs-probe-session-1788612874",
+              "langfuse.observation.type": "generation",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.system": "google",
+              "gen_ai.provider.name": "google",
+              "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.id": "gen-1788612882-VIwPVS3nYy8r0FBUH6Xi",
+              "gen_ai.usage.input_tokens": "17",
+              "gen_ai.usage.output_tokens": "4",
+              "gen_ai.usage.total_tokens": "21",
+              "gen_ai.usage.input_cost": "0.0000051",
+              "gen_ai.usage.output_cost": "0.00001",
+              "gen_ai.usage.total_cost": "0.0000151",
+              "gen_ai.usage.input_tokens.cached": "0",
+              "gen_ai.usage.input_tokens.audio": "0",
+              "gen_ai.usage.input_tokens.video": "0",
+              "gen_ai.usage.output_tokens.reasoning": "0",
+              "gen_ai.usage.output_tokens.image": "0",
+              "gen_ai.response.finish_reasons": "[\"length\"]",
+              "gen_ai.response.finish_reason": "length",
+              "langfuse.observation.completion_start_time": "2026-09-05T12:54:43.263Z",
+              "langfuse.observation.usage_details": "{\"input\":17,\"output\":4,\"total\":21}",
+              "langfuse.observation.cost_details": "{\"input\":0.0000051,\"output\":0.00001,\"total\":0.0000151}",
+              "gen_ai.usage.cost": "0.0000151",
+              "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "obsprobe-trace-1788612874"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": "google/gemini-3.5-flash-lite",
+          "modelParameters": {},
+          "completionStartTime": "2026-09-05T12:54:43.263Z",
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.776,
+          "timeToFirstToken": 0.703,
+          "usageDetails": {
+            "input": 17,
+            "output": 4,
+            "total": 21
+          },
+          "costDetails": {
+            "input": 5.1e-06,
+            "output": 1e-05,
+            "total": 1.51e-05
+          },
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "inputPrice": 3e-07,
+          "outputPrice": 2.5e-06,
+          "totalPrice": null,
+          "calculatedInputCost": 5.1e-06,
+          "calculatedOutputCost": 1e-05,
+          "calculatedTotalCost": 1.51e-05,
+          "unit": "TOKENS",
+          "promptTokens": 17,
+          "completionTokens": 4,
+          "totalTokens": 21,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 17,
+            "output": 4,
+            "total": 21
+          }
+        },
+        {
+          "id": "2dba811f0ab1fda8",
+          "traceId": "8b15b51c4f6c36711f217e68ad5c99ac",
+          "startTime": "2026-09-05T12:54:42.560Z",
+          "endTime": "2026-09-05T12:54:43.254Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": "f372b9df854e85e9",
+          "type": "SPAN",
+          "environment": "default",
+          "name": "provider attempt 1: Google",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:44.054Z",
+          "updatedAt": "2026-09-05T12:54:44.055Z",
+          "input": null,
+          "output": null,
+          "metadata": {
+            "attempt_index": 0,
+            "status_code": 200,
+            "is_byok": false,
+            "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+            "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+            "attributes": {
+              "langfuse.observation.type": "span",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.response.id": "gen-1788612882-VIwPVS3nYy8r0FBUH6Xi:attempt-0"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "obsprobe-trace-1788612874"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": null,
+          "modelParameters": null,
+          "completionStartTime": null,
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.694,
+          "timeToFirstToken": null,
+          "usageDetails": {},
+          "costDetails": {},
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "calculatedInputCost": null,
+          "calculatedOutputCost": null,
+          "calculatedTotalCost": null,
+          "unit": "TOKENS",
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 0,
+            "output": 0,
+            "total": 0
+          }
+        },
+        {
+          "id": "bfdd7a538241b627",
+          "traceId": "8b15b51c4f6c36711f217e68ad5c99ac",
+          "startTime": "2026-09-05T12:54:40.543Z",
+          "endTime": "2026-09-05T12:54:41.480Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": "0123456789abcdef",
+          "type": "GENERATION",
+          "environment": "obsprobe-env",
+          "name": "obs-probe-genname-1788612874",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:42.389Z",
+          "updatedAt": "2026-09-05T12:54:42.389Z",
+          "input": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "obsprobe-d1-1788612874"
+              }
+            ]
+          },
+          "output": {
+            "completion": "It looks like you",
+            "reasoning": null,
+            "rawRequest": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "max_tokens": 8,
+              "user": "obs-probe-user-1788612874",
+              "session_id": "obs-probe-session-1788612874",
+              "tags": [
+                "obs-probe-tag-1788612874",
+                "audit"
+              ],
+              "trace": {
+                "trace_id": "obsprobe-trace-1788612874",
+                "trace_name": "obs-probe-tracename-1788612874",
+                "span_name": "obs-probe-spanname-1788612874",
+                "generation_name": "obs-probe-genname-1788612874",
+                "environment": "obsprobe-env",
+                "release": "obsprobe-release-9.9.9",
+                "parent_span_id": "0123456789abcdef",
+                "tags": [
+                  "obs-probe-tracetag-1788612874"
+                ],
+                "run_id": "obs-probe-run-1788612874",
+                "agent_role": "Market evidence analyst",
+                "task_name": "market_task"
+              },
+              "_skin": "chat-completions"
+            }
+          },
+          "metadata": {
+            "environment": "obsprobe-env",
+            "release": "obsprobe-release-9.9.9",
+            "tags": [
+              "obs-probe-tracetag-1788612874"
+            ],
+            "run_id": "obs-probe-run-1788612874",
+            "agent_role": "Market evidence analyst",
+            "task_name": "market_task",
+            "provider_responses": [
+              {
+                "id": "EBGcao-bJb-Kk7QP9OrwgQ0",
+                "provider_name": "Google",
+                "status": 200,
+                "latency": 814,
+                "is_byok": false,
+                "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+              }
+            ],
+            "attributes": {
+              "langfuse.trace.name": "obs-probe-tracename-1788612874",
+              "langfuse.user.id": "obs-probe-user-1788612874",
+              "langfuse.session.id": "obs-probe-session-1788612874",
+              "langfuse.observation.type": "generation",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.system": "google",
+              "gen_ai.provider.name": "google",
+              "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.id": "gen-1788612880-8wpoqatoJCppvLlOOwVy",
+              "gen_ai.usage.input_tokens": "17",
+              "gen_ai.usage.output_tokens": "4",
+              "gen_ai.usage.total_tokens": "21",
+              "gen_ai.usage.input_cost": "0.0000051",
+              "gen_ai.usage.output_cost": "0.00001",
+              "gen_ai.usage.total_cost": "0.0000151",
+              "gen_ai.usage.input_tokens.cached": "0",
+              "gen_ai.usage.input_tokens.audio": "0",
+              "gen_ai.usage.input_tokens.video": "0",
+              "gen_ai.usage.output_tokens.reasoning": "0",
+              "gen_ai.usage.output_tokens.image": "0",
+              "gen_ai.response.finish_reasons": "[\"length\"]",
+              "gen_ai.response.finish_reason": "length",
+              "langfuse.release": "obsprobe-release-9.9.9",
+              "langfuse.environment": "obsprobe-env",
+              "langfuse.observation.completion_start_time": "2026-09-05T12:54:41.372Z",
+              "langfuse.observation.usage_details": "{\"input\":17,\"output\":4,\"total\":21}",
+              "langfuse.observation.cost_details": "{\"input\":0.0000051,\"output\":0.00001,\"total\":0.0000151}",
+              "gen_ai.usage.cost": "0.0000151",
+              "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "obsprobe-trace-1788612874",
+              "langfuse.environment": "obsprobe-env",
+              "langfuse.release": "obsprobe-release-9.9.9"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": "google/gemini-3.5-flash-lite",
+          "modelParameters": {},
+          "completionStartTime": "2026-09-05T12:54:41.372Z",
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.937,
+          "timeToFirstToken": 0.829,
+          "usageDetails": {
+            "input": 17,
+            "output": 4,
+            "total": 21
+          },
+          "costDetails": {
+            "input": 5.1e-06,
+            "output": 1e-05,
+            "total": 1.51e-05
+          },
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "inputPrice": 3e-07,
+          "outputPrice": 2.5e-06,
+          "totalPrice": null,
+          "calculatedInputCost": 5.1e-06,
+          "calculatedOutputCost": 1e-05,
+          "calculatedTotalCost": 1.51e-05,
+          "unit": "TOKENS",
+          "promptTokens": 17,
+          "completionTokens": 4,
+          "totalTokens": 21,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 17,
+            "output": 4,
+            "total": 21
+          }
+        },
+        {
+          "id": "aaebbd0abf6e57c1",
+          "traceId": "8b15b51c4f6c36711f217e68ad5c99ac",
+          "startTime": "2026-09-05T12:54:40.543Z",
+          "endTime": "2026-09-05T12:54:41.357Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": "bfdd7a538241b627",
+          "type": "SPAN",
+          "environment": "obsprobe-env",
+          "name": "provider attempt 1: Google",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:42.389Z",
+          "updatedAt": "2026-09-05T12:54:42.390Z",
+          "input": null,
+          "output": null,
+          "metadata": {
+            "attempt_index": 0,
+            "status_code": 200,
+            "is_byok": false,
+            "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+            "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+            "attributes": {
+              "langfuse.observation.type": "span",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.response.id": "gen-1788612880-8wpoqatoJCppvLlOOwVy:attempt-0",
+              "langfuse.environment": "obsprobe-env"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "obsprobe-trace-1788612874",
+              "langfuse.environment": "obsprobe-env",
+              "langfuse.release": "obsprobe-release-9.9.9"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": null,
+          "modelParameters": null,
+          "completionStartTime": null,
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.814,
+          "timeToFirstToken": null,
+          "usageDetails": {},
+          "costDetails": {},
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "calculatedInputCost": null,
+          "calculatedOutputCost": null,
+          "calculatedTotalCost": null,
+          "unit": "TOKENS",
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 0,
+            "output": 0,
+            "total": 0
+          }
+        }
+      ]
+    },
+    "probe-c (top-level user)": {
+      "trace_id": "eaeafed19b1950dd9094add7388c32c7",
+      "trace": {
+        "id": "eaeafed19b1950dd9094add7388c32c7",
+        "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+        "name": "OpenRouter Request",
+        "timestamp": "2026-09-05T12:54:38.860Z",
+        "environment": "default",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": "obs-probe-user-1788612874",
+        "sessionId": null,
+        "public": false,
+        "input": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "obsprobe-c-1788612874"
+            }
+          ]
+        },
+        "output": {
+          "completion": "It looks like you",
+          "reasoning": null,
+          "rawRequest": {
+            "model": "google/gemini-3.5-flash-lite:nitro",
+            "max_tokens": 8,
+            "user": "obs-probe-user-1788612874",
+            "_skin": "chat-completions"
+          }
+        },
+        "metadata": {
+          "openrouter.provider_name": "Google",
+          "resourceAttributes": {
+            "service.name": "openrouter",
+            "openrouter.trace.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd"
+          },
+          "scope": {
+            "name": "openrouter",
+            "attributes": {}
+          },
+          "provider_responses": [
+            {
+              "id": "DhGcatjKN8vXk7QPpL-d-Qc",
+              "provider_name": "Google",
+              "status": 200,
+              "latency": 526,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+            }
+          ],
+          "openrouter.source": "openrouter",
+          "openrouter.api_key_name": "MultiAgentCrewAI",
+          "openrouter.entity_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.user_id": "obs-probe-user-1788612874",
+          "openrouter.creator_user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.router_latency_ms": 14,
+          "openrouter.provider_request_ms": 14,
+          "openrouter.provider_headers_ms": 540,
+          "openrouter.first_token_ms": 540,
+          "openrouter.provider_body_end_ms": 602,
+          "openrouter.provider_time_to_first_token_ms": 526,
+          "openrouter.provider_slug": "google-vertex/global",
+          "openrouter.finish_reason": "MAX_TOKENS",
+          "openrouter.input_unit_price": 3e-07,
+          "openrouter.output_unit_price": 2.5e-06,
+          "attributes": {
+            "langfuse.trace.name": "OpenRouter Request",
+            "langfuse.user.id": "obs-probe-user-1788612874",
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.level": "DEFAULT",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.system": "google",
+            "gen_ai.provider.name": "google",
+            "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd",
+            "gen_ai.usage.input_tokens": "16",
+            "gen_ai.usage.output_tokens": "4",
+            "gen_ai.usage.total_tokens": "20",
+            "gen_ai.usage.input_cost": "0.0000048",
+            "gen_ai.usage.output_cost": "0.00001",
+            "gen_ai.usage.total_cost": "0.0000148",
+            "gen_ai.usage.input_tokens.cached": "0",
+            "gen_ai.usage.input_tokens.audio": "0",
+            "gen_ai.usage.input_tokens.video": "0",
+            "gen_ai.usage.output_tokens.reasoning": "0",
+            "gen_ai.usage.output_tokens.image": "0",
+            "gen_ai.response.finish_reasons": "[\"length\"]",
+            "gen_ai.response.finish_reason": "length",
+            "langfuse.observation.completion_start_time": "2026-09-05T12:54:39.400Z",
+            "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+            "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+            "gen_ai.usage.cost": "0.0000148",
+            "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+          }
+        },
+        "createdAt": "2026-09-05T12:54:40.000Z",
+        "updatedAt": "2026-09-05T12:54:39.732Z",
+        "externalId": null,
+        "scores": [],
+        "latency": 0.602,
+        "observations": [
+          {
+            "id": "eaeafed19b1950dd",
+            "traceId": "eaeafed19b1950dd9094add7388c32c7",
+            "startTime": "2026-09-05T12:54:38.860Z",
+            "endTime": "2026-09-05T12:54:39.462Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": null,
+            "type": "GENERATION",
+            "environment": "default",
+            "name": "LLM Generation",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:39.651Z",
+            "updatedAt": "2026-09-05T12:54:39.652Z",
+            "input": {
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "obsprobe-c-1788612874"
+                }
+              ]
+            },
+            "output": {
+              "completion": "It looks like you",
+              "reasoning": null,
+              "rawRequest": {
+                "model": "google/gemini-3.5-flash-lite:nitro",
+                "max_tokens": 8,
+                "user": "obs-probe-user-1788612874",
+                "_skin": "chat-completions"
+              }
+            },
+            "metadata": {
+              "provider_responses": [
+                {
+                  "id": "DhGcatjKN8vXk7QPpL-d-Qc",
+                  "provider_name": "Google",
+                  "status": 200,
+                  "latency": 526,
+                  "is_byok": false,
+                  "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                  "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+                }
+              ],
+              "attributes": {
+                "langfuse.trace.name": "OpenRouter Request",
+                "langfuse.user.id": "obs-probe-user-1788612874",
+                "langfuse.observation.type": "generation",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.system": "google",
+                "gen_ai.provider.name": "google",
+                "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd",
+                "gen_ai.usage.input_tokens": "16",
+                "gen_ai.usage.output_tokens": "4",
+                "gen_ai.usage.total_tokens": "20",
+                "gen_ai.usage.input_cost": "0.0000048",
+                "gen_ai.usage.output_cost": "0.00001",
+                "gen_ai.usage.total_cost": "0.0000148",
+                "gen_ai.usage.input_tokens.cached": "0",
+                "gen_ai.usage.input_tokens.audio": "0",
+                "gen_ai.usage.input_tokens.video": "0",
+                "gen_ai.usage.output_tokens.reasoning": "0",
+                "gen_ai.usage.output_tokens.image": "0",
+                "gen_ai.response.finish_reasons": "[\"length\"]",
+                "gen_ai.response.finish_reason": "length",
+                "langfuse.observation.completion_start_time": "2026-09-05T12:54:39.400Z",
+                "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+                "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+                "gen_ai.usage.cost": "0.0000148",
+                "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": "google/gemini-3.5-flash-lite",
+            "modelParameters": {},
+            "completionStartTime": "2026-09-05T12:54:39.400Z",
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.602,
+            "timeToFirstToken": 0.54,
+            "usageDetails": {
+              "input": 16,
+              "output": 4,
+              "total": 20
+            },
+            "costDetails": {
+              "input": 4.8e-06,
+              "output": 1e-05,
+              "total": 1.48e-05
+            },
+            "usagePricingTierId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e_tier_default",
+            "usagePricingTierName": "Standard",
+            "inputPrice": 3e-07,
+            "outputPrice": 2.5e-06,
+            "totalPrice": 0,
+            "calculatedInputCost": 4.8e-06,
+            "calculatedOutputCost": 1e-05,
+            "calculatedTotalCost": 1.48e-05,
+            "unit": "TOKENS",
+            "promptTokens": 16,
+            "completionTokens": 4,
+            "totalTokens": 20,
+            "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+            "usage": {
+              "unit": "TOKENS",
+              "input": 16,
+              "output": 4,
+              "total": 20
+            }
+          },
+          {
+            "id": "1e9835be0e0b58e9",
+            "traceId": "eaeafed19b1950dd9094add7388c32c7",
+            "startTime": "2026-09-05T12:54:38.860Z",
+            "endTime": "2026-09-05T12:54:39.386Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": "eaeafed19b1950dd",
+            "type": "SPAN",
+            "environment": "default",
+            "name": "provider attempt 1: Google",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:39.651Z",
+            "updatedAt": "2026-09-05T12:54:39.652Z",
+            "input": null,
+            "output": null,
+            "metadata": {
+              "attempt_index": 0,
+              "status_code": 200,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+              "attributes": {
+                "langfuse.observation.type": "span",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.response.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd:attempt-0"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": null,
+            "modelParameters": null,
+            "completionStartTime": null,
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.526,
+            "timeToFirstToken": null,
+            "usageDetails": {},
+            "costDetails": {},
+            "usagePricingTierId": null,
+            "usagePricingTierName": null,
+            "inputPrice": 0,
+            "outputPrice": 0,
+            "totalPrice": 0,
+            "calculatedInputCost": null,
+            "calculatedOutputCost": null,
+            "calculatedTotalCost": null,
+            "unit": "TOKENS",
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0,
+            "modelId": null,
+            "usage": {
+              "unit": "TOKENS",
+              "input": 0,
+              "output": 0,
+              "total": 0
+            }
+          }
+        ],
+        "htmlPath": "/project/cmto3mj7t06ykad0ipon3ksbw/traces/eaeafed19b1950dd9094add7388c32c7",
+        "totalCost": 1.48e-05,
+        "_deprecation": {
+          "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read span and trace data via GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>.",
+          "replacement": "GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>",
+          "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+          "sunsetAt": "2026-11-16"
+        }
+      },
+      "observations": [
+        {
+          "id": "eaeafed19b1950dd",
+          "traceId": "eaeafed19b1950dd9094add7388c32c7",
+          "startTime": "2026-09-05T12:54:38.860Z",
+          "endTime": "2026-09-05T12:54:39.462Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": null,
+          "type": "GENERATION",
+          "environment": "default",
+          "name": "LLM Generation",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:39.651Z",
+          "updatedAt": "2026-09-05T12:54:39.652Z",
+          "input": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "obsprobe-c-1788612874"
+              }
+            ]
+          },
+          "output": {
+            "completion": "It looks like you",
+            "reasoning": null,
+            "rawRequest": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "max_tokens": 8,
+              "user": "obs-probe-user-1788612874",
+              "_skin": "chat-completions"
+            }
+          },
+          "metadata": {
+            "provider_responses": [
+              {
+                "id": "DhGcatjKN8vXk7QPpL-d-Qc",
+                "provider_name": "Google",
+                "status": 200,
+                "latency": 526,
+                "is_byok": false,
+                "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+              }
+            ],
+            "attributes": {
+              "langfuse.trace.name": "OpenRouter Request",
+              "langfuse.user.id": "obs-probe-user-1788612874",
+              "langfuse.observation.type": "generation",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.system": "google",
+              "gen_ai.provider.name": "google",
+              "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd",
+              "gen_ai.usage.input_tokens": "16",
+              "gen_ai.usage.output_tokens": "4",
+              "gen_ai.usage.total_tokens": "20",
+              "gen_ai.usage.input_cost": "0.0000048",
+              "gen_ai.usage.output_cost": "0.00001",
+              "gen_ai.usage.total_cost": "0.0000148",
+              "gen_ai.usage.input_tokens.cached": "0",
+              "gen_ai.usage.input_tokens.audio": "0",
+              "gen_ai.usage.input_tokens.video": "0",
+              "gen_ai.usage.output_tokens.reasoning": "0",
+              "gen_ai.usage.output_tokens.image": "0",
+              "gen_ai.response.finish_reasons": "[\"length\"]",
+              "gen_ai.response.finish_reason": "length",
+              "langfuse.observation.completion_start_time": "2026-09-05T12:54:39.400Z",
+              "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+              "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+              "gen_ai.usage.cost": "0.0000148",
+              "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": "google/gemini-3.5-flash-lite",
+          "modelParameters": {},
+          "completionStartTime": "2026-09-05T12:54:39.400Z",
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.602,
+          "timeToFirstToken": 0.54,
+          "usageDetails": {
+            "input": 16,
+            "output": 4,
+            "total": 20
+          },
+          "costDetails": {
+            "input": 4.8e-06,
+            "output": 1e-05,
+            "total": 1.48e-05
+          },
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "inputPrice": 3e-07,
+          "outputPrice": 2.5e-06,
+          "totalPrice": null,
+          "calculatedInputCost": 4.8e-06,
+          "calculatedOutputCost": 1e-05,
+          "calculatedTotalCost": 1.48e-05,
+          "unit": "TOKENS",
+          "promptTokens": 16,
+          "completionTokens": 4,
+          "totalTokens": 20,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 16,
+            "output": 4,
+            "total": 20
+          }
+        },
+        {
+          "id": "1e9835be0e0b58e9",
+          "traceId": "eaeafed19b1950dd9094add7388c32c7",
+          "startTime": "2026-09-05T12:54:38.860Z",
+          "endTime": "2026-09-05T12:54:39.386Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": "eaeafed19b1950dd",
+          "type": "SPAN",
+          "environment": "default",
+          "name": "provider attempt 1: Google",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:39.651Z",
+          "updatedAt": "2026-09-05T12:54:39.652Z",
+          "input": null,
+          "output": null,
+          "metadata": {
+            "attempt_index": 0,
+            "status_code": 200,
+            "is_byok": false,
+            "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+            "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+            "attributes": {
+              "langfuse.observation.type": "span",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.response.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd:attempt-0"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": null,
+          "modelParameters": null,
+          "completionStartTime": null,
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.526,
+          "timeToFirstToken": null,
+          "usageDetails": {},
+          "costDetails": {},
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "calculatedInputCost": null,
+          "calculatedOutputCost": null,
+          "calculatedTotalCost": null,
+          "unit": "TOKENS",
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 0,
+            "output": 0,
+            "total": 0
+          }
+        }
+      ]
+    },
+    "probe-b (HTTP-Referer + X-Title)": {
+      "trace_id": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+      "trace": {
+        "id": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+        "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+        "name": "OpenRouter Request",
+        "timestamp": "2026-09-05T12:54:37.000Z",
+        "environment": "default",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": null,
+        "public": false,
+        "input": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "obsprobe-b-1788612874"
+            }
+          ]
+        },
+        "output": {
+          "completion": "It looks like you",
+          "reasoning": null,
+          "rawRequest": {
+            "model": "google/gemini-3.5-flash-lite:nitro",
+            "max_tokens": 8,
+            "_skin": "chat-completions"
+          }
+        },
+        "metadata": {
+          "openrouter.provider_name": "Google",
+          "resourceAttributes": {
+            "service.name": "openrouter",
+            "openrouter.trace.id": "gen-1788612877-6twjdYtfRyDna6jxINoG"
+          },
+          "scope": {
+            "name": "openrouter",
+            "attributes": {}
+          },
+          "provider_responses": [
+            {
+              "id": "DRGcarn-Avvi694PpYTQuA0",
+              "provider_name": "Google",
+              "status": 200,
+              "latency": 658,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+            }
+          ],
+          "openrouter.source": "openrouter",
+          "openrouter.api_key_name": "MultiAgentCrewAI",
+          "openrouter.entity_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.creator_user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.router_latency_ms": 5,
+          "openrouter.provider_request_ms": 5,
+          "openrouter.provider_headers_ms": 663,
+          "openrouter.first_token_ms": 664,
+          "openrouter.provider_body_end_ms": 769,
+          "openrouter.provider_time_to_first_token_ms": 659,
+          "openrouter.provider_slug": "google-vertex/global",
+          "openrouter.finish_reason": "MAX_TOKENS",
+          "openrouter.input_unit_price": 3e-07,
+          "openrouter.output_unit_price": 2.5e-06,
+          "attributes": {
+            "langfuse.trace.name": "OpenRouter Request",
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.level": "DEFAULT",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.system": "google",
+            "gen_ai.provider.name": "google",
+            "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.id": "gen-1788612877-6twjdYtfRyDna6jxINoG",
+            "gen_ai.usage.input_tokens": "16",
+            "gen_ai.usage.output_tokens": "4",
+            "gen_ai.usage.total_tokens": "20",
+            "gen_ai.usage.input_cost": "0.0000048",
+            "gen_ai.usage.output_cost": "0.00001",
+            "gen_ai.usage.total_cost": "0.0000148",
+            "gen_ai.usage.input_tokens.cached": "0",
+            "gen_ai.usage.input_tokens.audio": "0",
+            "gen_ai.usage.input_tokens.video": "0",
+            "gen_ai.usage.output_tokens.reasoning": "0",
+            "gen_ai.usage.output_tokens.image": "0",
+            "gen_ai.response.finish_reasons": "[\"length\"]",
+            "gen_ai.response.finish_reason": "length",
+            "langfuse.observation.completion_start_time": "2026-09-05T12:54:37.664Z",
+            "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+            "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+            "gen_ai.usage.cost": "0.0000148",
+            "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+          }
+        },
+        "createdAt": "2026-09-05T12:54:40.000Z",
+        "updatedAt": "2026-09-05T12:54:39.090Z",
+        "externalId": null,
+        "scores": [],
+        "latency": 1.288,
+        "observations": [
+          {
+            "id": "5ea03d9dac2e4dd9",
+            "traceId": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+            "startTime": "2026-09-05T12:54:37.000Z",
+            "endTime": "2026-09-05T12:54:38.288Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": null,
+            "type": "GENERATION",
+            "environment": "default",
+            "name": "LLM Generation",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:39.012Z",
+            "updatedAt": "2026-09-05T12:54:39.012Z",
+            "input": {
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "obsprobe-b-1788612874"
+                }
+              ]
+            },
+            "output": {
+              "completion": "It looks like you",
+              "reasoning": null,
+              "rawRequest": {
+                "model": "google/gemini-3.5-flash-lite:nitro",
+                "max_tokens": 8,
+                "_skin": "chat-completions"
+              }
+            },
+            "metadata": {
+              "provider_responses": [
+                {
+                  "id": "DRGcarn-Avvi694PpYTQuA0",
+                  "provider_name": "Google",
+                  "status": 200,
+                  "latency": 658,
+                  "is_byok": false,
+                  "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                  "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+                }
+              ],
+              "attributes": {
+                "langfuse.trace.name": "OpenRouter Request",
+                "langfuse.observation.type": "generation",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.system": "google",
+                "gen_ai.provider.name": "google",
+                "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.id": "gen-1788612877-6twjdYtfRyDna6jxINoG",
+                "gen_ai.usage.input_tokens": "16",
+                "gen_ai.usage.output_tokens": "4",
+                "gen_ai.usage.total_tokens": "20",
+                "gen_ai.usage.input_cost": "0.0000048",
+                "gen_ai.usage.output_cost": "0.00001",
+                "gen_ai.usage.total_cost": "0.0000148",
+                "gen_ai.usage.input_tokens.cached": "0",
+                "gen_ai.usage.input_tokens.audio": "0",
+                "gen_ai.usage.input_tokens.video": "0",
+                "gen_ai.usage.output_tokens.reasoning": "0",
+                "gen_ai.usage.output_tokens.image": "0",
+                "gen_ai.response.finish_reasons": "[\"length\"]",
+                "gen_ai.response.finish_reason": "length",
+                "langfuse.observation.completion_start_time": "2026-09-05T12:54:37.664Z",
+                "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+                "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+                "gen_ai.usage.cost": "0.0000148",
+                "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "gen-1788612877-6twjdYtfRyDna6jxINoG"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": "google/gemini-3.5-flash-lite",
+            "modelParameters": {},
+            "completionStartTime": "2026-09-05T12:54:37.664Z",
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 1.288,
+            "timeToFirstToken": 0.664,
+            "usageDetails": {
+              "input": 16,
+              "output": 4,
+              "total": 20
+            },
+            "costDetails": {
+              "input": 4.8e-06,
+              "output": 1e-05,
+              "total": 1.48e-05
+            },
+            "usagePricingTierId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e_tier_default",
+            "usagePricingTierName": "Standard",
+            "inputPrice": 3e-07,
+            "outputPrice": 2.5e-06,
+            "totalPrice": 0,
+            "calculatedInputCost": 4.8e-06,
+            "calculatedOutputCost": 1e-05,
+            "calculatedTotalCost": 1.48e-05,
+            "unit": "TOKENS",
+            "promptTokens": 16,
+            "completionTokens": 4,
+            "totalTokens": 20,
+            "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+            "usage": {
+              "unit": "TOKENS",
+              "input": 16,
+              "output": 4,
+              "total": 20
+            }
+          },
+          {
+            "id": "3b1e8b24e24bd603",
+            "traceId": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+            "startTime": "2026-09-05T12:54:37.000Z",
+            "endTime": "2026-09-05T12:54:37.658Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": "5ea03d9dac2e4dd9",
+            "type": "SPAN",
+            "environment": "default",
+            "name": "provider attempt 1: Google",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:39.012Z",
+            "updatedAt": "2026-09-05T12:54:39.013Z",
+            "input": null,
+            "output": null,
+            "metadata": {
+              "attempt_index": 0,
+              "status_code": 200,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+              "attributes": {
+                "langfuse.observation.type": "span",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.response.id": "gen-1788612877-6twjdYtfRyDna6jxINoG:attempt-0"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "gen-1788612877-6twjdYtfRyDna6jxINoG"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": null,
+            "modelParameters": null,
+            "completionStartTime": null,
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.658,
+            "timeToFirstToken": null,
+            "usageDetails": {},
+            "costDetails": {},
+            "usagePricingTierId": null,
+            "usagePricingTierName": null,
+            "inputPrice": 0,
+            "outputPrice": 0,
+            "totalPrice": 0,
+            "calculatedInputCost": null,
+            "calculatedOutputCost": null,
+            "calculatedTotalCost": null,
+            "unit": "TOKENS",
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0,
+            "modelId": null,
+            "usage": {
+              "unit": "TOKENS",
+              "input": 0,
+              "output": 0,
+              "total": 0
+            }
+          }
+        ],
+        "htmlPath": "/project/cmto3mj7t06ykad0ipon3ksbw/traces/5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+        "totalCost": 1.48e-05,
+        "_deprecation": {
+          "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read span and trace data via GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>.",
+          "replacement": "GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>",
+          "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+          "sunsetAt": "2026-11-16"
+        }
+      },
+      "observations": [
+        {
+          "id": "5ea03d9dac2e4dd9",
+          "traceId": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+          "startTime": "2026-09-05T12:54:37.000Z",
+          "endTime": "2026-09-05T12:54:38.288Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": null,
+          "type": "GENERATION",
+          "environment": "default",
+          "name": "LLM Generation",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:39.012Z",
+          "updatedAt": "2026-09-05T12:54:39.012Z",
+          "input": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "obsprobe-b-1788612874"
+              }
+            ]
+          },
+          "output": {
+            "completion": "It looks like you",
+            "reasoning": null,
+            "rawRequest": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "max_tokens": 8,
+              "_skin": "chat-completions"
+            }
+          },
+          "metadata": {
+            "provider_responses": [
+              {
+                "id": "DRGcarn-Avvi694PpYTQuA0",
+                "provider_name": "Google",
+                "status": 200,
+                "latency": 658,
+                "is_byok": false,
+                "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+              }
+            ],
+            "attributes": {
+              "langfuse.trace.name": "OpenRouter Request",
+              "langfuse.observation.type": "generation",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.system": "google",
+              "gen_ai.provider.name": "google",
+              "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.id": "gen-1788612877-6twjdYtfRyDna6jxINoG",
+              "gen_ai.usage.input_tokens": "16",
+              "gen_ai.usage.output_tokens": "4",
+              "gen_ai.usage.total_tokens": "20",
+              "gen_ai.usage.input_cost": "0.0000048",
+              "gen_ai.usage.output_cost": "0.00001",
+              "gen_ai.usage.total_cost": "0.0000148",
+              "gen_ai.usage.input_tokens.cached": "0",
+              "gen_ai.usage.input_tokens.audio": "0",
+              "gen_ai.usage.input_tokens.video": "0",
+              "gen_ai.usage.output_tokens.reasoning": "0",
+              "gen_ai.usage.output_tokens.image": "0",
+              "gen_ai.response.finish_reasons": "[\"length\"]",
+              "gen_ai.response.finish_reason": "length",
+              "langfuse.observation.completion_start_time": "2026-09-05T12:54:37.664Z",
+              "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+              "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+              "gen_ai.usage.cost": "0.0000148",
+              "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "gen-1788612877-6twjdYtfRyDna6jxINoG"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": "google/gemini-3.5-flash-lite",
+          "modelParameters": {},
+          "completionStartTime": "2026-09-05T12:54:37.664Z",
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 1.288,
+          "timeToFirstToken": 0.664,
+          "usageDetails": {
+            "input": 16,
+            "output": 4,
+            "total": 20
+          },
+          "costDetails": {
+            "input": 4.8e-06,
+            "output": 1e-05,
+            "total": 1.48e-05
+          },
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "inputPrice": 3e-07,
+          "outputPrice": 2.5e-06,
+          "totalPrice": null,
+          "calculatedInputCost": 4.8e-06,
+          "calculatedOutputCost": 1e-05,
+          "calculatedTotalCost": 1.48e-05,
+          "unit": "TOKENS",
+          "promptTokens": 16,
+          "completionTokens": 4,
+          "totalTokens": 20,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 16,
+            "output": 4,
+            "total": 20
+          }
+        },
+        {
+          "id": "3b1e8b24e24bd603",
+          "traceId": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+          "startTime": "2026-09-05T12:54:37.000Z",
+          "endTime": "2026-09-05T12:54:37.658Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": "5ea03d9dac2e4dd9",
+          "type": "SPAN",
+          "environment": "default",
+          "name": "provider attempt 1: Google",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:39.012Z",
+          "updatedAt": "2026-09-05T12:54:39.013Z",
+          "input": null,
+          "output": null,
+          "metadata": {
+            "attempt_index": 0,
+            "status_code": 200,
+            "is_byok": false,
+            "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+            "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+            "attributes": {
+              "langfuse.observation.type": "span",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.response.id": "gen-1788612877-6twjdYtfRyDna6jxINoG:attempt-0"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "gen-1788612877-6twjdYtfRyDna6jxINoG"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": null,
+          "modelParameters": null,
+          "completionStartTime": null,
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.658,
+          "timeToFirstToken": null,
+          "usageDetails": {},
+          "costDetails": {},
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "calculatedInputCost": null,
+          "calculatedOutputCost": null,
+          "calculatedTotalCost": null,
+          "unit": "TOKENS",
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 0,
+            "output": 0,
+            "total": 0
+          }
+        }
+      ]
+    },
+    "probe-a (plain)": {
+      "trace_id": "7bb1830b2921c9336483b844723fccfd",
+      "trace": {
+        "id": "7bb1830b2921c9336483b844723fccfd",
+        "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+        "name": "OpenRouter Request",
+        "timestamp": "2026-09-05T12:54:34.941Z",
+        "environment": "default",
+        "tags": [],
+        "bookmarked": false,
+        "release": null,
+        "version": null,
+        "userId": null,
+        "sessionId": null,
+        "public": false,
+        "input": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "obsprobe-a-1788612874"
+            }
+          ]
+        },
+        "output": {
+          "completion": "It looks like you",
+          "reasoning": null,
+          "rawRequest": {
+            "model": "google/gemini-3.5-flash-lite:nitro",
+            "max_tokens": 8,
+            "_skin": "chat-completions"
+          }
+        },
+        "metadata": {
+          "openrouter.provider_name": "Google",
+          "resourceAttributes": {
+            "service.name": "openrouter",
+            "openrouter.trace.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ"
+          },
+          "scope": {
+            "name": "openrouter",
+            "attributes": {}
+          },
+          "provider_responses": [
+            {
+              "id": "CxGcasi0EJbRi9sPg_Td2AQ",
+              "provider_name": "Google",
+              "status": 200,
+              "latency": 639,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+            }
+          ],
+          "openrouter.source": "openrouter",
+          "openrouter.api_key_name": "MultiAgentCrewAI",
+          "openrouter.entity_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.creator_user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+          "openrouter.router_latency_ms": 277,
+          "openrouter.provider_request_ms": 277,
+          "openrouter.provider_headers_ms": 916,
+          "openrouter.first_token_ms": 916,
+          "openrouter.provider_body_end_ms": 969,
+          "openrouter.provider_time_to_first_token_ms": 639,
+          "openrouter.provider_slug": "google-vertex/global",
+          "openrouter.finish_reason": "MAX_TOKENS",
+          "openrouter.input_unit_price": 3e-07,
+          "openrouter.output_unit_price": 2.5e-06,
+          "attributes": {
+            "langfuse.trace.name": "OpenRouter Request",
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.level": "DEFAULT",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.system": "google",
+            "gen_ai.provider.name": "google",
+            "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+            "gen_ai.response.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ",
+            "gen_ai.usage.input_tokens": "16",
+            "gen_ai.usage.output_tokens": "4",
+            "gen_ai.usage.total_tokens": "20",
+            "gen_ai.usage.input_cost": "0.0000048",
+            "gen_ai.usage.output_cost": "0.00001",
+            "gen_ai.usage.total_cost": "0.0000148",
+            "gen_ai.usage.input_tokens.cached": "0",
+            "gen_ai.usage.input_tokens.audio": "0",
+            "gen_ai.usage.input_tokens.video": "0",
+            "gen_ai.usage.output_tokens.reasoning": "0",
+            "gen_ai.usage.output_tokens.image": "0",
+            "gen_ai.response.finish_reasons": "[\"length\"]",
+            "gen_ai.response.finish_reason": "length",
+            "langfuse.observation.completion_start_time": "2026-09-05T12:54:35.857Z",
+            "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+            "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+            "gen_ai.usage.cost": "0.0000148",
+            "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+          }
+        },
+        "createdAt": "2026-09-05T12:54:37.000Z",
+        "updatedAt": "2026-09-05T12:54:36.755Z",
+        "externalId": null,
+        "scores": [],
+        "latency": 0.969,
+        "observations": [
+          {
+            "id": "7bb1830b2921c933",
+            "traceId": "7bb1830b2921c9336483b844723fccfd",
+            "startTime": "2026-09-05T12:54:34.941Z",
+            "endTime": "2026-09-05T12:54:35.910Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": null,
+            "type": "GENERATION",
+            "environment": "default",
+            "name": "LLM Generation",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:36.666Z",
+            "updatedAt": "2026-09-05T12:54:36.667Z",
+            "input": {
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "obsprobe-a-1788612874"
+                }
+              ]
+            },
+            "output": {
+              "completion": "It looks like you",
+              "reasoning": null,
+              "rawRequest": {
+                "model": "google/gemini-3.5-flash-lite:nitro",
+                "max_tokens": 8,
+                "_skin": "chat-completions"
+              }
+            },
+            "metadata": {
+              "provider_responses": [
+                {
+                  "id": "CxGcasi0EJbRi9sPg_Td2AQ",
+                  "provider_name": "Google",
+                  "status": 200,
+                  "latency": 639,
+                  "is_byok": false,
+                  "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                  "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+                }
+              ],
+              "attributes": {
+                "langfuse.trace.name": "OpenRouter Request",
+                "langfuse.observation.type": "generation",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.system": "google",
+                "gen_ai.provider.name": "google",
+                "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+                "gen_ai.response.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ",
+                "gen_ai.usage.input_tokens": "16",
+                "gen_ai.usage.output_tokens": "4",
+                "gen_ai.usage.total_tokens": "20",
+                "gen_ai.usage.input_cost": "0.0000048",
+                "gen_ai.usage.output_cost": "0.00001",
+                "gen_ai.usage.total_cost": "0.0000148",
+                "gen_ai.usage.input_tokens.cached": "0",
+                "gen_ai.usage.input_tokens.audio": "0",
+                "gen_ai.usage.input_tokens.video": "0",
+                "gen_ai.usage.output_tokens.reasoning": "0",
+                "gen_ai.usage.output_tokens.image": "0",
+                "gen_ai.response.finish_reasons": "[\"length\"]",
+                "gen_ai.response.finish_reason": "length",
+                "langfuse.observation.completion_start_time": "2026-09-05T12:54:35.857Z",
+                "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+                "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+                "gen_ai.usage.cost": "0.0000148",
+                "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": "google/gemini-3.5-flash-lite",
+            "modelParameters": {},
+            "completionStartTime": "2026-09-05T12:54:35.857Z",
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.969,
+            "timeToFirstToken": 0.916,
+            "usageDetails": {
+              "input": 16,
+              "output": 4,
+              "total": 20
+            },
+            "costDetails": {
+              "input": 4.8e-06,
+              "output": 1e-05,
+              "total": 1.48e-05
+            },
+            "usagePricingTierId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e_tier_default",
+            "usagePricingTierName": "Standard",
+            "inputPrice": 3e-07,
+            "outputPrice": 2.5e-06,
+            "totalPrice": 0,
+            "calculatedInputCost": 4.8e-06,
+            "calculatedOutputCost": 1e-05,
+            "calculatedTotalCost": 1.48e-05,
+            "unit": "TOKENS",
+            "promptTokens": 16,
+            "completionTokens": 4,
+            "totalTokens": 20,
+            "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+            "usage": {
+              "unit": "TOKENS",
+              "input": 16,
+              "output": 4,
+              "total": 20
+            }
+          },
+          {
+            "id": "cb94d46fb93943f8",
+            "traceId": "7bb1830b2921c9336483b844723fccfd",
+            "startTime": "2026-09-05T12:54:34.941Z",
+            "endTime": "2026-09-05T12:54:35.580Z",
+            "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+            "parentObservationId": "7bb1830b2921c933",
+            "type": "SPAN",
+            "environment": "default",
+            "name": "provider attempt 1: Google",
+            "level": "DEFAULT",
+            "statusMessage": null,
+            "version": null,
+            "createdAt": "2026-09-05T12:54:36.667Z",
+            "updatedAt": "2026-09-05T12:54:36.667Z",
+            "input": null,
+            "output": null,
+            "metadata": {
+              "attempt_index": 0,
+              "status_code": 200,
+              "is_byok": false,
+              "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+              "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+              "attributes": {
+                "langfuse.observation.type": "span",
+                "langfuse.observation.level": "DEFAULT",
+                "gen_ai.operation.name": "chat",
+                "gen_ai.response.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ:attempt-0"
+              },
+              "resourceAttributes": {
+                "service.name": "openrouter",
+                "openrouter.trace.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ"
+              },
+              "scope": {
+                "name": "openrouter",
+                "attributes": {}
+              }
+            },
+            "model": null,
+            "modelParameters": null,
+            "completionStartTime": null,
+            "promptId": null,
+            "promptName": null,
+            "promptVersion": null,
+            "latency": 0.639,
+            "timeToFirstToken": null,
+            "usageDetails": {},
+            "costDetails": {},
+            "usagePricingTierId": null,
+            "usagePricingTierName": null,
+            "inputPrice": 0,
+            "outputPrice": 0,
+            "totalPrice": 0,
+            "calculatedInputCost": null,
+            "calculatedOutputCost": null,
+            "calculatedTotalCost": null,
+            "unit": "TOKENS",
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0,
+            "modelId": null,
+            "usage": {
+              "unit": "TOKENS",
+              "input": 0,
+              "output": 0,
+              "total": 0
+            }
+          }
+        ],
+        "htmlPath": "/project/cmto3mj7t06ykad0ipon3ksbw/traces/7bb1830b2921c9336483b844723fccfd",
+        "totalCost": 1.48e-05,
+        "_deprecation": {
+          "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read span and trace data via GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>.",
+          "replacement": "GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>",
+          "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+          "sunsetAt": "2026-11-16"
+        }
+      },
+      "observations": [
+        {
+          "id": "7bb1830b2921c933",
+          "traceId": "7bb1830b2921c9336483b844723fccfd",
+          "startTime": "2026-09-05T12:54:34.941Z",
+          "endTime": "2026-09-05T12:54:35.910Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": null,
+          "type": "GENERATION",
+          "environment": "default",
+          "name": "LLM Generation",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:36.666Z",
+          "updatedAt": "2026-09-05T12:54:36.667Z",
+          "input": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "obsprobe-a-1788612874"
+              }
+            ]
+          },
+          "output": {
+            "completion": "It looks like you",
+            "reasoning": null,
+            "rawRequest": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "max_tokens": 8,
+              "_skin": "chat-completions"
+            }
+          },
+          "metadata": {
+            "provider_responses": [
+              {
+                "id": "CxGcasi0EJbRi9sPg_Td2AQ",
+                "provider_name": "Google",
+                "status": 200,
+                "latency": 639,
+                "is_byok": false,
+                "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+                "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+              }
+            ],
+            "attributes": {
+              "langfuse.trace.name": "OpenRouter Request",
+              "langfuse.observation.type": "generation",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.system": "google",
+              "gen_ai.provider.name": "google",
+              "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+              "gen_ai.response.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ",
+              "gen_ai.usage.input_tokens": "16",
+              "gen_ai.usage.output_tokens": "4",
+              "gen_ai.usage.total_tokens": "20",
+              "gen_ai.usage.input_cost": "0.0000048",
+              "gen_ai.usage.output_cost": "0.00001",
+              "gen_ai.usage.total_cost": "0.0000148",
+              "gen_ai.usage.input_tokens.cached": "0",
+              "gen_ai.usage.input_tokens.audio": "0",
+              "gen_ai.usage.input_tokens.video": "0",
+              "gen_ai.usage.output_tokens.reasoning": "0",
+              "gen_ai.usage.output_tokens.image": "0",
+              "gen_ai.response.finish_reasons": "[\"length\"]",
+              "gen_ai.response.finish_reason": "length",
+              "langfuse.observation.completion_start_time": "2026-09-05T12:54:35.857Z",
+              "langfuse.observation.usage_details": "{\"input\":16,\"output\":4,\"total\":20}",
+              "langfuse.observation.cost_details": "{\"input\":0.0000048,\"output\":0.00001,\"total\":0.0000148}",
+              "gen_ai.usage.cost": "0.0000148",
+              "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": "google/gemini-3.5-flash-lite",
+          "modelParameters": {},
+          "completionStartTime": "2026-09-05T12:54:35.857Z",
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.969,
+          "timeToFirstToken": 0.916,
+          "usageDetails": {
+            "input": 16,
+            "output": 4,
+            "total": 20
+          },
+          "costDetails": {
+            "input": 4.8e-06,
+            "output": 1e-05,
+            "total": 1.48e-05
+          },
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "inputPrice": 3e-07,
+          "outputPrice": 2.5e-06,
+          "totalPrice": null,
+          "calculatedInputCost": 4.8e-06,
+          "calculatedOutputCost": 1e-05,
+          "calculatedTotalCost": 1.48e-05,
+          "unit": "TOKENS",
+          "promptTokens": 16,
+          "completionTokens": 4,
+          "totalTokens": 20,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 16,
+            "output": 4,
+            "total": 20
+          }
+        },
+        {
+          "id": "cb94d46fb93943f8",
+          "traceId": "7bb1830b2921c9336483b844723fccfd",
+          "startTime": "2026-09-05T12:54:34.941Z",
+          "endTime": "2026-09-05T12:54:35.580Z",
+          "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+          "parentObservationId": "7bb1830b2921c933",
+          "type": "SPAN",
+          "environment": "default",
+          "name": "provider attempt 1: Google",
+          "level": "DEFAULT",
+          "statusMessage": null,
+          "version": null,
+          "createdAt": "2026-09-05T12:54:36.667Z",
+          "updatedAt": "2026-09-05T12:54:36.667Z",
+          "input": null,
+          "output": null,
+          "metadata": {
+            "attempt_index": 0,
+            "status_code": 200,
+            "is_byok": false,
+            "endpoint_id": "fe0e0167-572a-482b-8145-f262c1797e79",
+            "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+            "attributes": {
+              "langfuse.observation.type": "span",
+              "langfuse.observation.level": "DEFAULT",
+              "gen_ai.operation.name": "chat",
+              "gen_ai.response.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ:attempt-0"
+            },
+            "resourceAttributes": {
+              "service.name": "openrouter",
+              "openrouter.trace.id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ"
+            },
+            "scope": {
+              "name": "openrouter",
+              "attributes": {}
+            }
+          },
+          "model": null,
+          "modelParameters": null,
+          "completionStartTime": null,
+          "promptId": null,
+          "promptName": null,
+          "promptVersion": null,
+          "latency": 0.639,
+          "timeToFirstToken": null,
+          "usageDetails": {},
+          "costDetails": {},
+          "usagePricingTierId": null,
+          "usagePricingTierName": null,
+          "modelId": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "calculatedInputCost": null,
+          "calculatedOutputCost": null,
+          "calculatedTotalCost": null,
+          "unit": "TOKENS",
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "usage": {
+            "unit": "TOKENS",
+            "input": 0,
+            "output": 0,
+            "total": 0
+          }
+        }
+      ]
+    }
+  },
+  "probe_e_failed_request": "NO Langfuse trace exists for probe e (HTTP 400, invalid model id). The list query over the probe window returned exactly 5 traces for 6 successful calls (d1 and d2 merged); none carries the probe-e marker."
+}

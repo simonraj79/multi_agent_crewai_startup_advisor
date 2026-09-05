@@ -1,0 +1,59 @@
+{
+  "surveyed_at_utc": "2026-09-05T13:57:24.689772Z",
+  "window": "last 8 hours, 2026-09-05T05:57:24.689772Z -> now",
+  "purpose": "establish whether the Langfuse ingest pipe was demonstrably alive around the change, and whether ANY key's traffic crossed it after the change (the positive control the task could not schedule, taken opportunistically).",
+  "change_landed_at_utc": "2026-09-05T13:50:49.171Z",
+  "traces_total_in_window": 47,
+  "traces_before_change": {
+    "count": 47,
+    "by_openrouter_api_key_name": {
+      "WikiSkills": 16,
+      "LTA_ML_PROBLEM": 14,
+      "MultiAgentCrewAI": 15,
+      "null": 2
+    },
+    "newest": [
+      {
+        "timestamp": "2026-09-05T12:54:37Z",
+        "api_key_name": "MultiAgentCrewAI",
+        "id": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+        "name": "OpenRouter Request"
+      },
+      {
+        "timestamp": "2026-09-05T12:54:38.860000Z",
+        "api_key_name": "MultiAgentCrewAI",
+        "id": "eaeafed19b1950dd9094add7388c32c7",
+        "name": "OpenRouter Request"
+      },
+      {
+        "timestamp": "2026-09-05T12:54:40.543000Z",
+        "api_key_name": "MultiAgentCrewAI",
+        "id": "8b15b51c4f6c36711f217e68ad5c99ac",
+        "name": "obs-probe-tracename-1788612874"
+      },
+      {
+        "timestamp": "2026-09-05T12:54:45.536000Z",
+        "api_key_name": "MultiAgentCrewAI",
+        "id": "dbd49206c2c8a478fcf97ce967645760",
+        "name": "obs-probe-streamtrace-1788612874"
+      },
+      {
+        "timestamp": "2026-09-05T13:39:41.847000Z",
+        "api_key_name": null,
+        "id": "38be1a3430c6245000d5b643545ce7b3",
+        "name": "idea-validator"
+      },
+      {
+        "timestamp": "2026-09-05T13:40:59.395000Z",
+        "api_key_name": null,
+        "id": "457c8f6bf7e3df2b4bea73b71296d880",
+        "name": "idea-validator"
+      }
+    ]
+  },
+  "traces_after_change": {
+    "count": 0,
+    "by_openrouter_api_key_name": {},
+    "rows": []
+  }
+}

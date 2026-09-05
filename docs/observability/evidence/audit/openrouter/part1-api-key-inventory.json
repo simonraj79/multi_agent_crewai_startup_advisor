@@ -1,0 +1,23 @@
+{
+  "source": "https://openrouter.ai/settings/keys (rendered as /workspaces/default/keys), read 2026-09-05",
+  "note": "Names and count only. No key values, not even the partial prefixes OpenRouter itself renders, are recorded here or screenshotted.",
+  "total_keys": 13,
+  "key_names_in_listed_order": [
+    "LTA_ML_PROBLEM",
+    "MCP: OpenRouter MCP: Claude Code (openrouter)",
+    "WikiSkills",
+    "MultiAgentCrewAI",
+    "course_recommender",
+    "research",
+    "OpenCODER2",
+    "OpenCoder",
+    "Agnetic RAG",
+    "MCP: OpenRouter MCP: Claude Code (openrouter)",
+    "Gemma4",
+    "gpt-oss-120",
+    "KiloCodeVSCODE"
+  ],
+  "key_used_by_this_application": "MultiAgentCrewAI - confirmed by openrouter.api_key_name in every probe trace",
+  "integration_scope": "PER-WORKSPACE, not per-key. The single Langfuse destination lives on workspace d9782653-59a8-51a5-9ff4-b28da297b63f with api_key_hashes = null, which the OpenRouter API documents as 'null means all keys'. A per-key restriction is available (Included / Excluded API Keys) and is unset.",
+  "measured_consequence": "Over the 24h to 2026-09-05T13:01Z the Langfuse project held 45 traces from THREE different OpenRouter keys - MultiAgentCrewAI 15, LTA_ML_PROBLEM 14, WikiSkills 16. Only a third of the project is this application. See part3-langfuse-24h-survey.json."
+}

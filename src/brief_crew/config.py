@@ -3501,3 +3501,106 @@ MAX_TEST_INPUTS_PER_DOCUMENT = 12
 #: same reason: `_sanitize_json` RAISES over MAX_STRING_LENGTH rather than
 #: truncating, so a larger bound here loses the whole row at write time.
 MAX_TEST_INPUT_MOCK_BYTES = 65536
+
+
+# ---------------------------------------------------------------------------
+# Langfuse export - docs/observability/TRACE-CONTRACT.md section 9.
+#
+# Every knob below is read here and nowhere else, and each one exists because
+# the exporter is telemetry: it must be switchable off, bounded in memory,
+# bounded in time, and incapable of refusing a boot. Nothing in this block
+# joins the three startup assertions in `service/app.py` - those three guard
+# money and secrets, and an observability backend being misconfigured must
+# never stop the service starting.
+# ---------------------------------------------------------------------------
+
+#: The Langfuse project credentials. Absent by design on a bare checkout, in
+#: CI and in every test: with either key missing the exporter is a no-op that
+#: logs one line at startup and is never wired to a run.
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
+#: The ingestion host. Trailing slashes are stripped where it is used, so both
+#: spellings of the same host behave identically.
+LANGFUSE_BASE_URL = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com").strip()
+
+#: The master switch. It defaults to ON when both keys are present, which is
+#: the contract's rule, and that makes the *test suite* the interesting case:
+#: `tests/__init__.py` sets this to `0` explicitly, because a developer with a
+#: real `.env` would otherwise have 2,500 tests posting traces to a live
+#: project. That is the one place the value is asserted rather than defaulted,
+#: and the reason is written there.
+LANGFUSE_EXPORT_ENABLED = _env_flag(
+    "LANGFUSE_EXPORT_ENABLED", bool(LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY)
+)
+
+#: Contract section 8. OFF means no prompt text, no completion text, no tool
+#: argument or result text and no user-entered text leaves this process -
+#: fingerprints, counts and character lengths go instead. ON still passes every
+#: string through `events.redaction` and the key-shape scrubber.
+LANGFUSE_CAPTURE_CONTENT = _env_flag("LANGFUSE_CAPTURE_CONTENT", False)
+
+#: Overrides the derived `synthetic` / `live` environment tag. Empty means
+#: derive it, which is what a deployment should do: a synthetic run's usage is
+#: fabricated by the no-cost doubles and must not land in a cost view beside a
+#: run that was actually billed.
+LANGFUSE_ENVIRONMENT = os.getenv("LANGFUSE_ENVIRONMENT", "").strip()
+
+#: Contract section 4. After a generation has been sent, resolve its
+#: `response_id` against OpenRouter's own per-generation record and update the
+#: observation's cost. Skipped outright for a synthetic run, whose ids are
+#: fabricated and would be 404s at best.
+LANGFUSE_RESOLVE_BILLED_COST = _env_flag("LANGFUSE_RESOLVE_BILLED_COST", True)
+
+#: The exporter's own bounded queue, drop-OLDEST with a counter - the same
+#: capacity and the same end as the frame persistence queue above, because it
+#: is fed from the same callback and a second answer to "which end do we drop"
+#: would be a second thing to reason about.
+LANGFUSE_QUEUE_CAPACITY = _env_positive_int("LANGFUSE_QUEUE_CAPACITY", 4096)
+
+#: How long the exporter's own queue may stay unread, and the SDK's batch
+#: cadence. **0.25s, matching the frame queue, and it is not a tuning
+#: preference.** The Langfuse SDK's OpenTelemetry client starts a span at the
+#: moment the span object is created and offers no way to backdate it, so this
+#: interval IS the error between a frame's timestamp and its observation's
+#: start time. At 0.25s that error is two orders inside the second row B4
+#: allows, and every observation carries the frame's exact timestamp anyway.
+LANGFUSE_FLUSH_INTERVAL_SECONDS = _env_positive_float(
+    "LANGFUSE_FLUSH_INTERVAL_SECONDS", 0.25
+)
+
+#: On EVERY outbound request, ingestion and cost lookup alike. Small on
+#: purpose: a slow host must never hold the export thread, and the run is not
+#: waiting for it either way.
+LANGFUSE_HTTP_TIMEOUT_SECONDS = _env_positive_float("LANGFUSE_HTTP_TIMEOUT_SECONDS", 5.0)
+
+#: Observations per outbound batch (the SDK's `flush_at`). Small enough that
+#: one failed POST cannot lose a whole run's trace.
+LANGFUSE_BATCH_MAX_EVENTS = _env_positive_int("LANGFUSE_BATCH_MAX_EVENTS", 64)
+
+#: The per-run bound the contract's section 4 asks for by name and does not
+#: give a number to. A run that made more model calls than this keeps the app's
+#: own estimate on the rest, which is the honest degradation: the estimate is
+#: labelled `app-estimate` and says so on the observation.
+LANGFUSE_MAX_BILLED_LOOKUPS_PER_RUN = _env_positive_int(
+    "LANGFUSE_MAX_BILLED_LOOKUPS_PER_RUN", 64
+)
+
+#: How many threads resolve billed cost. It must be a POOL and not the export
+#: thread: the lookup answers in 410-835ms (measured, median ~480ms), and doing
+#: it inline would stall every later span by that much - and a span's start time
+#: is its creation time on this SDK, so the stall would land in the data as
+#: fake latency rather than as a delay.
+LANGFUSE_LOOKUP_WORKERS = _env_positive_int("LANGFUSE_LOOKUP_WORKERS", 4)
+
+#: How long a finished model call waits for its billed cost before being ended
+#: with the app's estimate. A span cannot be revised after it ends on this SDK,
+#: so the resolution has to happen BEFORE the end - and that means a deadline,
+#: because a provider that never answers must not hold a trace open. Six times
+#: the measured median.
+LANGFUSE_BILLED_LOOKUP_DEADLINE_SECONDS = _env_positive_float(
+    "LANGFUSE_BILLED_LOOKUP_DEADLINE_SECONDS", 3.0
+)
+
+#: Where the billed-cost resolution asks. Not a knob anybody should move; it is
+#: here rather than inline so the exporter names no URL of its own.
+OPENROUTER_GENERATION_URL = "https://openrouter.ai/api/v1/generation"

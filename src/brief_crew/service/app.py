@@ -22,7 +22,7 @@ import zipfile
 
 import yaml
 
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from brief_crew import config as project_config
 from brief_crew.config import (
@@ -647,6 +647,28 @@ def _assert_credential_vault_startup_safety() -> None:
         )
 
 
+class ReadyResponse(HealthResponse):
+    """`/readyz`, plus what the observability exporter is doing.
+
+    A subclass rather than a field on `HealthResponse`, because `/healthz` is a
+    liveness probe answered on every scrape and this belongs to the readiness
+    answer a person reads once before pressing Launch.
+
+    It is NOT part of `dependencies` and does not affect the status code.
+    Langfuse being off, or down, is explicitly not a reason to call this
+    service unready - row E2 is that the application is unaffected by it, and a
+    readiness probe that failed on the observability backend would be the
+    opposite of that in the loudest possible way.
+
+    Declared at module scope, not inside `create_app`. A pydantic model built
+    per call is a new class and a new pydantic-core validator every time an app
+    is constructed, and this repository's own suite builds hundreds of apps in
+    one process.
+    """
+
+    observability: dict[str, Any] = Field(default_factory=dict)
+
+
 def create_app(
     *,
     registry: RunRegistry | None = None,
@@ -759,6 +781,21 @@ def create_app(
             persistence=owned_store,
         )
 
+    # Observability, and it is deliberately the last thing built and the last
+    # thing closed. `build_exporter` never raises and answers a no-op when the
+    # keys are absent, when the switch is off or when anything about its own
+    # configuration is wrong - so this line cannot stop a service starting, and
+    # is not one of the three assertions above.
+    #
+    # `synthetic` is passed through rather than used as an off switch: a
+    # synthetic run is the only run this can be proved on without spending
+    # money, and it is exported with `environment=synthetic` so its fabricated
+    # usage never lands in a cost view beside a run that was really billed.
+    from brief_crew.observability import build_exporter
+
+    frame_exporter = build_exporter(synthetic=synthetic)
+    registry.frame_observer = frame_exporter
+
     @asynccontextmanager
     async def lifespan(app: Any):
         yield
@@ -766,6 +803,11 @@ def create_app(
             # registry.close() stops and joins the human-gate expiry sweeper
             # before shutting the executor down, so nothing outlives the app.
             registry.close()
+        # AFTER the registry, always: closing it drains the run executor and
+        # the frame queue, so anything still to export has been handed over by
+        # the time these two run. Both are bounded and neither raises.
+        frame_exporter.flush()
+        frame_exporter.close()
         if owned_store is not None:
             owned_store.close()
 
@@ -1019,11 +1061,21 @@ def create_app(
         payload, _ = health_payload(readiness=False)
         return HealthResponse.model_validate(payload)
 
-    @app.get("/readyz", response_model=HealthResponse)
-    async def readyz(response: Response) -> HealthResponse:
+    @app.get("/readyz", response_model=ReadyResponse)
+    async def readyz(response: Response) -> ReadyResponse:
         payload, status_code = health_payload(readiness=True)
         response.status_code = status_code
-        return HealthResponse.model_validate(payload)
+        # Read off the exporter the registry is actually using, not off the
+        # configuration: a policy that says "enabled" and a `NullExporter` in
+        # the frame path is precisely the state this answer exists to make
+        # visible. Never carries a key or a base URL - see `exporter_state`.
+        from brief_crew.observability import exporter_state
+
+        payload["observability"] = exporter_state(
+            getattr(registry, "frame_observer", None) or frame_exporter,
+            synthetic=synthetic,
+        )
+        return ReadyResponse.model_validate(payload)
 
     @app.get("/api/workflows", response_model=list[WorkflowSummary])
     async def list_workflows(

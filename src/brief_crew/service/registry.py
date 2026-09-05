@@ -1465,6 +1465,14 @@ class RunRegistry:
             if persistence is not None
             else None
         )
+        # An optional second consumer of the same frame batches - the Langfuse
+        # exporter, wired in by `create_app`. An attribute rather than a
+        # constructor argument because a registry built by a test or a script
+        # must be able to run with none, and because whoever attaches one also
+        # owns closing it. Contract: `on_frames` is called on the capture
+        # thread while the adapter's non-reentrant lock is held, so an observer
+        # that does anything but enqueue is a defect in the observer.
+        self.frame_observer: Any | None = None
         self._gate_expiries = 0
         self._gate_alerts = 0
         self._gate_sweeps = 0
@@ -1642,7 +1650,25 @@ class RunRegistry:
             )
         with self._lock:
             self._records[run_id] = record
+        self._note_run_observed(record)
         return record
+
+    def _note_run_observed(self, record: RunRecord) -> None:
+        """Hand a frame observer the facts no frame carries.
+
+        Workflow id, owner, session, gate mode and graph version live on the
+        record and nowhere in the frame stream, and an observer that learned
+        them from a queue could lose them to a queue eviction. Called on the
+        request thread, never on the capture path.
+        """
+
+        observer = self.frame_observer
+        if observer is None:
+            return
+        try:
+            observer.begin_run(record)
+        except Exception:
+            logger.debug("the frame observer refused a run record", exc_info=True)
 
     def start_run(self, run_id: str) -> Future[Any]:
         record = self.require(run_id)
@@ -3087,6 +3113,16 @@ class RunRegistry:
     ) -> None:
         if self._writer is not None:
             self._writer.enqueue(run_id, frames)
+        if self.frame_observer is not None:
+            # Total by construction: an observer is documented as enqueue-only,
+            # but a run that died because its telemetry did would be the worst
+            # possible trade, so the guarantee is made here rather than relied
+            # on. This runs while the capture lock is held - see the attribute's
+            # comment in __init__.
+            try:
+                self.frame_observer.on_frames(run_id, frames)
+            except Exception:
+                logger.debug("the frame observer raised", exc_info=True)
 
     def _note_persistence_error(self, run_id: str) -> None:
         # Deliberately not require(): this runs on the writer thread, and
@@ -3285,4 +3321,9 @@ class RunRegistry:
             after = int(page[-1]["seq"])
             if len(page) < MAX_REPLAY_LIMIT:
                 break
+        # The replay above goes straight into the ring and reaches no observer,
+        # by design - it is history this process already exported or never saw.
+        # What an observer needs is the facts, so that frames produced AFTER the
+        # restore land in a trace that knows which workflow and whose run it is.
+        self._note_run_observed(record)
         return record

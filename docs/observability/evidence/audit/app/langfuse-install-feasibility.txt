@@ -1,0 +1,138 @@
+# All commands run 2026-09-05 from D:\MultiAgentSystem (Git Bash), against the project venv.
+
+$ ./.venv/Scripts/python.exe -m pip index versions langfuse
+D:\MultiAgentSystem\.venv\Scripts\python.exe: No module named pip
+  -> the venv has NO pip module; uv is the tool here (uv.lock is committed).
+
+$ uv --version
+uv 0.7.19 (38ee6ec80 2025-07-02)
+
+$ uv pip install --dry-run --python .venv/Scripts/python.exe langfuse
+Resolved 26 packages in 14ms
+Would download 1 package
+Would install 2 packages
+ + langfuse==4.15.1
+ + wrapt==2.4.0
+
+$ uv pip compile <(echo langfuse) --python-version 3.13 --no-header    # isolated full tree
+Resolved 26 packages in 15ms
+annotated-types==0.8.0
+    # via pydantic
+anyio==4.15.1
+    # via httpx
+backoff==2.2.1
+    # via langfuse
+certifi==2026.7.22
+    # via
+    #   httpcore
+    #   httpx
+    #   requests
+charset-normalizer==3.5.1
+    # via requests
+googleapis-common-protos==1.75.3
+    # via opentelemetry-exporter-otlp-proto-http
+h11==0.16.0
+    # via httpcore
+httpcore==1.0.9
+    # via httpx
+httpx==0.28.1
+    # via langfuse
+idna==3.19
+    # via
+    #   anyio
+    #   httpx
+    #   requests
+langfuse==4.15.1
+    # via -r C:/Users/Simon/AppData/Local/Temp/claude/D--MultiAgentSystem/6eff2e55-1173-41aa-8955-a45ca4c96615/scratchpad/lf-req.txt
+opentelemetry-api==1.44.0
+    # via
+    #   langfuse
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-otlp-proto-common==1.44.0
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-http==1.44.0
+    # via langfuse
+opentelemetry-proto==1.44.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.44.0
+    # via
+    #   langfuse
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-semantic-conventions==0.65b0
+    # via opentelemetry-sdk
+packaging==26.3
+    # via langfuse
+protobuf==7.36.1
+    # via
+    #   googleapis-common-protos
+    #   opentelemetry-proto
+pydantic==2.13.5
+    # via langfuse
+pydantic-core==2.46.5
+    # via pydantic
+requests==2.34.2
+    # via opentelemetry-exporter-otlp-proto-http
+typing-extensions==4.16.0
+    # via
+    #   anyio
+    #   langfuse
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+    #   pydantic
+    #   pydantic-core
+    #   typing-inspection
+typing-inspection==0.4.4
+    # via pydantic
+urllib3==2.7.0
+    # via requests
+wrapt==2.4.0
+    # via langfuse
+
+$ uv pip check --python .venv/Scripts/python.exe
+Checked 162 packages in 2ms
+All installed packages are compatible
+
+$ uv pip list --python .venv/Scripts/python.exe | grep -iE "^(opentelemetry|pydantic|httpx|backoff|wrapt|packaging|protobuf|requests|typing-ext|crewai)"
+backoff                                  2.2.1
+crewai                                   1.15.18
+crewai-cli                               1.15.18
+crewai-core                              1.15.18
+crewai-tools                             1.15.18
+httpx                                    0.28.1
+httpx-sse                                0.4.3
+opentelemetry-api                        1.42.1
+opentelemetry-exporter-otlp-proto-common 1.42.1
+opentelemetry-exporter-otlp-proto-grpc   1.42.1
+opentelemetry-exporter-otlp-proto-http   1.42.1
+opentelemetry-proto                      1.42.1
+opentelemetry-sdk                        1.42.1
+opentelemetry-semantic-conventions       0.63b1
+packaging                                26.3
+protobuf                                 6.33.6
+pydantic                                 2.12.5
+pydantic-core                            2.41.5
+pydantic-settings                        2.15.0
+requests                                 2.34.2
+requests-oauthlib                        2.0.0
+typing-extensions                        4.16.0
+
+$ uv pip install --python .venv/Scripts/python.exe --target <scratchpad>/lf --no-deps langfuse   # metadata only, NOT into .venv
+$ grep -E "^(Requires-Dist|Requires-Python|Name|Version)" <scratchpad>/lf/langfuse-4.15.1.dist-info/METADATA
+Name: langfuse
+Version: 4.15.1
+Requires-Dist: httpx>=0.15.4,<1.0
+Requires-Dist: pydantic>=2,<3
+Requires-Dist: backoff>=1.10.0
+Requires-Dist: wrapt>=1.14,<3
+Requires-Dist: packaging>=23.2,<27.0
+Requires-Dist: opentelemetry-api>=1.33.1,<2
+Requires-Dist: opentelemetry-sdk>=1.33.1,<2
+Requires-Dist: opentelemetry-exporter-otlp-proto-http>=1.33.1,<2
+Requires-Dist: typing-extensions>=4.12.2,<5
+Requires-Python: >=3.10, <4.0

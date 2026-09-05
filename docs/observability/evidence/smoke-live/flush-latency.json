@@ -1,0 +1,11 @@
+{
+  "run_id": "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea",
+  "trace_id": "9d356fcbaadd4d41ab067ffcd50c78ea",
+  "observations": 33,
+  "t_launch_to_terminal_s": 6.2,
+  "t_launch_to_first_observation_s": 20.32,
+  "t_terminal_to_first_observation_s": 14.11,
+  "t_launch_to_count_stable_s": 23.82,
+  "t_terminal_to_count_stable_s": 17.62,
+  "scores": 8
+}

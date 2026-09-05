@@ -1,0 +1,472 @@
+{
+  "timestamp_unix": 1788612874,
+  "model": "google/gemini-3.5-flash-lite:nitro",
+  "shared_trace_id": "obsprobe-trace-1788612874",
+  "started_utc": "2026-09-05T12:54:34Z",
+  "probes": [
+    {
+      "probe": "a",
+      "request_headers_redacted": {
+        "Authorization": "Bearer <OPENROUTER_API_KEY>",
+        "Content-Type": "application/json"
+      },
+      "request_body": {
+        "model": "google/gemini-3.5-flash-lite:nitro",
+        "max_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "obsprobe-a-1788612874"
+          }
+        ]
+      },
+      "sent_utc": "2026-09-05T12:54:34Z",
+      "http_status": 200,
+      "response_body": {
+        "id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ",
+        "object": "chat.completion",
+        "created": 1788612875,
+        "model": "google/gemini-3.5-flash-lite",
+        "provider": "Google",
+        "system_fingerprint": null,
+        "service_tier": "default",
+        "choices": [
+          {
+            "index": 0,
+            "logprobs": null,
+            "finish_reason": "length",
+            "native_finish_reason": "MAX_TOKENS",
+            "message": {
+              "role": "assistant",
+              "content": "It looks like you",
+              "refusal": null,
+              "reasoning": null,
+              "reasoning_details": [
+                {
+                  "type": "reasoning.text",
+                  "signature": "AY89a1+OOxOQPseU3BvUzMhkPzQVxgiKIHZlImEEX/ivvWSTNcZvYSnbZ48xk2xeS8LrMyt5Zg/D2SUvIdWOUQLteO149y9IzRePcwnJAv3MuCM=",
+                  "format": "google-gemini-v1",
+                  "index": 0
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 16,
+          "completion_tokens": 4,
+          "total_tokens": 20,
+          "cost": 1.48e-05,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 1.48e-05,
+            "upstream_inference_prompt_cost": 4.8e-06,
+            "upstream_inference_completions_cost": 1e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "generation_id": "gen-1788612875-1qJQ41IafHPo6WUnyTtZ"
+    },
+    {
+      "probe": "b",
+      "request_headers_redacted": {
+        "Authorization": "Bearer <OPENROUTER_API_KEY>",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://obsprobe.example/obsprobe-b-1788612874",
+        "X-Title": "obs-probe-b-1788612874"
+      },
+      "request_body": {
+        "model": "google/gemini-3.5-flash-lite:nitro",
+        "max_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "obsprobe-b-1788612874"
+          }
+        ]
+      },
+      "sent_utc": "2026-09-05T12:54:36Z",
+      "http_status": 200,
+      "response_body": {
+        "id": "gen-1788612877-6twjdYtfRyDna6jxINoG",
+        "object": "chat.completion",
+        "created": 1788612877,
+        "model": "google/gemini-3.5-flash-lite",
+        "provider": "Google",
+        "system_fingerprint": null,
+        "service_tier": "default",
+        "choices": [
+          {
+            "index": 0,
+            "logprobs": null,
+            "finish_reason": "length",
+            "native_finish_reason": "MAX_TOKENS",
+            "message": {
+              "role": "assistant",
+              "content": "It looks like you",
+              "refusal": null,
+              "reasoning": null,
+              "reasoning_details": [
+                {
+                  "type": "reasoning.text",
+                  "signature": "AY89a19v8TcUjT6LM4rhKDwHU/y81zaK5iTPv5CC33R8t3V5oUwKvmmz/X05bo38gSC5buF791odB9Hbow2XByvxxWTbSCenQI6s2M4EkMMBlmk=",
+                  "format": "google-gemini-v1",
+                  "index": 0
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 16,
+          "completion_tokens": 4,
+          "total_tokens": 20,
+          "cost": 1.48e-05,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 1.48e-05,
+            "upstream_inference_prompt_cost": 4.8e-06,
+            "upstream_inference_completions_cost": 1e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "generation_id": "gen-1788612877-6twjdYtfRyDna6jxINoG"
+    },
+    {
+      "probe": "c",
+      "request_headers_redacted": {
+        "Authorization": "Bearer <OPENROUTER_API_KEY>",
+        "Content-Type": "application/json"
+      },
+      "request_body": {
+        "model": "google/gemini-3.5-flash-lite:nitro",
+        "max_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "obsprobe-c-1788612874"
+          }
+        ],
+        "user": "obs-probe-user-1788612874"
+      },
+      "sent_utc": "2026-09-05T12:54:38Z",
+      "http_status": 200,
+      "response_body": {
+        "id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd",
+        "object": "chat.completion",
+        "created": 1788612878,
+        "model": "google/gemini-3.5-flash-lite",
+        "provider": "Google",
+        "system_fingerprint": null,
+        "service_tier": "default",
+        "choices": [
+          {
+            "index": 0,
+            "logprobs": null,
+            "finish_reason": "length",
+            "native_finish_reason": "MAX_TOKENS",
+            "message": {
+              "role": "assistant",
+              "content": "It looks like you",
+              "refusal": null,
+              "reasoning": null,
+              "reasoning_details": [
+                {
+                  "type": "reasoning.text",
+                  "signature": "AY89a1/7TprlRe5LdWuImobRgKILqw384J8337IqqFjeYPOPD7jElR6MSoheBkFFBDhsqY+AaFfbuaZWi+Tu6inF1URcbm73tMmNfsDsZJ3rDRA=",
+                  "format": "google-gemini-v1",
+                  "index": 0
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 16,
+          "completion_tokens": 4,
+          "total_tokens": 20,
+          "cost": 1.48e-05,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 1.48e-05,
+            "upstream_inference_prompt_cost": 4.8e-06,
+            "upstream_inference_completions_cost": 1e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "generation_id": "gen-1788612878-oTc3QVmsoeEkV5BSEscd"
+    },
+    {
+      "probe": "d1",
+      "request_headers_redacted": {
+        "Authorization": "Bearer <OPENROUTER_API_KEY>",
+        "Content-Type": "application/json"
+      },
+      "request_body": {
+        "model": "google/gemini-3.5-flash-lite:nitro",
+        "max_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "obsprobe-d1-1788612874"
+          }
+        ],
+        "user": "obs-probe-user-1788612874",
+        "session_id": "obs-probe-session-1788612874",
+        "tags": [
+          "obs-probe-tag-1788612874",
+          "audit"
+        ],
+        "trace": {
+          "trace_id": "obsprobe-trace-1788612874",
+          "trace_name": "obs-probe-tracename-1788612874",
+          "span_name": "obs-probe-spanname-1788612874",
+          "generation_name": "obs-probe-genname-1788612874",
+          "environment": "obsprobe-env",
+          "release": "obsprobe-release-9.9.9",
+          "parent_span_id": "0123456789abcdef",
+          "tags": [
+            "obs-probe-tracetag-1788612874"
+          ],
+          "run_id": "obs-probe-run-1788612874",
+          "agent_role": "Market evidence analyst",
+          "task_name": "market_task"
+        }
+      },
+      "sent_utc": "2026-09-05T12:54:40Z",
+      "http_status": 200,
+      "response_body": {
+        "id": "gen-1788612880-8wpoqatoJCppvLlOOwVy",
+        "object": "chat.completion",
+        "created": 1788612880,
+        "model": "google/gemini-3.5-flash-lite",
+        "provider": "Google",
+        "system_fingerprint": null,
+        "service_tier": "default",
+        "choices": [
+          {
+            "index": 0,
+            "logprobs": null,
+            "finish_reason": "length",
+            "native_finish_reason": "MAX_TOKENS",
+            "message": {
+              "role": "assistant",
+              "content": "It looks like you",
+              "refusal": null,
+              "reasoning": null,
+              "reasoning_details": [
+                {
+                  "type": "reasoning.text",
+                  "signature": "AY89a1/SuMvSOakIY/mZSUHGlTxwD/ESsPgPhizxD/Q39XA4jCyC1ETlZ5bemgekbynX7HW5d5OSxgNGi0jIp6kiN99mzjxPk0jMQvFnCbAoSMU=",
+                  "format": "google-gemini-v1",
+                  "index": 0
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 17,
+          "completion_tokens": 4,
+          "total_tokens": 21,
+          "cost": 1.51e-05,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 1.51e-05,
+            "upstream_inference_prompt_cost": 5.1e-06,
+            "upstream_inference_completions_cost": 1e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "generation_id": "gen-1788612880-8wpoqatoJCppvLlOOwVy"
+    },
+    {
+      "probe": "d2",
+      "request_headers_redacted": {
+        "Authorization": "Bearer <OPENROUTER_API_KEY>",
+        "Content-Type": "application/json"
+      },
+      "request_body": {
+        "model": "google/gemini-3.5-flash-lite:nitro",
+        "max_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "obsprobe-d2-1788612874"
+          }
+        ],
+        "session_id": "obs-probe-session-1788612874",
+        "trace": {
+          "trace_id": "obsprobe-trace-1788612874",
+          "trace_name": "obs-probe-tracename-1788612874",
+          "span_name": "obs-probe-spanname2-1788612874",
+          "generation_name": "obs-probe-genname2-1788612874",
+          "run_id": "obs-probe-run-1788612874",
+          "agent_role": "Sentiment signal analyst",
+          "task_name": "sentiment_task"
+        }
+      },
+      "sent_utc": "2026-09-05T12:54:42Z",
+      "http_status": 200,
+      "response_body": {
+        "id": "gen-1788612882-VIwPVS3nYy8r0FBUH6Xi",
+        "object": "chat.completion",
+        "created": 1788612882,
+        "model": "google/gemini-3.5-flash-lite",
+        "provider": "Google",
+        "system_fingerprint": null,
+        "service_tier": "default",
+        "choices": [
+          {
+            "index": 0,
+            "logprobs": null,
+            "finish_reason": "length",
+            "native_finish_reason": "MAX_TOKENS",
+            "message": {
+              "role": "assistant",
+              "content": "It looks like you",
+              "refusal": null,
+              "reasoning": null,
+              "reasoning_details": [
+                {
+                  "type": "reasoning.text",
+                  "signature": "AY89a19XVGES7Bd8zGPJBk36Zojzp/HXlUZT7/zfG3Q7PBkHBUg7XxuAI4S5gF3J/4Y7NTpXsmsd2xMol2exNRVlw9TjL2fFBQBe5+sHVcNu7fE=",
+                  "format": "google-gemini-v1",
+                  "index": 0
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 17,
+          "completion_tokens": 4,
+          "total_tokens": 21,
+          "cost": 1.51e-05,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 1.51e-05,
+            "upstream_inference_prompt_cost": 5.1e-06,
+            "upstream_inference_completions_cost": 1e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "generation_id": "gen-1788612882-VIwPVS3nYy8r0FBUH6Xi"
+    },
+    {
+      "probe": "e",
+      "request_headers_redacted": {
+        "Authorization": "Bearer <OPENROUTER_API_KEY>",
+        "Content-Type": "application/json"
+      },
+      "request_body": {
+        "model": "openrouter/this-model-does-not-exist-obsprobe",
+        "max_tokens": 8,
+        "messages": [
+          {
+            "role": "user",
+            "content": "obsprobe-e-1788612874"
+          }
+        ],
+        "trace": {
+          "trace_id": "obsprobe-fail-1788612874",
+          "trace_name": "obs-probe-failtrace-1788612874",
+          "run_id": "obs-probe-run-1788612874"
+        }
+      },
+      "sent_utc": "2026-09-05T12:54:44Z",
+      "http_status": 400,
+      "response_body": {
+        "error": {
+          "message": "openrouter/this-model-does-not-exist-obsprobe is not a valid model ID",
+          "code": 400
+        },
+        "user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5"
+      },
+      "generation_id": null
+    },
+    {
+      "probe": "f",
+      "request_headers_redacted": {
+        "Authorization": "Bearer <OPENROUTER_API_KEY>",
+        "Content-Type": "application/json"
+      },
+      "request_body": {
+        "model": "google/gemini-3.5-flash-lite:nitro",
+        "max_tokens": 8,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "obsprobe-f-1788612874"
+          }
+        ],
+        "trace": {
+          "trace_id": "obsprobe-stream-1788612874",
+          "trace_name": "obs-probe-streamtrace-1788612874",
+          "run_id": "obs-probe-run-1788612874"
+        }
+      },
+      "sent_utc": "2026-09-05T12:54:45Z",
+      "http_status": 200,
+      "response_raw_sse": ": OPENROUTER PROCESSING\n\ndata: {\"id\":\"gen-1788612885-hFm6Av9rEF3NMfxjJXWk\",\"object\":\"chat.completion.chunk\",\"created\":1788612885,\"model\":\"google/gemini-3.5-flash-lite\",\"provider\":\"Google\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"It looks\",\"role\":\"assistant\"},\"finish_reason\":null,\"native_finish_reason\":null}]}\n\ndata: {\"id\":\"gen-1788612885-hFm6Av9rEF3NMfxjJXWk\",\"object\":\"chat.completion.chunk\",\"created\":1788612885,\"model\":\"google/gemini-3.5-flash-lite\",\"provider\":\"Google\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" like you\",\"role\":\"assistant\"},\"finish_reason\":null,\"native_finish_reason\":null}]}\n\ndata: {\"id\":\"gen-1788612885-hFm6Av9rEF3NMfxjJXWk\",\"object\":\"chat.completion.chunk\",\"created\":1788612885,\"model\":\"google/gemini-3.5-flash-lite\",\"provider\":\"Google\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\",\"role\":\"assistant\",\"reasoning_details\":[{\"type\":\"reasoning.text\",\"signature\":\"AY89a1/ri69ewl9QqCoUABn6PYVkkgZxF4gwkXzkgEGFaK3F5mIeck0vr1sfc3rKYFd3iGgj9NeMJcJj8uK2ej1vj3h+Lvbh4tEWh8S89n1eMA8=\",\"format\":\"google-gemini-v1\",\"index\":0}]},\"finish_reason\":null,\"native_finish_reason\":null}]}\n\ndata: {\"id\":\"gen-1788612885-hFm6Av9rEF3NMfxjJXWk\",\"object\":\"chat.completion.chunk\",\"created\":1788612885,\"model\":\"google/gemini-3.5-flash-lite\",\"provider\":\"Google\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\",\"role\":\"assistant\",\"reasoning\":null},\"finish_reason\":\"length\",\"native_finish_reason\":\"MAX_TOKENS\"}]}\n\ndata: {\"id\":\"gen-1788612885-hFm6Av9rEF3NMfxjJXWk\",\"object\":\"chat.completion.chunk\",\"created\":1788612885,\"model\":\"google/gemini-3.5-flash-lite\",\"provider\":\"Google\",\"service_tier\":\"default\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\",\"role\":\"assistant\"},\"finish_reason\":\"length\",\"native_finish_reason\":\"MAX_TOKENS\"}],\"usage\":{\"prompt_tokens\":16,\"completion_tokens\":4,\"total_tokens\":20,\"cost\":0.0000148,\"is_byok\":false,\"prompt_tokens_details\":{\"cached_tokens\":0,\"cache_write_tokens\":0,\"audio_tokens\":0,\"video_tokens\":0},\"cost_details\":{\"upstream_inference_cost\":0.0000148,\"upstream_inference_prompt_cost\":0.0000048,\"upstream_inference_completions_cost\":0.00001},\"completion_tokens_details\":{\"reasoning_tokens\":0,\"image_tokens\":0,\"audio_tokens\":0}}}\n\ndata: [DONE]\n\n",
+      "generation_id": "gen-1788612885-hFm6Av9rEF3NMfxjJXWk"
+    }
+  ],
+  "finished_utc": "2026-09-05T12:54:47Z"
+}

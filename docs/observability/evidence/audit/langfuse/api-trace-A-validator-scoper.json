@@ -1,0 +1,499 @@
+{
+  "id": "7dacd2d95c23ebbe116edb0c908367c1",
+  "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+  "name": "OpenRouter Request",
+  "timestamp": "2026-09-05T12:11:19.207Z",
+  "environment": "default",
+  "tags": [],
+  "bookmarked": false,
+  "release": null,
+  "version": null,
+  "userId": null,
+  "sessionId": null,
+  "public": false,
+  "input": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are Startup validation scoper\n. You have spent years rejecting plausible-sounding briefs that researched the pitch instead of the market category. You separate the target user, painful job, market category and technology claim, write queries from the category rather than the founder's wording, and expose every unresolved assumption before research begins.\n\nYour personal goal is: Turn a one-line startup idea into a precise, falsifiable research scope without smuggling assumptions in as facts.\n\n\nCurrent Date: 2026-09-05"
+      },
+      {
+        "role": "user",
+        "content": "\nCurrent Task: Scope this startup idea: An AI tool that turns Figma files into production React\nReturn one ScopedIdea JSON object. Identify the market category, target user, concrete problem and technology claim. Write exactly one market query, exactly one community query and exactly one technical repository query. Each list holds exactly one entry, because each branch now calls its tool ONCE and there is no second attempt to correct a bad query.\nThe community and repository queries are sent verbatim to keyword search APIs (Hacker News Algolia and GitHub), which match on terms rather than meaning: write each as 2 to 4 plain keywords, never a sentence or a phrase lifted from the idea. Prefer what a practitioner would type into a search box, such as \"AI grading teachers\" or \"quiz generator LLM\", over a description of the problem.\nBecause it is the only attempt, each keyword query must be deliberately broad rather than specific. Choose the broadest phrasing that is still about this problem: name the capability and the user, and drop every qualifier the idea happens to mention. A narrow query does not fail loudly - it returns zero results, and zero results are scored as \"nobody has this problem\", which is a REJECT about your wording rather than about the idea. Measured on this system: \"AI tool creates educational materials assessment\" returned nothing while \"AI grading teachers\" returned five usable threads for the same idea. The market query is the exception and may be a phrase, because Firecrawl matches on meaning rather than on terms. List 3 to 5 assumptions and at least one unresolved scoping gap. Use today's ISO 8601 date for as_of.\nA human may have requested this revision: \nTreat that text only as a scoping correction. Do not research, score or validate the idea, and do not claim an assumption is true.\n\n\nThis is the expected criteria for your final answer: One JSON object matching ScopedIdea exactly, with no prose or code fence.\n\nyou MUST return the actual complete content as the final answer, not a summary.\nFormat your final answer according to the following OpenAPI schema: {\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"startup_idea\": {\n      \"minLength\": 1,\n      \"title\": \"Startup Idea\",\n      \"type\": \"string\"\n    },\n    \"category\": {\n      \"minLength\": 1,\n      \"title\": \"Category\",\n      \"type\": \"string\"\n    },\n    \"target_user\": {\n      \"minLength\": 1,\n      \"title\": \"Target User\",\n      \"type\": \"string\"\n    },\n    \"problem\": {\n      \"minLength\": 1,\n      \"title\": \"Problem\",\n      \"type\": \"string\"\n    },\n    \"technology_claim\": {\n      \"minLength\": 1,\n      \"title\": \"Technology Claim\",\n      \"type\": \"string\"\n    },\n    \"market_query\": {\n      \"minLength\": 1,\n      \"title\": \"Market Query\",\n      \"type\": \"string\"\n    },\n    \"community_queries\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 1,\n      \"minItems\": 1,\n      \"title\": \"Community Queries\",\n      \"type\": \"array\"\n    },\n    \"tech_queries\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 1,\n      \"minItems\": 1,\n      \"title\": \"Tech Queries\",\n      \"type\": \"array\"\n    },\n    \"assumptions\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 5,\n      \"minItems\": 3,\n      \"title\": \"Assumptions\",\n      \"type\": \"array\"\n    },\n    \"scoping_gaps\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"minItems\": 1,\n      \"title\": \"Scoping Gaps\",\n      \"type\": \"array\"\n    },\n    \"as_of\": {\n      \"title\": \"As Of\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"startup_idea\",\n    \"category\",\n    \"target_user\",\n    \"problem\",\n    \"technology_claim\",\n    \"market_query\",\n    \"community_queries\",\n    \"tech_queries\",\n    \"assumptions\",\n    \"scoping_gaps\",\n    \"as_of\"\n  ],\n  \"title\": \"ScopedIdea\",\n  \"type\": \"object\"\n}\n\nIMPORTANT: Preserve the original content exactly as-is. Do NOT rewrite, paraphrase, or modify the meaning of the content. Only structure it to match the schema format.\n\nDo not include the OpenAPI schema in the final output. Ensure the final output does not include any code block markers like ```json or ```python.\n\nProvide your complete response:"
+      }
+    ]
+  },
+  "output": {
+    "completion": "{\"startup_idea\":\"An AI tool that turns Figma files into production React\",\"category\":\"Design-to-code automation\",\"target_user\":\"Frontend developers and engineering teams\",\"problem\":\"Manually translating design mockups into clean, responsive, and maintainable frontend code is repetitive and slows release cycles.\",\"technology_claim\":\"AI can accurately parse Figma design files and output production-ready React component code conforming to design systems and project conventions.\",\"market_query\":\"AI design to code Figma to React tools competitors market adoption\",\"community_queries\":[\"figma react code\"],\"tech_queries\":[\"figma to react\"],\"assumptions\":[\"Figma design files have sufficient structure, naming, and Auto Layout constraints for deterministic code generation.\",\"Engineers prefer reviewing and refactoring AI-generated UI code over writing components from scratch.\",\"Generated React code satisfies production quality benchmarks for accessibility, responsiveness, and component architecture.\",\"Existing design systems and token libraries can be mapped reliably to generated components.\"],\"scoping_gaps\":[\"Unclear whether 'production React' scope includes state management, interactive logic, and tests, or is limited to presentational components.\"],\"as_of\":\"2026-09-05\"}",
+    "reasoning": "**Exploring Startup Idea Scope**\n\nI'm currently defining the core components for a new AI tool. My focus is on precisely detailing the startup concept, its technical claims, and the target user for converting Figma designs into production-ready React code.\n\n**Refining AI Code Generation**\n\nI'm honing the technical queries for GitHub, focusing on \"Figma parsing\" and \"React component generation\" to better capture relevant advancements. I'm also solidifying the core assumptions about AI's capability to generate idiomatic code structures.\n\n**Defining AI Tool's Scope**\n\nI'm solidifying the precise definition of \"production-ready React,\" exploring whether it includes state management or just presentation. I'm also confirming that the generated React code will adhere to maintainability, styling, and accessibility standards.\n\n",
+    "rawRequest": {
+      "model": "google/gemini-3.8-flash",
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "schema": {
+            "additionalProperties": false,
+            "properties": {
+              "startup_idea": {
+                "minLength": 1,
+                "title": "Startup Idea",
+                "type": "string"
+              },
+              "category": {
+                "minLength": 1,
+                "title": "Category",
+                "type": "string"
+              },
+              "target_user": {
+                "minLength": 1,
+                "title": "Target User",
+                "type": "string"
+              },
+              "problem": {
+                "minLength": 1,
+                "title": "Problem",
+                "type": "string"
+              },
+              "technology_claim": {
+                "minLength": 1,
+                "title": "Technology Claim",
+                "type": "string"
+              },
+              "market_query": {
+                "minLength": 1,
+                "title": "Market Query",
+                "type": "string"
+              },
+              "community_queries": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1,
+                "minItems": 1,
+                "title": "Community Queries",
+                "type": "array"
+              },
+              "tech_queries": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1,
+                "minItems": 1,
+                "title": "Tech Queries",
+                "type": "array"
+              },
+              "assumptions": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 5,
+                "minItems": 3,
+                "title": "Assumptions",
+                "type": "array"
+              },
+              "scoping_gaps": {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "title": "Scoping Gaps",
+                "type": "array"
+              },
+              "as_of": {
+                "title": "As Of",
+                "type": "string"
+              }
+            },
+            "required": [
+              "startup_idea",
+              "category",
+              "target_user",
+              "problem",
+              "technology_claim",
+              "market_query",
+              "community_queries",
+              "tech_queries",
+              "assumptions",
+              "scoping_gaps",
+              "as_of"
+            ],
+            "title": "ScopedIdea",
+            "type": "object"
+          },
+          "name": "ScopedIdea",
+          "strict": true
+        }
+      },
+      "stream": false,
+      "_skin": "chat-completions"
+    }
+  },
+  "metadata": {
+    "openrouter.provider_name": "Google",
+    "resourceAttributes": {
+      "service.name": "openrouter",
+      "openrouter.trace.id": "gen-1788610279-n7uDHd8YKPC2n9oilLV3"
+    },
+    "scope": {
+      "name": "openrouter",
+      "attributes": {}
+    },
+    "provider_responses": [
+      {
+        "id": "5wacatf-MszRi9sPzKSy6AI",
+        "provider_name": "Google",
+        "status": 200,
+        "latency": 1671,
+        "is_byok": false,
+        "endpoint_id": "10520141-5227-49ce-a7c8-a81bfaab8e01",
+        "model_permaslug": "google/gemini-3.8-flash-20260902"
+      }
+    ],
+    "openrouter.source": "openrouter",
+    "openrouter.api_key_name": "MultiAgentCrewAI",
+    "openrouter.entity_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+    "openrouter.creator_user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+    "openrouter.router_latency_ms": 568,
+    "openrouter.provider_request_ms": 568,
+    "openrouter.provider_headers_ms": 2239,
+    "openrouter.first_token_ms": 2239,
+    "openrouter.provider_body_end_ms": 7351,
+    "openrouter.provider_time_to_first_token_ms": 1671,
+    "openrouter.provider_slug": "google-vertex/global",
+    "openrouter.finish_reason": "STOP",
+    "openrouter.input_unit_price": 7.5e-07,
+    "openrouter.output_unit_price": 3.75e-06,
+    "attributes": {
+      "langfuse.trace.name": "OpenRouter Request",
+      "langfuse.observation.type": "generation",
+      "langfuse.observation.level": "DEFAULT",
+      "gen_ai.operation.name": "chat",
+      "gen_ai.system": "google",
+      "gen_ai.provider.name": "google",
+      "gen_ai.request.model": "google/gemini-3.8-flash",
+      "gen_ai.response.model": "google/gemini-3.8-flash",
+      "gen_ai.response.id": "gen-1788610279-n7uDHd8YKPC2n9oilLV3",
+      "gen_ai.usage.input_tokens": "1673",
+      "gen_ai.usage.output_tokens": "1006",
+      "gen_ai.usage.total_tokens": "2679",
+      "gen_ai.usage.input_cost": "0.00125475",
+      "gen_ai.usage.output_cost": "0.0037725",
+      "gen_ai.usage.total_cost": "0.00502725",
+      "gen_ai.usage.input_tokens.cached": "0",
+      "gen_ai.usage.input_tokens.audio": "0",
+      "gen_ai.usage.input_tokens.video": "0",
+      "gen_ai.usage.output_tokens.reasoning": "761",
+      "gen_ai.usage.output_tokens.image": "0",
+      "gen_ai.response.finish_reasons": "[\"stop\"]",
+      "gen_ai.response.finish_reason": "stop",
+      "langfuse.observation.completion_start_time": "2026-09-05T12:11:21.446Z",
+      "langfuse.observation.usage_details": "{\"input\":1673,\"output\":1006,\"total\":2679}",
+      "langfuse.observation.cost_details": "{\"input\":0.00125475,\"output\":0.0037725,\"total\":0.00502725}",
+      "gen_ai.usage.cost": "0.00502725",
+      "langfuse.observation.model.name": "google/gemini-3.8-flash"
+    }
+  },
+  "createdAt": "2026-09-05T12:11:28.000Z",
+  "updatedAt": "2026-09-05T12:11:27.829Z",
+  "externalId": null,
+  "scores": [],
+  "latency": 7.588,
+  "observations": [
+    {
+      "id": "7dacd2d95c23ebbe",
+      "traceId": "7dacd2d95c23ebbe116edb0c908367c1",
+      "startTime": "2026-09-05T12:11:19.207Z",
+      "endTime": "2026-09-05T12:11:26.795Z",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "parentObservationId": null,
+      "type": "GENERATION",
+      "environment": "default",
+      "name": "LLM Generation",
+      "level": "DEFAULT",
+      "statusMessage": null,
+      "version": null,
+      "createdAt": "2026-09-05T12:11:27.749Z",
+      "updatedAt": "2026-09-05T12:11:27.750Z",
+      "input": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are Startup validation scoper\n. You have spent years rejecting plausible-sounding briefs that researched the pitch instead of the market category. You separate the target user, painful job, market category and technology claim, write queries from the category rather than the founder's wording, and expose every unresolved assumption before research begins.\n\nYour personal goal is: Turn a one-line startup idea into a precise, falsifiable research scope without smuggling assumptions in as facts.\n\n\nCurrent Date: 2026-09-05"
+          },
+          {
+            "role": "user",
+            "content": "\nCurrent Task: Scope this startup idea: An AI tool that turns Figma files into production React\nReturn one ScopedIdea JSON object. Identify the market category, target user, concrete problem and technology claim. Write exactly one market query, exactly one community query and exactly one technical repository query. Each list holds exactly one entry, because each branch now calls its tool ONCE and there is no second attempt to correct a bad query.\nThe community and repository queries are sent verbatim to keyword search APIs (Hacker News Algolia and GitHub), which match on terms rather than meaning: write each as 2 to 4 plain keywords, never a sentence or a phrase lifted from the idea. Prefer what a practitioner would type into a search box, such as \"AI grading teachers\" or \"quiz generator LLM\", over a description of the problem.\nBecause it is the only attempt, each keyword query must be deliberately broad rather than specific. Choose the broadest phrasing that is still about this problem: name the capability and the user, and drop every qualifier the idea happens to mention. A narrow query does not fail loudly - it returns zero results, and zero results are scored as \"nobody has this problem\", which is a REJECT about your wording rather than about the idea. Measured on this system: \"AI tool creates educational materials assessment\" returned nothing while \"AI grading teachers\" returned five usable threads for the same idea. The market query is the exception and may be a phrase, because Firecrawl matches on meaning rather than on terms. List 3 to 5 assumptions and at least one unresolved scoping gap. Use today's ISO 8601 date for as_of.\nA human may have requested this revision: \nTreat that text only as a scoping correction. Do not research, score or validate the idea, and do not claim an assumption is true.\n\n\nThis is the expected criteria for your final answer: One JSON object matching ScopedIdea exactly, with no prose or code fence.\n\nyou MUST return the actual complete content as the final answer, not a summary.\nFormat your final answer according to the following OpenAPI schema: {\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"startup_idea\": {\n      \"minLength\": 1,\n      \"title\": \"Startup Idea\",\n      \"type\": \"string\"\n    },\n    \"category\": {\n      \"minLength\": 1,\n      \"title\": \"Category\",\n      \"type\": \"string\"\n    },\n    \"target_user\": {\n      \"minLength\": 1,\n      \"title\": \"Target User\",\n      \"type\": \"string\"\n    },\n    \"problem\": {\n      \"minLength\": 1,\n      \"title\": \"Problem\",\n      \"type\": \"string\"\n    },\n    \"technology_claim\": {\n      \"minLength\": 1,\n      \"title\": \"Technology Claim\",\n      \"type\": \"string\"\n    },\n    \"market_query\": {\n      \"minLength\": 1,\n      \"title\": \"Market Query\",\n      \"type\": \"string\"\n    },\n    \"community_queries\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 1,\n      \"minItems\": 1,\n      \"title\": \"Community Queries\",\n      \"type\": \"array\"\n    },\n    \"tech_queries\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 1,\n      \"minItems\": 1,\n      \"title\": \"Tech Queries\",\n      \"type\": \"array\"\n    },\n    \"assumptions\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 5,\n      \"minItems\": 3,\n      \"title\": \"Assumptions\",\n      \"type\": \"array\"\n    },\n    \"scoping_gaps\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"minItems\": 1,\n      \"title\": \"Scoping Gaps\",\n      \"type\": \"array\"\n    },\n    \"as_of\": {\n      \"title\": \"As Of\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"startup_idea\",\n    \"category\",\n    \"target_user\",\n    \"problem\",\n    \"technology_claim\",\n    \"market_query\",\n    \"community_queries\",\n    \"tech_queries\",\n    \"assumptions\",\n    \"scoping_gaps\",\n    \"as_of\"\n  ],\n  \"title\": \"ScopedIdea\",\n  \"type\": \"object\"\n}\n\nIMPORTANT: Preserve the original content exactly as-is. Do NOT rewrite, paraphrase, or modify the meaning of the content. Only structure it to match the schema format.\n\nDo not include the OpenAPI schema in the final output. Ensure the final output does not include any code block markers like ```json or ```python.\n\nProvide your complete response:"
+          }
+        ]
+      },
+      "output": {
+        "completion": "{\"startup_idea\":\"An AI tool that turns Figma files into production React\",\"category\":\"Design-to-code automation\",\"target_user\":\"Frontend developers and engineering teams\",\"problem\":\"Manually translating design mockups into clean, responsive, and maintainable frontend code is repetitive and slows release cycles.\",\"technology_claim\":\"AI can accurately parse Figma design files and output production-ready React component code conforming to design systems and project conventions.\",\"market_query\":\"AI design to code Figma to React tools competitors market adoption\",\"community_queries\":[\"figma react code\"],\"tech_queries\":[\"figma to react\"],\"assumptions\":[\"Figma design files have sufficient structure, naming, and Auto Layout constraints for deterministic code generation.\",\"Engineers prefer reviewing and refactoring AI-generated UI code over writing components from scratch.\",\"Generated React code satisfies production quality benchmarks for accessibility, responsiveness, and component architecture.\",\"Existing design systems and token libraries can be mapped reliably to generated components.\"],\"scoping_gaps\":[\"Unclear whether 'production React' scope includes state management, interactive logic, and tests, or is limited to presentational components.\"],\"as_of\":\"2026-09-05\"}",
+        "reasoning": "**Exploring Startup Idea Scope**\n\nI'm currently defining the core components for a new AI tool. My focus is on precisely detailing the startup concept, its technical claims, and the target user for converting Figma designs into production-ready React code.\n\n**Refining AI Code Generation**\n\nI'm honing the technical queries for GitHub, focusing on \"Figma parsing\" and \"React component generation\" to better capture relevant advancements. I'm also solidifying the core assumptions about AI's capability to generate idiomatic code structures.\n\n**Defining AI Tool's Scope**\n\nI'm solidifying the precise definition of \"production-ready React,\" exploring whether it includes state management or just presentation. I'm also confirming that the generated React code will adhere to maintainability, styling, and accessibility standards.\n\n",
+        "rawRequest": {
+          "model": "google/gemini-3.8-flash",
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "startup_idea": {
+                    "minLength": 1,
+                    "title": "Startup Idea",
+                    "type": "string"
+                  },
+                  "category": {
+                    "minLength": 1,
+                    "title": "Category",
+                    "type": "string"
+                  },
+                  "target_user": {
+                    "minLength": 1,
+                    "title": "Target User",
+                    "type": "string"
+                  },
+                  "problem": {
+                    "minLength": 1,
+                    "title": "Problem",
+                    "type": "string"
+                  },
+                  "technology_claim": {
+                    "minLength": 1,
+                    "title": "Technology Claim",
+                    "type": "string"
+                  },
+                  "market_query": {
+                    "minLength": 1,
+                    "title": "Market Query",
+                    "type": "string"
+                  },
+                  "community_queries": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 1,
+                    "minItems": 1,
+                    "title": "Community Queries",
+                    "type": "array"
+                  },
+                  "tech_queries": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 1,
+                    "minItems": 1,
+                    "title": "Tech Queries",
+                    "type": "array"
+                  },
+                  "assumptions": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 5,
+                    "minItems": 3,
+                    "title": "Assumptions",
+                    "type": "array"
+                  },
+                  "scoping_gaps": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "title": "Scoping Gaps",
+                    "type": "array"
+                  },
+                  "as_of": {
+                    "title": "As Of",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "startup_idea",
+                  "category",
+                  "target_user",
+                  "problem",
+                  "technology_claim",
+                  "market_query",
+                  "community_queries",
+                  "tech_queries",
+                  "assumptions",
+                  "scoping_gaps",
+                  "as_of"
+                ],
+                "title": "ScopedIdea",
+                "type": "object"
+              },
+              "name": "ScopedIdea",
+              "strict": true
+            }
+          },
+          "stream": false,
+          "_skin": "chat-completions"
+        }
+      },
+      "metadata": {
+        "provider_responses": [
+          {
+            "id": "5wacatf-MszRi9sPzKSy6AI",
+            "provider_name": "Google",
+            "status": 200,
+            "latency": 1671,
+            "is_byok": false,
+            "endpoint_id": "10520141-5227-49ce-a7c8-a81bfaab8e01",
+            "model_permaslug": "google/gemini-3.8-flash-20260902"
+          }
+        ],
+        "attributes": {
+          "langfuse.trace.name": "OpenRouter Request",
+          "langfuse.observation.type": "generation",
+          "langfuse.observation.level": "DEFAULT",
+          "gen_ai.operation.name": "chat",
+          "gen_ai.system": "google",
+          "gen_ai.provider.name": "google",
+          "gen_ai.request.model": "google/gemini-3.8-flash",
+          "gen_ai.response.model": "google/gemini-3.8-flash",
+          "gen_ai.response.id": "gen-1788610279-n7uDHd8YKPC2n9oilLV3",
+          "gen_ai.usage.input_tokens": "1673",
+          "gen_ai.usage.output_tokens": "1006",
+          "gen_ai.usage.total_tokens": "2679",
+          "gen_ai.usage.input_cost": "0.00125475",
+          "gen_ai.usage.output_cost": "0.0037725",
+          "gen_ai.usage.total_cost": "0.00502725",
+          "gen_ai.usage.input_tokens.cached": "0",
+          "gen_ai.usage.input_tokens.audio": "0",
+          "gen_ai.usage.input_tokens.video": "0",
+          "gen_ai.usage.output_tokens.reasoning": "761",
+          "gen_ai.usage.output_tokens.image": "0",
+          "gen_ai.response.finish_reasons": "[\"stop\"]",
+          "gen_ai.response.finish_reason": "stop",
+          "langfuse.observation.completion_start_time": "2026-09-05T12:11:21.446Z",
+          "langfuse.observation.usage_details": "{\"input\":1673,\"output\":1006,\"total\":2679}",
+          "langfuse.observation.cost_details": "{\"input\":0.00125475,\"output\":0.0037725,\"total\":0.00502725}",
+          "gen_ai.usage.cost": "0.00502725",
+          "langfuse.observation.model.name": "google/gemini-3.8-flash"
+        },
+        "resourceAttributes": {
+          "service.name": "openrouter",
+          "openrouter.trace.id": "gen-1788610279-n7uDHd8YKPC2n9oilLV3"
+        },
+        "scope": {
+          "name": "openrouter",
+          "attributes": {}
+        }
+      },
+      "model": "google/gemini-3.8-flash",
+      "modelParameters": {},
+      "completionStartTime": "2026-09-05T12:11:21.446Z",
+      "promptId": null,
+      "promptName": null,
+      "promptVersion": null,
+      "latency": 7.588,
+      "timeToFirstToken": 2.239,
+      "usageDetails": {
+        "input": 1673,
+        "output": 1006,
+        "total": 2679
+      },
+      "costDetails": {
+        "input": 0.00125475,
+        "output": 0.0037725,
+        "total": 0.00502725
+      },
+      "usagePricingTierId": "c3a9f9a6-b79a-4e42-8835-9f0f8204a709_tier_default",
+      "usagePricingTierName": "Standard",
+      "inputPrice": 7.5e-07,
+      "outputPrice": 3.75e-06,
+      "totalPrice": 0,
+      "calculatedInputCost": 0.00125475,
+      "calculatedOutputCost": 0.0037725,
+      "calculatedTotalCost": 0.00502725,
+      "unit": "TOKENS",
+      "promptTokens": 1673,
+      "completionTokens": 1006,
+      "totalTokens": 2679,
+      "modelId": "c3a9f9a6-b79a-4e42-8835-9f0f8204a709",
+      "usage": {
+        "unit": "TOKENS",
+        "input": 1673,
+        "output": 1006,
+        "total": 2679
+      }
+    },
+    {
+      "id": "4b7e42b46d79f043",
+      "traceId": "7dacd2d95c23ebbe116edb0c908367c1",
+      "startTime": "2026-09-05T12:11:19.207Z",
+      "endTime": "2026-09-05T12:11:20.878Z",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "parentObservationId": "7dacd2d95c23ebbe",
+      "type": "SPAN",
+      "environment": "default",
+      "name": "provider attempt 1: Google",
+      "level": "DEFAULT",
+      "statusMessage": null,
+      "version": null,
+      "createdAt": "2026-09-05T12:11:27.749Z",
+      "updatedAt": "2026-09-05T12:11:27.750Z",
+      "input": null,
+      "output": null,
+      "metadata": {
+        "attempt_index": 0,
+        "status_code": 200,
+        "is_byok": false,
+        "endpoint_id": "10520141-5227-49ce-a7c8-a81bfaab8e01",
+        "model_permaslug": "google/gemini-3.8-flash-20260902",
+        "attributes": {
+          "langfuse.observation.type": "span",
+          "langfuse.observation.level": "DEFAULT",
+          "gen_ai.operation.name": "chat",
+          "gen_ai.response.id": "gen-1788610279-n7uDHd8YKPC2n9oilLV3:attempt-0"
+        },
+        "resourceAttributes": {
+          "service.name": "openrouter",
+          "openrouter.trace.id": "gen-1788610279-n7uDHd8YKPC2n9oilLV3"
+        },
+        "scope": {
+          "name": "openrouter",
+          "attributes": {}
+        }
+      },
+      "model": null,
+      "modelParameters": null,
+      "completionStartTime": null,
+      "promptId": null,
+      "promptName": null,
+      "promptVersion": null,
+      "latency": 1.671,
+      "timeToFirstToken": null,
+      "usageDetails": {},
+      "costDetails": {},
+      "usagePricingTierId": null,
+      "usagePricingTierName": null,
+      "inputPrice": 0,
+      "outputPrice": 0,
+      "totalPrice": 0,
+      "calculatedInputCost": null,
+      "calculatedOutputCost": null,
+      "calculatedTotalCost": null,
+      "unit": "TOKENS",
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0,
+      "modelId": null,
+      "usage": {
+        "unit": "TOKENS",
+        "input": 0,
+        "output": 0,
+        "total": 0
+      }
+    }
+  ],
+  "htmlPath": "/project/cmto3mj7t06ykad0ipon3ksbw/traces/7dacd2d95c23ebbe116edb0c908367c1",
+  "totalCost": 0.00502725,
+  "_deprecation": {
+    "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read span and trace data via GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>.",
+    "replacement": "GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>",
+    "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+    "sunsetAt": "2026-11-16"
+  }
+}

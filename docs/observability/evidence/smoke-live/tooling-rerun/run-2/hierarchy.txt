@@ -1,0 +1,40 @@
+TRACE 036ace4e8b584a9b9d460b78448684f9  name=idea-validator  session=036ace4e-8b58-4a9b-9d46-0b78448684f9
+  roots (parentObservationId null): 0  <- NONE; see ORPHANED below
+
+ORPHANED - the parent observation named below was not returned by the API.
+The subtree under each is drawn in full: a missing parent is a finding
+about the exporter, not a reason to lose the tree.
+  MISSING PARENT b40a884b759427b8 of SPAN run:
+    - SPAN/run run
+      - SPAN/node scope_idea  (agent=Startup validation scoper task=scoping_task)
+        - SPAN/task scoping_task  (agent=Startup validation scoper task=scoping_task)
+          - AGENT/agent Startup validation scoper  (agent=Startup validation scoper task=scoping_task)
+            - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Startup validation scoper task=scoping_task)
+      - SPAN/node confirm_scope
+      - SPAN/node research_market
+        - SPAN/task market_task  (agent=Market evidence analyst task=market_task)
+          - AGENT/agent Market evidence analyst  (agent=Market evidence analyst task=market_task)
+            - TOOL/tool research_market_landscape  (agent=Market evidence analyst task=market_task)
+            - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Market evidence analyst task=market_task)
+      - SPAN/node route_scope
+      - SPAN/node research_sentiment
+        - SPAN/task sentiment_task  (agent=Community demand analyst task=sentiment_task)
+          - AGENT/agent Community demand analyst  (agent=Community demand analyst task=sentiment_task)
+            - TOOL/tool analyze_community_sentiment  (agent=Community demand analyst task=sentiment_task)
+            - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Community demand analyst task=sentiment_task)
+      - SPAN/node research_feasibility
+        - SPAN/task feasibility_task  (agent=Technical feasibility analyst task=feasibility_task)
+          - AGENT/agent Technical feasibility analyst  (agent=Technical feasibility analyst task=feasibility_task)
+            - TOOL/tool assess_technical_feasibility  (agent=Technical feasibility analyst task=feasibility_task)
+            - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Technical feasibility analyst task=feasibility_task)
+      - SPAN/node synthesize
+        - SPAN/task synthesis_task  (agent=Startup validation synthesist task=synthesis_task)
+          - AGENT/agent Startup validation synthesist  (agent=Startup validation synthesist task=synthesis_task)
+            - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Startup validation synthesist task=synthesis_task)
+      - SPAN/node persist
+      - SPAN/node review_verdict
+      - SPAN/node route_verdict
+      - SPAN/node write_report
+        - SPAN/task reporting_task  (agent=Validation report writer task=reporting_task)
+          - AGENT/agent Validation report writer  (agent=Validation report writer task=reporting_task)
+            - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Validation report writer task=reporting_task)

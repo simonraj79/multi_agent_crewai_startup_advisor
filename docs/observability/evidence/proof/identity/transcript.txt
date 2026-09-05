@@ -1,0 +1,213 @@
+Identity on a PAID backend - the measured transcript
+====================================================
+
+Run 2026-09-05 by V-PROOF-IDENTITY, main tree, Windows. NOT synthetic:
+`GET /docs` answers 404, and `expose_docs` is `EXPOSE_API_DOCS or synthetic`,
+so a synthetic instance would have served it.
+
+NO RUN WAS LAUNCHED. `grep -c "sessions/" backend-8094.log` answers 0 and the
+POST tally at the foot of this file is the whole of what the backend was asked
+to do. Cost of this session: $0.00.
+
+Two processes, started in this order:
+
+  # 8093 - the JWKS server (foreground, own window)
+  .\.venv\Scripts\python.exe scripts\observability\mint_identity.py serve --port 8093
+
+  # 8094 - the paid backend (foreground, own window)
+  $env:AUTH_BASE_URL          = "http://127.0.0.1:8093"
+  $env:CREDENTIALS_MASTER_KEY = "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
+  $env:LANGFUSE_EXPORT_ENABLED = "0"
+  $env:PORT                   = "8094"
+  .\.venv\Scripts\serve.exe
+
+Every `$T` below is
+`.\.venv\Scripts\python.exe scripts\observability\mint_identity.py token --ttl 3600`,
+a 60-minute EdDSA token for `sub=proof-runner`. No token value appears in this
+file or any other; `grep -c eyJ` over this directory answers 0 for every file.
+
+
+0. THE VERIFIER, BEFORE ANY BACKEND
+-----------------------------------
+The JWKS server up on 8093, and the app's own verifier pointed at it over real
+HTTP - so this is the transport as well as the crypto:
+
+  $ AUTH_BASE_URL=http://127.0.0.1:8093 python -c "...verify_token(good)..."
+    AUTH_BASE_URL = 'http://127.0.0.1:8093'
+    VALIDATOR_REQUIRE_AUTH = True          <- derived, never set by hand
+    good     -> proof-runner proof-runner
+    tampered -> AuthError token is not valid
+
+`VALIDATOR_REQUIRE_AUTH` is `bool(AUTH_BASE_URL)`: setting the auth server IS
+turning auth on, and the half-configured state does not exist.
+
+
+1. THE BACKEND IS UP, AND IT IS THE PAID ONE
+--------------------------------------------
+  $ curl -sS http://127.0.0.1:8094/readyz
+    -> HTTP 200
+    {"status":"ok","dependencies":{"executor":{"status":"ok","backend":null,"workers":1},
+     "storage":{"status":"ok","backend":"sqlite","workers":null}},
+     "gates":{"open":0,"expired":0,"alerting":0,"expiries":0,"alerts":0,"sweeps":0},
+     "observability":{"exporter":"disabled","reason":"LANGFUSE_EXPORT_ENABLED is off",
+     "environment":"live","capture_content":false,"resolve_billed_cost":false}}
+
+  $ curl -sS http://127.0.0.1:8094/healthz            -> HTTP 200
+  $ curl -sS http://127.0.0.1:8094/docs               -> HTTP 404   (not synthetic)
+
+Startup line, from `backend-8094.log`:
+    langfuse export is off: LANGFUSE_EXPORT_ENABLED is off
+
+
+2. THE CUSTOM TOOL - THE 401 AND THE 201
+-----------------------------------------
+Body exactly as `builder-toolfail/inject.md` section 7 gives it.
+
+  $ curl -sS -X POST $BASE/api/builder/tools/custom -H 'content-type: application/json' \
+         --data '{"name":"sounding_line_lookup", ... }'
+    -> HTTP 401
+    {"detail":"sign in to use this endpoint"}
+
+  $ ... the same, plus  -H 'X-Synthetic-User: proof-runner'
+    -> HTTP 401
+    {"detail":"sign in to use this endpoint"}
+    (the header is IGNORED, not honoured: `synthetic_identity` needs
+     `synthetic=True` AND an unset AUTH_BASE_URL, and this backend is neither)
+
+  $ ... the same, plus  -H "Authorization: Bearer <TAMPERED>"
+    -> HTTP 401
+    www-authenticate: Bearer error="invalid_token"
+    {"detail":"your session has expired; sign in again"}
+    (one signature byte flipped by `mint_identity.py token --tamper`; header,
+     payload, kid and expiry all untouched. This is what makes the 201 below
+     evidence that the signature was CHECKED rather than merely present - the
+     two 401s carry different WWW-Authenticate values, so the refusals are
+     distinguishable: plain `Bearer` for nobody, `error="invalid_token"` for a
+     bad one.)
+
+  $ ... the same, plus  -H "Authorization: Bearer $T"
+    -> HTTP 201
+    {"id":"ut_0595b92a265e","name":"sounding_line_lookup",
+     "description":"Look a stretch of water up in the survey office depth register
+      and return the recorded soundings for it.",
+     "properties":[{"name":"water","type":"string",
+      "description":"The stretch of water to look up","required":true}],
+     "request":{"method":"GET","url":"https://sounding-line.invalid/depths",
+      "header_name":null,"header_template":null,"body_template":null,
+      "timeout_seconds":15,"max_response_bytes":1048576},
+     "credential_id":null,
+     "entry":{"tool_id":"ut_0595b92a265e","label":"sounding_line_lookup",
+      "category":"custom","credential_optional":false,
+      "attaches_to":["agent","crew"],"owner":"user","available":true, ...}}
+
+  TOOL ID = ut_0595b92a265e   owner = proof-runner   backend = this one only
+
+
+3. VALIDATE - THREE CALLERS, THREE ANSWERS
+-------------------------------------------
+Body is `{"document": <document-owned.json>}`, which is
+`builder-toolfail/document.json` with the one `tool_id` substituted:
+`ut_786b6870f07e` -> `ut_0595b92a265e`.
+
+  $ curl -sS -X POST $BASE/api/builder/validate --data @body.json     (ANONYMOUS)
+    -> HTTP 401
+    {"detail":"sign in to use this endpoint"}
+
+  $ ... -H "Authorization: Bearer $T"                                 (the OWNER)
+    -> HTTP 200
+    {"valid":true,"problems":[],
+     "budget":{"static_cost_usd":0.0336975,"floor_cost_usd":0.0336975,
+      "modelled_calls":3,"billable_nodes":1,"escalation_nodes":0,"cycles":0,
+      "unpriced_models":[],"over_ceiling":false,"ceiling_usd":10.0,
+      "per_node":{"chart_the_shoals":{"calls":3,"usd":0.0336975,
+       "model_id":"openrouter/google/gemini-3.5-flash-lite"}}},
+     "identity_checked":true}
+
+  $ ... -H "Authorization: Bearer <token for sub=other-runner>"    (ANOTHER user)
+    -> HTTP 200
+    {"valid":false,"problems":[{"code":"tool-unknown","severity":"error",
+      "message":"the_depth_register names the tool 'ut_0595b92a265e', which is
+       not in this deployment's catalogue and is not one of yours; the builtins
+       are research_market_landscape, analyze_community_sentiment,
+       assess_technical_feasibility, firecrawl_scrape, firecrawl_crawl,
+       firecrawl_search, web_search, http_request, scrape_website,
+       postgres_query",
+      "node_id":"the_depth_register","edge_id":null,"field":null}],
+     ...,"identity_checked":true}
+
+The third line is the one that makes this a proof rather than a demonstration:
+a DIFFERENT verified identity is refused the same document. The tool really is
+per-user, and the 200 above it is `proof-runner`'s and nobody else's.
+
+
+4. SAVE AND PUBLISH
+-------------------
+  $ curl -sS -X POST $BASE/api/builder/workflows -H "Authorization: Bearer $T" \
+         --data @body.json
+    -> HTTP 201
+    location: /api/builder/workflows/ug_4e7e952f
+    document id = ug_4e7e952f   version = 1   name = Tidewater survey
+
+  $ curl -sS -X POST $BASE/api/builder/workflows/ug_4e7e952f/publish \
+         -H "Authorization: Bearer $T"
+    -> HTTP 200
+    {"workflow_id":"ug_4e7e952f","graph_version":"c3b393e1a89362dd","version":1,
+     "input_field":"idea","static_cost_usd":0.0336975,"gated_before_spend":true,
+     "reserved_input_keys":["__builder__","decision__start_survey",
+      "out__chart_the_shoals","out__start_survey","out__the_brief",
+      "out__the_chart","turns__start_survey"]}
+
+  $ ... the same publish, ANONYMOUS
+    -> HTTP 401
+    {"detail":"sign in to use this endpoint"}
+
+`gated_before_spend: true` - the graph pauses at `start_survey` before the one
+billable node, so launching it later costs nothing until a human approves.
+
+
+5. THE PUBLISHED GRAPH IS THE OWNER'S ALONE
+--------------------------------------------
+  $ GET /api/workflows/ug_4e7e952f/graph   -H "Authorization: Bearer $T"     -> 200
+  $ GET /api/workflows/ug_4e7e952f/graph   (sub=other-runner)  -> 404 workflow not found
+  $ GET /api/workflows/ug_4e7e952f/graph   (anonymous)         -> 404 workflow not found
+
+404 and not 403, for the reason `require_own_run` already gives: a 403 confirms
+the row exists.
+
+
+6. THE KEYS WERE FETCHED ONCE
+------------------------------
+`jwks-8093.log` in this directory, in full. Three GETs of `/api/auth/jwks`:
+two are this session's own probes (a curl and the standalone `verify_token`
+check in section 0) and exactly ONE is the backend, at 23:47:42 - its first
+bearer request. Every later bearer request in sections 2-5 was served from
+`JwksCache`, which is the caching this design exists for.
+
+  23:46:51  "GET /api/auth/jwks HTTP/1.1" 200 -
+  23:46:51  "GET /nope HTTP/1.1" 404 -
+  23:46:59  "GET /api/auth/jwks HTTP/1.1" 200 -
+  23:47:42  "GET /api/auth/jwks HTTP/1.1" 200 -
+
+
+7. NOTHING WAS LAUNCHED
+------------------------
+Every POST the backend saw, for the whole session
+(`grep -o 'POST /[^ ]*' backend-8094.log | sort | uniq -c`):
+
+      5 POST /api/builder/tools/custom
+      3 POST /api/builder/validate
+      1 POST /api/builder/workflows
+      2 POST /api/builder/workflows/ug_4e7e952f/publish
+
+  $ grep -c "sessions/" backend-8094.log
+    0
+
+No `POST /api/sessions/{id}/runs`. No model was called. $0.00.
+
+
+8. SHUTDOWN
+-----------
+By PID, from `netstat -ano`, backend first and the JWKS server last, with
+`taskkill /PID <pid> /T /F`. Never `Stop-Process -Name serve`: a stale process
+keeps answering `/healthz` from old code (gotchas 25 and 26). Both ports were
+confirmed absent from `netstat -ano` afterwards.

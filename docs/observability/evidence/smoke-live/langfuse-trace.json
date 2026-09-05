@@ -1,0 +1,105 @@
+{
+  "id": "4548c8846e5c404ca28abbf5a8ce8cf7",
+  "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+  "name": "idea-validator",
+  "timestamp": "2026-09-05T14:42:19.727Z",
+  "environment": "synthetic",
+  "tags": [
+    "gates:auto",
+    "idea-validator",
+    "mode:run"
+  ],
+  "bookmarked": false,
+  "release": null,
+  "version": null,
+  "userId": "anonymous",
+  "sessionId": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7",
+  "public": false,
+  "input": {
+    "input_chars": 69,
+    "input_fingerprint": "3857c57e9308c8ffbd3e979ce45c88773e5cbd97071dba6267883ed8a45e0e04",
+    "input_keys": [
+      "idea",
+      "no_gates"
+    ]
+  },
+  "output": {
+    "status": "completed",
+    "reason": null
+  },
+  "metadata": {
+    "run_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7",
+    "workflow_id": "idea-validator",
+    "app_session_id": "smoke-live-1",
+    "gates": "auto",
+    "mode": "run",
+    "synthetic": true,
+    "user_id": "anonymous",
+    "graph_version": "9c6ca8a6fefbfffd",
+    "observation_role": "run",
+    "frame_ts": "2026-09-05T14:42:19.725Z",
+    "computed_result": {
+      "verdict": "NEEDS_WORK",
+      "composite_score": 6,
+      "confidence": 0.62,
+      "confidence_band": {
+        "chars": 8,
+        "sha256": "b9b394371b969a9e492cc66098ca567b5bece5c88bdea569a1146120ab770f7f"
+      },
+      "provisional": false,
+      "fatal_floors": [],
+      "decision_reason": null,
+      "dimensions": {
+        "demand": 3,
+        "market": 3,
+        "competitive_room": 3,
+        "feasibility": 3,
+        "headroom_over_free": 3
+      },
+      "anchor_margins": {
+        "D": 0,
+        "M": 0.0625,
+        "C": 0.0714,
+        "F": 0.0417,
+        "X": 0.0476
+      }
+    },
+    "run_metrics": {
+      "reason": "interval",
+      "usage": {
+        "successful_requests": 3,
+        "prompt_tokens": 1920,
+        "completion_tokens": 225,
+        "total_tokens": 2145,
+        "call_count": 3,
+        "elapsed_ms": 0,
+        "cost_usd": 0.0011385
+      },
+      "frames": {
+        "captured": 50,
+        "dropped": 0,
+        "gaps": 0,
+        "emit_errors": 0,
+        "subscriber_dropped": 0,
+        "unattributed": 0
+      }
+    },
+    "resourceAttributes": {
+      "telemetry.sdk.language": "python",
+      "telemetry.sdk.name": "opentelemetry",
+      "telemetry.sdk.version": "1.42.1",
+      "langfuse.environment": "synthetic",
+      "service.name": "unknown_service"
+    },
+    "scope": {
+      "name": "langfuse-sdk",
+      "version": "4.15.1",
+      "attributes": {
+        "public_key": "<LANGFUSE_PUBLIC_KEY redacted by V-PROOF-PREP>"
+      }
+    }
+  },
+  "createdAt": "2026-09-05T14:42:24.000Z",
+  "updatedAt": "2026-09-05T14:42:28.920Z",
+  "externalId": null
+}

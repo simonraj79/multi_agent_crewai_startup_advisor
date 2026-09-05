@@ -1,0 +1,150 @@
+{
+ "schema": "builder.flow/v1",
+ "name": "Tidewater survey",
+ "version": 1,
+ "input_field": "idea",
+ "joins": {},
+ "nodes": [
+  {
+   "id": "the_brief",
+   "kind": "input",
+   "label": "Survey brief",
+   "position": {
+    "x": 0,
+    "y": 190
+   },
+   "config": {
+    "field": "idea",
+    "label": "Which stretch of water to survey",
+    "max_chars": 2000,
+    "required": true
+   }
+  },
+  {
+   "id": "start_survey",
+   "kind": "gate",
+   "label": "Start the survey",
+   "position": {
+    "x": 300,
+    "y": 190
+   },
+   "config": {
+    "message": "Approve to send the Tidewater Cartographer out with the sounding line.",
+    "editable_fields": [],
+    "max_turns": 0,
+    "expiry_seconds": 1800
+   }
+  },
+  {
+   "id": "chart_the_shoals",
+   "kind": "agent",
+   "label": "chart_the_shoals",
+   "position": {
+    "x": 620,
+    "y": 190
+   },
+   "config": {
+    "tier": "cheap",
+    "max_iter": 2,
+    "guardrail_max_retries": 0,
+    "on_error": "fail",
+    "prompt_inputs": {
+     "brief": "${state.idea}"
+    },
+    "role": "Tidewater Cartographer",
+    "goal": "Chart the shoals of a named stretch of water, reporting only what a sounding line has actually touched.",
+    "backstory": "Thirty years of dropping a sounding line off the bow and writing down what came back. You trust the sounding line over any chart you did not draw yourself, so you never describe a depth you have not sounded.",
+    "task": {
+     "description": "Take a sounding for {brief}. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.",
+     "expected_output": "Two labelled paragraphs - one headed sounding_line_lookup and one headed scrape_website - each saying exactly what that tool returned, followed by three bullet points describing the shoals."
+    },
+    "llm": {
+     "model": "google/gemini-3.5-flash-lite",
+     "temperature": 0.2,
+     "max_tokens": 700
+    },
+    "allow_delegation": false,
+    "memory": false,
+    "cache": true,
+    "respect_context_window": true,
+    "tool_failure_policy": "raise"
+   }
+  },
+  {
+   "id": "the_sounding_line",
+   "kind": "tool",
+   "label": "The sounding line",
+   "position": {
+    "x": 620,
+    "y": 400
+   },
+   "config": {
+    "tool_id": "scrape_website",
+    "params": {}
+   }
+  },
+  {
+   "id": "the_chart",
+   "kind": "output",
+   "label": "The chart",
+   "position": {
+    "x": 940,
+    "y": 190
+   },
+   "config": {
+    "body_key": "markdown_body",
+    "source": "${state.out__chart_the_shoals}"
+   }
+  },
+  {
+   "id": "the_depth_register",
+   "kind": "tool",
+   "label": "The depth register",
+   "position": {
+    "x": 620,
+    "y": 520
+   },
+   "config": {
+    "tool_id": "ut_0595b92a265e",
+    "params": {}
+   }
+  }
+ ],
+ "edges": [
+  {
+   "id": "e1",
+   "source": "the_brief",
+   "source_port": "out",
+   "target": "start_survey",
+   "target_port": "in"
+  },
+  {
+   "id": "e2",
+   "source": "start_survey",
+   "source_port": "approve",
+   "target": "chart_the_shoals",
+   "target_port": "in"
+  },
+  {
+   "id": "e3",
+   "source": "chart_the_shoals",
+   "source_port": "out",
+   "target": "the_chart",
+   "target_port": "in"
+  },
+  {
+   "id": "e4",
+   "source": "the_sounding_line",
+   "source_port": "attach",
+   "target": "chart_the_shoals",
+   "target_port": "attach"
+  },
+  {
+   "id": "e5",
+   "source": "the_depth_register",
+   "source_port": "attach",
+   "target": "chart_the_shoals",
+   "target_port": "attach"
+  }
+ ]
+}

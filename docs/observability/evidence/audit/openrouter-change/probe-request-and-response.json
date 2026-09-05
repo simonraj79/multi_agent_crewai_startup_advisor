@@ -1,0 +1,89 @@
+{
+  "marker": "exclusion-check-1788616463",
+  "sent_at_utc": "2026-09-05T13:54:23.250926Z",
+  "response_at_utc": "2026-09-05T13:54:24.282117Z",
+  "request": {
+    "method": "POST",
+    "url": "https://openrouter.ai/api/v1/chat/completions",
+    "headers": {
+      "Authorization": "Bearer <OPENROUTER_API_KEY, the MultiAgentCrewAI key>",
+      "Content-Type": "application/json",
+      "X-Title": "exclusion-check"
+    },
+    "body": {
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "max_tokens": 8,
+      "messages": [
+        {
+          "role": "user",
+          "content": "exclusion-check-1788616463"
+        }
+      ],
+      "trace": {
+        "trace_id": "exclusion-check-1788616463",
+        "trace_name": "exclusion-check",
+        "probe": "exclusion-check-1788616463",
+        "metadata": {
+          "probe": "exclusion-check-1788616463"
+        }
+      }
+    }
+  },
+  "http_status": 200,
+  "response": {
+    "id": "gen-1788616463-5l46OLAf97BzcaL6k9hT",
+    "object": "chat.completion",
+    "created": 1788616463,
+    "model": "google/gemini-3.5-flash-lite",
+    "provider": "Google AI Studio",
+    "system_fingerprint": null,
+    "service_tier": "priority",
+    "choices": [
+      {
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "length",
+        "native_finish_reason": "MAX_TOKENS",
+        "message": {
+          "role": "assistant",
+          "content": "Exclusion check acknowledged",
+          "refusal": null,
+          "reasoning": null,
+          "reasoning_details": [
+            {
+              "type": "reasoning.text",
+              "signature": "El4KXAERTTIPVJp7pDqE0wAcex4OWv4xiHUYSSJTMx4epWxWhyfpxoInVjZs7QAPPMidWDjTk8X7rrm0Jwbjp3wkLbcLj3PHMMKYpYKsFCAkF8JZvD1EYsyLHtOIJQ6p",
+              "format": "google-gemini-v1",
+              "index": 0
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 15,
+      "completion_tokens": 4,
+      "total_tokens": 19,
+      "cost": 2.61e-05,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 2.61e-05,
+        "upstream_inference_prompt_cost": 8.1e-06,
+        "upstream_inference_completions_cost": 1.8e-05
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  },
+  "generation_id": "gen-1788616463-5l46OLAf97BzcaL6k9hT",
+  "model_source": "CHEAP_MODEL in src/brief_crew/config.py = 'openrouter/google/gemini-3.5-flash-lite:nitro', 'openrouter/' stripped"
+}

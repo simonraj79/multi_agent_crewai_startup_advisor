@@ -1,0 +1,78 @@
+{
+  "schema": "builder.flow/v1",
+  "name": "Channel sounding",
+  "version": 1,
+  "input_field": "idea",
+  "joins": {},
+  "nodes": [
+    {
+      "id": "the_brief",
+      "kind": "input",
+      "label": "Channel brief",
+      "position": { "x": 0, "y": 190 },
+      "config": {
+        "field": "idea",
+        "label": "Which channel to sound",
+        "max_chars": 2000,
+        "required": true
+      }
+    },
+    {
+      "id": "start_sounding",
+      "kind": "gate",
+      "label": "Start the sounding",
+      "position": { "x": 300, "y": 190 },
+      "config": {
+        "message": "Approve to send the Channel Sounder down the reach.",
+        "editable_fields": [],
+        "max_turns": 0,
+        "expiry_seconds": 1800
+      }
+    },
+    {
+      "id": "sound_the_channel",
+      "kind": "agent",
+      "label": "sound_the_channel",
+      "position": { "x": 620, "y": 190 },
+      "config": {
+        "tier": "cheap",
+        "max_iter": 1,
+        "guardrail_max_retries": 0,
+        "on_error": "fail",
+        "prompt_inputs": { "brief": "${state.idea}" },
+        "role": "Channel Sounder",
+        "goal": "Say how deep a named channel runs, from the register in your head and nothing else.",
+        "backstory": "You carry no instruments and no sounding line. You answer from memory or you do not answer.",
+        "task": {
+          "description": "Write one short paragraph about the depth of {brief}. Use no tools.",
+          "expected_output": "One paragraph of at most eighty words."
+        },
+        "llm": {
+          "model": "google/gemini-3.5-flash-lite",
+          "temperature": 0.2,
+          "max_tokens": 2000000000
+        },
+        "allow_delegation": false,
+        "memory": false,
+        "cache": true,
+        "respect_context_window": true,
+        "retry": { "max_retries": 0, "backoff_seconds": 0 }
+      }
+    },
+    {
+      "id": "the_log",
+      "kind": "output",
+      "label": "The sounding log",
+      "position": { "x": 940, "y": 190 },
+      "config": {
+        "body_key": "markdown_body",
+        "source": "${state.out__sound_the_channel}"
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "the_brief", "source_port": "out", "target": "start_sounding", "target_port": "in" },
+    { "id": "e2", "source": "start_sounding", "source_port": "approve", "target": "sound_the_channel", "target_port": "in" },
+    { "id": "e3", "source": "sound_the_channel", "source_port": "out", "target": "the_log", "target_port": "in" }
+  ]
+}

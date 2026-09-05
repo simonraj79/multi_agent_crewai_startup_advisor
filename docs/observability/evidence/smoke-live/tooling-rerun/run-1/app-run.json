@@ -1,0 +1,151 @@
+{
+  "run_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7",
+  "session_id": "smoke-live-1",
+  "workflow_id": "idea-validator",
+  "graph_version": "9c6ca8a6fefbfffd",
+  "status": "completed",
+  "created_at": "2026-09-05T14:42:19.715358Z",
+  "started_at": "2026-09-05T14:42:19.721535Z",
+  "completed_at": "2026-09-05T14:42:25.747708Z",
+  "pending_gate": null,
+  "frames": {
+    "count": 97,
+    "captured": 97,
+    "dropped": 0,
+    "gaps": 0,
+    "emit_errors": 0,
+    "subscriber_dropped": 0,
+    "unattributed": 0,
+    "first_seq": 1,
+    "last_seq": 97
+  },
+  "usage": {
+    "successful_requests": 6,
+    "prompt_tokens": 3840,
+    "completion_tokens": 449,
+    "total_tokens": 4289,
+    "call_count": 6,
+    "elapsed_ms": 0,
+    "cost_usd": 0.0022745
+  },
+  "node_usage": [
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 79,
+      "total_tokens": 719,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.0003895,
+      "node_id": "research_feasibility",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 78,
+      "total_tokens": 718,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.000387,
+      "node_id": "research_market",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 79,
+      "total_tokens": 719,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.0003895,
+      "node_id": "research_sentiment",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 68,
+      "total_tokens": 708,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.000362,
+      "node_id": "scope_idea",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 77,
+      "total_tokens": 717,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.0003845,
+      "node_id": "synthesize",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 68,
+      "total_tokens": 708,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.000362,
+      "node_id": "write_report",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    }
+  ],
+  "result": {
+    "synthetic": true,
+    "markdown_body": "# Validation report - NEEDS_WORK\n\n**Idea.** A scheduling assistant for small veterinary clinics\n\n> This report is produced by `SyntheticValidatorRunner`. No model was called\n> and no source was retrieved. It exists so the console's report rendering is\n> exercisable at zero cost.\n\n## Score breakdown\n\n| Dimension | Score | Weight | Note |\n| --- | --- | --- | --- |\n| Demand | 3 | 0.30 | Synthetic placeholder |\n| Market | 3 | 0.20 | Synthetic placeholder |\n| Competitive room | 3 | 0.20 | Synthetic placeholder |\n| Feasibility | 3 | 0.15 | Synthetic placeholder |\n| Headroom over free | 3 | 0.15 | Synthetic placeholder |\n\nComposite **6.0** at `MODERATE` confidence.\n\n## Cheapest next test\n\n1. Interview five target users.\n2. Price the wedge against the free alternative.\n\n## Sources\n\n- [Synthetic market note](https://example.com/synthetic-market)\n- [Synthetic HN thread](https://news.ycombinator.com/item?id=1)\n",
+    "provisional": true,
+    "thin_dimensions": [
+      "D",
+      "X"
+    ],
+    "sources": [
+      {
+        "url": "https://example.com/synthetic-market",
+        "title": "Synthetic market note"
+      },
+      {
+        "url": "https://news.ycombinator.com/item?id=1",
+        "title": "Synthetic HN thread"
+      }
+    ],
+    "idea": "A scheduling assistant for small veterinary clinics",
+    "verdict": "NEEDS_WORK",
+    "feedback": {
+      "decision": "approve",
+      "unattended": true
+    }
+  },
+  "verdict": {
+    "verdict": "NEEDS_WORK",
+    "composite_score": 6.0,
+    "confidence": 0.62,
+    "confidence_band": "MODERATE",
+    "provisional": false,
+    "fatal_floors": [],
+    "decision_reason": null,
+    "dimensions": {
+      "demand": 3,
+      "market": 3,
+      "competitive_room": 3,
+      "feasibility": 3,
+      "headroom_over_free": 3
+    },
+    "anchor_margins": {
+      "D": 0.0,
+      "M": 0.0625,
+      "C": 0.0714,
+      "F": 0.0417,
+      "X": 0.0476
+    }
+  },
+  "error": null,
+  "stop_reason": null,
+  "mode": "run",
+  "resume_from": null
+}

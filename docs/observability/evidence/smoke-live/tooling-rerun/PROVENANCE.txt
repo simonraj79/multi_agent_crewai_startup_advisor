@@ -1,0 +1,43 @@
+tooling-rerun/ - the same three smoke-live runs, re-pulled with the FIXED tooling
+================================================================================
+
+Written 2026-09-05 by B-CFG (the tooling builder), after the smoke-live
+verification (../README.md section 7) found six defects, four of them in
+scripts/observability/. Nothing in ../ was overwritten: the verifier's own
+files, including the hand-redacted langfuse-*.json and secret-scan-BEFORE.txt,
+are untouched and remain the record of what the tooling did BEFORE the fixes.
+
+Subject: the three runs of ../README.md section 1, by their run ids -
+  run-1  4548c884-6e5c-404c-a28a-bbf5a8ce8cf7
+  run-2  036ace4e-8b58-4a9b-9d46-0b78448684f9
+  run-3  9d356fcb-aadd-4d41-ab06-7ffcd50c78ea
+
+The app backend was killed long before this ran, so the app side was NOT
+re-pulled: it is derived from the app-run.json and frames.ndjson already saved
+in ../ by the new --from-files mode, and the result compares equal to ../'s own
+app-figures.json on totals, by_agent_role, by_task_name, durations and spans.
+The Langfuse side IS a live re-pull: those three traces are still in the
+project, so the write-time redaction, the ingestion poll and the hierarchy walk
+were exercised against the real API rather than against a fixture.
+
+Commands, verbatim, per run (RUN and SRC as above):
+
+  .venv\Scripts\python.exe scripts\observability\pull_app_run.py
+      --run-id $RUN --out $D --from-files docs/observability/evidence/smoke-live/$SRC
+  .venv\Scripts\python.exe scripts\observability\pull_langfuse_run.py
+      --run-id $RUN --out $D --app-figures $D
+  .venv\Scripts\python.exe scripts\observability\reconcile.py
+      --app $D --langfuse $D --out ../RECONCILIATION-<run>.md
+      --durations-out ../durations-app-vs-langfuse-<run>.md
+
+  .venv\Scripts\python.exe scripts\observability\membership_check.py
+      --from-dir run-1 --from-dir run-2 --from-dir run-3 --out membership
+  .venv\Scripts\python.exe scripts\observability\secret_scan.py
+      --paths docs/observability/evidence/smoke-live --out secret-scan-AFTER-TOOLING-FIX.txt
+
+Each script's stdout+stderr is beside its directory as run-N-<script>.log.
+
+This directory is a TOOLING check, not proof-run evidence, and it marks no DoD
+row. Every run in it is synthetic: no money was spent, there are no OpenRouter
+generation ids, and the per-task app column is empty because the synthetic
+double emits no task-boundary frames (../README.md section 2 records that).

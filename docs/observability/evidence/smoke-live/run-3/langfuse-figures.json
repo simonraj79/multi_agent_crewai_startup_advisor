@@ -1,0 +1,925 @@
+{
+  "source": "langfuse",
+  "generated_at": "2026-09-05T14:47:05Z",
+  "run_id": "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea",
+  "session_found": true,
+  "session_id": "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea",
+  "trace_ids": [
+    "9d356fcbaadd4d41ab067ffcd50c78ea"
+  ],
+  "trace_names": [
+    "idea-validator"
+  ],
+  "environment": [
+    "synthetic"
+  ],
+  "user_ids": [
+    "anonymous"
+  ],
+  "tags": [
+    "gates:auto",
+    "idea-validator",
+    "mode:run"
+  ],
+  "trace_metadata": [
+    {
+      "run_id": "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea",
+      "workflow_id": "idea-validator",
+      "app_session_id": "smoke-live-3",
+      "gates": "auto",
+      "mode": "run",
+      "synthetic": true,
+      "user_id": "anonymous",
+      "graph_version": "9c6ca8a6fefbfffd",
+      "observation_role": "run",
+      "frame_ts": "2026-09-05T14:46:11.420Z",
+      "computed_result": {
+        "verdict": "NEEDS_WORK",
+        "composite_score": 6,
+        "confidence": 0.62,
+        "confidence_band": {
+          "chars": 8,
+          "sha256": "b9b394371b969a9e492cc66098ca567b5bece5c88bdea569a1146120ab770f7f"
+        },
+        "provisional": false,
+        "fatal_floors": [],
+        "decision_reason": null,
+        "dimensions": {
+          "demand": 3,
+          "market": 3,
+          "competitive_room": 3,
+          "feasibility": 3,
+          "headroom_over_free": 3
+        },
+        "anchor_margins": {
+          "D": 0,
+          "M": 0.0625,
+          "C": 0.0714,
+          "F": 0.0417,
+          "X": 0.0476
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "synthetic",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<LANGFUSE_PUBLIC_KEY redacted by V-PROOF-PREP>"
+        }
+      }
+    }
+  ],
+  "status": "completed",
+  "started_at": "2026-09-05T14:46:11.421000Z",
+  "ended_at": "2026-09-05T14:46:17.440000Z",
+  "wall_clock_seconds": 6.019,
+  "observation_count": 33,
+  "observation_types": {
+    "AGENT": 6,
+    "GENERATION": 6,
+    "SPAN": 18,
+    "TOOL": 3
+  },
+  "totals": {
+    "calls": 6,
+    "input_tokens": 3840,
+    "output_tokens": 441,
+    "total_tokens": 4281,
+    "cost_usd": 0.0022545,
+    "calls_without_cost": 0
+  },
+  "by_node": {
+    "write_report": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    },
+    "synthesize": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 75,
+      "total_tokens": 715,
+      "cost_usd": 0.0003795,
+      "calls_without_cost": 0
+    },
+    "research_feasibility": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "research_sentiment": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "research_market": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 76,
+      "total_tokens": 716,
+      "cost_usd": 0.000382,
+      "calls_without_cost": 0
+    },
+    "scope_idea": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    }
+  },
+  "by_agent_role": {
+    "Validation report writer": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    },
+    "Startup validation synthesist": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 75,
+      "total_tokens": 715,
+      "cost_usd": 0.0003795,
+      "calls_without_cost": 0
+    },
+    "Technical feasibility analyst": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "Community demand analyst": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "Market evidence analyst": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 76,
+      "total_tokens": 716,
+      "cost_usd": 0.000382,
+      "calls_without_cost": 0
+    },
+    "Startup validation scoper": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    }
+  },
+  "by_task_name": {
+    "reporting_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    },
+    "synthesis_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 75,
+      "total_tokens": 715,
+      "cost_usd": 0.0003795,
+      "calls_without_cost": 0
+    },
+    "feasibility_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "sentiment_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "market_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 76,
+      "total_tokens": 716,
+      "cost_usd": 0.000382,
+      "calls_without_cost": 0
+    },
+    "scoping_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    }
+  },
+  "by_model": {
+    "google/gemini-3.5-flash-lite:nitro": {
+      "calls": 6,
+      "input_tokens": 3840,
+      "output_tokens": 441,
+      "total_tokens": 4281,
+      "cost_usd": 0.0022545,
+      "calls_without_cost": 0
+    }
+  },
+  "calls": [
+    {
+      "observation_id": "b06a863ef1a8c1c4",
+      "trace_id": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "parent_observation_id": "3b7d65d51c1cdb99",
+      "name": "google/gemini-3.5-flash-lite:nitro",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "write_report",
+      "agent_role": "Validation report writer",
+      "task_name": "reporting_task",
+      "identity_source": "metadata",
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "cost_source": "app-estimate",
+      "openrouter_cost_usd": null,
+      "attempt": 1,
+      "prompt_fingerprint": "99f6123ba190cbbfc8e8a1d3287d6dc40c046d8d0f19690c4ec73b1f64358e15",
+      "level": "DEFAULT",
+      "status_message": null,
+      "start_time": "2026-09-05T14:46:17.440Z",
+      "end_time": "2026-09-05T14:46:17.440Z",
+      "duration_seconds": 0.0
+    },
+    {
+      "observation_id": "d0cc1cc24dd9a538",
+      "trace_id": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "parent_observation_id": "803c407fb80109a8",
+      "name": "google/gemini-3.5-flash-lite:nitro",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "synthesize",
+      "agent_role": "Startup validation synthesist",
+      "task_name": "synthesis_task",
+      "identity_source": "metadata",
+      "input_tokens": 640,
+      "output_tokens": 75,
+      "total_tokens": 715,
+      "cost_usd": 0.0003795,
+      "cost_source": "app-estimate",
+      "openrouter_cost_usd": null,
+      "attempt": 1,
+      "prompt_fingerprint": "38c4a5ad0a44cb724c7a68f7f710ed03ec5c34f2c7699081e0ec04c5a090d574",
+      "level": "DEFAULT",
+      "status_message": null,
+      "start_time": "2026-09-05T14:46:17.439Z",
+      "end_time": "2026-09-05T14:46:17.439Z",
+      "duration_seconds": 0.0
+    },
+    {
+      "observation_id": "83f3916939418151",
+      "trace_id": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "parent_observation_id": "984acb2a3ad716a9",
+      "name": "google/gemini-3.5-flash-lite:nitro",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "task_name": "feasibility_task",
+      "identity_source": "metadata",
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "cost_source": "app-estimate",
+      "openrouter_cost_usd": null,
+      "attempt": 1,
+      "prompt_fingerprint": "f75fdb271321b97f18347750ce8bb39d697f90af01fd2d3f1d7f8f631aaea577",
+      "level": "DEFAULT",
+      "status_message": null,
+      "start_time": "2026-09-05T14:46:17.438Z",
+      "end_time": "2026-09-05T14:46:17.438Z",
+      "duration_seconds": 0.0
+    },
+    {
+      "observation_id": "15877f6ede40c9b5",
+      "trace_id": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "parent_observation_id": "f6601de8db41d015",
+      "name": "google/gemini-3.5-flash-lite:nitro",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "task_name": "sentiment_task",
+      "identity_source": "metadata",
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "cost_source": "app-estimate",
+      "openrouter_cost_usd": null,
+      "attempt": 1,
+      "prompt_fingerprint": "99f9f295ce083ec55c29413c97c4fad0bf643dc2b06d7d9cfa7f1f4942dd0172",
+      "level": "DEFAULT",
+      "status_message": null,
+      "start_time": "2026-09-05T14:46:15.425Z",
+      "end_time": "2026-09-05T14:46:15.425Z",
+      "duration_seconds": 0.0
+    },
+    {
+      "observation_id": "06772630abaeed44",
+      "trace_id": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "parent_observation_id": "3a43fe40d03d5c13",
+      "name": "google/gemini-3.5-flash-lite:nitro",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "task_name": "market_task",
+      "identity_source": "metadata",
+      "input_tokens": 640,
+      "output_tokens": 76,
+      "total_tokens": 716,
+      "cost_usd": 0.000382,
+      "cost_source": "app-estimate",
+      "openrouter_cost_usd": null,
+      "attempt": 1,
+      "prompt_fingerprint": "f5a88bef847efc22450cf3198035bf84321d4c3692cf13415b344edcf969378f",
+      "level": "DEFAULT",
+      "status_message": null,
+      "start_time": "2026-09-05T14:46:13.423Z",
+      "end_time": "2026-09-05T14:46:13.423Z",
+      "duration_seconds": 0.0
+    },
+    {
+      "observation_id": "feb0f6acc0c263d0",
+      "trace_id": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "parent_observation_id": "e76badd421b3c57b",
+      "name": "google/gemini-3.5-flash-lite:nitro",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "scope_idea",
+      "agent_role": "Startup validation scoper",
+      "task_name": "scoping_task",
+      "identity_source": "metadata",
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "cost_source": "app-estimate",
+      "openrouter_cost_usd": null,
+      "attempt": 1,
+      "prompt_fingerprint": "4ae4f14479fd63c8de6c998f9e389e5240f2513c6458c4fb1fec7fcb489068b8",
+      "level": "DEFAULT",
+      "status_message": null,
+      "start_time": "2026-09-05T14:46:11.421Z",
+      "end_time": "2026-09-05T14:46:11.421Z",
+      "duration_seconds": 0.0
+    }
+  ],
+  "response_ids": [],
+  "calls_without_response_id": 6,
+  "duplicate_response_ids": {},
+  "tool_calls": [
+    {
+      "id": "d0c49dcc6da23f6c",
+      "name": "assess_technical_feasibility",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "level": "DEFAULT",
+      "status_message": null,
+      "tool_status": "ok",
+      "duration_seconds": 2.01
+    },
+    {
+      "id": "86928232a1c47d12",
+      "name": "analyze_community_sentiment",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "level": "DEFAULT",
+      "status_message": null,
+      "tool_status": "ok",
+      "duration_seconds": 1.999
+    },
+    {
+      "id": "9b60c97ced694ae9",
+      "name": "research_market_landscape",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "level": "DEFAULT",
+      "status_message": null,
+      "tool_status": "ok",
+      "duration_seconds": 2.0
+    }
+  ],
+  "tool_call_count": 3,
+  "open_observations": [],
+  "scores": [
+    {
+      "name": "run_status",
+      "value": 0,
+      "stringValue": "completed",
+      "dataType": "CATEGORICAL",
+      "traceId": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "observationId": null
+    },
+    {
+      "name": "run_succeeded",
+      "value": 1,
+      "stringValue": null,
+      "dataType": "NUMERIC",
+      "traceId": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "observationId": null
+    },
+    {
+      "name": "task_attempts",
+      "value": 1,
+      "stringValue": null,
+      "dataType": "NUMERIC",
+      "traceId": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "observationId": "5204bd15d590a845"
+    },
+    {
+      "name": "task_attempts",
+      "value": 1,
+      "stringValue": null,
+      "dataType": "NUMERIC",
+      "traceId": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "observationId": "869d1f4c2ea0c791"
+    },
+    {
+      "name": "task_attempts",
+      "value": 1,
+      "stringValue": null,
+      "dataType": "NUMERIC",
+      "traceId": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "observationId": "e264ef1a642917b8"
+    },
+    {
+      "name": "task_attempts",
+      "value": 1,
+      "stringValue": null,
+      "dataType": "NUMERIC",
+      "traceId": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "observationId": "3aa826d29418e5b4"
+    },
+    {
+      "name": "task_attempts",
+      "value": 1,
+      "stringValue": null,
+      "dataType": "NUMERIC",
+      "traceId": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "observationId": "cd69ad9c5b62339f"
+    },
+    {
+      "name": "task_attempts",
+      "value": 1,
+      "stringValue": null,
+      "dataType": "NUMERIC",
+      "traceId": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "observationId": "65b213a5430aed24"
+    }
+  ],
+  "durations": {
+    "by_agent_role": [
+      {
+        "label": "(none)",
+        "spans": 11,
+        "total_seconds": 12.028,
+        "max_seconds": 6.016,
+        "open": 0
+      },
+      {
+        "label": "Technical feasibility analyst",
+        "spans": 3,
+        "total_seconds": 6.032,
+        "max_seconds": 2.011,
+        "open": 0
+      },
+      {
+        "label": "Market evidence analyst",
+        "spans": 3,
+        "total_seconds": 6.0,
+        "max_seconds": 2.0,
+        "open": 0
+      },
+      {
+        "label": "Community demand analyst",
+        "spans": 3,
+        "total_seconds": 5.9990000000000006,
+        "max_seconds": 2.0,
+        "open": 0
+      },
+      {
+        "label": "Validation report writer",
+        "spans": 2,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "Startup validation synthesist",
+        "spans": 2,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "Startup validation scoper",
+        "spans": 3,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      }
+    ],
+    "by_task_name": [
+      {
+        "label": "(none)",
+        "spans": 11,
+        "total_seconds": 12.028,
+        "max_seconds": 6.016,
+        "open": 0
+      },
+      {
+        "label": "feasibility_task",
+        "spans": 3,
+        "total_seconds": 6.032,
+        "max_seconds": 2.011,
+        "open": 0
+      },
+      {
+        "label": "market_task",
+        "spans": 3,
+        "total_seconds": 6.0,
+        "max_seconds": 2.0,
+        "open": 0
+      },
+      {
+        "label": "sentiment_task",
+        "spans": 3,
+        "total_seconds": 5.9990000000000006,
+        "max_seconds": 2.0,
+        "open": 0
+      },
+      {
+        "label": "reporting_task",
+        "spans": 2,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "synthesis_task",
+        "spans": 2,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "scoping_task",
+        "spans": 3,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      }
+    ],
+    "by_node": [
+      {
+        "label": "research_feasibility",
+        "spans": 4,
+        "total_seconds": 8.043,
+        "max_seconds": 2.011,
+        "open": 0
+      },
+      {
+        "label": "research_sentiment",
+        "spans": 4,
+        "total_seconds": 8.0,
+        "max_seconds": 2.001,
+        "open": 0
+      },
+      {
+        "label": "research_market",
+        "spans": 4,
+        "total_seconds": 8.0,
+        "max_seconds": 2.0,
+        "open": 0
+      },
+      {
+        "label": "(none)",
+        "spans": 1,
+        "total_seconds": 6.016,
+        "max_seconds": 6.016,
+        "open": 0
+      },
+      {
+        "label": "write_report",
+        "spans": 3,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "persist",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "synthesize",
+        "spans": 3,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "route_verdict",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "review_verdict",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "confirm_scope",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "route_scope",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "scope_idea",
+        "spans": 3,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      }
+    ],
+    "by_tool": [
+      {
+        "label": "assess_technical_feasibility",
+        "spans": 1,
+        "total_seconds": 2.01,
+        "max_seconds": 2.01,
+        "open": 0
+      },
+      {
+        "label": "research_market_landscape",
+        "spans": 1,
+        "total_seconds": 2.0,
+        "max_seconds": 2.0,
+        "open": 0
+      },
+      {
+        "label": "analyze_community_sentiment",
+        "spans": 1,
+        "total_seconds": 1.999,
+        "max_seconds": 1.999,
+        "open": 0
+      }
+    ],
+    "by_observation": [
+      {
+        "id": "2b82a696c0b6f0dd",
+        "type": "SPAN",
+        "name": "run",
+        "seconds": 6.016
+      },
+      {
+        "id": "984acb2a3ad716a9",
+        "type": "AGENT",
+        "name": "Technical feasibility analyst",
+        "seconds": 2.011
+      },
+      {
+        "id": "59ee61bed8bd97db",
+        "type": "SPAN",
+        "name": "research_feasibility",
+        "seconds": 2.011
+      },
+      {
+        "id": "e264ef1a642917b8",
+        "type": "SPAN",
+        "name": "feasibility_task",
+        "seconds": 2.011
+      },
+      {
+        "id": "d0c49dcc6da23f6c",
+        "type": "TOOL",
+        "name": "assess_technical_feasibility",
+        "seconds": 2.01
+      },
+      {
+        "id": "2b0838a1f9f658f2",
+        "type": "SPAN",
+        "name": "research_sentiment",
+        "seconds": 2.001
+      },
+      {
+        "id": "f6601de8db41d015",
+        "type": "AGENT",
+        "name": "Community demand analyst",
+        "seconds": 2.0
+      },
+      {
+        "id": "3aa826d29418e5b4",
+        "type": "SPAN",
+        "name": "sentiment_task",
+        "seconds": 2.0
+      },
+      {
+        "id": "3a43fe40d03d5c13",
+        "type": "AGENT",
+        "name": "Market evidence analyst",
+        "seconds": 2.0
+      },
+      {
+        "id": "8d3c80066ed856b0",
+        "type": "SPAN",
+        "name": "research_market",
+        "seconds": 2.0
+      },
+      {
+        "id": "cd69ad9c5b62339f",
+        "type": "SPAN",
+        "name": "market_task",
+        "seconds": 2.0
+      },
+      {
+        "id": "9b60c97ced694ae9",
+        "type": "TOOL",
+        "name": "research_market_landscape",
+        "seconds": 2.0
+      },
+      {
+        "id": "86928232a1c47d12",
+        "type": "TOOL",
+        "name": "analyze_community_sentiment",
+        "seconds": 1.999
+      },
+      {
+        "id": "3b7d65d51c1cdb99",
+        "type": "AGENT",
+        "name": "Validation report writer",
+        "seconds": 0.0
+      },
+      {
+        "id": "b06a863ef1a8c1c4",
+        "type": "GENERATION",
+        "name": "google/gemini-3.5-flash-lite:nitro",
+        "seconds": 0.0
+      },
+      {
+        "id": "353d7ebd191e0d41",
+        "type": "SPAN",
+        "name": "write_report",
+        "seconds": 0.0
+      },
+      {
+        "id": "5204bd15d590a845",
+        "type": "SPAN",
+        "name": "reporting_task",
+        "seconds": 0.0
+      },
+      {
+        "id": "ffd83b6f93573bfc",
+        "type": "SPAN",
+        "name": "persist",
+        "seconds": 0.0
+      },
+      {
+        "id": "803c407fb80109a8",
+        "type": "AGENT",
+        "name": "Startup validation synthesist",
+        "seconds": 0.0
+      },
+      {
+        "id": "d0cc1cc24dd9a538",
+        "type": "GENERATION",
+        "name": "google/gemini-3.5-flash-lite:nitro",
+        "seconds": 0.0
+      },
+      {
+        "id": "4f4647209e5e89a3",
+        "type": "SPAN",
+        "name": "route_verdict",
+        "seconds": 0.0
+      },
+      {
+        "id": "508da1133742fff7",
+        "type": "SPAN",
+        "name": "review_verdict",
+        "seconds": 0.0
+      },
+      {
+        "id": "869d1f4c2ea0c791",
+        "type": "SPAN",
+        "name": "synthesis_task",
+        "seconds": 0.0
+      },
+      {
+        "id": "83f3916939418151",
+        "type": "GENERATION",
+        "name": "google/gemini-3.5-flash-lite:nitro",
+        "seconds": 0.0
+      },
+      {
+        "id": "9e18fe5ab339a821",
+        "type": "SPAN",
+        "name": "synthesize",
+        "seconds": 0.0
+      },
+      {
+        "id": "15877f6ede40c9b5",
+        "type": "GENERATION",
+        "name": "google/gemini-3.5-flash-lite:nitro",
+        "seconds": 0.0
+      },
+      {
+        "id": "06772630abaeed44",
+        "type": "GENERATION",
+        "name": "google/gemini-3.5-flash-lite:nitro",
+        "seconds": 0.0
+      },
+      {
+        "id": "ab7ee24395f2b2ba",
+        "type": "SPAN",
+        "name": "confirm_scope",
+        "seconds": 0.0
+      },
+      {
+        "id": "f84531f6cb0c92f7",
+        "type": "SPAN",
+        "name": "route_scope",
+        "seconds": 0.0
+      },
+      {
+        "id": "e76badd421b3c57b",
+        "type": "AGENT",
+        "name": "Startup validation scoper",
+        "seconds": 0.0
+      },
+      {
+        "id": "feb0f6acc0c263d0",
+        "type": "GENERATION",
+        "name": "google/gemini-3.5-flash-lite:nitro",
+        "seconds": 0.0
+      },
+      {
+        "id": "65b213a5430aed24",
+        "type": "SPAN",
+        "name": "scoping_task",
+        "seconds": 0.0
+      },
+      {
+        "id": "902f0e251961881a",
+        "type": "SPAN",
+        "name": "scope_idea",
+        "seconds": 0.0
+      }
+    ]
+  }
+}

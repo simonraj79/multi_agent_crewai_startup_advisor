@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-09-05T13:41:06Z",
+  "runs_per_arm": 1,
+  "workflow_id": "idea-validator",
+  "branch_delay": "1",
+  "arms": {
+    "on": {
+      "runs": 1,
+      "wall_clock": {
+        "n": 1,
+        "mean": 3.079006700019818,
+        "min": 3.079006700019818,
+        "max": 3.079006700019818,
+        "median": 3.079006700019818,
+        "stdev": 0.0
+      },
+      "exporter": {
+        "lines": 1,
+        "raw": [
+          {
+            "run": "43218417-1e55-484d-ad41-745378fbe32c",
+            "enqueued": 95,
+            "dropped": 0,
+            "sent": 108,
+            "http_errors": 0,
+            "lookup_ok": 0,
+            "lookup_failed": 0,
+            "enqueue_p50_us": 0,
+            "enqueue_p95_us": 2
+          }
+        ],
+        "enqueued_total": 95,
+        "sent_total": 108,
+        "dropped_total": 0,
+        "http_errors_total": 0,
+        "lookup_ok_total": 0,
+        "lookup_failed_total": 0,
+        "enqueue_p50_us_mean": 0.0,
+        "enqueue_p95_us_mean": 2.0
+      }
+    },
+    "off": {
+      "runs": 1,
+      "wall_clock": {
+        "n": 1,
+        "mean": 3.327142499969341,
+        "min": 3.327142499969341,
+        "max": 3.327142499969341,
+        "median": 3.327142499969341,
+        "stdev": 0.0
+      },
+      "exporter": {
+        "lines": 0,
+        "raw": []
+      }
+    }
+  },
+  "runs": [
+    {
+      "arm": "on",
+      "index": 1,
+      "run_id": "43218417-1e55-484d-ad41-745378fbe32c",
+      "session_id": "perf-on-1-3e020198",
+      "status": "completed",
+      "wall_clock_seconds": 3.079006700019818,
+      "started_at": "2026-09-05T13:40:59.394391Z",
+      "completed_at": "2026-09-05T13:41:02.418877Z",
+      "frames": 96,
+      "frames_dropped": 0,
+      "calls": 6,
+      "total_tokens": 4337
+    },
+    {
+      "arm": "off",
+      "index": 1,
+      "run_id": "a6df5901-712a-40c6-a73c-2eea225d36da",
+      "session_id": "perf-off-1-259a42cf",
+      "status": "completed",
+      "wall_clock_seconds": 3.327142499969341,
+      "started_at": "2026-09-05T13:41:02.611263Z",
+      "completed_at": "2026-09-05T13:41:05.647208Z",
+      "frames": 96,
+      "frames_dropped": 0,
+      "calls": 6,
+      "total_tokens": 4337
+    }
+  ],
+  "wall_clock_delta_seconds": -0.24813579994952306,
+  "wall_clock_delta_percent": -7.457925230188055,
+  "commands": [
+    "# on arm\nSYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=1 PORT=8110 LANGFUSE_EXPORT_ENABLED=(unset) VALIDATOR_ALLOW_AUTO_GATES=1 LANGFUSE_BASE_URL=http://127.0.0.1:9 LANGFUSE_HTTP_TIMEOUT_SECONDS=2 CREDENTIALS_MASTER_KEY=<placeholder> D:\\MultiAgentSystem\\.venv\\Scripts\\python.exe -c \"logging.basicConfig(level=INFO); serve()\"",
+    "# off arm\nSYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=1 PORT=8111 LANGFUSE_EXPORT_ENABLED=0 VALIDATOR_ALLOW_AUTO_GATES=1 LANGFUSE_BASE_URL=http://127.0.0.1:9 LANGFUSE_HTTP_TIMEOUT_SECONDS=2 CREDENTIALS_MASTER_KEY=<placeholder> D:\\MultiAgentSystem\\.venv\\Scripts\\python.exe -c \"logging.basicConfig(level=INFO); serve()\""
+  ],
+  "logs": {
+    "on": "docs\\observability\\evidence\\tooling-smoke\\overhead-harness-check\\server-on.log",
+    "off": "docs\\observability\\evidence\\tooling-smoke\\overhead-harness-check\\server-off.log"
+  }
+}

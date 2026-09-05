@@ -1,0 +1,4 @@
+TRACE 4548c8846e5c404ca28abbf5a8ce8cf7  name=idea-validator  session=4548c884-6e5c-404c-a28a-bbf5a8ce8cf7
+
+ORPHANED (parentObservationId not among the fetched observations):
+  - SPAN run parent=6d5d6cc0b2b5c678

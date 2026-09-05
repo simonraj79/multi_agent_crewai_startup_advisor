@@ -1,0 +1,1076 @@
+{
+  "source": "app",
+  "generated_at": "2026-09-05T15:14:41Z",
+  "base_url": "docs\\observability\\evidence\\smoke-live\\app-run.json (offline)",
+  "run_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7",
+  "session_id": "smoke-live-1",
+  "workflow_id": "idea-validator",
+  "graph_version": "9c6ca8a6fefbfffd",
+  "status": "completed",
+  "stop_reason": null,
+  "mode": "run",
+  "error": null,
+  "created_at": "2026-09-05T14:42:19.715358Z",
+  "started_at": "2026-09-05T14:42:19.721535Z",
+  "completed_at": "2026-09-05T14:42:25.747708Z",
+  "wall_clock_seconds": 6.026173,
+  "frame_counters": {
+    "count": 97,
+    "captured": 97,
+    "dropped": 0,
+    "gaps": 0,
+    "emit_errors": 0,
+    "subscriber_dropped": 0,
+    "unattributed": 0,
+    "first_seq": 1,
+    "last_seq": 97
+  },
+  "frames_downloaded": 97,
+  "totals": {
+    "calls": 6,
+    "input_tokens": 3840,
+    "output_tokens": 449,
+    "total_tokens": 4289,
+    "cost_usd": 0.0022745,
+    "calls_without_cost": 0
+  },
+  "snapshot_usage": {
+    "successful_requests": 6,
+    "prompt_tokens": 3840,
+    "completion_tokens": 449,
+    "total_tokens": 4289,
+    "call_count": 6,
+    "elapsed_ms": 0,
+    "cost_usd": 0.0022745
+  },
+  "totals_vs_snapshot": [
+    {
+      "metric": "calls",
+      "from_frames": 6,
+      "from_snapshot": 6,
+      "agree": true
+    },
+    {
+      "metric": "input_tokens",
+      "from_frames": 3840,
+      "from_snapshot": 3840,
+      "agree": true
+    },
+    {
+      "metric": "output_tokens",
+      "from_frames": 449,
+      "from_snapshot": 449,
+      "agree": true
+    },
+    {
+      "metric": "total_tokens",
+      "from_frames": 4289,
+      "from_snapshot": 4289,
+      "agree": true
+    },
+    {
+      "metric": "cost_usd",
+      "from_frames": 0.0022745,
+      "from_snapshot": 0.0022745,
+      "agree": true
+    }
+  ],
+  "by_node": {
+    "scope_idea": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    },
+    "research_market": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 78,
+      "total_tokens": 718,
+      "cost_usd": 0.000387,
+      "calls_without_cost": 0
+    },
+    "research_sentiment": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 79,
+      "total_tokens": 719,
+      "cost_usd": 0.0003895,
+      "calls_without_cost": 0
+    },
+    "research_feasibility": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 79,
+      "total_tokens": 719,
+      "cost_usd": 0.0003895,
+      "calls_without_cost": 0
+    },
+    "synthesize": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "write_report": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    }
+  },
+  "by_agent_role": {
+    "Startup validation scoper": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    },
+    "Market evidence analyst": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 78,
+      "total_tokens": 718,
+      "cost_usd": 0.000387,
+      "calls_without_cost": 0
+    },
+    "Community demand analyst": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 79,
+      "total_tokens": 719,
+      "cost_usd": 0.0003895,
+      "calls_without_cost": 0
+    },
+    "Technical feasibility analyst": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 79,
+      "total_tokens": 719,
+      "cost_usd": 0.0003895,
+      "calls_without_cost": 0
+    },
+    "Startup validation synthesist": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "Validation report writer": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    }
+  },
+  "by_task_name": {
+    "scoping_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    },
+    "market_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 78,
+      "total_tokens": 718,
+      "cost_usd": 0.000387,
+      "calls_without_cost": 0
+    },
+    "sentiment_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 79,
+      "total_tokens": 719,
+      "cost_usd": 0.0003895,
+      "calls_without_cost": 0
+    },
+    "feasibility_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 79,
+      "total_tokens": 719,
+      "cost_usd": 0.0003895,
+      "calls_without_cost": 0
+    },
+    "synthesis_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "calls_without_cost": 0
+    },
+    "reporting_task": {
+      "calls": 1,
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "calls_without_cost": 0
+    }
+  },
+  "by_model": {
+    "google/gemini-3.5-flash-lite:nitro": {
+      "calls": 6,
+      "input_tokens": 3840,
+      "output_tokens": 449,
+      "total_tokens": 4289,
+      "cost_usd": 0.0022745,
+      "calls_without_cost": 0
+    }
+  },
+  "node_usage": [
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 79,
+      "total_tokens": 719,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.0003895,
+      "node_id": "research_feasibility",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 78,
+      "total_tokens": 718,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.000387,
+      "node_id": "research_market",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 79,
+      "total_tokens": 719,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.0003895,
+      "node_id": "research_sentiment",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 68,
+      "total_tokens": 708,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.000362,
+      "node_id": "scope_idea",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 77,
+      "total_tokens": 717,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.0003845,
+      "node_id": "synthesize",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 640,
+      "completion_tokens": 68,
+      "total_tokens": 708,
+      "call_count": 1,
+      "elapsed_ms": 0,
+      "cost_usd": 0.000362,
+      "node_id": "write_report",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    }
+  ],
+  "calls": [
+    {
+      "call_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:scope_idea",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "scope_idea",
+      "agent_role": "Startup validation scoper",
+      "task_name": "scoping_task",
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "ts": "2026-09-05T14:42:19.726Z",
+      "seq": 10
+    },
+    {
+      "call_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_market",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "task_name": "market_task",
+      "input_tokens": 640,
+      "output_tokens": 78,
+      "total_tokens": 718,
+      "cost_usd": 0.000387,
+      "ts": "2026-09-05T14:42:21.728Z",
+      "seq": 30
+    },
+    {
+      "call_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_sentiment",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "task_name": "sentiment_task",
+      "input_tokens": 640,
+      "output_tokens": 79,
+      "total_tokens": 719,
+      "cost_usd": 0.0003895,
+      "ts": "2026-09-05T14:42:23.729Z",
+      "seq": 44
+    },
+    {
+      "call_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_feasibility",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "task_name": "feasibility_task",
+      "input_tokens": 640,
+      "output_tokens": 79,
+      "total_tokens": 719,
+      "cost_usd": 0.0003895,
+      "ts": "2026-09-05T14:42:25.735Z",
+      "seq": 59
+    },
+    {
+      "call_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:synthesize",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "synthesize",
+      "agent_role": "Startup validation synthesist",
+      "task_name": "synthesis_task",
+      "input_tokens": 640,
+      "output_tokens": 77,
+      "total_tokens": 717,
+      "cost_usd": 0.0003845,
+      "ts": "2026-09-05T14:42:25.736Z",
+      "seq": 71
+    },
+    {
+      "call_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:write_report",
+      "response_id": null,
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "node_id": "write_report",
+      "agent_role": "Validation report writer",
+      "task_name": "reporting_task",
+      "input_tokens": 640,
+      "output_tokens": 68,
+      "total_tokens": 708,
+      "cost_usd": 0.000362,
+      "ts": "2026-09-05T14:42:25.740Z",
+      "seq": 90
+    }
+  ],
+  "failed_calls": [],
+  "response_ids": [],
+  "calls_without_response_id": 6,
+  "tool_calls": [
+    {
+      "tool": "research_market_landscape",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "stage": "before",
+      "tool_status": null,
+      "result_count": null,
+      "duration_ms": null,
+      "level": "INFO",
+      "ts": "2026-09-05T14:42:19.727Z"
+    },
+    {
+      "tool": "research_market_landscape",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "stage": "after",
+      "tool_status": "ok",
+      "result_count": 3,
+      "duration_ms": null,
+      "level": "INFO",
+      "ts": "2026-09-05T14:42:21.728Z"
+    },
+    {
+      "tool": "analyze_community_sentiment",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "stage": "before",
+      "tool_status": null,
+      "result_count": null,
+      "duration_ms": null,
+      "level": "INFO",
+      "ts": "2026-09-05T14:42:21.728Z"
+    },
+    {
+      "tool": "analyze_community_sentiment",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "stage": "after",
+      "tool_status": "ok",
+      "result_count": 3,
+      "duration_ms": null,
+      "level": "INFO",
+      "ts": "2026-09-05T14:42:23.728Z"
+    },
+    {
+      "tool": "assess_technical_feasibility",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "stage": "before",
+      "tool_status": null,
+      "result_count": null,
+      "duration_ms": null,
+      "level": "INFO",
+      "ts": "2026-09-05T14:42:23.729Z"
+    },
+    {
+      "tool": "assess_technical_feasibility",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "stage": "after",
+      "tool_status": "ok",
+      "result_count": 3,
+      "duration_ms": null,
+      "level": "INFO",
+      "ts": "2026-09-05T14:42:25.734Z"
+    }
+  ],
+  "tool_call_count": 3,
+  "spans": [
+    {
+      "kind": "node",
+      "label": "scope_idea",
+      "node_id": "scope_idea",
+      "agent_role": "Startup validation scoper",
+      "task_name": "scoping_task",
+      "tool": null,
+      "start_seq": 2,
+      "start_ts": "2026-09-05T14:42:19.725Z",
+      "end_seq": 12,
+      "end_ts": "2026-09-05T14:42:19.727Z",
+      "duration_seconds": 0.002,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "agent",
+      "label": "Startup validation scoper",
+      "node_id": "scope_idea",
+      "agent_role": "Startup validation scoper",
+      "task_name": "scoping_task",
+      "tool": null,
+      "start_seq": 3,
+      "start_ts": "2026-09-05T14:42:19.725Z",
+      "end_seq": 11,
+      "end_ts": "2026-09-05T14:42:19.727Z",
+      "duration_seconds": 0.002,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "llm",
+      "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:scope_idea",
+      "node_id": "scope_idea",
+      "agent_role": "Startup validation scoper",
+      "task_name": "scoping_task",
+      "tool": null,
+      "start_seq": 4,
+      "start_ts": "2026-09-05T14:42:19.725Z",
+      "end_seq": 8,
+      "end_ts": "2026-09-05T14:42:19.726Z",
+      "duration_seconds": 0.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "confirm_scope",
+      "node_id": "confirm_scope",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 14,
+      "start_ts": "2026-09-05T14:42:19.727Z",
+      "end_seq": 15,
+      "end_ts": "2026-09-05T14:42:19.727Z",
+      "duration_seconds": 0.0,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "route_scope",
+      "node_id": "route_scope",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 17,
+      "start_ts": "2026-09-05T14:42:19.727Z",
+      "end_seq": 18,
+      "end_ts": "2026-09-05T14:42:19.727Z",
+      "duration_seconds": 0.0,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "research_market",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "task_name": "market_task",
+      "tool": null,
+      "start_seq": 20,
+      "start_ts": "2026-09-05T14:42:19.727Z",
+      "end_seq": 32,
+      "end_ts": "2026-09-05T14:42:21.728Z",
+      "duration_seconds": 2.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "agent",
+      "label": "Market evidence analyst",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "task_name": "market_task",
+      "tool": null,
+      "start_seq": 21,
+      "start_ts": "2026-09-05T14:42:19.727Z",
+      "end_seq": 31,
+      "end_ts": "2026-09-05T14:42:21.728Z",
+      "duration_seconds": 2.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "tool",
+      "label": "research_market_landscape",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "task_name": "market_task",
+      "tool": "research_market_landscape",
+      "start_seq": 22,
+      "start_ts": "2026-09-05T14:42:19.727Z",
+      "end_seq": 23,
+      "end_ts": "2026-09-05T14:42:21.728Z",
+      "duration_seconds": 2.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "llm",
+      "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_market",
+      "node_id": "research_market",
+      "agent_role": "Market evidence analyst",
+      "task_name": "market_task",
+      "tool": null,
+      "start_seq": 24,
+      "start_ts": "2026-09-05T14:42:21.728Z",
+      "end_seq": 28,
+      "end_ts": "2026-09-05T14:42:21.728Z",
+      "duration_seconds": 0.0,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "research_sentiment",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "task_name": "sentiment_task",
+      "tool": null,
+      "start_seq": 34,
+      "start_ts": "2026-09-05T14:42:21.728Z",
+      "end_seq": 46,
+      "end_ts": "2026-09-05T14:42:23.729Z",
+      "duration_seconds": 2.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "agent",
+      "label": "Community demand analyst",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "task_name": "sentiment_task",
+      "tool": null,
+      "start_seq": 35,
+      "start_ts": "2026-09-05T14:42:21.728Z",
+      "end_seq": 45,
+      "end_ts": "2026-09-05T14:42:23.729Z",
+      "duration_seconds": 2.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "tool",
+      "label": "analyze_community_sentiment",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "task_name": "sentiment_task",
+      "tool": "analyze_community_sentiment",
+      "start_seq": 36,
+      "start_ts": "2026-09-05T14:42:21.728Z",
+      "end_seq": 37,
+      "end_ts": "2026-09-05T14:42:23.728Z",
+      "duration_seconds": 2.0,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "llm",
+      "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_sentiment",
+      "node_id": "research_sentiment",
+      "agent_role": "Community demand analyst",
+      "task_name": "sentiment_task",
+      "tool": null,
+      "start_seq": 38,
+      "start_ts": "2026-09-05T14:42:23.728Z",
+      "end_seq": 42,
+      "end_ts": "2026-09-05T14:42:23.729Z",
+      "duration_seconds": 0.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "research_feasibility",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "task_name": "feasibility_task",
+      "tool": null,
+      "start_seq": 48,
+      "start_ts": "2026-09-05T14:42:23.729Z",
+      "end_seq": 61,
+      "end_ts": "2026-09-05T14:42:25.735Z",
+      "duration_seconds": 2.006,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "agent",
+      "label": "Technical feasibility analyst",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "task_name": "feasibility_task",
+      "tool": null,
+      "start_seq": 49,
+      "start_ts": "2026-09-05T14:42:23.729Z",
+      "end_seq": 60,
+      "end_ts": "2026-09-05T14:42:25.735Z",
+      "duration_seconds": 2.006,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "tool",
+      "label": "assess_technical_feasibility",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "task_name": "feasibility_task",
+      "tool": "assess_technical_feasibility",
+      "start_seq": 50,
+      "start_ts": "2026-09-05T14:42:23.729Z",
+      "end_seq": 52,
+      "end_ts": "2026-09-05T14:42:25.734Z",
+      "duration_seconds": 2.005,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "llm",
+      "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_feasibility",
+      "node_id": "research_feasibility",
+      "agent_role": "Technical feasibility analyst",
+      "task_name": "feasibility_task",
+      "tool": null,
+      "start_seq": 53,
+      "start_ts": "2026-09-05T14:42:25.734Z",
+      "end_seq": 57,
+      "end_ts": "2026-09-05T14:42:25.734Z",
+      "duration_seconds": 0.0,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "synthesize",
+      "node_id": "synthesize",
+      "agent_role": "Startup validation synthesist",
+      "task_name": "synthesis_task",
+      "tool": null,
+      "start_seq": 63,
+      "start_ts": "2026-09-05T14:42:25.735Z",
+      "end_seq": 73,
+      "end_ts": "2026-09-05T14:42:25.737Z",
+      "duration_seconds": 0.002,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "agent",
+      "label": "Startup validation synthesist",
+      "node_id": "synthesize",
+      "agent_role": "Startup validation synthesist",
+      "task_name": "synthesis_task",
+      "tool": null,
+      "start_seq": 64,
+      "start_ts": "2026-09-05T14:42:25.735Z",
+      "end_seq": 72,
+      "end_ts": "2026-09-05T14:42:25.737Z",
+      "duration_seconds": 0.002,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "llm",
+      "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:synthesize",
+      "node_id": "synthesize",
+      "agent_role": "Startup validation synthesist",
+      "task_name": "synthesis_task",
+      "tool": null,
+      "start_seq": 65,
+      "start_ts": "2026-09-05T14:42:25.735Z",
+      "end_seq": 69,
+      "end_ts": "2026-09-05T14:42:25.736Z",
+      "duration_seconds": 0.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "review_verdict",
+      "node_id": "review_verdict",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 76,
+      "start_ts": "2026-09-05T14:42:25.738Z",
+      "end_seq": 77,
+      "end_ts": "2026-09-05T14:42:25.738Z",
+      "duration_seconds": 0.0,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "route_verdict",
+      "node_id": "route_verdict",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 79,
+      "start_ts": "2026-09-05T14:42:25.739Z",
+      "end_seq": 80,
+      "end_ts": "2026-09-05T14:42:25.739Z",
+      "duration_seconds": 0.0,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "write_report",
+      "node_id": "write_report",
+      "agent_role": "Validation report writer",
+      "task_name": "reporting_task",
+      "tool": null,
+      "start_seq": 82,
+      "start_ts": "2026-09-05T14:42:25.739Z",
+      "end_seq": 92,
+      "end_ts": "2026-09-05T14:42:25.746Z",
+      "duration_seconds": 0.007,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "agent",
+      "label": "Validation report writer",
+      "node_id": "write_report",
+      "agent_role": "Validation report writer",
+      "task_name": "reporting_task",
+      "tool": null,
+      "start_seq": 83,
+      "start_ts": "2026-09-05T14:42:25.739Z",
+      "end_seq": 91,
+      "end_ts": "2026-09-05T14:42:25.746Z",
+      "duration_seconds": 0.007,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "llm",
+      "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:write_report",
+      "node_id": "write_report",
+      "agent_role": "Validation report writer",
+      "task_name": "reporting_task",
+      "tool": null,
+      "start_seq": 84,
+      "start_ts": "2026-09-05T14:42:25.739Z",
+      "end_seq": 88,
+      "end_ts": "2026-09-05T14:42:25.740Z",
+      "duration_seconds": 0.001,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    },
+    {
+      "kind": "node",
+      "label": "persist",
+      "node_id": "persist",
+      "agent_role": null,
+      "task_name": null,
+      "tool": null,
+      "start_seq": 94,
+      "start_ts": "2026-09-05T14:42:25.747Z",
+      "end_seq": 95,
+      "end_ts": "2026-09-05T14:42:25.747Z",
+      "duration_seconds": 0.0,
+      "duration_ms_reported": null,
+      "level": "INFO",
+      "open": false
+    }
+  ],
+  "open_spans": [],
+  "durations": {
+    "by_node": [
+      {
+        "label": "research_feasibility",
+        "spans": 1,
+        "total_seconds": 2.006,
+        "max_seconds": 2.006,
+        "open": 0
+      },
+      {
+        "label": "research_market",
+        "spans": 1,
+        "total_seconds": 2.001,
+        "max_seconds": 2.001,
+        "open": 0
+      },
+      {
+        "label": "research_sentiment",
+        "spans": 1,
+        "total_seconds": 2.001,
+        "max_seconds": 2.001,
+        "open": 0
+      },
+      {
+        "label": "write_report",
+        "spans": 1,
+        "total_seconds": 0.007,
+        "max_seconds": 0.007,
+        "open": 0
+      },
+      {
+        "label": "scope_idea",
+        "spans": 1,
+        "total_seconds": 0.002,
+        "max_seconds": 0.002,
+        "open": 0
+      },
+      {
+        "label": "synthesize",
+        "spans": 1,
+        "total_seconds": 0.002,
+        "max_seconds": 0.002,
+        "open": 0
+      },
+      {
+        "label": "confirm_scope",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "route_scope",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "review_verdict",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "route_verdict",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "persist",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      }
+    ],
+    "by_agent_role": [
+      {
+        "label": "Technical feasibility analyst",
+        "spans": 1,
+        "total_seconds": 2.006,
+        "max_seconds": 2.006,
+        "open": 0
+      },
+      {
+        "label": "Market evidence analyst",
+        "spans": 1,
+        "total_seconds": 2.001,
+        "max_seconds": 2.001,
+        "open": 0
+      },
+      {
+        "label": "Community demand analyst",
+        "spans": 1,
+        "total_seconds": 2.001,
+        "max_seconds": 2.001,
+        "open": 0
+      },
+      {
+        "label": "Validation report writer",
+        "spans": 1,
+        "total_seconds": 0.007,
+        "max_seconds": 0.007,
+        "open": 0
+      },
+      {
+        "label": "Startup validation scoper",
+        "spans": 1,
+        "total_seconds": 0.002,
+        "max_seconds": 0.002,
+        "open": 0
+      },
+      {
+        "label": "Startup validation synthesist",
+        "spans": 1,
+        "total_seconds": 0.002,
+        "max_seconds": 0.002,
+        "open": 0
+      }
+    ],
+    "by_task_name": [],
+    "by_tool": [
+      {
+        "label": "assess_technical_feasibility",
+        "spans": 1,
+        "total_seconds": 2.005,
+        "max_seconds": 2.005,
+        "open": 0
+      },
+      {
+        "label": "research_market_landscape",
+        "spans": 1,
+        "total_seconds": 2.001,
+        "max_seconds": 2.001,
+        "open": 0
+      },
+      {
+        "label": "analyze_community_sentiment",
+        "spans": 1,
+        "total_seconds": 2.0,
+        "max_seconds": 2.0,
+        "open": 0
+      }
+    ],
+    "by_llm_call": [
+      {
+        "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:scope_idea",
+        "spans": 1,
+        "total_seconds": 0.001,
+        "max_seconds": 0.001,
+        "open": 0
+      },
+      {
+        "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_sentiment",
+        "spans": 1,
+        "total_seconds": 0.001,
+        "max_seconds": 0.001,
+        "open": 0
+      },
+      {
+        "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:synthesize",
+        "spans": 1,
+        "total_seconds": 0.001,
+        "max_seconds": 0.001,
+        "open": 0
+      },
+      {
+        "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:write_report",
+        "spans": 1,
+        "total_seconds": 0.001,
+        "max_seconds": 0.001,
+        "open": 0
+      },
+      {
+        "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_market",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      },
+      {
+        "label": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7:research_feasibility",
+        "spans": 1,
+        "total_seconds": 0.0,
+        "max_seconds": 0.0,
+        "open": 0
+      }
+    ]
+  }
+}

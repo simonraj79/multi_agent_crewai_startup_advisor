@@ -1,0 +1,11 @@
+run_id / sessionId: 54a93dc8-13e3-4edf-b180-af206f1eb168
+checked at:         2026-09-05T13:36:45Z
+GET /api/public/sessions/{run_id}      -> 404
+GET /api/public/traces?sessionId={run_id} -> 0 traces
+
+NOT a crash and not necessarily a defect: traces that reach
+this project through OpenRouter's broadcast carry no
+sessionId at all (audit/langfuse-inventory.md section 2), so
+they can never be found this way. A run whose exporter ran
+should be found here; one whose exporter was disabled, or a
+run whose id was mistyped, will not be.

@@ -1,0 +1,376 @@
+{
+  "fetched_utc": "2026-09-05T13:01:16Z",
+  "query": "GET https://us.cloud.langfuse.com/api/public/traces?fromTimestamp=2026-09-04T13:01:13Z&limit=100",
+  "totalItems": 45,
+  "by_openrouter_api_key_name": {
+    "MultiAgentCrewAI": 15,
+    "LTA_ML_PROBLEM": 14,
+    "WikiSkills": 16
+  },
+  "by_model": {
+    "google/gemini-3.5-flash-lite": 11,
+    "google/gemini-3.8-flash": 34
+  },
+  "rows": [
+    {
+      "id": "dbd49206c2c8a478fcf97ce967645760",
+      "name": "obs-probe-streamtrace-1788612874",
+      "timestamp": "2026-09-05T12:54:45.536Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 1.48e-05
+    },
+    {
+      "id": "8b15b51c4f6c36711f217e68ad5c99ac",
+      "name": "obs-probe-tracename-1788612874",
+      "timestamp": "2026-09-05T12:54:40.543Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 3.02e-05
+    },
+    {
+      "id": "eaeafed19b1950dd9094add7388c32c7",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:54:38.860Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 1.48e-05
+    },
+    {
+      "id": "5ea03d9dac2e4dd9b3b1dfec0a2cdb9f",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:54:37.000Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 1.48e-05
+    },
+    {
+      "id": "7bb1830b2921c9336483b844723fccfd",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:54:34.941Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 1.48e-05
+    },
+    {
+      "id": "70f1b06f095be23856923529c5e1b9c5",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:53.856Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00582525
+    },
+    {
+      "id": "aca317ebf44732b15423819a6955b23b",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:42.271Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.01944225
+    },
+    {
+      "id": "5da54725c32531688429d9f278e05e13",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:37.943Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.0088215
+    },
+    {
+      "id": "487d6d81298c8254f1160ec7a56f2d4b",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:32.557Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 0.0031225
+    },
+    {
+      "id": "678a6e4f73e1b3580ba63df0e306cfa6",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:31.341Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 0.0018329
+    },
+    {
+      "id": "e8ebb16645e429959a2f4bb512162c2e",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:30.705Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 0.0026524
+    },
+    {
+      "id": "7d740e0e8031a13ad7d9d811f1222fda",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:29.367Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 0.0008738
+    },
+    {
+      "id": "a2579573decfda4258eadda1a305571e",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:27.390Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 0.000669
+    },
+    {
+      "id": "faf631819474dcf77b542ae191c2ba2e",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:27.367Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.5-flash-lite",
+      "totalCost": 0.0005726
+    },
+    {
+      "id": "7dacd2d95c23ebbe116edb0c908367c1",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:11:19.207Z",
+      "openrouter.api_key_name": "MultiAgentCrewAI",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00502725
+    },
+    {
+      "id": "b675dabeaff996ec7ac470d199df83aa",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:08:25.827Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.000762
+    },
+    {
+      "id": "dbb3783b5b0c8419c1280d2465eb0963",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:08:12.768Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00940575
+    },
+    {
+      "id": "981b904353544b969b8155deb6366e5c",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:05:20.860Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.006816
+    },
+    {
+      "id": "aa99a5bdc39fde4edec1d5355bfa2b64",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T12:04:19.718Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00812025
+    },
+    {
+      "id": "75007a0d8db5b8929c17fd29b22836e3",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:56:06.671Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.008673
+    },
+    {
+      "id": "fbb90ed50f46a9d0ec4ebc3a0651d85a",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:55:36.343Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00536475
+    },
+    {
+      "id": "8c7cc5996cffbaffd01742934e3b78b2",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:55:36.312Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00188625
+    },
+    {
+      "id": "dd33e8cdba7a8a3e8d9c088017653dc1",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:55:36.173Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00604275
+    },
+    {
+      "id": "9c0a07b207577d017bb1f896abbdb371",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:55:36.030Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.001086
+    },
+    {
+      "id": "00460a47d80116c10b8464831fa2888a",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:49:48.015Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.004794
+    },
+    {
+      "id": "e91467cbd5bdf0028591b42c13ec1efe",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:49:43.149Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.0007605
+    },
+    {
+      "id": "894d1b50c385c18d44bc37ce06638e0d",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:49:39.659Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.002463
+    },
+    {
+      "id": "61d72d811d763ef3f13d1bcc53d489e9",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:49:34.707Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00075225
+    },
+    {
+      "id": "9df1ab7a73e12cf8c55c8465f7400262",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:42:08.363Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.0021075
+    },
+    {
+      "id": "9e491d1f614ab648f318c4dad34a84d3",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:35:50.415Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.01032975
+    },
+    {
+      "id": "204c2e3d8e80edf7c7c9994aaf266ee6",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:28:47.958Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00994725
+    },
+    {
+      "id": "aa77e441ef980f6f20444bc9f1f89641",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:26:06.347Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00743175
+    },
+    {
+      "id": "87b62d045432f6e72fc01a249ef64d17",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:17:40.511Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00527025
+    },
+    {
+      "id": "fb3a93a00cdb36465a073cbbda729c72",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:17:40.428Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00105
+    },
+    {
+      "id": "ea4f8f7b4d5beef5cd34b22360fbe09b",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:17:40.337Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00561075
+    },
+    {
+      "id": "6e1fc11c0e6893013c51cd097d70ae84",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:17:40.191Z",
+      "openrouter.api_key_name": "LTA_ML_PROBLEM",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00204375
+    },
+    {
+      "id": "040d9cfa2a5e231a0579a8eeef4d357c",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:16:32.850Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.0038385
+    },
+    {
+      "id": "7cb9f667492238d1bfa5788d65624feb",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:16:25.805Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.002568
+    },
+    {
+      "id": "dfd5a925e9c5c275e4bb2ff00e0d8259",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:16:14.173Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.007245
+    },
+    {
+      "id": "1fe4f57ac3b372a4be99f93360d9d81a",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T11:16:07.238Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00207225
+    },
+    {
+      "id": "080e2f701a132632e3e020ad88585550",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T10:54:47.763Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00426975
+    },
+    {
+      "id": "41e59987e8ecc31486484cb101266cfb",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T10:54:39.269Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.0032805
+    },
+    {
+      "id": "c13d0de4be3e7c28b7950674f8efb809",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T10:54:29.634Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.007005
+    },
+    {
+      "id": "d41608de9e15d6ad5279d31f7702e8d3",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T10:54:23.297Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.002121
+    },
+    {
+      "id": "2d2571df6fbf103a9987c0c3b1b23661",
+      "name": "OpenRouter Request",
+      "timestamp": "2026-09-05T10:49:03.732Z",
+      "openrouter.api_key_name": "WikiSkills",
+      "model": "google/gemini-3.8-flash",
+      "totalCost": 0.00196875
+    }
+  ]
+}

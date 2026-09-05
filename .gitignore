@@ -136,3 +136,15 @@ data/skills/users/
 *.md
 !/README.md
 !data/skills/**/*.md
+
+# Observability programme (2026-09-05). The brief for this work requires its
+# definition of done, its audit and every artifact the DoD names to be COMMITTED,
+# not local-only - a criterion settled by a file nobody else can see is an
+# assertion by the builder (the same argument docs/run-shell/evidence makes).
+# This is a deliberate exception to the *.md and *.png rules above. Nothing
+# under it may contain a credential value; the audit workers were told so.
+!docs/observability/**/*.md
+!docs/observability/**/*.png
+!docs/observability/**/*.jpg
+!docs/observability/**/*.json
+!docs/observability/**/*.txt

@@ -52,6 +52,7 @@ service = [
     # when `cryptography` is installed. Without it verification fails at
     # runtime with NotImplementedError, not at import.
     "pyjwt[crypto]>=2.10.0",
+    "langfuse>=4.15.1,<5",
 ]
 
 [project.scripts]

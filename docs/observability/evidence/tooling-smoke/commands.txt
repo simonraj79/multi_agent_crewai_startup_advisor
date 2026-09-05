@@ -1,0 +1,135 @@
+Tooling smoke test - scripts/observability/**
+=============================================================================
+Run 2026-09-05 by B-CFG (the tooling builder) against a REAL synthetic backend
+on port 8098, before any verifier used these scripts. This directory is proof
+that the app side of the tooling works end to end. It is NOT proof-run
+evidence for any DoD row: the run below is synthetic, so it carries no
+generation ids, no billed cost and no Langfuse session.
+
+-----------------------------------------------------------------------------
+1. The backend
+-----------------------------------------------------------------------------
+
+  SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=2 PORT=8098 HOST=127.0.0.1 \
+  CREDENTIALS_MASTER_KEY=Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE= \
+  VALIDATOR_ALLOW_AUTO_GATES=1 \
+  ./.venv/Scripts/serve.exe
+
+  (CREDENTIALS_MASTER_KEY is the placeholder tests/__init__.py uses: any
+  base64 of 32 bytes; it authenticates against nothing. Port 8098 was chosen
+  to avoid colliding with the exporter builder, who may be using 8099.)
+
+  Killed afterwards with `taskkill /PID <pid> /T /F` on the PID found by
+  `netstat -ano` for :8098 - never `pkill`, and never `Stop-Process -Name
+  serve`, which would also have killed the other builder's backend.
+
+-----------------------------------------------------------------------------
+2. The run
+-----------------------------------------------------------------------------
+
+  POST http://127.0.0.1:8098/api/sessions/tooling-smoke-1/runs
+  {"workflow_id":"idea-validator",
+   "inputs":{"idea":"A scheduling assistant for small veterinary clinics"},
+   "gates":"auto"}
+
+  -> 202, run_id 54a93dc8-13e3-4edf-b180-af206f1eb168
+  -> polled GET /api/runs/{id} to status "completed"
+     usage: 6 calls, 3840 prompt, 449 completion, 4289 total, $0.0022745
+
+  No authentication header was sent. The backend has no AUTH_BASE_URL, so
+  `current_user` resolves to nobody and does not refuse. Against a backend
+  that HAS one, pass --token (or OBS_APP_TOKEN); against a SYNTHETIC backend
+  wanting an identity, pass --synthetic-user e2e-user (the X-Synthetic-User
+  header the E2E harness sends).
+
+-----------------------------------------------------------------------------
+3. The tooling, in the documented order
+-----------------------------------------------------------------------------
+
+  .venv/Scripts/python.exe scripts/observability/pull_app_run.py \
+      --base http://127.0.0.1:8098 \
+      --run-id 54a93dc8-13e3-4edf-b180-af206f1eb168 \
+      --out docs/observability/evidence/tooling-smoke
+    exit 0 -> app-run.json, app-frames.ndjson (96 frames),
+              app-figures.json, app-figures.md
+
+    PROVED: per-agent-role, per-task-name, per-node and per-model token and
+    cost tables all populate from the frames; the frame-derived totals equal
+    the app's own snapshot usage on all five metrics; durations extract from
+    frame timestamps for agents, tools and nodes; 0 unclosed app-side spans.
+
+  .venv/Scripts/python.exe scripts/observability/pull_langfuse_run.py \
+      --run-id 54a93dc8-13e3-4edf-b180-af206f1eb168 --out <same dir>
+    exit 3 -> langfuse-session-missing.txt
+
+    EXPECTED. This run's exporter wrote nothing (the backend on 8098 had no
+    exporter wiring at the time), so there is no session to find. The script
+    says so and explains what it does and does not mean rather than crashing.
+
+  .venv/Scripts/python.exe scripts/observability/pull_openrouter.py \
+      --response-ids-from <dir>/app-figures.json --out <same dir>
+    exit 0 -> openrouter.md, openrouter-figures.json
+
+    EXPECTED. A synthetic run carries no generation ids at all:
+    `service/runner.py` writes "response_id": None on the LLM after-frame,
+    because a double has no honest provider id to invent. The script writes
+    the empty-case note saying that a PAID run with no ids would be a defect.
+
+  .venv/Scripts/python.exe scripts/observability/reconcile.py \
+      --app <dir> --openrouter <dir> \
+      --out <dir>/RECONCILIATION-smoke.md \
+      --durations-out <dir>/durations-app-vs-langfuse.md
+    exit 0 -> RECONCILIATION-smoke.md, durations-app-vs-langfuse.md
+
+    The absent sources read "n/a" and "NOT CHECKED", never "0" and never
+    "PASS". That behaviour was deliberately fixed during this smoke test: the
+    first version reported OpenRouter's 0-of-0 as a difference from the app's
+    six calls, which would have sent a verifier to diagnose an absent
+    measurement.
+
+-----------------------------------------------------------------------------
+4. overhead-harness-check/ - measure_overhead.py, end to end
+-----------------------------------------------------------------------------
+
+  .venv/Scripts/python.exe scripts/observability/measure_overhead.py \
+      --runs 1 --branch-delay 1 --port-on 8110 --port-off 8111 \
+      --env LANGFUSE_BASE_URL=http://127.0.0.1:9 \
+      --env LANGFUSE_HTTP_TIMEOUT_SECONDS=2 \
+      --out docs/observability/evidence/tooling-smoke/overhead-harness-check
+
+  ONE run per arm, not the three E4 requires: this is a harness check, not the
+  E4 measurement. Both LANGFUSE_BASE_URL values point at a black-hole port so
+  that nothing from a half-built exporter reached the shared Langfuse project.
+
+  PROVED: both server arms start and answer /healthz, runs alternate on/off,
+  both reach "completed", both processes are killed by PID, and the exporter's
+  own summary line is found and parsed - enqueued/dropped/sent/http_errors and
+  enqueue p50/p95 - with the OFF arm correctly reporting "not found".
+
+  FOUND, and it is why the launcher is what it is: NOTHING in src/brief_crew/
+  calls logging.basicConfig or dictConfig, and uvicorn configures handlers for
+  the three `uvicorn*` loggers only. A `brief_crew.*` INFO record therefore
+  reaches a root logger with no handler and is served by logging.lastResort,
+  which emits WARNING and above - so under a bare `serve.exe` the exporter's
+  INFO summary line is DROPPED, and the first run of this harness reported
+  "not found" on both arms for that reason alone. The script now launches
+  `python -c "logging.basicConfig(level=INFO); serve()"` instead, and the line
+  appears. `--use-serve-exe` restores the old behaviour.
+
+-----------------------------------------------------------------------------
+5. What this smoke test did NOT exercise
+-----------------------------------------------------------------------------
+
+  - The per-TASK duration table is empty here, and correctly so: the synthetic
+    double emits agent-execution frames only (all 12 AGENT frames carry a
+    `task` key), and no TaskStarted/TaskCompleted pair. Per-task TOKENS still
+    populate, because the actor stamp puts `task_name` on every TOKEN frame.
+  - No Langfuse session, no scores, no open-span check against real data, and
+    no membership check between two concurrent runs.
+  - No billed cost: nothing here was paid for.
+
+  The Langfuse-side parsing was tested separately against the saved audit
+  exports and against the one real session in the project; the OpenRouter side
+  against two real generation records from the Task 1 probes. Those runs are
+  not saved here because their subject is another worker's data, not this
+  run's.

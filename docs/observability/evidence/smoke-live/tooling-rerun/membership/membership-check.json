@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-09-05T15:17:43Z",
+  "run_ids": [
+    "036ace4e-8b58-4a9b-9d46-0b78448684f9",
+    "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7",
+    "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea"
+  ],
+  "runs": [
+    {
+      "run_id": "4548c884-6e5c-404c-a28a-bbf5a8ce8cf7",
+      "source": "docs\\observability\\evidence\\smoke-live\\tooling-rerun\\run-1",
+      "session_found": null,
+      "traces": 1,
+      "trace_ids": [
+        "4548c8846e5c404ca28abbf5a8ce8cf7"
+      ],
+      "observations": 33,
+      "mismatched": 0,
+      "missing_run_id": 0,
+      "traces_without_session_id": [],
+      "traces_with_a_different_session_id": []
+    },
+    {
+      "run_id": "036ace4e-8b58-4a9b-9d46-0b78448684f9",
+      "source": "docs\\observability\\evidence\\smoke-live\\tooling-rerun\\run-2",
+      "session_found": null,
+      "traces": 1,
+      "trace_ids": [
+        "036ace4e8b584a9b9d460b78448684f9"
+      ],
+      "observations": 33,
+      "mismatched": 0,
+      "missing_run_id": 0,
+      "traces_without_session_id": [],
+      "traces_with_a_different_session_id": []
+    },
+    {
+      "run_id": "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea",
+      "source": "docs\\observability\\evidence\\smoke-live\\tooling-rerun\\run-3",
+      "session_found": null,
+      "traces": 1,
+      "trace_ids": [
+        "9d356fcbaadd4d41ab067ffcd50c78ea"
+      ],
+      "observations": 33,
+      "mismatched": 0,
+      "missing_run_id": 0,
+      "traces_without_session_id": [],
+      "traces_with_a_different_session_id": []
+    }
+  ],
+  "mismatches": [],
+  "cross_membership": [],
+  "missing_run_id": [],
+  "mismatch_count": 0,
+  "cross_membership_count": 0,
+  "missing_run_id_count": 0,
+  "verdict": "PASS",
+  "totals": {
+    "sessions": 3,
+    "traces": 3,
+    "observations": 99,
+    "mismatches": 0,
+    "cross_membership": 0,
+    "missing_run_id": 0,
+    "verdict": "PASS"
+  }
+}

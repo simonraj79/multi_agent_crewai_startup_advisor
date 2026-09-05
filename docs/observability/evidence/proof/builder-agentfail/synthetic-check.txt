@@ -1,0 +1,91 @@
+# builder-agentfail - synthetic backend check
+
+Backend, started in a second shell before any of this ran:
+
+    $env:SYNTHETIC="1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS="1"; $env:PORT="8095"
+    $env:HOST="127.0.0.1"; $env:CREDENTIALS_MASTER_KEY="<the tests/__init__.py placeholder>"
+    $env:VALIDATOR_ALLOW_AUTO_GATES="1"; $env:LANGFUSE_EXPORT_ENABLED="0"
+    .\.venv\Scripts\serve.exe
+
+Run at 2026-09-05T15:12:07+00:00.
+Every call below is anonymous - no Authorization header, no X-Synthetic-User -
+because that is what the paid backend will be: auth off, nobody signed in.
+
+------------------------------------------------------------------------
+
+$ curl -sS -X GET http://127.0.0.1:8095/healthz
+  -> HTTP 200
+  {"status":"ok","dependencies":{"executor":{"status":"ok","backend":null,"workers":1},"storage":{"status":"ok","backend":"sqlite","workers":null}},"gates":{"open":0,"expired":0,"alerting":0,"expiries":0,"alerts":0,"sweeps":0}}
+
+$ curl -sS -X GET http://127.0.0.1:8095/readyz
+  -> HTTP 200
+  {"status":"ok","dependencies":{"executor":{"status":"ok","backend":null,"workers":1},"storage":{"status":"ok","backend":"sqlite","workers":null}},"gates":{"open":0,"expired":0,"alerting":0,"expiries":0,"alerts":0,"sweeps":0}}
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/credentials --data @<body>
+  -> HTTP 401
+  (THE VAULT IS UNREACHABLE ANONYMOUSLY. This is the same 401 the paid backend will answer, and it is why the plan's credential injection is not performable there: credentials_api.py::vault calls require_user (app.py:944-958))
+  {"detail":"sign in to use this endpoint"}
+
+$ curl -sS -X POST -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/builder/credentials --data @<body>
+  -> HTTP 409
+  (the SAME call with an identity. The header is honoured ONLY because this app was built synthetic=True and AUTH_BASE_URL is unset (app.py:860-882); on the paid backend synthetic is False, so the header is ignored and this is a 401 too)
+  {"detail":"you already have a credential labelled 'a wrong key'"}
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/validate --data @<body>
+  -> HTTP 200
+  (valid=true and problems=[] is the acceptance this file exists to record)
+  {"valid":true,"problems":[],"budget":{"static_cost_usd":0.022465,"floor_cost_usd":0.022465,"modelled_calls":2,"billable_nodes":1,"escalation_nodes":0,"cycles":0,"unpriced_models":[],"over_ceiling":false,"ceiling_usd":10.0,"per_node":{"sound_the_channel":{"calls":2,"usd":0.022465,"model_id":"openrouter/google/gemini-3.5-flash-lite"}}},"identity_checked":false}
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/workflows --data @<body>
+  -> HTTP 201
+  {"id":"ug_2ac1fae1","document":{"schema":"builder.flow/v1","id":"ug_2ac1fae1","name":"Channel sounding","version":1,"input_field":"idea","nodes":[{"id":"the_brief","kind":"input","label":"Channel brief","position":{"x":0,"y":190},"config":{"field":"idea","label":"Which channel to sound","max_chars":2000,"required":true}},{"id":"start_sounding","kind":"gate","label":"Start the sounding","position":{"x":300,"y":190},"config":{"message":"Approve to send the Channel Sounder down the reach.","editable_fields":[],"max_turns":0,"expiry_seconds":1800}},{"id":"sound_the_channel","kind":"agent","label":"sound_the_channel","position":{"x":620,"y":190},"config":{"tier":"cheap","max_iter":1,"guardrail_max_retries":0,"prompt_inputs":{"brief":"${state.idea}"},"on_error":"fail","role":"Channel Sounder","goal":"Say how deep a named channel runs, from the register in your head and nothing else.","backstor ...[5288 bytes total]
+
+  document id = ug_2ac1fae1
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/workflows/ug_2ac1fae1/publish
+  -> HTTP 200
+  {"workflow_id":"ug_2ac1fae1","graph_version":"6ed686c16a156190","version":1,"input_field":"idea","static_cost_usd":0.022465,"gated_before_spend":true,"reserved_input_keys":["__builder__","decision__start_sounding","out__sound_the_channel","out__start_sounding","out__the_brief","out__the_log","turns__start_sounding"]}
+
+  workflow_id = ug_2ac1fae1  gated_before_spend = True
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/sessions/proof-builder-agentfail/runs --data @<body>
+  -> HTTP 202
+  (gates=auto is what makes it unattended; it needs VALIDATOR_ALLOW_AUTO_GATES for an anonymous caller, and it needs the graph to HAVE a gate)
+  {"run_id":"e9a9ea1f-e64a-4e0a-8f34-6b7b8c3a5603","status":"queued","graph_version":"6ed686c16a156190"}
+
+  run id = e9a9ea1f-e64a-4e0a-8f34-6b7b8c3a5603
+
+$ curl -sS http://127.0.0.1:8095/api/runs/e9a9ea1f-e64a-4e0a-8f34-6b7b8c3a5603   # polled until terminal
+  -> HTTP 200, status = completed
+  result keys: ['markdown_body', 'node_id']
+
+$ curl -sS http://127.0.0.1:8095/api/runs/e9a9ea1f-e64a-4e0a-8f34-6b7b8c3a5603/frames
+  -> HTTP 200, 26 frames
+     kind=edge_taken   node=sound_the_channel  stage=traversal x1
+     kind=edge_taken   node=start_sounding     stage=None      x1
+     kind=edge_taken   node=start_sounding     stage=traversal x1
+     kind=edge_taken   node=the_log            stage=traversal x1
+     kind=llm          node=sound_the_channel  stage=chunk     x3
+     kind=llm          node=sound_the_channel  stage=utterance x1
+     kind=metrics      node=workflow           stage=None      x1
+     kind=node_state   node=sound_the_channel  stage=after     x1
+     kind=node_state   node=sound_the_channel  stage=before    x1
+     kind=node_state   node=start_sounding     stage=after     x2
+     kind=node_state   node=start_sounding     stage=before    x2
+     kind=node_state   node=the_brief          stage=after     x1
+     kind=node_state   node=the_brief          stage=before    x1
+     kind=node_state   node=the_log            stage=after     x1
+     kind=node_state   node=the_log            stage=before    x1
+     kind=run_state    node=workflow           stage=None      x2
+     kind=run_state    node=workflow           stage=plan      x4
+     kind=token        node=sound_the_channel  stage=None      x1
+  levels: {'INFO': 26}
+
+TERMINAL STATE: completed
+
+What this does NOT prove: the synthetic backend swaps in `SyntheticCrewFactories`
+(`service/builder_runner.py`), so no OpenRouter call and no tool call happens here.
+The injection in inject.md is NOT exercised by this transcript. What is proved is
+that the document validates, publishes, registers and launches, and that the run
+reaches a terminal state - the four things that have to be true before money is
+spent on it.

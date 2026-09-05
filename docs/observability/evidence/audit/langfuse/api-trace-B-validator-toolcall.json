@@ -1,0 +1,463 @@
+{
+  "id": "a2579573decfda4258eadda1a305571e",
+  "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+  "name": "OpenRouter Request",
+  "timestamp": "2026-09-05T12:11:27.390Z",
+  "environment": "default",
+  "tags": [],
+  "bookmarked": false,
+  "release": null,
+  "version": null,
+  "userId": null,
+  "sessionId": null,
+  "public": false,
+  "input": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are Community demand analyst\n. You have learned that votes and positive opinions are weak demand signals. You read the discussion itself, preserve short exact quotes, distinguish a real problem from an adjacent topic, and say when fewer than three usable threads leave the question unanswered.\n\nYour personal goal is: Find direct evidence that target users experience the problem, pay for a solution, or maintain a workaround.\n\n\nCurrent Date: 2026-09-05"
+      },
+      {
+        "role": "user",
+        "content": "\nCurrent Task: Research direct user evidence for this approved scope: {\n  \"startup_idea\": \"An AI tool that turns Figma files into production React\",\n  \"category\": \"Design-to-code automation\",\n  \"target_user\": \"Frontend developers and engineering teams\",\n  \"problem\": \"Manually translating design mockups into clean, responsive, and maintainable frontend code is repetitive and slows release cycles.\",\n  \"technology_claim\": \"AI can accurately parse Figma design files and output production-ready React component code conforming to design systems and project conventions.\",\n  \"market_query\": \"AI design to code Figma to React tools competitors market adoption\",\n  \"community_queries\": [\n    \"figma react code\"\n  ],\n  \"tech_queries\": [\n    \"figma to react\"\n  ],\n  \"assumptions\": [\n    \"Figma design files have sufficient structure, naming, and Auto Layout constraints for deterministic code generation.\",\n    \"Engineers prefer reviewing and refactoring AI-generated UI code over writing components from scratch.\",\n    \"Generated React code satisfies production quality benchmarks for accessibility, responsiveness, and component architecture.\",\n    \"Existing design systems and token libraries can be mapped reliably to generated components.\"\n  ],\n  \"scoping_gaps\": [\n    \"Unclear whether 'production React' scope includes state management, interactive logic, and tests, or is limited to presentational components.\"\n  ],\n  \"as_of\": \"2026-09-05\"\n}\nCall analyze_community_sentiment EXACTLY ONCE, with the query below: figma react code\nReturn one SentimentFindings JSON object. Keep at most one representative Thread per URL so source_urls remains unique. Preserve a short exact quote and classify it. OFF_TOPIC means the thread is not about the scoped problem or its users at all - a different domain, or a passing mention. OPINION means the thread IS about this problem or its users but nobody in it describes having the problem, paying for it, or working around it. That distinction decides the verdict, so make it deliberately: five or more threads you call OPINION with none called HAS_PROBLEM, PAYS or BUILT_WORKAROUND is read as \"the branch looked and nobody has this problem\" and REJECTS the idea outright. Use OFF_TOPIC when the thread does not bear on the question; use OPINION only when it does bear on it and still shows no problem. The tool reports signal_terms_matched and query_terms_present: those are word matches, not a classification, and they are not the answer. A comment matching \"pay\" may be quoting a product name; a comment matching nothing may still describe a real problem in its own words. Read the quote and decide. PAYS needs someone stating they paid or budgeted, not the word appearing. Copy the story score into points and the story comment count into num_comments when the tool result reports them, and leave both null when it does not; never substitute a guess or a zero for a count the tool did not give you. Copy date and date_is_retrieval_time together: a true flag means the tool used the time it fetched the thread because the item carried no date of its own, and such a thread is never dated within 24 months. Never clear the flag to make a thread look recent. Upvotes and positive opinions do not establish demand. Every URL must be copied exactly from a tool result from this run. If no call succeeds, return no sources and explain the evidence gap. Do not call the tool a second time. A result with status \"empty\" or result_count 0 is a real evidence gap now: report it, name the query that was tried, and say that a single attempt was made. Breadth is the Scoper's responsibility at the scope gate, not something you retry your way out of here.\n\n\nThis is the expected criteria for your final answer: One JSON object matching SentimentFindings exactly, with source_urls mirroring sources[].url in order and no prose or code fence.\n\nyou MUST return the actual complete content as the final answer, not a summary.\nFormat your final answer according to the following OpenAPI schema: {\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"sources\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"classification\": {\n            \"enum\": [\n              \"HAS_PROBLEM\",\n              \"PAYS\",\n              \"BUILT_WORKAROUND\",\n              \"OPINION\",\n              \"OFF_TOPIC\"\n            ],\n            \"title\": \"Classification\",\n            \"type\": \"string\"\n          },\n          \"quote\": {\n            \"minLength\": 1,\n            \"title\": \"Quote\",\n            \"type\": \"string\"\n          },\n          \"url\": {\n            \"title\": \"Url\",\n            \"type\": \"string\"\n          },\n          \"date\": {\n            \"description\": \"The comment's own date when Algolia reports one; otherwise the retrieval timestamp, which must be accompanied by date_is_retrieval_time=true.\",\n            \"title\": \"Date\",\n            \"type\": \"string\"\n          },\n          \"date_is_retrieval_time\": {\n            \"default\": false,\n            \"description\": \"True when `date` is the retrieval time because the source carried no date of its own. Copy the value from the tool row. A thread flagged true is never 'dated within 24 months'.\",\n            \"title\": \"Date Is Retrieval Time\",\n            \"type\": \"boolean\"\n          },\n          \"points\": {\n            \"default\": null,\n            \"title\": \"Points\",\n            \"minimum\": 0,\n            \"type\": \"integer\"\n          },\n          \"num_comments\": {\n            \"default\": null,\n            \"title\": \"Num Comments\",\n            \"minimum\": 0,\n            \"type\": \"integer\"\n          }\n        },\n        \"required\": [\n          \"classification\",\n          \"quote\",\n          \"url\",\n          \"date\",\n          \"date_is_retrieval_time\",\n          \"points\",\n          \"num_comments\"\n        ],\n        \"title\": \"Thread\",\n        \"type\": \"object\"\n      },\n      \"title\": \"Sources\",\n      \"type\": \"array\"\n    },\n    \"source_urls\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"title\": \"Source Urls\",\n      \"type\": \"array\"\n    },\n    \"gaps\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"title\": \"Gaps\",\n      \"type\": \"array\"\n    },\n    \"tool_status\": {\n      \"enum\": [\n        \"ok\",\n        \"empty\",\n        \"rate_limited\",\n        \"failed\"\n      ],\n      \"title\": \"Tool Status\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"sources\",\n    \"source_urls\",\n    \"gaps\",\n    \"tool_status\"\n  ],\n  \"title\": \"SentimentFindings\",\n  \"type\": \"object\"\n}\n\nIMPORTANT: Preserve the original content exactly as-is. Do NOT rewrite, paraphrase, or modify the meaning of the content. Only structure it to match the schema format.\n\nDo not include the OpenAPI schema in the final output. Ensure the final output does not include any code block markers like ```json or ```python."
+      }
+    ]
+  },
+  "output": {
+    "completion": "",
+    "reasoning": null,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "analyze_community_sentiment",
+          "description": "Search Hacker News stories and inspect their comment trees for problem, payment, workaround, opinion, and off-topic signals. Returns a JSON envelope.",
+          "strict": true,
+          "parameters": {
+            "properties": {
+              "query": {
+                "description": "The exact HN search query.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "story_limit": {
+                "description": "Stories to inspect; each becomes at most one usable thread.",
+                "maximum": 5,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "comments_per_story": {
+                "description": "Maximum story body and comments returned per thread.",
+                "maximum": 20,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "query",
+              "story_limit",
+              "comments_per_story"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "rawRequest": {
+      "model": "google/gemini-3.5-flash-lite:nitro",
+      "max_tokens": 2048,
+      "temperature": 0,
+      "tool_choice": "auto",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "analyze_community_sentiment",
+            "description": "Search Hacker News stories and inspect their comment trees for problem, payment, workaround, opinion, and off-topic signals. Returns a JSON envelope.",
+            "strict": true,
+            "parameters": {
+              "properties": {
+                "query": {
+                  "description": "The exact HN search query.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "story_limit": {
+                  "description": "Stories to inspect; each becomes at most one usable thread.",
+                  "maximum": 5,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "comments_per_story": {
+                  "description": "Maximum story body and comments returned per thread.",
+                  "maximum": 20,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "query",
+                "story_limit",
+                "comments_per_story"
+              ],
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      ],
+      "_skin": "chat-completions"
+    }
+  },
+  "metadata": {
+    "openrouter.provider_name": "Google AI Studio",
+    "resourceAttributes": {
+      "service.name": "openrouter",
+      "openrouter.trace.id": "gen-1788610287-gvyFXSydia5RFyGGhACP"
+    },
+    "scope": {
+      "name": "openrouter",
+      "attributes": {}
+    },
+    "provider_responses": [
+      {
+        "id": "7wacauXlKNrdg8UP7OGmoAc",
+        "provider_name": "Google AI Studio",
+        "status": 200,
+        "latency": 579,
+        "is_byok": false,
+        "endpoint_id": "6bd8f433-79e1-416c-b407-1772eb796c9a",
+        "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+      }
+    ],
+    "openrouter.source": "openrouter",
+    "openrouter.api_key_name": "MultiAgentCrewAI",
+    "openrouter.entity_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+    "openrouter.creator_user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+    "openrouter.router_latency_ms": 30,
+    "openrouter.provider_request_ms": 30,
+    "openrouter.provider_headers_ms": 609,
+    "openrouter.first_token_ms": 609,
+    "openrouter.provider_body_end_ms": 609,
+    "openrouter.provider_time_to_first_token_ms": 579,
+    "openrouter.provider_slug": "google-ai-studio",
+    "openrouter.finish_reason": "STOP",
+    "openrouter.input_unit_price": 3e-07,
+    "openrouter.output_unit_price": 2.5e-06,
+    "attributes": {
+      "langfuse.trace.name": "OpenRouter Request",
+      "langfuse.observation.type": "generation",
+      "langfuse.observation.level": "DEFAULT",
+      "gen_ai.operation.name": "chat",
+      "gen_ai.system": "google",
+      "gen_ai.provider.name": "google",
+      "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+      "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+      "gen_ai.response.id": "gen-1788610287-gvyFXSydia5RFyGGhACP",
+      "gen_ai.usage.input_tokens": "1930",
+      "gen_ai.usage.output_tokens": "36",
+      "gen_ai.usage.total_tokens": "1966",
+      "gen_ai.usage.input_cost": "0.000579",
+      "gen_ai.usage.output_cost": "0.00009",
+      "gen_ai.usage.total_cost": "0.000669",
+      "gen_ai.usage.input_tokens.cached": "0",
+      "gen_ai.usage.input_tokens.audio": "0",
+      "gen_ai.usage.input_tokens.video": "0",
+      "gen_ai.usage.output_tokens.reasoning": "0",
+      "gen_ai.usage.output_tokens.image": "0",
+      "gen_ai.response.finish_reasons": "[\"tool_calls\"]",
+      "gen_ai.response.finish_reason": "tool_calls",
+      "langfuse.observation.completion_start_time": "2026-09-05T12:11:27.999Z",
+      "langfuse.observation.usage_details": "{\"input\":1930,\"output\":36,\"total\":1966}",
+      "langfuse.observation.cost_details": "{\"input\":0.000579,\"output\":0.00009,\"total\":0.000669}",
+      "gen_ai.usage.cost": "0.000669",
+      "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+    }
+  },
+  "createdAt": "2026-09-05T12:11:30.000Z",
+  "updatedAt": "2026-09-05T12:11:29.111Z",
+  "externalId": null,
+  "scores": [],
+  "latency": 0.619,
+  "observations": [
+    {
+      "id": "a2579573decfda42",
+      "traceId": "a2579573decfda4258eadda1a305571e",
+      "startTime": "2026-09-05T12:11:27.390Z",
+      "endTime": "2026-09-05T12:11:28.009Z",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "parentObservationId": null,
+      "type": "GENERATION",
+      "environment": "default",
+      "name": "LLM Generation",
+      "level": "DEFAULT",
+      "statusMessage": null,
+      "version": null,
+      "createdAt": "2026-09-05T12:11:29.033Z",
+      "updatedAt": "2026-09-05T12:11:29.034Z",
+      "input": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are Community demand analyst\n. You have learned that votes and positive opinions are weak demand signals. You read the discussion itself, preserve short exact quotes, distinguish a real problem from an adjacent topic, and say when fewer than three usable threads leave the question unanswered.\n\nYour personal goal is: Find direct evidence that target users experience the problem, pay for a solution, or maintain a workaround.\n\n\nCurrent Date: 2026-09-05"
+          },
+          {
+            "role": "user",
+            "content": "\nCurrent Task: Research direct user evidence for this approved scope: {\n  \"startup_idea\": \"An AI tool that turns Figma files into production React\",\n  \"category\": \"Design-to-code automation\",\n  \"target_user\": \"Frontend developers and engineering teams\",\n  \"problem\": \"Manually translating design mockups into clean, responsive, and maintainable frontend code is repetitive and slows release cycles.\",\n  \"technology_claim\": \"AI can accurately parse Figma design files and output production-ready React component code conforming to design systems and project conventions.\",\n  \"market_query\": \"AI design to code Figma to React tools competitors market adoption\",\n  \"community_queries\": [\n    \"figma react code\"\n  ],\n  \"tech_queries\": [\n    \"figma to react\"\n  ],\n  \"assumptions\": [\n    \"Figma design files have sufficient structure, naming, and Auto Layout constraints for deterministic code generation.\",\n    \"Engineers prefer reviewing and refactoring AI-generated UI code over writing components from scratch.\",\n    \"Generated React code satisfies production quality benchmarks for accessibility, responsiveness, and component architecture.\",\n    \"Existing design systems and token libraries can be mapped reliably to generated components.\"\n  ],\n  \"scoping_gaps\": [\n    \"Unclear whether 'production React' scope includes state management, interactive logic, and tests, or is limited to presentational components.\"\n  ],\n  \"as_of\": \"2026-09-05\"\n}\nCall analyze_community_sentiment EXACTLY ONCE, with the query below: figma react code\nReturn one SentimentFindings JSON object. Keep at most one representative Thread per URL so source_urls remains unique. Preserve a short exact quote and classify it. OFF_TOPIC means the thread is not about the scoped problem or its users at all - a different domain, or a passing mention. OPINION means the thread IS about this problem or its users but nobody in it describes having the problem, paying for it, or working around it. That distinction decides the verdict, so make it deliberately: five or more threads you call OPINION with none called HAS_PROBLEM, PAYS or BUILT_WORKAROUND is read as \"the branch looked and nobody has this problem\" and REJECTS the idea outright. Use OFF_TOPIC when the thread does not bear on the question; use OPINION only when it does bear on it and still shows no problem. The tool reports signal_terms_matched and query_terms_present: those are word matches, not a classification, and they are not the answer. A comment matching \"pay\" may be quoting a product name; a comment matching nothing may still describe a real problem in its own words. Read the quote and decide. PAYS needs someone stating they paid or budgeted, not the word appearing. Copy the story score into points and the story comment count into num_comments when the tool result reports them, and leave both null when it does not; never substitute a guess or a zero for a count the tool did not give you. Copy date and date_is_retrieval_time together: a true flag means the tool used the time it fetched the thread because the item carried no date of its own, and such a thread is never dated within 24 months. Never clear the flag to make a thread look recent. Upvotes and positive opinions do not establish demand. Every URL must be copied exactly from a tool result from this run. If no call succeeds, return no sources and explain the evidence gap. Do not call the tool a second time. A result with status \"empty\" or result_count 0 is a real evidence gap now: report it, name the query that was tried, and say that a single attempt was made. Breadth is the Scoper's responsibility at the scope gate, not something you retry your way out of here.\n\n\nThis is the expected criteria for your final answer: One JSON object matching SentimentFindings exactly, with source_urls mirroring sources[].url in order and no prose or code fence.\n\nyou MUST return the actual complete content as the final answer, not a summary.\nFormat your final answer according to the following OpenAPI schema: {\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"sources\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"classification\": {\n            \"enum\": [\n              \"HAS_PROBLEM\",\n              \"PAYS\",\n              \"BUILT_WORKAROUND\",\n              \"OPINION\",\n              \"OFF_TOPIC\"\n            ],\n            \"title\": \"Classification\",\n            \"type\": \"string\"\n          },\n          \"quote\": {\n            \"minLength\": 1,\n            \"title\": \"Quote\",\n            \"type\": \"string\"\n          },\n          \"url\": {\n            \"title\": \"Url\",\n            \"type\": \"string\"\n          },\n          \"date\": {\n            \"description\": \"The comment's own date when Algolia reports one; otherwise the retrieval timestamp, which must be accompanied by date_is_retrieval_time=true.\",\n            \"title\": \"Date\",\n            \"type\": \"string\"\n          },\n          \"date_is_retrieval_time\": {\n            \"default\": false,\n            \"description\": \"True when `date` is the retrieval time because the source carried no date of its own. Copy the value from the tool row. A thread flagged true is never 'dated within 24 months'.\",\n            \"title\": \"Date Is Retrieval Time\",\n            \"type\": \"boolean\"\n          },\n          \"points\": {\n            \"default\": null,\n            \"title\": \"Points\",\n            \"minimum\": 0,\n            \"type\": \"integer\"\n          },\n          \"num_comments\": {\n            \"default\": null,\n            \"title\": \"Num Comments\",\n            \"minimum\": 0,\n            \"type\": \"integer\"\n          }\n        },\n        \"required\": [\n          \"classification\",\n          \"quote\",\n          \"url\",\n          \"date\",\n          \"date_is_retrieval_time\",\n          \"points\",\n          \"num_comments\"\n        ],\n        \"title\": \"Thread\",\n        \"type\": \"object\"\n      },\n      \"title\": \"Sources\",\n      \"type\": \"array\"\n    },\n    \"source_urls\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"title\": \"Source Urls\",\n      \"type\": \"array\"\n    },\n    \"gaps\": {\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"title\": \"Gaps\",\n      \"type\": \"array\"\n    },\n    \"tool_status\": {\n      \"enum\": [\n        \"ok\",\n        \"empty\",\n        \"rate_limited\",\n        \"failed\"\n      ],\n      \"title\": \"Tool Status\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"sources\",\n    \"source_urls\",\n    \"gaps\",\n    \"tool_status\"\n  ],\n  \"title\": \"SentimentFindings\",\n  \"type\": \"object\"\n}\n\nIMPORTANT: Preserve the original content exactly as-is. Do NOT rewrite, paraphrase, or modify the meaning of the content. Only structure it to match the schema format.\n\nDo not include the OpenAPI schema in the final output. Ensure the final output does not include any code block markers like ```json or ```python."
+          }
+        ]
+      },
+      "output": {
+        "completion": "",
+        "reasoning": null,
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "analyze_community_sentiment",
+              "description": "Search Hacker News stories and inspect their comment trees for problem, payment, workaround, opinion, and off-topic signals. Returns a JSON envelope.",
+              "strict": true,
+              "parameters": {
+                "properties": {
+                  "query": {
+                    "description": "The exact HN search query.",
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "story_limit": {
+                    "description": "Stories to inspect; each becomes at most one usable thread.",
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "comments_per_story": {
+                    "description": "Maximum story body and comments returned per thread.",
+                    "maximum": 20,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "query",
+                  "story_limit",
+                  "comments_per_story"
+                ],
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        ],
+        "rawRequest": {
+          "model": "google/gemini-3.5-flash-lite:nitro",
+          "max_tokens": 2048,
+          "temperature": 0,
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "analyze_community_sentiment",
+                "description": "Search Hacker News stories and inspect their comment trees for problem, payment, workaround, opinion, and off-topic signals. Returns a JSON envelope.",
+                "strict": true,
+                "parameters": {
+                  "properties": {
+                    "query": {
+                      "description": "The exact HN search query.",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "story_limit": {
+                      "description": "Stories to inspect; each becomes at most one usable thread.",
+                      "maximum": 5,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "comments_per_story": {
+                      "description": "Maximum story body and comments returned per thread.",
+                      "maximum": 20,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "query",
+                    "story_limit",
+                    "comments_per_story"
+                  ],
+                  "type": "object",
+                  "additionalProperties": false
+                }
+              }
+            }
+          ],
+          "_skin": "chat-completions"
+        }
+      },
+      "metadata": {
+        "provider_responses": [
+          {
+            "id": "7wacauXlKNrdg8UP7OGmoAc",
+            "provider_name": "Google AI Studio",
+            "status": 200,
+            "latency": 579,
+            "is_byok": false,
+            "endpoint_id": "6bd8f433-79e1-416c-b407-1772eb796c9a",
+            "model_permaslug": "google/gemini-3.5-flash-lite-20260721"
+          }
+        ],
+        "attributes": {
+          "langfuse.trace.name": "OpenRouter Request",
+          "langfuse.observation.type": "generation",
+          "langfuse.observation.level": "DEFAULT",
+          "gen_ai.operation.name": "chat",
+          "gen_ai.system": "google",
+          "gen_ai.provider.name": "google",
+          "gen_ai.request.model": "google/gemini-3.5-flash-lite",
+          "gen_ai.response.model": "google/gemini-3.5-flash-lite",
+          "gen_ai.response.id": "gen-1788610287-gvyFXSydia5RFyGGhACP",
+          "gen_ai.usage.input_tokens": "1930",
+          "gen_ai.usage.output_tokens": "36",
+          "gen_ai.usage.total_tokens": "1966",
+          "gen_ai.usage.input_cost": "0.000579",
+          "gen_ai.usage.output_cost": "0.00009",
+          "gen_ai.usage.total_cost": "0.000669",
+          "gen_ai.usage.input_tokens.cached": "0",
+          "gen_ai.usage.input_tokens.audio": "0",
+          "gen_ai.usage.input_tokens.video": "0",
+          "gen_ai.usage.output_tokens.reasoning": "0",
+          "gen_ai.usage.output_tokens.image": "0",
+          "gen_ai.response.finish_reasons": "[\"tool_calls\"]",
+          "gen_ai.response.finish_reason": "tool_calls",
+          "langfuse.observation.completion_start_time": "2026-09-05T12:11:27.999Z",
+          "langfuse.observation.usage_details": "{\"input\":1930,\"output\":36,\"total\":1966}",
+          "langfuse.observation.cost_details": "{\"input\":0.000579,\"output\":0.00009,\"total\":0.000669}",
+          "gen_ai.usage.cost": "0.000669",
+          "langfuse.observation.model.name": "google/gemini-3.5-flash-lite"
+        },
+        "resourceAttributes": {
+          "service.name": "openrouter",
+          "openrouter.trace.id": "gen-1788610287-gvyFXSydia5RFyGGhACP"
+        },
+        "scope": {
+          "name": "openrouter",
+          "attributes": {}
+        }
+      },
+      "model": "google/gemini-3.5-flash-lite",
+      "modelParameters": {},
+      "completionStartTime": "2026-09-05T12:11:27.999Z",
+      "promptId": null,
+      "promptName": null,
+      "promptVersion": null,
+      "latency": 0.619,
+      "timeToFirstToken": 0.609,
+      "usageDetails": {
+        "input": 1930,
+        "output": 36,
+        "total": 1966
+      },
+      "costDetails": {
+        "input": 0.000579,
+        "output": 9e-05,
+        "total": 0.000669
+      },
+      "usagePricingTierId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e_tier_default",
+      "usagePricingTierName": "Standard",
+      "inputPrice": 3e-07,
+      "outputPrice": 2.5e-06,
+      "totalPrice": 0,
+      "calculatedInputCost": 0.000579,
+      "calculatedOutputCost": 9e-05,
+      "calculatedTotalCost": 0.000669,
+      "unit": "TOKENS",
+      "promptTokens": 1930,
+      "completionTokens": 36,
+      "totalTokens": 1966,
+      "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "usage": {
+        "unit": "TOKENS",
+        "input": 1930,
+        "output": 36,
+        "total": 1966
+      }
+    },
+    {
+      "id": "2c4ceb16baa7c6a0",
+      "traceId": "a2579573decfda4258eadda1a305571e",
+      "startTime": "2026-09-05T12:11:27.390Z",
+      "endTime": "2026-09-05T12:11:27.969Z",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "parentObservationId": "a2579573decfda42",
+      "type": "SPAN",
+      "environment": "default",
+      "name": "provider attempt 1: Google AI Studio",
+      "level": "DEFAULT",
+      "statusMessage": null,
+      "version": null,
+      "createdAt": "2026-09-05T12:11:29.033Z",
+      "updatedAt": "2026-09-05T12:11:29.034Z",
+      "input": null,
+      "output": null,
+      "metadata": {
+        "attempt_index": 0,
+        "status_code": 200,
+        "is_byok": false,
+        "endpoint_id": "6bd8f433-79e1-416c-b407-1772eb796c9a",
+        "model_permaslug": "google/gemini-3.5-flash-lite-20260721",
+        "attributes": {
+          "langfuse.observation.type": "span",
+          "langfuse.observation.level": "DEFAULT",
+          "gen_ai.operation.name": "chat",
+          "gen_ai.response.id": "gen-1788610287-gvyFXSydia5RFyGGhACP:attempt-0"
+        },
+        "resourceAttributes": {
+          "service.name": "openrouter",
+          "openrouter.trace.id": "gen-1788610287-gvyFXSydia5RFyGGhACP"
+        },
+        "scope": {
+          "name": "openrouter",
+          "attributes": {}
+        }
+      },
+      "model": null,
+      "modelParameters": null,
+      "completionStartTime": null,
+      "promptId": null,
+      "promptName": null,
+      "promptVersion": null,
+      "latency": 0.579,
+      "timeToFirstToken": null,
+      "usageDetails": {},
+      "costDetails": {},
+      "usagePricingTierId": null,
+      "usagePricingTierName": null,
+      "inputPrice": 0,
+      "outputPrice": 0,
+      "totalPrice": 0,
+      "calculatedInputCost": null,
+      "calculatedOutputCost": null,
+      "calculatedTotalCost": null,
+      "unit": "TOKENS",
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0,
+      "modelId": null,
+      "usage": {
+        "unit": "TOKENS",
+        "input": 0,
+        "output": 0,
+        "total": 0
+      }
+    }
+  ],
+  "htmlPath": "/project/cmto3mj7t06ykad0ipon3ksbw/traces/a2579573decfda4258eadda1a305571e",
+  "totalCost": 0.000669,
+  "_deprecation": {
+    "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read span and trace data via GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>.",
+    "replacement": "GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>",
+    "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+    "sunsetAt": "2026-11-16"
+  }
+}

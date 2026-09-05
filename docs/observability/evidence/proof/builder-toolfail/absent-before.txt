@@ -1,0 +1,25 @@
+# C2 absence proof - the invented identifiers do not exist at the pre-Task-3 commit
+commit: b65bd654003bcbc92e8ff643d245cf173d92dc0e  (2026-09-05T20:37:18+08:00)
+checked: 2026-09-05T14:42:16Z
+
+$ git grep -n -i "Tidewater Cartographer\|chart_the_shoals\|sounding line" HEAD -- src frontend/src data tests scripts agents
+exit=1 (1 = no match)
+
+$ git grep -n -i ... HEAD  (whole tree)
+exit=1 (1 = no match)
+
+Working-tree hits outside evidence/ (expected: only docs/observability/evidence/proof/PLAN.md, which names them):
+./docs/observability/evidence/proof/builder-toolfail/absent-before.txt
+./docs/observability/evidence/proof/PLAN.md
+
+--- appended 2026-09-05T15:22:58Z, for the custom tool added on the orchestrator's follow-up ---
+commit: b65bd654003bcbc92e8ff643d245cf173d92dc0e
+
+$ git grep -n -i "sounding_line_lookup" HEAD
+exit=1 (1 = no match)
+
+$ git grep -n -i "sounding_line_lookup" HEAD -- src frontend/src data tests scripts agents
+exit=1 (1 = no match)
+
+Working-tree hits outside evidence/ (expected: none):
+  (none)

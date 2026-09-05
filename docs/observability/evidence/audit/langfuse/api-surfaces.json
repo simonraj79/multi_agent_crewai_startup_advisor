@@ -1,0 +1,5922 @@
+{
+  "sessions": {
+    "path": "/api/public/sessions",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "totalItems": 0,
+        "totalPages": 0,
+        "page": 1,
+        "limit": 100
+      },
+      "_deprecation": {
+        "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read session data via GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>.",
+        "replacement": "GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>",
+        "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+        "sunsetAt": "2026-11-16"
+      }
+    }
+  },
+  "scores": {
+    "path": "/api/public/scores",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 0,
+        "totalPages": 0
+      },
+      "_deprecation": {
+        "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. Use GET /api/public/v3/scores instead.",
+        "replacement": "GET /api/public/v3/scores",
+        "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/scores-api",
+        "sunsetAt": "2026-11-16"
+      }
+    }
+  },
+  "scores_v2": {
+    "path": "/api/public/v2/scores",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 0,
+        "totalPages": 0
+      },
+      "_deprecation": {
+        "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. Use GET /api/public/v3/scores instead.",
+        "replacement": "GET /api/public/v3/scores",
+        "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/scores-api",
+        "sunsetAt": "2026-11-16"
+      }
+    }
+  },
+  "score_configs": {
+    "path": "/api/public/score-configs",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 0,
+        "totalPages": 0
+      }
+    }
+  },
+  "prompts_v2": {
+    "path": "/api/public/v2/prompts",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalPages": 0,
+        "totalItems": 0
+      },
+      "pagination": {
+        "page": 1,
+        "limit": 100,
+        "totalPages": 0,
+        "totalItems": 0
+      }
+    }
+  },
+  "datasets": {
+    "path": "/api/public/v2/datasets",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 0,
+        "totalPages": 0
+      }
+    }
+  },
+  "datasets_v1": {
+    "path": "/api/public/datasets",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 0,
+        "totalPages": 0
+      }
+    }
+  },
+  "models": {
+    "path": "/api/public/models",
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "clrs2dnql000108l46vo0gp2t",
+          "createdAt": "2024-01-26T17:35:21.129Z",
+          "modelName": "babbage-002",
+          "matchPattern": "(?i)^(babbage-002)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokenizerModel": "babbage-002"
+          },
+          "unit": "TOKENS",
+          "inputPrice": 4e-07,
+          "outputPrice": 4e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 4e-07
+            },
+            "output": {
+              "price": 4e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrs2dnql000108l46vo0gp2t_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 4e-07,
+                "output": 4e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls0iv12d000108l251gf3038",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "chat-bison",
+          "matchPattern": "(?i)^(chat-bison)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls0iv12d000108l251gf3038_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls0jni4t000008jk3kyy803r",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "chat-bison-32k",
+          "matchPattern": "(?i)^(chat-bison-32k)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls0jni4t000008jk3kyy803r_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm3x0p8ev000008kyd96800c8",
+          "createdAt": "2024-11-25T12:57:56.720Z",
+          "modelName": "chatgpt-4o-latest",
+          "matchPattern": "(?i)^(chatgpt-4o-latest)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4o",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 5e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 5e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm3x0p8ev000008kyd96800c8_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 5e-06,
+                "output": 1.5e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrnwblo0000808jsc1385hdp",
+          "createdAt": "2024-01-30T15:44:13.447Z",
+          "modelName": "claude-1.1",
+          "matchPattern": "(?i)^(anthropic/)?(claude-1.1)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 8e-06,
+          "outputPrice": 2.4e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 8e-06
+            },
+            "output": {
+              "price": 2.4e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrnwblo0000808jsc1385hdp_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 8e-06,
+                "output": 2.4e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrnwbi9d000708jseiy44k26",
+          "createdAt": "2024-01-30T15:44:13.447Z",
+          "modelName": "claude-1.2",
+          "matchPattern": "(?i)^(anthropic/)?(claude-1.2)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 8e-06,
+          "outputPrice": 2.4e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 8e-06
+            },
+            "output": {
+              "price": 2.4e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrnwbi9d000708jseiy44k26_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 8e-06,
+                "output": 2.4e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrnwbg2b000608jse2pp4q2d",
+          "createdAt": "2024-01-30T15:44:13.447Z",
+          "modelName": "claude-1.3",
+          "matchPattern": "(?i)^(anthropic/)?(claude-1.3)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 8e-06,
+          "outputPrice": 2.4e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 8e-06
+            },
+            "output": {
+              "price": 2.4e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrnwbg2b000608jse2pp4q2d_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 8e-06,
+                "output": 2.4e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrnwb836000408jsallr6u11",
+          "createdAt": "2024-01-30T15:44:13.447Z",
+          "modelName": "claude-2.0",
+          "matchPattern": "(?i)^(anthropic/)?(claude-2.0)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 8e-06,
+          "outputPrice": 2.4e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 8e-06
+            },
+            "output": {
+              "price": 2.4e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrnwb836000408jsallr6u11_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 8e-06,
+                "output": 2.4e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrnwbd1m000508js4hxu6o7n",
+          "createdAt": "2024-01-30T15:44:13.447Z",
+          "modelName": "claude-2.1",
+          "matchPattern": "(?i)^(anthropic/)?(claude-2.1)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 8e-06,
+          "outputPrice": 2.4e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 8e-06
+            },
+            "output": {
+              "price": 2.4e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrnwbd1m000508js4hxu6o7n_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 8e-06,
+                "output": 2.4e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm34aq60d000207ml0j1h31ar",
+          "createdAt": "2024-11-05T11:15:55.876Z",
+          "modelName": "claude-3-5-haiku-20241022",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-5-haiku-20241022|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-3-5-haiku-20241022-v1:0|claude-3-5-haiku-V1@20241022)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 8e-07,
+          "outputPrice": 4e-06,
+          "totalPrice": null,
+          "prices": {
+            "output_tokens": {
+              "price": 4e-06
+            },
+            "input": {
+              "price": 8e-07
+            },
+            "input_tokens": {
+              "price": 8e-07
+            },
+            "output": {
+              "price": 4e-06
+            },
+            "cache_creation_input_tokens": {
+              "price": 1e-06
+            },
+            "input_cache_creation": {
+              "price": 1e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 1e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 1.6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 8e-08
+            },
+            "input_cached_tokens": {
+              "price": 8e-08
+            },
+            "input_cache_read": {
+              "price": 8e-08
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm34aq60d000207ml0j1h31ar_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "output_tokens": 4e-06,
+                "input": 8e-07,
+                "input_tokens": 8e-07,
+                "output": 4e-06,
+                "cache_creation_input_tokens": 1e-06,
+                "input_cache_creation": 1e-06,
+                "input_cache_creation_5m": 1e-06,
+                "input_cache_creation_1h": 1.6e-06,
+                "cache_read_input_tokens": 8e-08,
+                "input_cached_tokens": 8e-08,
+                "input_cache_read": 8e-08
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm34aqb9h000307ml6nypd618",
+          "createdAt": "2024-11-05T11:15:55.876Z",
+          "modelName": "claude-3.5-haiku-latest",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-5-haiku-latest)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 8e-07,
+          "outputPrice": 4e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 8e-07
+            },
+            "input_tokens": {
+              "price": 8e-07
+            },
+            "output": {
+              "price": 4e-06
+            },
+            "output_tokens": {
+              "price": 4e-06
+            },
+            "cache_creation_input_tokens": {
+              "price": 1e-06
+            },
+            "input_cache_creation": {
+              "price": 1e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 1e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 1.6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 8e-08
+            },
+            "input_cached_tokens": {
+              "price": 8e-08
+            },
+            "input_cache_read": {
+              "price": 8e-08
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm34aqb9h000307ml6nypd618_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 8e-07,
+                "input_tokens": 8e-07,
+                "output": 4e-06,
+                "output_tokens": 4e-06,
+                "cache_creation_input_tokens": 1e-06,
+                "input_cache_creation": 1e-06,
+                "input_cache_creation_5m": 1e-06,
+                "input_cache_creation_1h": 1.6e-06,
+                "cache_read_input_tokens": 8e-08,
+                "input_cached_tokens": 8e-08,
+                "input_cache_read": 8e-08
+              }
+            }
+          ]
+        },
+        {
+          "id": "clxt0n0m60000pumz1j5b7zsf",
+          "createdAt": "2024-06-25T11:47:24.475Z",
+          "modelName": "claude-3-5-sonnet-20240620",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-5-sonnet-20240620|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-3-5-sonnet-20240620-v1:0|claude-3-5-sonnet@20240620)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clxt0n0m60000pumz1j5b7zsf_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm2krz1uf000208jjg5653iud",
+          "createdAt": "2024-10-22T18:48:01.676Z",
+          "modelName": "claude-3.5-sonnet-20241022",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-5-sonnet-20241022|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-3-5-sonnet-20241022-v2:0|claude-3-5-sonnet-V2@20241022)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "output": {
+              "price": 1.5e-05
+            },
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm2krz1uf000208jjg5653iud_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "output": 1.5e-05,
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm2ks2vzn000308jjh4ze1w7q",
+          "createdAt": "2024-10-22T18:48:01.676Z",
+          "modelName": "claude-3.5-sonnet-latest",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-5-sonnet-latest)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm2ks2vzn000308jjh4ze1w7q_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7ka7561000108js3t9tb3at",
+          "createdAt": "2025-02-25T09:35:39.000Z",
+          "modelName": "claude-3.7-sonnet-20250219",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3.7-sonnet-20250219|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-3.7-sonnet-20250219-v1:0|claude-3-7-sonnet-V1@20250219)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7ka7561000108js3t9tb3at_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7ka7zob000208jsfs9h5ajj",
+          "createdAt": "2025-02-25T09:35:39.000Z",
+          "modelName": "claude-3.7-sonnet-latest",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-7-sonnet-latest)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7ka7zob000208jsfs9h5ajj_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cltr0w45b000008k1407o9qv1",
+          "createdAt": "2024-03-14T09:41:18.736Z",
+          "modelName": "claude-3-haiku-20240307",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-haiku-20240307|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-3-haiku-20240307-v1:0|claude-3-haiku@20240307)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 1.25e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 1.25e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cltr0w45b000008k1407o9qv1_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 1.25e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cltgy0iuw000008le3vod1hhy",
+          "createdAt": "2024-03-07T17:55:38.139Z",
+          "modelName": "claude-3-opus-20240229",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-opus-20240229|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-3-opus-20240229-v1:0|claude-3-opus@20240229)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 1.5e-05,
+          "outputPrice": 7.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.5e-05
+            },
+            "output": {
+              "price": 7.5e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cltgy0iuw000008le3vod1hhy_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.5e-05,
+                "output": 7.5e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "cltgy0pp6000108le56se7bl3",
+          "createdAt": "2024-03-07T17:55:38.139Z",
+          "modelName": "claude-3-sonnet-20240229",
+          "matchPattern": "(?i)^(anthropic/)?(claude-3-sonnet-20240229|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-3-sonnet-20240229-v1:0|claude-3-sonnet@20240229)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cltgy0pp6000108le56se7bl3_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "0b9a828d-9fdc-46d4-b5ec-f6574c42ad65",
+          "createdAt": "2026-06-09T00:00:00.000Z",
+          "modelName": "claude-fable-5",
+          "matchPattern": "(?i)^((anthropic/)?claude-fable-5|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-fable-5(-v1(:0)?)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1e-05,
+          "outputPrice": 5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-05
+            },
+            "input_tokens": {
+              "price": 1e-05
+            },
+            "output": {
+              "price": 5e-05
+            },
+            "output_tokens": {
+              "price": 5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation_5m": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation_1h": {
+              "price": 2e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 1e-06
+            },
+            "input_cached_tokens": {
+              "price": 1e-06
+            },
+            "input_cache_read": {
+              "price": 1e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "0b9a828d-9fdc-46d4-b5ec-f6574c42ad65_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-05,
+                "input_tokens": 1e-05,
+                "output": 5e-05,
+                "output_tokens": 5e-05,
+                "cache_creation_input_tokens": 1.25e-05,
+                "input_cache_creation": 1.25e-05,
+                "input_cache_creation_5m": 1.25e-05,
+                "input_cache_creation_1h": 2e-05,
+                "cache_read_input_tokens": 1e-06,
+                "input_cached_tokens": 1e-06,
+                "input_cache_read": 1e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "4cbb2cdd-e3b9-41ce-b07e-36136282d92a",
+          "createdAt": "2026-09-02T00:00:00.000Z",
+          "modelName": "claude-fable-5-1",
+          "matchPattern": "(?i)^((anthropic/)?claude-fable-5-1|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-fable-5-1(-v1(:0)?)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1e-05,
+          "outputPrice": 5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-05
+            },
+            "input_tokens": {
+              "price": 1e-05
+            },
+            "output": {
+              "price": 5e-05
+            },
+            "output_tokens": {
+              "price": 5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation_5m": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation_1h": {
+              "price": 2e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 2.5e-07
+            },
+            "input_cached_tokens": {
+              "price": 2.5e-07
+            },
+            "input_cache_read": {
+              "price": 2.5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "4cbb2cdd-e3b9-41ce-b07e-36136282d92a_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-05,
+                "input_tokens": 1e-05,
+                "output": 5e-05,
+                "output_tokens": 5e-05,
+                "cache_creation_input_tokens": 1.25e-05,
+                "input_cache_creation": 1.25e-05,
+                "input_cache_creation_5m": 1.25e-05,
+                "input_cache_creation_1h": 2e-05,
+                "cache_read_input_tokens": 2.5e-07,
+                "input_cached_tokens": 2.5e-07,
+                "input_cache_read": 2.5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmgt5gnkv000104jx171tbq4e",
+          "createdAt": "2025-10-16T08:20:44.558Z",
+          "modelName": "claude-haiku-4-5-20251001",
+          "matchPattern": "(?i)^(anthropic/)?(claude-haiku-4-5(-20251001)?|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-haiku-4-5-20251001-v1:0|claude-4-5-haiku@20251001)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1e-06,
+          "outputPrice": 5e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-06
+            },
+            "input_tokens": {
+              "price": 1e-06
+            },
+            "output": {
+              "price": 5e-06
+            },
+            "output_tokens": {
+              "price": 5e-06
+            },
+            "cache_creation_input_tokens": {
+              "price": 1.25e-06
+            },
+            "input_cache_creation": {
+              "price": 1.25e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 1.25e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 2e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 1e-07
+            },
+            "input_cached_tokens": {
+              "price": 1e-07
+            },
+            "input_cache_read": {
+              "price": 1e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmgt5gnkv000104jx171tbq4e_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-06,
+                "input_tokens": 1e-06,
+                "output": 5e-06,
+                "output_tokens": 5e-06,
+                "cache_creation_input_tokens": 1.25e-06,
+                "input_cache_creation": 1.25e-06,
+                "input_cache_creation_5m": 1.25e-06,
+                "input_cache_creation_1h": 2e-06,
+                "cache_read_input_tokens": 1e-07,
+                "input_cached_tokens": 1e-07,
+                "input_cache_read": 1e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrnwbota000908jsgg9mb1ml",
+          "createdAt": "2024-01-30T15:44:13.447Z",
+          "modelName": "claude-instant-1",
+          "matchPattern": "(?i)^(anthropic/)?(claude-instant-1)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 1.63e-06,
+          "outputPrice": 5.51e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.63e-06
+            },
+            "output": {
+              "price": 5.51e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrnwbota000908jsgg9mb1ml_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.63e-06,
+                "output": 5.51e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrnwb41q000308jsfrac9uh6",
+          "createdAt": "2024-01-30T15:44:13.447Z",
+          "modelName": "claude-instant-1.2",
+          "matchPattern": "(?i)^(anthropic/)?(claude-instant-1.2)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": "TOKENS",
+          "inputPrice": 1.63e-06,
+          "outputPrice": 5.51e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.63e-06
+            },
+            "output": {
+              "price": 5.51e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrnwb41q000308jsfrac9uh6_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.63e-06,
+                "output": 5.51e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "33f4e272-750f-49d9-90ed-313b3c920da1",
+          "createdAt": "2026-06-09T00:00:00.000Z",
+          "modelName": "claude-mythos-5",
+          "matchPattern": "(?i)^(anthropic/)?claude-mythos-5$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1e-05,
+          "outputPrice": 5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-05
+            },
+            "input_tokens": {
+              "price": 1e-05
+            },
+            "output": {
+              "price": 5e-05
+            },
+            "output_tokens": {
+              "price": 5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation_5m": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation_1h": {
+              "price": 2e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 1e-06
+            },
+            "input_cached_tokens": {
+              "price": 1e-06
+            },
+            "input_cache_read": {
+              "price": 1e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "33f4e272-750f-49d9-90ed-313b3c920da1_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-05,
+                "input_tokens": 1e-05,
+                "output": 5e-05,
+                "output_tokens": 5e-05,
+                "cache_creation_input_tokens": 1.25e-05,
+                "input_cache_creation": 1.25e-05,
+                "input_cache_creation_5m": 1.25e-05,
+                "input_cache_creation_1h": 2e-05,
+                "cache_read_input_tokens": 1e-06,
+                "input_cached_tokens": 1e-06,
+                "input_cache_read": 1e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "0e053111-eda4-4015-8d36-88f553adabc3",
+          "createdAt": "2026-09-02T00:00:00.000Z",
+          "modelName": "claude-mythos-5-1",
+          "matchPattern": "(?i)^(anthropic/)?claude-mythos-5-1$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1e-05,
+          "outputPrice": 5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-05
+            },
+            "input_tokens": {
+              "price": 1e-05
+            },
+            "output": {
+              "price": 5e-05
+            },
+            "output_tokens": {
+              "price": 5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation_5m": {
+              "price": 1.25e-05
+            },
+            "input_cache_creation_1h": {
+              "price": 2e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 2.5e-07
+            },
+            "input_cached_tokens": {
+              "price": 2.5e-07
+            },
+            "input_cache_read": {
+              "price": 2.5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "0e053111-eda4-4015-8d36-88f553adabc3_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-05,
+                "input_tokens": 1e-05,
+                "output": 5e-05,
+                "output_tokens": 5e-05,
+                "cache_creation_input_tokens": 1.25e-05,
+                "input_cache_creation": 1.25e-05,
+                "input_cache_creation_5m": 1.25e-05,
+                "input_cache_creation_1h": 2e-05,
+                "cache_read_input_tokens": 2.5e-07,
+                "input_cached_tokens": 2.5e-07,
+                "input_cache_read": 2.5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmdysde5w0000rkmzbc1g5au3",
+          "createdAt": "2025-08-05T15:00:00.000Z",
+          "modelName": "claude-opus-4-1-20250805",
+          "matchPattern": "(?i)^(anthropic/)?(claude-opus-4-1(-20250805)?|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-opus-4-1(-20250805)?-v1(:0)?|claude-opus-4-1(@20250805)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1.5e-05,
+          "outputPrice": 7.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.5e-05
+            },
+            "input_tokens": {
+              "price": 1.5e-05
+            },
+            "output": {
+              "price": 7.5e-05
+            },
+            "output_tokens": {
+              "price": 7.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 1.875e-05
+            },
+            "input_cache_creation": {
+              "price": 1.875e-05
+            },
+            "input_cache_creation_5m": {
+              "price": 1.875e-05
+            },
+            "input_cache_creation_1h": {
+              "price": 3e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 1.5e-06
+            },
+            "input_cached_tokens": {
+              "price": 1.5e-06
+            },
+            "input_cache_read": {
+              "price": 1.5e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmdysde5w0000rkmzbc1g5au3_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.5e-05,
+                "input_tokens": 1.5e-05,
+                "output": 7.5e-05,
+                "output_tokens": 7.5e-05,
+                "cache_creation_input_tokens": 1.875e-05,
+                "input_cache_creation": 1.875e-05,
+                "input_cache_creation_5m": 1.875e-05,
+                "input_cache_creation_1h": 3e-05,
+                "cache_read_input_tokens": 1.5e-06,
+                "input_cached_tokens": 1.5e-06,
+                "input_cache_read": 1.5e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmazmlm2p00020djpa9s64jw5",
+          "createdAt": "2025-05-22T17:09:02.131Z",
+          "modelName": "claude-opus-4-20250514",
+          "matchPattern": "(?i)^(anthropic/)?(claude-opus-4(-20250514)?|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-opus-4(-20250514)?-v1(:0)?|claude-opus-4(@20250514)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1.5e-05,
+          "outputPrice": 7.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.5e-05
+            },
+            "input_tokens": {
+              "price": 1.5e-05
+            },
+            "output": {
+              "price": 7.5e-05
+            },
+            "output_tokens": {
+              "price": 7.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 1.875e-05
+            },
+            "input_cache_creation": {
+              "price": 1.875e-05
+            },
+            "input_cache_creation_5m": {
+              "price": 1.875e-05
+            },
+            "input_cache_creation_1h": {
+              "price": 3e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 1.5e-06
+            },
+            "input_cached_tokens": {
+              "price": 1.5e-06
+            },
+            "input_cache_read": {
+              "price": 1.5e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmazmlm2p00020djpa9s64jw5_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.5e-05,
+                "input_tokens": 1.5e-05,
+                "output": 7.5e-05,
+                "output_tokens": 7.5e-05,
+                "cache_creation_input_tokens": 1.875e-05,
+                "input_cache_creation": 1.875e-05,
+                "input_cache_creation_5m": 1.875e-05,
+                "input_cache_creation_1h": 3e-05,
+                "cache_read_input_tokens": 1.5e-06,
+                "input_cached_tokens": 1.5e-06,
+                "input_cache_read": 1.5e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmieupdva000004l541kwae70",
+          "createdAt": "2025-11-24T20:53:27.571Z",
+          "modelName": "claude-opus-4-5-20251101",
+          "matchPattern": "(?i)^(anthropic/)?(claude-opus-4-5(-20251101)?|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-opus-4-5(-20251101)?-v1(:0)?|claude-opus-4-5(@20251101)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 5e-06,
+          "outputPrice": 2.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 5e-06
+            },
+            "input_tokens": {
+              "price": 5e-06
+            },
+            "output": {
+              "price": 2.5e-05
+            },
+            "output_tokens": {
+              "price": 2.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 1e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 5e-07
+            },
+            "input_cached_tokens": {
+              "price": 5e-07
+            },
+            "input_cache_read": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmieupdva000004l541kwae70_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 5e-06,
+                "input_tokens": 5e-06,
+                "output": 2.5e-05,
+                "output_tokens": 2.5e-05,
+                "cache_creation_input_tokens": 6.25e-06,
+                "input_cache_creation": 6.25e-06,
+                "input_cache_creation_5m": 6.25e-06,
+                "input_cache_creation_1h": 1e-05,
+                "cache_read_input_tokens": 5e-07,
+                "input_cached_tokens": 5e-07,
+                "input_cache_read": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "13458bc0-1c20-44c2-8753-172f54b67647",
+          "createdAt": "2026-02-09T00:00:00.000Z",
+          "modelName": "claude-opus-4-6",
+          "matchPattern": "(?i)^(anthropic/)?(claude-opus-4-6|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-opus-4-6-v1(:0)?|claude-opus-4-6)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 5e-06,
+          "outputPrice": 2.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 5e-06
+            },
+            "input_tokens": {
+              "price": 5e-06
+            },
+            "output": {
+              "price": 2.5e-05
+            },
+            "output_tokens": {
+              "price": 2.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 1e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 5e-07
+            },
+            "input_cached_tokens": {
+              "price": 5e-07
+            },
+            "input_cache_read": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "13458bc0-1c20-44c2-8753-172f54b67647_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 5e-06,
+                "input_tokens": 5e-06,
+                "output": 2.5e-05,
+                "output_tokens": 2.5e-05,
+                "cache_creation_input_tokens": 6.25e-06,
+                "input_cache_creation": 6.25e-06,
+                "input_cache_creation_5m": 6.25e-06,
+                "input_cache_creation_1h": 1e-05,
+                "cache_read_input_tokens": 5e-07,
+                "input_cached_tokens": 5e-07,
+                "input_cache_read": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "d506b291-cc9c-4833-9014-0f387a8e1cc8",
+          "createdAt": "2026-04-16T00:00:00.000Z",
+          "modelName": "claude-opus-4-7",
+          "matchPattern": "(?i)^(anthropic/)?(claude-opus-4-7|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-opus-4-7-v1(:0)?|claude-opus-4-7)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 5e-06,
+          "outputPrice": 2.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input_cached_tokens": {
+              "price": 5e-07
+            },
+            "input_cache_read": {
+              "price": 5e-07
+            },
+            "input": {
+              "price": 5e-06
+            },
+            "input_tokens": {
+              "price": 5e-06
+            },
+            "output": {
+              "price": 2.5e-05
+            },
+            "output_tokens": {
+              "price": 2.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 1e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "d506b291-cc9c-4833-9014-0f387a8e1cc8_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input_cached_tokens": 5e-07,
+                "input_cache_read": 5e-07,
+                "input": 5e-06,
+                "input_tokens": 5e-06,
+                "output": 2.5e-05,
+                "output_tokens": 2.5e-05,
+                "cache_creation_input_tokens": 6.25e-06,
+                "input_cache_creation": 6.25e-06,
+                "input_cache_creation_5m": 6.25e-06,
+                "input_cache_creation_1h": 1e-05,
+                "cache_read_input_tokens": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "80753fd5-342b-4ed3-bbb1-57d3d57b7e03",
+          "createdAt": "2026-05-28T00:00:00.000Z",
+          "modelName": "claude-opus-4-8",
+          "matchPattern": "(?i)^((anthropic/)?claude-opus-4-8|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-opus-4-8(-v1(:0)?)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 5e-06,
+          "outputPrice": 2.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "output": {
+              "price": 2.5e-05
+            },
+            "output_tokens": {
+              "price": 2.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 1e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 5e-07
+            },
+            "input_cached_tokens": {
+              "price": 5e-07
+            },
+            "input_cache_read": {
+              "price": 5e-07
+            },
+            "input": {
+              "price": 5e-06
+            },
+            "input_tokens": {
+              "price": 5e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "80753fd5-342b-4ed3-bbb1-57d3d57b7e03_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "output": 2.5e-05,
+                "output_tokens": 2.5e-05,
+                "cache_creation_input_tokens": 6.25e-06,
+                "input_cache_creation": 6.25e-06,
+                "input_cache_creation_5m": 6.25e-06,
+                "input_cache_creation_1h": 1e-05,
+                "cache_read_input_tokens": 5e-07,
+                "input_cached_tokens": 5e-07,
+                "input_cache_read": 5e-07,
+                "input": 5e-06,
+                "input_tokens": 5e-06
+              }
+            },
+            {
+              "id": "d157528f-9083-43be-ba65-2d281a8891db",
+              "name": "Fast mode",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "key": "speed",
+                  "source": "model_parameters",
+                  "values": [
+                    "fast"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prices": {
+                "input_tokens": 1e-05,
+                "input": 1e-05,
+                "input_cache_creation_1h": 2e-05,
+                "cache_read_input_tokens": 1e-06,
+                "input_cached_tokens": 1e-06,
+                "input_cache_read": 1e-06,
+                "output": 5e-05,
+                "output_tokens": 5e-05,
+                "cache_creation_input_tokens": 1.25e-05,
+                "input_cache_creation": 1.25e-05,
+                "input_cache_creation_5m": 1.25e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "a5b2c3d4-e5f6-4789-8abc-def012345678",
+          "createdAt": "2026-07-25T00:00:00.000Z",
+          "modelName": "claude-opus-5",
+          "matchPattern": "(?i)^((anthropic\\/)?claude-opus-5|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-opus-5(-v1(:0)?)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 5e-06,
+          "outputPrice": 2.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 5e-06
+            },
+            "input_tokens": {
+              "price": 5e-06
+            },
+            "output": {
+              "price": 2.5e-05
+            },
+            "output_tokens": {
+              "price": 2.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 6.25e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 1e-05
+            },
+            "cache_read_input_tokens": {
+              "price": 5e-07
+            },
+            "input_cached_tokens": {
+              "price": 5e-07
+            },
+            "input_cache_read": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "a5b2c3d4-e5f6-4789-8abc-def012345678_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 5e-06,
+                "input_tokens": 5e-06,
+                "output": 2.5e-05,
+                "output_tokens": 2.5e-05,
+                "cache_creation_input_tokens": 6.25e-06,
+                "input_cache_creation": 6.25e-06,
+                "input_cache_creation_5m": 6.25e-06,
+                "input_cache_creation_1h": 1e-05,
+                "cache_read_input_tokens": 5e-07,
+                "input_cached_tokens": 5e-07,
+                "input_cache_read": 5e-07
+              }
+            },
+            {
+              "id": "c4a83d8c-31d6-41c8-a836-3837999083d2",
+              "name": "Fast mode",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "key": "speed",
+                  "source": "model_parameters",
+                  "values": [
+                    "fast"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prices": {
+                "input_cache_creation_5m": 1.25e-05,
+                "input_cache_creation_1h": 2e-05,
+                "input": 1e-05,
+                "input_tokens": 1e-05,
+                "output": 5e-05,
+                "output_tokens": 5e-05,
+                "cache_creation_input_tokens": 1.25e-05,
+                "input_cache_creation": 1.25e-05,
+                "cache_read_input_tokens": 1e-06,
+                "input_cached_tokens": 1e-06,
+                "input_cache_read": 1e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmazmkzlm00000djp1e1qe4k4",
+          "createdAt": "2025-05-22T17:09:02.131Z",
+          "modelName": "claude-sonnet-4-20250514",
+          "matchPattern": "(?i)^(anthropic/)?(claude-sonnet-4(-20250514)?|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-sonnet-4(-20250514)?-v1(:0)?|claude-sonnet-4-V1(@20250514)?|claude-sonnet-4(@20250514)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmazmkzlm00000djp1e1qe4k4_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "c5qmrqolku82tra3vgdixmys",
+          "createdAt": "2025-09-29T00:00:00.000Z",
+          "modelName": "claude-sonnet-4-5-20250929",
+          "matchPattern": "(?i)^(anthropic/)?(claude-sonnet-4-5(-20250929)?|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-sonnet-4-5(-20250929)?-v1(:0)?|claude-sonnet-4-5-V1(@20250929)?|claude-sonnet-4-5(@20250929)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "c5qmrqolku82tra3vgdixmys_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed",
+          "createdAt": "2026-02-18T00:00:00.000Z",
+          "modelName": "claude-sonnet-4-6",
+          "matchPattern": "(?i)^(anthropic\\/)?(claude-sonnet-4-6|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-sonnet-4-6(-v1(:0)?)?|claude-sonnet-4-6)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "90ec5ec3-1a48-4ff0-919c-70cdb8f632ed_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmazmlbnv00010djpazed91va",
+          "createdAt": "2025-05-22T17:09:02.131Z",
+          "modelName": "claude-sonnet-4-latest",
+          "matchPattern": "(?i)^(anthropic/)?(claude-sonnet-4-latest)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 3e-06,
+          "outputPrice": 1.5e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "input_tokens": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 1.5e-05
+            },
+            "output_tokens": {
+              "price": 1.5e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 3.75e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-07
+            },
+            "input_cache_read": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmazmlbnv00010djpazed91va_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "input_tokens": 3e-06,
+                "output": 1.5e-05,
+                "output_tokens": 1.5e-05,
+                "cache_creation_input_tokens": 3.75e-06,
+                "input_cache_creation": 3.75e-06,
+                "input_cache_creation_5m": 3.75e-06,
+                "input_cache_creation_1h": 6e-06,
+                "cache_read_input_tokens": 3e-07,
+                "input_cached_tokens": 3e-07,
+                "input_cache_read": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c",
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "modelName": "claude-sonnet-5",
+          "matchPattern": "(?i)^((anthropic\\/)?claude-sonnet-5|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-sonnet-5(-v1(:0)?)?)$",
+          "startDate": null,
+          "tokenizerId": "claude",
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 2e-06,
+          "outputPrice": 1e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2e-06
+            },
+            "input_tokens": {
+              "price": 2e-06
+            },
+            "output": {
+              "price": 1e-05
+            },
+            "output_tokens": {
+              "price": 1e-05
+            },
+            "cache_creation_input_tokens": {
+              "price": 2.5e-06
+            },
+            "input_cache_creation": {
+              "price": 2.5e-06
+            },
+            "input_cache_creation_5m": {
+              "price": 2.5e-06
+            },
+            "input_cache_creation_1h": {
+              "price": 4e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 2e-07
+            },
+            "input_cached_tokens": {
+              "price": 2e-07
+            },
+            "input_cache_read": {
+              "price": 2e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "7c2e1f89-3a54-4b67-9d21-58e634b79a0c_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2e-06,
+                "input_tokens": 2e-06,
+                "output": 1e-05,
+                "output_tokens": 1e-05,
+                "cache_creation_input_tokens": 2.5e-06,
+                "input_cache_creation": 2.5e-06,
+                "input_cache_creation_5m": 2.5e-06,
+                "input_cache_creation_1h": 4e-06,
+                "cache_read_input_tokens": 2e-07,
+                "input_cached_tokens": 2e-07,
+                "input_cache_read": 2e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls1nzwx4000608l38va7e4tv",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "code-bison",
+          "matchPattern": "(?i)^(code-bison)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls1nzwx4000608l38va7e4tv_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls1o053j000708l39f8g4bgs",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "code-bison-32k",
+          "matchPattern": "(?i)^(code-bison-32k)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls1o053j000708l39f8g4bgs_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls0jmc9v000008l8ee6r3gsd",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "codechat-bison",
+          "matchPattern": "(?i)^(codechat-bison)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls0jmc9v000008l8ee6r3gsd_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls0j33v1000008joagkc4lql",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "codechat-bison-32k",
+          "matchPattern": "(?i)^(codechat-bison-32k)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls0j33v1000008joagkc4lql_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls1nzjt3000508l3dnwad3g0",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "code-gecko",
+          "matchPattern": "(?i)^(code-gecko)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls1nzjt3000508l3dnwad3g0_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrs2ds35000208l4g4b0hi3u",
+          "createdAt": "2024-01-26T17:35:21.129Z",
+          "modelName": "davinci-002",
+          "matchPattern": "(?i)^(davinci-002)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokenizerModel": "davinci-002"
+          },
+          "unit": "TOKENS",
+          "inputPrice": 2e-06,
+          "outputPrice": 2e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2e-06
+            },
+            "output": {
+              "price": 2e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrs2ds35000208l4g4b0hi3u_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2e-06,
+                "output": 2e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls08s2bw000608jq57wj4un2",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "ft:babbage-002",
+          "matchPattern": "(?i)^(ft:)(babbage-002:)(.+)(:)(.*)(:)(.+)$$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokenizerModel": "babbage-002"
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1.6e-06,
+          "outputPrice": 1.6e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.6e-06
+            },
+            "output": {
+              "price": 1.6e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls08s2bw000608jq57wj4un2_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.6e-06,
+                "output": 1.6e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls08rv9g000508jq5p4z4nlr",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "ft:davinci-002",
+          "matchPattern": "(?i)^(ft:)(davinci-002:)(.+)(:)(.*)(:)(.+)$$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokenizerModel": "davinci-002"
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1.2e-05,
+          "outputPrice": 1.2e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.2e-05
+            },
+            "output": {
+              "price": 1.2e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls08rv9g000508jq5p4z4nlr_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.2e-05,
+                "output": 1.2e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls08rp99000408jqepxoakjv",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "ft:gpt-3.5-turbo-0613",
+          "matchPattern": "(?i)^(ft:)(gpt-3.5-turbo-0613:)(.+)(:)(.*)(:)(.+)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo-0613",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1.2e-05,
+          "outputPrice": 1.6e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.2e-05
+            },
+            "output": {
+              "price": 1.6e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls08rp99000408jqepxoakjv_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.2e-05,
+                "output": 1.6e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls08r8sq000308jq14ae96f0",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "ft:gpt-3.5-turbo-1106",
+          "matchPattern": "(?i)^(ft:)(gpt-3.5-turbo-1106:)(.+)(:)(.*)(:)(.+)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo-1106",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 3e-06,
+          "outputPrice": 6e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 6e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cls08r8sq000308jq14ae96f0_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "output": 6e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cluv2subq000108ih2mlrga6a",
+          "createdAt": "2024-04-11T10:27:46.517Z",
+          "modelName": "gemini-1.0-pro",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-1.0-pro)(@[a-zA-Z0-9]+)?$",
+          "startDate": "2024-02-15T00:00:00.000Z",
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 1.25e-07,
+          "outputPrice": 3.75e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.25e-07
+            },
+            "output": {
+              "price": 3.75e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cluv2subq000108ih2mlrga6a_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.25e-07,
+                "output": 3.75e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cluv2sx04000208ihbek75lsz",
+          "createdAt": "2024-04-11T10:27:46.517Z",
+          "modelName": "gemini-1.0-pro-001",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-1.0-pro-001)(@[a-zA-Z0-9]+)?$",
+          "startDate": "2024-02-15T00:00:00.000Z",
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 1.25e-07,
+          "outputPrice": 3.75e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.25e-07
+            },
+            "output": {
+              "price": 3.75e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cluv2sx04000208ihbek75lsz_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.25e-07,
+                "output": 3.75e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cluv2sjeo000008ih0fv23hi0",
+          "createdAt": "2024-04-11T10:27:46.517Z",
+          "modelName": "gemini-1.0-pro-latest",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-1.0-pro-latest)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "output": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cluv2sjeo000008ih0fv23hi0_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "output": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "clx30djsn0000w9mzebiv41we",
+          "createdAt": "2024-06-12T17:09:36.206Z",
+          "modelName": "gemini-1.5-flash",
+          "matchPattern": "(?i)^(gemini-1.5-flash)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "clx30hkrx0000w9mz7lqi0ial",
+          "createdAt": "2024-06-12T17:09:36.206Z",
+          "modelName": "gemini-1.5-pro",
+          "matchPattern": "(?i)^(gemini-1.5-pro)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "cluv2t2x0000408ihfytl45l1",
+          "createdAt": "2024-04-11T10:27:46.517Z",
+          "modelName": "gemini-1.5-pro-latest",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-1.5-pro-latest)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-06,
+          "outputPrice": 7.5e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-06
+            },
+            "output": {
+              "price": 7.5e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cluv2t2x0000408ihfytl45l1_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-06,
+                "output": 7.5e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7zsrs1327124dhjtb95w8f74",
+          "createdAt": "2025-04-22T10:11:35.241Z",
+          "modelName": "gemini-2.0-flash",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.0-flash)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1e-07,
+          "outputPrice": 4e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-07
+            },
+            "output": {
+              "price": 4e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7zsrs1327124dhjtb95w8f74_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-07,
+                "output": 4e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm6l8jdef0000tymz52sh0ql0",
+          "createdAt": "2025-02-06T11:11:35.241Z",
+          "modelName": "gemini-2.0-flash-001",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.0-flash-001)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1e-07,
+          "outputPrice": 4e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-07
+            },
+            "output": {
+              "price": 4e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm6l8jdef0000tymz52sh0ql0_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-07,
+                "output": 4e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm48cjxtc000308jrcsso3avv",
+          "createdAt": "2025-01-17T11:11:35.241Z",
+          "modelName": "gemini-2.0-flash-exp",
+          "matchPattern": "(?i)^(gemini-2.0-flash-exp)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "cm7ztrs1327124dhjtb95w8f19",
+          "createdAt": "2025-04-22T10:11:35.241Z",
+          "modelName": "gemini-2.0-flash-lite-preview",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.0-flash-lite-preview)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 7.5e-08,
+          "outputPrice": 3e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 7.5e-08
+            },
+            "output": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7ztrs1327124dhjtb95w8f19_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 7.5e-08,
+                "output": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm6l8jfgh0000tymz52sh0ql1",
+          "createdAt": "2025-02-06T11:11:35.241Z",
+          "modelName": "gemini-2.0-flash-lite-preview-02-05",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.0-flash-lite-preview-02-05)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 7.5e-08,
+          "outputPrice": 3e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 7.5e-08
+            },
+            "output": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm6l8jfgh0000tymz52sh0ql1_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 7.5e-08,
+                "output": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7zrrs1327124dhjtb95w8f13",
+          "createdAt": "2025-04-22T10:11:35.241Z",
+          "modelName": "gemini-2.0-pro-exp",
+          "matchPattern": "(?i)^(gemini-2.0-pro-exp)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "cm6l8jbcd0000tymz52sh0ql9",
+          "createdAt": "2025-02-06T11:11:35.241Z",
+          "modelName": "gemini-2.0-pro-exp-02-05",
+          "matchPattern": "(?i)^(gemini-2.0-pro-exp-02-05)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "cmcnjkfwn000107l43bf5e8ax",
+          "createdAt": "2025-07-03T13:44:06.964Z",
+          "modelName": "gemini-2.5-flash",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.5-flash)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 3e-07,
+          "outputPrice": 2.5e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-07
+            },
+            "input_text": {
+              "price": 3e-07
+            },
+            "input_modality_1": {
+              "price": 3e-07
+            },
+            "prompt_token_count": {
+              "price": 3e-07
+            },
+            "promptTokenCount": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-08
+            },
+            "cached_content_token_count": {
+              "price": 3e-08
+            },
+            "output": {
+              "price": 2.5e-06
+            },
+            "output_text": {
+              "price": 2.5e-06
+            },
+            "output_modality_1": {
+              "price": 2.5e-06
+            },
+            "candidates_token_count": {
+              "price": 2.5e-06
+            },
+            "candidatesTokenCount": {
+              "price": 2.5e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 2.5e-06
+            },
+            "thoughts_token_count": {
+              "price": 2.5e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 2.5e-06
+            },
+            "output_reasoning": {
+              "price": 2.5e-06
+            },
+            "input_audio_tokens": {
+              "price": 1e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmcnjkfwn000107l43bf5e8ax_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-07,
+                "input_text": 3e-07,
+                "input_modality_1": 3e-07,
+                "prompt_token_count": 3e-07,
+                "promptTokenCount": 3e-07,
+                "input_cached_tokens": 3e-08,
+                "cached_content_token_count": 3e-08,
+                "output": 2.5e-06,
+                "output_text": 2.5e-06,
+                "output_modality_1": 2.5e-06,
+                "candidates_token_count": 2.5e-06,
+                "candidatesTokenCount": 2.5e-06,
+                "thoughtsTokenCount": 2.5e-06,
+                "thoughts_token_count": 2.5e-06,
+                "output_reasoning_tokens": 2.5e-06,
+                "output_reasoning": 2.5e-06,
+                "input_audio_tokens": 1e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmcnjkrfa000207l4fpnh5mnv",
+          "createdAt": "2025-07-03T13:44:06.964Z",
+          "modelName": "gemini-2.5-flash-lite",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.5-flash-lite)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1e-07,
+          "outputPrice": 4e-07,
+          "totalPrice": null,
+          "prices": {
+            "input_text": {
+              "price": 1e-07
+            },
+            "input_modality_1": {
+              "price": 1e-07
+            },
+            "input": {
+              "price": 1e-07
+            },
+            "prompt_token_count": {
+              "price": 1e-07
+            },
+            "promptTokenCount": {
+              "price": 1e-07
+            },
+            "input_cached_tokens": {
+              "price": 1e-08
+            },
+            "cached_content_token_count": {
+              "price": 1e-08
+            },
+            "output": {
+              "price": 4e-07
+            },
+            "output_text": {
+              "price": 4e-07
+            },
+            "output_modality_1": {
+              "price": 4e-07
+            },
+            "candidates_token_count": {
+              "price": 4e-07
+            },
+            "candidatesTokenCount": {
+              "price": 4e-07
+            },
+            "thoughtsTokenCount": {
+              "price": 4e-07
+            },
+            "thoughts_token_count": {
+              "price": 4e-07
+            },
+            "output_reasoning_tokens": {
+              "price": 4e-07
+            },
+            "output_reasoning": {
+              "price": 4e-07
+            },
+            "input_audio_tokens": {
+              "price": 3e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmcnjkrfa000207l4fpnh5mnv_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input_text": 1e-07,
+                "input_modality_1": 1e-07,
+                "input": 1e-07,
+                "prompt_token_count": 1e-07,
+                "promptTokenCount": 1e-07,
+                "input_cached_tokens": 1e-08,
+                "cached_content_token_count": 1e-08,
+                "output": 4e-07,
+                "output_text": 4e-07,
+                "output_modality_1": 4e-07,
+                "candidates_token_count": 4e-07,
+                "candidatesTokenCount": 4e-07,
+                "thoughtsTokenCount": 4e-07,
+                "thoughts_token_count": 4e-07,
+                "output_reasoning_tokens": 4e-07,
+                "output_reasoning": 4e-07,
+                "input_audio_tokens": 3e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmig1hb7i000104l72qrzgc6h",
+          "createdAt": "2025-11-26T13:27:53.545Z",
+          "modelName": "gemini-2.5-pro",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.5-pro)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1.25e-06,
+          "outputPrice": 1e-05,
+          "totalPrice": null,
+          "prices": {
+            "output": {
+              "price": 1e-05
+            },
+            "input": {
+              "price": 1.25e-06
+            },
+            "input_text": {
+              "price": 1.25e-06
+            },
+            "input_modality_1": {
+              "price": 1.25e-06
+            },
+            "prompt_token_count": {
+              "price": 1.25e-06
+            },
+            "promptTokenCount": {
+              "price": 1.25e-06
+            },
+            "input_cached_tokens": {
+              "price": 1.25e-07
+            },
+            "cached_content_token_count": {
+              "price": 1.25e-07
+            },
+            "output_text": {
+              "price": 1e-05
+            },
+            "output_modality_1": {
+              "price": 1e-05
+            },
+            "candidates_token_count": {
+              "price": 1e-05
+            },
+            "candidatesTokenCount": {
+              "price": 1e-05
+            },
+            "thoughtsTokenCount": {
+              "price": 1e-05
+            },
+            "thoughts_token_count": {
+              "price": 1e-05
+            },
+            "output_reasoning_tokens": {
+              "price": 1e-05
+            },
+            "output_reasoning": {
+              "price": 1e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmig1hb7i000104l72qrzgc6h_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "output": 1e-05,
+                "input": 1.25e-06,
+                "input_text": 1.25e-06,
+                "input_modality_1": 1.25e-06,
+                "prompt_token_count": 1.25e-06,
+                "promptTokenCount": 1.25e-06,
+                "input_cached_tokens": 1.25e-07,
+                "cached_content_token_count": 1.25e-07,
+                "output_text": 1e-05,
+                "output_modality_1": 1e-05,
+                "candidates_token_count": 1e-05,
+                "candidatesTokenCount": 1e-05,
+                "thoughtsTokenCount": 1e-05,
+                "thoughts_token_count": 1e-05,
+                "output_reasoning_tokens": 1e-05,
+                "output_reasoning": 1e-05
+              }
+            },
+            {
+              "id": "bcf39e8f-9969-455f-be9a-541a00256092",
+              "name": "Large Context",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "value": 200000,
+                  "operator": "gt",
+                  "caseSensitive": false,
+                  "usageDetailPattern": "(input|prompt|cached)"
+                }
+              ],
+              "prices": {
+                "input_text": 2.5e-06,
+                "input_modality_1": 2.5e-06,
+                "prompt_token_count": 2.5e-06,
+                "promptTokenCount": 2.5e-06,
+                "input_cached_tokens": 2.5e-07,
+                "input": 2.5e-06,
+                "cached_content_token_count": 2.5e-07,
+                "output": 1.5e-05,
+                "output_text": 1.5e-05,
+                "output_modality_1": 1.5e-05,
+                "candidates_token_count": 1.5e-05,
+                "candidatesTokenCount": 1.5e-05,
+                "thoughtsTokenCount": 1.5e-05,
+                "thoughts_token_count": 1.5e-05,
+                "output_reasoning_tokens": 1.5e-05,
+                "output_reasoning": 1.5e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "79f4d62c-22fb-4ec3-82e1-6e56cdd5e23c",
+          "createdAt": "2026-05-20T00:00:00.000Z",
+          "modelName": "gemini-3.1-flash-lite",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.1-flash-lite)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 2.5e-07,
+          "outputPrice": 1.5e-06,
+          "totalPrice": null,
+          "prices": {
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "input": {
+              "price": 2.5e-07
+            },
+            "input_modality_1": {
+              "price": 2.5e-07
+            },
+            "input_text": {
+              "price": 2.5e-07
+            },
+            "prompt_token_count": {
+              "price": 2.5e-07
+            },
+            "promptTokenCount": {
+              "price": 2.5e-07
+            },
+            "input_cached_tokens": {
+              "price": 2.5e-08
+            },
+            "cached_content_token_count": {
+              "price": 2.5e-08
+            },
+            "output": {
+              "price": 1.5e-06
+            },
+            "output_text": {
+              "price": 1.5e-06
+            },
+            "output_modality_1": {
+              "price": 1.5e-06
+            },
+            "candidates_token_count": {
+              "price": 1.5e-06
+            },
+            "candidatesTokenCount": {
+              "price": 1.5e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 1.5e-06
+            },
+            "thoughts_token_count": {
+              "price": 1.5e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 1.5e-06
+            },
+            "output_reasoning": {
+              "price": 1.5e-06
+            },
+            "input_audio_tokens": {
+              "price": 5e-07
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "79f4d62c-22fb-4ec3-82e1-6e56cdd5e23c_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "input": 2.5e-07,
+                "input_modality_1": 2.5e-07,
+                "input_text": 2.5e-07,
+                "prompt_token_count": 2.5e-07,
+                "promptTokenCount": 2.5e-07,
+                "input_cached_tokens": 2.5e-08,
+                "cached_content_token_count": 2.5e-08,
+                "output": 1.5e-06,
+                "output_text": 1.5e-06,
+                "output_modality_1": 1.5e-06,
+                "candidates_token_count": 1.5e-06,
+                "candidatesTokenCount": 1.5e-06,
+                "thoughtsTokenCount": 1.5e-06,
+                "thoughts_token_count": 1.5e-06,
+                "output_reasoning_tokens": 1.5e-06,
+                "output_reasoning": 1.5e-06,
+                "input_audio_tokens": 5e-07,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "0707bef8-10c8-46e2-a871-0436f05f0b92",
+          "createdAt": "2026-03-03T00:00:00.000Z",
+          "modelName": "gemini-3.1-flash-lite-preview",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.1-flash-lite-preview)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 2.5e-07,
+          "outputPrice": 1.5e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2.5e-07
+            },
+            "input_modality_1": {
+              "price": 2.5e-07
+            },
+            "input_text": {
+              "price": 2.5e-07
+            },
+            "prompt_token_count": {
+              "price": 2.5e-07
+            },
+            "promptTokenCount": {
+              "price": 2.5e-07
+            },
+            "input_cached_tokens": {
+              "price": 2.5e-08
+            },
+            "cached_content_token_count": {
+              "price": 2.5e-08
+            },
+            "output": {
+              "price": 1.5e-06
+            },
+            "output_text": {
+              "price": 1.5e-06
+            },
+            "output_modality_1": {
+              "price": 1.5e-06
+            },
+            "candidates_token_count": {
+              "price": 1.5e-06
+            },
+            "candidatesTokenCount": {
+              "price": 1.5e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 1.5e-06
+            },
+            "thoughts_token_count": {
+              "price": 1.5e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 1.5e-06
+            },
+            "output_reasoning": {
+              "price": 1.5e-06
+            },
+            "input_audio_tokens": {
+              "price": 5e-07
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "0707bef8-10c8-46e2-a871-0436f05f0b92_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2.5e-07,
+                "input_modality_1": 2.5e-07,
+                "input_text": 2.5e-07,
+                "prompt_token_count": 2.5e-07,
+                "promptTokenCount": 2.5e-07,
+                "input_cached_tokens": 2.5e-08,
+                "cached_content_token_count": 2.5e-08,
+                "output": 1.5e-06,
+                "output_text": 1.5e-06,
+                "output_modality_1": 1.5e-06,
+                "candidates_token_count": 1.5e-06,
+                "candidatesTokenCount": 1.5e-06,
+                "thoughtsTokenCount": 1.5e-06,
+                "thoughts_token_count": 1.5e-06,
+                "output_reasoning_tokens": 1.5e-06,
+                "output_reasoning": 1.5e-06,
+                "input_audio_tokens": 5e-07,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "55106bba-a5dd-441b-bc0d-5652582b349d",
+          "createdAt": "2026-02-19T00:00:00.000Z",
+          "modelName": "gemini-3.1-pro-preview",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.1-pro-preview(-customtools)?)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 2e-06,
+          "outputPrice": 1.2e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2e-06
+            },
+            "input_modality_1": {
+              "price": 2e-06
+            },
+            "input_text": {
+              "price": 2e-06
+            },
+            "prompt_token_count": {
+              "price": 2e-06
+            },
+            "promptTokenCount": {
+              "price": 2e-06
+            },
+            "input_cached_tokens": {
+              "price": 2e-07
+            },
+            "cached_content_token_count": {
+              "price": 2e-07
+            },
+            "output": {
+              "price": 1.2e-05
+            },
+            "output_text": {
+              "price": 1.2e-05
+            },
+            "output_modality_1": {
+              "price": 1.2e-05
+            },
+            "candidates_token_count": {
+              "price": 1.2e-05
+            },
+            "candidatesTokenCount": {
+              "price": 1.2e-05
+            },
+            "thoughtsTokenCount": {
+              "price": 1.2e-05
+            },
+            "thoughts_token_count": {
+              "price": 1.2e-05
+            },
+            "output_reasoning_tokens": {
+              "price": 1.2e-05
+            },
+            "output_reasoning": {
+              "price": 1.2e-05
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "55106bba-a5dd-441b-bc0d-5652582b349d_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2e-06,
+                "input_modality_1": 2e-06,
+                "input_text": 2e-06,
+                "prompt_token_count": 2e-06,
+                "promptTokenCount": 2e-06,
+                "input_cached_tokens": 2e-07,
+                "cached_content_token_count": 2e-07,
+                "output": 1.2e-05,
+                "output_text": 1.2e-05,
+                "output_modality_1": 1.2e-05,
+                "candidates_token_count": 1.2e-05,
+                "candidatesTokenCount": 1.2e-05,
+                "thoughtsTokenCount": 1.2e-05,
+                "thoughts_token_count": 1.2e-05,
+                "output_reasoning_tokens": 1.2e-05,
+                "output_reasoning": 1.2e-05,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            },
+            {
+              "id": "ada11e9f-fe0d-465a-92af-ce334d0eedeb",
+              "name": "Large Context",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "value": 200000,
+                  "operator": "gt",
+                  "caseSensitive": false,
+                  "usageDetailPattern": "(input|prompt|cached)"
+                }
+              ],
+              "prices": {
+                "input": 4e-06,
+                "input_modality_1": 4e-06,
+                "input_text": 4e-06,
+                "prompt_token_count": 4e-06,
+                "promptTokenCount": 4e-06,
+                "input_cached_tokens": 4e-07,
+                "cached_content_token_count": 4e-07,
+                "output": 1.8e-05,
+                "output_text": 1.8e-05,
+                "output_modality_1": 1.8e-05,
+                "candidates_token_count": 1.8e-05,
+                "candidatesTokenCount": 1.8e-05,
+                "thoughtsTokenCount": 1.8e-05,
+                "thoughts_token_count": 1.8e-05,
+                "output_reasoning_tokens": 1.8e-05,
+                "output_reasoning": 1.8e-05,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "6ed696e7-5f3a-4113-a233-019155fb3ff0",
+          "createdAt": "2026-05-20T00:00:00.000Z",
+          "modelName": "gemini-3.5-flash",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.5-flash)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 1.5e-06,
+          "outputPrice": 9e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.5e-06
+            },
+            "input_modality_1": {
+              "price": 1.5e-06
+            },
+            "input_text": {
+              "price": 1.5e-06
+            },
+            "prompt_token_count": {
+              "price": 1.5e-06
+            },
+            "promptTokenCount": {
+              "price": 1.5e-06
+            },
+            "input_cached_tokens": {
+              "price": 1.5e-07
+            },
+            "cached_content_token_count": {
+              "price": 1.5e-07
+            },
+            "output": {
+              "price": 9e-06
+            },
+            "output_text": {
+              "price": 9e-06
+            },
+            "output_modality_1": {
+              "price": 9e-06
+            },
+            "candidates_token_count": {
+              "price": 9e-06
+            },
+            "candidatesTokenCount": {
+              "price": 9e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 9e-06
+            },
+            "thoughts_token_count": {
+              "price": 9e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 9e-06
+            },
+            "output_reasoning": {
+              "price": 9e-06
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "6ed696e7-5f3a-4113-a233-019155fb3ff0_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.5e-06,
+                "input_modality_1": 1.5e-06,
+                "input_text": 1.5e-06,
+                "prompt_token_count": 1.5e-06,
+                "promptTokenCount": 1.5e-06,
+                "input_cached_tokens": 1.5e-07,
+                "cached_content_token_count": 1.5e-07,
+                "output": 9e-06,
+                "output_text": 9e-06,
+                "output_modality_1": 9e-06,
+                "candidates_token_count": 9e-06,
+                "candidatesTokenCount": 9e-06,
+                "thoughtsTokenCount": 9e-06,
+                "thoughts_token_count": 9e-06,
+                "output_reasoning_tokens": 9e-06,
+                "output_reasoning": 9e-06,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "createdAt": "2026-07-22T00:00:00.000Z",
+          "modelName": "gemini-3.5-flash-lite",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.5-flash-lite)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 3e-07,
+          "outputPrice": 2.5e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-07
+            },
+            "input_text": {
+              "price": 3e-07
+            },
+            "input_modality_1": {
+              "price": 3e-07
+            },
+            "output": {
+              "price": 2.5e-06
+            },
+            "prompt_token_count": {
+              "price": 3e-07
+            },
+            "promptTokenCount": {
+              "price": 3e-07
+            },
+            "input_cached_tokens": {
+              "price": 3e-08
+            },
+            "cached_content_token_count": {
+              "price": 3e-08
+            },
+            "output_text": {
+              "price": 2.5e-06
+            },
+            "output_modality_1": {
+              "price": 2.5e-06
+            },
+            "candidates_token_count": {
+              "price": 2.5e-06
+            },
+            "candidatesTokenCount": {
+              "price": 2.5e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 2.5e-06
+            },
+            "thoughts_token_count": {
+              "price": 2.5e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 2.5e-06
+            },
+            "output_reasoning": {
+              "price": 2.5e-06
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-07,
+                "input_text": 3e-07,
+                "input_modality_1": 3e-07,
+                "output": 2.5e-06,
+                "prompt_token_count": 3e-07,
+                "promptTokenCount": 3e-07,
+                "input_cached_tokens": 3e-08,
+                "cached_content_token_count": 3e-08,
+                "output_text": 2.5e-06,
+                "output_modality_1": 2.5e-06,
+                "candidates_token_count": 2.5e-06,
+                "candidatesTokenCount": 2.5e-06,
+                "thoughtsTokenCount": 2.5e-06,
+                "thoughts_token_count": 2.5e-06,
+                "output_reasoning_tokens": 2.5e-06,
+                "output_reasoning": 2.5e-06,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "createdAt": "2026-07-22T00:00:00.000Z",
+          "modelName": "gemini-3.6-flash",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.6-flash)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 7.5e-07,
+          "outputPrice": 3.75e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 7.5e-07
+            },
+            "input_text": {
+              "price": 7.5e-07
+            },
+            "input_modality_1": {
+              "price": 7.5e-07
+            },
+            "prompt_token_count": {
+              "price": 7.5e-07
+            },
+            "promptTokenCount": {
+              "price": 7.5e-07
+            },
+            "input_cached_tokens": {
+              "price": 7.5e-08
+            },
+            "cached_content_token_count": {
+              "price": 7.5e-08
+            },
+            "output": {
+              "price": 3.75e-06
+            },
+            "output_text": {
+              "price": 3.75e-06
+            },
+            "output_modality_1": {
+              "price": 3.75e-06
+            },
+            "candidates_token_count": {
+              "price": 3.75e-06
+            },
+            "candidatesTokenCount": {
+              "price": 3.75e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 3.75e-06
+            },
+            "thoughts_token_count": {
+              "price": 3.75e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 3.75e-06
+            },
+            "output_reasoning": {
+              "price": 3.75e-06
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 7.5e-07,
+                "input_text": 7.5e-07,
+                "input_modality_1": 7.5e-07,
+                "prompt_token_count": 7.5e-07,
+                "promptTokenCount": 7.5e-07,
+                "input_cached_tokens": 7.5e-08,
+                "cached_content_token_count": 7.5e-08,
+                "output": 3.75e-06,
+                "output_text": 3.75e-06,
+                "output_modality_1": 3.75e-06,
+                "candidates_token_count": 3.75e-06,
+                "candidatesTokenCount": 3.75e-06,
+                "thoughtsTokenCount": 3.75e-06,
+                "thoughts_token_count": 3.75e-06,
+                "output_reasoning_tokens": 3.75e-06,
+                "output_reasoning": 3.75e-06,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "b91d332c-a2fd-b85c-f6e6-971796f3f111",
+          "createdAt": "2026-08-14T00:00:00.000Z",
+          "modelName": "gemini-3.7-flash",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.7-flash)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 7.5e-07,
+          "outputPrice": 3.75e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 7.5e-07
+            },
+            "input_text": {
+              "price": 7.5e-07
+            },
+            "input_modality_1": {
+              "price": 7.5e-07
+            },
+            "prompt_token_count": {
+              "price": 7.5e-07
+            },
+            "promptTokenCount": {
+              "price": 7.5e-07
+            },
+            "input_cached_tokens": {
+              "price": 7.5e-08
+            },
+            "cached_content_token_count": {
+              "price": 7.5e-08
+            },
+            "output": {
+              "price": 3.75e-06
+            },
+            "output_text": {
+              "price": 3.75e-06
+            },
+            "output_modality_1": {
+              "price": 3.75e-06
+            },
+            "candidates_token_count": {
+              "price": 3.75e-06
+            },
+            "candidatesTokenCount": {
+              "price": 3.75e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 3.75e-06
+            },
+            "thoughts_token_count": {
+              "price": 3.75e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 3.75e-06
+            },
+            "output_reasoning": {
+              "price": 3.75e-06
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "b91d332c-a2fd-b85c-f6e6-971796f3f111_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 7.5e-07,
+                "input_text": 7.5e-07,
+                "input_modality_1": 7.5e-07,
+                "prompt_token_count": 7.5e-07,
+                "promptTokenCount": 7.5e-07,
+                "input_cached_tokens": 7.5e-08,
+                "cached_content_token_count": 7.5e-08,
+                "output": 3.75e-06,
+                "output_text": 3.75e-06,
+                "output_modality_1": 3.75e-06,
+                "candidates_token_count": 3.75e-06,
+                "candidatesTokenCount": 3.75e-06,
+                "thoughtsTokenCount": 3.75e-06,
+                "thoughts_token_count": 3.75e-06,
+                "output_reasoning_tokens": 3.75e-06,
+                "output_reasoning": 3.75e-06,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "c3a9f9a6-b79a-4e42-8835-9f0f8204a709",
+          "createdAt": "2026-09-02T00:00:00.000Z",
+          "modelName": "gemini-3.8-flash",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.8-flash)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 7.5e-07,
+          "outputPrice": 3.75e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 7.5e-07
+            },
+            "input_text": {
+              "price": 7.5e-07
+            },
+            "input_modality_1": {
+              "price": 7.5e-07
+            },
+            "prompt_token_count": {
+              "price": 7.5e-07
+            },
+            "promptTokenCount": {
+              "price": 7.5e-07
+            },
+            "input_cached_tokens": {
+              "price": 7.5e-08
+            },
+            "cached_content_token_count": {
+              "price": 7.5e-08
+            },
+            "output": {
+              "price": 3.75e-06
+            },
+            "output_text": {
+              "price": 3.75e-06
+            },
+            "output_modality_1": {
+              "price": 3.75e-06
+            },
+            "candidates_token_count": {
+              "price": 3.75e-06
+            },
+            "candidatesTokenCount": {
+              "price": 3.75e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 3.75e-06
+            },
+            "thoughts_token_count": {
+              "price": 3.75e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 3.75e-06
+            },
+            "output_reasoning": {
+              "price": 3.75e-06
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "c3a9f9a6-b79a-4e42-8835-9f0f8204a709_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 7.5e-07,
+                "input_text": 7.5e-07,
+                "input_modality_1": 7.5e-07,
+                "prompt_token_count": 7.5e-07,
+                "promptTokenCount": 7.5e-07,
+                "input_cached_tokens": 7.5e-08,
+                "cached_content_token_count": 7.5e-08,
+                "output": 3.75e-06,
+                "output_text": 3.75e-06,
+                "output_modality_1": 3.75e-06,
+                "candidates_token_count": 3.75e-06,
+                "candidatesTokenCount": 3.75e-06,
+                "thoughtsTokenCount": 3.75e-06,
+                "thoughts_token_count": 3.75e-06,
+                "output_reasoning_tokens": 3.75e-06,
+                "output_reasoning": 3.75e-06,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmjfoeykl000004l8ffzra8c7",
+          "createdAt": "2025-12-21T12:01:42.282Z",
+          "modelName": "gemini-3-flash-preview",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3-flash-preview)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 5e-07,
+          "outputPrice": 3e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 5e-07
+            },
+            "input_text": {
+              "price": 5e-07
+            },
+            "input_modality_1": {
+              "price": 5e-07
+            },
+            "prompt_token_count": {
+              "price": 5e-07
+            },
+            "promptTokenCount": {
+              "price": 5e-07
+            },
+            "input_cached_tokens": {
+              "price": 5e-08
+            },
+            "cached_content_token_count": {
+              "price": 5e-08
+            },
+            "output": {
+              "price": 3e-06
+            },
+            "output_text": {
+              "price": 3e-06
+            },
+            "output_modality_1": {
+              "price": 3e-06
+            },
+            "candidates_token_count": {
+              "price": 3e-06
+            },
+            "candidatesTokenCount": {
+              "price": 3e-06
+            },
+            "thoughtsTokenCount": {
+              "price": 3e-06
+            },
+            "thoughts_token_count": {
+              "price": 3e-06
+            },
+            "output_reasoning_tokens": {
+              "price": 3e-06
+            },
+            "output_reasoning": {
+              "price": 3e-06
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmjfoeykl000004l8ffzra8c7_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 5e-07,
+                "input_text": 5e-07,
+                "input_modality_1": 5e-07,
+                "prompt_token_count": 5e-07,
+                "promptTokenCount": 5e-07,
+                "input_cached_tokens": 5e-08,
+                "cached_content_token_count": 5e-08,
+                "output": 3e-06,
+                "output_text": 3e-06,
+                "output_modality_1": 3e-06,
+                "candidates_token_count": 3e-06,
+                "candidatesTokenCount": 3e-06,
+                "thoughtsTokenCount": 3e-06,
+                "thoughts_token_count": 3e-06,
+                "output_reasoning_tokens": 3e-06,
+                "output_reasoning": 3e-06,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "cmig1wmep000404l7fh6q5uog",
+          "createdAt": "2025-11-26T13:27:53.545Z",
+          "modelName": "gemini-3-pro-preview",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-3-pro-preview)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": 2e-06,
+          "outputPrice": 1.2e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2e-06
+            },
+            "input_text": {
+              "price": 2e-06
+            },
+            "input_modality_1": {
+              "price": 2e-06
+            },
+            "prompt_token_count": {
+              "price": 2e-06
+            },
+            "promptTokenCount": {
+              "price": 2e-06
+            },
+            "input_cached_tokens": {
+              "price": 2e-07
+            },
+            "cached_content_token_count": {
+              "price": 2e-07
+            },
+            "output": {
+              "price": 1.2e-05
+            },
+            "output_text": {
+              "price": 1.2e-05
+            },
+            "output_modality_1": {
+              "price": 1.2e-05
+            },
+            "candidates_token_count": {
+              "price": 1.2e-05
+            },
+            "candidatesTokenCount": {
+              "price": 1.2e-05
+            },
+            "thoughtsTokenCount": {
+              "price": 1.2e-05
+            },
+            "thoughts_token_count": {
+              "price": 1.2e-05
+            },
+            "output_reasoning_tokens": {
+              "price": 1.2e-05
+            },
+            "output_reasoning": {
+              "price": 1.2e-05
+            },
+            "grounding_queries": {
+              "price": 0.014
+            },
+            "groundingQueries": {
+              "price": 0.014
+            },
+            "web_search_queries": {
+              "price": 0.014
+            },
+            "webSearchQueries": {
+              "price": 0.014
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cmig1wmep000404l7fh6q5uog_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2e-06,
+                "input_text": 2e-06,
+                "input_modality_1": 2e-06,
+                "prompt_token_count": 2e-06,
+                "promptTokenCount": 2e-06,
+                "input_cached_tokens": 2e-07,
+                "cached_content_token_count": 2e-07,
+                "output": 1.2e-05,
+                "output_text": 1.2e-05,
+                "output_modality_1": 1.2e-05,
+                "candidates_token_count": 1.2e-05,
+                "candidatesTokenCount": 1.2e-05,
+                "thoughtsTokenCount": 1.2e-05,
+                "thoughts_token_count": 1.2e-05,
+                "output_reasoning_tokens": 1.2e-05,
+                "output_reasoning": 1.2e-05,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            },
+            {
+              "id": "4da930c8-7146-4e27-b66c-b62f2c2ec357",
+              "name": "Large Context",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "value": 200000,
+                  "operator": "gt",
+                  "caseSensitive": false,
+                  "usageDetailPattern": "(input|prompt|cached)"
+                }
+              ],
+              "prices": {
+                "input": 4e-06,
+                "input_text": 4e-06,
+                "input_modality_1": 4e-06,
+                "prompt_token_count": 4e-06,
+                "promptTokenCount": 4e-06,
+                "input_cached_tokens": 4e-07,
+                "cached_content_token_count": 4e-07,
+                "output": 1.8e-05,
+                "output_text": 1.8e-05,
+                "output_modality_1": 1.8e-05,
+                "candidates_token_count": 1.8e-05,
+                "candidatesTokenCount": 1.8e-05,
+                "thoughtsTokenCount": 1.8e-05,
+                "thoughts_token_count": 1.8e-05,
+                "output_reasoning_tokens": 1.8e-05,
+                "output_reasoning": 1.8e-05,
+                "grounding_queries": 0.014,
+                "groundingQueries": 0.014,
+                "web_search_queries": 0.014,
+                "webSearchQueries": 0.014
+              }
+            }
+          ]
+        },
+        {
+          "id": "029e6695-ff24-47f0-b37b-7285fb2e5785",
+          "createdAt": "2026-03-16T00:00:00.000Z",
+          "modelName": "gemini-live-2.5-flash-native-audio",
+          "matchPattern": "(?i)^(google/)?(gemini-live-2.5-flash-native-audio)$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": null,
+          "inputPrice": null,
+          "outputPrice": null,
+          "totalPrice": null,
+          "prices": {
+            "input_text": {
+              "price": 5e-07
+            },
+            "input_audio": {
+              "price": 3e-06
+            },
+            "input_image": {
+              "price": 3e-06
+            },
+            "output_text": {
+              "price": 2e-06
+            },
+            "output_audio": {
+              "price": 1.2e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "029e6695-ff24-47f0-b37b-7285fb2e5785_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input_text": 5e-07,
+                "input_audio": 3e-06,
+                "input_image": 3e-06,
+                "output_text": 2e-06,
+                "output_audio": 1.2e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "cluv2szw0000308ihch3n79x7",
+          "createdAt": "2024-04-11T10:27:46.517Z",
+          "modelName": "gemini-pro",
+          "matchPattern": "(?i)^(google(ai)?/)?(gemini-pro)(@[a-zA-Z0-9]+)?$",
+          "startDate": "2024-02-15T00:00:00.000Z",
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 1.25e-07,
+          "outputPrice": 3.75e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.25e-07
+            },
+            "output": {
+              "price": 3.75e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cluv2szw0000308ihch3n79x7_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.25e-07,
+                "output": 3.75e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cls0k4lqt000008ky1o1s8wd5",
+          "createdAt": "2024-01-31T13:25:02.141Z",
+          "modelName": "gemini-pro",
+          "matchPattern": "(?i)^(gemini-pro)(@[a-zA-Z0-9]+)?$",
+          "startDate": null,
+          "tokenizerId": null,
+          "tokenizerConfig": null,
+          "unit": "CHARACTERS",
+          "inputPrice": 2.5e-07,
+          "outputPrice": 5e-07,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "clruwnahl00040al78f1lb0at",
+          "createdAt": "2024-02-13T12:00:37.424Z",
+          "modelName": "gpt-3.5-turbo",
+          "matchPattern": "(?i)^(openai/)?(gpt-)(35|3.5)(-turbo)$",
+          "startDate": "2024-02-16T00:00:00.000Z",
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 5e-07,
+          "outputPrice": 1.5e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 5e-07
+            },
+            "output": {
+              "price": 1.5e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clruwnahl00040al78f1lb0at_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 5e-07,
+                "output": 1.5e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrkwk4cb000408l576jl7koo",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-3.5-turbo",
+          "matchPattern": "(?i)^(gpt-)(35|3.5)(-turbo)$",
+          "startDate": "2023-11-06T00:00:00.000Z",
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1e-06,
+          "outputPrice": 2e-06,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "clrntkjgy000c08jxesb30p3f",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-3.5-turbo",
+          "matchPattern": "(?i)^(gpt-)(35|3.5)(-turbo)$",
+          "startDate": "2023-06-27T00:00:00.000Z",
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1.5e-06,
+          "outputPrice": 2e-06,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "clrntkjgy000b08jx769q1bah",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-3.5-turbo",
+          "matchPattern": "(?i)^(gpt-)(35|3.5)(-turbo)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": -1,
+            "tokenizerModel": "gpt-3.5-turbo",
+            "tokensPerMessage": 4
+          },
+          "unit": "TOKENS",
+          "inputPrice": 2e-06,
+          "outputPrice": 2e-06,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "clruwnahl00030al7ab9rark7",
+          "createdAt": "2024-01-26T17:35:21.129Z",
+          "modelName": "gpt-3.5-turbo-0125",
+          "matchPattern": "(?i)^(openai/)?(gpt-)(35|3.5)(-turbo-0125)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 5e-07,
+          "outputPrice": 1.5e-06,
+          "totalPrice": null,
+          "prices": {
+            "output": {
+              "price": 1.5e-06
+            },
+            "input": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clruwnahl00030al7ab9rark7_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "output": 1.5e-06,
+                "input": 5e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrntkjgy000a08jx4e062mr0",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-3.5-turbo-0301",
+          "matchPattern": "(?i)^(openai/)?(gpt-)(35|3.5)(-turbo-0301)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": -1,
+            "tokenizerModel": "gpt-3.5-turbo-0301",
+            "tokensPerMessage": 4
+          },
+          "unit": "TOKENS",
+          "inputPrice": 2e-06,
+          "outputPrice": 2e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2e-06
+            },
+            "output": {
+              "price": 2e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrntkjgy000a08jx4e062mr0_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2e-06,
+                "output": 2e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrkwk4cc000808l51xmk4uic",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-3.5-turbo-0613",
+          "matchPattern": "(?i)^(openai/)?(gpt-)(35|3.5)(-turbo-0613)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo-0613",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1.5e-06,
+          "outputPrice": 2e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1.5e-06
+            },
+            "output": {
+              "price": 2e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrkwk4cc000808l51xmk4uic_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1.5e-06,
+                "output": 2e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrkwk4cb000208l59yvb9yq8",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-3.5-turbo-1106",
+          "matchPattern": "(?i)^(openai/)?(gpt-)(35|3.5)(-turbo-1106)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo-1106",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1e-06,
+          "outputPrice": 2e-06,
+          "totalPrice": null,
+          "prices": {
+            "output": {
+              "price": 2e-06
+            },
+            "input": {
+              "price": 1e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrkwk4cb000208l59yvb9yq8_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "output": 2e-06,
+                "input": 1e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "clsk9lntu000008jwfc51bbqv",
+          "createdAt": "2024-02-13T12:00:37.424Z",
+          "modelName": "gpt-3.5-turbo-16k",
+          "matchPattern": "(?i)^(openai/)?(gpt-)(35|3.5)(-turbo-16k)$",
+          "startDate": "2024-02-16T00:00:00.000Z",
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo-16k",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 5e-07,
+          "outputPrice": 1.5e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 5e-07
+            },
+            "output": {
+              "price": 1.5e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clsk9lntu000008jwfc51bbqv_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 5e-07,
+                "output": 1.5e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrkwk4cb000308l5go4b6otm",
+          "createdAt": "2024-02-03T17:29:57.350Z",
+          "modelName": "gpt-3.5-turbo-16k",
+          "matchPattern": "(?i)^(gpt-)(35|3.5)(-turbo-16k)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo-16k",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 3e-06,
+          "outputPrice": 4e-06,
+          "totalPrice": null,
+          "prices": {},
+          "isLangfuseManaged": true,
+          "pricingTiers": []
+        },
+        {
+          "id": "clrntjt89000a08jw0gcdbd5a",
+          "createdAt": "2024-02-03T17:29:57.350Z",
+          "modelName": "gpt-3.5-turbo-16k-0613",
+          "matchPattern": "(?i)^(openai/)?(gpt-)(35|3.5)(-turbo-16k-0613)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo-16k-0613",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 3e-06,
+          "outputPrice": 4e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-06
+            },
+            "output": {
+              "price": 4e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrntjt89000a08jw0gcdbd5a_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-06,
+                "output": 4e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrkwk4cc000a08l562uc3s9g",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-3.5-turbo-instruct",
+          "matchPattern": "(?i)^(openai/)?(gpt-)(35|3.5)(-turbo-instruct)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-3.5-turbo",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1.5e-06,
+          "outputPrice": 2e-06,
+          "totalPrice": null,
+          "prices": {
+            "output": {
+              "price": 2e-06
+            },
+            "input": {
+              "price": 1.5e-06
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrkwk4cc000a08l562uc3s9g_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "output": 2e-06,
+                "input": 1.5e-06
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrntkjgy000f08jx79v9g1xj",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-4",
+          "matchPattern": "(?i)^(openai/)?(gpt-4)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 3e-05,
+          "outputPrice": 6e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-05
+            },
+            "output": {
+              "price": 6e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrntkjgy000f08jx79v9g1xj_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-05,
+                "output": 6e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "clruwnahl00050al796ck3p44",
+          "createdAt": "2024-01-26T17:35:21.129Z",
+          "modelName": "gpt-4-0125-preview",
+          "matchPattern": "(?i)^(openai/)?(gpt-4-0125-preview)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1e-05,
+          "outputPrice": 3e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-05
+            },
+            "output": {
+              "price": 3e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clruwnahl00050al796ck3p44_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-05,
+                "output": 3e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrntkjgy000e08jx4x6uawoo",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-4-0314",
+          "matchPattern": "(?i)^(openai/)?(gpt-4-0314)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4-0314",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 3e-05,
+          "outputPrice": 6e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-05
+            },
+            "output": {
+              "price": 6e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrntkjgy000e08jx4x6uawoo_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-05,
+                "output": 6e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrkwk4cc000908l537kl0rx3",
+          "createdAt": "2024-01-24T10:19:21.693Z",
+          "modelName": "gpt-4-0613",
+          "matchPattern": "(?i)^(openai/)?(gpt-4-0613)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4-0613",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 3e-05,
+          "outputPrice": 6e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 3e-05
+            },
+            "output": {
+              "price": 6e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrkwk4cc000908l537kl0rx3_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 3e-05,
+                "output": 6e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7nusn643377tvmzh27m33kl",
+          "createdAt": "2025-04-15T10:26:54.132Z",
+          "modelName": "gpt-4.1",
+          "matchPattern": "(?i)^(openai/)?(gpt-4.1)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4",
+            "tokensPerMessage": 3
+          },
+          "unit": null,
+          "inputPrice": 2e-06,
+          "outputPrice": 8e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2e-06
+            },
+            "input_cached_tokens": {
+              "price": 5e-07
+            },
+            "input_cached_text_tokens": {
+              "price": 5e-07
+            },
+            "input_cache_read": {
+              "price": 5e-07
+            },
+            "output": {
+              "price": 8e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7nusn643377tvmzh27m33kl_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2e-06,
+                "input_cached_tokens": 5e-07,
+                "input_cached_text_tokens": 5e-07,
+                "input_cache_read": 5e-07,
+                "output": 8e-06,
+                "cache_read_input_tokens": 5e-07
+              }
+            },
+            {
+              "id": "757639cc-73fa-49c5-adfd-686bbd0e9dbe",
+              "name": "Fast mode",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "key": "service_tier",
+                  "source": "model_parameters",
+                  "values": [
+                    "fast",
+                    "priority"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prices": {
+                "input": 3.5e-06,
+                "input_cached_tokens": 8.75e-07,
+                "input_cached_text_tokens": 8.75e-07,
+                "input_cache_read": 8.75e-07,
+                "output": 1.4e-05,
+                "cache_read_input_tokens": 8.75e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "clrkvq6iq000008ju6c16gynt",
+          "createdAt": "2024-04-23T10:37:17.092Z",
+          "modelName": "gpt-4-1106-preview",
+          "matchPattern": "(?i)^(openai/)?(gpt-4-1106-preview)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4-1106-preview",
+            "tokensPerMessage": 3
+          },
+          "unit": "TOKENS",
+          "inputPrice": 1e-05,
+          "outputPrice": 3e-05,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-05
+            },
+            "output": {
+              "price": 3e-05
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "clrkvq6iq000008ju6c16gynt_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-05,
+                "output": 3e-05
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7qahw732891bpmzy45r3x70",
+          "createdAt": "2025-04-15T10:26:54.132Z",
+          "modelName": "gpt-4.1-2025-04-14",
+          "matchPattern": "(?i)^(openai/)?(gpt-4.1-2025-04-14)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4",
+            "tokensPerMessage": 3
+          },
+          "unit": null,
+          "inputPrice": 2e-06,
+          "outputPrice": 8e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 2e-06
+            },
+            "input_cached_tokens": {
+              "price": 5e-07
+            },
+            "input_cached_text_tokens": {
+              "price": 5e-07
+            },
+            "input_cache_read": {
+              "price": 5e-07
+            },
+            "output": {
+              "price": 8e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 5e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7qahw732891bpmzy45r3x70_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 2e-06,
+                "input_cached_tokens": 5e-07,
+                "input_cached_text_tokens": 5e-07,
+                "input_cache_read": 5e-07,
+                "output": 8e-06,
+                "cache_read_input_tokens": 5e-07
+              }
+            },
+            {
+              "id": "ef4f4063-bd8f-441c-b2a2-6771f404212e",
+              "name": "Fast mode",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "key": "service_tier",
+                  "source": "model_parameters",
+                  "values": [
+                    "fast",
+                    "priority"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prices": {
+                "input": 3.5e-06,
+                "input_cached_tokens": 8.75e-07,
+                "input_cached_text_tokens": 8.75e-07,
+                "input_cache_read": 8.75e-07,
+                "output": 1.4e-05,
+                "cache_read_input_tokens": 8.75e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7zzrs1327124dhjtb95w8p96",
+          "createdAt": "2025-04-22T10:11:35.241Z",
+          "modelName": "gpt-4.1-mini",
+          "matchPattern": "(?i)^(openai/)?(gpt-4.1-mini)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4",
+            "tokensPerMessage": 3
+          },
+          "unit": null,
+          "inputPrice": 4e-07,
+          "outputPrice": 1.6e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 4e-07
+            },
+            "input_cached_tokens": {
+              "price": 1e-07
+            },
+            "input_cached_text_tokens": {
+              "price": 1e-07
+            },
+            "input_cache_read": {
+              "price": 1e-07
+            },
+            "output": {
+              "price": 1.6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 1e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7zzrs1327124dhjtb95w8p96_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 4e-07,
+                "input_cached_tokens": 1e-07,
+                "input_cached_text_tokens": 1e-07,
+                "input_cache_read": 1e-07,
+                "output": 1.6e-06,
+                "cache_read_input_tokens": 1e-07
+              }
+            },
+            {
+              "id": "e747c083-dae8-4085-a1e2-e46c16e39498",
+              "name": "Fast mode",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "key": "service_tier",
+                  "source": "model_parameters",
+                  "values": [
+                    "fast",
+                    "priority"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prices": {
+                "input_cached_tokens": 1.75e-07,
+                "input_cached_text_tokens": 1.75e-07,
+                "input_cache_read": 1.75e-07,
+                "output": 2.8e-06,
+                "cache_read_input_tokens": 1.75e-07,
+                "input": 7e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7sglt825463kxnza72p6v81",
+          "createdAt": "2025-04-15T10:26:54.132Z",
+          "modelName": "gpt-4.1-mini-2025-04-14",
+          "matchPattern": "(?i)^(openai/)?(gpt-4.1-mini-2025-04-14)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4",
+            "tokensPerMessage": 3
+          },
+          "unit": null,
+          "inputPrice": 4e-07,
+          "outputPrice": 1.6e-06,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 4e-07
+            },
+            "input_cached_tokens": {
+              "price": 1e-07
+            },
+            "input_cached_text_tokens": {
+              "price": 1e-07
+            },
+            "input_cache_read": {
+              "price": 1e-07
+            },
+            "output": {
+              "price": 1.6e-06
+            },
+            "cache_read_input_tokens": {
+              "price": 1e-07
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7sglt825463kxnza72p6v81_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 4e-07,
+                "input_cached_tokens": 1e-07,
+                "input_cached_text_tokens": 1e-07,
+                "input_cache_read": 1e-07,
+                "output": 1.6e-06,
+                "cache_read_input_tokens": 1e-07
+              }
+            },
+            {
+              "id": "94d78fcb-36e0-4dd7-b7ae-7d43e8dd278b",
+              "name": "Fast mode",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "key": "service_tier",
+                  "source": "model_parameters",
+                  "values": [
+                    "fast",
+                    "priority"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prices": {
+                "input": 7e-07,
+                "input_cached_tokens": 1.75e-07,
+                "input_cached_text_tokens": 1.75e-07,
+                "input_cache_read": 1.75e-07,
+                "output": 2.8e-06,
+                "cache_read_input_tokens": 1.75e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7zxrs1327124dhjtb95w8f45",
+          "createdAt": "2025-04-22T10:11:35.241Z",
+          "modelName": "gpt-4.1-nano",
+          "matchPattern": "(?i)^(openai/)?(gpt-4.1-nano)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4",
+            "tokensPerMessage": 3
+          },
+          "unit": null,
+          "inputPrice": 1e-07,
+          "outputPrice": 4e-07,
+          "totalPrice": null,
+          "prices": {
+            "output": {
+              "price": 4e-07
+            },
+            "cache_read_input_tokens": {
+              "price": 2.5e-08
+            },
+            "input": {
+              "price": 1e-07
+            },
+            "input_cached_tokens": {
+              "price": 2.5e-08
+            },
+            "input_cached_text_tokens": {
+              "price": 2.5e-08
+            },
+            "input_cache_read": {
+              "price": 2.5e-08
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7zxrs1327124dhjtb95w8f45_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "output": 4e-07,
+                "cache_read_input_tokens": 2.5e-08,
+                "input": 1e-07,
+                "input_cached_tokens": 2.5e-08,
+                "input_cached_text_tokens": 2.5e-08,
+                "input_cache_read": 2.5e-08
+              }
+            },
+            {
+              "id": "27947175-4b36-475d-ac36-44f69fbf1eac",
+              "name": "Fast mode",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "key": "service_tier",
+                  "source": "model_parameters",
+                  "values": [
+                    "fast",
+                    "priority"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prices": {
+                "input": 2e-07,
+                "input_cached_tokens": 5e-08,
+                "input_cached_text_tokens": 5e-08,
+                "input_cache_read": 5e-08,
+                "cache_read_input_tokens": 5e-08,
+                "output": 8e-07
+              }
+            }
+          ]
+        },
+        {
+          "id": "cm7vxpz967124dhjtb95w8f92",
+          "createdAt": "2025-04-15T10:26:54.132Z",
+          "modelName": "gpt-4.1-nano-2025-04-14",
+          "matchPattern": "(?i)^(openai/)?(gpt-4.1-nano-2025-04-14)$",
+          "startDate": null,
+          "tokenizerId": "openai",
+          "tokenizerConfig": {
+            "tokensPerName": 1,
+            "tokenizerModel": "gpt-4",
+            "tokensPerMessage": 3
+          },
+          "unit": null,
+          "inputPrice": 1e-07,
+          "outputPrice": 4e-07,
+          "totalPrice": null,
+          "prices": {
+            "input": {
+              "price": 1e-07
+            },
+            "input_cached_tokens": {
+              "price": 2.5e-08
+            },
+            "input_cached_text_tokens": {
+              "price": 2.5e-08
+            },
+            "input_cache_read": {
+              "price": 2.5e-08
+            },
+            "output": {
+              "price": 4e-07
+            },
+            "cache_read_input_tokens": {
+              "price": 2.5e-08
+            }
+          },
+          "isLangfuseManaged": true,
+          "pricingTiers": [
+            {
+              "id": "cm7vxpz967124dhjtb95w8f92_tier_default",
+              "name": "Standard",
+              "isDefault": true,
+              "priority": 0,
+              "conditions": [],
+              "prices": {
+                "input": 1e-07,
+                "input_cached_tokens": 2.5e-08,
+                "input_cached_text_tokens": 2.5e-08,
+                "input_cache_read": 2.5e-08,
+                "output": 4e-07,
+                "cache_read_input_tokens": 2.5e-08
+              }
+            },
+            {
+              "id": "38ecc517-b487-45d0-abea-7dbbf1a706a6",
+              "name": "Fast mode",
+              "isDefault": false,
+              "priority": 1,
+              "conditions": [
+                {
+                  "key": "service_tier",
+                  "source": "model_parameters",
+                  "values": [
+                    "fast",
+                    "priority"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prices": {
+                "input": 2e-07,
+                "input_cached_tokens": 5e-08,
+                "input_cached_text_tokens": 5e-08,
+                "input_cache_read": 5e-08,
+                "output": 8e-07,
+                "cache_read_input_tokens": 5e-08
+              }
+            }
+          ]
+        }
+      ],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 182,
+        "totalPages": 2
+      }
+    }
+  },
+  "comments": {
+    "path": "/api/public/comments",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 0,
+        "totalPages": 0
+      }
+    }
+  },
+  "projects": {
+    "path": "/api/public/projects",
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "cmto3mj7t06ykad0ipon3ksbw",
+          "name": "My Project",
+          "organization": {
+            "id": "cmto3mj7p06ygad0idol4zloj",
+            "name": "Simon's Organization"
+          },
+          "metadata": {}
+        }
+      ]
+    }
+  },
+  "annotation_queues": {
+    "path": "/api/public/annotation-queues",
+    "status": 200,
+    "body": {
+      "data": [],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 0,
+        "totalPages": 0
+      }
+    }
+  },
+  "dataset_run_items": {
+    "path": "/api/public/dataset-run-items",
+    "status": 400,
+    "body": {
+      "message": "Invalid request data",
+      "error": [
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "datasetId"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "runName"
+          ],
+          "message": "Invalid input: expected string, received undefined"
+        }
+      ]
+    }
+  },
+  "metrics_daily": {
+    "path": "/api/public/metrics/daily",
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "date": "2026-09-05",
+          "countTraces": 40,
+          "countObservations": 80,
+          "totalCost": 0.1839257,
+          "usage": [
+            {
+              "model": "google/gemini-3.5-flash-lite",
+              "inputUsage": 14594,
+              "outputUsage": 2138,
+              "totalUsage": 16732,
+              "totalCost": 0.0097232,
+              "countObservations": 6,
+              "countTraces": 6
+            },
+            {
+              "model": null,
+              "inputUsage": 0,
+              "outputUsage": 0,
+              "totalUsage": 0,
+              "totalCost": 0,
+              "countObservations": 40,
+              "countTraces": 40
+            },
+            {
+              "model": "google/gemini-3.8-flash",
+              "inputUsage": 98690,
+              "outputUsage": 26716,
+              "totalUsage": 125406,
+              "totalCost": 0.1742025,
+              "countObservations": 34,
+              "countTraces": 34
+            }
+          ]
+        }
+      ],
+      "meta": {
+        "page": 1,
+        "limit": 100,
+        "totalItems": 1,
+        "totalPages": 1
+      },
+      "_deprecation": {
+        "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. Use GET /api/public/v2/metrics?query=<urlencoded json query> instead.",
+        "replacement": "GET /api/public/v2/metrics?query=<urlencoded json query>",
+        "docsUrl": "https://langfuse.com/docs/metrics/features/metrics-api",
+        "sunsetAt": "2026-11-16"
+      }
+    }
+  },
+  "organizations_memberships": {
+    "path": "/api/public/organizations/memberships",
+    "status": 403,
+    "body": {
+      "error": "Invalid API key. Organization-scoped API key required for this operation."
+    }
+  },
+  "media": {
+    "path": "/api/public/media",
+    "status": 405,
+    "body": {
+      "message": "Method not allowed",
+      "error": "MethodNotAllowedError"
+    }
+  },
+  "blobstorage_integrations": {
+    "path": "/api/public/blob-storage-integrations",
+    "status": 404,
+    "body": {
+      "_raw": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"https://static-us.langfuse.com/_next/static/chunks/3fy7s7t9wwr1i.js\" crossorigin=\"\"/><script src=\"https://static-us.langfuse.com/_next/static/chunks/3wyw_nsflfhpt.js\" async=\"\" crossorigin=\"\"></script><script src=\""
+    }
+  }
+}

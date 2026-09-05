@@ -62,3 +62,24 @@ for _name in ("OPENROUTER_API_KEY", "FIRECRAWL_API_KEY"):
 os.environ.setdefault(
     "CREDENTIALS_MASTER_KEY", "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
 )
+
+# The one ASSIGNMENT in this file, and the only place rule 1 above is
+# deliberately not followed.
+#
+# `LANGFUSE_EXPORT_ENABLED` is not a credential and nothing here is standing in
+# for one. It defaults to ON whenever both Langfuse keys are present
+# (`config.py`, contract section 9), and a developer running this suite with a
+# real `.env` has both - so `setdefault` would leave 2,500 tests posting live
+# traces to a real project over the network, at a cadence no test controls and
+# with runs no person launched. That is the opposite of the trade the three
+# lines above make: there, the developer's real value must win; here, the
+# suite's answer must, because the suite is not a deployment.
+#
+# The tests that exercise the exporter build it themselves with an injected
+# in-memory sender, so nothing is made untestable by this line - only
+# unreachable by accident. `.env` declares no such variable today, so dotenv's
+# `override=True` has nothing to re-assert over it; if one is ever added there,
+# this line stops working and the symptom is a test run that talks to the
+# network, which `tests/observability/test_exporter_isolation.py` is written to
+# notice.
+os.environ["LANGFUSE_EXPORT_ENABLED"] = "0"

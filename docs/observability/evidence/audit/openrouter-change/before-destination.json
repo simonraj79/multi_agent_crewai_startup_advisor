@@ -1,0 +1,112 @@
+{
+  "phase": "before",
+  "read_at_utc": "2026-09-05T13:46:12.964200Z",
+  "redaction": "every *hash* value truncated to its first 6 characters; every credential-shaped value replaced by a length marker; OpenRouter's masked key `label` removed entirely. No key value, and no full hash, appears in this file.",
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://openrouter.ai/api/v1/observability/destinations",
+      "auth": "Bearer <OPENROUTER_MANAGEMENT_KEY>",
+      "http_status": 200
+    },
+    {
+      "method": "GET",
+      "url": "https://openrouter.ai/api/v1/observability/destinations/8bfe1a26-2ffb-4bbe-a8cf-11839a239f8b",
+      "auth": "Bearer <OPENROUTER_MANAGEMENT_KEY>",
+      "http_status": 200
+    },
+    {
+      "method": "GET",
+      "url": "https://openrouter.ai/api/v1/keys",
+      "auth": "Bearer <OPENROUTER_MANAGEMENT_KEY>",
+      "http_status": 200
+    }
+  ],
+  "destination_list_response": {
+    "data": [
+      {
+        "id": "8bfe1a26-2ffb-4bbe-a8cf-11839a239f8b",
+        "workspace_id": "d9782653-59a8-51a5-9ff4-b28da297b63f",
+        "name": "multi-agent-crew-ai",
+        "enabled": true,
+        "privacy_mode": false,
+        "broadcast_generation_cost": false,
+        "broadcast_generation_identity": false,
+        "broadcast_generation_request_context": false,
+        "sampling_rate": 1,
+        "api_key_hashes": null,
+        "filter_rules": null,
+        "created_at": "2026-09-05T08:24:27.107Z",
+        "updated_at": "2026-09-05T08:24:50.201Z",
+        "type": "langfuse",
+        "config": {
+          "secretKey": "<REDACTED-len11>",
+          "publicKey": "<REDACTED-len11>",
+          "baseUrl": "https://us.cloud.langfuse.com"
+        }
+      }
+    ],
+    "total_count": 1
+  },
+  "destination_single_response": {
+    "data": {
+      "id": "8bfe1a26-2ffb-4bbe-a8cf-11839a239f8b",
+      "workspace_id": "d9782653-59a8-51a5-9ff4-b28da297b63f",
+      "name": "multi-agent-crew-ai",
+      "enabled": true,
+      "privacy_mode": false,
+      "broadcast_generation_cost": false,
+      "broadcast_generation_identity": false,
+      "broadcast_generation_request_context": false,
+      "sampling_rate": 1,
+      "api_key_hashes": null,
+      "filter_rules": null,
+      "created_at": "2026-09-05T08:24:27.107Z",
+      "updated_at": "2026-09-05T08:24:50.201Z",
+      "type": "langfuse",
+      "config": {
+        "secretKey": "<REDACTED-len11>",
+        "publicKey": "<REDACTED-len11>",
+        "baseUrl": "https://us.cloud.langfuse.com"
+      }
+    }
+  },
+  "destination_field_names_returned": [
+    "api_key_hashes",
+    "broadcast_generation_cost",
+    "broadcast_generation_identity",
+    "broadcast_generation_request_context",
+    "config",
+    "created_at",
+    "enabled",
+    "filter_rules",
+    "id",
+    "name",
+    "privacy_mode",
+    "sampling_rate",
+    "type",
+    "updated_at",
+    "workspace_id"
+  ],
+  "app_key_identification": {
+    "method": "sha256(os.environ['OPENROUTER_API_KEY']).hexdigest() compared, IN CODE, against the `hash` field of every row of GET /api/v1/keys. The comparison is a boolean; neither the key nor the full hash was printed, logged or written.",
+    "matched_key_name": "MultiAgentCrewAI",
+    "matched_key_hash_prefix": "958f03",
+    "match_count": 1,
+    "corroboration": "GET /api/v1/key (bearer = the app key itself) returns a masked `label` that is byte-equal to the `label` of that same row and of no other row.",
+    "keys_visible_to_management_key": 11,
+    "key_names": [
+      "LTA_ML_PROBLEM",
+      "MCP: OpenRouter MCP: Claude Code (openrouter)",
+      "WikiSkills",
+      "MultiAgentCrewAI",
+      "course_recommender",
+      "research",
+      "OpenCODER2",
+      "Agnetic RAG",
+      "Gemma4",
+      "gpt-oss-120",
+      "KiloCodeVSCODE"
+    ]
+  }
+}

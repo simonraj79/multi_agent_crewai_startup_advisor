@@ -1,0 +1,395 @@
+{
+  "id": "70f1b06f095be23856923529c5e1b9c5",
+  "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+  "name": "OpenRouter Request",
+  "timestamp": "2026-09-05T12:11:53.856Z",
+  "environment": "default",
+  "tags": [],
+  "bookmarked": false,
+  "release": null,
+  "version": null,
+  "userId": null,
+  "sessionId": null,
+  "public": false,
+  "input": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are Guardrail Agent. You are a expert at validating the output of a task. By providing effective feedback if the output is not valid.\nYour personal goal is: Validate the output of the task"
+      },
+      {
+        "role": "user",
+        "content": "\nCurrent Task: \n        Ensure the following task result complies with the given guardrail.\n\n        Task result:\n        {\"markdown_body\":\"# Provisional Validation Report: AI Tool Turning Figma Files into Production React\\n\\n## Summary\\n**Provisional Verdict: REJECT** (Composite Score: 4.4/10, Confidence: 0.45 - MODERATE). The decision reason is a fatal floor trigger: `FLOOR_NO_MARKET`. While technical feasibility is supported by active open-source tooling, there is no documented evidence of paying customer segments, commercial pricing, or confirmed willingness to pay for this specific automation layer.\\n\\n## Scope\\n- **Startup Idea:** An AI tool that turns Figma files into production React\\n- **Category:** Design-to-code automation\\n- **Target User:** Frontend developers and engineering teams\\n- **Problem:** Manually translating design mockups into clean, responsive, and maintainable frontend code is repetitive and slows release cycles.\\n- **Technology Claim:** AI can accurately parse Figma design files and output production-ready React component code conforming to design systems and project conventions.\\n- **As of Date:** 2026-09-05\\n\\n## Rubric Evaluation\\n\\n| Dimension | Score | Anchor Matched | Evidence Thin |\\n|---|---|---|---|\\n| Demand (D) | 2/10 | 1 or 2 problem threads, or at least 3 problem threads none of which is dated within 24 months. | True |\\n| Market (M) | 0/10 | At least 3 market sources, and none of them names a buyer segment for this problem, and none states a price or a budget anyone spends on it. | False |\\n| Competitive Room (C) | 2/10 | No source states an axis of beatability, and either no competitor is named or at least 1 named competitor is not shown to be vendor owned. | True |\\n| Feasibility (F) | 5/10 | Anchor 4, and at least 3 reusable repositories together cover the separable parts of the scoped v1. | False |\\n| Headroom over Free (X) | 3/10 | No free substitute repository exists, and free coverage is unsettled or settled at no more than a separable part of the core job. | False |\\n\\n## Verdict & Confidence\\n- **Verdict:** REJECT\\n- **Decision Reason:** FLOOR_NO_MARKET\\n- **Composite Score:** 4.4 / 10\\n- **Confidence:** 0.45 (MODERATE)\\n- **Provisional:** Yes\\n\\n## Evidence & Detailed Findings\\n- **Demand:** Only a single historical problem thread was identified ([Hacker News item 20455836](https://news.ycombinator.com/item?id=20455836)), dated in 2019 asking about Figma-to-React converters. Community commentary suggests doubts regarding commercial viability; for example, one user noted that teams facing this pain point may have limited runways or shoestring budgets and \\\"are not in a place to pay\\\" ([Hacker News item 28201339](https://news.ycombinator.com/item?id=28201339)). Another noted that unless the tool produces 100% pixel-perfect output including interaction states, it only saves modest designer time rather than replacing frontend implementation ([Hacker News item 36291173](https://news.ycombinator.com/item?id=36291173)).\\n- **Market & Competition:** Incumbents such as Builder.io, Anima, and Locofy already operate in this category ([Reddit](https://www.reddit.com/r/FigmaDesign/comments/1ly2mu3/what_ai_tools_or_plugins_do_you_use_to_convert/)). Builder.io provides a dedicated Figma plugin offering AI-driven export to React, Next.js, Vue, and Tailwind ([Figma Community Plugin](https://www.figma.com/community/plugin/747985167520967365/builder-io-figma-to-code-ai-apps-react-vue-tailwind-etc)). However, none of the retrieved market sources documented published pricing or established paying customer segments ([Medium](https://jherr2020.medium.com/converting-figma-to-react-the-fast-and-easy-way-d6525a866f24)).\\n- **Feasibility & Headroom:** Feasibility is strong with active, commercially permissive repositories addressing code generation and Figma translation: `BuilderIO/mitosis` ([GitHub](https://github.com/BuilderIO/mitosis)), `bernaferrari/FigmaToCode` ([GitHub](https://github.com/bernaferrari/FigmaToCode)), `BuilderIO/figma-html` ([GitHub](https://github.com/BuilderIO/figma-html)), and `vibeflowing-inc/vibe_figma` ([GitHub](https://github.com/vibeflowing-inc/vibe_figma)). A non-relevant library was also retrieved (`BetterTyped/react-zoom-pan-pinch`, [GitHub](https://github.com/BetterTyped/react-zoom-pan-pinch)). None of the repositories represent a full turnkey substitute for complete production React workflows.\\n\\n## Evidence Gaps\\n- Unclear whether 'production React' scope includes state management, interactive logic, and tests, or is limited to presentational components.\\n\\n## Risks\\nWhat could make this verdict wrong:\\n- **Fatal Floor Trigger (`FLOOR_NO_MARKET`):** The rejection is driven strictly by the total lack of identified commercial pricing and designated paying segments in the collected sources, rather than proven market refusal.\\n- **Thin Dimensions:** Demand (D) and Competitive Room (C) are flagged thin due to sparse recent customer demand discussions and lack of documented axes of beatability against existing tools.\\n- **Unresolved Scope Gap:** The feasibility evaluation assumes presentational generation; if production requirements necessitate complex runtime state and end-to-end tests, technical feasibility may be overstated.\\n- **Incumbent Dominance:** Builder.io provides existing AI Figma-to-code plugins across multiple frameworks ([Figma Community Plugin](https://www.figma.com/community/plugin/747985167520967365/builder-io-figma-to-code-ai-apps-react-vue-tailwind-etc)), posing a direct incumbent threat if users default to native or established ecosystem tooling.\\n\\n## Kill Criteria\\n1. Fewer than 2 out of 10 engineering managers surveyed state a willingness to pay for a third-party Figma-to-React tool over existing open-source libraries or incumbent plugins.\\n2. A benchmark of 20 production design files shows manual refactoring time exceeds 50% of the time required to write React components from scratch.\\n3. Major incumbents (such as Builder.io or Figma itself) release native, production-quality React component export at no additional charge.\\n\\n## Cheapest Next Test\\nInterview 10 frontend engineering leads at mid-market SaaS companies currently using Builder.io or Locofy to identify unmet requirements in production code generation that they would allocate budget to replace.\\n\\n## Sources\\n- [Medium (2023-11-29)](https://jherr2020.medium.com/converting-figma-to-react-the-fast-and-easy-way-d6525a866f24): Converting Figma To React the Fast and Easy Way\\n- [Reddit r/FigmaDesign (2026-09-05)](https://www.reddit.com/r/FigmaDesign/comments/1ly2mu3/what_ai_tools_or_plugins_do_you_use_to_convert/): Discussion of tools like Anima, Locofy, and Builder.io\\n- [Figma Community (2026-09-05)](https://www.figma.com/community/plugin/747985167520967365/builder-io-figma-to-code-ai-apps-react-vue-tailwind-etc): Builder.io Figma to Code AI plugin\\n- [Hacker News #20455836 (2019-07-17)](https://news.ycombinator.com/item?id=20455836): Converters from Figma or Sketch to React code\\n- [Hacker News #36291173 (2023-06-12)](https://news.ycombinator.com/item?id=36291173): Need and willingness to pay for Figma to React conversion\\n- [Hacker News #28201339 (2021-08-16)](https://news.ycombinator.com/item?id=28201339): Analysis of company willingness to pay for UI component generation\\n- [GitHub BuilderIO/mitosis (2026-09-05)](https://github.com/BuilderIO/mitosis): Mitosis multi-framework component generator\\n- [GitHub bernaferrari/FigmaToCode (2026-09-05)](https://github.com/bernaferrari/FigmaToCode): FigmaToCode plugin and translation engine\\n- [GitHub BuilderIO/figma-html (2026-09-05)](https://github.com/BuilderIO/figma-html): Convert Figma designs to HTML/CSS/React\\n- [GitHub BetterTyped/react-zoom-pan-pinch (2026-09-05)](https://github.com/BetterTyped/react-zoom-pan-pinch): Pan and zoom component for React\\n- [GitHub vibeflowing-inc/vibe_figma (2026-09-05)](https://github.com/vibeflowing-inc/vibe_figma): Figma integration tooling\",\"provisional\":true,\"thin_dimensions\":[\"D\",\"C\"],\"sources\":[{\"claim\":\"Converting Figma To React the Fast and Easy Way If you think that AI is going to replace web developers, look no further than trying to turn a Figma prototype into a working React application. Figma \u2026\",\"url\":\"https://jherr2020.medium.com/converting-figma-to-react-the-fast-and-easy-way-d6525a866f24\",\"publisher\":\"Medium\",\"dated\":\"2023-11-29T16:01:37.257Z\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"firecrawl\"},{\"claim\":\"I've seen a few tools floating around like Anima, Locofy, and Builder.io, but I'm especially interested in anything AI-powered or newer that's ...What AI Design tools are you using apart from Figma Make, which ones ...Every AI \\\"design in one prompt\\\" tool drops Figma stock. The ... - RedditMore results from www.reddit.com\",\"url\":\"https://www.reddit.com/r/FigmaDesign/comments/1ly2mu3/what_ai_tools_or_plugins_do_you_use_to_convert/\",\"publisher\":\"www.reddit.com\",\"dated\":\"2026-09-05T12:11:30Z\",\"dated_is_retrieval_time\":true,\"retrieved_via\":\"firecrawl\"},{\"claim\":\"Use AI to turn Figma designs into code, create on-brand designs, or convert websites to Figma in real time. Convert Figma to Code - No setup: no special prep needed in your design files - Any framework: generate React, Next.js, Vue, Svelte, Angular, Swift, Flutter, Kotlin, React Native, HTML and...\",\"url\":\"https://www.figma.com/community/plugin/747985167520967365/builder-io-figma-to-code-ai-apps-react-vue-tailwind-etc\",\"publisher\":\"Figma\",\"dated\":\"2026-09-05T12:11:30Z\",\"dated_is_retrieval_time\":true,\"retrieved_via\":\"firecrawl\"},{\"claim\":\"Are there any existing converters from Figma or Sketch to React code? The problems I am trying to solve is to make prototyping faster so we can gather some feedback and build what people want faster\",\"url\":\"https://news.ycombinator.com/item?id=20455836\",\"publisher\":\"Hacker News\",\"dated\":\"2019-07-17T02:18:16.000Z\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"hn_algolia\"},{\"claim\":\"I think if it works with complex figma designs, people will definitely want it. There's a separate question of how many people will pay for it, but I think some will. I've looked for similar products for converting figma to html/css even. I've paid designers considerable amounts of money to get them to convert figma designs to webflow sites. I think the need to converting to react is similar. I'll note that the designer that I ended up going back to was the one who converted it in a way that was pixel perfect, and who made sure that some of the things missing from the figma (e.g. the hover state of certain buttons) looked good. What I'm trying to say is that if it can do it 80% well that's nice, and then it's a tool for designers to save time, if it can do it 100% well, then it's a tool for the end buyer and they wouldn't need to hire the person to convert it to react. See also: https://www.figma.com/community/plugin/862039267149408972/Fi..., https://www.figma.com/blog/introducing-figm\",\"url\":\"https://news.ycombinator.com/item?id=36291173\",\"publisher\":\"Hacker News\",\"dated\":\"2023-06-12T13:42:54.000Z\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"hn_algolia\"},{\"claim\":\"I suspect, genarating components from designs is a pain point for narrow subsection of companies which use React. I also suspect those which have this problem are not in a place to pay. Startups with limited runways, agencies with shoestring budgets are not the most lucrative.\",\"url\":\"https://news.ycombinator.com/item?id=28201339\",\"publisher\":\"Hacker News\",\"dated\":\"2021-08-16T21:14:57.000Z\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"hn_algolia\"},{\"claim\":\"BuilderIO/mitosis: license permits commercial use, pushed 1 month ago, partial relevance.\",\"url\":\"https://github.com/BuilderIO/mitosis\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"},{\"claim\":\"bernaferrari/FigmaToCode: license permits commercial use, pushed 1 month ago, partial relevance.\",\"url\":\"https://github.com/bernaferrari/FigmaToCode\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"},{\"claim\":\"BuilderIO/figma-html: license permits commercial use, pushed 12 months ago, partial relevance.\",\"url\":\"https://github.com/BuilderIO/figma-html\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"},{\"claim\":\"BetterTyped/react-zoom-pan-pinch: license permits commercial use, pushed 0 months ago, irrelevant relevance.\",\"url\":\"https://github.com/BetterTyped/react-zoom-pan-pinch\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"},{\"claim\":\"vibeflowing-inc/vibe_figma: license permits commercial use, pushed 3 months ago, partial relevance.\",\"url\":\"https://github.com/vibeflowing-inc/vibe_figma\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"}]}\n\n        Guardrail:\n        Reject the validation report unless BOTH rules hold:\n  1. ATTRIBUTION - every factual, numeric, competitor, thread, repository and\n     named-entity claim in markdown_body is attributable to a URL in the\n     report's own sources list.\n  2. FAITHFULNESS - markdown_body contains no fact, number, example or conclusion\n     absent from the scoped idea, branch findings and deterministic verdict it\n     was given.\nOn rejection, name the failed rule and quote the exact unsupported sentence.\nDo not rewrite the report and do not judge style or persuasiveness. An honest\nstatement that evidence is thin is a PASS.\n\n        Your task:\n        - Confirm if the Task result complies with the guardrail.\n        - If not, provide clear feedback explaining what is wrong (e.g., by how much it violates the rule, or what specific part fails).\n        - Focus only on identifying issues \u2014 do not propose corrections.\n        - If the Task result complies with the guardrail, saying that is valid\n        \n\nProvide your complete response:"
+      }
+    ]
+  },
+  "output": {
+    "completion": "{\n  \"valid\": true,\n  \"feedback\": null\n}",
+    "reasoning": "**Verifying Task Compliance**\n\nI'm now focused on verifying the task result against the guardrail. My core concern is compliance with the attribution rule; specifically, ensuring every factual claim in the markdown body is linked to a source URL in the report. The faithfulness rule is also under consideration. I'm building a system to do this automatically.\n\n\n",
+    "rawRequest": {
+      "model": "google/gemini-3.8-flash",
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "schema": {
+            "properties": {
+              "valid": {
+                "description": "Whether the task output complies with the guardrail",
+                "title": "Valid",
+                "type": "boolean"
+              },
+              "feedback": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "A feedback about the task output if it is not valid",
+                "title": "Feedback"
+              }
+            },
+            "required": [
+              "valid",
+              "feedback"
+            ],
+            "title": "LLMGuardrailResult",
+            "type": "object",
+            "additionalProperties": false
+          },
+          "name": "LLMGuardrailResult",
+          "strict": true
+        }
+      },
+      "stream": false,
+      "reasoning": {
+        "effort": "low"
+      },
+      "provider": {
+        "max_price": {
+          "prompt": 1
+        },
+        "sort": "throughput"
+      },
+      "_skin": "chat-completions"
+    }
+  },
+  "metadata": {
+    "openrouter.provider_name": "Google AI Studio",
+    "resourceAttributes": {
+      "service.name": "openrouter",
+      "openrouter.trace.id": "gen-1788610313-Hjoan1vOubTgOjt7iPwQ"
+    },
+    "scope": {
+      "name": "openrouter",
+      "attributes": {}
+    },
+    "provider_responses": [
+      {
+        "id": "CgecaqXtEpazg8UPxrrMgQs",
+        "provider_name": "Google AI Studio",
+        "status": 200,
+        "latency": 2146,
+        "is_byok": false,
+        "endpoint_id": "d376f781-516d-42f9-936d-46f19abca6cc",
+        "model_permaslug": "google/gemini-3.8-flash-20260902"
+      }
+    ],
+    "openrouter.source": "openrouter",
+    "openrouter.api_key_name": "MultiAgentCrewAI",
+    "openrouter.entity_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+    "openrouter.creator_user_id": "user_2yFPtqaAJxFJutqINz33vliNMw5",
+    "openrouter.router_latency_ms": 262,
+    "openrouter.provider_request_ms": 262,
+    "openrouter.provider_headers_ms": 2408,
+    "openrouter.first_token_ms": 2408,
+    "openrouter.provider_body_end_ms": 3333,
+    "openrouter.provider_time_to_first_token_ms": 2146,
+    "openrouter.provider_slug": "google-ai-studio",
+    "openrouter.finish_reason": "STOP",
+    "openrouter.input_unit_price": 7.5e-07,
+    "openrouter.output_unit_price": 3.75e-06,
+    "attributes": {
+      "langfuse.trace.name": "OpenRouter Request",
+      "langfuse.observation.type": "generation",
+      "langfuse.observation.level": "DEFAULT",
+      "gen_ai.operation.name": "chat",
+      "gen_ai.system": "google",
+      "gen_ai.provider.name": "google",
+      "gen_ai.request.model": "google/gemini-3.8-flash",
+      "gen_ai.response.model": "google/gemini-3.8-flash",
+      "gen_ai.response.id": "gen-1788610313-Hjoan1vOubTgOjt7iPwQ",
+      "gen_ai.usage.input_tokens": "4102",
+      "gen_ai.usage.output_tokens": "733",
+      "gen_ai.usage.total_tokens": "4835",
+      "gen_ai.usage.input_cost": "0.0030765",
+      "gen_ai.usage.output_cost": "0.00274875",
+      "gen_ai.usage.total_cost": "0.00582525",
+      "gen_ai.usage.input_tokens.cached": "0",
+      "gen_ai.usage.input_tokens.audio": "0",
+      "gen_ai.usage.input_tokens.video": "0",
+      "gen_ai.usage.output_tokens.reasoning": "717",
+      "gen_ai.usage.output_tokens.image": "0",
+      "gen_ai.response.finish_reasons": "[\"stop\"]",
+      "gen_ai.response.finish_reason": "stop",
+      "langfuse.observation.completion_start_time": "2026-09-05T12:11:56.264Z",
+      "langfuse.observation.usage_details": "{\"input\":4102,\"output\":733,\"total\":4835}",
+      "langfuse.observation.cost_details": "{\"input\":0.0030765,\"output\":0.00274875,\"total\":0.00582525}",
+      "gen_ai.usage.cost": "0.00582525",
+      "langfuse.observation.model.name": "google/gemini-3.8-flash"
+    }
+  },
+  "createdAt": "2026-09-05T12:11:59.000Z",
+  "updatedAt": "2026-09-05T12:11:58.465Z",
+  "externalId": null,
+  "scores": [],
+  "latency": 3.6,
+  "observations": [
+    {
+      "id": "70f1b06f095be238",
+      "traceId": "70f1b06f095be23856923529c5e1b9c5",
+      "startTime": "2026-09-05T12:11:53.856Z",
+      "endTime": "2026-09-05T12:11:57.456Z",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "parentObservationId": null,
+      "type": "GENERATION",
+      "environment": "default",
+      "name": "LLM Generation",
+      "level": "DEFAULT",
+      "statusMessage": null,
+      "version": null,
+      "createdAt": "2026-09-05T12:11:58.379Z",
+      "updatedAt": "2026-09-05T12:11:58.380Z",
+      "input": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are Guardrail Agent. You are a expert at validating the output of a task. By providing effective feedback if the output is not valid.\nYour personal goal is: Validate the output of the task"
+          },
+          {
+            "role": "user",
+            "content": "\nCurrent Task: \n        Ensure the following task result complies with the given guardrail.\n\n        Task result:\n        {\"markdown_body\":\"# Provisional Validation Report: AI Tool Turning Figma Files into Production React\\n\\n## Summary\\n**Provisional Verdict: REJECT** (Composite Score: 4.4/10, Confidence: 0.45 - MODERATE). The decision reason is a fatal floor trigger: `FLOOR_NO_MARKET`. While technical feasibility is supported by active open-source tooling, there is no documented evidence of paying customer segments, commercial pricing, or confirmed willingness to pay for this specific automation layer.\\n\\n## Scope\\n- **Startup Idea:** An AI tool that turns Figma files into production React\\n- **Category:** Design-to-code automation\\n- **Target User:** Frontend developers and engineering teams\\n- **Problem:** Manually translating design mockups into clean, responsive, and maintainable frontend code is repetitive and slows release cycles.\\n- **Technology Claim:** AI can accurately parse Figma design files and output production-ready React component code conforming to design systems and project conventions.\\n- **As of Date:** 2026-09-05\\n\\n## Rubric Evaluation\\n\\n| Dimension | Score | Anchor Matched | Evidence Thin |\\n|---|---|---|---|\\n| Demand (D) | 2/10 | 1 or 2 problem threads, or at least 3 problem threads none of which is dated within 24 months. | True |\\n| Market (M) | 0/10 | At least 3 market sources, and none of them names a buyer segment for this problem, and none states a price or a budget anyone spends on it. | False |\\n| Competitive Room (C) | 2/10 | No source states an axis of beatability, and either no competitor is named or at least 1 named competitor is not shown to be vendor owned. | True |\\n| Feasibility (F) | 5/10 | Anchor 4, and at least 3 reusable repositories together cover the separable parts of the scoped v1. | False |\\n| Headroom over Free (X) | 3/10 | No free substitute repository exists, and free coverage is unsettled or settled at no more than a separable part of the core job. | False |\\n\\n## Verdict & Confidence\\n- **Verdict:** REJECT\\n- **Decision Reason:** FLOOR_NO_MARKET\\n- **Composite Score:** 4.4 / 10\\n- **Confidence:** 0.45 (MODERATE)\\n- **Provisional:** Yes\\n\\n## Evidence & Detailed Findings\\n- **Demand:** Only a single historical problem thread was identified ([Hacker News item 20455836](https://news.ycombinator.com/item?id=20455836)), dated in 2019 asking about Figma-to-React converters. Community commentary suggests doubts regarding commercial viability; for example, one user noted that teams facing this pain point may have limited runways or shoestring budgets and \\\"are not in a place to pay\\\" ([Hacker News item 28201339](https://news.ycombinator.com/item?id=28201339)). Another noted that unless the tool produces 100% pixel-perfect output including interaction states, it only saves modest designer time rather than replacing frontend implementation ([Hacker News item 36291173](https://news.ycombinator.com/item?id=36291173)).\\n- **Market & Competition:** Incumbents such as Builder.io, Anima, and Locofy already operate in this category ([Reddit](https://www.reddit.com/r/FigmaDesign/comments/1ly2mu3/what_ai_tools_or_plugins_do_you_use_to_convert/)). Builder.io provides a dedicated Figma plugin offering AI-driven export to React, Next.js, Vue, and Tailwind ([Figma Community Plugin](https://www.figma.com/community/plugin/747985167520967365/builder-io-figma-to-code-ai-apps-react-vue-tailwind-etc)). However, none of the retrieved market sources documented published pricing or established paying customer segments ([Medium](https://jherr2020.medium.com/converting-figma-to-react-the-fast-and-easy-way-d6525a866f24)).\\n- **Feasibility & Headroom:** Feasibility is strong with active, commercially permissive repositories addressing code generation and Figma translation: `BuilderIO/mitosis` ([GitHub](https://github.com/BuilderIO/mitosis)), `bernaferrari/FigmaToCode` ([GitHub](https://github.com/bernaferrari/FigmaToCode)), `BuilderIO/figma-html` ([GitHub](https://github.com/BuilderIO/figma-html)), and `vibeflowing-inc/vibe_figma` ([GitHub](https://github.com/vibeflowing-inc/vibe_figma)). A non-relevant library was also retrieved (`BetterTyped/react-zoom-pan-pinch`, [GitHub](https://github.com/BetterTyped/react-zoom-pan-pinch)). None of the repositories represent a full turnkey substitute for complete production React workflows.\\n\\n## Evidence Gaps\\n- Unclear whether 'production React' scope includes state management, interactive logic, and tests, or is limited to presentational components.\\n\\n## Risks\\nWhat could make this verdict wrong:\\n- **Fatal Floor Trigger (`FLOOR_NO_MARKET`):** The rejection is driven strictly by the total lack of identified commercial pricing and designated paying segments in the collected sources, rather than proven market refusal.\\n- **Thin Dimensions:** Demand (D) and Competitive Room (C) are flagged thin due to sparse recent customer demand discussions and lack of documented axes of beatability against existing tools.\\n- **Unresolved Scope Gap:** The feasibility evaluation assumes presentational generation; if production requirements necessitate complex runtime state and end-to-end tests, technical feasibility may be overstated.\\n- **Incumbent Dominance:** Builder.io provides existing AI Figma-to-code plugins across multiple frameworks ([Figma Community Plugin](https://www.figma.com/community/plugin/747985167520967365/builder-io-figma-to-code-ai-apps-react-vue-tailwind-etc)), posing a direct incumbent threat if users default to native or established ecosystem tooling.\\n\\n## Kill Criteria\\n1. Fewer than 2 out of 10 engineering managers surveyed state a willingness to pay for a third-party Figma-to-React tool over existing open-source libraries or incumbent plugins.\\n2. A benchmark of 20 production design files shows manual refactoring time exceeds 50% of the time required to write React components from scratch.\\n3. Major incumbents (such as Builder.io or Figma itself) release native, production-quality React component export at no additional charge.\\n\\n## Cheapest Next Test\\nInterview 10 frontend engineering leads at mid-market SaaS companies currently using Builder.io or Locofy to identify unmet requirements in production code generation that they would allocate budget to replace.\\n\\n## Sources\\n- [Medium (2023-11-29)](https://jherr2020.medium.com/converting-figma-to-react-the-fast-and-easy-way-d6525a866f24): Converting Figma To React the Fast and Easy Way\\n- [Reddit r/FigmaDesign (2026-09-05)](https://www.reddit.com/r/FigmaDesign/comments/1ly2mu3/what_ai_tools_or_plugins_do_you_use_to_convert/): Discussion of tools like Anima, Locofy, and Builder.io\\n- [Figma Community (2026-09-05)](https://www.figma.com/community/plugin/747985167520967365/builder-io-figma-to-code-ai-apps-react-vue-tailwind-etc): Builder.io Figma to Code AI plugin\\n- [Hacker News #20455836 (2019-07-17)](https://news.ycombinator.com/item?id=20455836): Converters from Figma or Sketch to React code\\n- [Hacker News #36291173 (2023-06-12)](https://news.ycombinator.com/item?id=36291173): Need and willingness to pay for Figma to React conversion\\n- [Hacker News #28201339 (2021-08-16)](https://news.ycombinator.com/item?id=28201339): Analysis of company willingness to pay for UI component generation\\n- [GitHub BuilderIO/mitosis (2026-09-05)](https://github.com/BuilderIO/mitosis): Mitosis multi-framework component generator\\n- [GitHub bernaferrari/FigmaToCode (2026-09-05)](https://github.com/bernaferrari/FigmaToCode): FigmaToCode plugin and translation engine\\n- [GitHub BuilderIO/figma-html (2026-09-05)](https://github.com/BuilderIO/figma-html): Convert Figma designs to HTML/CSS/React\\n- [GitHub BetterTyped/react-zoom-pan-pinch (2026-09-05)](https://github.com/BetterTyped/react-zoom-pan-pinch): Pan and zoom component for React\\n- [GitHub vibeflowing-inc/vibe_figma (2026-09-05)](https://github.com/vibeflowing-inc/vibe_figma): Figma integration tooling\",\"provisional\":true,\"thin_dimensions\":[\"D\",\"C\"],\"sources\":[{\"claim\":\"Converting Figma To React the Fast and Easy Way If you think that AI is going to replace web developers, look no further than trying to turn a Figma prototype into a working React application. Figma \u2026\",\"url\":\"https://jherr2020.medium.com/converting-figma-to-react-the-fast-and-easy-way-d6525a866f24\",\"publisher\":\"Medium\",\"dated\":\"2023-11-29T16:01:37.257Z\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"firecrawl\"},{\"claim\":\"I've seen a few tools floating around like Anima, Locofy, and Builder.io, but I'm especially interested in anything AI-powered or newer that's ...What AI Design tools are you using apart from Figma Make, which ones ...Every AI \\\"design in one prompt\\\" tool drops Figma stock. The ... - RedditMore results from www.reddit.com\",\"url\":\"https://www.reddit.com/r/FigmaDesign/comments/1ly2mu3/what_ai_tools_or_plugins_do_you_use_to_convert/\",\"publisher\":\"www.reddit.com\",\"dated\":\"2026-09-05T12:11:30Z\",\"dated_is_retrieval_time\":true,\"retrieved_via\":\"firecrawl\"},{\"claim\":\"Use AI to turn Figma designs into code, create on-brand designs, or convert websites to Figma in real time. Convert Figma to Code - No setup: no special prep needed in your design files - Any framework: generate React, Next.js, Vue, Svelte, Angular, Swift, Flutter, Kotlin, React Native, HTML and...\",\"url\":\"https://www.figma.com/community/plugin/747985167520967365/builder-io-figma-to-code-ai-apps-react-vue-tailwind-etc\",\"publisher\":\"Figma\",\"dated\":\"2026-09-05T12:11:30Z\",\"dated_is_retrieval_time\":true,\"retrieved_via\":\"firecrawl\"},{\"claim\":\"Are there any existing converters from Figma or Sketch to React code? The problems I am trying to solve is to make prototyping faster so we can gather some feedback and build what people want faster\",\"url\":\"https://news.ycombinator.com/item?id=20455836\",\"publisher\":\"Hacker News\",\"dated\":\"2019-07-17T02:18:16.000Z\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"hn_algolia\"},{\"claim\":\"I think if it works with complex figma designs, people will definitely want it. There's a separate question of how many people will pay for it, but I think some will. I've looked for similar products for converting figma to html/css even. I've paid designers considerable amounts of money to get them to convert figma designs to webflow sites. I think the need to converting to react is similar. I'll note that the designer that I ended up going back to was the one who converted it in a way that was pixel perfect, and who made sure that some of the things missing from the figma (e.g. the hover state of certain buttons) looked good. What I'm trying to say is that if it can do it 80% well that's nice, and then it's a tool for designers to save time, if it can do it 100% well, then it's a tool for the end buyer and they wouldn't need to hire the person to convert it to react. See also: https://www.figma.com/community/plugin/862039267149408972/Fi..., https://www.figma.com/blog/introducing-figm\",\"url\":\"https://news.ycombinator.com/item?id=36291173\",\"publisher\":\"Hacker News\",\"dated\":\"2023-06-12T13:42:54.000Z\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"hn_algolia\"},{\"claim\":\"I suspect, genarating components from designs is a pain point for narrow subsection of companies which use React. I also suspect those which have this problem are not in a place to pay. Startups with limited runways, agencies with shoestring budgets are not the most lucrative.\",\"url\":\"https://news.ycombinator.com/item?id=28201339\",\"publisher\":\"Hacker News\",\"dated\":\"2021-08-16T21:14:57.000Z\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"hn_algolia\"},{\"claim\":\"BuilderIO/mitosis: license permits commercial use, pushed 1 month ago, partial relevance.\",\"url\":\"https://github.com/BuilderIO/mitosis\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"},{\"claim\":\"bernaferrari/FigmaToCode: license permits commercial use, pushed 1 month ago, partial relevance.\",\"url\":\"https://github.com/bernaferrari/FigmaToCode\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"},{\"claim\":\"BuilderIO/figma-html: license permits commercial use, pushed 12 months ago, partial relevance.\",\"url\":\"https://github.com/BuilderIO/figma-html\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"},{\"claim\":\"BetterTyped/react-zoom-pan-pinch: license permits commercial use, pushed 0 months ago, irrelevant relevance.\",\"url\":\"https://github.com/BetterTyped/react-zoom-pan-pinch\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"},{\"claim\":\"vibeflowing-inc/vibe_figma: license permits commercial use, pushed 3 months ago, partial relevance.\",\"url\":\"https://github.com/vibeflowing-inc/vibe_figma\",\"publisher\":\"GitHub\",\"dated\":\"2026-09-05\",\"dated_is_retrieval_time\":false,\"retrieved_via\":\"github\"}]}\n\n        Guardrail:\n        Reject the validation report unless BOTH rules hold:\n  1. ATTRIBUTION - every factual, numeric, competitor, thread, repository and\n     named-entity claim in markdown_body is attributable to a URL in the\n     report's own sources list.\n  2. FAITHFULNESS - markdown_body contains no fact, number, example or conclusion\n     absent from the scoped idea, branch findings and deterministic verdict it\n     was given.\nOn rejection, name the failed rule and quote the exact unsupported sentence.\nDo not rewrite the report and do not judge style or persuasiveness. An honest\nstatement that evidence is thin is a PASS.\n\n        Your task:\n        - Confirm if the Task result complies with the guardrail.\n        - If not, provide clear feedback explaining what is wrong (e.g., by how much it violates the rule, or what specific part fails).\n        - Focus only on identifying issues \u2014 do not propose corrections.\n        - If the Task result complies with the guardrail, saying that is valid\n        \n\nProvide your complete response:"
+          }
+        ]
+      },
+      "output": {
+        "completion": "{\n  \"valid\": true,\n  \"feedback\": null\n}",
+        "reasoning": "**Verifying Task Compliance**\n\nI'm now focused on verifying the task result against the guardrail. My core concern is compliance with the attribution rule; specifically, ensuring every factual claim in the markdown body is linked to a source URL in the report. The faithfulness rule is also under consideration. I'm building a system to do this automatically.\n\n\n",
+        "rawRequest": {
+          "model": "google/gemini-3.8-flash",
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "schema": {
+                "properties": {
+                  "valid": {
+                    "description": "Whether the task output complies with the guardrail",
+                    "title": "Valid",
+                    "type": "boolean"
+                  },
+                  "feedback": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "A feedback about the task output if it is not valid",
+                    "title": "Feedback"
+                  }
+                },
+                "required": [
+                  "valid",
+                  "feedback"
+                ],
+                "title": "LLMGuardrailResult",
+                "type": "object",
+                "additionalProperties": false
+              },
+              "name": "LLMGuardrailResult",
+              "strict": true
+            }
+          },
+          "stream": false,
+          "reasoning": {
+            "effort": "low"
+          },
+          "provider": {
+            "max_price": {
+              "prompt": 1
+            },
+            "sort": "throughput"
+          },
+          "_skin": "chat-completions"
+        }
+      },
+      "metadata": {
+        "provider_responses": [
+          {
+            "id": "CgecaqXtEpazg8UPxrrMgQs",
+            "provider_name": "Google AI Studio",
+            "status": 200,
+            "latency": 2146,
+            "is_byok": false,
+            "endpoint_id": "d376f781-516d-42f9-936d-46f19abca6cc",
+            "model_permaslug": "google/gemini-3.8-flash-20260902"
+          }
+        ],
+        "attributes": {
+          "langfuse.trace.name": "OpenRouter Request",
+          "langfuse.observation.type": "generation",
+          "langfuse.observation.level": "DEFAULT",
+          "gen_ai.operation.name": "chat",
+          "gen_ai.system": "google",
+          "gen_ai.provider.name": "google",
+          "gen_ai.request.model": "google/gemini-3.8-flash",
+          "gen_ai.response.model": "google/gemini-3.8-flash",
+          "gen_ai.response.id": "gen-1788610313-Hjoan1vOubTgOjt7iPwQ",
+          "gen_ai.usage.input_tokens": "4102",
+          "gen_ai.usage.output_tokens": "733",
+          "gen_ai.usage.total_tokens": "4835",
+          "gen_ai.usage.input_cost": "0.0030765",
+          "gen_ai.usage.output_cost": "0.00274875",
+          "gen_ai.usage.total_cost": "0.00582525",
+          "gen_ai.usage.input_tokens.cached": "0",
+          "gen_ai.usage.input_tokens.audio": "0",
+          "gen_ai.usage.input_tokens.video": "0",
+          "gen_ai.usage.output_tokens.reasoning": "717",
+          "gen_ai.usage.output_tokens.image": "0",
+          "gen_ai.response.finish_reasons": "[\"stop\"]",
+          "gen_ai.response.finish_reason": "stop",
+          "langfuse.observation.completion_start_time": "2026-09-05T12:11:56.264Z",
+          "langfuse.observation.usage_details": "{\"input\":4102,\"output\":733,\"total\":4835}",
+          "langfuse.observation.cost_details": "{\"input\":0.0030765,\"output\":0.00274875,\"total\":0.00582525}",
+          "gen_ai.usage.cost": "0.00582525",
+          "langfuse.observation.model.name": "google/gemini-3.8-flash"
+        },
+        "resourceAttributes": {
+          "service.name": "openrouter",
+          "openrouter.trace.id": "gen-1788610313-Hjoan1vOubTgOjt7iPwQ"
+        },
+        "scope": {
+          "name": "openrouter",
+          "attributes": {}
+        }
+      },
+      "model": "google/gemini-3.8-flash",
+      "modelParameters": {},
+      "completionStartTime": "2026-09-05T12:11:56.264Z",
+      "promptId": null,
+      "promptName": null,
+      "promptVersion": null,
+      "latency": 3.6,
+      "timeToFirstToken": 2.408,
+      "usageDetails": {
+        "input": 4102,
+        "output": 733,
+        "total": 4835
+      },
+      "costDetails": {
+        "input": 0.0030765,
+        "output": 0.00274875,
+        "total": 0.00582525
+      },
+      "usagePricingTierId": "c3a9f9a6-b79a-4e42-8835-9f0f8204a709_tier_default",
+      "usagePricingTierName": "Standard",
+      "inputPrice": 7.5e-07,
+      "outputPrice": 3.75e-06,
+      "totalPrice": 0,
+      "calculatedInputCost": 0.0030765,
+      "calculatedOutputCost": 0.00274875,
+      "calculatedTotalCost": 0.00582525,
+      "unit": "TOKENS",
+      "promptTokens": 4102,
+      "completionTokens": 733,
+      "totalTokens": 4835,
+      "modelId": "c3a9f9a6-b79a-4e42-8835-9f0f8204a709",
+      "usage": {
+        "unit": "TOKENS",
+        "input": 4102,
+        "output": 733,
+        "total": 4835
+      }
+    },
+    {
+      "id": "3d6a3c0476f39448",
+      "traceId": "70f1b06f095be23856923529c5e1b9c5",
+      "startTime": "2026-09-05T12:11:53.856Z",
+      "endTime": "2026-09-05T12:11:56.002Z",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "parentObservationId": "70f1b06f095be238",
+      "type": "SPAN",
+      "environment": "default",
+      "name": "provider attempt 1: Google AI Studio",
+      "level": "DEFAULT",
+      "statusMessage": null,
+      "version": null,
+      "createdAt": "2026-09-05T12:11:58.379Z",
+      "updatedAt": "2026-09-05T12:11:58.380Z",
+      "input": null,
+      "output": null,
+      "metadata": {
+        "attempt_index": 0,
+        "status_code": 200,
+        "is_byok": false,
+        "endpoint_id": "d376f781-516d-42f9-936d-46f19abca6cc",
+        "model_permaslug": "google/gemini-3.8-flash-20260902",
+        "attributes": {
+          "langfuse.observation.type": "span",
+          "langfuse.observation.level": "DEFAULT",
+          "gen_ai.operation.name": "chat",
+          "gen_ai.response.id": "gen-1788610313-Hjoan1vOubTgOjt7iPwQ:attempt-0"
+        },
+        "resourceAttributes": {
+          "service.name": "openrouter",
+          "openrouter.trace.id": "gen-1788610313-Hjoan1vOubTgOjt7iPwQ"
+        },
+        "scope": {
+          "name": "openrouter",
+          "attributes": {}
+        }
+      },
+      "model": null,
+      "modelParameters": null,
+      "completionStartTime": null,
+      "promptId": null,
+      "promptName": null,
+      "promptVersion": null,
+      "latency": 2.146,
+      "timeToFirstToken": null,
+      "usageDetails": {},
+      "costDetails": {},
+      "usagePricingTierId": null,
+      "usagePricingTierName": null,
+      "inputPrice": 0,
+      "outputPrice": 0,
+      "totalPrice": 0,
+      "calculatedInputCost": null,
+      "calculatedOutputCost": null,
+      "calculatedTotalCost": null,
+      "unit": "TOKENS",
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "totalTokens": 0,
+      "modelId": null,
+      "usage": {
+        "unit": "TOKENS",
+        "input": 0,
+        "output": 0,
+        "total": 0
+      }
+    }
+  ],
+  "htmlPath": "/project/cmto3mj7t06ykad0ipon3ksbw/traces/70f1b06f095be23856923529c5e1b9c5",
+  "totalCost": 0.00582525,
+  "_deprecation": {
+    "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read span and trace data via GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>.",
+    "replacement": "GET /api/public/v2/observations?fromStartTime=<from>&toStartTime=<to>",
+    "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+    "sunsetAt": "2026-11-16"
+  }
+}

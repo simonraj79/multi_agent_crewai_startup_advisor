@@ -1,0 +1,189 @@
+# builder-toolfail - synthetic backend check
+
+Backend, started in a second shell before any of this ran:
+
+    $env:SYNTHETIC="1"; $env:SYNTHETIC_BRANCH_DELAY_SECONDS="1"; $env:PORT="8095"
+    $env:HOST="127.0.0.1"; $env:CREDENTIALS_MASTER_KEY="<the tests/__init__.py placeholder>"
+    $env:VALIDATOR_ALLOW_AUTO_GATES="1"; $env:LANGFUSE_EXPORT_ENABLED="0"
+    .\.venv\Scripts\serve.exe
+
+Run at 2026-09-05T15:12:05+00:00.
+Every call below is anonymous - no Authorization header, no X-Synthetic-User -
+because that is what the paid backend will be: auth off, nobody signed in.
+
+------------------------------------------------------------------------
+
+$ curl -sS -X GET http://127.0.0.1:8095/healthz
+  -> HTTP 200
+  {"status":"ok","dependencies":{"executor":{"status":"ok","backend":null,"workers":1},"storage":{"status":"ok","backend":"sqlite","workers":null}},"gates":{"open":0,"expired":0,"alerting":0,"expiries":0,"alerts":0,"sweeps":0}}
+
+$ curl -sS -X GET http://127.0.0.1:8095/readyz
+  -> HTTP 200
+  {"status":"ok","dependencies":{"executor":{"status":"ok","backend":null,"workers":1},"storage":{"status":"ok","backend":"sqlite","workers":null}},"gates":{"open":0,"expired":0,"alerting":0,"expiries":0,"alerts":0,"sweeps":0}}
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/credentials --data @<body>
+  -> HTTP 401
+  (THE VAULT IS UNREACHABLE ANONYMOUSLY. This is the same 401 the paid backend will answer, and it is why the plan's credential injection is not performable there: credentials_api.py::vault calls require_user (app.py:944-958))
+  {"detail":"sign in to use this endpoint"}
+
+$ curl -sS -X POST -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/builder/credentials --data @<body>
+  -> HTTP 201
+  (the SAME call with an identity. The header is honoured ONLY because this app was built synthetic=True and AUTH_BASE_URL is unset (app.py:860-882); on the paid backend synthetic is False, so the header is ignored and this is a 401 too)
+  {"id":"cr_88627cb9","kind":"firecrawl","label":"a wrong key","created_at":"2026-09-05T15:12:05.696045Z","updated_at":"2026-09-05T15:12:05.696045Z","last_used_at":null}
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/validate --data @<body>
+  -> HTTP 200
+  (valid=true and problems=[] is the acceptance this file exists to record)
+  {"valid":true,"problems":[],"budget":{"static_cost_usd":0.0336975,"floor_cost_usd":0.0336975,"modelled_calls":3,"billable_nodes":1,"escalation_nodes":0,"cycles":0,"unpriced_models":[],"over_ceiling":false,"ceiling_usd":10.0,"per_node":{"chart_the_shoals":{"calls":3,"usd":0.0336975,"model_id":"openrouter/google/gemini-3.5-flash-lite"}}},"identity_checked":false}
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/workflows --data @<body>
+  -> HTTP 201
+  {"id":"ug_b74115b7","document":{"schema":"builder.flow/v1","id":"ug_b74115b7","name":"Tidewater survey","version":1,"input_field":"idea","nodes":[{"id":"the_brief","kind":"input","label":"Survey brief","position":{"x":0,"y":190},"config":{"field":"idea","label":"Which stretch of water to survey","max_chars":2000,"required":true}},{"id":"start_survey","kind":"gate","label":"Start the survey","position":{"x":300,"y":190},"config":{"message":"Approve to send the Tidewater Cartographer out with the sounding line.","editable_fields":[],"max_turns":0,"expiry_seconds":1800}},{"id":"chart_the_shoals","kind":"agent","label":"chart_the_shoals","position":{"x":620,"y":190},"config":{"tier":"cheap","max_iter":2,"guardrail_max_retries":0,"prompt_inputs":{"brief":"${state.idea}"},"on_error":"fail","role":"Tidewater Cartographer","goal":"Chart the shoals of a named stretch of water, reporting only what ...[6132 bytes total]
+
+  document id = ug_b74115b7
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/workflows/ug_b74115b7/publish
+  -> HTTP 200
+  {"workflow_id":"ug_b74115b7","graph_version":"863de0731ee457aa","version":1,"input_field":"idea","static_cost_usd":0.0336975,"gated_before_spend":true,"reserved_input_keys":["__builder__","decision__start_survey","out__chart_the_shoals","out__start_survey","out__the_brief","out__the_chart","turns__start_survey"]}
+
+  workflow_id = ug_b74115b7  gated_before_spend = True
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/sessions/proof-builder-toolfail/runs --data @<body>
+  -> HTTP 202
+  (gates=auto is what makes it unattended; it needs VALIDATOR_ALLOW_AUTO_GATES for an anonymous caller, and it needs the graph to HAVE a gate)
+  {"run_id":"07a7af73-e708-446c-a1cd-fdfa0cf587e8","status":"queued","graph_version":"863de0731ee457aa"}
+
+  run id = 07a7af73-e708-446c-a1cd-fdfa0cf587e8
+
+$ curl -sS http://127.0.0.1:8095/api/runs/07a7af73-e708-446c-a1cd-fdfa0cf587e8   # polled until terminal
+  -> HTTP 200, status = completed
+  result keys: ['markdown_body', 'node_id']
+
+$ curl -sS http://127.0.0.1:8095/api/runs/07a7af73-e708-446c-a1cd-fdfa0cf587e8/frames
+  -> HTTP 200, 26 frames
+     kind=edge_taken   node=chart_the_shoals   stage=traversal x1
+     kind=edge_taken   node=start_survey       stage=None      x1
+     kind=edge_taken   node=start_survey       stage=traversal x1
+     kind=edge_taken   node=the_chart          stage=traversal x1
+     kind=llm          node=chart_the_shoals   stage=chunk     x3
+     kind=llm          node=chart_the_shoals   stage=utterance x1
+     kind=metrics      node=workflow           stage=None      x1
+     kind=node_state   node=chart_the_shoals   stage=after     x1
+     kind=node_state   node=chart_the_shoals   stage=before    x1
+     kind=node_state   node=start_survey       stage=after     x2
+     kind=node_state   node=start_survey       stage=before    x2
+     kind=node_state   node=the_brief          stage=after     x1
+     kind=node_state   node=the_brief          stage=before    x1
+     kind=node_state   node=the_chart          stage=after     x1
+     kind=node_state   node=the_chart          stage=before    x1
+     kind=run_state    node=workflow           stage=None      x2
+     kind=run_state    node=workflow           stage=plan      x4
+     kind=token        node=chart_the_shoals   stage=None      x1
+  levels: {'INFO': 26}
+
+TERMINAL STATE: completed
+
+What this does NOT prove: the synthetic backend swaps in `SyntheticCrewFactories`
+(`service/builder_runner.py`), so no OpenRouter call and no tool call happens here.
+The injection in inject.md is NOT exercised by this transcript. What is proved is
+that the document validates, publishes, registers and launches, and that the run
+reaches a terminal state - the four things that have to be true before money is
+spent on it.
+
+========================================================================
+
+# builder-toolfail - FOLLOW-UP: a second, AUTHOR-NAMED tool for C2
+
+Run at 2026-09-05T15:24:51+00:00, against the same synthetic backend
+recipe as above, restarted. The orchestrator asked for a second tool on the
+`Tidewater Cartographer`: the custom HTTP tool named exactly
+`sounding_line_lookup`, at https://sounding-line.invalid/depths, so that C2's
+invented TOOL NAME appears verbatim as the TOOL observation name while
+`scrape_website` keeps the D2 raise.
+
+**The calls below are NOT anonymous, and they cannot be.** A custom tool has an
+owner by construction, so everything from here on carries
+`X-Synthetic-User: proof-author` - an identity only a SYNTHETIC backend honours.
+See inject.md section 7.
+
+------------------------------------------------------------------------
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/tools/custom --data @<body>
+  -> HTTP 401
+  (ANONYMOUS. builder_api.py::require_owner refuses every attachment route without an identity - the same wall the credential hit)
+  {"detail":"sign in first; tools, MCP servers and skills belong to somebody"}
+
+$ curl -sS -X POST -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/builder/tools/custom --data @<body>
+  -> HTTP 201
+  (the SAME body with an identity. The row id is what the document names; the NAME is what the agent and the TOOL frame see)
+  {"id":"ut_786b6870f07e","name":"sounding_line_lookup","description":"Look a stretch of water up in the survey office depth register and return the recorded soundings for it.","properties":[{"name":"water","type":"string","description":"The stretch of water to look up","required":true}],"request":{"method":"GET","url":"https://sounding-line.invalid/depths","header_name":null,"header_template":null,"body_template":null,"timeout_seconds":15,"max_response_bytes":1048576},"credential_id":null,"entry":{"tool_id":"ut_786b6870f07e","label":"sounding_line_lookup","category":"custom","credential_kind":null,"credential_kind_by_param":null,"credential_optional":false,"attaches_to":["agent","crew"],"params":[],"description":"Look a stretch of water up in the survey office depth register and return the recorded soundings for it.","docs_url":"","owner":"user","available":true,"requires_packages":{},"pa ...[920 bytes total]
+
+  custom tool id = ut_786b6870f07e
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/builder/validate --data @<body>
+  -> HTTP 200
+  (ANONYMOUS validate of the two-tool document. It comes back CLEAN, and that is a TRAP rather than a pass: tool_problems leaves a ut_ id alone when there is nobody to ask (builder/tools.py:1436-1440))
+  {"valid":true,"problems":[],"budget":{"static_cost_usd":0.0336975,"floor_cost_usd":0.0336975,"modelled_calls":3,"billable_nodes":1,"escalation_nodes":0,"cycles":0,"unpriced_models":[],"over_ceiling":false,"ceiling_usd":10.0,"per_node":{"chart_the_shoals":{"calls":3,"usd":0.0336975,"model_id":"openrouter/google/gemini-3.5-flash-lite"}}},"identity_checked":false}
+
+$ curl -sS -X POST -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/builder/validate --data @<body>
+  -> HTTP 200
+  (the same validate WITH the identity that owns the tool)
+  {"valid":true,"problems":[],"budget":{"static_cost_usd":0.0336975,"floor_cost_usd":0.0336975,"modelled_calls":3,"billable_nodes":1,"escalation_nodes":0,"cycles":0,"unpriced_models":[],"over_ceiling":false,"ceiling_usd":10.0,"per_node":{"chart_the_shoals":{"calls":3,"usd":0.0336975,"model_id":"openrouter/google/gemini-3.5-flash-lite"}}},"identity_checked":true}
+
+$ curl -sS -X POST -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/builder/workflows --data @<body>
+  -> HTTP 201
+  {"id":"ug_2bd4bdf7","document":{"schema":"builder.flow/v1","id":"ug_2bd4bdf7","name":"Tidewater survey","version":1,"input_field":"idea","nodes":[{"id":"the_brief","kind":"input","label":"Survey brief","position":{"x":0,"y":190},"config":{"field":"idea","label":"Which stretch of water to survey","max_chars":2000,"required":true}},{"id":"start_survey","kind":"gate","label":"Start the survey","position":{"x":300,"y":190},"config":{"message":"Approve to send the Tidewater Cartographer out with the sounding line.","editable_fields":[],"max_turns":0,"expiry_seconds":1800}},{"id":"chart_the_shoals","kind":"agent","label":"chart_the_shoals","position":{"x":620,"y":190},"config":{"tier":"cheap","max_iter":2,"guardrail_max_retries":0,"prompt_inputs":{"brief":"${state.idea}"},"on_error":"fail","role":"Tidewater Cartographer","goal":"Chart the shoals of a named stretch of water, reporting only what ...[6781 bytes total]
+
+  document id = ug_2bd4bdf7  (owned by proof-author)
+
+$ curl -sS -X POST -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/builder/workflows/ug_2bd4bdf7/publish
+  -> HTTP 200
+  {"workflow_id":"ug_2bd4bdf7","graph_version":"94196832f7c25e55","version":1,"input_field":"idea","static_cost_usd":0.0336975,"gated_before_spend":true,"reserved_input_keys":["__builder__","decision__start_survey","out__chart_the_shoals","out__start_survey","out__the_brief","out__the_chart","turns__start_survey"]}
+
+  workflow_id = ug_2bd4bdf7  gated_before_spend = True
+
+$ curl -sS -X POST http://127.0.0.1:8095/api/sessions/proof-toolfail-2/runs --data @<body>
+  -> HTTP 404
+  (ANONYMOUS launch of an OWNED document: a document with an owner is invisible to everybody else, and 404 rather than 403 because a 403 would confirm it exists)
+  {"detail":"workflow not found"}
+
+$ curl -sS -X POST -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/sessions/proof-toolfail-2/runs --data @<body>
+  -> HTTP 202
+  (the launch that works. gates=auto needs no flag for a signed-in caller)
+  {"run_id":"0d1c3f09-3897-427e-945e-28e723d19b70","status":"queued","graph_version":"94196832f7c25e55"}
+
+  run id = 0d1c3f09-3897-427e-945e-28e723d19b70
+
+$ curl -sS -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/runs/0d1c3f09-3897-427e-945e-28e723d19b70   # polled until terminal
+  -> HTTP 200, status = completed
+
+$ curl -sS -H 'X-Synthetic-User: proof-author' http://127.0.0.1:8095/api/runs/0d1c3f09-3897-427e-945e-28e723d19b70/frames
+  -> HTTP 200, 26 frames
+     kind=edge_taken   node=chart_the_shoals   stage=traversal x1
+     kind=edge_taken   node=start_survey       stage=None      x1
+     kind=edge_taken   node=start_survey       stage=traversal x1
+     kind=edge_taken   node=the_chart          stage=traversal x1
+     kind=llm          node=chart_the_shoals   stage=chunk     x3
+     kind=llm          node=chart_the_shoals   stage=utterance x1
+     kind=metrics      node=workflow           stage=None      x1
+     kind=node_state   node=chart_the_shoals   stage=after     x1
+     kind=node_state   node=chart_the_shoals   stage=before    x1
+     kind=node_state   node=start_survey       stage=after     x2
+     kind=node_state   node=start_survey       stage=before    x2
+     kind=node_state   node=the_brief          stage=after     x1
+     kind=node_state   node=the_brief          stage=before    x1
+     kind=node_state   node=the_chart          stage=after     x1
+     kind=node_state   node=the_chart          stage=before    x1
+     kind=run_state    node=workflow           stage=None      x2
+     kind=run_state    node=workflow           stage=plan      x4
+     kind=token        node=chart_the_shoals   stage=None      x1
+  TOOL frames: 0
+
+TERMINAL STATE: completed
+
+Again, and it matters more now: the synthetic backend swaps in
+`SyntheticCrewFactories`, so NEITHER tool is constructed and NEITHER is called -
+the table above carries 0 TOOL frames. This transcript proves the two-tool
+document validates, publishes and launches, and nothing about what the tools do.
+`sounding_line_lookup` appearing as a TOOL observation name is a PREDICTION from
+`builder/tools.py:1307-1308`, not a measurement, until the paid run.

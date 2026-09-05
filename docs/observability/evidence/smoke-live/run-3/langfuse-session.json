@@ -1,0 +1,99 @@
+{
+  "id": "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea",
+  "createdAt": "2026-09-05T14:46:20.714Z",
+  "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+  "environment": "synthetic",
+  "traces": [
+    {
+      "id": "9d356fcbaadd4d41ab067ffcd50c78ea",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "name": "idea-validator",
+      "timestamp": "2026-09-05T14:46:11.421Z",
+      "environment": "synthetic",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "bookmarked": false,
+      "release": null,
+      "version": null,
+      "userId": "anonymous",
+      "sessionId": "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea",
+      "public": false,
+      "input": {
+        "input_chars": 61,
+        "input_fingerprint": "37c5cf938a9ee03d4f5a9beaf403c170e8704f12339195c7d4602051f2ef6b77",
+        "input_keys": [
+          "idea",
+          "no_gates"
+        ]
+      },
+      "output": {
+        "status": "completed",
+        "reason": null
+      },
+      "metadata": {
+        "run_id": "9d356fcb-aadd-4d41-ab06-7ffcd50c78ea",
+        "workflow_id": "idea-validator",
+        "app_session_id": "smoke-live-3",
+        "gates": "auto",
+        "mode": "run",
+        "synthetic": true,
+        "user_id": "anonymous",
+        "graph_version": "9c6ca8a6fefbfffd",
+        "observation_role": "run",
+        "frame_ts": "2026-09-05T14:46:11.420Z",
+        "computed_result": {
+          "verdict": "NEEDS_WORK",
+          "composite_score": 6,
+          "confidence": 0.62,
+          "confidence_band": {
+            "chars": 8,
+            "sha256": "b9b394371b969a9e492cc66098ca567b5bece5c88bdea569a1146120ab770f7f"
+          },
+          "provisional": false,
+          "fatal_floors": [],
+          "decision_reason": null,
+          "dimensions": {
+            "demand": 3,
+            "market": 3,
+            "competitive_room": 3,
+            "feasibility": 3,
+            "headroom_over_free": 3
+          },
+          "anchor_margins": {
+            "D": 0,
+            "M": 0.0625,
+            "C": 0.0714,
+            "F": 0.0417,
+            "X": 0.0476
+          }
+        },
+        "resourceAttributes": {
+          "telemetry.sdk.language": "python",
+          "telemetry.sdk.name": "opentelemetry",
+          "telemetry.sdk.version": "1.42.1",
+          "langfuse.environment": "synthetic",
+          "service.name": "unknown_service"
+        },
+        "scope": {
+          "name": "langfuse-sdk",
+          "version": "4.15.1",
+          "attributes": {
+            "public_key": "<LANGFUSE_PUBLIC_KEY redacted by V-PROOF-PREP>"
+          }
+        }
+      },
+      "createdAt": "2026-09-05T14:46:16.000Z",
+      "updatedAt": "2026-09-05T14:46:20.712Z",
+      "externalId": null
+    }
+  ],
+  "_deprecation": {
+    "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read session data via GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>.",
+    "replacement": "GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>",
+    "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+    "sunsetAt": "2026-11-16"
+  }
+}

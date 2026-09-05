@@ -1,0 +1,52 @@
+{
+  "checked_at_utc": "2026-09-05T13:57:19.951937Z",
+  "minutes_since_probe": 2.95,
+  "marker": "exclusion-check-1788616463",
+  "generation_id": "gen-1788616463-5l46OLAf97BzcaL6k9hT",
+  "derived_ids": {
+    "note": "functions measured by the prior audit: trace id = sha256(trace.trace_id)[:32]; observation id = sha256(generation id)[:16]",
+    "expected_langfuse_trace_id": "2b5d360b9db1f17c56499f65c9813059",
+    "expected_langfuse_observation_id": "3aa9676e98b1f876"
+  },
+  "langfuse_queries": [
+    {
+      "url": "https://us.cloud.langfuse.com/api/public/traces?fromTimestamp=2026-09-05T13:49:23.250926Z&limit=100",
+      "http_status": 200,
+      "traces_returned": 0
+    },
+    {
+      "url": "https://us.cloud.langfuse.com/api/public/traces/2b5d360b9db1f17c56499f65c9813059",
+      "http_status": 404,
+      "body_if_error": "{\"message\":\"Trace 2b5d360b9db1f17c56499f65c9813059 not found within authorized project\",\"error\":\"LangfuseNotFoundError\"}"
+    },
+    {
+      "url": "https://us.cloud.langfuse.com/api/public/observations/3aa9676e98b1f876",
+      "http_status": 404,
+      "body_if_error": "{\"message\":\"Observation with id 3aa9676e98b1f876 not found\",\"error\":\"LangfuseNotFoundError\"}"
+    }
+  ],
+  "assertions": {
+    "no_trace_in_window_carries_the_marker": true,
+    "no_trace_in_window_carries_the_generation_id": true,
+    "derived_trace_id_absent_(404_expected)": true,
+    "derived_observation_id_absent_(404_expected)": true,
+    "marker_hit_ids": [],
+    "generation_id_hit_ids": []
+  },
+  "openrouter_side_control": {
+    "purpose": "separates 'OpenRouter never saw the request' from 'OpenRouter saw it and did not forward it'",
+    "url": "https://openrouter.ai/api/v1/generation?id=<generation id>",
+    "http_status": 200,
+    "generation_exists": true,
+    "total_cost": 2.61e-05,
+    "tokens_prompt": 7,
+    "tokens_completion": 7,
+    "app_title_openrouter_recorded": null,
+    "api_key_name": null
+  },
+  "positive_control_other_keys": {
+    "status": "OPPORTUNISTIC, not a designed control - see the write-up",
+    "openrouter.api_key_name counts among traces returned in this window": {}
+  },
+  "traces_in_window_summary": []
+}

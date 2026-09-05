@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
+from hashlib import sha256
 import json
 from typing import Any
 
@@ -275,6 +276,120 @@ def error_class_of(error: Any) -> dict[str, str]:
     return {}
 
 
+#: How many messages of one call are read for the fingerprint. A prompt is a
+#: conversation and a conversation is bounded by the agent's `max_iter`; this
+#: is far above any of them and exists so that a malformed event carrying an
+#: unbounded sequence cannot make one frame cost the run.
+MAX_FINGERPRINTED_MESSAGES = 1024
+
+#: The same bound one level down, over a multimodal message's content parts.
+MAX_FINGERPRINTED_PARTS = 256
+
+
+def _content_text(content: Any) -> str:
+    """One message's content as text, WITHOUT traversing anything live.
+
+    This module's whole promise is in its class name - it converts events
+    "without traversing live CrewAI objects" - and a fingerprint is not a
+    licence to break it. A multimodal message's content is a list of parts, so
+    the parts are read one level deep and only where they are already strings;
+    anything else contributes its TYPE NAME and no more.
+
+    `str()` on an unknown object is what this deliberately does not do. It runs
+    on the capture thread, inside the capture lock, and an object whose
+    `__str__` reaches back into CrewAI - a task, an agent, a lazily-rendered
+    prompt - would put arbitrary framework work on the one path that must do
+    none. The cost is that two multimodal prompts differing only in an image
+    payload hash the same; the alternative is a fingerprint that can execute
+    somebody else's code.
+    """
+
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    if isinstance(content, (list, tuple)):
+        parts: list[str] = []
+        for part in content[:MAX_FINGERPRINTED_PARTS]:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, Mapping):
+                # The documented shape of a content part is
+                # `{"type": ..., "text": ...}`; the text is the only half a
+                # fingerprint can use and the only half that is a string.
+                text = part.get("text")
+                parts.append(text if isinstance(text, str) else f"<{part.get('type')}>")
+            else:
+                parts.append(f"<{type(part).__name__}>")
+        return "".join(parts)
+    return f"<{type(content).__name__}>"
+
+
+def prompt_digest(messages: Any) -> dict[str, Any]:
+    """A prompt reduced to a hash and two counts. The text stays here.
+
+    `LLMCallStartedEvent.messages` is `str | list[dict] | None`
+    (`crewai/events/types/llm_events.py:47`) and is the ONLY place the rendered
+    prompt exists in this process - CrewAI hands it to the provider and keeps
+    nothing. So the choice is to fingerprint it at the moment it passes, or to
+    have no answer at all to "which prompt produced this output".
+
+    Nothing readable is returned or retained. The hash is fed the role and the
+    content in order, and the counts are lengths - so two runs of the same
+    rendered prompt agree to 64 characters, one word of difference does not,
+    and neither the frame ring, the NDJSON export, the database nor Langfuse
+    ever holds the prompt itself. Contract section 4 and DoD row B5.
+
+    Cheap and copy-free by construction: the hash is updated per message,
+    nothing is joined, nothing is serialized, and the whole walk is a single
+    pass over strings the caller already holds.
+
+    Returns an empty mapping when the event carried no messages, which is the
+    signal the exporter reads to fall back to the identity fingerprint rather
+    than publishing a hash of nothing.
+    """
+
+    if messages is None:
+        return {}
+    digest = sha256()
+    count = 0
+    characters = 0
+
+    def _absorb(role: str, content: str) -> None:
+        nonlocal characters
+        digest.update(role.encode("utf-8", "replace"))
+        digest.update(b"")
+        digest.update(content.encode("utf-8", "replace"))
+        digest.update(b"")
+        characters += len(content)
+
+    if isinstance(messages, str):
+        _absorb("", messages)
+        count = 1
+    elif isinstance(messages, Sequence):
+        for message in messages[:MAX_FINGERPRINTED_MESSAGES]:
+            count += 1
+            if isinstance(message, Mapping):
+                role = message.get("role")
+                content = message.get("content")
+            else:  # a message object rather than the documented dict
+                role = getattr(message, "role", None)
+                content = getattr(message, "content", None)
+            _absorb(
+                role if isinstance(role, str) else "",
+                _content_text(content),
+            )
+    else:
+        return {}
+    if count == 0:
+        return {}
+    return {
+        "prompt_fingerprint": digest.hexdigest(),
+        "message_count": count,
+        "prompt_chars": characters,
+    }
+
+
 class FieldBoundedSerializer:
     """Convert supported events without traversing live CrewAI objects."""
 
@@ -428,7 +543,7 @@ class FieldBoundedSerializer:
         if isinstance(event, FlowFinishedEvent):
             if not scope.is_root(event.flow_name, claim=False):
                 return (self._nested_flow_draft(timestamp, node_id, event.flow_name, "completed", "after", {"result": self.clip(event.result)}),)
-            return (self._draft(timestamp, FrameKind.RUN_STATE, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} completed", {"status": "completed", "result": self.clip(event.result)}),)
+            return (self._draft(timestamp, FrameKind.RUN_STATE, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} completed", {"status": "completed", "result": self.clip(event.result), **self._unhandled_report()}),)
         if isinstance(event, FlowFailedEvent):
             # A nested failure is not the run failing either. `FrameKind.ERROR`
             # is read by the client as exactly that, and `error` is terminal, so
@@ -436,7 +551,7 @@ class FieldBoundedSerializer:
             # same way a false completion does.
             if not scope.is_root(event.flow_name, claim=False):
                 return (self._nested_flow_draft(timestamp, node_id, event.flow_name, "failed", "error", {"error": self.clip(str(event.error))}, FrameLevel.ERROR),)
-            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} failed", {"error": self.clip(str(event.error))}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} failed", {"error": self.clip(str(event.error)), **self._unhandled_report()}, FrameLevel.ERROR),)
 
         # The run's product, not a lifecycle transition - see `events/verdict.py`
         # for why it is an event at all. Placed here, with the flow-level
@@ -489,7 +604,19 @@ class FieldBoundedSerializer:
             return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} failed", {"stage": "error", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "error": self.clip(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, LLMCallStartedEvent):
-            return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call started", {"stage": "before", "call_id": event.call_id, "model": event.model}),)
+            # Three ADDITIVE fields, and none of them is the prompt. This event
+            # carries the rendered messages and nothing downstream of it does -
+            # CrewAI hands them to the provider and keeps nothing - so a
+            # fingerprint computed anywhere else is a fingerprint of something
+            # other than the prompt. Which is exactly what the exporter had:
+            # it hashed `node|agent_role|task_name|model`, a value constant
+            # across every call an agent makes on a task, and DoD row B5 asks
+            # "which prompt produced a bad output". `prompt_digest` returns a
+            # hash and two lengths; the text is not copied, not retained and
+            # not returned. An event with no messages produces no keys at all,
+            # which is the signal the exporter reads to say so rather than to
+            # publish a hash of nothing.
+            return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call started", {"stage": "before", "call_id": event.call_id, "model": event.model, **prompt_digest(getattr(event, "messages", None))}),)
         if isinstance(event, LLMCallCompletedEvent):
             model = str(event.model or "unknown")
             usage: dict[str, int | float | None] = dict(
@@ -523,7 +650,7 @@ class FieldBoundedSerializer:
             text = self._utterance_text(event)
             return (
                 self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call completed", {"stage": "after", "call_id": event.call_id, "model": event.model, "finish_reason": event.finish_reason, "response_id": event.response_id}),
-                self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} said", {"stage": "utterance", "call_id": event.call_id, "text": text[:MAX_UTTERANCE_CHARS], "truncated": len(text) > MAX_UTTERANCE_CHARS, "prompt_tokens": usage["prompt_tokens"], "completion_tokens": usage["completion_tokens"], "model": event.model}),
+                self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} said", {"stage": "utterance", "call_id": event.call_id, "text": text[:MAX_UTTERANCE_CHARS], "truncated": len(text) > MAX_UTTERANCE_CHARS, "text_chars": len(text), "prompt_tokens": usage["prompt_tokens"], "completion_tokens": usage["completion_tokens"], "model": event.model}),
                 self._draft(timestamp, FrameKind.TOKEN, UIEventType.MODEL_CALL, node_id, "Token usage recorded", {"call_id": event.call_id, "model": model, "usage": usage, "cost_usd": cost_usd}),
             )
         if isinstance(event, LLMCallFailedEvent):
@@ -735,6 +862,30 @@ class FieldBoundedSerializer:
         if isinstance(answer, str):
             return answer.strip()[: self.limits.max_string]
         return ""
+
+    def _unhandled_report(self) -> dict[str, Any]:
+        """The unhandled tally, ADDITIVELY, on the run's own terminal frame.
+
+        `record_unhandled` has counted these since it was written and the count
+        died with the process: ~130 CrewAI event classes reach the sink, this
+        ladder converts a subset, and nothing anywhere said which ones the rest
+        were. DoD row C3 wants that answerable from Langfuse, and the exporter
+        cannot answer it - an event that becomes no frame reaches no exporter,
+        however the exporter is written.
+
+        Class names and integers only, bounded, and never a payload: this says
+        an event class occurred N times, not what was in it. It rides the
+        terminal frame rather than getting a frame of its own because a frame
+        per unhandled event would flood a 2,000-frame ring with instrumentation
+        about instrumentation - memory and knowledge events alone would do it.
+
+        Absent when nothing was unhandled, so the ordinary frame is unchanged.
+        """
+
+        if not self.unhandled:
+            return {}
+        ordered = sorted(self.unhandled.items(), key=lambda item: (-item[1], item[0]))
+        return {"unhandled_events": {name: count for name, count in ordered[:64]}}
 
     def record_unhandled(self, event: Any) -> None:
         """Count an event class this ladder does not convert.

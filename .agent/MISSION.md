@@ -236,9 +236,30 @@ Three things a later wave must not get wrong:
 
 ## 7. The money rule
 
-**Balance: $27.55** — `total_credits` 120, `total_usage` 92.446, measured
-2026-09-04 with `mcp__openrouter__get-credits`. (An earlier note recorded
-$7.55; the owner has since topped up. Re-measure rather than quote this.)
+**Balance: $27.345242** — `total_credits` 120, `total_usage` 92.654757565,
+measured 2026-09-05 after the gate-payload verification run and confirmed
+unchanged three times. (It read $27.55 on 2026-09-04; an earlier note said
+$7.55 before the owner topped up. Re-measure rather than quote this — and read
+it LATE: the credits endpoint lags a completion by minutes, and every
+intermediate reading this programme has taken was low, never high.)
+
+**Spend to date on this programme: $0.148038 of the $5.00 allowance**, all of
+it on 2026-09-04 and 2026-09-05:
+
+| what | spend | measured as | where |
+| --- | ---: | --- | --- |
+| the paid acceptance run | $0.041713 | the run's own `cost_usd` | §11a |
+| plan 14's six template runs | $0.065942 | balance delta | §11b, `benchmarks/paid-runs.md` |
+| the `max_iter` verification run | $0.018073 | balance delta | `benchmarks/paid-runs.md` |
+| the gate-payload verification run | $0.022310 | balance delta | `benchmarks/paid-runs.md` |
+
+The first row is the only one that is not a balance delta — no balance was read
+around that run — and the column says so rather than letting four figures look
+like one kind of measurement. Every later run has both, and the two never differ
+by more than $0.0002.
+
+**$4.85 of the allowance is unspent**, and the one item left that needs it is
+the live fan-out benchmark (§12.3).
 
 Owner's ruling, 2026-09-04:
 
@@ -518,11 +539,10 @@ It also flagged itself honestly: `provisional: true`,
 `thin_dimensions: ['D','C','F','X']`. The ratified rubric — seven changes, four
 Critical — has now scored something for money for the first time.
 
-**Spend to date on this programme: $0.1076 of the $5.00 allowance.**
-$0.0417 for this acceptance run, plus **$0.0659** for plan 14's six paid
-template runs on 2026-09-05 (§11b). Balance **$27.385659**, the settled reading
-49 minutes after the last run and confirmed twice — the credits endpoint lags a
-completion by minutes, so read it late and re-measure rather than quote it.
+**This acceptance run cost $0.0417.** The programme's running total and the
+current balance live in **§7** and nowhere else — this paragraph carried its own
+copy until 2026-09-05 and was two verification runs stale within a day, which is
+the failure the whole of §10 is about.
 
 ## 11b. Plan 14's paid template runs — DONE, 2026-09-05
 
@@ -542,7 +562,9 @@ Two things a later session needs from it, and neither is a number:
 
 - **The estimate is exact, not merely conservative.** `cost_usd` is tokens x a
   local price table and had never been checked against a bill. Across six runs
-  and three models the two agree to **$0.000049**. The static worst case for
+  and three models the two agree to **$0.000049**. (Two later verification runs
+  measured 1.0 % and 0.10 % on one run each; `benchmarks/paid-runs.md` says why
+  neither settles the `:nitro` question. The programme total is §7's.) The static worst case for
   the same graphs is $4.4213, so 1.5 % of it was spent — which is the second
   data point for the ~2.8 % ratio §11a measured, and the argument that
   `MAX_RUN_COST_USD` is nowhere near binding for a template-shaped graph.

@@ -150,7 +150,13 @@ for (const theme of THEMES) {
 
     test(`gallery — ${theme}`, async ({ page }) => {
       await page.goto('/#/build')
-      await expect(page.locator('.template-gallery')).toBeVisible()
+      // The first paint of the gallery behind the stubbed sign-in is a page
+      // LOAD, and under a full-suite run it once took longer than the 15 s an
+      // assertion gets - the failure read `element(s) not found`, not a pixel
+      // diff, and the spec passed alone. A load gets the navigation budget the
+      // config already grants (30 s); the screenshot below keeps its own
+      // tolerance-free comparison, which this does not touch.
+      await expect(page.locator('.template-gallery')).toBeVisible({ timeout: 30_000 })
       await settle(page)
       await expect(page).toHaveScreenshot(`gallery-${theme}.png`)
     })

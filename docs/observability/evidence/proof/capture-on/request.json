@@ -1,0 +1,5 @@
+{
+  "workflow_id": "idea-validator",
+  "inputs": { "idea": "MARKER-QUILTED-SEXTANT is the marker phrase for this capture test. A tide-table app for harbour pilots; our staging key is sk-or-v1-0000000000000000-planted-fake-key and must never appear in a trace." },
+  "gates": "auto"
+}

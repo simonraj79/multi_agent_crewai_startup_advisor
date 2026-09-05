@@ -23,3 +23,20 @@ exit=1 (1 = no match)
 
 Working-tree hits outside evidence/ (expected: none):
   (none)
+
+--- appended 2026-09-06 by V-PROOF, at the Task-3 code commit ---
+commit: e68dac46120867d7f55a767f76237d7b4bb0a46c  (2026-09-06T00:29:12+08:00)
+checked: 2026-09-05T16:43:46Z
+
+$ git grep -n -i "Tidewater Cartographer\|chart_the_shoals\|sounding_line_lookup\|sounding line" HEAD -- src frontend/src data tests scripts agents
+HEAD:scripts/observability/mint_identity.py:10:  skills belong to somebody" - so `sounding_line_lookup` cannot even be
+exit=0 (1 = no match)
+
+NOTE on that single hit at e68dac4: `scripts/observability/mint_identity.py:10` is a
+docstring written for Task 3 itself, AFTER the pre-Task-3 commit b65bd65 (which is the
+commit C2 names and where the grep answers exit=1, no match, over the whole tree). The
+invented strings therefore did not exist in this repository before Task 3; they exist at
+HEAD only in Task-3 material. No source file the runtime loads carries any of them:
+
+$ git grep -n -i "Tidewater Cartographer|chart_the_shoals|sounding_line_lookup" HEAD -- src frontend/src data tests agents
+  (no match)

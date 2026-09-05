@@ -1,0 +1,73 @@
+================================================================================
+V-REVIEW (second pass) - Definition of Done row D4
+A retried call: a guardrail retry and a transport retry, both legible under the same task.
+================================================================================
+generated (UTC)  : 2026-09-05T16:41:09Z
+git rev-parse HEAD: e68dac46120867d7f55a767f76237d7b4bb0a46c
+
+THE TREE IS UNCOMMITTED. The whole observability programme is working-tree
+state - src/brief_crew/observability/, scripts/observability/,
+tests/observability/ and docs/observability/ are untracked, and
+src/brief_crew/{config.py,events/serializer.py,service/app.py,service/registry.py}
+and tests/__init__.py are modified - so the commit above does NOT contain the
+code these runs exercised. The md5 sums below are what pins this evidence to
+code a later commit can be compared against.
+
+md5 of src/brief_crew/observability/*.py at run time:
+  48de73e1d21df1f5532833324f01460f *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  46c8147381cb4efcd74490d15de59798 *src/brief_crew/observability/content.py
+  7f5f8982adaaa2144c2b938726173a76 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+interpreter/toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1
+platform             : Windows 11, PowerShell/Git Bash, D:\MultiAgentSystem
+verifier             : V-REVIEW, who built none of this code and edited none of it
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_retry_legibility.py" -v
+
+test_both_calls_are_generations_under_the_same_task (tests.observability.test_retry_legibility.GuardrailRetryTests.test_both_calls_are_generations_under_the_same_task) ... ok
+test_no_observation_is_left_open (tests.observability.test_retry_legibility.GuardrailRetryTests.test_no_observation_is_left_open) ... ok
+test_the_guardrail_verdict_is_a_score_on_the_task (tests.observability.test_retry_legibility.GuardrailRetryTests.test_the_guardrail_verdict_is_a_score_on_the_task) ... ok
+test_the_retry_index_is_on_each_generation (tests.observability.test_retry_legibility.GuardrailRetryTests.test_the_retry_index_is_on_each_generation) ... ok
+test_the_task_carries_its_attempt_count_as_a_score (tests.observability.test_retry_legibility.GuardrailRetryTests.test_the_task_carries_its_attempt_count_as_a_score) ... ok
+test_a_failed_call_carries_no_provider_generation_id (tests.observability.test_retry_legibility.TransportRetryTests.test_a_failed_call_carries_no_provider_generation_id)
+CrewAI's failure event has no field for one, so neither has this. ... ok
+test_the_failed_call_has_no_usage_and_the_next_one_does (tests.observability.test_retry_legibility.TransportRetryTests.test_the_failed_call_has_no_usage_and_the_next_one_does) ... ok
+test_the_failed_call_is_a_generation_at_error_level (tests.observability.test_retry_legibility.TransportRetryTests.test_the_failed_call_is_a_generation_at_error_level) ... ok
+test_the_order_is_failure_then_success (tests.observability.test_retry_legibility.TransportRetryTests.test_the_order_is_failure_then_success) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.004s
+
+OK
+
+--------------------------------------------------------------------------------
+V-REVIEW's reading (unchanged from the first pass, re-verified against current code)
+--------------------------------------------------------------------------------
+
+The row names two mechanisms and the module covers both, driving the REAL
+FrameData the pipeline produces through replay.py rather than a lookalike:
+
+  guardrail retry  - two generations under ONE task span, metadata.attempt
+                     [1, 2] in order, the guardrail verdict as a SCORE on the
+                     task with values [0, 1], task_attempts == 2, and nothing
+                     left without an end time.
+  transport retry  - the failed call is a GENERATION at level=ERROR carrying
+                     the exception class, followed by a successful one; usage
+                     on the second only; no provider generation id on the
+                     failed one, because CrewAI's failure event has no field
+                     for one; attempt [1, 2].
+
+Worth naming and NOT a failure: the retry index is derived from the frame order
+the recorder builds, so this pins the exporter's arithmetic rather than that
+CrewAI emits that order. Closing that needs a recorded real event sequence,
+which is row B3/D1's live proof run, not a unit test.
+
+The failure text on the failed generation is now scrubbed on its way out
+(langfuse_exporter.py:1601 -> _safe -> content.safe_message), which is the
+first pass's finding 1 landing on this row's own path: this module's
+assertions were written against the verbatim behaviour and still pass, because
+scrubbing changes a credential-shaped substring and nothing else.

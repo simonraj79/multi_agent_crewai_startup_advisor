@@ -1,0 +1,93 @@
+[
+  {
+    "id": "6586c8543ca344c4a587eb6a3ef01962",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "name": "brief-flow",
+    "timestamp": "2026-09-05T16:34:41.590Z",
+    "environment": "live",
+    "tags": [
+      "brief-flow",
+      "gates:human",
+      "mode:run"
+    ],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "proof-runner",
+    "sessionId": "6586c854-3ca3-44c4-a587-eb6a3ef01962",
+    "public": false,
+    "input": {
+      "input_chars": 58,
+      "input_fingerprint": "9792bdb022b1df28aeb4499db5130f183934a6123f07f3f361059113cf0ba559",
+      "input_keys": [
+        "topic"
+      ]
+    },
+    "output": {
+      "status": "completed",
+      "reason": null
+    },
+    "metadata": {
+      "run_id": "6586c854-3ca3-44c4-a587-eb6a3ef01962",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "WORKFLOW_START",
+      "frame_ts": "2026-09-05T16:34:41.590Z",
+      "null_fields": "agent_role,task_name",
+      "workflow_id": "brief-flow",
+      "app_session_id": "proof-4",
+      "gates": "human",
+      "mode": "run",
+      "synthetic": false,
+      "user_id": "proof-runner",
+      "graph_version": "078969f5584a51e0",
+      "observation_role": "run",
+      "run_metrics": {
+        "reason": "run_completed",
+        "usage": {
+          "successful_requests": 10,
+          "prompt_tokens": 96787,
+          "completion_tokens": 17606,
+          "total_tokens": 114393,
+          "call_count": 10,
+          "elapsed_ms": 120535,
+          "cost_usd": 0.09759125
+        },
+        "frames": {
+          "captured": 115,
+          "dropped": 0,
+          "gaps": 0,
+          "emit_errors": 0,
+          "subscriber_dropped": 0,
+          "unattributed": 0
+        }
+      },
+      "unhandled_event_counts": {
+        "hook_dispatched": 19,
+        "agent_logs_started": 4,
+        "lite_agent_execution_completed": 2,
+        "lite_agent_execution_started": 2,
+        "cc_env": 1,
+        "flow_created": 1
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "createdAt": "2026-09-05T16:34:48.000Z",
+    "updatedAt": "2026-09-05T16:37:02.240Z",
+    "externalId": null
+  }
+]

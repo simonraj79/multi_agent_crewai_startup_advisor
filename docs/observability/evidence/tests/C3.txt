@@ -1,0 +1,221 @@
+================================================================================
+V-REVIEW (second pass) - Definition of Done row C3
+Is every CrewAI 1.15.18 event type either mapped or listed as deliberately unmapped with a reason, and does an unseen event type become a generic EVENT rather than being dropped?
+================================================================================
+generated (UTC)  : 2026-09-05T16:40:34Z
+git rev-parse HEAD: e68dac46120867d7f55a767f76237d7b4bb0a46c
+
+THE TREE IS UNCOMMITTED. The whole observability programme is working-tree
+state - src/brief_crew/observability/, scripts/observability/,
+tests/observability/ and docs/observability/ are untracked, and
+src/brief_crew/{config.py,events/serializer.py,service/app.py,service/registry.py}
+and tests/__init__.py are modified - so the commit above does NOT contain the
+code these runs exercised. The md5 sums below are what pins this evidence to
+code a later commit can be compared against.
+
+md5 of src/brief_crew/observability/*.py at run time:
+  48de73e1d21df1f5532833324f01460f *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  46c8147381cb4efcd74490d15de59798 *src/brief_crew/observability/content.py
+  7f5f8982adaaa2144c2b938726173a76 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+interpreter/toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1
+platform             : Windows 11, PowerShell/Git Bash, D:\MultiAgentSystem
+verifier             : V-REVIEW, who built none of this code and edited none of it
+
+--------------------------------------------------------------------------------
+PART 1 - the committed test
+--------------------------------------------------------------------------------
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_event_coverage.py" -v
+
+test_every_declared_event_is_mapped_or_has_a_reason (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_declared_event_is_mapped_or_has_a_reason) ... ok
+test_every_disposition_names_a_reason (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_disposition_names_a_reason) ... ok
+test_every_handled_name_is_a_real_class (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_handled_name_is_a_real_class) ... ok
+test_every_handled_name_is_named_by_the_frame_pipeline (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_handled_name_is_named_by_the_frame_pipeline)
+The anti-rot half: the table cannot claim a branch that is not there. ... ok
+test_every_unmapped_class_carries_a_non_empty_reason (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_every_unmapped_class_carries_a_non_empty_reason) ... ok
+test_the_enumeration_looks_outside_crewai_events_types (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_the_enumeration_looks_outside_crewai_events_types)
+Two classes lived outside every count until it did. ... ok
+test_the_table_is_written_out_rather_than_derived (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_the_table_is_written_out_rather_than_derived)
+The control for the test above, and the only one that can catch a ... ok
+test_the_two_tables_partition_the_declared_classes (tests.observability.test_event_coverage.CrewAIEventCoverageTests.test_the_two_tables_partition_the_declared_classes)
+The assertion row C3 rests on, and it can now actually fail. ... ok
+test_the_helper_builds_the_real_frame_type (tests.observability.test_event_coverage.FrameKindShapeTests.test_the_helper_builds_the_real_frame_type) ... ok
+test_a_run_that_converted_everything_adds_no_key (tests.observability.test_event_coverage.UnhandledTallyTests.test_a_run_that_converted_everything_adds_no_key) ... ok
+test_the_exporter_puts_the_tally_on_the_trace (tests.observability.test_event_coverage.UnhandledTallyTests.test_the_exporter_puts_the_tally_on_the_trace) ... ok
+test_the_serializer_reports_its_tally_on_the_terminal_frame (tests.observability.test_event_coverage.UnhandledTallyTests.test_the_serializer_reports_its_tally_on_the_terminal_frame) ... ok
+test_a_frame_kind_this_exporter_has_never_seen_becomes_an_event (tests.observability.test_event_coverage.UnknownFrameTests.test_a_frame_kind_this_exporter_has_never_seen_becomes_an_event) ... ok
+test_a_stage_this_exporter_has_never_seen_becomes_an_event (tests.observability.test_event_coverage.UnknownFrameTests.test_a_stage_this_exporter_has_never_seen_becomes_an_event) ... ok
+test_nothing_is_dropped_without_a_disposition (tests.observability.test_event_coverage.UnknownFrameTests.test_nothing_is_dropped_without_a_disposition)
+Every kind the frame contract declares has an entry, not a default. ... ok
+test_the_disposition_for_an_unknown_kind_is_event_and_says_so (tests.observability.test_event_coverage.UnknownFrameTests.test_the_disposition_for_an_unknown_kind_is_event_and_says_so) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.005s
+
+OK
+
+--------------------------------------------------------------------------------
+PART 2 - V-REVIEW's OWN enumeration, not the exporter's
+--------------------------------------------------------------------------------
+
+mapping.crewai_event_classes() is the exporter's own walk, so a test that
+compares the tables against it is comparing the exporter with itself. This
+script walks crewai.events.types and crewai.skills.events from scratch, adds a
+TEXT sweep of the whole installed crewai package for any class whose bases name
+BaseEvent (to prove no THIRD module hides the way crewai/skills/events.py did),
+and checks the 36 mapped names against serializer.py's isinstance ladder
+through the AST rather than by substring.
+
+$ ./.venv/Scripts/python.exe docs/observability/evidence/tests/c3_partition_check.py
+
+========================================================================
+C3 PARTITION
+========================================================================
+independent enumeration          : 165
+mapping.crewai_event_classes()   : 165
+  they agree                     : True
+FRAME_PIPELINE_EVENTS (mapped)   : 36
+UNMAPPED_WITH_REASON (unmapped)  : 129
+mapped + unmapped                : 165
+overlap (must be empty)          : []
+in NEITHER table (must be empty) : []
+stale mapped rows                : []
+stale unmapped rows              : []
+
+broader text sweep of the crewai package: 43 declarations
+  declared but OUTSIDE the enumeration   : 0
+
+mapped names that are NOT an isinstance branch in serializer.py: 0
+
+========================================================================
+UNMAPPED REASONS, grouped (spot-check for placeholders)
+========================================================================
+
+[32 classes] agent-to-agent messaging, which nothing in this application uses; exporting it would be 32 event types of noise
+    A2AAgentCardFetchedEvent, A2AArtifactReceivedEvent, A2AAuthenticationFailedEvent, A2AConnectionErrorEvent, A2AContentTypeNegotiatedEvent, A2AContextCompletedEvent, A2AContextCreatedEvent, A2AContextExpiredEvent, A2AContextIdleEvent, A2AContextPrunedEvent, A2AConversationCompletedEvent, A2AConversationStartedEvent, A2ADelegationCompletedEvent, A2ADelegationStartedEvent, A2AEventBase, A2AMessageSentEvent, A2AParallelDelegationCompletedEvent, A2AParallelDelegationStartedEvent, A2APollingStartedEvent, A2APollingStatusEvent, A2APushNotificationReceivedEvent, A2APushNotificationRegisteredEvent, A2APushNotificationSentEvent, A2APushNotificationTimeoutEvent, A2AResponseReceivedEvent, A2AServerTaskCanceledEvent, A2AServerTaskCompletedEvent, A2AServerTaskFailedEvent, A2AServerTaskStartedEvent, A2AStreamingChunkEvent, A2AStreamingStartedEvent, A2ATransportNegotiatedEvent
+
+[12 classes] flow checkpoint, fork and restore; a resume is already one trace here because the trace is keyed on the run id, so these would add detail without adding an answer
+    CheckpointBaseEvent, CheckpointCompletedEvent, CheckpointFailedEvent, CheckpointForkBaseEvent, CheckpointForkCompletedEvent, CheckpointForkStartedEvent, CheckpointPrunedEvent, CheckpointRestoreBaseEvent, CheckpointRestoreCompletedEvent, CheckpointRestoreFailedEvent, CheckpointRestoreStartedEvent, CheckpointStartedEvent
+
+[11 classes] flow creation, plotting, conversational turns and input requests; none is a step that happened inside a run being traced
+    ConversationMessageAddedEvent, ConversationRouteSelectedEvent, ConversationTurnCompletedEvent, ConversationTurnFailedEvent, ConversationTurnStartedEvent, FlowCreatedEvent, FlowEvent, FlowInputReceivedEvent, FlowInputRequestedEvent, FlowPausedEvent, FlowPlotEvent
+
+[10 classes] plan-and-execute step boundaries, which this application's flows do not use
+    GoalAchievedEarlyEvent, ObservationEvent, PlanRefinementEvent, PlanReplanTriggeredEvent, PlanStepCompletedEvent, PlanStepEvent, PlanStepStartedEvent, StepObservationCompletedEvent, StepObservationFailedEvent, StepObservationStartedEvent
+
+[10 classes] memory query, save and retrieval; same gap as knowledge above, and the same consequence for embedding spend
+    MemoryBaseEvent, MemoryQueryCompletedEvent, MemoryQueryFailedEvent, MemoryQueryStartedEvent, MemoryRetrievalCompletedEvent, MemoryRetrievalFailedEvent, MemoryRetrievalStartedEvent, MemorySaveCompletedEvent, MemorySaveFailedEvent, MemorySaveStartedEvent
+
+[8 classes] the test and train lifecycles, which are development commands rather than anything this service can launch
+    CrewBaseEvent, CrewTestCompletedEvent, CrewTestFailedEvent, CrewTestResultEvent, CrewTestStartedEvent, CrewTrainCompletedEvent, CrewTrainFailedEvent, CrewTrainStartedEvent
+
+[7 classes] knowledge retrieval; the frame pipeline raises none of these, so the retrieval work is absent from every dollar figure as well as from the trace. The largest single gap on this list
+    KnowledgeEventBase, KnowledgeQueryCompletedEvent, KnowledgeQueryFailedEvent, KnowledgeQueryStartedEvent, KnowledgeRetrievalCompletedEvent, KnowledgeRetrievalStartedEvent, KnowledgeSearchQueryFailedEvent
+
+[7 classes] successful MCP connections and tool calls; only the failure is framed today, so a graph whose tools are MCP servers is traced by its errors alone. A real gap, and the second largest on this list
+    MCPConfigFetchFailedEvent, MCPConnectionCompletedEvent, MCPConnectionStartedEvent, MCPEvent, MCPToolExecutionCompletedEvent, MCPToolExecutionFailedEvent, MCPToolExecutionStartedEvent
+
+[6 classes] the lite-agent variants, raised when an agent runs outside a crew; the frame pipeline handles the in-crew trio and no path here runs the other
+    AgentEvaluationCompletedEvent, AgentEvaluationFailedEvent, AgentEvaluationStartedEvent, LiteAgentExecutionCompletedEvent, LiteAgentExecutionErrorEvent, LiteAgentExecutionStartedEvent
+
+[5 classes] process signals, which are not part of any run
+    SigContEvent, SigHupEvent, SigIntEvent, SigTStpEvent, SigTermEvent
+
+[4 classes] the planning step; a natural parent span for the tool calls under it, and not framed today
+    AgentReasoningCompletedEvent, AgentReasoningFailedEvent, AgentReasoningStartedEvent, ReasoningEvent
+
+[4 classes] process environment probes, which say nothing about a run
+    CCEnvEvent, CodexEnvEvent, CursorEnvEvent, DefaultEnvEvent
+
+[3 classes] the skill lifecycle beyond load, activate, use and load-failure
+    SkillDiscoveryCompletedEvent, SkillDiscoveryStartedEvent, SkillEvent
+
+[2 classes] the reasoning-token stream, whose sibling chunk event is handled; a per-token view the frame pipeline does not carry
+    LLMEventBase, LLMThinkingChunkEvent
+
+[2 classes] skill download progress, declared in `crewai/skills/events.py` rather than under `crewai.events.types`; a network fetch of a pack, not a step in a run. It is on this list at all because the enumeration walks that module too - two classes lived outside every count until it did
+    SkillDownloadCompletedEvent, SkillDownloadStartedEvent
+
+[2 classes] a tool that ran and reported failure under a warn policy, which reaches the trace as the failure field of its own finished frame instead
+    ToolFailureDetectedEvent, ToolUsageEvent
+
+[1 classes] console formatting, which is a rendering concern
+    AgentLogsStartedEvent
+
+[1 classes] which interception point fired - a useful trace line and not one the frame pipeline emits today; recorded as a gap rather than a decision
+    HookDispatchedEvent
+
+[1 classes] the guardrail's own internal detail beyond start and result
+    LLMGuardrailBaseEvent
+
+[1 classes] task evaluation, which no path here runs
+    TaskEvaluationEvent
+
+========================================================================
+unmapped_reason() for a class CrewAI has never declared:
+    ''
+(empty string = the fallback that made the row unfailable is gone)
+
+--------------------------------------------------------------------------------
+V-REVIEW's reading
+--------------------------------------------------------------------------------
+
+165 = 36 mapped + 129 unmapped-with-reason, no overlap, nothing in neither
+table, no stale row on either side, and the broader text sweep finds no
+BaseEvent subclass outside the enumeration. Both first-pass defects are closed:
+unmapped_reason() now returns "" for a class nobody wrote a reason for (it
+returned a truthy per-module fallback, so the test could not fail), and the two
+crewai/skills/events.py classes that lived outside every count are in.
+
+SPOT-CHECK OF THE REASONS, as the brief asks. 21 distinct sentences over 129
+classes. Seventeen are real decisions about this application (A2A messaging
+nothing here uses, the test/train lifecycles, plan-and-execute steps these
+flows do not run, process signals, console formatting, environment probes).
+
+FOUR say, in their own words, that they are GAPS rather than decisions, and the
+row's word is "deliberately":
+
+  knowledge_events (7) - "the frame pipeline raises none of these, so the
+                         retrieval work is absent from every dollar figure as
+                         well as from the trace. The largest single gap on this
+                         list"
+  mcp_events (7)       - "only the failure is framed today, so a graph whose
+                         tools are MCP servers is traced by its errors alone. A
+                         real gap"
+  reasoning_events (4) - "a natural parent span for the tool calls under it,
+                         and not framed today"
+  hook_events (1)      - "a useful trace line and not one the frame pipeline
+                         emits today; recorded as a gap rather than a decision"
+
+These are honest and they are informative - a reader who wonders why a trace
+has no retrieval spans is told - so V-REVIEW does not read them as placeholders
+and does not fail the row on them. They are named here because "deliberately
+unmapped" and "a gap we have written down" are different claims, and the
+orchestrator should decide which one the row was buying. 19 of the 129 are the
+memory (10) and knowledge (7) families, whose absence also means embedding and
+retrieval spend appears in NO figure this programme produces.
+
+The second half of the row - an unseen type becomes an EVENT - is answered at
+TWO layers now, and the first pass's finding 6 is the reason to say so:
+
+  * exporter layer: an unknown FrameKind and an unknown stage each become an
+    EVENT observation carrying the frame's redacted details
+    (UnknownFrameTests, and disposition_for's last line).
+  * pipeline layer: an unmapped CrewAI event never becomes a frame at all
+    (serializer.py::record_unhandled counts it and returns ()), so no exporter
+    downstream can observe it however written. That tally now RIDES the run's
+    terminal frame and the exporter writes it onto the trace as
+    metadata.unhandled_event_counts (langfuse_exporter.py:1167-1175), so the
+    gap is readable in Langfuse as a class name and a count.
+
+RESIDUAL, and it is the one thing V-REVIEW would still fix: the tally is added
+by serializer.py:546 and :554 - the FlowFinished and FlowFailed drafts - and by
+nothing else. A run whose terminal frame comes from the REGISTRY rather than
+from a flow event (an operator cancel, a cost-ceiling abort, the orphan sweep's
+service_restart) carries no tally, so exactly the runs a reader is most likely
+to be investigating are the ones that do not say what was dropped.

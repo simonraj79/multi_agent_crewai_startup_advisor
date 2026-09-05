@@ -1,0 +1,351 @@
+================================================================================
+V-REVIEW (second pass) - Definition of Done row C1
+Does the instrumentation path contain NO agent role, task name, tool name, crew name or flow name from any flow in this repository?
+================================================================================
+generated (UTC)  : 2026-09-05T16:40:05Z
+git rev-parse HEAD: e68dac46120867d7f55a767f76237d7b4bb0a46c
+
+THE TREE IS UNCOMMITTED. The whole observability programme is working-tree
+state - src/brief_crew/observability/, scripts/observability/,
+tests/observability/ and docs/observability/ are untracked, and
+src/brief_crew/{config.py,events/serializer.py,service/app.py,service/registry.py}
+and tests/__init__.py are modified - so the commit above does NOT contain the
+code these runs exercised. The md5 sums below are what pins this evidence to
+code a later commit can be compared against.
+
+md5 of src/brief_crew/observability/*.py at run time:
+  48de73e1d21df1f5532833324f01460f *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  46c8147381cb4efcd74490d15de59798 *src/brief_crew/observability/content.py
+  7f5f8982adaaa2144c2b938726173a76 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+interpreter/toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1
+platform             : Windows 11, PowerShell/Git Bash, D:\MultiAgentSystem
+verifier             : V-REVIEW, who built none of this code and edited none of it
+
+--------------------------------------------------------------------------------
+PART 1 - the committed test
+--------------------------------------------------------------------------------
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_no_flow_identifiers.py" -v
+
+test_no_agent_role_or_key_from_either_crew (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_agent_role_or_key_from_either_crew) ... ok
+test_no_built_in_skill_pack_name (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_built_in_skill_pack_name) ... ok
+test_no_crew_class_name (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_crew_class_name) ... ok
+test_no_tool_name_or_tool_class (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_no_tool_name_or_tool_class) ... ok
+test_the_extraction_found_the_things_it_claims_to_check (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_the_extraction_found_the_things_it_claims_to_check)
+A grep that finds nothing to grep for passes for the wrong reason. ... ok
+test_the_package_reads_identity_from_frame_details_only (tests.observability.test_no_flow_identifiers.NoFlowIdentifiersTests.test_the_package_reads_identity_from_frame_details_only)
+The positive half of C1: it does read identity, from one place. ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.037s
+
+OK
+
+--------------------------------------------------------------------------------
+PART 2 - V-REVIEW's OWN, WIDER grep (the row, not the test)
+--------------------------------------------------------------------------------
+
+The committed test extracts agent keys/roles, task keys, tool names/classes,
+crew classes and skill packs. It has NO extractor for the row's words "flow
+name": not the registered workflow ids, not the flow classes, and not the flow
+METHOD names, which are the node ids the frames carry - so
+`if frame.node_id == "confirm_scope"` would pass all six of its tests. It also
+does not read the builder library registries. This script adds all of that and
+greps the two new serializer functions as well as the package.
+
+$ ./.venv/Scripts/python.exe docs/observability/evidence/tests/c1_identifier_grep.py
+
+========================================================================
+IDENTIFIERS EXTRACTED  (total 134, over 10 groups)
+========================================================================
+
+-- agent keys and roles (18) --
+[
+ "Business Brief Writer producing decision-ready one-pagers on {topic}",
+ "Community demand analyst",
+ "Market evidence analyst",
+ "Senior Research Analyst specialising in {topic}",
+ "Startup validation scoper",
+ "Startup validation synthesist",
+ "Strategy Analyst turning raw research on {topic} into a defensible point of view",
+ "Technical feasibility analyst",
+ "Validation report writer",
+ "analyst",
+ "feasibility_analyst",
+ "market_analyst",
+ "reporter",
+ "researcher",
+ "scoper",
+ "sentiment_analyst",
+ "synthesist",
+ "writer"
+]
+
+-- task keys (12) --
+[
+ "analysis_task",
+ "analysis_task_from_notes",
+ "feasibility_task",
+ "market_task",
+ "reporting_task",
+ "research_task",
+ "research_task_scrape_only",
+ "scoping_task",
+ "sentiment_task",
+ "synthesis_task",
+ "writing_task",
+ "writing_task_from_notes"
+]
+
+-- tool names and classes (10) --
+[
+ "GitHubFeasibilityTool",
+ "HackerNewsSentimentTool",
+ "MarketResearchTool",
+ "PineconeRetrieveRerankTool",
+ "ScrapeWebsiteTool",
+ "ScrapedPage",
+ "analyze_community_sentiment",
+ "assess_technical_feasibility",
+ "research_market_landscape",
+ "retrieve_and_rerank"
+]
+
+-- crew classes (7) --
+[
+ "BriefCrew",
+ "FeasibilityCrew",
+ "MarketCrew",
+ "ReportCrew",
+ "ScopeCrew",
+ "SentimentCrew",
+ "SynthesisCrew"
+]
+
+-- built-in skill packs (4) --
+[
+ "evidence-citation",
+ "hn-signal-reading",
+ "market-research-method",
+ "report-writing"
+]
+
+-- builder agent library (6) --
+[
+ "feasibility_analyst",
+ "market_analyst",
+ "reporter",
+ "scoper",
+ "sentiment_analyst",
+ "synthesist"
+]
+
+-- builder crew library (12) --
+[
+ "FeasibilityCrew",
+ "MarketCrew",
+ "ReportCrew",
+ "ScopeCrew",
+ "SentimentCrew",
+ "SynthesisCrew",
+ "feasibility",
+ "market",
+ "report",
+ "scope",
+ "sentiment",
+ "synthesis"
+]
+
+-- builder action refs (11) --
+[
+ "brief_crew.builder.gates:GATE_PROVIDER",
+ "brief_crew.builder.runtime:emit_output",
+ "brief_crew.builder.runtime:rejoin",
+ "brief_crew.builder.runtime:render_gate",
+ "brief_crew.builder.runtime:replay_output",
+ "brief_crew.builder.runtime:route_branch",
+ "brief_crew.builder.runtime:route_gate",
+ "brief_crew.builder.runtime:run_agent",
+ "brief_crew.builder.runtime:run_crew",
+ "brief_crew.builder.runtime:seed_input",
+ "brief_crew.builder.runtime:transform"
+]
+
+-- builder platform tools (11) --
+[
+ "analyze_community_sentiment",
+ "assess_technical_feasibility",
+ "code_interpreter",
+ "firecrawl_crawl",
+ "firecrawl_scrape",
+ "firecrawl_search",
+ "http_request",
+ "postgres_query",
+ "research_market_landscape",
+ "scrape_website",
+ "web_search"
+]
+
+-- flow ids, classes and method (node) names (43) --
+[
+ "BranchSequencer",
+ "BriefFlow",
+ "BriefState",
+ "KickoffRunner",
+ "PrefixedStdout",
+ "ValidatorCrewFactories",
+ "ValidatorFeedbackProvider",
+ "ValidatorFlow",
+ "ValidatorState",
+ "branch_output",
+ "brief-flow",
+ "check_cache",
+ "claim_revise_turn",
+ "confirm_scope",
+ "flush",
+ "idea-validator",
+ "index_content",
+ "kickoff",
+ "persist",
+ "plot",
+ "request_feedback",
+ "research_feasibility",
+ "research_market",
+ "research_sentiment",
+ "retrieve_cached",
+ "review_verdict",
+ "revise_scope",
+ "revise_turns_used",
+ "revise_verdict",
+ "route_scope",
+ "route_verdict",
+ "run_crew",
+ "scope_idea",
+ "scrape_web",
+ "served",
+ "sink",
+ "synthesize",
+ "turn",
+ "validate",
+ "write",
+ "write_brief",
+ "write_report",
+ "writelines"
+]
+
+========================================================================
+HAYSTACK: 10 sources
+    observability/__init__.py (6419 chars)
+    observability/backend.py (29021 chars)
+    observability/billed_cost.py (5658 chars)
+    observability/content.py (15882 chars)
+    observability/langfuse_exporter.py (89953 chars)
+    observability/mapping.py (22435 chars)
+    observability/policy.py (6128 chars)
+    serializer.prompt_digest (2517 chars)
+    serializer._unhandled_report (1273 chars)
+    serializer.record_unhandled (578 chars)
+========================================================================
+
+RAW HITS: 31
+  [builder crew library] 'report'
+      observability/__init__.py:87  # ever 404. Reporting the knob here would say "on" for a process that
+  [builder crew library] 'report'
+      observability/backend.py:42  The OTLP exporter runs on its own thread inside the SDK and reports success or
+  [builder crew library] 'report'
+      observability/langfuse_exporter.py:124  #: measured run came back reporting nothing. A dedicated logger means an
+  [builder crew library] 'report'
+      observability/mapping.py:286  "a tool that ran and reported failure under a warn policy, which reaches "
+  [builder crew library] 'report'
+      serializer._unhandled_report:1  def _unhandled_report(self) -> dict[str, Any]:
+  [builder crew library] 'scope'
+      observability/langfuse_exporter.py:258  class _NodeScope:
+  [flow ids, classes and method (node) names] 'flush'
+      observability/backend.py:180  def flush(self) -> bool: ...
+  [flow ids, classes and method (node) names] 'flush'
+      observability/langfuse_exporter.py:21  counts it, a daemon thread that wakes on a short interval, a bounded `flush()`
+  [flow ids, classes and method (node) names] 'flush'
+      observability/policy.py:61  flush_interval_seconds: float = 0.25
+  [flow ids, classes and method (node) names] 'kickoff'
+      observability/langfuse_exporter.py:1532  The frame pipeline gives an agent execution, a task and a crew kickoff
+  [flow ids, classes and method (node) names] 'kickoff'
+      observability/mapping.py:194  "CrewKickoffStartedEvent": ACTOR,
+  [flow ids, classes and method (node) names] 'persist'
+      observability/langfuse_exporter.py:19  The shape is the frame-persistence queue's in `service/registry.py`,
+  [flow ids, classes and method (node) names] 'plot'
+      observability/mapping.py:242  "flow creation, plotting, conversational turns and input requests; none "
+  [flow ids, classes and method (node) names] 'served'
+      observability/billed_cost.py:37  """What the provider says one generation cost, and who served it.
+  [flow ids, classes and method (node) names] 'served'
+      observability/langfuse_exporter.py:132  #: every run a long-lived process ever served is a leak.
+  [flow ids, classes and method (node) names] 'sink'
+      observability/langfuse_exporter.py:5  `RunRegistry._enqueue_frames` - the callback the run's own `StreamSinkAdapter`
+  [flow ids, classes and method (node) names] 'sink'
+      serializer._unhandled_report:5  died with the process: ~130 CrewAI event classes reach the sink, this
+  [flow ids, classes and method (node) names] 'turn'
+      observability/__init__.py:16  character lengths go instead. `LANGFUSE_CAPTURE_CONTENT=1` turns text on, and
+  [flow ids, classes and method (node) names] 'turn'
+      observability/backend.py:84  return UUID(str(run_id)).hex
+  [flow ids, classes and method (node) names] 'turn'
+      observability/billed_cost.py:1  """Turning the app's cost ESTIMATE into what was actually billed (section 4).
+  [flow ids, classes and method (node) names] 'turn'
+      observability/content.py:24  never returned into a message, and a match is replaced with the same `***`
+  [flow ids, classes and method (node) names] 'turn'
+      observability/langfuse_exporter.py:230  # The service turns `gates="auto"` into exactly one reserved input key,
+  [flow ids, classes and method (node) names] 'turn'
+      observability/mapping.py:14  cannot see them however it is written. Listing them with a reason is what turns
+  [flow ids, classes and method (node) names] 'turn'
+      observability/policy.py:40  return fallback
+  [flow ids, classes and method (node) names] 'turn'
+      serializer.prompt_digest:10  Nothing readable is returned or retained. The hash is fed the role and the
+  [flow ids, classes and method (node) names] 'turn'
+      serializer._unhandled_report:21  return {}
+  [flow ids, classes and method (node) names] 'validate'
+      observability/mapping.py:204  "ToolValidateInputErrorEvent": TOOL,
+  [flow ids, classes and method (node) names] 'write'
+      observability/backend.py:473  except Exception:  # pragma: no cover - a span type that forbids the write
+  [flow ids, classes and method (node) names] 'write'
+      observability/content.py:25  marker every other walk in this repository writes.
+  [flow ids, classes and method (node) names] 'write'
+      observability/langfuse_exporter.py:320  #: `_finish_run` until `_close_out` writes them onto the run span. The
+  [flow ids, classes and method (node) names] 'write'
+      observability/mapping.py:22  exporter writes them onto the trace as `unhandled_event_counts`, so the gap is
+
+--------------------------------------------------------------------------------
+V-REVIEW's reading of the 31 raw hits
+--------------------------------------------------------------------------------
+
+Every one is a coincidental English substring of a longer word, in prose or in
+a CrewAI class name, and none is this repository naming one of its own flows:
+
+  'report'   -> "reporting", "self-report", "reported failure", and the name of
+                the serializer method this pass was asked to grep
+                (_unhandled_report). A builder CREW id that is also an English
+                word.
+  'scope'    -> class _NodeScope, the exporter's own per-node bookkeeping.
+  'flush'    -> flush(), flush_interval_seconds. A ValidatorFlow method name
+                that is also a queue verb.
+  'kickoff'  -> CrewKickoffStartedEvent, a CrewAI class name in the mapping table.
+  'persist'  -> "frame-persistence queue".
+  'plot'     -> "plotting" in the flow_events reason sentence.
+  'served'   -> "who served it", "every run a long-lived process ever served".
+  'sink'     -> StreamSinkAdapter, the callback this exporter attaches to.
+  'turn'     -> "turns text on", "returns", "Turning the app's cost ESTIMATE".
+  'validate' -> ToolValidateInputErrorEvent, a CrewAI class name.
+  'write'    -> "writes", "forbids the write".
+
+Zero hits for any distinctive identifier: not 'idea-validator', not 'brief-flow',
+not 'confirm_scope'/'scope_idea'/'research_market'/'synthesize'/'review_verdict',
+not 'market_analyst'/'Market evidence analyst'/'Startup validation scoper', not
+'scoping_task'/'reporting_task', not 'MarketCrew'/'SynthesisCrew', not
+'research_market_landscape'/'assess_technical_feasibility'/'scrape_website', not
+'evidence-citation'/'hn-signal-reading', and no BUILDER_ACTION_REF.
+
+The positive mechanism is real code and not a comment: langfuse_exporter.py
+reads details.get("agent_role") / details.get("task_name") at :1251-1252 and
+takes the trace tags from facts.workflow_id, copied off the run record.

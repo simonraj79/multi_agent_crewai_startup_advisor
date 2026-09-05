@@ -1,0 +1,5 @@
+open observations (endTime is null): 0
+run_id: 073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba   checked: 2026-09-05T16:41:35Z
+observations examined: 28
+
+  (none - DoD D3 is satisfied for this run)

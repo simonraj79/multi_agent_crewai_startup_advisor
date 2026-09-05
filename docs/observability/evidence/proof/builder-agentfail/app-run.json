@@ -1,0 +1,38 @@
+{
+  "run_id": "ca13fc73-0ca9-4a31-bc8c-6e53ed1d562d",
+  "session_id": "proof-3",
+  "workflow_id": "ug_fd12e0a6",
+  "graph_version": "4a1ba2a50916d665",
+  "status": "failed",
+  "created_at": "2026-09-05T16:34:16.162741Z",
+  "started_at": "2026-09-05T16:34:16.165967Z",
+  "completed_at": "2026-09-05T16:34:16.927251Z",
+  "pending_gate": null,
+  "frames": {
+    "count": 50,
+    "captured": 50,
+    "dropped": 0,
+    "gaps": 0,
+    "emit_errors": 0,
+    "subscriber_dropped": 0,
+    "unattributed": 0,
+    "first_seq": 1,
+    "last_seq": 50
+  },
+  "usage": {
+    "successful_requests": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "call_count": 0,
+    "elapsed_ms": 0,
+    "cost_usd": 0.0
+  },
+  "node_usage": [],
+  "result": null,
+  "verdict": null,
+  "error": "Error code: 400 - {'error': {'message': \"This endpoint's maximum context length is 1048576 tokens. However, you requested about 2000000311 tokens (311 of text input, 2000000000 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.\", 'code': 400, 'metadata': {'provider_name': None}}}",
+  "stop_reason": null,
+  "mode": "run",
+  "resume_from": null
+}

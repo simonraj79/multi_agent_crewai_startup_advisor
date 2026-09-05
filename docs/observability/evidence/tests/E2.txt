@@ -1,0 +1,139 @@
+================================================================================
+V-REVIEW (second pass) - Definition of Done row E2
+Langfuse down, misconfigured or slow -> runs unaffected, and the failure counted rather than surfaced.
+================================================================================
+generated (UTC)  : 2026-09-05T16:41:41Z
+git rev-parse HEAD: e68dac46120867d7f55a767f76237d7b4bb0a46c
+
+THE TREE IS UNCOMMITTED. The whole observability programme is working-tree
+state - src/brief_crew/observability/, scripts/observability/,
+tests/observability/ and docs/observability/ are untracked, and
+src/brief_crew/{config.py,events/serializer.py,service/app.py,service/registry.py}
+and tests/__init__.py are modified - so the commit above does NOT contain the
+code these runs exercised. The md5 sums below are what pins this evidence to
+code a later commit can be compared against.
+
+md5 of src/brief_crew/observability/*.py at run time:
+  48de73e1d21df1f5532833324f01460f *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  46c8147381cb4efcd74490d15de59798 *src/brief_crew/observability/content.py
+  7f5f8982adaaa2144c2b938726173a76 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+interpreter/toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1
+platform             : Windows 11, PowerShell/Git Bash, D:\MultiAgentSystem
+verifier             : V-REVIEW, who built none of this code and edited none of it
+
+The first pass could NOT report this row: the module wedged permanently on its
+second transport test and the process never exited. This run is timed twice -
+unittest's own figure and a wall clock around the whole interpreter - because
+"the module finished" and "the interpreter exited" were two different
+questions here, and the second was the one that failed.
+
+$ s=$(date +%s); ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_exporter_isolation.py" -v; e=$(date +%s); echo $((e-s))
+
+test_the_control_run_completes (tests.observability.test_exporter_isolation.ControlTests.test_the_control_run_completes) ... D:\MultiAgentSystem\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+D:\MultiAgentSystem\.venv\Lib\site-packages\crewai_tools\rag\core.py:8: DeprecationWarning: crewai.utilities.lock_store is deprecated; import from crewai_core.lock_store.
+  from crewai.utilities.lock_store import lock as store_lock
+ok
+test_a_backend_that_raises_on_every_call_never_reaches_the_caller (tests.observability.test_exporter_isolation.ExporterSurfaceTests.test_a_backend_that_raises_on_every_call_never_reaches_the_caller) ... ok
+test_closing_twice_is_harmless (tests.observability.test_exporter_isolation.ExporterSurfaceTests.test_closing_twice_is_harmless) ... ok
+test_the_hook_drops_the_oldest_when_the_queue_is_full (tests.observability.test_exporter_isolation.ExporterSurfaceTests.test_the_hook_drops_the_oldest_when_the_queue_is_full) ... ok
+test_the_no_op_answers_every_call_the_service_makes (tests.observability.test_exporter_isolation.ExporterSurfaceTests.test_the_no_op_answers_every_call_the_service_makes) ... ok
+test_an_exporter_that_is_off_with_keys_present_says_so_at_warning (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_an_exporter_that_is_off_with_keys_present_says_so_at_warning)
+The misconfiguration a person needs to see, at a level they will. ... ok
+test_no_keys_at_all_stays_at_info (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_no_keys_at_all_stays_at_info) ... ok
+test_readyz_carries_no_key_and_no_url (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_readyz_carries_no_key_and_no_url)
+The one field this answer must never grow. ... ok
+test_readyz_says_the_exporter_is_on_and_in_which_environment (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_readyz_says_the_exporter_is_on_and_in_which_environment) ... ok
+test_readyz_says_why_when_it_is_off (tests.observability.test_exporter_isolation.ExporterVisibilityTests.test_readyz_says_why_when_it_is_off) ... ok
+test_an_exporter_with_no_keys_is_a_no_op_that_says_so_once (tests.observability.test_exporter_isolation.MissingKeysTests.test_an_exporter_with_no_keys_is_a_no_op_that_says_so_once) ... ok
+test_no_credential_is_ever_named_in_the_reason (tests.observability.test_exporter_isolation.MissingKeysTests.test_no_credential_is_ever_named_in_the_reason) ... ok
+test_the_run_is_identical_with_no_exporter_at_all (tests.observability.test_exporter_isolation.MissingKeysTests.test_the_run_is_identical_with_no_exporter_at_all) ... ok
+test_a_black_hole_host_leaves_the_run_alone_and_is_counted (tests.observability.test_exporter_isolation.UnreachableBackendTests.test_a_black_hole_host_leaves_the_run_alone_and_is_counted) ... the langfuse backend did not flush within 3.0s
+ok
+test_a_slow_host_leaves_the_run_alone_and_is_counted (tests.observability.test_exporter_isolation.UnreachableBackendTests.test_a_slow_host_leaves_the_run_alone_and_is_counted) ... the langfuse backend did not flush within 3.0s
+ok
+test_the_summary_line_carries_the_failure_count (tests.observability.test_exporter_isolation.UnreachableBackendTests.test_the_summary_line_carries_the_failure_count)
+The line is logged after the final flush, so it can report the truth. ... the langfuse backend did not flush within 3.0s
+the langfuse exporter did not flush within 5.0s
+the langfuse backend did not flush within 3.0s
+the langfuse backend did not flush within 3.0s
+ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 22.660s
+
+OK
+
+process exit code : 0
+wall clock around the whole interpreter, including exit: 25s
+
+--------------------------------------------------------------------------------
+The three conditions the row names are three separate tests
+--------------------------------------------------------------------------------
+
+  black-hole port : UnreachableBackendTests.
+                    test_a_black_hole_host_leaves_the_run_alone_and_is_counted
+                    (test_exporter_isolation.py:215)
+  slow host       : UnreachableBackendTests.
+                    test_a_slow_host_leaves_the_run_alone_and_is_counted (:232)
+  missing keys    : MissingKeysTests.
+                    test_an_exporter_with_no_keys_is_a_no_op_that_says_so_once
+                    (:163), with :174 asserting the run is identical to one
+                    with no exporter at all and :180 that no credential is
+                    named in the reason
+
+Each is measured against a control run (ControlTests, _RunOutcome) on the same
+status, result and frame count, and each asserts the failure is COUNTED - a run
+whose backend was unreachable that reports http_errors=0 is telling an operator
+the export worked, which is the row's own sentence arrived at by silence.
+
+--------------------------------------------------------------------------------
+The first pass's findings 2, 3 and 7 are CLOSED, and here is the mechanism
+--------------------------------------------------------------------------------
+
+The hang was never the slow host and never the HTTP timeout. It was the langfuse
+SDK caching LangfuseResourceManager by public key and not evicting it on
+shutdown(), so the second exporter built with the same key in one process
+inherited a manager whose score-ingestion consumer threads were dead and every
+later flush()/shutdown() blocked forever on an unbounded queue.Queue.join().
+Three fixes, each verified by reading the current code:
+
+  backend.py:517-557  _evict_resource_manager() pops the key from
+                      LangfuseResourceManager._instances under that class's
+                      own lock AND atexit.unregister()s the manager's shutdown
+                      - the second half matters because that handler is the
+                      same unbounded join with no caller left to bound it.
+  backend.py:477-515  _bounded() runs any SDK call on a DAEMON thread with a
+                      timeout, so flush() and close() return to the caller
+                      whatever the SDK does. LangfuseBackend.close() evicts
+                      FIRST and bounds SECOND, so a wedged shutdown cannot
+                      leave a cache entry behind (:786-800).
+  langfuse_exporter.py:572-620  close() runs each closable under _bounded, and
+                      _enqueue_shutdown() is a put_nowait with a drop-oldest
+                      fallback rather than the blocking put that stopped the
+                      caller before it ever reached the bounded join.
+
+Finding 13 is closed in the same area: _displace (:500-538) now puts a
+_FlushMarker or the _SHUTDOWN sentinel BACK instead of discarding whatever
+get_nowait returned, so a full queue can no longer strand a flush() caller for
+its whole timeout or leave the export thread running through close().
+
+The three warning lines in the output above - "the langfuse backend did not
+flush within 3.0s", "the langfuse exporter did not flush within 5.0s" - are the
+bounded waits working, logged once each, and are what the row asks to see
+instead of a run error.
+
+STILL OPEN on this row (MEDIUM, first-pass findings 11 and 12, unchanged):
+http_errors leans on TransportFailureCounter, a logging.Handler attached to two
+HARDCODED logger names (backend.py:395-421). Against the real SDK the
+exception-at-the-call-site half almost never fires, so the count rests on those
+two names; an SDK upgrade that renames a logger returns the count to zero while
+the summary still reports a clean export - the exact lie this row forbids, and
+no test can see it because the test's own doubles raise. attach() also adds the
+handler to PROCESS-GLOBAL loggers, so two backends in one process each count
+the other's failures.

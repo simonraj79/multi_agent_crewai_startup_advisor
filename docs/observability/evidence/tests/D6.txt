@@ -1,0 +1,94 @@
+================================================================================
+V-REVIEW (second pass) - Definition of Done row D6
+Cost-ceiling abort (MAX_RUN_COST_USD -> HookAborted): does the trace end failed with the ceiling named as the reason?
+================================================================================
+generated (UTC)  : 2026-09-05T16:41:11Z
+git rev-parse HEAD: e68dac46120867d7f55a767f76237d7b4bb0a46c
+
+THE TREE IS UNCOMMITTED. The whole observability programme is working-tree
+state - src/brief_crew/observability/, scripts/observability/,
+tests/observability/ and docs/observability/ are untracked, and
+src/brief_crew/{config.py,events/serializer.py,service/app.py,service/registry.py}
+and tests/__init__.py are modified - so the commit above does NOT contain the
+code these runs exercised. The md5 sums below are what pins this evidence to
+code a later commit can be compared against.
+
+md5 of src/brief_crew/observability/*.py at run time:
+  48de73e1d21df1f5532833324f01460f *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  46c8147381cb4efcd74490d15de59798 *src/brief_crew/observability/content.py
+  7f5f8982adaaa2144c2b938726173a76 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+interpreter/toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1
+platform             : Windows 11, PowerShell/Git Bash, D:\MultiAgentSystem
+verifier             : V-REVIEW, who built none of this code and edited none of it
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_terminal_states.py" -v
+
+test_nothing_is_left_without_an_end_time (tests.observability.test_terminal_states.BudgetStopTests.test_nothing_is_left_without_an_end_time) ... ok
+test_the_reason_names_the_ceiling_and_the_figure (tests.observability.test_terminal_states.BudgetStopTests.test_the_reason_names_the_ceiling_and_the_figure) ... ok
+test_the_run_span_is_at_error_level (tests.observability.test_terminal_states.BudgetStopTests.test_the_run_span_is_at_error_level) ... ok
+test_the_run_status_score_says_failed (tests.observability.test_terminal_states.BudgetStopTests.test_the_run_status_score_says_failed) ... ok
+test_the_trace_ends_failed_and_not_cancelled (tests.observability.test_terminal_states.BudgetStopTests.test_the_trace_ends_failed_and_not_cancelled) ... ok
+test_the_work_still_open_is_ended_at_the_terminal_timestamp (tests.observability.test_terminal_states.BudgetStopTests.test_the_work_still_open_is_ended_at_the_terminal_timestamp)
+The node and the unfinished model call end where the run did. ... ok
+test_a_completed_run_scores_one (tests.observability.test_terminal_states.CompletionTests.test_a_completed_run_scores_one) ... ok
+test_the_trace_ends_completed_with_no_reason (tests.observability.test_terminal_states.CompletionTests.test_the_trace_ends_completed_with_no_reason) ... ok
+test_the_late_snapshot_reopens_nothing (tests.observability.test_terminal_states.FinalMetricsTests.test_the_late_snapshot_reopens_nothing)
+A frame after the terminal one must not resurrect a node or add a span. ... ok
+test_the_run_span_carries_the_final_snapshot_not_the_interval_one (tests.observability.test_terminal_states.FinalMetricsTests.test_the_run_span_carries_the_final_snapshot_not_the_interval_one) ... ok
+test_the_run_span_still_ends_at_the_terminal_frames_timestamp (tests.observability.test_terminal_states.FinalMetricsTests.test_the_run_span_still_ends_at_the_terminal_frames_timestamp)
+The thing the deferral must not change. ... ok
+test_a_gate_is_not_terminal_and_leaves_the_spans_open (tests.observability.test_terminal_states.GatePauseTests.test_a_gate_is_not_terminal_and_leaves_the_spans_open) ... ok
+test_an_unrecognised_reason_stays_a_cancel_and_is_reported (tests.observability.test_terminal_states.InterruptedRunTests.test_an_unrecognised_reason_stays_a_cancel_and_is_reported)
+Neither of the two known reasons: it is still a cancel, and the word ... ok
+test_it_ends_failed_because_nobody_chose_it (tests.observability.test_terminal_states.InterruptedRunTests.test_it_ends_failed_because_nobody_chose_it) ... ok
+test_it_is_reported_as_an_interruption_and_not_as_a_budget_stop (tests.observability.test_terminal_states.InterruptedRunTests.test_it_is_reported_as_an_interruption_and_not_as_a_budget_stop) ... ok
+test_a_cancel_with_no_reason_stays_cancelled (tests.observability.test_terminal_states.OperatorCancelTests.test_a_cancel_with_no_reason_stays_cancelled) ... ok
+test_open_work_is_ended_and_marked_cancelled (tests.observability.test_terminal_states.OperatorCancelTests.test_open_work_is_ended_and_marked_cancelled) ... ok
+test_both_reasons_match_the_registrys_own_constants (tests.observability.test_terminal_states.ReasonConstantMirrorTests.test_both_reasons_match_the_registrys_own_constants) ... D:\MultiAgentSystem\.venv\Lib\site-packages\crewai_tools\rag\core.py:8: DeprecationWarning: crewai.utilities.lock_store is deprecated; import from crewai_core.lock_store.
+  from crewai.utilities.lock_store import lock as store_lock
+ok
+test_open_work_is_ended_at_error_level (tests.observability.test_terminal_states.RunFailureTests.test_open_work_is_ended_at_error_level) ... ok
+test_the_trace_ends_failed_with_the_class_and_the_message (tests.observability.test_terminal_states.RunFailureTests.test_the_trace_ends_failed_with_the_class_and_the_message) ... ok
+
+----------------------------------------------------------------------
+Ran 20 tests in 1.277s
+
+OK
+
+--------------------------------------------------------------------------------
+V-REVIEW's reading - and the first pass's finding 4 is CLOSED
+--------------------------------------------------------------------------------
+
+The budget stop itself was pinned in the first pass and still is: the trace
+ends failed and not cancelled, the reason names the ceiling AND the figure, the
+run span is ERROR, the run_status score says failed, and nothing is left
+without an end time.
+
+What was broken and is now fixed is the DISCRIMINATOR. _terminal_of treated any
+cancelled frame carrying a non-empty reason as the budget stop, and
+RunRegistry._fail_interrupted emits {"status": "cancelled", "reason":
+"service_restart"} for a run orphaned by a process restart - so with
+autoDeploy: yes on both Render services, every push to main could report an
+interrupted run in Langfuse as a run that breached a $0.00 cost ceiling, a
+fabricated money figure in the surface whose job is to be believed about money.
+
+Current code (langfuse_exporter.py:1001-1055) compares against two named
+constants and has a third branch for anything else:
+
+  reason == COST_CEILING_REASON  -> failed, ERROR, the ceiling and the figure
+  reason == INTERRUPTED_REASON   -> failed, ERROR, "interrupted by a service
+                                    restart before the run finished" - and NO
+                                    money figure, because there is none
+  any other reason               -> still cancelled, WARNING, reason reported
+  no reason                      -> cancelled, WARNING, "cancelled by operator"
+
+Three of those four are now pinned by tests that did not exist in the first
+pass (InterruptedRunTests, and OperatorCancelTests for the fourth), and
+ReasonConstantMirrorTests asserts the two constants in mapping.py still equal
+the registry's own - which is the mirror-drift failure mode this repository has
+already paid for once with the builder's problem codes.

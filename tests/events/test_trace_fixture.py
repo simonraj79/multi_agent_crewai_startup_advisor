@@ -240,7 +240,24 @@ def events() -> list[Any]:
             run_attempts=2,
             **identity,
         ),
-        LLMCallStartedEvent(call_id=CALL, model=MODEL, timestamp=ts(9), **identity),
+        # `messages` carried, because the real event carries them:
+        # `crewai/llms/base_llm.py:594-596` passes `to_serializable(messages)`
+        # on every call, and since 2026-09-06 the ladder fingerprints them into
+        # `prompt_fingerprint` / `message_count` / `prompt_chars` (DoD row B5).
+        # An event built here WITHOUT them makes this fixture - the committed
+        # record of what the real ladder produces - quietly narrower than
+        # production, and `tests/service/test_synthetic_identity_frames.py`
+        # compares the no-cost double against exactly this record.
+        LLMCallStartedEvent(
+            call_id=CALL,
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "You check claims against primary sources."},
+                {"role": "user", "content": "Check the five claims in the brief."},
+            ],
+            timestamp=ts(9),
+            **identity,
+        ),
         LLMStreamChunkEvent(call_id=CALL, chunk="## What I checked\n\n", timestamp=ts(10), **identity),
         LLMStreamChunkEvent(call_id=CALL, chunk="Three of the five claims ", timestamp=ts(11), **identity),
         LLMStreamChunkEvent(call_id=CALL, chunk="resolve to a primary source.", timestamp=ts(12), **identity),

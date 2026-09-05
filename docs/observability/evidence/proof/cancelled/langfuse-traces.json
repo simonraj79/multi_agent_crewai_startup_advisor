@@ -1,0 +1,112 @@
+[
+  {
+    "id": "073c021f4ff743e184d5d9e8dd7fa0ba",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "name": "idea-validator",
+    "timestamp": "2026-09-05T16:41:08.325Z",
+    "environment": "synthetic",
+    "tags": [
+      "gates:auto",
+      "idea-validator",
+      "mode:run"
+    ],
+    "bookmarked": false,
+    "release": null,
+    "version": null,
+    "userId": "anonymous",
+    "sessionId": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
+    "public": false,
+    "input": {
+      "input_chars": 140,
+      "input_fingerprint": "04c8f2f57a5d3b66babd3924e9ca6fceb9156c4fb0b585d1a0c633b9c4ceff2b",
+      "input_keys": [
+        "idea",
+        "no_gates"
+      ]
+    },
+    "output": {
+      "status": "cancelled",
+      "reason": "cancelled by operator"
+    },
+    "metadata": {
+      "run_id": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "WORKFLOW_START",
+      "frame_ts": "2026-09-05T16:41:08.324Z",
+      "null_fields": "agent_role,task_name",
+      "workflow_id": "idea-validator",
+      "app_session_id": "proof-cancel",
+      "gates": "auto",
+      "mode": "run",
+      "synthetic": true,
+      "user_id": "anonymous",
+      "graph_version": "9c6ca8a6fefbfffd",
+      "observation_role": "run",
+      "computed_result": {
+        "verdict": "NEEDS_WORK",
+        "composite_score": 6,
+        "confidence": 0.62,
+        "confidence_band": {
+          "chars": 8,
+          "sha256": "b9b394371b969a9e492cc66098ca567b5bece5c88bdea569a1146120ab770f7f"
+        },
+        "provisional": false,
+        "fatal_floors": [],
+        "decision_reason": null,
+        "dimensions": {
+          "demand": 3,
+          "market": 3,
+          "competitive_room": 3,
+          "feasibility": 3,
+          "headroom_over_free": 3
+        },
+        "anchor_margins": {
+          "D": 0,
+          "M": 0.0625,
+          "C": 0.0714,
+          "F": 0.0417,
+          "X": 0.0476
+        }
+      },
+      "run_metrics": {
+        "reason": "run_cancelled",
+        "usage": {
+          "successful_requests": 5,
+          "prompt_tokens": 3200,
+          "completion_tokens": 452,
+          "total_tokens": 3652,
+          "call_count": 5,
+          "elapsed_ms": 0,
+          "cost_usd": 0.00209
+        },
+        "frames": {
+          "captured": 81,
+          "dropped": 0,
+          "gaps": 0,
+          "emit_errors": 0,
+          "subscriber_dropped": 0,
+          "unattributed": 0
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "synthetic",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "createdAt": "2026-09-05T16:41:13.000Z",
+    "updatedAt": "2026-09-05T16:41:18.308Z",
+    "externalId": null
+  }
+]

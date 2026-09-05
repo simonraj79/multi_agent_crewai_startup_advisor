@@ -1,0 +1,54 @@
+TRACE 6586c8543ca344c4a587eb6a3ef01962  name=brief-flow  session=6586c854-3ca3-44c4-a587-eb6a3ef01962
+  roots (parentObservationId null): 1
+  - SPAN/run run
+    - SPAN/node retrieve_cached
+    - SPAN/node check_cache
+    - SPAN/node scrape_web
+      - EVENT/node AGENT_CALL  [OPEN]
+      - SPAN/task research_task  (task=research_task)
+        - EVENT/node AGENT_CALL  [OPEN]
+        - EVENT/node AGENT_CALL  [OPEN]
+        - AGENT/agent Senior Research Analyst specialising in predictive maintenance for commercial building lifts  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - TOOL/tool firecrawl_web_search_tool  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - TOOL/tool firecrawl_web_scrape_tool  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - TOOL/tool firecrawl_web_scrape_tool  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - TOOL/tool firecrawl_web_scrape_tool  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Senior Research Analyst specialising in predictive maintenance for commercial building lifts task=research_task)
+          - EVENT/node AGENT_CALL  [OPEN]
+          - EVENT/node AGENT_CALL  [OPEN]
+      - SPAN/task analysis_task  (task=analysis_task)
+        - EVENT/node AGENT_CALL  [OPEN]
+        - EVENT/node AGENT_CALL  [OPEN]
+        - AGENT/agent Strategy Analyst turning raw research on predictive maintenance for commercial building lifts into a defensible point of view  (agent=Strategy Analyst turning raw research on predictive maintenance for commercial building lifts into a defensible point of view task=analysis_task)
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Strategy Analyst turning raw research on predictive maintenance for commercial building lifts into a defensible point of view task=analysis_task)
+          - EVENT/node AGENT_CALL  [OPEN]
+          - EVENT/node AGENT_CALL  [OPEN]
+      - SPAN/task writing_task  (task=writing_task)
+        - EVENT/node AGENT_CALL  [OPEN]
+        - EVENT/node AGENT_CALL  [OPEN]
+        - AGENT/agent Business Brief Writer producing decision-ready one-pagers on predictive maintenance for commercial building lifts  (agent=Business Brief Writer producing decision-ready one-pagers on predictive maintenance for commercial building lifts task=writing_task)
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Business Brief Writer producing decision-ready one-pagers on predictive maintenance for commercial building lifts task=writing_task)
+          - EVENT/node AGENT_CALL  [OPEN]
+          - EVENT/node AGENT_CALL  [OPEN]
+          - EVENT/node AGENT_CALL  [OPEN]
+        - AGENT/agent Guardrail Agent  (agent=Guardrail Agent)
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Guardrail Agent)
+          - EVENT/node AGENT_CALL  [OPEN]
+          - EVENT/node AGENT_CALL  [OPEN]
+          - EVENT/node AGENT_CALL  [OPEN]
+        - AGENT/agent Business Brief Writer producing decision-ready one-pagers on predictive maintenance for commercial building lifts  (agent=Business Brief Writer producing decision-ready one-pagers on predictive maintenance for commercial building lifts task=writing_task)
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Business Brief Writer producing decision-ready one-pagers on predictive maintenance for commercial building lifts task=writing_task)
+          - EVENT/node AGENT_CALL  [OPEN]
+          - EVENT/node AGENT_CALL  [OPEN]
+          - EVENT/node AGENT_CALL  [OPEN]
+        - AGENT/agent Guardrail Agent  (agent=Guardrail Agent)
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Guardrail Agent)
+          - EVENT/node AGENT_CALL  [OPEN]
+      - EVENT/node AGENT_CALL  [OPEN]
+    - SPAN/node index_content
+    - SPAN/node write_brief
+    - SPAN/node persist

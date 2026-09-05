@@ -1,0 +1,233 @@
+[
+  {
+    "id": "16fc34afba7c1f4e",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "synthetic",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T16:41:19.000Z",
+    "updatedAt": "2026-09-05T16:41:23.368Z",
+    "timestamp": "2026-09-05T16:41:14.479Z",
+    "traceId": "073c021f4ff743e184d5d9e8dd7fa0ba",
+    "observationId": "4afa44c77df9734d",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "anonymous",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "environment": "synthetic",
+      "sessionId": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba"
+    }
+  },
+  {
+    "id": "efbb7ed0b3301a05",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "synthetic",
+    "name": "run_status",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T16:41:19.000Z",
+    "updatedAt": "2026-09-05T16:41:23.293Z",
+    "timestamp": "2026-09-05T16:41:14.479Z",
+    "traceId": "073c021f4ff743e184d5d9e8dd7fa0ba",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": "cancelled",
+    "dataType": "CATEGORICAL",
+    "trace": {
+      "userId": "anonymous",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "environment": "synthetic",
+      "sessionId": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba"
+    }
+  },
+  {
+    "id": "c87a16bb7bc5d5b0",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "synthetic",
+    "name": "run_succeeded",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T16:41:19.000Z",
+    "updatedAt": "2026-09-05T16:41:23.289Z",
+    "timestamp": "2026-09-05T16:41:14.479Z",
+    "traceId": "073c021f4ff743e184d5d9e8dd7fa0ba",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "anonymous",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "environment": "synthetic",
+      "sessionId": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba"
+    }
+  },
+  {
+    "id": "4de1630f8e58fe1a",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "synthetic",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T16:41:19.000Z",
+    "updatedAt": "2026-09-05T16:41:23.343Z",
+    "timestamp": "2026-09-05T16:41:14.478Z",
+    "traceId": "073c021f4ff743e184d5d9e8dd7fa0ba",
+    "observationId": "ad93937d20164bf3",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "anonymous",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "environment": "synthetic",
+      "sessionId": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba"
+    }
+  },
+  {
+    "id": "f6419fae3373d1fa",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "synthetic",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T16:41:19.000Z",
+    "updatedAt": "2026-09-05T16:41:23.290Z",
+    "timestamp": "2026-09-05T16:41:14.477Z",
+    "traceId": "073c021f4ff743e184d5d9e8dd7fa0ba",
+    "observationId": "4100d0e1a9b5d647",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "anonymous",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "environment": "synthetic",
+      "sessionId": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba"
+    }
+  },
+  {
+    "id": "38c56d6888051ba2",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "synthetic",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T16:41:19.000Z",
+    "updatedAt": "2026-09-05T16:41:23.288Z",
+    "timestamp": "2026-09-05T16:41:14.477Z",
+    "traceId": "073c021f4ff743e184d5d9e8dd7fa0ba",
+    "observationId": "d1f0905227e2ad0e",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "anonymous",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "environment": "synthetic",
+      "sessionId": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba"
+    }
+  },
+  {
+    "id": "ba67ac9ec6cc293e",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "synthetic",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-05T16:41:12.000Z",
+    "updatedAt": "2026-09-05T16:41:17.060Z",
+    "timestamp": "2026-09-05T16:41:08.326Z",
+    "traceId": "073c021f4ff743e184d5d9e8dd7fa0ba",
+    "observationId": "8e7863fe37269e04",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "anonymous",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "environment": "synthetic",
+      "sessionId": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba"
+    }
+  }
+]

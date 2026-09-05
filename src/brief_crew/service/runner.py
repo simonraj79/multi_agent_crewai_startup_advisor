@@ -17,6 +17,7 @@ from brief_crew.events import (
     StreamSinkAdapter,
     UIEventType,
 )
+from brief_crew.events.serializer import prompt_digest
 from brief_crew.events.verdict import (
     VERDICT_NODE_ID,
     verdict_frame_details,
@@ -761,6 +762,52 @@ class SyntheticValidatorRunner:
         )
 
     @staticmethod
+    def _prompt_messages(
+        node_id: str, label: str, idea: str, stamp: Mapping[str, str]
+    ) -> list[dict[str, str]]:
+        """A stand-in prompt, so the free path carries what the paid path does.
+
+        The paid path passes `LLMCallStartedEvent.messages`
+        (`crewai/llms/base_llm.py:594-596`), the serializer fingerprints them,
+        and DoD row B5 - "which prompt produced a bad output" - is answerable.
+        This double raised no such event and stamped no such field, so every
+        synthetic generation fell back to the exporter's IDENTITY fingerprint
+        and `prompt_fingerprint_basis` read `node|agent_role|task_name|model`.
+        The consequence is the one this file's other docstrings keep recording:
+        the field row B5 exists for could not be exercised at all without
+        spending money.
+
+        These messages are FABRICATED, and saying so matters twice over. They
+        are not what the paid path would render - no crew, no task description,
+        no tools, no history - so the fingerprint a synthetic run publishes
+        matches no real run's. What it does do is behave the way a real one
+        does: it is stable across runs of the same node, and it DIFFERS between
+        nodes, which is exactly the property the identity fingerprint lacked
+        and the property a client, a dashboard or a reconciliation script is
+        written against. A double that cannot produce the thing under test
+        certifies nothing; a double that produces it with the wrong content is
+        still the right shape.
+
+        Built from what this node already has - the role it speaks as, the task
+        it is stamped with, and the idea the run was launched on - rather than
+        from a constant, so two nodes never hash alike.
+        """
+
+        return [
+            {
+                "role": "system",
+                "content": f"You are {stamp.get('agent_role') or label}.",
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"{stamp.get('task_name') or node_id}: "
+                    f"{idea or 'the idea under test'}"
+                ),
+            },
+        ]
+
+    @staticmethod
     def _utterance(
         execution: RunExecution,
         node_id: str,
@@ -824,7 +871,15 @@ class SyntheticValidatorRunner:
             event_type=UIEventType.MODEL_CALL,
             node_id=node_id,
             message=f"{model} call started",
-            details={"stage": "before", "call_id": call_id, "model": model, **stamp},
+            details={
+                "stage": "before",
+                "call_id": call_id,
+                "model": model,
+                **prompt_digest(
+                    SyntheticValidatorRunner._prompt_messages(node_id, label, idea, stamp)
+                ),
+                **stamp,
+            },
         )
         for chunk in _chunks(text, 3):
             execution.capture.emit(

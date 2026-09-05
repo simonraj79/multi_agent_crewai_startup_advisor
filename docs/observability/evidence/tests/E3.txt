@@ -1,0 +1,365 @@
+================================================================================
+V-REVIEW (second pass) - Definition of Done row E3
+Content policy enforced: no message content, no user text, and no credential-shaped string leaves - even when one is planted.
+================================================================================
+generated (UTC)  : 2026-09-05T16:42:44Z
+git rev-parse HEAD: e68dac46120867d7f55a767f76237d7b4bb0a46c
+
+THE TREE IS UNCOMMITTED. The whole observability programme is working-tree
+state - src/brief_crew/observability/, scripts/observability/,
+tests/observability/ and docs/observability/ are untracked, and
+src/brief_crew/{config.py,events/serializer.py,service/app.py,service/registry.py}
+and tests/__init__.py are modified - so the commit above does NOT contain the
+code these runs exercised. The md5 sums below are what pins this evidence to
+code a later commit can be compared against.
+
+md5 of src/brief_crew/observability/*.py at run time:
+  48de73e1d21df1f5532833324f01460f *src/brief_crew/observability/__init__.py
+  ba091218cf820b5476002c4bb046b54a *src/brief_crew/observability/backend.py
+  5cf51a6b5109f5814b6df7339f4ebda6 *src/brief_crew/observability/billed_cost.py
+  46c8147381cb4efcd74490d15de59798 *src/brief_crew/observability/content.py
+  7f5f8982adaaa2144c2b938726173a76 *src/brief_crew/observability/langfuse_exporter.py
+  0d49b6ce3f8be6267c451d7c76ac0549 *src/brief_crew/observability/mapping.py
+  ac6ffdbd6231d5835a42b3a1f4b194da *src/brief_crew/observability/policy.py
+
+interpreter/toolchain: python 3.13.5, crewai 1.15.18, langfuse 4.15.1
+platform             : Windows 11, PowerShell/Git Bash, D:\MultiAgentSystem
+verifier             : V-REVIEW, who built none of this code and edited none of it
+
+--------------------------------------------------------------------------------
+PART 1 - the committed test
+--------------------------------------------------------------------------------
+
+$ ./.venv/Scripts/python.exe -m unittest discover -s tests/observability -t . -p "test_content_policy.py" -v
+
+test_the_content_is_present_when_capture_is_on (tests.observability.test_content_policy.CaptureOnTests.test_the_content_is_present_when_capture_is_on) ... ok
+test_the_credential_is_still_scrubbed (tests.observability.test_content_policy.CaptureOnTests.test_the_credential_is_still_scrubbed) ... ok
+test_a_generation_still_says_how_long_the_answer_was (tests.observability.test_content_policy.DefaultPolicyTests.test_a_generation_still_says_how_long_the_answer_was) ... ok
+test_no_credential_shaped_string_leaves_the_process (tests.observability.test_content_policy.DefaultPolicyTests.test_no_credential_shaped_string_leaves_the_process) ... ok
+test_no_user_text_leaves_the_process (tests.observability.test_content_policy.DefaultPolicyTests.test_no_user_text_leaves_the_process) ... ok
+test_what_leaves_instead_is_a_fingerprint_and_a_length (tests.observability.test_content_policy.DefaultPolicyTests.test_what_leaves_instead_is_a_fingerprint_and_a_length) ... ok
+test_a_planted_connection_string_does_not_leave (tests.observability.test_content_policy.FailurePathContentTests.test_a_planted_connection_string_does_not_leave) ... ok
+test_a_planted_key_in_an_exception_message_does_not_leave (tests.observability.test_content_policy.FailurePathContentTests.test_a_planted_key_in_an_exception_message_does_not_leave) ... ok
+test_the_same_holds_with_capture_on (tests.observability.test_content_policy.FailurePathContentTests.test_the_same_holds_with_capture_on)
+A capture switch is permission to send the user's words. It has ... ok
+test_the_statuses_still_say_what_went_wrong (tests.observability.test_content_policy.FailurePathContentTests.test_the_statuses_still_say_what_went_wrong)
+Scrubbing is not deletion. The row asks for a REDACTED message, not ... ok
+test_the_trace_output_reason_is_scrubbed_too (tests.observability.test_content_policy.FailurePathContentTests.test_the_trace_output_reason_is_scrubbed_too)
+Its own assertion because it is its own path: the terminal reason is ... ok
+test_a_message_that_is_not_a_string_still_comes_back_as_one (tests.observability.test_content_policy.SafeMessageTests.test_a_message_that_is_not_a_string_still_comes_back_as_one) ... ok
+test_it_scrubs_before_it_bounds (tests.observability.test_content_policy.SafeMessageTests.test_it_scrubs_before_it_bounds)
+The opposite order from `scrub_text`, and the reason is the edge. ... ok
+test_a_secret_named_key_is_redacted_even_under_capture (tests.observability.test_content_policy.ScrubberTests.test_a_secret_named_key_is_redacted_even_under_capture) ... ok
+test_a_string_under_an_unknown_key_is_described_not_sent (tests.observability.test_content_policy.ScrubberTests.test_a_string_under_an_unknown_key_is_described_not_sent) ... ok
+test_a_value_held_in_this_process_is_blanked_by_comparison (tests.observability.test_content_policy.ScrubberTests.test_a_value_held_in_this_process_is_blanked_by_comparison) ... ok
+test_a_vocabulary_key_passes_through (tests.observability.test_content_policy.ScrubberTests.test_a_vocabulary_key_passes_through) ... ok
+test_every_prefix_the_contract_names_is_blanked (tests.observability.test_content_policy.ScrubberTests.test_every_prefix_the_contract_names_is_blanked) ... ok
+test_the_allowlist_carries_the_identity_the_contract_requires (tests.observability.test_content_policy.ScrubberTests.test_the_allowlist_carries_the_identity_the_contract_requires)
+Section 3 puts agent role and task name on EVERY observation. ... ok
+test_the_environment_scan_selects_by_the_rule_already_in_force (tests.observability.test_content_policy.ScrubberTests.test_the_environment_scan_selects_by_the_rule_already_in_force)
+It reuses `events.redaction.is_secret_key` over the variable NAME. ... ok
+test_a_url_with_userinfo_is_held_even_though_its_name_is_not_secret (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_a_url_with_userinfo_is_held_even_though_its_name_is_not_secret) ... ok
+test_a_url_without_userinfo_is_not_treated_as_a_credential (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_a_url_without_userinfo_is_not_treated_as_a_credential)
+Over-collecting here is not free: every value is blanked wherever it ... ok
+test_both_forms_are_blanked_by_the_scrubber (tests.observability.test_content_policy.UrlCredentialSelectionTests.test_both_forms_are_blanked_by_the_scrubber) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.016s
+
+OK
+
+--------------------------------------------------------------------------------
+PART 2 - V-REVIEW's OWN planted-key experiment, repeated from the first pass
+--------------------------------------------------------------------------------
+
+The first pass MEASURED a leak here: an exception message went verbatim into
+six observations' statusMessage and into the trace's output.reason under the
+DEFAULT policy, planted key and all. This is the same experiment, widened.
+
+The two planted values authenticate against nothing. The key is the literal
+prefix sk-or-v1- followed by 64 zeros, built by concatenation in the script so
+no token-shaped literal is written to disk; the DSN's password is the literal
+words not-a-real-password.
+
+They are planted in EVERY carrier the exporter can put text into: the run
+inputs, a tool's args/query/preview, a tool error, a model-call error, the
+model's own utterance, a guardrail message and its feedback, a gate id, an
+unknown-kind frame's details AND its frame.message, a node error, a METRICS
+snapshot's free-text reason, and a terminal cancelled frame's reason. Both
+policies, three terminals each. The search is over the WHOLE captured payload.
+
+$ ./.venv/Scripts/python.exe docs/observability/evidence/tests/e3_planted_key_probe.py
+
+========================================================================
+E3 PLANTED-CREDENTIAL PROBE
+========================================================================
+planted key      : sk-or-v1- + 64 zeros  (len 73)
+                   [the literal is MASKED wherever this transcript would have
+                    reproduced it, so that scripts/observability/secret_scan.py
+                    has no token-shaped string to warn about in this file. The
+                    probe script builds it by concatenation for the same reason.]
+planted DSN      : postgresql://studio:not-a-real-password@127.0.0.1:5432/validator
+planted idea text: 'a lopsided orrery for counting rainfall in disused lighthouses'
+
+LEAK  capture_content=0 terminal=failed     ['KEY', 'DSN', 'DSN_PASSWORD']
+        KEY in span 'run' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='None'
+        KEY in event 'gate:gate-***' status_message='None'
+        KEY in event 'NODE_START' status_message='None'
+        DSN in span 'run' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='None'
+        DSN in event 'gate:gate-***' status_message='None'
+        DSN in event 'NODE_START' status_message='None'
+        PW in span 'run' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='None'
+        PW in event 'gate:gate-***' status_message='None'
+        PW in event 'NODE_START' status_message='None'
+LEAK  capture_content=0 terminal=cancelled  ['KEY', 'DSN', 'DSN_PASSWORD']
+        KEY in span 'run' status_message='cancelled (ConnectionError: *** refused, and the provider echoed ***)'
+        KEY in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='None'
+        KEY in event 'gate:gate-***' status_message='None'
+        KEY in event 'NODE_START' status_message='None'
+        DSN in span 'run' status_message='cancelled (ConnectionError: *** refused, and the provider echoed ***)'
+        DSN in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='None'
+        DSN in event 'gate:gate-***' status_message='None'
+        DSN in event 'NODE_START' status_message='None'
+        PW in span 'run' status_message='cancelled (ConnectionError: *** refused, and the provider echoed ***)'
+        PW in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='None'
+        PW in event 'gate:gate-***' status_message='None'
+        PW in event 'NODE_START' status_message='None'
+LEAK  capture_content=0 terminal=completed  ['KEY', 'DSN', 'DSN_PASSWORD']
+        KEY in span 'run' status_message='None'
+        KEY in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='None'
+        KEY in event 'gate:gate-***' status_message='None'
+        KEY in event 'NODE_START' status_message='None'
+        DSN in span 'run' status_message='None'
+        DSN in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='None'
+        DSN in event 'gate:gate-***' status_message='None'
+        DSN in event 'NODE_START' status_message='None'
+        PW in span 'run' status_message='None'
+        PW in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='None'
+        PW in event 'gate:gate-***' status_message='None'
+        PW in event 'NODE_START' status_message='None'
+LEAK  capture_content=1 terminal=failed     ['KEY', 'DSN', 'DSN_PASSWORD']
+        KEY in span 'run' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='None'
+        KEY in event 'gate:gate-***' status_message='None'
+        KEY in event 'NODE_START' status_message='None'
+        DSN in span 'run' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='None'
+        DSN in event 'gate:gate-***' status_message='None'
+        DSN in event 'NODE_START' status_message='None'
+        PW in span 'run' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='None'
+        PW in event 'gate:gate-***' status_message='None'
+        PW in event 'NODE_START' status_message='None'
+LEAK  capture_content=1 terminal=cancelled  ['KEY', 'DSN', 'DSN_PASSWORD']
+        KEY in span 'run' status_message='cancelled (ConnectionError: *** refused, and the provider echoed ***)'
+        KEY in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='None'
+        KEY in event 'gate:gate-***' status_message='None'
+        KEY in event 'NODE_START' status_message='None'
+        DSN in span 'run' status_message='cancelled (ConnectionError: *** refused, and the provider echoed ***)'
+        DSN in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='None'
+        DSN in event 'gate:gate-***' status_message='None'
+        DSN in event 'NODE_START' status_message='None'
+        PW in span 'run' status_message='cancelled (ConnectionError: *** refused, and the provider echoed ***)'
+        PW in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='None'
+        PW in event 'gate:gate-***' status_message='None'
+        PW in event 'NODE_START' status_message='None'
+LEAK  capture_content=1 terminal=completed  ['KEY', 'DSN', 'DSN_PASSWORD']
+        KEY in span 'run' status_message='None'
+        KEY in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        KEY in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        KEY in generation 'provider/model' status_message='None'
+        KEY in event 'gate:gate-***' status_message='None'
+        KEY in event 'NODE_START' status_message='None'
+        DSN in span 'run' status_message='None'
+        DSN in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        DSN in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        DSN in generation 'provider/model' status_message='None'
+        DSN in event 'gate:gate-***' status_message='None'
+        DSN in event 'NODE_START' status_message='None'
+        PW in span 'run' status_message='None'
+        PW in span 'n1' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in span 'a task' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in agent 'a role' status_message='ConnectionError: ConnectionError: *** refused, and the provider echoed ***'
+        PW in tool 'a tool' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='ConnectionError: *** refused, and the provider echoed ***'
+        PW in generation 'provider/model' status_message='None'
+        PW in event 'gate:gate-***' status_message='None'
+        PW in event 'NODE_START' status_message='None'
+
+control - the same search over an UNSCRUBBED string:
+   KEY in a raw message           : True
+   DSN password in a raw message  : True
+
+RESULT: 6 LEAKING CONDITIONS
+
+(exit 1 = at least one condition carried a planted value somewhere in the
+payload. Read the locator below before reading that as six separate leaks: an
+observation's dump includes its PARENT CHAIN, so one leaking field on the run
+span is reported once per descendant.)
+
+--------------------------------------------------------------------------------
+PART 3 - which FIELD, exactly
+--------------------------------------------------------------------------------
+
+$ cd docs/observability/evidence/tests && ../../../../.venv/Scripts/python.exe e3_leak_locator.py
+
+========================================================================
+capture_content=0   distinct leaking fields: 3
+========================================================================
+  [KEY] obs[0](span:run).metadata.run_metrics.reason = 'ConnectionError: postgresql://studio:not-a-real-password@127.0.0.1:5432/validator refused, and the provider echoed sk-or-v1-<64 zeros, masked in this transcript>'
+  [DSN] obs[0](span:run).metadata.run_metrics.reason = 'ConnectionError: postgresql://studio:not-a-real-password@127.0.0.1:5432/validator refused, and the provider echoed sk-or-v1-<64 zeros, masked in this transcript>'
+  [PW] obs[0](span:run).metadata.run_metrics.reason = 'ConnectionError: postgresql://studio:not-a-real-password@127.0.0.1:5432/validator refused, and the provider echoed sk-or-v1-<64 zeros, masked in this transcript>'
+
+========================================================================
+capture_content=1   distinct leaking fields: 6
+========================================================================
+  [KEY] obs[0](span:run).metadata.run_metrics.reason = 'ConnectionError: postgresql://studio:not-a-real-password@127.0.0.1:5432/validator refused, and the provider echoed sk-or-v1-<64 zeros, masked in this transcript>'
+  [DSN] obs[0](span:run).metadata.run_metrics.reason = 'ConnectionError: postgresql://studio:not-a-real-password@127.0.0.1:5432/validator refused, and the provider echoed sk-or-v1-<64 zeros, masked in this transcript>'
+  [PW] obs[0](span:run).metadata.run_metrics.reason = 'ConnectionError: postgresql://studio:not-a-real-password@127.0.0.1:5432/validator refused, and the provider echoed sk-or-v1-<64 zeros, masked in this transcript>'
+  [IDEA] obs[4](tool:a tool).payload_input.query = 'a lopsided orrery for counting rainfall in disused lighthouses'
+  [IDEA] obs[6](generation:provider/model).payload_output = 'I used *** against *** for a lopsided orrery for counting rainfall in disused lighthouses'
+  [IDEA] obs[8](event:NODE_START).metadata.details.anything = 'a lopsided orrery for counting rainfall in disused lighthouses *** ***'
+
+
+--------------------------------------------------------------------------------
+V-REVIEW's reading
+--------------------------------------------------------------------------------
+
+CLOSED - the first pass's findings 1 and 5. Every statusMessage in the payload
+above reads "ConnectionError: *** refused, and the provider echoed ***", and
+the trace output.reason with it. The mechanism is one choke point, not a fix at
+each site: LangfuseExporter._safe (:1205-1216) -> content.safe_message
+(content.py:130-161), and every raw error read in the file goes through it
+(:1010, :1514, :1559, :1601, :1964, :2027, and the frame.message at :2027).
+safe_message scrubs BEFORE it bounds, which is the opposite order from
+scrub_text and is the right one for this: cutting first can split a key so the
+shape rule no longer matches while most of it is still on the wire.
+
+CLOSED - DATABASE_URL. credential_values_in_environment now selects by SHAPE as
+well as by name (content.py:54, :101-109): a URL carrying userinfo is held
+whole AND its password segment separately, so a driver quoting either is
+covered. is_secret_key("DATABASE_URL") is still False and the code says so.
+REDIS_URL and whatever the next one is called are covered without an edit.
+
+STILL OPEN - ONE field, and it is the first pass's finding 15.
+
+  run span .metadata.run_metrics.reason
+
+is copied VERBATIM from the METRICS frame (langfuse_exporter.py:957-963 selects
+usage/frames/reason; :1166 folds the dict onto the run span) and passes neither
+policy_details nor safe_message. It is the only field in the whole payload that
+bypasses both, and the locator above shows it carrying the planted key, the
+whole DSN and the password on BOTH policies. Its sibling on the same span,
+computed_result, IS filtered (:1817-1821), which is what makes this an omission
+rather than a design.
+
+WHAT SAVES IT TODAY, and why V-REVIEW records it as MEDIUM rather than as a
+leak in production: the only producer of that field is
+RunRecord.emit_metrics(reason) (service/registry.py:1133), and every one of its
+ten call sites passes one of five literals - interval, gate_open, run_completed,
+run_failed, run_cancelled. So no credential can reach it through the app as it
+stands. It fails closed by the accident that today's callers pass constants,
+not by the policy, and the row's question is about a PLANTED value.
+
+  fix: one call - policy_details(..., capture=self.policy.capture_content,
+  secret_values=...) - over state.metrics where it is folded, or safe_message
+  over the reason where it is selected.
+
+ALSO STILL OPEN, both LOW and both unchanged from the first pass:
+
+  * the key-shape regex is CASE-SENSITIVE and needs a >= 6-character body
+    (content.py:42-45), so GHP_..., SK-OR-... and AIZA... survive it. All eight
+    contract prefixes are present and unanchored, which is the important half.
+  * contract section 4 says a generation's input is "present, redacted, when
+    LANGFUSE_CAPTURE_CONTENT=1". It is never emitted under either policy,
+    because no frame carries a prompt - the DoD's own B5 revision says no
+    content enters a frame. The code is right and the contract table is the
+    stale half.
+
+Under capture-ON the planted IDEA appears in the tool input, the generation
+output and the unknown EVENT's details, with the key blanked in each. That is
+the switch working as section 8 describes and is NOT a finding.

@@ -1,0 +1,1735 @@
+[
+  {
+    "id": "7f3a55b2309906a7",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:07.867Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "789867469c2df048",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_END",
+    "level": "ERROR",
+    "statusMessage": "chart_the_shoals failed on attempt 1",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.118Z",
+    "updatedAt": "2026-09-05T16:33:11.118Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "frame_seq": 39,
+      "frame_kind": "error",
+      "event_type": "NODE_END",
+      "frame_ts": "2026-09-05T16:33:07.867Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "error",
+        "error_class": "ToolExecutionFailedError",
+        "message": {
+          "chars": 609,
+          "sha256": "d4986ada57ce8cc1f67d448b8ddda6ebd4d62a4d26ebec9ae0d16ce8e9c97f38"
+        },
+        "attempt": 1,
+        "will_retry": false,
+        "fallback_model": null,
+        "routed": false
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "1957cc266cc639a8",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:07.866Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "789867469c2df048",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "ERROR",
+    "statusMessage": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.118Z",
+    "updatedAt": "2026-09-05T16:33:11.118Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "frame_seq": 38,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-05T16:33:07.866Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "error",
+        "error": {
+          "chars": 583,
+          "sha256": "33179c9fadb24fffe60dacd5f7ee4884c854763583aa7e1ad9be78ddd2420da3"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "6d43aab91860208e",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:07.862Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "a6280bb92209fb0a",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "ERROR",
+    "statusMessage": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.117Z",
+    "updatedAt": "2026-09-05T16:33:11.118Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "frame_seq": 36,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-05T16:33:07.861Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "error",
+        "flow": {
+          "chars": 13,
+          "sha256": "856d8b3d7481291b599e73bd41f8c1d7f9d612fc69d8f18854fe8ed2eea76854"
+        },
+        "nested": true,
+        "error": {
+          "chars": 583,
+          "sha256": "33179c9fadb24fffe60dacd5f7ee4884c854763583aa7e1ad9be78ddd2420da3"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "0eb0d52dff1e8883",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:07.860Z",
+    "endTime": "2026-09-05T16:33:07.860Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "a6280bb92209fb0a",
+    "type": "TOOL",
+    "environment": "live",
+    "name": "read_website_content",
+    "level": "ERROR",
+    "statusMessage": "ValueError(\"Could not resolve hostname: 'sounding-line.invalid'\")",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.117Z",
+    "updatedAt": "2026-09-05T16:33:11.118Z",
+    "input": {
+      "arg_chars": 48,
+      "arg_fingerprint": "e0e675f00c440746d52c84220aa93ac22a601ad25965bc140632dee600a78e1e",
+      "arg_keys": [
+        "website_url"
+      ]
+    },
+    "output": {
+      "output_chars": 0,
+      "output_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "frame_seq": 34,
+      "frame_kind": "tool",
+      "event_type": "TOOL_CALL",
+      "frame_ts": "2026-09-05T16:33:07.860Z",
+      "null_fields": "",
+      "observation_role": "tool",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "f3a76fd7fc3cbf3d",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:06.918Z",
+    "endTime": "2026-09-05T16:33:07.858Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "a6280bb92209fb0a",
+    "type": "GENERATION",
+    "environment": "live",
+    "name": "google/gemini-3.5-flash-lite",
+    "level": "ERROR",
+    "statusMessage": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.621Z",
+    "updatedAt": "2026-09-05T16:33:11.621Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "frame_seq": 28,
+      "frame_kind": "llm",
+      "event_type": "MODEL_CALL",
+      "frame_ts": "2026-09-05T16:33:06.917Z",
+      "null_fields": "",
+      "call_id": "ca08dc22-181f-4bef-b4b9-b1429f496015",
+      "attempt": 2,
+      "cost_source": "app-estimate (lookup failed)",
+      "observation_role": "generation",
+      "prompt_fingerprint": "46b6dbbfaaeb84d55691c3818f296b8c8fed0b5662d7f3d8d6de4f7f0e0a67e4",
+      "prompt_fingerprint_basis": "messages",
+      "message_count": 4,
+      "prompt_chars": 1447,
+      "finish_reason": "tool_calls",
+      "response_id": "gen-1788625989-hszO3tUDxclZVQtWJWf1",
+      "completion_chars": 177,
+      "stream_chunks": 2,
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": "google/gemini-3.5-flash-lite",
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.94,
+    "timeToFirstToken": null,
+    "usageDetails": {
+      "input": 450,
+      "output": 29,
+      "total": 479
+    },
+    "costDetails": {
+      "total": 0.0002075
+    },
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+    "inputPrice": 3e-07,
+    "outputPrice": 2.5e-06,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": 0.0002075,
+    "unit": "TOKENS",
+    "promptTokens": 450,
+    "completionTokens": 29,
+    "totalTokens": 479,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 450,
+      "output": 29,
+      "total": 479
+    }
+  },
+  {
+    "id": "ac336998a8cb5c64",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:06.896Z",
+    "endTime": "2026-09-05T16:33:06.914Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "a6280bb92209fb0a",
+    "type": "TOOL",
+    "environment": "live",
+    "name": "sounding_line_lookup",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:10.093Z",
+    "updatedAt": "2026-09-05T16:33:10.093Z",
+    "input": {
+      "arg_chars": 41,
+      "arg_fingerprint": "54688185f148e92da5278e3929e4871226c3a1739c772d588617a75ca46fc327",
+      "arg_keys": [
+        "water"
+      ]
+    },
+    "output": {
+      "output_chars": 205,
+      "output_fingerprint": "c1c42266e09228a86f74041a90c9fd0ce6db29a206173004984eee8944d1778e"
+    },
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "frame_seq": 26,
+      "frame_kind": "tool",
+      "event_type": "TOOL_CALL",
+      "frame_ts": "2026-09-05T16:33:06.896Z",
+      "null_fields": "",
+      "observation_role": "tool",
+      "tool_status": "failed",
+      "result_count": 0,
+      "query": {
+        "chars": 36,
+        "sha256": "72272e0902336f1c4b501f3e63677df9601f53d446651a7388c797129c08e6ea"
+      },
+      "from_cache": false,
+      "notes": {
+        "chars": 75,
+        "sha256": "ba6b54312c521d4a2eb4b2ad6785cca16418a2983e514d482f38b256b28f4b18"
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.018,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "a6280bb92209fb0a",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.633Z",
+    "endTime": "2026-09-05T16:33:07.864Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "bfd8a2ef290c826c",
+    "type": "AGENT",
+    "environment": "live",
+    "name": "Tidewater Cartographer",
+    "level": "ERROR",
+    "statusMessage": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.117Z",
+    "updatedAt": "2026-09-05T16:33:11.118Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "frame_seq": 20,
+      "frame_kind": "llm",
+      "event_type": "MODEL_CALL",
+      "frame_ts": "2026-09-05T16:33:05.632Z",
+      "null_fields": "",
+      "observation_role": "agent",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 2.231,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "2dcb3b753af2f79f",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.633Z",
+    "endTime": "2026-09-05T16:33:06.894Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "a6280bb92209fb0a",
+    "type": "GENERATION",
+    "environment": "live",
+    "name": "google/gemini-3.5-flash-lite",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:10.589Z",
+    "updatedAt": "2026-09-05T16:33:10.589Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "agent_role": "Tidewater Cartographer",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "frame_seq": 20,
+      "frame_kind": "llm",
+      "event_type": "MODEL_CALL",
+      "frame_ts": "2026-09-05T16:33:05.632Z",
+      "null_fields": "",
+      "call_id": "63622bec-1748-47a7-b420-bf1befb46d2c",
+      "attempt": 1,
+      "cost_source": "app-estimate (lookup failed)",
+      "observation_role": "generation",
+      "prompt_fingerprint": "28f3773bb85747bfcae20168b054beb005731b9eaa18ad25a7c6b984f5ee4c23",
+      "prompt_fingerprint_basis": "messages",
+      "message_count": 2,
+      "prompt_chars": 1172,
+      "finish_reason": "tool_calls",
+      "response_id": "gen-1788625988-i3TwdQNEaGgndzbftBA7",
+      "completion_chars": 170,
+      "stream_chunks": 2,
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": "google/gemini-3.5-flash-lite",
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 1.261,
+    "timeToFirstToken": null,
+    "usageDetails": {
+      "input": 338,
+      "output": 24,
+      "total": 362
+    },
+    "costDetails": {
+      "total": 0.000161399999
+    },
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+    "inputPrice": 3e-07,
+    "outputPrice": 2.5e-06,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": 0.000161399999,
+    "unit": "TOKENS",
+    "promptTokens": 338,
+    "completionTokens": 24,
+    "totalTokens": 362,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 338,
+      "output": 24,
+      "total": 362
+    }
+  },
+  {
+    "id": "691437a9a4e9e7b1",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.628Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "bfd8a2ef290c826c",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.089Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "frame_seq": 19,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-05T16:33:05.628Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before",
+        "flow": {
+          "chars": 13,
+          "sha256": "856d8b3d7481291b599e73bd41f8c1d7f9d612fc69d8f18854fe8ed2eea76854"
+        },
+        "nested": true,
+        "inputs": null
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "ba7a7923926e7a8f",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.617Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "bfd8a2ef290c826c",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "frame_seq": 18,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-05T16:33:05.616Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before",
+        "task": {
+          "chars": 4,
+          "sha256": "4bc74b21357c6cf5cca8f66b4d4ee948be64d0396feb434c9645e168ad61ceaf"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "bfd8a2ef290c826c",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.613Z",
+    "endTime": "2026-09-05T16:33:07.864Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "789867469c2df048",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+    "level": "ERROR",
+    "statusMessage": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.117Z",
+    "updatedAt": "2026-09-05T16:33:11.118Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "task_name": "Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRS",
+      "frame_seq": 17,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-05T16:33:05.612Z",
+      "null_fields": "agent_role",
+      "observation_role": "task",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 2.251,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "96af4c3a634b8c20",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.602Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "789867469c2df048",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "frame_seq": 16,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-05T16:33:05.602Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before"
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "789867469c2df048",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.222Z",
+    "endTime": "2026-09-05T16:33:07.868Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "6294c8c6a2958199",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "chart_the_shoals",
+    "level": "ERROR",
+    "statusMessage": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.118Z",
+    "updatedAt": "2026-09-05T16:33:11.118Z",
+    "input": null,
+    "output": {
+      "output_chars": 0,
+      "output_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "chart_the_shoals",
+      "frame_seq": 14,
+      "frame_kind": "edge_taken",
+      "event_type": "EDGE_PROCESS",
+      "frame_ts": "2026-09-05T16:33:05.222Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "entered_from": "start_survey",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 2.646,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "198bbc1dbfe39b0e",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.219Z",
+    "endTime": "2026-09-05T16:33:05.222Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "6294c8c6a2958199",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "start_survey",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": {
+      "output_chars": 10,
+      "output_fingerprint": "b3ec91eb673cb0bb8cf73856aba5ad94f9c98a00328fa235d0d2f7f5b848fc91"
+    },
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "start_survey",
+      "frame_seq": 11,
+      "frame_kind": "node_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T16:33:05.218Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.003,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "8375f246907f5ca1",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.214Z",
+    "endTime": "2026-09-05T16:33:05.218Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "6294c8c6a2958199",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "start_survey",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": {
+      "output_chars": 395,
+      "output_fingerprint": "596ce262339ff3d1f8d781a91066d6bca7f53134e4d3fd1051003a1f04acdc9f"
+    },
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "start_survey",
+      "frame_seq": 8,
+      "frame_kind": "edge_taken",
+      "event_type": "EDGE_PROCESS",
+      "frame_ts": "2026-09-05T16:33:05.213Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "entered_from": "the_brief",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.004,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "133b429a6d3e3bee",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.208Z",
+    "endTime": "2026-09-05T16:33:05.213Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "6294c8c6a2958199",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "the_brief",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": {
+      "output_chars": 39,
+      "output_fingerprint": "e3dfa5a45db286619279a56aa7dec4d030acf28ab53af6edf6cd85d8327ca8a8"
+    },
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "the_brief",
+      "frame_seq": 6,
+      "frame_kind": "node_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T16:33:05.207Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.005,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "51cee9c8f1ee328f",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.200Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "6294c8c6a2958199",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T16:33:05.199Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 1,
+        "of": 4,
+        "label": {
+          "chars": 12,
+          "sha256": "9657515d458050e8110a7cb551a27f5b04d85f7eb28ff5ea3e8a50fec1107157"
+        },
+        "node_ids": [
+          {
+            "chars": 9,
+            "sha256": "09cf069ea3d06ddd9972c5cdff5b5de91686a3f48e2ffdd56a1fcfbb8f279ed4"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "63ea8493a4e191ec",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.200Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "6294c8c6a2958199",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "workflow",
+      "frame_seq": 2,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T16:33:05.199Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 2,
+        "of": 4,
+        "label": {
+          "chars": 16,
+          "sha256": "8dce4c0e73952d22e11e4e9d75e371fb84d6932ac54096f3d49425939c3ddec9"
+        },
+        "node_ids": [
+          {
+            "chars": 12,
+            "sha256": "a21e76c74267b296617b5a2dc73b1796a2e1b6856a898b12359feee7a0e3e22f"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "8e2efd0727d8a1fc",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.200Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "6294c8c6a2958199",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "workflow",
+      "frame_seq": 4,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T16:33:05.199Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 4,
+        "of": 4,
+        "label": {
+          "chars": 9,
+          "sha256": "4b9146ee280576f1d7aa8e0893af71c3ceb3f8333a3ed2b3f0cd65f1f96d1271"
+        },
+        "node_ids": [
+          {
+            "chars": 9,
+            "sha256": "509189e07afe6768a46b4c5eb6ee6e1c4da925e1669360bcf1b29af3b1db8bdc"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "97e5302615ad7d99",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.200Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "6294c8c6a2958199",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-05T16:33:09.088Z",
+    "updatedAt": "2026-09-05T16:33:09.089Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "workflow",
+      "frame_seq": 3,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T16:33:05.199Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 3,
+        "of": 4,
+        "label": {
+          "chars": 16,
+          "sha256": "e18a364557258fffabae16b95a934713d8433a6d558180eaec95a7d9f3e648fd"
+        },
+        "node_ids": [
+          {
+            "chars": 16,
+            "sha256": "e18a364557258fffabae16b95a934713d8433a6d558180eaec95a7d9f3e648fd"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "6294c8c6a2958199",
+    "traceId": "9becf713e98445a9b9c05b229a15cb60",
+    "startTime": "2026-09-05T16:33:05.199Z",
+    "endTime": "2026-09-05T16:33:07.870Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": null,
+    "type": "SPAN",
+    "environment": "live",
+    "name": "run",
+    "level": "ERROR",
+    "statusMessage": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)",
+    "version": null,
+    "createdAt": "2026-09-05T16:33:11.621Z",
+    "updatedAt": "2026-09-05T16:33:11.622Z",
+    "input": {
+      "input_chars": 57,
+      "input_fingerprint": "78d4bd54f34d469727af8fe2565d580006b7b9a7e7c1b05a56cded30424c779a",
+      "input_keys": [
+        "idea",
+        "no_gates"
+      ]
+    },
+    "output": {
+      "status": "failed",
+      "reason": "Tool 'read_website_content' failed during 'Take a sounding for the Tidewater approaches, north channel. You MUST call BOTH of your tools, in this order and once each. FIRST call sounding_line_lookup with water set to the stretch of water named above - that is the survey office depth register. THEN call your website-reading tool with website_url set to https://sounding-line.invalid/shoals, which is the register's shoal appendix. Then report what EACH of the two tools returned, naming the tool in each case.': Could not resolve hostname: 'sounding-line.invalid' (code: ValueError)"
+    },
+    "metadata": {
+      "run_id": "9becf713-e984-45a9-b9c0-5b229a15cb60",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-05T16:33:05.199Z",
+      "null_fields": "agent_role,task_name",
+      "workflow_id": "ug_4e7e952f",
+      "app_session_id": "proof-2",
+      "gates": "auto",
+      "mode": "run",
+      "synthetic": false,
+      "user_id": "proof-runner",
+      "graph_version": "c3b393e1a89362dd",
+      "observation_role": "run",
+      "run_metrics": {
+        "reason": "run_failed",
+        "usage": {
+          "successful_requests": 2,
+          "prompt_tokens": 788,
+          "completion_tokens": 53,
+          "total_tokens": 841,
+          "call_count": 2,
+          "elapsed_ms": 2202,
+          "cost_usd": 0.0003689
+        },
+        "frames": {
+          "captured": 42,
+          "dropped": 0,
+          "gaps": 0,
+          "emit_errors": 0,
+          "subscriber_dropped": 0,
+          "unattributed": 0
+        }
+      },
+      "unhandled_event_counts": {
+        "hook_dispatched": 7,
+        "agent_logs_started": 1,
+        "cc_env": 1,
+        "flow_created": 1,
+        "tool_failure_detected": 1
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 2.671,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  }
+]

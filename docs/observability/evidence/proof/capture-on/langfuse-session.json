@@ -1,0 +1,117 @@
+{
+  "id": "c5d1dde9-c22d-4621-a171-9a7e85803105",
+  "createdAt": "2026-09-05T16:42:39.926Z",
+  "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+  "environment": "synthetic",
+  "traces": [
+    {
+      "id": "c5d1dde9c22d4621a1719a7e85803105",
+      "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+      "name": "idea-validator",
+      "timestamp": "2026-09-05T16:42:11.474Z",
+      "environment": "synthetic",
+      "tags": [
+        "gates:auto",
+        "idea-validator",
+        "mode:run"
+      ],
+      "bookmarked": false,
+      "release": null,
+      "version": null,
+      "userId": "anonymous",
+      "sessionId": "c5d1dde9-c22d-4621-a171-9a7e85803105",
+      "public": false,
+      "input": {
+        "idea": "MARKER-QUILTED-SEXTANT is the marker phrase for this capture test. A tide-table app for harbour pilots; our staging key is *** and must never appear in a trace.",
+        "no_gates": true
+      },
+      "output": {
+        "status": "completed",
+        "reason": null
+      },
+      "metadata": {
+        "run_id": "c5d1dde9-c22d-4621-a171-9a7e85803105",
+        "node_id": "workflow",
+        "frame_seq": 1,
+        "frame_kind": "run_state",
+        "event_type": "WORKFLOW_START",
+        "frame_ts": "2026-09-05T16:42:11.473Z",
+        "null_fields": "agent_role,task_name",
+        "workflow_id": "idea-validator",
+        "app_session_id": "proof-capture",
+        "gates": "auto",
+        "mode": "run",
+        "synthetic": true,
+        "user_id": "anonymous",
+        "graph_version": "9c6ca8a6fefbfffd",
+        "observation_role": "run",
+        "computed_result": {
+          "verdict": "NEEDS_WORK",
+          "composite_score": 6,
+          "confidence": 0.62,
+          "confidence_band": "MODERATE",
+          "provisional": false,
+          "fatal_floors": [],
+          "decision_reason": null,
+          "dimensions": {
+            "demand": 3,
+            "market": 3,
+            "competitive_room": 3,
+            "feasibility": 3,
+            "headroom_over_free": 3
+          },
+          "anchor_margins": {
+            "D": 0,
+            "M": 0.0625,
+            "C": 0.0714,
+            "F": 0.0417,
+            "X": 0.0476
+          }
+        },
+        "run_metrics": {
+          "reason": "run_completed",
+          "usage": {
+            "successful_requests": 6,
+            "prompt_tokens": 3840,
+            "completion_tokens": 628,
+            "total_tokens": 4468,
+            "call_count": 6,
+            "elapsed_ms": 0,
+            "cost_usd": 0.002722
+          },
+          "frames": {
+            "captured": 97,
+            "dropped": 0,
+            "gaps": 0,
+            "emit_errors": 0,
+            "subscriber_dropped": 0,
+            "unattributed": 0
+          }
+        },
+        "resourceAttributes": {
+          "telemetry.sdk.language": "python",
+          "telemetry.sdk.name": "opentelemetry",
+          "telemetry.sdk.version": "1.42.1",
+          "langfuse.environment": "synthetic",
+          "service.name": "unknown_service"
+        },
+        "scope": {
+          "name": "langfuse-sdk",
+          "version": "4.15.1",
+          "attributes": {
+            "public_key": "<redacted>"
+          }
+        }
+      },
+      "createdAt": "2026-09-05T16:42:16.000Z",
+      "updatedAt": "2026-09-05T16:42:39.922Z",
+      "externalId": null
+    }
+  ],
+  "_deprecation": {
+    "message": "On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on November 16, 2026. In Langfuse v4, read session data via GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>.",
+    "replacement": "GET /api/public/v2/observations?filter=<urlencoded sessionId filter>&fromStartTime=<from>&toStartTime=<to>",
+    "docsUrl": "https://langfuse.com/docs/api-and-data-platform/features/observations-api",
+    "sunsetAt": "2026-11-16"
+  }
+}

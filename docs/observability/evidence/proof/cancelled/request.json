@@ -1,0 +1,5 @@
+{
+  "workflow_id": "idea-validator",
+  "inputs": { "idea": "A cancelled-run probe for the observability proof: a marketplace matching harbour pilots to short-notice vessel movements." },
+  "gates": "auto"
+}

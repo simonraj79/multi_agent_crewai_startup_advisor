@@ -1,0 +1,61 @@
+{
+  "run_id": "6586c854-3ca3-44c4-a587-eb6a3ef01962",
+  "session_id": "proof-4",
+  "workflow_id": "brief-flow",
+  "graph_version": "078969f5584a51e0",
+  "status": "completed",
+  "created_at": "2026-09-05T16:34:41.578519Z",
+  "started_at": "2026-09-05T16:34:41.582014Z",
+  "completed_at": "2026-09-05T16:36:58.862945Z",
+  "pending_gate": null,
+  "frames": {
+    "count": 116,
+    "captured": 116,
+    "dropped": 0,
+    "gaps": 0,
+    "emit_errors": 0,
+    "subscriber_dropped": 0,
+    "unattributed": 0,
+    "first_seq": 1,
+    "last_seq": 116
+  },
+  "usage": {
+    "successful_requests": 10,
+    "prompt_tokens": 96787,
+    "completion_tokens": 17606,
+    "total_tokens": 114393,
+    "call_count": 10,
+    "elapsed_ms": 120535,
+    "cost_usd": 0.09759125
+  },
+  "node_usage": [
+    {
+      "successful_requests": 5,
+      "prompt_tokens": 87195,
+      "completion_tokens": 1427,
+      "total_tokens": 88622,
+      "call_count": 5,
+      "elapsed_ms": 8031,
+      "cost_usd": 0.029726,
+      "node_id": "scrape_web",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 5,
+      "prompt_tokens": 9592,
+      "completion_tokens": 16179,
+      "total_tokens": 25771,
+      "call_count": 5,
+      "elapsed_ms": 112504,
+      "cost_usd": 0.06786525,
+      "node_id": "scrape_web",
+      "model": "google/gemini-3.8-flash"
+    }
+  ],
+  "result": null,
+  "verdict": null,
+  "error": null,
+  "stop_reason": null,
+  "mode": "run",
+  "resume_from": null
+}

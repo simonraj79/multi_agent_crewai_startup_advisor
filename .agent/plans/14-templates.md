@@ -343,18 +343,30 @@ the static $0.4284.
 ### Measured, 2026-09-05
 
 ```text
-Python           <see the build report>
+Python           2441 run - 0 failures, 6 skipped, 149.9 s
 Frontend unit    1705 passed in 84 files
 vue-tsc -b --force    exit 0
-E2E              131 collected - 123 passed, 8 skipped, 0 failed
+npm run build         677 ms
+E2E              131 collected - 122 passed, 8 skipped, 1 failed
 ```
+
+**The one E2E failure is PRE-EXISTING and that was measured rather than
+argued.** `builder.spec.ts:1227` - "paints the target handle green when it will
+take the edge" - fails only inside a full-suite run and passes in 5 s on its
+own. This branch does not touch that file, so the base commit `5a97b26` was
+checked out and the whole suite run again on the same machine under the same
+backend: **130 collected, 121 passed, 8 skipped, and the same one test failed.**
+The delta from this work is therefore exactly +1 test and +1 pass.
 
 The eight skips are environment knobs this session did not set - `E2E_MCP_URL`,
 and `SYNTHETIC_FAILURE` for `failure-modes.spec.ts` and `test-panel.spec.ts` -
-and each skip names the knob it wants. The two `gallery-*.png` visual baselines
-WERE re-recorded, because the gallery is this change's own surface and it gained
-a card by design; nothing else was re-baselined. `benchmarks/perf/canvas.json`
-is rewritten by every perf run and was reverted rather than committed.
+and each skip names the knob it wants; the base run skipped the same eight.
+The two `gallery-*.png` visual baselines WERE re-recorded, because the gallery
+is this change's own surface and it gained a card by design; nothing else was
+re-baselined, and the two `[mobile]` gallery captures did not move because a
+390px column puts the seventh card below the fold.
+`benchmarks/perf/canvas.json` is rewritten by every perf run and was reverted
+rather than committed.
 
 ### The four, as built — 2026-09-04
 

@@ -1,21 +1,17 @@
 $ npx vitest run tests/designTokens.spec.ts --reporter=verbose       # from frontend/
-# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T16:00:11+08:00
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:23:28+08:00
 # vitest exit code: 0
 #
-# --reporter=verbose is kept because the inventory the spec prints IS the
-# evidence; the pass/fail line alone would say less.
+# --reporter=verbose is kept because the inventory the spec prints IS the evidence.
 
 
  RUN  v4.1.11 D:/MultiAgentSystem/frontend
 
-warning: in the working copy of 'docs/run-shell/evidence/G1/capture-notes.json', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/G1/run.ndjson', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/G2/grep.txt', LF will be replaced by CRLF the next time Git touches it
 warning: in the working copy of 'docs/run-shell/evidence/G3/vitest.txt', LF will be replaced by CRLF the next time Git touches it
 warning: in the working copy of 'docs/run-shell/evidence/R/build.txt', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/R/diff-stat.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/R/python.txt', LF will be replaced by CRLF the next time Git touches it
 warning: in the working copy of 'docs/run-shell/evidence/R/typecheck.txt', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/T1/data-layer-diff.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/R/vitest.txt', LF will be replaced by CRLF the next time Git touches it
 warning: in the working copy of 'docs/run-shell/evidence/T1/vitest.txt', LF will be replaced by CRLF the next time Git touches it
 warning: in the working copy of 'docs/run-shell/evidence/T2/interpretation-vitest.txt', LF will be replaced by CRLF the next time Git touches it
 stdout | tests/designTokens.spec.ts > design tokens: no colour literal in a file this branch touched > reports the whole inventory, so the run is the evidence
@@ -39,17 +35,17 @@ token sheets exempt: frontend/src/assets/styles/*.css (docs/design.md §0)
 no colour literal in any of them.
 
  ✓ tests/designTokens.spec.ts > design tokens: no colour literal in a file this branch touched > has files to check at all 1ms
- ✓ tests/designTokens.spec.ts > design tokens: no colour literal in a file this branch touched > reports the whole inventory, so the run is the evidence 1ms
+ ✓ tests/designTokens.spec.ts > design tokens: no colour literal in a file this branch touched > reports the whole inventory, so the run is the evidence 0ms
  ✓ tests/designTokens.spec.ts > design tokens: no colour literal in a file this branch touched > contains no hex, rgba() or hsl() literal in a file W5 owns 0ms
  ✓ tests/designTokens.spec.ts > design tokens: no colour literal in a file this branch touched > contains no hex, rgba() or hsl() literal anywhere on the branch 0ms
  ✓ tests/designTokens.spec.ts > the token sheet declares what the design system says it does > carries the eight-step spacing scale 0ms
  ✓ tests/designTokens.spec.ts > the token sheet declares what the design system says it does > carries the seven type roles and one tracking value 0ms
  ✓ tests/designTokens.spec.ts > the token sheet declares what the design system says it does > adds no seventh type step 0ms
- ✓ tests/designTokens.spec.ts > the token sheet declares what the design system says it does > gives every new light-theme token a dark value to shadow 1ms
+ ✓ tests/designTokens.spec.ts > the token sheet declares what the design system says it does > gives every new light-theme token a dark value to shadow 0ms
  ✓ tests/designTokens.spec.ts > the token sheet declares what the design system says it does > keeps the four frozen shadows out of the light block 0ms
 
  Test Files  1 passed (1)
       Tests  9 passed (9)
-   Start at  16:00:11
-   Duration  597ms (transform 25ms, setup 0ms, import 102ms, tests 5ms, environment 398ms)
+   Start at  17:23:27
+   Duration  614ms (transform 27ms, setup 0ms, import 105ms, tests 4ms, environment 416ms)
 

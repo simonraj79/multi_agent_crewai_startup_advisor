@@ -1,6 +1,6 @@
 $ npx playwright test e2e/cast.spec.ts e2e/cast-perf.spec.ts       # from frontend/
-# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T16:09:08+08:00
-# npx playwright test exit code: 1   (4 failed, 7 passed)
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:31:25+08:00
+# npx playwright test exit code: 1   (11 passed, 1 failed, 3.0m)
 #
 # backend (repo root, background):
 #   SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099
@@ -11,208 +11,87 @@ $ npx playwright test e2e/cast.spec.ts e2e/cast-perf.spec.ts       # from fronte
 #                      fm_malformed:malformed_output:1,fm_rate_limit:rate_limit:1,fm_cast_refusal:refusal:1"
 #   ./.venv/Scripts/serve.exe
 #
-# WHAT MOVED SINCE THE FIRST PASS (5 failed / 6 passed at 27b256e):
-#   S2 (a working character within 2s)          FAIL -> PASS
-#   the Revise reply the gate never took        FAIL -> PASS  (e2e/gateReply.ts)
-#   the duplicate #idea DOM id                  FAIL -> PASS  (textarea#idea + no fallthrough)
-#   T2.8 x2                                     FAIL -> FAIL  (worse numbers, see below)
-#   S4 now reaches its capture and fails LATER, on a raw code in the error line
-#   the 119-event run now reaches ALL SEVEN of its captures and fails LATER,
-#   on 24 trace rows reading as an empty line
+# WHAT MOVED SINCE THE SECOND PASS (4 failed / 7 passed at 16f3be5):
+#   cast.spec.ts:1027  the 119-event run - 24 empty trace rows   FAIL -> PASS
+#   cast.spec.ts:1819  S4 - SYNTHETIC_FAILURE in the error line  FAIL -> PASS
+#   cast.spec.ts:1453  T1.1 - NEW, and green first time: a verdict an override
+#                      decided, captured with its block, dimension and score
+#   cast-perf          two absolute-bar tests -> one recorded arm + one graded
+#                      three-arm comparison, which is the amended criterion
 #
-# EVERY capture this pair is responsible for now exists on disk:
-#   S/empty.png S/first-run.png S/long-run.png S/long-run.md S/failure.png
-#   S/narrow.png T2/tie-in.png T2/trace-completed.png T2/reduced-motion.png
-#   T2/perf.json T1/report-header.png T3/after-1440.png T3/after-1180.png
-#   T3/after-390.png T3/after-1440-light.png G3/reload-map.json
+# THE ONE FAILURE, and it is the criterion itself:
+#   painting the console added 5 dropped frames - 10 over 34ms painted against
+#   5 with the same replay hidden, idle floor 0. The p95 arm PASSES:
+#   painted 18.6ms against hidden 18.1ms, a delta of 0.5ms against 4ms of
+#   headroom. All three arms absolute, from perf.json:
+#
+#     arm      intervals  p50   p95    max     over34ms  over50ms
+#     idle       600      16.6  18.0    24.3      0         0
+#     hidden     554      16.6  18.1   105.7      5         2
+#     painted    538      16.7  18.6   120.2     10         5
+#
+#   Under the RETIRED absolute bar (0 over 34ms, p95 <= 20ms) the painted arm
+#   reads 10 drops and p95 18.6 - so the p95 half of the old bar is now met
+#   too, and was not in either earlier pass (32.3ms, then 26.8ms).
+#
+# EVERY capture this pair is responsible for exists on disk, including the two
+# T1.1 report headers the new capture test writes.
 
 [WebServer] (!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
 [WebServer]   - import "./syntheticUser" without a file extension (e2e/vite.e2e.config.ts:4:57). Add the file extension
 [WebServer] Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
 
-Running 11 tests using 1 worker
+Running 12 tests using 1 worker
 
-  ✘   1 [chromium] › e2e\cast-perf.spec.ts:315:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch (26.0s)
-  ✘   2 [chromium] › e2e\cast-perf.spec.ts:460:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch (12.3s)
-  ✓   3 [chromium] › e2e\cast.spec.ts:507:3 › the cast at rest › S1: every character is idle before a run, and the shell is not blank (897ms)
-  ✓   4 [chromium] › e2e\cast.spec.ts:544:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch (18.9s)
-  ✓   5 [chromium] › e2e\cast.spec.ts:687:3 › the graph and the trace show the same cast › T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state @launch (3.1s)
-  ✓   6 [chromium] › e2e\cast.spec.ts:778:3 › the character on a node is deterministic › G3: the same node keeps the same character across a page reload @launch (15.7s)
-  ✓   7 [chromium] › e2e\cast.spec.ts:842:3 › motion stays quiet › T2.7: nothing animates offscreen and no more than twelve character animations run at once @launch (3.0s)
-  ✓   8 [chromium] › e2e\cast.spec.ts:881:3 › motion stays quiet › T2.7/S5: reduced motion stops every part and keeps every state @launch (15.4s)
-  ✘   9 [chromium] › e2e\cast.spec.ts:963:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch (35.1s)
-  ✓  10 [chromium] › e2e\cast.spec.ts:1192:3 › the shell at 390x844 › S6: a run drives and finishes at 390px, and nothing overflows sideways @launch (18.5s)
-  ✘  11 [chromium] › e2e\cast.spec.ts:1385:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch (4.4s)
+  ✓   1 [chromium] › e2e\cast-perf.spec.ts:379:3 › T2.8 — frame budget › a real synthetic run is measured end to end and its numbers are recorded @launch (21.8s)
+  ✘   2 [chromium] › e2e\cast-perf.spec.ts:529:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch (36.7s)
+  ✓   3 [chromium] › e2e\cast.spec.ts:571:3 › the cast at rest › S1: every character is idle before a run, and the shell is not blank (673ms)
+  ✓   4 [chromium] › e2e\cast.spec.ts:608:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch (18.5s)
+  ✓   5 [chromium] › e2e\cast.spec.ts:751:3 › the graph and the trace show the same cast › T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state @launch (3.0s)
+  ✓   6 [chromium] › e2e\cast.spec.ts:842:3 › the character on a node is deterministic › G3: the same node keeps the same character across a page reload @launch (15.2s)
+  ✓   7 [chromium] › e2e\cast.spec.ts:906:3 › motion stays quiet › T2.7: nothing animates offscreen and no more than twelve character animations run at once @launch (2.8s)
+  ✓   8 [chromium] › e2e\cast.spec.ts:945:3 › motion stays quiet › T2.7/S5: reduced motion stops every part and keeps every state @launch (15.5s)
+  ✓   9 [chromium] › e2e\cast.spec.ts:1027:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch (34.3s)
+  ✓  10 [chromium] › e2e\cast.spec.ts:1453:3 › the report names what decided the run › T1.1: a verdict an override decided is captured with its block, its dimension and its score @launch (5.6s)
+  ✓  11 [chromium] › e2e\cast.spec.ts:1626:3 › the shell at 390x844 › S6: a run drives and finishes at 390px, and nothing overflows sideways @launch (18.5s)
+  ✓  12 [chromium] › e2e\cast.spec.ts:1819:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch (4.2s)
 
 
-  1) [chromium] › e2e\cast-perf.spec.ts:315:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch 
+  1) [chromium] › e2e\cast-perf.spec.ts:529:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch 
 
-    Error: 98 rAF intervals exceeded 34ms during a live run (max 108.3ms, p95 38.6ms). See D:\MultiAgentSystem\docs\run-shell\evidence\T2\perf.json.
+    Error: painting the console added 5 dropped frames: 10 over 34ms painted against 5 with the same replay hidden. Idle floor: 0. See D:\MultiAgentSystem\docs\run-shell\evidence\T2\perf.json.
 
-    expect(received).toBe(expected) // Object.is equality
+    expect(received).toBeLessThanOrEqual(expected)
 
-    Expected: 0
-    Received: 98
+    Expected: <= 5
+    Received:    10
 
-      446 |         `${overBudget} rAF intervals exceeded ${budget.dropBudgetMs}ms during a live run ` +
-      447 |           `(max ${stats.max}ms, p95 ${stats.p95}ms). See ${PERF_JSON}.`,
-    > 448 |       ).toBe(0)
+      883 |           `painted against ${hidden.over34ms} with the same replay hidden. Idle floor: ` +
+      884 |           `${(arms.idle as { over34ms: number }).over34ms}. See ${PERF_JSON}.`,
+    > 885 |       ).toBeLessThanOrEqual(hidden.over34ms)
           |         ^
-      449 |       expect(
-      450 |         stats.p95,
-      451 |         `p95 was ${stats.p95}ms against a budget of ${budget.p95BudgetMs}ms. See ${PERF_JSON}.`,
-        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:448:9
+      886 |       expect(
+      887 |         painted.p95,
+      888 |         `painting the console cost ${p95Delta}ms of p95: ${painted.p95}ms painted against ` +
+        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:885:9
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\test-failed-1.png
+    test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    Error Context: test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\error-context.md
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\error-context.md
 
-    Error Context: test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\error-context.md
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\error-context.md
 
     attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\trace.zip
+    test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\trace.zip
     Usage:
 
-        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\trace.zip
+        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\trace.zip
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  2) [chromium] › e2e\cast-perf.spec.ts:460:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch 
-
-    Error: 34 rAF intervals exceeded 34ms while 131 frames were applied (max 118.5ms, p95 36.3ms). See D:\MultiAgentSystem\docs\run-shell\evidence\T2\perf.json.
-
-    expect(received).toBe(expected) // Object.is equality
-
-    Expected: 0
-    Received: 34
-
-      627 |         `${overBudget} rAF intervals exceeded ${budget.dropBudgetMs}ms while ${applied} frames ` +
-      628 |           `were applied (max ${stats.max}ms, p95 ${stats.p95}ms). See ${PERF_JSON}.`,
-    > 629 |       ).toBe(0)
-          |         ^
-      630 |       expect(
-      631 |         stats.p95,
-      632 |         `p95 was ${stats.p95}ms against a budget of ${budget.p95BudgetMs}ms over ${applied} ` +
-        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:629:9
-
-    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\test-failed-1.png
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    Error Context: test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\error-context.md
-
-    Error Context: test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\error-context.md
-
-    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\trace.zip
-    Usage:
-
-        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\trace.zip
-
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-  3) [chromium] › e2e\cast.spec.ts:963:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch 
-
-    Error: the trace is not one short human sentence per row (T2.1)
-
-    expect(received).toEqual(expected) // deep equality
-
-    - Expected  -  1
-    + Received  + 26
-
-    - Array []
-    + Array [
-    +   "row 0: empty line",
-    +   "row 1: empty line",
-    +   "row 2: empty line",
-    +   "row 3: empty line",
-    +   "row 4: empty line",
-    +   "row 5: empty line",
-    +   "row 6: empty line",
-    +   "row 7: empty line",
-    +   "row 8: empty line",
-    +   "row 9: empty line",
-    +   "row 10: empty line",
-    +   "row 11: empty line",
-    +   "row 12: empty line",
-    +   "row 13: empty line",
-    +   "row 14: empty line",
-    +   "row 15: empty line",
-    +   "row 16: empty line",
-    +   "row 17: empty line",
-    +   "row 18: empty line",
-    +   "row 19: empty line",
-    +   "row 20: empty line",
-    +   "row 21: empty line",
-    +   "row 22: empty line",
-    +   "row 23: empty line",
-    + ]
-
-      1142 |         if (codes.length) problems.push(`row ${index}: raw code ${codes.join(', ')} — "${line}"`)
-      1143 |       })
-    > 1144 |       expect(problems, 'the trace is not one short human sentence per row (T2.1)').toEqual([])
-           |                                                                                    ^
-      1145 |
-      1146 |       // Every disclosure closed by default — the whole point of putting the
-      1147 |       // payload behind one is that nobody has to scroll past it.
-        at D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:1144:84
-
-    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\test-failed-1.png
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    Error Context: test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\error-context.md
-
-    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\trace.zip
-    Usage:
-
-        npx playwright show-trace test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\trace.zip
-
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-  4) [chromium] › e2e\cast.spec.ts:1385:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch 
-
-    Error: raw code in the error line: "Run failed: SYNTHETIC_FAILURE: fm_cast_refusal attempt 1…"
-
-    expect(received).toEqual(expected) // deep equality
-
-    - Expected  - 1
-    + Received  + 3
-
-    - Array []
-    + Array [
-    +   "SYNTHETIC_FAILURE",
-    + ]
-
-      1446 |       ).toBeLessThanOrEqual(MAX_TRACE_LINE_CHARS)
-      1447 |       expect(line.includes('{"'), `raw JSON in the error line: "${line}"`).toBe(false)
-    > 1448 |       expect(rawCodesIn(line), `raw code in the error line: "${line}"`).toEqual([])
-           |                                                                         ^
-      1449 |       // ONE sentence: a trailing terminator is fine, an internal one followed by
-      1450 |       // more prose is a paragraph wearing a line's clothes.
-      1451 |       const withoutTerminator = line.replace(/[.!?]+$/, '')
-        at D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:1448:73
-
-    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\test-failed-1.png
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    Error Context: test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\error-context.md
-
-    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\trace.zip
-    Usage:
-
-        npx playwright show-trace test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\trace.zip
-
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-  4 failed
-    [chromium] › e2e\cast-perf.spec.ts:315:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch 
-    [chromium] › e2e\cast-perf.spec.ts:460:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch 
-    [chromium] › e2e\cast.spec.ts:963:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch 
-    [chromium] › e2e\cast.spec.ts:1385:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch 
-  7 passed (2.8m)
+  1 failed
+    [chromium] › e2e\cast-perf.spec.ts:529:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch 
+  11 passed (3.0m)
+EXIT=1

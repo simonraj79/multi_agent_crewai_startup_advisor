@@ -1,5 +1,5 @@
 $ git diff main...HEAD --stat -- src/brief_crew/schemas src/brief_crew/validator_guardrails.py src/brief_crew/validator_flow.py
-# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, merge-base 6291fee, 2026-09-05T15:56:49+08:00
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, merge-base 6291fee, 2026-09-05T17:24:40+08:00
 
 <<< end of output (empty above means no diff) >>>
 
@@ -9,3 +9,10 @@ $ git diff main...HEAD -- src/brief_crew/config.py | grep -E "RUBRIC|FLOOR|CONFI
 
 $ git diff main...HEAD --stat -- src/brief_crew/config.py
 <<< end of output (empty means config.py has no diff at all) >>>
+
+Round three added a THIRD real-serializer verdict frame (4d5fd05) carrying
+INSUFFICIENT_EVIDENCE and a listed floor, which T1.1's new capture replays.
+It is a FIXTURE and a TEST, not a data-layer change - the two files it
+touches are tests/events/test_verdict_frame.py and
+frontend/tests/fixtures/backendVerdictFrames.json. Confirmed by the three
+empty diffs above: nothing that computes a verdict moved.

@@ -1,26 +1,26 @@
 $ grep -rniE "Scoper|Market Analyst|Sentiment|Feasibility|Synthesist|Reporter|market_task|scope_idea|research_market|MarketCrew|demand|headroom" frontend/src/characters frontend/src/trace frontend/src/components/AgentCharacter.vue frontend/src/composables/useRunChoreography.ts
-# RV3 SECOND PASS, from the repo root, branch run-shell/cast at 16f3be5, 2026-09-05T15:56:30+08:00
+# RV3 THIRD PASS, from the repo root, branch run-shell/cast at 601baef, 2026-09-05T17:24:30+08:00
 
 frontend/src/composables/useRunChoreography.ts:137: * Deliberately generous rather than clever: `Scoper` passes on the capital and
 
 ---------------------------------------------------------------------------
-RV3's judgement of every hit  (second pass, 16f3be5)
+RV3's judgement of every hit  (third pass, 601baef)
 ---------------------------------------------------------------------------
 
-1 hit, 0 product hits. Unchanged from the first pass at 27b256e, and re-judged
-rather than carried forward.
+1 hit, 0 product hits. Re-run and re-judged, not carried forward - round
+three rewrote 91 lines of frontend/src/trace/interpret.ts and 69 of
+frontend/src/characters/pip.ts, which is exactly when a role name gets
+typed into a table by accident.
 
   frontend/src/composables/useRunChoreography.ts:137
 
     " * Deliberately generous rather than clever: `Scoper` passes on the
       capital and `market research analyst` passes on the spaces. What it
-      rejects is the one shape ids actually take here - a lowercase snake or
-      kebab token."
+      rejects is the one shape ids actually take here - a lowercase snake
+      or kebab token."
 
   DISPOSITION: comment, naming an EXAMPLE. It is the last line of the JSDoc
-  above `readsAsRole()`, which decides whether a descriptor's `agent_role`
-  reads as a role a human wrote or as a node id. The function body is three
-  lines and contains no role list at all:
+  above readsAsRole(), whose whole body is a whitespace-or-capital test:
 
       export function readsAsRole(value: string | undefined): boolean {
         const trimmed = (value ?? '').trim()
@@ -28,23 +28,25 @@ rather than carried forward.
         return /\s/.test(trimmed) || /[A-Z]/.test(trimmed)
       }
 
-  The test is whitespace-or-capital. `Scoper` is quoted only to show a
-  one-word role that still passes on its capital; deleting the word would
-  change no behaviour. Not product logic.
+  No role list, no lookup, no branch on any name. Deleting the word
+  `Scoper` from the comment would change no behaviour. Not product logic.
 
 VERDICT: G2 PASS. No Idea Validator role, task name, crew name, node id or
-dimension name reaches the logic of `frontend/src/characters/*`,
-`frontend/src/trace/*`, `AgentCharacter.vue` or `useRunChoreography.ts`.
+dimension name reaches the logic of frontend/src/characters/*,
+frontend/src/trace/*, AgentCharacter.vue or useRunChoreography.ts.
 
-Files covered by the grep (all of them, none excluded) at 16f3be5:
-  frontend/src/characters/pip.ts                     ( 526 lines)
-  frontend/src/trace/interpret.ts                    ( 783 lines)
-  frontend/src/trace/speech.ts                       ( 106 lines)
-  frontend/src/components/AgentCharacter.vue         ( 197 lines, was 92)
-  frontend/src/composables/useRunChoreography.ts     (1024 lines, was 958)
+Files covered by the grep (all of them, none excluded) at 601baef:
+     577 frontend/src/characters/pip.ts
+     860 frontend/src/trace/interpret.ts
+     106 frontend/src/trace/speech.ts
+     197 frontend/src/components/AgentCharacter.vue
+    1024 frontend/src/composables/useRunChoreography.ts
+    2764 total
 
-Round two grew two of the five files by 271 lines between them and the grep
-still answers the same thing, which is the half of this criterion that only a
-re-run can establish.
+Growth across the three passes, which is the reason to re-run rather than cite:
+  pip.ts                   526 -> 526 -> 577
+  interpret.ts             783 -> 783 -> 860
+  AgentCharacter.vue        92 -> 197 -> 197
+  useRunChoreography.ts    958 -> 1024 -> 1024
 
 No test fixture was excluded, because the grep's paths contain no fixtures.

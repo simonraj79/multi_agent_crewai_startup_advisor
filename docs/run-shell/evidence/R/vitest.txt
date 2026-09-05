@@ -1,22 +1,19 @@
 $ npx vitest run       # from frontend/
-# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T15:59:10+08:00
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:22:50+08:00
 # vitest exit code: 0
-# (first pass at 27b256e: 92 files / 1926 tests. Round two adds exactly one file,
-#  tests/traceRow.spec.ts, and it carries exactly ten tests - measured alone:
-#  93 files / 1936 tests. characterSystem.spec.ts grew by 32 lines and its test
-#  count did not move, 69 in both passes.)
+# 93 files / 1963 tests, all passed.
+#   pass 2 at 16f3be5: 93 files / 1936
+#   pass 1 at 27b256e: 92 files / 1926
+# Round three adds no spec FILE and 27 tests, in traceRow, traceInterpretation,
+# characterSystem, realVerdictFrameShape, dialogueRail and gateDerived.
 
 
  RUN  v4.1.11 D:/MultiAgentSystem/frontend
 
-warning: in the working copy of 'docs/run-shell/evidence/G1/capture-notes.json', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/G1/run.ndjson', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/G2/grep.txt', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/R/diff-stat.txt', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/T1/data-layer-diff.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/R/python.txt', LF will be replaced by CRLF the next time Git touches it
 
  Test Files  93 passed (93)
-      Tests  1936 passed (1936)
-   Start at  15:58:53
-   Duration  10.82s (transform 43.16s, setup 0ms, import 82.69s, tests 45.71s, environment 152.20s)
+      Tests  1963 passed (1963)
+   Start at  17:22:32
+   Duration  8.71s (transform 39.04s, setup 0ms, import 69.95s, tests 37.65s, environment 109.86s)
 

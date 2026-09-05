@@ -9,7 +9,7 @@ at the scope gate, one at the verdict gate, all inside the synthetic double's ow
 96–97 frames, and S3 asks for 119; a revise is a reply the console really offers and
 the double really models, so the run is longer rather than the number relaxed.
 
-- captured at: 2026-09-05T08:15:42.547Z
+- captured at: 2026-09-05T09:38:04.998Z
 - frames the run emitted (`seq`): **152** (S3 floor: 119)
 - stream line: `connected seq 152 0 dropped`
 - trace rows: **44** = 44 mounted + 0 folded behind

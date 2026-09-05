@@ -1,5 +1,5 @@
 $ npx vitest run tests/characterSystem.spec.ts tests/characterDeterminism.spec.ts       # from frontend/
-# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T15:59:19+08:00
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:22:52+08:00
 # vitest exit code: 0
 
 
@@ -7,7 +7,7 @@ $ npx vitest run tests/characterSystem.spec.ts tests/characterDeterminism.spec.t
 
 
  Test Files  2 passed (2)
-      Tests  69 passed (69)
-   Start at  15:59:18
-   Duration  1.00s (transform 246ms, setup 0ms, import 312ms, tests 171ms, environment 972ms)
+      Tests  74 passed (74)
+   Start at  17:22:51
+   Duration  935ms (transform 245ms, setup 0ms, import 304ms, tests 162ms, environment 895ms)
 

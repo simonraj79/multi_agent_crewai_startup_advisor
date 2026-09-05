@@ -1,13 +1,88 @@
-# R1 — the visual baselines, across two RV3 passes
+# R1 — the visual baselines, across three RV3 passes
 
 Written by RV3 (verification worker) on branch `run-shell/cast`. RV3 built none
 of this work. The only product-tree edit RV3 is permitted is regenerating the
 three PNGs under `frontend/e2e/visual/run-canvas.spec.ts-snapshots/`, and only
-after first recording the failing diff. That is what this file records, for both
-passes.
+after first recording the failing diff. That is what this file records, pass by
+pass.
 
 Backend for every run below: the free `SYNTHETIC=1` one on :8099, full line in
 `evidence/R/playwright.txt`. Playwright drove its own Vite on :5273.
+
+---
+
+# THIRD PASS — `601baef`, 2026-09-05
+
+## Step 1 — run first, record the diff
+
+```
+$ cd frontend
+$ npx playwright test e2e/visual/run-canvas.spec.ts
+# exit 1  ·  3 failed
+```
+
+**All three failed, and for the first time all three failed on PIXELS ALONE** —
+no timeout, no colour assertion, nothing but a changed picture:
+
+| # | test | snapshot | pixels different |
+| ---: | --- | --- | ---: |
+| 1 | `:204` looks the same idle, and the card shell resolves as authored | `run-canvas-idle.png` | **202** (ratio 0.01) |
+| 2 | `:272` with a branch in flight, and still animates | `run-canvas-running.png` | **113** (ratio 0.01) |
+| 3 | `:390` paused at a gate | `run-canvas-gate-waiting.png` | **97** (ratio 0.01) |
+
+That is the shape a clean visual change makes. In particular `:204` no longer
+fails at `:243` on the quarantine chip's colour — the second pass's finding
+(`.studio-shell:not(.is-builder) .quarantine-count` outranking `.node-state`)
+is repaired, and the contrast sheet now carries a row asserting the same fact
+from the other side.
+
+## Step 2 — regenerate
+
+```
+$ npx playwright test e2e/visual/run-canvas.spec.ts --update-snapshots
+# exit 0  ·  3 passed (19.7s)
+```
+
+**All three PNGs were regenerated. Named, with why:**
+
+| PNG | md5 before | md5 after | why it changed |
+| --- | --- | --- | --- |
+| `run-canvas-idle-chromium-win32.png` | `13f8208107470c54054cab689672e3ef` | `685560518ca4976383af6620b3d0bca9` | round three removed the run console's four `backdrop-filter`s (the bisect is in `evidence/T2/perf-notes.md`) and grew the small crests so a character carries identity at 32 px; both repaint every idle card |
+| `run-canvas-running-chromium-win32.png` | `0c11150e764462f83da1d3d452848922` | `2306ea460978915b649bfaefbe098a28` | the same two changes on the running card, whose medallion is the largest character on the canvas |
+| `run-canvas-gate-waiting-chromium-win32.png` | `5d2357ce8829b0c78a9b1f3493222f40` | `67148155a14cd056a2fe60237d134207` | the same, plus the gate node's state chip, which is the element the contrast sheet's new `node state chip` row now measures |
+
+97–202 px on a 14-node canvas is the right order of magnitude for a blur
+removal and a crest: a change to how a small element is drawn, not to what is
+drawn.
+
+## Step 3 — re-run to confirm
+
+```
+$ npx playwright test e2e/visual/run-canvas.spec.ts
+# exit 0  ·  3 passed (18.9s)
+
+  ✓ :204  looks the same idle, and the card shell resolves as authored
+  ✓ :272  with a branch in flight, and still animates
+  ✓ :390  paused at a gate
+```
+
+**First pass in which this spec is entirely green**, and the first in which
+every one of its three baselines was regenerated in the same pass and stayed
+regenerated.
+
+## The three-pass history of these three files
+
+| PNG | committed at branch start | after pass 1 | after pass 2 | after pass 3 |
+| --- | --- | --- | --- | --- |
+| `run-canvas-idle` | `c1cbb91f…` | `13f82081…` | (unchanged) | `68556051…` |
+| `run-canvas-gate-waiting` | `0d85fde5…` | `5d2357ce…` | (unchanged) | `67148155…` |
+| `run-canvas-running` | `dcb4eba9…` | (unreachable) | `0c11150e…` | `2306ea46…` |
+
+Reasons, one line each: pass 1 moved idle and gate-waiting because the medallion
+took the character from the lucide icon; pass 2 finally moved running, because
+RV1 replaced the assertions that pinned the retired rowers and the test could
+reach its shutter for the first time; pass 3 moved all three, because the four
+backdrop blurs went and the crests grew.
 
 ---
 

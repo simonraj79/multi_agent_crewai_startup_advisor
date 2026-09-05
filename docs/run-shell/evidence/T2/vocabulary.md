@@ -258,3 +258,37 @@ rows say `Run`, the row is more compact — and `frontend/src/trace/interpret.ts
 which is what this table describes, is byte-identical to the first pass.
 
 **T2.2 PASS, second pass.**
+
+### Third pass, `601baef`
+
+Re-checked, and this time the subject really did move: round three rewrote
+**91 lines of `frontend/src/trace/interpret.ts`** (the trace reads as a story,
+gate rows wear a person marker, run rows say `Run`, the error line changed
+shape). So the table was walked against the ladder again rather than carried
+forward.
+
+```bash
+$ git diff 16f3be5..HEAD --stat -- src/brief_crew/events/serializer.py
+# (no output - the ladder itself did not change)
+$ git diff 16f3be5..HEAD --stat -- frontend/src/trace/
+# frontend/src/trace/interpret.ts | 91 ++++++++++++++++++++++++------------
+```
+
+**The serializer is unchanged, so the row-per-kind claim still holds by
+construction**: all sixteen `FrameKind` values were re-enumerated from the
+package and every one still has a row, and `registry.py`'s ten kinds still land
+on rows the table names. What changed is *wording inside three of the rows* —
+`gate_open`, `gate_closed` and the two `error` rows — and the sentences in this
+table are the shape (`Waiting for you: {title}`, `Run failed: {first sentence}`)
+rather than the exact string, so they still describe what `interpret.ts` emits.
+
+Two facts the pass measured rather than assumed:
+
+* `frontend/tests/traceInterpretation.spec.ts` grew by 156 lines and its file
+  pair runs **76 tests green** (66 in the second pass), over the same two real
+  frame logs. The banned-in-a-line list is asserted per row there.
+* The browser assertion that failed in the second pass — 24 trace rows reading
+  as an empty line — **passes now** (`cast.spec.ts:1027`), which is the half of
+  T2.1 no unit test can reach.
+
+**T2.2 PASS, third pass.**

@@ -1,5 +1,5 @@
 $ npx vitest run tests/traceInterpretation.spec.ts tests/characterStates.spec.ts       # from frontend/
-# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T15:59:23+08:00
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:22:56+08:00
 # vitest exit code: 0
 
 
@@ -7,7 +7,7 @@ $ npx vitest run tests/traceInterpretation.spec.ts tests/characterStates.spec.ts
 
 
  Test Files  2 passed (2)
-      Tests  66 passed (66)
-   Start at  15:59:21
-   Duration  1.46s (transform 615ms, setup 0ms, import 892ms, tests 677ms, environment 871ms)
+      Tests  76 passed (76)
+   Start at  17:22:54
+   Duration  1.40s (transform 597ms, setup 0ms, import 831ms, tests 655ms, environment 845ms)
 

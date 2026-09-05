@@ -1,20 +1,186 @@
 # RV3 — verification report
 
-Two passes. **The second pass, at `16f3be5`, is the current verdict**; the first
-pass, at `27b256e`, is kept below it under its own heading, because what round
-two fixed is only legible against what round one found.
+Three passes. **The third, at `601baef`, is the current verdict**; the second
+(`16f3be5`) and the first (`27b256e`) are kept below it under their own
+headings, because what each round fixed is only legible against what the
+previous pass found.
 
 RV3 built none of this work and edited no product code. The one product-tree
 change RV3 is permitted, and made, is regenerating the PNGs under
-`frontend/e2e/visual/run-canvas.spec.ts-snapshots/` — two in the first pass, the
-third in the second, each named with a reason in
-[`evidence/R/baselines.md`](R/baselines.md), and each after the failing diff was
+`frontend/e2e/visual/run-canvas.spec.ts-snapshots/` — two in the first pass, one
+in the second, all three in the third, each named with a reason in
+[`evidence/R/baselines.md`](R/baselines.md) and each after the failing diff was
 recorded first.
 
 `G1`, `G4`'s sheet and every `RC` row belong to other workers and are marked
 **NOT VERIFIED BY ME**. A missing artifact is recorded as **FAIL**, not as a
 pass with a note.
 
+---
+
+# THIRD PASS — `601baef`, 2026-09-05
+
+## 1. What was run, and against what
+
+| | |
+| --- | --- |
+| Python | `.\.venv\Scripts\python.exe -m unittest discover -s tests -t .` — **2544 tests, OK, 6 skipped, 131.6 s**, exit 0 |
+| Vitest | `npx vitest run` from `frontend/` — **93 files, 1963 tests, 0 failed**, exit 0 |
+| Types | `npx vue-tsc -b --force` — **exit 0**, no diagnostics |
+| Build | `npm run build` (`vue-tsc -b && vite build && tsc -p tsconfig.server.json`) — **exit 0**, built in 614 ms |
+| E2E | `npx playwright test`, both projects — **163 tests: 159 passed, 4 failed, 0 skipped, 12.3 m**, exit 1 |
+| Contrast | `node scripts/contrast-audit.mjs` — **exit 0**, 232 pairings, 230 in scope, **0 failing** |
+
+Backend, restarted clean for this pass, its log read rather than `/healthz`
+trusted:
+
+```
+SYNTHETIC=1  SYNTHETIC_BRANCH_DELAY_SECONDS=5  PORT=8099
+CREDENTIALS_MASTER_KEY=Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE=
+BUILDER_ALLOW_GATELESS_GRAPHS=1
+RUN_RATE_LIMIT_MAX_RUNS=100            (.agent/MISSION.md section 8)
+MCP_ALLOW_INSECURE_LOCAL=1             (.agent/MISSION.md section 8)
+SKILLS_ROOT=D:/MultiAgentSystem/data/skills
+SYNTHETIC_FAILURE="fm_bad_key:bad_key:1,fm_tool_timeout:tool_timeout:1,
+                   fm_refusal:refusal:1,fm_malformed:malformed_output:1,
+                   fm_rate_limit:rate_limit:1,fm_cast_refusal:refusal:1"
+./.venv/Scripts/serve.exe
+```
+
+MCP fixture on :8791 with `E2E_MCP_URL` exported, so `builder-mcp.spec.ts` ran
+rather than skipping — hence **0 skipped**. RV3 owned :8098, :8099, :8791 and
+:5273 and nobody else was on the machine. Money spent: **zero**.
+
+## 2. T2.8, graded against the amended row
+
+The criterion was amended on 2026-09-05 after W4's profile: three arms in one
+run, a **relative** budget, absolutes still printed. The console passes when
+`over34ms(painted) ≤ over34ms(hidden)` and `p95(painted) ≤ p95(hidden) + 4 ms`.
+
+**All three arms' absolute figures, from `evidence/T2/perf.json`** (the
+full-suite sample the file holds):
+
+| arm | intervals | p50 | p95 | max | over 34 ms | over 50 ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **idle** — the page at rest | 600 | 16.6 | 18.0 | 23.1 | **0** | 0 |
+| **hidden** — the same replay, console `visibility: hidden` | 555 | 16.6 | 18.3 | 74.4 | **4** | 2 |
+| **painted** — the identical replay, everything drawn | 551 | 16.7 | 18.5 | 66.3 | **5** | 2 |
+
+**Verdict: FAIL on the drop arm, PASS on the p95 arm.** `addedDrops = 1`
+(5 painted against 4 hidden, and the rule is `≤`); `p95Delta = 0.2 ms` against
+4 ms of headroom. `perf.json` records `passes: false`.
+
+A second three-arm sample, taken twenty minutes earlier in the cast-only run on
+the same machine and commit, read **idle 0 / hidden 5 / painted 10** —
+`addedDrops = 5`, `p95Delta = 0.5`. So the painted arm added between one and
+five drops over the hidden control across two samples, and never zero.
+
+Two things the amendment is right about, and RV3 says so having argued the
+other way in the first two passes: the **idle floor is 0** here, so this
+machine is not the problem — but the **hidden control drops 4–5 frames with
+nothing of ours painted**, which is exactly the harness cost the old absolute
+bar was charging to the product. And the retired bar's p95 half is now met
+outright: the painted arm reads **18.5 ms against the old ≤ 20 ms**, where the
+first pass read 32.3 and the second 26.8. The live run — recorded, not graded —
+reads 152 frames, p95 18.2, max 84.2, 3 over 34 ms.
+
+## 3. The table
+
+| Id | Verdict | Evidence | What RV3 saw at `601baef` |
+| --- | :---: | --- | --- |
+| **G1** | NOT VERIFIED BY ME | `evidence/G1/` | RV2's, complete on disk. RV3 did not touch G1 or G4. |
+| **G2** | **PASS** | `G2/grep.txt` | Re-run and re-judged: **1 hit, 0 product hits**, the same JSDoc example in `readsAsRole()`. Worth re-running: round three rewrote 91 lines of `interpret.ts` and 51 of `pip.ts`, which is exactly when a role name gets typed into a table by accident. |
+| **G3** | **PASS** | `G3/vitest.txt`, `G3/playwright.txt`, `reload-map.json` | **2 files, 74 tests green** (69 last pass) over the committed 20-role snapshot generated in one process and asserted in another; the browser reload check green again (`cast.spec.ts:842`, 15.2 s). |
+| **G4** | NOT VERIFIED BY ME | `G4/roles-sheet.png` | RC's Q4. |
+| **T1.1** | NOT VERIFIED BY ME — **and its cold read is now against a superseded picture** | `T1/report-header.png`, `T1/report-header-insufficient.png`, `T1/cold-read.md`, `RC/answers.md` | Round three added a capture test that replays a **real serializer verdict frame** (`cast.spec.ts:1453`, green first time) and it writes **both** headers — the override case and the new `INSUFFICIENT_EVIDENCE`-with-a-listed-floor case. RC has two pictures to read instead of none. **But the timestamps do not line up**: `RC/answers.md` and `T1/cold-read.md` were written at **16:33**, against the second pass's capture; this pass rewrote `report-header.png` at **17:30**, after round three changed the report panel (readable score bars, generic gate copy) and added the second header RC has never seen. Grading T1.1 on those answers would be grading a picture that no longer exists. The verdict is the orchestrator's; the staleness is RV3's to report. |
+| **T1.2** | **PASS** | `T1/vitest.txt` | 2 files / **27 tests green**. |
+| **T1.3** | **PASS** | `T1/vitest.txt`, `T1/enum-audit.md`, `R/playwright.txt` | **Fixed.** The second pass's browser red — `Run failed: SYNTHETIC_FAILURE: fm_cast_refusal attempt 1…` reaching the trace — is gone: `cast.spec.ts:1819` now passes, `rawCodesIn()` returns nothing on the error line, and the unit half stays green. |
+| **T1.4** | **PASS** | `T1/vitest.txt` | Unknown floor code / dimension key / band still render as words. |
+| **T1.5** | **PASS** | `T1/data-layer-diff.txt`, `R/python.txt` | All three diffs **empty**, `config.py` untouched. Round three's third verdict frame is a *fixture* and a *test* (`tests/events/test_verdict_frame.py`, `backendVerdictFrames.json`) — nothing that computes a verdict moved. Python **2544 OK**, the two new tests being that fixture's. |
+| **T2.1** | **PASS** | `T2/interpretation-vitest.txt`, `T2/trace-completed.png`, `R/playwright.txt` | **Fixed, and both halves now hold.** Unit: 2 files / **76 tests green** (66 last pass) over both real frame logs. Browser: the 24-empty-rows red is gone — `cast.spec.ts:1027` passes and writes `trace-completed.png`. |
+| **T2.2** | **PASS** | `T2/vocabulary.md` (RV3 section appended each pass) | Re-walked, because this time the subject moved: `interpret.ts` +91 lines. The **serializer ladder did not change** (`git diff 16f3be5..HEAD -- events/serializer.py` is empty), all sixteen `FrameKind`s still have a row, and the three rows whose wording changed are described by shape rather than exact string. |
+| **T2.3** | NOT VERIFIED BY ME | `T2/characters-32px.png`, `T2/originality.md`, `T2/states-32px.png` | All refreshed in round three (`blocked-error` wears x_x eyes, the small crests grew). The verdict is RC's Q4 and the shape cue on the error state is exactly what Q4 should now be asked about. |
+| **T2.4** | **PASS** | `CHARACTERS.md`, `G3/vitest.txt` | Green, including the empty-role fallback to the node id. |
+| **T2.5** | **PASS** | `T2/no-timers.txt`, `T2/states-32px.png` | Re-ran the grep: still **exactly three hits, all in `useRunChoreography.ts`** (`:253` injectable `now`, `:284`/`:799` the 200 ms arrival receipt). `frontend/src/characters/` and `AgentCharacter.vue` return **nothing**, even for `performance.now` and `requestAnimationFrame` — which a round that rewrote `pip.ts` and `character.css` could easily have broken. |
+| **T2.6** | **PASS** | `T2/tie-in.png`, `R/playwright.txt` | `cast.spec.ts:751` green (3.0 s) in both runs. |
+| **T2.7** | **PASS** | `T2/reduced-motion.png`, `R/playwright.txt` | `:906` (offscreen, ≤ 12 live animations) and `:945` (reduced motion keeps every `data-state`) both green. |
+| **T2.8** | **FAIL** (drop arm) / PASS (p95 arm) | `T2/perf.json`, `T2/perf-notes.md`, `R/playwright.txt` | Section 2 above. Painted adds 1 drop over hidden in the recorded sample and 5 in the other; p95 adds 0.2 ms against 4 ms of headroom. Idle floor 0. |
+| **T2.9** | **PASS** | `T2/rowers-grep.txt`, `T2/node-running.png` | Re-captured at `601baef` by a throwaway spec (created, run, deleted) that asserted at the shutter: **0** `.node-crew-oar`, **0** `.node-crew-rower`, **0** `.node-crew-hull`, exactly **1** `[data-testid="node-agent-character"]`; the card read `data-character="market evidence analyst"`, `data-state="working"`. The only `node-rower|node-oar` in `frontend/src` is the retirement comment at `node-card.css:210`. |
+| **T3.1** | **PASS** | `T3/scope-order.txt` | `SHELL-SCOPE.md` `fcdbadf` 14:09:00 precedes `studio.css` `fd84f57` 14:25:50 by 16 m 50 s. |
+| **T3.2** | **PASS** | `T3/literals.txt` | **13 files, 0 colour literals**, 9/9 green. Round three rewrote `character.css`, `motion.css` and 86 lines of `studio.css` and added tokens; the inventory is still all zeros. |
+| **T3.3** | **PASS** | `T3/contrast.md`, `T3/contrast-rv3-rerun.txt` | **The script exits 0**: 232 pairings, 230 in scope, **0 failing**, and the exit code has counted every in-scope row since round two. Byte-identical to the committed file (md5 `2f6f1c9f…` was pass 2; this pass's md5 matches the committed one exactly). The catalogue shrank 330 → 232 and RV3 did not wave that past — see section 5, note 1. |
+| **T3.4** | **PASS** (artifacts) | all `before-*` and `after-1440/1180/390/1440-light.png` | Every capture present and rewritten this pass. The comparison is RC's Q6. |
+| **T3.5** | **PASS** | `T3/builder-visual.txt` | **16/16 green, 43.0 s, no baseline regenerated** — md5s identical before and after, all sixteen listed. Third pass, third green, no regeneration in any of them. |
+| **S1** | **PASS** (artifact) | `S/empty.png` | `cast.spec.ts:571` green. |
+| **S2** | **PASS** | `S/first-run.png` | `cast.spec.ts:608` green (18.5 s). |
+| **S3** | **PASS** | `S/long-run.png`, `S/long-run.md` | The 119-event test is green outright this pass, so these are the artifacts of a passing run rather than of a run that died after taking them. |
+| **S4** | **PASS** | `S/failure.png` | `cast.spec.ts:1819` green: the failing node wears the blocked-error character (now with x_x eyes) and the trace says why in one sentence with no raw code in it. |
+| **S5** | **PASS** (artifact) | `T2/reduced-motion.png` | Written by the passing `:945`. |
+| **S6** | **PASS** | `S/narrow.png`, `S/narrow-rail-open.png`, `R/playwright.txt` | `cast.spec.ts:1626` green (18.5 s). Plus the extra capture asked for: a throwaway spec launched a run at 390×844, waited for the scope gate, opened the activity rail (`aria-label="Expand activity rail"`), found **exactly one** `.rail-scrim` element painted, and measured `document.scrollingElement.scrollWidth = 390` with the rail open. `studio.css:1054` carries the scrim only inside the 390 block, deliberately with **no** `backdrop-filter` — the comment says why, and it is the same reasoning as round three's four blur removals. |
+| **R1** | **FAIL** | `R/python.txt`, `vitest.txt`, `typecheck.txt`, `build.txt`, `playwright.txt`, `baselines.md` | Four suites green (2544 / 1963 / exit 0 / exit 0); Playwright **159 passed, 4 failed, 0 skipped**. All three baselines regenerated and named. Breakdown in section 4. |
+| **R2** | **PASS** | `R/diff-stat.txt` | Three Python source files and no more, plus five test modules. The four forbidden surfaces each print **NO DIFF**. And `git diff 16f3be5..HEAD -- src/` is **empty**: rounds two and three changed no Python source at all. |
+
+## 4. The four Playwright failures
+
+| test | what it is |
+| --- | --- |
+| `cast-perf.spec.ts:529` | **T2.8 itself.** Section 2. |
+| `studio.spec.ts:360` | **A new red, and it is round two's mistake made again one round later.** Round three's generic gate copy renamed the derived heading and the assertion was not updated: `Expected substring: "Computed by the validator"` / `Received string: "Computed by the run"`. This test **passed in the second pass**. |
+| `builder.spec.ts:1552` | The item-44 drag class. Re-run alone once and **passed** (2.4 s). Declared. |
+| `builder.spec.ts:1227` | The item-44 drag class — **but this pass it FAILED ALONE TOO**, same `locator.hover` timeout on the `tool_1` attach handle, where in the first and second passes it passed alone in under three seconds. One re-run is what RV3 is allowed and it was spent; on this evidence the test cannot be called a flake this pass, and RV3 does not call it one. |
+
+## 5. Things a reader should know that no criterion asks for
+
+1. **T3.3's catalogue shrank 330 → 232 pairings, and RV3 checked what that
+   bought.** 96 rows are the twelve character colours across four backgrounds,
+   and round three re-classified them from "small text at 4.5" to "a figure at
+   3.0" — WCAG 1.4.11 rather than 1.4.3, on the ground that the medallion holds
+   a drawn character rather than two initials. That is a defensible reading and
+   it is still a loosening, so:
+
+   ```
+   $ grep 'as a figure on' contrast-human.txt | wc -l                -> 96
+   $ grep 'as a figure on' contrast-human.txt | awk '$1 < 4.5' | wc -l -> 0
+   lowest figure ratio on the sheet: 4.64
+   ```
+
+   **Not one of the 96 rows depends on the relaxation** — every one clears the
+   old 4.5 text bar as well. Three further rows left because the elements no
+   longer exist (the M2 version mark, `ChatRail`'s `.text-button` and
+   `.call-chip`), and one row was **added**: `the node state chip`, which exists
+   because `run-canvas.spec.ts:243` caught the cascade inversion RV3's second
+   pass reported. The sheet and the E2E now assert the same fact from opposite
+   sides.
+2. **`perf.json` now carries both arms of the criterion**, which it did not in
+   either earlier pass — the live run is recorded (and explicitly *not graded*)
+   alongside the three-arm comparison. That was RV3's note-2 from the second
+   pass and it is closed.
+3. **`benchmarks/perf/canvas.json` is modified in the working tree**, by
+   `e2e/builder-perf.spec.ts`, which rewrites it on every full run. A suite
+   side-effect, not an edit; left as the suite wrote it.
+4. **The Python suite makes a live Pinecone `describe_index` call** with `.env`
+   present. Read-only, free, pre-existing — but the suite is not network-free on
+   this machine.
+5. **Every cold-reader answer on disk predates the pictures it describes.**
+   `RC/answers.md` and `T1/cold-read.md` are timestamped **16:33**; this pass
+   rewrote every capture RC's questions name between **17:28 and 17:45**, and
+   round three changed the report panel, the trace row, the dialogue header, the
+   error line, the `blocked-error` eyes, the small crests and the 390 rail. Four
+   of RC's seven questions (Q1–Q3 on the report header, Q4 on the roles sheet,
+   Q5 on the trace, Q7 on the S states) are therefore answered about images that
+   no longer exist. The four rows that turn on them — T1.1, G4, T2.3 and the
+   reading half of the S rows — should be re-read before they are graded. RV3
+   does not grade them and did not touch either file.
+6. **Tally: 25 PASS, 2 FAIL, 4 NOT VERIFIED BY ME** over the 31 rows.
+   Pass 2 was 22 / 5 / 4; pass 1 was 19 / 8 / 4. Only two rows still fail:
+   **T2.8**, on its drop arm alone, and **R1**, which is the roll-up — failing
+   on T2.8 plus one stale copy assertion (`studio.spec.ts:360`) and one drag
+   test that no longer passes alone (`builder.spec.ts:1227`). The four
+   NOT VERIFIED rows are all somebody else's to sign: G1 and G4 are RV2's and
+   RC's, T1.1 and T2.3 wait on RC's answers — and T1.1's *inputs*, missing for
+   two passes, are now on disk as two report headers.
+
+---
 ---
 
 # SECOND PASS — `16f3be5`, 2026-09-05

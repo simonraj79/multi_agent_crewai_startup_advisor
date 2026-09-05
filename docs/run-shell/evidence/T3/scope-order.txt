@@ -1,6 +1,8 @@
 $ git log --format='%h %ad %s' --date=iso -- docs/run-shell/SHELL-SCOPE.md frontend/src/studio.css
-# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T15:57:06+08:00
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:25:00+08:00
 
+601baef 2026-09-05 17:19:27 +0800 fix(run-shell): the run console drops its four backdrop blurs, and T2.8 measures the console against a hidden-console control
+35bed5a 2026-09-05 16:53:24 +0800 fix(run-shell): round three - a shape cue on the error state, crests that carry identity at 32px, generic gate copy, readable score bars, a scrim at 390, and the trace reads as a story
 16f3be5 2026-09-05 15:55:37 +0800 fix(run-shell): round two - the frame budget, the last contrast rows, the compact trace row, and the specs that pinned the rowers
 27b256e 2026-09-05 14:51:42 +0800 feat(run-shell): the cast is wired - one identity store, event-driven states, the rails and the node share a seed
 40e17dc 2026-09-05 14:33:17 +0800 fix(shell): the two rail toggles stopped landing on each other at 390
@@ -24,5 +26,6 @@ fcdbadf 2026-09-05 14:09:00 +0800 docs(run-shell): the shell scope, proposed bef
 $ git log --reverse --format='%h %ad %s' --date=iso main..HEAD -- frontend/src/studio.css | head -1
 fd84f57 2026-09-05 14:25:50 +0800 feat(shell): a token layer the rails inherit, and a phone the console fits on
 
-T3.1 holds: the scope document's first commit precedes the first studio.css
-change on this branch by sixteen minutes and fifty seconds.
+T3.1 holds and cannot stop holding: the scope document's first commit
+precedes the first studio.css change on this branch by sixteen minutes and
+fifty seconds, and both are now three rounds of history back.

@@ -1,5 +1,5 @@
 $ npx vue-tsc -b --force       # from frontend/
-# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T15:59:51+08:00
+# RV3 THIRD PASS, branch run-shell/cast at 601baef, 2026-09-05T17:23:11+08:00
 # exit code: 0
 
 <<< no output above means no diagnostics >>>

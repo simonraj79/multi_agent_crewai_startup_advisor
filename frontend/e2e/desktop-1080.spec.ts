@@ -978,7 +978,11 @@ test.describe('5 · a published graph, mid-run and completed', () => {
     for (const [key, value] of Object.entries(done)) {
       expect(value, `the ${key} cell rendered nothing`).not.toBe('')
     }
-    expect(server.tokenFrames, 'the run produced no frames of kind `token`').toBeGreaterThan(0)
+    // `server` is null only when the panel showed no run id at all, which the
+    // completed-run assertions above have already ruled out - so this narrows
+    // rather than tolerates.
+    expect(server, 'no run id on a completed run').not.toBeNull()
+    expect(server?.tokenFrames, 'the run produced no frames of kind `token`').toBeGreaterThan(0)
     expect(done.tokens, 'TOKENS on a completed builder run').not.toBe('0')
     expect(done.calls, 'CALLS on a completed builder run').not.toBe('0')
     expect(done.cost, 'COST on a completed builder run').not.toBe('$0.0000')

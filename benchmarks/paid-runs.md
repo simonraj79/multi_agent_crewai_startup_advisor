@@ -47,16 +47,23 @@ ids above are the first eight characters of the full uuid each file carries.
 | | |
 | --- | --- |
 | balance before | **$27.451601** (`total_usage` 92.548398535) |
-| balance after | **$27.385711** (`total_usage` 92.614289045) |
-| **real spend** | **$0.065890** |
+| balance after | **$27.385659** (`total_usage` 92.614340525) |
+| **real spend** | **$0.065942** |
 | sum of the six `cost_usd` rows | **$0.065893** |
-| difference | **$0.000003** |
+| difference | **$0.000049** |
+
+*The "after" row is the SETTLED reading, taken 49 minutes after the last run and
+confirmed unchanged twice. An earlier read at $27.385711 was $0.000052 short:
+OpenRouter's credits endpoint lags a completion by minutes, which is why the
+balance is read at the end and not run by run. Every intermediate reading this
+session was low, never high.*
 
 **That is the interesting number on this page.** `cost_usd` is tokens x a local
 price table, and CLAUDE.md has said for months that it is therefore an estimate,
 because OpenRouter's own per-generation cost "never reaches the process".
 Measured against OpenRouter's own accounting across six runs, three models and
-40,421 tokens, the arithmetic is right to five decimal places.
+40,421 tokens, the arithmetic lands within **$0.000049** — $0.0659 either
+way.
 
 The `NITRO_PRICE_FACTOR` worry — that `:nitro` routes on speed and may bill above
 the published floor — did **not** materialise on any of these runs. That is a

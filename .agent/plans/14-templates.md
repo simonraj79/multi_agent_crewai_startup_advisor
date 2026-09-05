@@ -276,12 +276,12 @@ away.
 | --- | --- |
 | what the criterion asked | one paid run per template, run id, `cost_usd`, the fixture's `estimated`, and the estimate must exceed the measured cost |
 | runs | **six** — the five templates, plus one failed first attempt at `sequential-pipeline` that is a finding rather than an accident |
-| real spend | **$0.065890**, balance $27.451601 → $27.385711 |
+| real spend | **$0.065942**, balance $27.451601 → $27.385659 (settled) |
 | the criterion's test | **met on every template**: measured over static ran 0.14 % to 5.61 %, so the estimate exceeded the cost by between 18x and 730x |
 
 **The estimate is not merely conservative, it is exact where it counts.** The
 service's `cost_usd`, which is tokens x a local `PRICES` table, summed to
-**$0.065893** against **$0.065890** of real OpenRouter billing across six runs
+**$0.065893** against **$0.065942** of real OpenRouter billing across six runs
 and three models. `NITRO_PRICE_FACTOR` exists because `:nitro` routes on speed
 and may bill above the published floor; on these runs it did not.
 

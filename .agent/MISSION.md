@@ -520,8 +520,9 @@ Critical — has now scored something for money for the first time.
 
 **Spend to date on this programme: $0.1076 of the $5.00 allowance.**
 $0.0417 for this acceptance run, plus **$0.0659** for plan 14's six paid
-template runs on 2026-09-05 (§11b). Balance **$27.385711**, measured with the
-credits endpoint after the last run — re-measure rather than quote it.
+template runs on 2026-09-05 (§11b). Balance **$27.385659**, the settled reading
+49 minutes after the last run and confirmed twice — the credits endpoint lags a
+completion by minutes, so read it late and re-measure rather than quote it.
 
 ## 11b. Plan 14's paid template runs — DONE, 2026-09-05
 
@@ -534,14 +535,14 @@ the five `benchmarks/live/2026-09-05-*.json` files carry the frame streams;
 
 ```text
 six runs   34 calls   40,421 tokens   $0.065893 by the service
-balance    $27.451601 -> $27.385711   $0.065890 by OpenRouter
+balance    $27.451601 -> $27.385659   $0.065942 by OpenRouter
 ```
 
 Two things a later session needs from it, and neither is a number:
 
 - **The estimate is exact, not merely conservative.** `cost_usd` is tokens x a
   local price table and had never been checked against a bill. Across six runs
-  and three models the two agree to **$0.000003**. The static worst case for
+  and three models the two agree to **$0.000049**. The static worst case for
   the same graphs is $4.4213, so 1.5 % of it was spent — which is the second
   data point for the ~2.8 % ratio §11a measured, and the argument that
   `MAX_RUN_COST_USD` is nowhere near binding for a template-shaped graph.

@@ -359,9 +359,71 @@ describe('a finished run lands at the end of the transcript', () => {
     await frame()
 
     // `scrollHeight`, which the browser clamps to `scrollHeight - clientHeight`.
-    expect(calls).toHaveLength(1)
+    expect(calls.length).toBeGreaterThanOrEqual(1)
     expect(calls[0]).toMatchObject({ top: 1000, behavior: 'auto' })
     expect(wrapper.attributes('data-at-end')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('keeps landing while the transcript is still growing, and stops when it settles', async () => {
+    /*
+     * The browser defect, reproduced. `useValidatorRun.setStatus` calls
+     * `revealAll()` in the SAME tick it goes terminal - a half-revealed
+     * utterance is shown whole rather than left mid-sentence under a COMPLETED
+     * badge - so the box grows by hundreds of pixels immediately after the
+     * status changes. A single frame scrolled to an end that then moved:
+     * measured in a browser at `scrollTop 23 / scrollHeight 739 /
+     * clientHeight 360`, 356px short.
+     *
+     * Here the height grows for three frames and then holds, and the landing
+     * has to follow it rather than race it.
+     */
+    const wrapper = rail([entry()], false, { status: 'running' })
+    const calls = measurable(wrapper, { scrollHeight: 400, clientHeight: 360, scrollTop: 0 })
+    const list = wrapper.get('[data-testid="dialogue-list"]').element as HTMLElement
+
+    await wrapper.setProps({ status: 'completed' })
+    const heights = [739, 1100, 1400, 1400, 1400, 1400]
+    for (const height of heights) {
+      Object.defineProperty(list, 'scrollHeight', { value: height, configurable: true })
+      await frame()
+    }
+
+    // It followed the growth: the last thing it asked for is the settled height.
+    expect(calls.length).toBeGreaterThan(1)
+    expect(calls[calls.length - 1]).toMatchObject({ top: 1400 })
+    // And it let go rather than looping for the life of the page.
+    const settled = calls.length
+    await frame()
+    await frame()
+    await frame()
+    expect(calls.length, 'the landing never stopped re-arming').toBe(settled)
+    wrapper.unmount()
+  })
+
+  it('lands on a run that was ALREADY terminal when the rail mounted', async () => {
+    // A console restoring a finished run mounts with the status already
+    // terminal, so a watcher that only fires on a CROSSING never fires at all
+    // and the rail opens wherever the browser left it. The watch is
+    // `immediate` and guards on the value.
+    const wrapper = rail([entry()], false, { status: 'completed' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await frame()
+    await frame()
+    expect(calls.length, 'a restored terminal run never landed').toBeGreaterThanOrEqual(1)
+    wrapper.unmount()
+  })
+
+  it('re-lands when an entry finishes revealing after the run is over', async () => {
+    const wrapper = rail([entry({ revealed: 10 })], false, { status: 'completed' })
+    const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
+    await frame()
+    await frame()
+    await frame()
+    const before = calls.length
+    await wrapper.setProps({ entries: [entry({ revealed: 43 })] })
+    await frame()
+    expect(calls.length, 'a reveal completing after the run did not re-land').toBeGreaterThan(before)
     wrapper.unmount()
   })
 
@@ -371,7 +433,7 @@ describe('a finished run lands at the end of the transcript', () => {
       const calls = measurable(wrapper)
       await wrapper.setProps({ status })
       await frame()
-      expect(calls, `a ${status} run did not land at its end`).toHaveLength(1)
+      expect(calls.length, `a ${status} run did not land at its end`).toBeGreaterThanOrEqual(1)
       wrapper.unmount()
     }
   })
@@ -383,7 +445,7 @@ describe('a finished run lands at the end of the transcript', () => {
     const calls = measurable(wrapper, { scrollHeight: 1000, clientHeight: 360, scrollTop: 0 })
     await wrapper.setProps({ status: 'completed' })
     await frame()
-    expect(calls).toHaveLength(1)
+    expect(calls.length).toBeGreaterThanOrEqual(1)
     wrapper.unmount()
   })
 

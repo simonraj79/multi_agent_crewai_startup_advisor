@@ -155,7 +155,9 @@ function follow(force = false): void {
 }
 
 onBeforeUnmount(() => {
-  if (followHandle && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(followHandle)
+  if (typeof cancelAnimationFrame !== 'function') return
+  if (followHandle) cancelAnimationFrame(followHandle)
+  if (settleHandle) cancelAnimationFrame(settleHandle)
 })
 
 // The first measurement, so a rail that opens already overflowing shows the
@@ -173,24 +175,84 @@ onMounted(measureEnd)
  */
 watch(
   () => [props.entries.length, props.entries.at(-1)?.revealed ?? 0] as const,
-  () => follow(),
+  // While the run is over, an entry finishing its reveal is more growth under
+  // a transcript that is supposed to be sitting at its end - so the landing is
+  // re-run rather than the pin consulted. While it is still going, the pin
+  // rules: a reader who has scrolled up is reading something.
+  () => (isTerminal.value ? settleToEnd() : follow()),
 )
+
+/**
+ * Frames the terminal landing will keep trying for. About a second at 60Hz.
+ *
+ * Bounded because this is a loop that re-arms itself: a box whose height never
+ * settles - a stray animation, a font that arrives late - must cost a second
+ * and stop, not run for the life of the page.
+ */
+const MAX_SETTLE_FRAMES = 60
+/** Consecutive frames of unchanged height that count as settled. */
+const STABLE_FRAMES = 2
+
+let settleHandle = 0
+
+/**
+ * Land at the end and KEEP landing until the box stops growing.
+ *
+ * One rAF was not enough and the reason is worth writing down, because it is
+ * invisible from inside this component. `useValidatorRun.setStatus` calls
+ * `choreography.revealAll()` in the same tick it goes terminal - a
+ * half-revealed utterance is shown whole rather than left mid-sentence under a
+ * COMPLETED badge - so the transcript grows by hundreds of pixels immediately
+ * AFTER the status changes. A single frame scrolled to an end that then moved.
+ * Measured in a browser by RV3 on a completed run: `scrollTop 23`,
+ * `scrollHeight 739`, `clientHeight 360` - 356px short, with the newest entry
+ * cut at "...and I am", which is exactly the defect this was meant to fix.
+ *
+ * So the landing follows the growth instead of racing it: scroll to the end on
+ * every frame until `scrollHeight` has been unchanged for two of them. Two and
+ * not one, because a single frame of stability happens in the middle of a
+ * multi-frame layout.
+ */
+function settleToEnd(): void {
+  if (props.collapsed) return
+  if (settleHandle && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(settleHandle)
+  settleHandle = 0
+  const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null
+  let frames = 0
+  let previousHeight = -1
+  let stable = 0
+  const step = (): void => {
+    settleHandle = 0
+    const element = list.value
+    if (!element || typeof element.scrollTo !== 'function') return
+    element.scrollTo({ top: element.scrollHeight, behavior: 'auto' })
+    atEnd.value = true
+    stable = element.scrollHeight === previousHeight ? stable + 1 : 0
+    previousHeight = element.scrollHeight
+    frames += 1
+    if (stable >= STABLE_FRAMES || frames >= MAX_SETTLE_FRAMES || !raf) return
+    settleHandle = raf(step)
+  }
+  if (!raf) {
+    step()
+    return
+  }
+  settleHandle = raf(step)
+}
+
+const isTerminal = computed(() => Boolean(props.status && TERMINAL.includes(props.status)))
 
 /*
  * The run stopped: land at the end whatever the reveal left behind, so the
- * newest entry and its `Details` toggle are whole. Watched on the STATUS
- * crossing into terminal rather than on the last frame, because a run can stop
- * on a frame that adds no entry at all - a cancel, or an error after the last
- * thing anybody said.
+ * newest entry and its `Details` toggle are whole.
+ *
+ * `immediate`, and that is the second half of the browser defect. A console
+ * that RESTORES a finished run mounts with the status already terminal, so a
+ * watcher that only fires on a crossing never fires at all and the rail opens
+ * wherever the browser left it. The guard is the value rather than the
+ * transition, so both paths land.
  */
-watch(
-  () => props.status,
-  (next, previous) => {
-    if (!next || next === previous) return
-    if (!TERMINAL.includes(next)) return
-    follow(true)
-  },
-)
+watch(isTerminal, (terminal) => { if (terminal) settleToEnd() }, { immediate: true })
 
 /**
  * What each entry IS, decided once per entry rather than in the template.

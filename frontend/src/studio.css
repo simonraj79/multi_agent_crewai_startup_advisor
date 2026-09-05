@@ -112,6 +112,19 @@ h3 {
 .studio-shell {
   --chat-width: 330px;
   --control-width: 310px;
+  /* HOW MUCH OF THE WORKSPACE A RAIL IS COVERING, which is zero while the
+     rails are grid COLUMNS: the workspace ends where they begin, so nothing
+     inside it needs to know they exist.
+
+     Below 1180px that stops being true. The rails become overlays, the
+     workspace takes the whole width, and anything absolutely positioned to the
+     workspace's own edges - the report sheet, the reopen button - lays itself
+     out underneath them. These two say how much room to leave, and the
+     breakpoints below set them because the breakpoints are where the rail
+     widths are written. A component that guessed its own number would be a
+     second copy of a width, and the copy that rots is always the far one. */
+  --rail-cover-start: 0px;
+  --rail-cover-end: 0px;
   position: relative;
   isolation: isolate;
   width: 100%;
@@ -636,6 +649,13 @@ h3 {
 
 @media (max-width: 1180px) {
   .studio-main { grid-template-columns: var(--chat-width) minmax(0, 1fr); }
+  /* The control rail is an overlay here and the chat rail is still a column,
+     so only the end edge is covered. `310px` is the rail's own width on the
+     next line; it is stated twice in one rule pair on purpose, where the
+     alternative is a variable that has to mean "0 when collapsed" for one of
+     them and "310 always" for the other. */
+  .studio-shell { --rail-cover-end: 310px; }
+  .studio-shell.controls-are-collapsed { --rail-cover-end: 0px; }
   .control-rail { position: absolute; top: 0; right: 0; bottom: 0; width: 310px; box-shadow: var(--shadow-rail-end); transform: translateX(0); transition: transform var(--motion-medium) var(--ease-out); }
   .controls-are-collapsed .control-rail { transform: translateX(100%); }
 }
@@ -650,6 +670,12 @@ h3 {
   .chat-rail.is-collapsed .rail-header { display: none; }
   .activity-is-active .chat-rail { width: min(520px, calc(100vw - 120px)); }
   .control-rail { width: min(320px, 48vw); }
+  /* Both rails overlay now, so both edges are covered, and each width below
+     restates the rule that sets it two lines up. The activity view widens the
+     chat rail, so it widens the cover with it. */
+  .studio-shell { --rail-cover-start: min(340px, 52vw); --rail-cover-end: min(320px, 48vw); }
+  .studio-shell.activity-is-active { --rail-cover-start: min(520px, calc(100vw - 120px)); }
+  .studio-shell.chat-is-collapsed { --rail-cover-start: 0px; }
   .canvas-meta span { display: none; }
 }
 
@@ -700,7 +726,9 @@ h3 {
 .report-reopen {
   position: absolute;
   z-index: 11;
-  right: var(--space-7);
+  /* Offset by the same cover as the sheet it reopens: at <= 1180px this button
+     sat underneath the control rail, which is a control you cannot press. */
+  right: calc(var(--space-7) + var(--rail-cover-end));
   bottom: var(--space-7);
   display: inline-flex;
   gap: var(--space-3);
@@ -978,6 +1006,22 @@ h3 {
   .studio-shell.is-builder.is-gallery .template-gallery {
     padding: 12px;
   }
+
+  /* NO COVER AT THIS WIDTH, and the scrim is the reason.
+
+     A 346px rail on a 390px viewport leaves 44px, which is not a column the
+     report could be laid out in - and it does not need one: while a rail is
+     open the scrim dims the whole workspace and IS the answer to "which layer
+     is live". Insetting the sheet here would squeeze it into a sliver behind a
+     scrim nobody is reading it through. */
+  .studio-shell,
+  /* The activity view's own selector, restated. The 860px block sets
+     `--rail-cover-start` on `.studio-shell.activity-is-active`, which is
+     (0,2,0) and would outrank a bare `.studio-shell` here however far down the
+     file it sits - so at 390 with the activity rail open the sheet would have
+     been inset by 270px it does not have. Specificity beats source order, and
+     a cascade override has to match the specificity it is overriding. */
+  .studio-shell.activity-is-active { --rail-cover-start: 0px; --rail-cover-end: 0px; }
 
   /* -------------------------------------------------------------------------
      THE RUN CONSOLE AT 390x844 (DEFINITION-OF-DONE S6, SHELL-SCOPE.md §5).

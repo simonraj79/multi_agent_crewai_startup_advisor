@@ -405,6 +405,163 @@ describe('a row about the whole run', () => {
   })
 })
 
+describe('no raw code reaches the node card (T1.3)', () => {
+  /**
+   * The regex T1.3 measures, and `e2e/cast.spec.ts` runs over the run shell's
+   * DOM. Kept here rather than imported so this file states its own bar.
+   */
+  const RAW_CODE = /[A-Z][A-Z0-9]+(_[A-Z0-9]+)+/g
+
+  /** The string a verification capture read off the failing card. */
+  const RAW = 'SYNTHETIC_FAILURE: fm_cast_refusal attempt 1 of 1 for node fm_cast_refusal'
+
+  let api: FakeStudioApi
+  let run: ReturnType<typeof useValidatorRun>
+  let app: App
+  let build: ReturnType<typeof frameFactory>
+
+  beforeEach(async () => {
+    localStorage.clear()
+    api = new FakeStudioApi()
+    build = frameFactory()
+    ;[run, app] = withSetup(() => useValidatorRun(api))
+    await run.initialize()
+    await run.launch()
+  })
+
+  afterEach(() => app.unmount())
+
+  /** The node the mock graph really carries, so the card is a real card. */
+  const NODE = 'research_market'
+
+  /**
+   * The card payload the composable built for that node.
+   *
+   * Vue Flow types `Node['data']` as optional, so the find alone leaves the
+   * checker holding `StudioNodeData | undefined`; this narrows it once and
+   * fails loudly rather than every call site wearing a `!`.
+   */
+  function cardData(): StudioNodeData {
+    const node = run.graphNodes.value.find((entry) => entry.id === NODE)
+    expect(node, `the mock graph has no node ${NODE}`).toBeDefined()
+    expect(node!.data, `node ${NODE} carries no data`).toBeDefined()
+    return node!.data as StudioNodeData
+  }
+
+  async function failNode(error: string): Promise<void> {
+    api.emit(
+      build('node_state', {
+        event_type: 'NODE_END',
+        level: 'ERROR',
+        node_id: NODE,
+        message: `${NODE} failed`,
+        details: { stage: 'error', error },
+      }),
+    )
+    await flush()
+    api.emit(
+      build('error', {
+        event_type: 'NODE_END',
+        level: 'ERROR',
+        node_id: NODE,
+        message: error,
+        details: { stage: 'error', message: error },
+      }),
+    )
+    await flush()
+  }
+
+  it('humanises the card the whole way from the frame to the DOM', async () => {
+    // END TO END on purpose. The trace row was cleaned up in round three and
+    // the card was not, because the two read different sources - the row goes
+    // through `interpret.ts`, the card through `nodeErrors`. Asserting the
+    // store alone would have passed while the card still showed the code, so
+    // this drives a real frame and reads the rendered `<article>`.
+    await failNode(RAW)
+    const data = cardData()
+    expect(data.errorMessage).not.toBe('')
+
+    const wrapper = mount(WorkflowNode, {
+      props: { data },
+      global: { stubs: { Handle: true } },
+    })
+    const card = wrapper.get('.workflow-node')
+    expect(card.text()).toContain('fm_cast_refusal')
+    expect(card.text().match(RAW_CODE), `raw code on the card: "${card.text()}"`).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('cleans the hover title and the aria label too, not just the sentence', async () => {
+    // The card reads `errorMessage` three times and only one of them is
+    // visible. Cleaning it at the render would have fixed the sentence and left
+    // the code in the two a screenshot never shows.
+    await failNode(RAW)
+    const wrapper = mount(WorkflowNode, {
+      props: { data: cardData() },
+      global: { stubs: { Handle: true } },
+    })
+    const message = wrapper.get('[data-testid="node-error-message"]')
+    expect(message.attributes('title')!.match(RAW_CODE)).toBeNull()
+    expect(wrapper.get('.workflow-node').attributes('aria-label')!.match(RAW_CODE)).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('humanises a code in the middle rather than dropping it', async () => {
+    // Only the LEADING namespace goes; a code inside the sentence is usually
+    // its subject, so it is spelled the way the rest of the shell spells one.
+    await failNode('the provider answered RATE_LIMIT and gave up')
+    expect(cardData().errorMessage).toBe('the provider answered Rate limit and gave up')
+  })
+
+  it('keeps a message that is nothing but a code, humanised', async () => {
+    // Dropping the leading namespace here would leave an empty card, which is
+    // worse than a clumsy sentence: the node is red and says why nowhere.
+    await failNode('MODEL_REFUSED')
+    expect(cardData().errorMessage).toBe('Model refused')
+    expect(cardData().errorMessage.match(RAW_CODE)).toBeNull()
+  })
+
+  it('clips the card on a word boundary, never mid-word', async () => {
+    // The last thing a cold reader complained about: `…attempt 1…` on the card,
+    // where a reader cannot tell whether the TEXT was truncated or the VALUE
+    // was. Same rule and the same function as the trace line, so the two
+    // surfaces cannot drift apart.
+    const long = `the upstream provider refused ${'this particular request '.repeat(8)}today`
+    await failNode(long)
+    const shown = cardData().errorMessage
+    const wrapper = mount(WorkflowNode, {
+      props: { data: cardData() },
+      global: { stubs: { Handle: true } },
+    })
+    const rendered = wrapper.get('[data-testid="node-error-message"]').text()
+    expect(rendered.endsWith('…')).toBe(true)
+    const body = rendered.slice(0, -1)
+    expect(body.endsWith(' ')).toBe(false)
+    // Every word in the clip is a whole word of the original, and the cut fell
+    // on a space rather than inside one.
+    expect(shown.startsWith(body)).toBe(true)
+    expect(shown[body.length] === ' ' || shown.length === body.length).toBe(true)
+    // The full text is still promised to the hover and the screen reader.
+    expect(wrapper.get('[data-testid="node-error-message"]').attributes('title')).toBe(shown)
+    wrapper.unmount()
+  })
+
+  it('does not clip at the trace budget - the card keeps its own', async () => {
+    // `errorSentence` cuts to one sentence and clips at 60 characters for a
+    // trace row; a card quotes up to `MAX_NODE_CARD_ERROR_CHARS` and promises
+    // the whole thing to its `title`. Clipping at the store would make that
+    // promise false, which is why the shared piece is the humanising only.
+    const long =
+      'SYNTHETIC_FAILURE: the upstream provider refused the request because the '
+      + 'configured account has no remaining quota for this model today'
+    await failNode(long)
+    const data = cardData()
+    expect(data.errorMessage.length).toBeGreaterThan(60)
+    expect(data.errorMessage.endsWith('…')).toBe(false)
+    expect(data.errorMessage.startsWith('the upstream provider')).toBe(true)
+  })
+})
+
 describe('the card does not take the node id as a DOM id', () => {
   function nodeData(overrides: Partial<StudioNodeData> = {}): StudioNodeData {
     return {

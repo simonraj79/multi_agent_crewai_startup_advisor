@@ -317,9 +317,19 @@ async function copyReport(): Promise<void> {
   isolation: isolate;
   z-index: var(--z-control);
   top: 64px;
-  right: 0;
+  /* NOT `0`, below 1180px. The sheet is positioned to `.graph-workspace`, and
+     below that breakpoint the workspace runs UNDER the rails - so `right: 0`
+     put the score bars, the body text and this sheet's own Copy Markdown and
+     close controls beneath the control rail (`evidence/T3/after-1180.png`).
+     The variables are `studio.css`'s, set per breakpoint beside the rail
+     widths they mirror, and they are `0px` wherever a rail is a column or is
+     collapsed - so above 1180px this resolves to exactly what it said before.
+     The transition is the rail's own, so the sheet widens as the rail slides
+     away rather than snapping when it has gone. */
+  right: var(--rail-cover-end, 0px);
   bottom: 0;
-  left: 0;
+  left: var(--rail-cover-start, 0px);
+  transition: right var(--motion-medium) var(--ease-out), left var(--motion-medium) var(--ease-out);
   display: flex;
   flex-direction: column;
   overflow: hidden;

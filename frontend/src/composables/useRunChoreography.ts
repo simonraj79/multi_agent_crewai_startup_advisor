@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef, type Ref } from 'vue'
 import { characterSeed, type PipState } from '../characters/pip'
+import { humaniseErrorText } from '../trace/interpret'
 import type { FrameData, NodeRunState, RunStatus } from '../types/studio'
 
 /**
@@ -659,9 +660,30 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     // `agent` frames are entirely `noteIdentity`'s business now; the branch
     // that used to sit here only ever called `rememberSpeaker`.
     if (frame.kind === 'error' && frame.node_id && stage === 'error') {
+      /*
+       * HUMANISED HERE, at the one place a card's error text is written.
+       *
+       * T1.3 is "no raw internal code reaches the run shell's DOM", and a
+       * verification capture caught the node card still reading
+       * `SYNTHETIC_FAILURE: fm_cast_refusal …` while the trace row beside it
+       * had already been cleaned up - the trace went through
+       * `interpret.ts::errorSentence` and the card went through nothing.
+       *
+       * The write rather than the render, because `nodeErrors` has exactly one
+       * writer and the card reads it three times: the visible sentence, the
+       * `title` a hover gets and the aria label a screen reader hears. Cleaning
+       * it at the render would have fixed one of the three and left a code in
+       * the two nobody screenshots.
+       *
+       * `humaniseErrorText` and not `errorSentence`: the latter also cuts to
+       * one sentence and clips to the TRACE's budget, and the card's own budget
+       * is `MAX_NODE_CARD_ERROR_CHARS` with the full text promised to its
+       * `title`. Same words, each surface's own length. The raw payload is
+       * untouched in the trace row's disclosure.
+       */
       nodeErrors.value = {
         ...nodeErrors.value,
-        [frame.node_id]: detailString(details, 'message') || frame.message,
+        [frame.node_id]: humaniseErrorText(detailString(details, 'message') || frame.message),
       }
       return
     }

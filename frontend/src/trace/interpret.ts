@@ -226,12 +226,31 @@ export function errorSentence(value: unknown, max = MAX_QUOTED_CHARS): string {
   if (looksStructured(flat)) return ''
   const stop = flat.search(/[.!?](\s|$)/)
   const sentence = stop > 0 ? flat.slice(0, stop) : flat
-  const named = sentence.replace(LEADING_CODE, '')
-  // `|| sentence` - a message that is NOTHING but a code keeps it rather than
+  return clip(humaniseErrorText(sentence), max)
+}
+
+/**
+ * The two rules above, without the sentence-splitting and without the clip.
+ *
+ * Split out because the TRACE and the NODE CARD want the same words and
+ * different lengths. A trace row is one sentence bounded at
+ * `MAX_QUOTED_CHARS`; a card quotes up to `MAX_NODE_CARD_ERROR_CHARS` and puts
+ * the whole thing in its `title` and its aria label, and clipping at the store
+ * would make that promise false for both. So the humanising is the shared part
+ * and each surface keeps its own bound.
+ *
+ * Exported for `useRunChoreography`, which applies it once where `nodeErrors`
+ * is written - the single point every card reads through. The RAW text is not
+ * lost: the trace row's disclosure carries `frame.details` verbatim, which is
+ * where T2.1 puts a payload.
+ */
+export function humaniseErrorText(value: string): string {
+  const named = value.replace(LEADING_CODE, '')
+  // `|| value` - a message that is NOTHING but a code keeps it rather than
   // becoming an empty row. "Run failed: Synthetic failure" is a poor sentence
   // and "Run failed:" is a broken one.
-  const body = named.trim() ? named : sentence
-  return clip(body.replace(SHOUTED_CODE, (code) => humaniseCode(code)).trim(), max)
+  const body = named.trim() ? named : value
+  return body.replace(SHOUTED_CODE, (code) => humaniseCode(code)).trim()
 }
 
 /**

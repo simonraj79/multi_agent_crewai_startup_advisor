@@ -7,6 +7,7 @@ import type { PipState } from '../characters/pip'
 import type { CastMark } from '../composables/useRunChoreography'
 import type { StudioNodeData } from '../composables/useValidatorRun'
 import { MAX_NODE_CARD_ERROR_CHARS } from '../data/serverLimits'
+import { clip } from '../trace/interpret'
 
 /**
  * Who stands on this card, and what they are doing (T2.5, T2.6).
@@ -255,11 +256,17 @@ const characterStyle = computed(() => ({
  * all of it, and the NDJSON export has it whole.
  */
 const errorMessage = computed(() => props.data.errorMessage ?? '')
-const shortError = computed(() =>
-  errorMessage.value.length > MAX_NODE_CARD_ERROR_CHARS
-    ? `${errorMessage.value.slice(0, MAX_NODE_CARD_ERROR_CHARS - 1).trimEnd()}…`
-    : errorMessage.value,
-)
+/*
+ * `clip` and not a `slice`: the cut lands on a WORD boundary.
+ *
+ * The slice that was here ended wherever 120 characters fell, so a cold reader
+ * met `…attempt 1…` and could not tell whether the text was truncated or the
+ * value was. It is the same rule the trace line already follows and the same
+ * function, so the two surfaces cannot drift; the only case that still cuts
+ * inside a word is a single token longer than the whole budget, where there is
+ * no boundary to use.
+ */
+const shortError = computed(() => clip(errorMessage.value, MAX_NODE_CARD_ERROR_CHARS))
 const hasError = computed(() => props.data.state === 'error' && Boolean(errorMessage.value))
 
 /**

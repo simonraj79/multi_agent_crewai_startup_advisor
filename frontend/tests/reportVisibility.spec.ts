@@ -390,6 +390,32 @@ describe('the report sheet cannot be painted through', () => {
     expect(rule).not.toMatch(/background:\s*var\(--surface-overlay\)/)
   })
 
+  it('leaves room for an overlay rail rather than running under it', () => {
+    // Below 1180px the rails stop being grid columns and `.graph-workspace`
+    // takes the whole width - so `right: 0` put the score bars, the body text
+    // and this sheet's own Copy Markdown and close controls UNDER the control
+    // rail (`evidence/T3/after-1180.png`). The numbers live in `studio.css`
+    // beside the rail widths they mirror; the sheet only reads them.
+    expect(rule).toMatch(/right:\s*var\(--rail-cover-end, 0px\)/)
+    expect(rule).toMatch(/left:\s*var\(--rail-cover-start, 0px\)/)
+    expect(rule).not.toContain('right: 0;')
+  })
+
+  it('reads a cover that is zero wherever a rail is a column or collapsed', () => {
+    // The fallback matters as much as the variable: above 1180px the shell
+    // declares both as `0px`, so this resolves to exactly what it said before
+    // the breakpoints learned about it, and a stylesheet that failed to load
+    // the shell would still lay the sheet out edge to edge rather than at zero
+    // width.
+    const shell = readFileSync('src/studio.css', 'utf8')
+    const base = ruleFor(shell, '.studio-shell')
+    expect(base).toMatch(/--rail-cover-start:\s*0px/)
+    expect(base).toMatch(/--rail-cover-end:\s*0px/)
+    // and the overlay breakpoint sets a real one, collapsing back to zero.
+    expect(shell).toMatch(/\.studio-shell \{ --rail-cover-end: 310px; \}/)
+    expect(shell).toMatch(/\.studio-shell\.controls-are-collapsed \{ --rail-cover-end: 0px; \}/)
+  })
+
   it('does not escape the rails, which are a different stacking context', () => {
     // `.graph-workspace` declares `position: relative; z-index: 0`, so it IS a
     // stacking context and everything in ReportPanel.vue is trapped below

@@ -1,0 +1,79 @@
+{
+  "_what": "The verification run for the max_iter 3 -> 6 raise (paid-run defect 2). One paid run of `news-to-social` on a local PAID backend (PORT=8097, no SYNTHETIC, /docs -> 404), against the fixture document at commit 8af20c2 - the first paid run of a template whose researcher carries max_iter: 6. It is NOT a second sample of the 2026-09-05 template sweep: the document differs by that one field.",
+  "template": "news-to-social",
+  "input": {
+    "subject": "AI agents and agentic workflows"
+  },
+  "document_id": "ug_25dca52f",
+  "workflow_id": "ug_25dca52f",
+  "run_id": "d69c6986-ddba-4116-b983-cb8fea66eaf9",
+  "status": "completed",
+  "created_at": "2026-09-05T03:27:07.738640Z",
+  "started_at": "2026-09-05T03:27:07.751458Z",
+  "completed_at": "2026-09-05T03:27:39.502555Z",
+  "gates_answered": 0,
+  "gate_note": "ungated by design; BUILDER_ALLOW_GATELESS_GRAPHS=1 on the backend",
+  "usage": {
+    "successful_requests": 3,
+    "prompt_tokens": 2835,
+    "completion_tokens": 4579,
+    "total_tokens": 7414,
+    "call_count": 3,
+    "elapsed_ms": 25383,
+    "cost_usd": 0.0178923
+  },
+  "node_usage": [
+    {
+      "successful_requests": 2,
+      "prompt_tokens": 2206,
+      "completion_tokens": 330,
+      "total_tokens": 2536,
+      "call_count": 2,
+      "elapsed_ms": 2976,
+      "cost_usd": 0.0014868,
+      "node_id": "research",
+      "model": "google/gemini-3.5-flash-lite:nitro"
+    },
+    {
+      "successful_requests": 1,
+      "prompt_tokens": 629,
+      "completion_tokens": 4249,
+      "total_tokens": 4878,
+      "call_count": 1,
+      "elapsed_ms": 22407,
+      "cost_usd": 0.0164055,
+      "node_id": "write",
+      "model": "google/gemini-3.8-flash"
+    }
+  ],
+  "max_iter_exhaustion": {
+    "occurred": false,
+    "how_known": "`research` is the only tool-using node and its max_iter is 6; its node_usage row records call_count 2. Exhaustion requires iterations >= max_iter, so two calls cannot have reached it. The serve log's 'Maximum iterations reached' line is NOT evidence either way here - handle_max_iterations_exceeded prints it only when the agent is verbose, and an authored agent is not.",
+    "consequence": "This run therefore does not exercise the before_llm_call nudge. What it establishes is that the raised cap still runs, still completes, and still costs cents. The nudge itself is proved red-then-green by tests/builder/test_max_iter_nudge.py against a scripted LLM double."
+  },
+  "estimate": {
+    "_source": "frontend/tests/fixtures/templates/news-to-social.json, which is generated from the same document this run published. The publish response carries no budget block, so it is read from the fixture rather than retyped.",
+    "static_cost_usd": 0.6103350000000001,
+    "floor_cost_usd": 0.42162900000000003,
+    "modelled_calls": 30,
+    "billable_nodes": 2,
+    "escalation_nodes": 1,
+    "measured_over_static": 0.029316
+  },
+  "frames": {
+    "count": 61,
+    "captured": 61,
+    "dropped": 0,
+    "gaps": 0,
+    "emit_errors": 0,
+    "subscriber_dropped": 0,
+    "unattributed": 0,
+    "first_seq": 1,
+    "last_seq": 61
+  },
+  "error": null,
+  "result": {
+    "markdown_body": "thread-safe agents\": Item 4 mentions \"build thread-safe AI agents\".\n\n    Let's check the sentence count for Long:\n    Sentence 1: Developers are tackling agent fragility and operational overhead with tools built for error recovery, token efficiency, and private infrastructure.\n    Sentence 2: Recent releases include Oqlous AI as an MCP alternative for lower token costs (https://news.ycombinator.com/item?id=43603324), Agno for step-based multi-agent systems in private clouds (https://news.ycombinator.com/item?id=45714551), Durable Swarm to resume failed Swarm workflows from their last step (https://news.ycombinator.com/item?id",
+    "node_id": "post"
+  }
+}

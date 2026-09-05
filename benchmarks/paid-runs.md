@@ -226,16 +226,109 @@ that figure and its four rows.
 
 Two residuals, neither of them defect 3 and neither of them new:
 
-- **The payload reaches the prompt as its JSON envelope**, not as prose — the
+- ~~**The payload reaches the prompt as its JSON envelope**, not as prose — the
   task literally reads `Size the market for {"summary": "…"} and name the
   buyer.` Every model handled it and every output is on topic, so this costs
   nothing today; it is a shape nobody chose, and the first author who writes a
-  gate whose payload has three keys will find out what it renders as.
+  gate whose payload has three keys will find out what it renders as.~~
+  **FIXED and verified for money — the next section.** Run `5556ec33` on the
+  same template with the same input reads
+  `Size the market for Plan the launch of a keyboard-first task manager for
+  engineering teams. and name the buyer.`
 - **The crew node's result is the LAST task's output**, so the deliverable is
   the Risk specialist's three failure modes and not a synthesis of market,
   product and risk. That is `CrewOutput.raw`'s semantics, it was recorded as a
   separate observation when the sweep ran, and it is unchanged. A template that
   wants a synthesis needs a node that writes one.
+
+## The verification run — the gate payload as PROSE, 2026-09-05
+
+The first residual the section above names, closed. It said the payload reaches
+the prompt *"as its JSON envelope, not as prose"*, that every model handled it
+anyway, and that *"the first author who writes a gate whose payload has three
+keys will find out what it renders as"*. They will not.
+
+`runtime.state_ref_text` renders a JSON OBJECT — a string that parses to one, or
+a mapping — as prose at the ONE seam where a state reference becomes text a
+model reads: `prompt_inputs`, for both arms of `run_agent` and both arms of
+`run_crew`. A single-key object becomes its bare value, a multi-key object
+becomes `key: value` lines in the payload's own order, a nested value is compact
+JSON, and everything else — a plain string, a number, a list, a string that
+merely LOOKS like JSON — is returned as the SAME object.
+
+**`out__<gate>` is unchanged, and that is the design rather than an omission.**
+Replay, the State tab, the export and `gate_payload` all read the stored form
+and all of them want the object back; `route_branch` compares `state.get(key)`
+against a literal and a router that started comparing prose would answer
+differently for the same document; and `emit_output` writes a deliverable a
+client parses. Three of those four are pinned by a negative test in
+`tests/builder/test_prompt_interpolation.py` (23 tests).
+
+Same backend recipe (`PORT=8097`, no `SYNTHETIC`, `/docs` → **404**), same
+template, same saved input, same `approve` at the same gate. Against
+`wd/payload-prose` = **`6233ad0`**.
+
+| template | run id | status | elapsed | prompt / completion | calls | `cost_usd` | static | measured / static | gates |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `hierarchical-delegation` | `5556ec33` | **completed** | 55.0 s | 6,808 / 4,579 | 9 | $0.020923 | $0.5235 | **4.00 %** | 1 approve |
+
+Per node, both on `team` because the members are priced inside the crew:
+`gemini-3.5-flash-lite:nitro` 3 calls $0.0021148; `gemini-3.8-flash` 6 calls
+$0.0188078. Evidence:
+[`live/2026-09-05-hierarchical-delegation-prose.json`](live/2026-09-05-hierarchical-delegation-prose.json),
+which carries all 151 frames, the full flow state and the checks below.
+
+### The three task names, read out of the frames
+
+These are the exact strings CrewAI interpolated, taken from the `task_name` on
+this run's own `agent` and `llm` frames. The previous run's are quoted two
+sections above; the difference is the whole change.
+
+```text
+Size the market for Plan the launch of a keyboard-first task manager for engineering teams. and name the buyer.
+Define the v1 scope for Plan the launch of a keyboard-first task manager for engineering teams. in five bullets.
+List the three ways Plan the launch of a keyboard-first task manager for engineering teams. fails, and the early signal for each
+```
+
+*(The third is cut at the frame's own preview bound, exactly as the earlier
+run's third was.)* Six distinct task names appear across the stream — those
+three and the hierarchical manager's own delegation prose — and **none of the
+six carries a JSON envelope**, which is the check the evidence file computes
+rather than a reading of the list.
+
+**And the store did not move.** From `GET /api/runs/5556ec33…/state`:
+
+```json
+"out__confirm":      "{\"summary\": \"Plan the launch of a keyboard-first task manager for engineering teams.\"}",
+"decision__confirm": {"decision": "approve", "honoured": false, "turns_used": 0}
+```
+
+Byte-identical to run `d1fdeea6`'s. The rendering is the reader's and the
+stored payload is still the object a form can be built from.
+
+**The body is on topic**: 1,311 characters on command-palette adoption among
+non-power users, GitHub webhook latency corrupting cycle-time metrics, and
+multi-seat provisioning — the same subject as `d1fdeea6`'s, which is what says
+this changed the prompt's shape and not its subject.
+
+**One limitation, stated because it is not obvious.** CrewAI renders a whole
+`with:` block, so a reference EMBEDDED in a longer string —
+`task.description: "work from ${state.out__draft}"` — is already spliced into
+that sentence before any entrypoint is called, and there is no seam left at
+which the reference can be told from the prose around it. The shape that works,
+and the one every gallery template uses, is a `prompt_inputs` value that is
+exactly one reference, read by a `{name}` placeholder in the prompt.
+
+### Spend
+
+| | |
+| --- | --- |
+| balance before | **$27.254979** (`total_usage` 92.745020765) |
+| the service's own `cost_usd` | **$0.020923** |
+
+The settled balance is read after the `max_iter` verification run that followed
+this one back to back: only the PAIR was bracketed, so the delta for both is
+recorded with that run rather than split between them on a guess.
 
 ## What each run's OUTPUT actually did
 
@@ -353,6 +446,7 @@ Everything else on this page was measured **after** that fix.
 > instantiated. And the two tool-using researchers go `max_iter` 3 → 6, so
 > the cap is reached less often. The paragraph below, *"Not fixed here"*,
 > was true when it was written.
+
 
 `sequential-pipeline`'s first attempt, run `a9887442-ff35-4da5-8974-52fa03e81a0f`:
 **failed** after 9 calls and $0.002327, three times over, with

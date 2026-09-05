@@ -953,8 +953,18 @@ h3 {
     width: 44px;
     height: 44px;
   }
+  /* And they must not land on each other. Both rails are overlays at this
+     width, both hang their toggle into the SAME 44px gutter, and both sit at
+     `top: 13px` inside a rail that starts at the same y - so at 390 the two
+     controls occupied one 44x44 box and the control rail's, painting last,
+     hid the chat rail's entirely. The right rail's goes to the BOTTOM of the
+     gutter, which is also where a thumb already is. */
   .studio-main > .chat-rail .rail-toggle { right: -44px; }
-  .control-rail .control-toggle { left: -44px; }
+  .control-rail .control-toggle {
+    top: auto;
+    bottom: var(--space-5);
+    left: -44px;
+  }
 
   /* THE INLINE-AXIS FIX, for the console this time. `.graph-workspace`
      declares rows and leaves its column implicit, and an implicit column is
@@ -976,4 +986,12 @@ h3 {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* The graph's name is the next thing to go, after the account name at 860
+     and the workspace switch at 860. It wrapped to two lines inside a 52px
+     bar, and it is the one item in the header that is stated again three
+     inches below it, in the rail's own WORKFLOW well. The connection status
+     stays, because nothing else on a phone says whether this console is
+     talking to anything. */
+  .studio-shell:not(.is-builder) .workflow-name { display: none; }
 }

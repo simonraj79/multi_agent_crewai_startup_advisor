@@ -208,6 +208,15 @@ h3 {
   min-height: 0;
 }
 
+/* THE SCRIM behind an overlay rail. Declared here and switched on at <= 640px
+   only, because above that width both rails are real grid columns: they shrink
+   the console rather than covering it, so there is no layer to place a reader
+   in and nothing to dismiss.
+
+   `display: none` rather than `opacity: 0`, so above the breakpoint it is not
+   an invisible click target sitting over the canvas. */
+.rail-scrim { display: none; }
+
 /*
  * Three rows, and the middle one is why.
  *
@@ -986,6 +995,38 @@ h3 {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* WHICH LAYER IS LIVE, answered where a cold reader asked it.
+     At 390 both rails are overlays and one sat directly on the console: a
+     sliver of half-cut console text showed down the edge and nothing said
+     which of the two a tap would reach. The scrim dims what is underneath -
+     `--scrim`, not `--fade-strong`, because a scrim that erases the console
+     answers the question by deleting it - and carries the dismiss gesture
+     every overlay on a phone has.
+
+     UNDER the rails and OVER the canvas: `--z-rail` minus one. The two rail
+     toggles are children of their own rails, so they keep the rail's stacking
+     context and stay tappable above it, which is what stops the scrim from
+     being a trap. The header is a sibling of `.studio-main` at `--z-control`
+     and is deliberately not covered: signing out and reading the connection
+     state are not things an open rail should block. */
+  .rail-scrim {
+    position: absolute;
+    z-index: calc(var(--z-rail) - 1);
+    display: block;
+    inset: 0;
+    padding: 0;
+    background: var(--scrim);
+    border: 0;
+    cursor: pointer;
+    transition: background var(--motion-fast) ease;
+  }
+  /* NO `backdrop-filter` here, and the omission is a decision. Dimming answers
+     the question; blurring is a second effect that costs a full-viewport
+     filter pass on the device with the least GPU, under a canvas that moves -
+     and the rails above it already carry `--blur-rail`, so a scrim that blurred
+     too would have the compositor filtering the same pixels twice. Plan 11
+     bounds live animation for the same reason. */
 
   /* The graph's name is the next thing to go, after the account name at 860
      and the workspace switch at 860. It wrapped to two lines inside a 52px

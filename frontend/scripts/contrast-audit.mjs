@@ -236,7 +236,9 @@ const PAIRS = [
   ['a section kicker in a rail', 'text-meta', 'rail', 'StatusPanel.vue .control-label', 'text', 'W5', ''],
   ['a metric label on a well', 'text-meta', 'well in rail', 'StatusPanel.vue .metrics-grid dt', 'text', 'W5', ''],
   ['the stream line in a rail', 'text-meta', 'rail', 'StatusPanel.vue .stream-line', 'text', 'W5', ''],
-  ['the workflow version mark', 'on-accent-cyan', 'well in rail', 'StatusPanel.vue .read-only-well .version', 'text', 'W5', ''],
+  // The `M2` mark that used to be measured here is gone with the element - it
+  // was the PRODUCT's build mark inside a well labelled WORKFLOW, so on a graph
+  // an author drew it named a version that graph does not have.
   ['a control boundary on a well', 'border-control', 'well in rail', 'StatusPanel.vue textarea', 'ui', 'W5', ''],
   ['a control boundary on a rail', 'border-control', 'rail', 'studio.css .segmented', 'ui', 'W5', ''],
   ['the metrics grid rule', 'border-control', 'well in rail', 'studio.css .metrics-grid', 'ui', 'W5', ''],
@@ -285,12 +287,14 @@ const PAIRS = [
 
   // ---- painted in a file another worker owns THIS round --------------------
   ['a trace bubble in a rail', 'text-body', 'rail', 'ChatRail.vue .trace-bubble', 'text', 'W4', ''],
-  ['a rail kicker', 'accent-cyan', 'rail', 'ChatRail.vue:383 / DialogueRail.vue:467 .section-kicker', 'text', 'W4', 'var(--on-accent-cyan)'],
-  // One site, not two: `ChatRail`'s `.text-button` is gone, and the only
-  // `--link-cyan` left anywhere in the run shell is this one. It sits directly
-  // on the rail, in `.dialogue-body` - which declares no background of its own.
-  ['a rail text button', 'link-cyan', 'rail', 'DialogueRail.vue:625 .text-button', 'text', 'W4', 'var(--link-strong)'],
-  ['a call chip in a bubble', 'text-muted', 'well in rail', 'ChatRail.vue .call-chip', 'text', 'W4', 'background: var(--surface-well)'],
+  ['a rail kicker', 'on-accent-cyan', 'rail', 'ChatRail.vue:421 / DialogueRail.vue:471 .section-kicker', 'text', 'W4', ''],
+  // One site, not two: `ChatRail`'s `.text-button` is gone, and the only text
+  // button left in the run shell is this one. It sits directly on the rail, in
+  // `.dialogue-body`, which declares no background of its own.
+  ['a rail text button', 'link-strong', 'rail', 'DialogueRail.vue:632 .text-button', 'text', 'W4', ''],
+  // `.call-chip` had its own row until 2026-09-05 and no longer exists in
+  // `ChatRail.vue`. A row for a class nothing declares is worse than no row:
+  // it reports a ratio for a surface that is not painted.
   ['body text on a card', 'text-body', 'bg-node (card)', 'node-card.css', 'text', 'W4', ''],
 
   // ---- the shared card's quiet text, both tenancies ------------------------
@@ -301,6 +305,13 @@ const PAIRS = [
   // original, because that sheet is inside its sixteen full-page baselines: the
   // row below measures it, names the fix, and is out of this audit's scope.
   ['quiet card text, run console', 'text-meta', 'bg-node (card)', 'motion.css .node-eyebrow / .node-usage / .node-active-hint', 'text', 'W5', ''],
+  // The state chip carries TWO classes on one element - `node-state
+  // quarantine-count` - and `.node-state` wins by source order, so
+  // `.quarantine-count`'s `--text-40` never reaches a screen. This row measures
+  // the colour the element paints rather than the one the cascade discards;
+  // `e2e/visual/run-canvas.spec.ts:243` asserts the same fact from the other
+  // side, and caught a rule that had inverted it.
+  ['the node state chip', 'text-muted', 'bg-node (card)', 'node-card.css .node-state (also .quarantine-count)', 'text', 'W5', ''],
   ['quiet card text, THE BUILDER', 'text-40', 'bg-node (card)', 'node-card.css .node-eyebrow (design canvas)', 'text', OUT_OF_SCOPE, 'var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6'],
   ['the focus ring on the app ground', 'on-accent-cyan', 'bg-app', 'studio.css :focus-visible', 'ui', 'W5', ''],
 ]
@@ -338,9 +349,24 @@ function evaluate(tok, surf, theme) {
     const name = `character-${i}`
     if (!(name in tok)) continue
     for (const [bgKey, site] of CHAR_SURFACES) {
-      push(`${name} as small text on ${bgKey}`, name, bgKey, site, 'text', 'W4',
-        'darken in the light block only')
-      push(`${name} as a UI mark on ${bgKey}`, name, bgKey, site, 'ui', 'W4', '')
+      /*
+       * A UI MARK AND NOT SMALL TEXT, and the correction matters because it
+       * was measured against the wrong level for a whole round.
+       *
+       * These twelve colours were once the fill behind two initials, and the
+       * audit asked 4.5 of them accordingly. The medallion has carried the
+       * character itself since - `CrewProgress.vue` says so at the site: "The
+       * character, not two initials. `MA` and `MO` are two letters apart at
+       * 26px and told an operator nothing they could not read off the card."
+       * Nothing anywhere is now COLOURED by a character token: they paint a
+       * figure's body and crest through `--character-color`, which is a
+       * graphical object under WCAG 1.4.11 and needs 3.0.
+       *
+       * The four that were darkened for the old 4.5 stay darkened. They read
+       * better and the palette is no worse for it; unwinding a change to
+       * restore a ratio nobody needs would be the same mistake twice.
+       */
+      push(`${name} as a figure on ${bgKey}`, name, bgKey, site, 'ui', 'W4', '')
     }
   }
   return rows

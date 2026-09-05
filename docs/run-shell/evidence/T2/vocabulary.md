@@ -240,3 +240,21 @@ sentence itself is `interpret.ts`'s and is asserted by
 `traceInterpretation.spec.ts`.
 
 **Verdict: T2.2's vocabulary table is complete against the serializer.**
+
+### Second pass, `16f3be5`
+
+Re-checked, not carried forward. Neither side of this table's subject moved in
+round two, and that is a measurement rather than an assumption:
+
+```bash
+$ git diff 27b256e..HEAD --stat -- src/brief_crew/events/serializer.py frontend/src/trace/
+# (no output - neither the serializer's ladder nor src/trace/ changed)
+```
+
+The sixteen `FrameKind` values were re-enumerated from the package and every one
+still has a row; `registry.py`'s ten kinds still land on rows the table names.
+Round two changed how a row is *rendered* — gate rows wear a person marker, run
+rows say `Run`, the row is more compact — and `frontend/src/trace/interpret.ts`,
+which is what this table describes, is byte-identical to the first pass.
+
+**T2.2 PASS, second pass.**

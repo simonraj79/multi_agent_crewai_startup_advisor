@@ -1,5 +1,175 @@
 # RV3 — verification report
 
+Two passes. **The second pass, at `16f3be5`, is the current verdict**; the first
+pass, at `27b256e`, is kept below it under its own heading, because what round
+two fixed is only legible against what round one found.
+
+RV3 built none of this work and edited no product code. The one product-tree
+change RV3 is permitted, and made, is regenerating the PNGs under
+`frontend/e2e/visual/run-canvas.spec.ts-snapshots/` — two in the first pass, the
+third in the second, each named with a reason in
+[`evidence/R/baselines.md`](R/baselines.md), and each after the failing diff was
+recorded first.
+
+`G1`, `G4`'s sheet and every `RC` row belong to other workers and are marked
+**NOT VERIFIED BY ME**. A missing artifact is recorded as **FAIL**, not as a
+pass with a note.
+
+---
+
+# SECOND PASS — `16f3be5`, 2026-09-05
+
+## 1. What was run, and against what
+
+| | |
+| --- | --- |
+| Python | `.\.venv\Scripts\python.exe -m unittest discover -s tests -t .` — **2542 tests, OK, 6 skipped, 132.9 s**, exit 0 |
+| Vitest | `npx vitest run` from `frontend/` — **93 files, 1936 tests, 0 failed**, exit 0 |
+| Types | `npx vue-tsc -b --force` — **exit 0**, no diagnostics |
+| Build | `npm run build` (`vue-tsc -b && vite build && tsc -p tsconfig.server.json`) — **exit 0**, built in 672 ms |
+| E2E | `npx playwright test`, both projects — **162 tests: 155 passed, 7 failed, 0 skipped, 12.2 m**, exit 1 |
+
+Backend, started from the repo root in the background, its log read rather than
+`/healthz` trusted, and restarted clean for this pass:
+
+```
+SYNTHETIC=1  SYNTHETIC_BRANCH_DELAY_SECONDS=5  PORT=8099
+CREDENTIALS_MASTER_KEY=Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE=
+BUILDER_ALLOW_GATELESS_GRAPHS=1
+RUN_RATE_LIMIT_MAX_RUNS=100            (.agent/MISSION.md section 8)
+MCP_ALLOW_INSECURE_LOCAL=1             (.agent/MISSION.md section 8)
+SKILLS_ROOT=D:/MultiAgentSystem/data/skills
+SYNTHETIC_FAILURE="fm_bad_key:bad_key:1,fm_tool_timeout:tool_timeout:1,
+                   fm_refusal:refusal:1,fm_malformed:malformed_output:1,
+                   fm_rate_limit:rate_limit:1,fm_cast_refusal:refusal:1"
+./.venv/Scripts/serve.exe
+```
+
+The `SYNTHETIC_FAILURE` value is `failure-modes.spec.ts`'s five-mode string
+combined with `cast.spec.ts`'s sixth, which the grammar allows —
+`builder_runner.py::parse_synthetic_failures` splits on commas and each entry
+carries its own node prefix. The MCP fixture ran on :8791 with `E2E_MCP_URL`
+exported, which is why the suite reports **0 skipped**. RV2's ports (:8098,
+:5274) were never touched. Money spent: **zero**.
+
+## 2. The table
+
+| Id | Verdict | Evidence | What RV3 saw at `16f3be5` |
+| --- | :---: | --- | --- |
+| **G1** | NOT VERIFIED BY ME | `evidence/G1/` | RV2's, and complete on disk. RV3 did not touch G1, G4 or port 8098. |
+| **G2** | **PASS** | `evidence/G2/grep.txt` | Re-run, not carried forward: **one hit, zero product hits**, the same JSDoc line in `readsAsRole()` quoting `Scoper` as an example. Worth re-running because round two grew `AgentCharacter.vue` 92 → 197 lines and `useRunChoreography.ts` 958 → 1024, and the answer did not change. |
+| **G3** | **PASS** | `G3/vitest.txt`, `G3/playwright.txt`, `G3/reload-map.json` | **2 files, 69 tests green** over the committed 20-role snapshot generated in one process and asserted in another; the reload check passed again (`cast.spec.ts:778`, 15.7 s). |
+| **G4** | NOT VERIFIED BY ME | `G4/roles-sheet.png` | On disk; the verdict is RC's Q4. |
+| **T1.1** | NOT VERIFIED BY ME | `T1/report-header.png` **now exists**; `T1/cold-read.md` **MISSING** | The input RC needs was produced this pass — the 119-event test now reaches `:1013` and writes it. The answers are RC's and are not written yet. |
+| **T1.2** | **PASS** | `T1/vitest.txt` | **2 files, 27 tests green**, one floor / two floors / none. |
+| **T1.3** | **FAIL** | `T1/vitest.txt` green, `T1/enum-audit.md`, `R/playwright.txt` | The unit half is green and the audit is on disk, but the criterion is "no raw internal code reaches the run shell's DOM" and one does, in a real browser: `cast.spec.ts:1448` reads the trace's error line as `Run failed: SYNTHETIC_FAILURE: fm_cast_refusal attempt 1…` and `rawCodesIn()` returns `["SYNTHETIC_FAILURE"]`. `interpret.ts`'s `Run failed: {first sentence}` passes the backend's exception text through unfiltered. The token here is the synthetic injector's own, so the *specific* string is a harness artefact — the *path* is not, and it is the path the criterion is about. |
+| **T1.4** | **PASS** | `T1/vitest.txt` | Unknown floor code / dimension key / band still render as words; cases green. |
+| **T1.5** | **PASS** | `T1/data-layer-diff.txt`, `R/python.txt` | Both diffs **empty**; `config.py` has no diff at all. Python **2542 OK**. |
+| **T2.1** | **FAIL** | `T2/interpretation-vitest.txt` green, `T2/trace-completed.png` **now exists**, `R/playwright.txt` | 66 unit tests green over both real frame logs, and the screenshot the criterion names was finally produced. But the browser assertion the criterion also names fails: **24 of the trace rows read as an empty line** (`cast.spec.ts:1144`, `row 0: empty line` … `row 23`). Round two rebuilt the trace row (compact row, gate person marker, `Run` prefix); the line text the spec reads is now empty for those rows. Both halves of the row are needed and only one holds. |
+| **T2.2** | **PASS** | `T2/vocabulary.md` (RV3 section appended twice) | Re-checked. Neither the serializer's ladder nor `frontend/src/trace/` changed in round two — `git diff 27b256e..HEAD` over both prints nothing — and all sixteen `FrameKind` values still have a row. |
+| **T2.3** | NOT VERIFIED BY ME | `T2/characters-32px.png`, `T2/originality.md` | On disk with the `.html` that made them; the verdict is RC's Q4. |
+| **T2.4** | **PASS** | `CHARACTERS.md`, `G3/vitest.txt` | Green, including the empty-role fallback to the node id. |
+| **T2.5** | **PASS** | `T2/no-timers.txt`, `T2/states-32px.png`, `T2/interpretation-vitest.txt` | Re-ran the criterion's grep at `16f3be5`: still **exactly three hits, all in `useRunChoreography.ts`** (`:253` an injectable `now`, `:284` and `:799` the 200 ms arrival receipt), and `frontend/src/characters/` and `AgentCharacter.vue` return **nothing** — which round two could easily have broken, since it added module-level caches and a shared `IntersectionObserver` to that component. |
+| **T2.6** | **PASS** | `T2/tie-in.png`, `R/playwright.txt` | `cast.spec.ts:687` passed (3.1 s) in both the cast run and the full suite. |
+| **T2.7** | **PASS** | `T2/reduced-motion.png`, `R/playwright.txt` | Both motion tests passed again: `:842` (offscreen, ≤ 12 live animations) and `:881` (reduced motion keeps every `data-state`). |
+| **T2.8** | **FAIL** | `T2/perf.json`, `T2/perf-notes.md`, `R/playwright.txt` | **Much better and still short.** Budget: 0 intervals over 34 ms, p95 ≤ 20 ms. Full suite: fixture replay **4 over 34 ms, p95 26.8, max 82.2** (first pass: 15, 32.3, 109.1); live run **5 over 34 ms, p95 19.6, max 79.3** — a p95 inside budget on the live arm. The standalone cast run half an hour earlier measured **34 / 36.3 / 118.5** and **98 / 38.6 / 108.3**, so this number moves a long way with machine load and no single run should be quoted alone. Two things RV3 will not smooth over: the criterion is a hard zero and no run reached it, and `perf.json` still carries only `fixtureReplay` because the live test asserts before it calls `record()`, so its numbers live in the failure message and not in the artifact. |
+| **T2.9** | **PASS** | `T2/rowers-grep.txt`, `T2/node-running.png` | Re-captured at `16f3be5` (round two rewrote `WorkflowNode.vue`), by a throwaway spec created, run and deleted, which asserted at the shutter: **0** `.node-crew-oar`, **0** `.node-crew-rower`, **0** `.node-crew-hull`, exactly **1** `[data-testid="node-agent-character"]`. The card read `data-character="market evidence analyst"`, `data-state="working"`. The only `node-rower|node-oar` in all of `frontend/src` is the retirement comment at `node-card.css:210`. |
+| **T3.1** | **PASS** | `T3/scope-order.txt` | `SHELL-SCOPE.md` first lands `fcdbadf` 14:09:00; `studio.css` is first touched `fd84f57` 14:25:50. Sixteen minutes fifty seconds. |
+| **T3.2** | **PASS** | `T3/literals.txt` | Regenerated verbose: **13 files, 0 colour literals**, 9/9 green. Round two touched six of those thirteen and the inventory is still all zeros. |
+| **T3.3** | **FAIL** | `T3/contrast.md`, `T3/contrast-rv3-rerun.txt` | **The gate is now a real gate and one row is left.** W5 removed the owner carve-out: the script counts every row and **exits 1**. Catalogue grew 300 → 330 pairings; sixteen of the first pass's seventeen failures are fixed. The survivor is `light 1.29 < 4.5 — a rail kicker, --accent-cyan on rail, ChatRail.vue:383 / DialogueRail.vue:467 .section-kicker`, owned by W4, with `var(--on-accent-cyan)` named as the fix. The committed `contrast.md` is byte-identical to my re-run (md5 `2f6f1c9fc2f46dfbc826b18ab9fd2eb1`). |
+| **T3.4** | **PASS** (artifacts) | `before-*.png` and `after-1440/1180/390/1440-light.png` all present | All four "after" captures now exist — the 119-event test reaches `:982`, `:1021` and `:1039` before it fails, and `after-390.png` comes from the passing 390 px test. The comparison itself is RC's Q6. |
+| **T3.5** | **PASS** | `T3/builder-visual.txt` | **16/16 green, 48.9 s, no baseline regenerated** — md5s identical before and after, all sixteen listed in the file. This is the run that matters for T3.5: round two is where `motion.css`, `node-card.css` and `tokens.css` moved. |
+| **S1** | **PASS** (artifact) | `S/empty.png` | `cast.spec.ts:507` green; capture re-taken this pass. |
+| **S2** | **PASS** | `S/first-run.png` | **Fixed.** `cast.spec.ts:544` passed (18.9 s) in both the cast run and the full suite, and the capture exists. RV1 relaxed the assertion to any non-idle state, which is the honest reading — the synthetic scope node completes instantly and parks at the gate, so "working within two seconds" was never reachable as literally written. |
+| **S3** | **PASS** (artifacts) | `S/long-run.png`, `S/long-run.md` | Both now exist: the 119-event test reaches `:990` and `:1090` before its hygiene assertion. The legibility judgement they support is RC's Q7; the row's own artifacts are on disk. |
+| **S4** | **PASS** (artifact) / see T1.3 | `S/failure.png` | **The `#idea` clash is fixed** (`textarea#idea`, and the node card no longer lets its id fall through), the test reaches `:1439` and writes the capture, and the failing node does wear the blocked-error character. It then fails at `:1448` on the raw code in the error line, which is recorded against **T1.3** rather than counted twice here. |
+| **S5** | **PASS** (artifact) | `T2/reduced-motion.png` | Written by the passing `cast.spec.ts:881`. |
+| **S6** | **PASS** | `S/narrow.png`, `R/playwright.txt` | `cast.spec.ts:1192` green (18.5 s) — the `scrollWidth <= 390` assertion. |
+| **R1** | **FAIL** | `R/python.txt`, `vitest.txt`, `typecheck.txt`, `build.txt`, `playwright.txt`, `baselines.md` | Four suites green (2542 / 1936 / exit 0 / exit 0); Playwright **155 passed, 7 failed, 0 skipped**. Baselines: the third and last one regenerated and named; all three now named with reasons. Breakdown in section 3. |
+| **R2** | **PASS** | `R/diff-stat.txt` | Three Python source files and no more: `builder/descriptor.py` (the amended-allowed one), `service/runner.py`, `service/builder_runner.py`, plus four test modules. The four forbidden surfaces are each printed on their own line as **NO DIFF**: `validator_flow.py`, `schemas/`, `validator_guardrails.py`, `config.py`. Round two added no Python at all. |
+
+## 3. The seven Playwright failures
+
+**Two are the item-44 drag flake, and both were re-run alone once and passed.**
+`builder.spec.ts:1227` (target handle green/red, 2.8 s) and `builder.spec.ts:1552`
+(attach a tool by dragging its port, 2.6 s). Declared rather than folded in.
+
+**Two are the frame budget** — `cast-perf.spec.ts:315` and `:460`. See T2.8:
+much improved, still not zero, and noisy enough that the run-to-run spread
+(4–34 over-budget intervals for the same 131 frames) is itself part of the
+finding.
+
+**Two are `cast.spec.ts`'s content assertions**, each of which the test now
+reaches only because round two fixed everything in front of it: 24 empty trace
+rows (T2.1) and `SYNTHETIC_FAILURE` in the error line (T1.3).
+
+**One is `visual/run-canvas.spec.ts:204`, and it is the interesting one.** It is
+not a screenshot failure — `toHaveScreenshot('run-canvas-idle.png')` at `:207`
+passes. It fails at `:243`:
+
+```
+Expected: "rgb(179, 179, 179)"     // --text-muted, what .node-state gives
+Received: "rgba(255, 255, 255, 0.52)"   // --text-meta, dark
+```
+
+The spec's own comment says `.quarantine-count` and `.node-state` sit on the
+same element at the same specificity and that `.node-state` wins only by being
+written later, so **both rules must move together**. Round two added
+`.studio-shell:not(.is-builder) .quarantine-count { color: var(--text-meta) }`
+to `motion.css:392-397` as part of the contrast work. That selector outranks
+both, so the quarantine chip took a colour its twin did not — the exact
+divergence the test exists to catch, arriving through a door the comment did not
+anticipate. Full trace in `R/baselines.md`.
+
+## 4. What round two demonstrably fixed, measured rather than taken on trust
+
+| First pass (`27b256e`) | Second pass (`16f3be5`) |
+| --- | --- |
+| `studio.spec.ts:204` and `:351` red on the sentence-cased gate labels | both **PASS** |
+| `run-canvas.spec.ts` "branch in flight" timed out on `.node-crew-oar` | **PASS**, and its baseline is finally regenerable |
+| S2: no working character within 2 s | **PASS** |
+| The Revise reply the gate card never took | **PASS** (`e2e/gateReply.ts` keys on the gate node's pass count) |
+| S4: `#idea` resolved to two elements | **PASS** |
+| 17 of 300 contrast pairings below AA, script exiting 0 | 1 of 330, script exiting **1** |
+| 7 DoD artifacts missing | **0 missing** except the two RC owns |
+| perf: 15 over 34 ms, p95 32.3 | 4 over 34 ms, p95 26.8 (fixture); 5 and 19.6 (live) |
+| 9 Playwright failures | 7, of which 2 are a known flake that passes alone |
+
+## 5. Things a reader should know that no criterion asks for
+
+1. **`benchmarks/perf/canvas.json` is modified in the working tree**, by
+   `e2e/builder-perf.spec.ts`, which rewrites it on every full run. A suite
+   side-effect, not an edit; left as the suite wrote it.
+2. **T2.8's live measurement is not in its artifact.** `cast-perf.spec.ts:448`
+   asserts before `record()`, so `perf.json` carries only `fixtureReplay` and
+   the live arm's numbers exist only in the failure text. Whoever fixes the
+   budget should move the `record()` call above the assertions, or the artifact
+   will keep describing half the criterion.
+3. **The perf numbers are load-sensitive to a degree that matters.** The same
+   131-frame replay measured 4 over-budget intervals in the full suite and 34 in
+   a standalone run twenty minutes earlier on the same machine, same backend,
+   same commit. RV2 was capturing G1 concurrently for part of this session. The
+   verdict does not turn on it — no run reached zero — but a future
+   "it passes now" needs more than one run to mean anything.
+4. **`builder_runner.py` is a second synthetic double.** R2's wording is
+   singular; there are two (`service/runner.py::SyntheticValidatorRunner` and
+   `service/builder_runner.py::_SyntheticCrew`), and both changes are the same
+   change: an `agent_role` stamped on the frames a free run emits. Read as
+   within R2; flagged so it is said rather than inferred.
+5. **The Python suite makes a live Pinecone `describe_index` call** with `.env`
+   present. Read-only, free, and pre-existing — but the suite is not
+   network-free on this machine.
+6. **Tally: 22 PASS, 5 FAIL, 4 NOT VERIFIED BY ME** over the 31 rows.
+   First pass was 19 / 8 / 4.
+
+---
+---
+
+# FIRST PASS — `27b256e`, 2026-09-05
+
+Kept verbatim below, because round two's repairs are only legible against what
+this pass found. Where the two disagree, the second pass is current.
+
 Written by **RV3**, a verification worker, on branch `run-shell/cast` at
 `27b256e`, 2026-09-05, in the main tree `D:\MultiAgentSystem` on Windows 11.
 
@@ -14,7 +184,7 @@ pass with a note.
 
 ---
 
-## 1. What was run, and against what
+### 1. What was run, and against what
 
 | | |
 | --- | --- |
@@ -67,7 +237,7 @@ The probe graph was unpublished and deleted straight afterwards.
 
 ---
 
-## 2. The table
+### 2. The table
 
 | Id | Verdict | Evidence | What RV3 saw |
 | --- | :---: | --- | --- |
@@ -105,7 +275,7 @@ The probe graph was unpublished and deleted straight afterwards.
 
 ---
 
-## 3. The nine Playwright failures, sorted by what they mean
+### 3. The nine Playwright failures, sorted by what they mean
 
 **Three are a spec the work contradicted and nobody updated.** These are honest
 reds about the product having changed on purpose:
@@ -133,7 +303,7 @@ here because a re-run that is not declared is not evidence.
 
 ---
 
-## 4. Things a reader should know that no criterion asks for
+### 4. Things a reader should know that no criterion asks for
 
 1. **`benchmarks/perf/canvas.json` is modified in the working tree**, by
    `e2e/builder-perf.spec.ts`, which rewrites it on every full run. It is a

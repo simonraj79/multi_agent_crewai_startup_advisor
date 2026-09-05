@@ -289,3 +289,85 @@ curl "http://127.0.0.1:8098/api/runs/<run>/logs?format=ndjson" -H "X-Synthetic-U
 The console is reached by writing `sessionStorage["u:e2e-user:builder-run-handoff"]`
 to `{"workflowId":"<id>","inputField":"brief","name":"Clinic Rota Planner"}` and
 opening `#/` — the same record `PublishDialog`'s "Run it" writes.
+
+---
+
+## Re-captured at `16f3be5`
+
+**`16f3be5c8d97bcc159c70f4435081930f6939f82`** — *"fix(run-shell): round two — the
+frame budget, the last contrast rows, the compact trace row, and the specs that
+pinned the rowers"*. The trace rows were restyled and the node card changed after
+the first pass, so `graph.png`, `graph-at-gate.png` and `trace.png` were a
+generation stale. Re-taken 2026-09-05 by RV2 with the **same method** — the same
+:8098 `SYNTHETIC=1` backend, my own Vite on `E2E_UI_PORT=5274` /
+`E2E_API_TARGET=http://127.0.0.1:8098` (8099 and 5273 left to RV3), the same CDP
+socket throttle for the mid-run still, the same 1440×900 dark viewport — and the
+three files plus `capture-notes.json` and `run.ndjson` overwritten.
+
+The graph itself is byte-identical: `invented-flow.json` was re-posted unchanged
+and re-validated **`{"valid": true, "problems": []}`**, same $2.4016 static price.
+The backend was restarted, so it is a **new workflow id**; the published-graph
+rehydration sweep found nothing because the previous process's store did not
+survive it.
+
+| | first pass | re-capture at `16f3be5` |
+| --- | --- | --- |
+| Workflow id | `ug_42c65656` (graph `58e65eb432e12adf`) | **`ug_b0126f9b`** (graph `1c0d417e22a0c992`) |
+| Run id | `171fc2fc-5495-4032-9d43-7226ad13557b` | **`7e807a84-f9d2-4edc-a9e1-8411c702eda1`** |
+| Frames | 81, gapless, completed | **81, `seq` 1→81 gapless, completed** |
+| `midRunState` | `working-after-gate` | `working-after-gate` |
+| Node cards drawn | 12 | 12 |
+| Trace rows | 15 | 15 |
+| Console errors | 0 | **0** |
+
+`details.agent_role` is unchanged and still takes exactly five values — Shift
+Demand Forecaster, Roster Architect, Rest Rules Auditor, Locum Cover Planner,
+Handover Briefer, 5 frames each — and the 25-of-40 split (`llm`/`token` carry it,
+`node_state`/`edge_taken` do not) is identical.
+
+### Node ↔ trace seed check, repeated — and it is now an EXACT match
+
+```
+node cards : handover briefer, locum cover planner, rest rules auditor,
+             roster architect, shift demand forecaster
+trace rows : the same five, and nothing else
+difference : none in either direction
+```
+
+Better than the first pass, which had `confirm the demand` as a trace-only seed.
+The restyle **replaced the gate row's Pip with the amber person marker**, so the
+gate no longer borrows a character it is not: 10 of the 15 rows carry a
+`trace-avatar`, and the five that do not are the three run-level rows (now
+labelled **"Run"**) and the two gate rows (person marker). Every character in the
+trace is now an agent, which is the honest reading.
+
+### State transitions, re-done
+
+`44` transitions (was 53), `working 5 · speaking 15 · done 19 · blocked 5`. All
+five invented roles still reach **`working`** and **`speaking`** and end **`done`**;
+`shift demand forecaster` and the gate node both reach **`blocked`** while the gate
+is open. The drop from 53 is the same restyle: the gate's trace row no longer
+holds a figure that transitions with it.
+
+### One new defect, and it is a generalisation defect
+
+**The gate's read-only block is hard-coded with Idea Validator vocabulary, and it
+renders that way on a clinic rota.** `graph-at-gate.png` shows the operator gate
+for `Confirm the demand` carrying the heading **"COMPUTED BY THE VALIDATOR"** over
+*"Recomputed by the server from the scores and the evidence behind them"*.
+`frontend/src/components/GateCard.vue:264` and `:267` are literal strings. This
+graph has no validator, no scores and no evidence — it has a demand table — so the
+one panel that explains why a field cannot be edited is explaining it in the
+vocabulary of a different product. It is W1's file (T1 owns `GateCard.vue` copy),
+not the interpretation layer's, so G2's grep does not cover it; G1 is exactly the
+instrument that finds it. Suggested wording is something derived rather than
+named — "Computed by the run" / "Recomputed by the server from what produced it".
+
+The gate message on the same capture also carries the first pass's defect 2 in
+the operator's face: *"Reply with JSON: decision=approve, or decision=revise plus
+feedback"*, where the route's model is `GateReplyRequest{outcome, fields}` with
+`extra="forbid"`. Unchanged at this HEAD.
+
+Everything else in this document was re-checked against the new run and still
+holds as written.
+

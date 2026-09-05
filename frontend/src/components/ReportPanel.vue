@@ -465,16 +465,44 @@ async function copyReport(): Promise<void> {
   box-shadow: inset 0 0 0 1px var(--border-control);
   border-radius: var(--r-pill);
 }
+/* The brand gradient's three stops, in their READABLE variants.
+
+   `--gradient-brand` is one shared value in both themes, and measured against
+   this track it is 16.26 / 14.08 / 10.75:1 in the dark and
+   1.14 / 1.01 / 1.33:1 in the light - a pale mint bar on a pale grey groove,
+   which is a progress bar whose proportion cannot be read at all. A cold
+   reader found it; the numbers are `scripts/contrast-audit.mjs`'s formula over
+   the stack this panel really paints (bg-app -> shell-bg -> surface-overlay ->
+   well -> well).
+
+   Every `--on-accent-*` token ALIASES its accent in the dark palette, so this
+   gradient is byte-identical to `--gradient-brand` there - not one dark pixel
+   moves - and resolves to the readable inks in the light one: 4.90 / 4.59 /
+   4.72:1, against the 3:1 that WCAG 1.4.11 asks of a UI component. The bar is
+   the only thing carrying the proportion, so it is a component and not
+   decoration. */
 .score-fill {
   display: block;
   height: 100%;
-  background: var(--gradient-brand);
+  background: linear-gradient(
+    135deg,
+    var(--on-accent-mint),
+    var(--on-accent-cyan),
+    var(--on-accent-blue)
+  );
   border-radius: var(--r-pill);
   transition: width var(--motion-medium) var(--ease-out);
 }
 /* The one tie between the red block and the scorecard: a reader who has just
    read "Market scored 0 of 5" can find the row without hunting. */
-.score-row.is-floored .score-track { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-border-strong); }
+/* A zero row draws NO fill, so the tint and its ring are the whole signal -
+   and `--err-bg` alone measures 1.14:1 dark / 1.16:1 light against the card,
+   which is a red that is not there. The ring carries it. `--err-border-strong`
+   was the obvious token and lands at 3.16:1 dark but 2.91:1 light, 0.09 short
+   of the bar; `--err-text` clears both at 11.32:1 and 5.46:1 and is already
+   the colour of the `0/5` beside it, so the ring and the number read as one
+   statement rather than two. */
+.score-row.is-floored .score-track { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-text); }
 .score-row.is-floored .score-value { color: var(--err-text); }
 .score-value { color: var(--text-primary); font: 700 var(--fs-13)/1 var(--font-mono); }
 .score-value small { color: var(--text-meta); font-weight: 500; }

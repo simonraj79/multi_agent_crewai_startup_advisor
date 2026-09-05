@@ -1405,6 +1405,34 @@ export function useValidatorRun(
       if (coalesce.clears) coalescedRows.delete(coalesce.clears)
       coalescedRows.set(coalesce.key, entry.id)
     }
+    // An identical failure, twice in a row, about the same node, is ONE thing
+    // that happened. A cold reader met four rows of the same sentence in
+    // `evidence/S/failure.png` - twice from the agent and twice from the run -
+    // and read it as four failures.
+    //
+    // Deliberately NARROW, and every clause is doing work. CONSECUTIVE, so a
+    // failure that recurs after other rows still gets its own row and its own
+    // place in the sequence; SAME NODE, so two branches failing the same way
+    // are two rows, which is the fact; SAME MESSAGE, so nothing is folded that
+    // a reader could tell apart. This is not the `coalesce` machinery above -
+    // an error line carries no coalesce key on purpose, because sharing one
+    // with the node's completion lets either silently overwrite the other.
+    const previous = chatEntries.value[chatEntries.value.length - 1]
+    if (
+      previous
+      && entry.tone === 'error'
+      && previous.tone === 'error'
+      && previous.nodeId === entry.nodeId
+      && previous.message === entry.message
+    ) {
+      const folded = chatEntries.value.slice()
+      // The FIRST row's id, sequence and clock are kept: a row that jumped its
+      // own timestamp because the same thing was reported again would move
+      // under the reader, and its Vue key would change for no reason.
+      folded[folded.length - 1] = { ...previous, repeats: (previous.repeats ?? 1) + 1 }
+      chatEntries.value = folded
+      return
+    }
     // Replaced, not pushed: `shallowRef` tracks the array reference, and a
     // `push` would mutate the same array and notify nobody.
     chatEntries.value = [...chatEntries.value, entry]

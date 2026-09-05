@@ -1,7 +1,8 @@
 {
-  "workflow": "ug_42c65656",
+  "workflow": "ug_b0126f9b",
   "nodeCount": 12,
   "midRunState": "working-after-gate",
+  "runId": null,
   "nodeSeeds": [
     {
       "seed": "shift demand forecaster",
@@ -37,7 +38,7 @@
       "avatarSeed": null,
       "pipSeed": null,
       "pipState": null,
-      "text": "workflow02:53:31 PMRun startedDetailsEventrun_state · WORKFLOW_STARTSequence11builder_ug_42c65656_v1 started{\n  \"status\": \"running\",\n  \"inputs\": {\n    \"brief\": "
+      "text": "Run03:57:17 PMRun startedDetailsEventrun_state · WORKFLOW_STARTSequence11builder_ug_b0126f9b_v1 started{\n  \"status\": \"running\",\n  \"inputs\": {\n    \"brief\": \"Brid"
     },
     {
       "node": "forecast",
@@ -46,7 +47,7 @@
       "avatarSeed": "Shift Demand Forecaster",
       "pipSeed": "shift demand forecaster",
       "pipState": "done",
-      "text": "Shift Demand Forecaster02:53:31 PMShift Demand Forecaster startedDetailsEventnode_state · NODE_STARTSequence15n1_forecast started{\n  \"stage\": \"before\",\n  \"param"
+      "text": "Shift Demand Forecaster03:57:17 PMShift Demand Forecaster startedDetailsEventnode_state · NODE_STARTSequence15n1_forecast started{\n  \"stage\": \"before\",\n  \"param"
     },
     {
       "node": "forecast",
@@ -55,25 +56,25 @@
       "avatarSeed": "Shift Demand Forecaster",
       "pipSeed": "shift demand forecaster",
       "pipState": "done",
-      "text": "Shift Demand Forecaster02:53:31 PMShift Demand Forecaster finishedDetailsEventnode_state · NODE_ENDSequence21n1_forecast completed{\n  \"stage\": \"after\",\n  \"resul"
+      "text": "Shift Demand Forecaster03:57:17 PMShift Demand Forecaster finishedDetailsEventnode_state · NODE_ENDSequence21n1_forecast completed{\n  \"stage\": \"after\",\n  \"resul"
     },
     {
       "node": "confirm",
       "identity": "Confirm the demand",
-      "hasAvatar": true,
-      "avatarSeed": "Confirm the demand",
-      "pipSeed": "confirm the demand",
-      "pipState": "done",
-      "text": "Confirm the demand02:53:31 PMWaiting for you: Confirm the demandDetailsEventgate_open · HUMAN_INTERACTIONSequence25Confirm the demand{\n  \"gate_id\": \"9b5bd279-bf"
+      "hasAvatar": false,
+      "avatarSeed": null,
+      "pipSeed": null,
+      "pipState": null,
+      "text": "Confirm the demand03:57:17 PMWaiting for you: Confirm the demandDetailsEventgate_open · HUMAN_INTERACTIONSequence25Confirm the demand{\n  \"gate_id\": \"cbd36fba-21"
     },
     {
       "node": "confirm",
       "identity": "Confirm the demand",
-      "hasAvatar": true,
-      "avatarSeed": "Confirm the demand",
-      "pipSeed": "confirm the demand",
-      "pipState": "done",
-      "text": "Confirm the demand02:53:51 PMYou approvedDetailsEventgate_closed · HUMAN_INTERACTIONSequence27Confirm the demand answered{\n  \"gate_id\": \"9b5bd279-bfc1-564c-aaed"
+      "hasAvatar": false,
+      "avatarSeed": null,
+      "pipSeed": null,
+      "pipState": null,
+      "text": "Confirm the demand03:57:36 PMYou approvedDetailsEventgate_closed · HUMAN_INTERACTIONSequence27Confirm the demand answered{\n  \"gate_id\": \"cbd36fba-2126-51ab-949d"
     },
     {
       "node": null,
@@ -82,7 +83,7 @@
       "avatarSeed": null,
       "pipSeed": null,
       "pipState": null,
-      "text": "workflow02:53:51 PMRun startedDetailsEventrun_state · WORKFLOW_STARTSequence28builder_ug_42c65656_v1 started{\n  \"status\": \"running\",\n  \"inputs\": null\n}"
+      "text": "Run03:57:36 PMRun startedDetailsEventrun_state · WORKFLOW_STARTSequence28builder_ug_b0126f9b_v1 started{\n  \"status\": \"running\",\n  \"inputs\": null\n}"
     },
     {
       "node": "draft",
@@ -91,7 +92,7 @@
       "avatarSeed": "Roster Architect",
       "pipSeed": "roster architect",
       "pipState": "done",
-      "text": "Roster Architect02:53:51 PMRoster Architect startedDetailsEventnode_state · NODE_STARTSequence36n4_draft started{\n  \"stage\": \"before\",\n  \"params\": {\n    \"_0\": \""
+      "text": "Roster Architect03:57:36 PMRoster Architect startedDetailsEventnode_state · NODE_STARTSequence36n4_draft started{\n  \"stage\": \"before\",\n  \"params\": {\n    \"_0\": \""
     },
     {
       "node": "draft",
@@ -100,7 +101,7 @@
       "avatarSeed": "Roster Architect",
       "pipSeed": "roster architect",
       "pipState": "done",
-      "text": "Roster Architect02:53:51 PMRoster Architect finishedDetailsEventnode_state · NODE_ENDSequence42n4_draft completed{\n  \"stage\": \"after\",\n  \"result\": \"{\\\"node_id\\\""
+      "text": "Roster Architect03:57:36 PMRoster Architect finishedDetailsEventnode_state · NODE_ENDSequence42n4_draft completed{\n  \"stage\": \"after\",\n  \"result\": \"{\\\"node_id\\\""
     },
     {
       "node": "audit",
@@ -109,7 +110,7 @@
       "avatarSeed": "Rest Rules Auditor",
       "pipSeed": "rest rules auditor",
       "pipState": "done",
-      "text": "Rest Rules Auditor02:53:51 PMRest Rules Auditor startedDetailsEventnode_state · NODE_STARTSequence44n5_audit started{\n  \"stage\": \"before\",\n  \"params\": {\n    \"_0"
+      "text": "Rest Rules Auditor03:57:36 PMRest Rules Auditor startedDetailsEventnode_state · NODE_STARTSequence44n5_audit started{\n  \"stage\": \"before\",\n  \"params\": {\n    \"_0"
     },
     {
       "node": "audit",
@@ -118,7 +119,7 @@
       "avatarSeed": "Rest Rules Auditor",
       "pipSeed": "rest rules auditor",
       "pipState": "done",
-      "text": "Rest Rules Auditor02:53:51 PMRest Rules Auditor finishedDetailsEventnode_state · NODE_ENDSequence50n5_audit completed{\n  \"stage\": \"after\",\n  \"result\": \"{\\\"node_"
+      "text": "Rest Rules Auditor03:57:36 PMRest Rules Auditor finishedDetailsEventnode_state · NODE_ENDSequence50n5_audit completed{\n  \"stage\": \"after\",\n  \"result\": \"{\\\"node_"
     },
     {
       "node": "cover",
@@ -127,7 +128,7 @@
       "avatarSeed": "Locum Cover Planner",
       "pipSeed": "locum cover planner",
       "pipState": "done",
-      "text": "Locum Cover Planner02:53:51 PMLocum Cover Planner startedDetailsEventnode_state · NODE_STARTSequence62n9_cover started{\n  \"stage\": \"before\",\n  \"params\": {\n    \""
+      "text": "Locum Cover Planner03:57:36 PMLocum Cover Planner startedDetailsEventnode_state · NODE_STARTSequence62n9_cover started{\n  \"stage\": \"before\",\n  \"params\": {\n    \""
     },
     {
       "node": "cover",
@@ -136,7 +137,7 @@
       "avatarSeed": "Locum Cover Planner",
       "pipSeed": "locum cover planner",
       "pipState": "done",
-      "text": "Locum Cover Planner02:53:51 PMLocum Cover Planner finishedDetailsEventnode_state · NODE_ENDSequence68n9_cover completed{\n  \"stage\": \"after\",\n  \"result\": \"{\\\"nod"
+      "text": "Locum Cover Planner03:57:36 PMLocum Cover Planner finishedDetailsEventnode_state · NODE_ENDSequence68n9_cover completed{\n  \"stage\": \"after\",\n  \"result\": \"{\\\"nod"
     },
     {
       "node": "handover",
@@ -145,7 +146,7 @@
       "avatarSeed": "Handover Briefer",
       "pipSeed": "handover briefer",
       "pipState": "done",
-      "text": "Handover Briefer02:53:51 PMHandover Briefer startedDetailsEventnode_state · NODE_STARTSequence70n10_handover started{\n  \"stage\": \"before\",\n  \"params\": {\n    \"_0"
+      "text": "Handover Briefer03:57:36 PMHandover Briefer startedDetailsEventnode_state · NODE_STARTSequence70n10_handover started{\n  \"stage\": \"before\",\n  \"params\": {\n    \"_0"
     },
     {
       "node": "handover",
@@ -154,7 +155,7 @@
       "avatarSeed": "Handover Briefer",
       "pipSeed": "handover briefer",
       "pipState": "done",
-      "text": "Handover Briefer02:53:51 PMHandover Briefer finishedDetailsEventnode_state · NODE_ENDSequence76n10_handover completed{\n  \"stage\": \"after\",\n  \"result\": \"{\\\"node_"
+      "text": "Handover Briefer03:57:36 PMHandover Briefer finishedDetailsEventnode_state · NODE_ENDSequence76n10_handover completed{\n  \"stage\": \"after\",\n  \"result\": \"{\\\"node_"
     },
     {
       "node": null,
@@ -163,7 +164,7 @@
       "avatarSeed": null,
       "pipSeed": null,
       "pipState": null,
-      "text": "workflow02:53:51 PMRun finishedDetailsEventrun_state · WORKFLOW_ENDSequence80builder_ug_42c65656_v1 completed{\n  \"status\": \"completed\",\n  \"result\": {\n    \"markd"
+      "text": "Run03:57:36 PMRun finishedDetailsEventrun_state · WORKFLOW_ENDSequence80builder_ug_b0126f9b_v1 completed{\n  \"status\": \"completed\",\n  \"result\": {\n    \"markdown_b"
     }
   ],
   "problems": [],
@@ -175,24 +176,15 @@
     "shift demand forecaster=done",
     "shift demand forecaster=done",
     "shift demand forecaster=done",
+    "shift demand forecaster=blocked",
+    "shift demand forecaster=blocked",
     "confirm the demand=blocked",
     "shift demand forecaster=blocked",
     "shift demand forecaster=blocked",
-    "shift demand forecaster=blocked",
-    "shift demand forecaster=blocked",
     "shift demand forecaster=done",
     "shift demand forecaster=done",
-    "confirm the demand=done",
     "shift demand forecaster=done",
     "shift demand forecaster=done",
-    "confirm the demand=working",
-    "confirm the demand=working",
-    "confirm the demand=done",
-    "confirm the demand=done",
-    "confirm the demand=working",
-    "confirm the demand=working",
-    "confirm the demand=done",
-    "confirm the demand=done",
     "roster architect=working",
     "roster architect=speaking",
     "roster architect=speaking",

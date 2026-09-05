@@ -18,8 +18,11 @@ import {
   PIP_COLOURS,
   PIP_COMBINATIONS,
   PIP_STATES,
+  SMALL_CREST_SCALE,
+  SMALL_LIFT,
   characterSeed,
   crestShape,
+  eyeShape,
   fnv1a,
   identityFor,
   normaliseIdentity,
@@ -217,13 +220,13 @@ describe('the geometry', () => {
    * curve stays inside the hull of its controls - so this check is stricter
    * than the picture. That is the right direction to be wrong in.
    */
-  function crestTopReach(markup: string): number {
+  function crestTopReach(markup: string, halfStroke = 0.85): number {
     let top = Infinity
     const tagRe = /<(path|circle|ellipse)\b([^>]*)>/g
     let match: RegExpExecArray | null
     while ((match = tagRe.exec(markup)) !== null) {
       const [, tag, attrs] = match
-      const pad = /pip-stroke/.test(attrs) ? 0.85 : 0
+      const pad = /pip-stroke/.test(attrs) ? halfStroke : 0
       if (tag === 'path') {
         const d = /d="([^"]+)"/.exec(attrs)?.[1] ?? ''
         const numbers = (d.match(/-?\d*\.?\d+/g) ?? []).map(Number)
@@ -241,18 +244,75 @@ describe('the geometry', () => {
     return top
   }
 
-  it('keeps every body x crest pair inside the 32-unit viewBox', () => {
+  it('keeps every body x crest pair inside the 32-unit viewBox, at BOTH size tiers', () => {
     /* The 32px raster found four pairs poking out of the top of the box - the
        bean wearing a ring was worst, at -0.72 units - and `.pip-svg` sets
        `overflow: visible`, so in the DOM they spilled out of the figure's own
        box instead of being cut. On a 32px node slot that is the same defect
-       in a different coat. */
-    for (const body of BODIES) {
-      for (let crest = 0; crest < CREST_COUNT; crest += 1) {
-        const top = body.crownY + body.crestScale * crestTopReach(crestShape(crest))
-        expect(top, `${body.id} + ${CREST_NAMES[crest]}`).toBeGreaterThan(0.25)
+       in a different coat.
+
+       BOTH TIERS, because the small tier grows the crown 1.3x, which is
+       exactly the change most likely to reintroduce the defect. Its 2-unit
+       drop is what buys the headroom back, and the two numbers only mean
+       anything together. The stroke allowance differs per tier too: the crown
+       is drawn at 1.7 normally and at 2 under `.pip--sm`. */
+    const tiers = [
+      { label: 'large', boost: 1, lift: 0, stroke: 1.7 },
+      { label: 'small', boost: SMALL_CREST_SCALE, lift: SMALL_LIFT, stroke: 2 },
+    ]
+    for (const tier of tiers) {
+      for (const body of BODIES) {
+        const scale = body.crestScale * tier.boost
+        for (let crest = 0; crest < CREST_COUNT; crest += 1) {
+          const reach = crestTopReach(crestShape(crest), tier.stroke / 2)
+          const top = body.crownY + scale * reach + tier.lift
+          expect(top, `${tier.label}: ${body.id} + ${CREST_NAMES[crest]}`).toBeGreaterThan(0.25)
+        }
       }
+      /* And the floor must stay in the box too - the drop is only free while
+         there is space under the feet. */
+      expect(28 + tier.lift, `${tier.label} floor`).toBeLessThanOrEqual(32)
     }
+  })
+
+  it('grows the crown below 48px, and only below 48px', () => {
+    const big = pipSvg('Tone Coach', { size: 96 })
+    const small = pipSvg('Tone Coach', { size: 32 })
+    const scaleOf = (markup: string): number =>
+      Number(/scale\((-?\d*\.?\d+)\)/.exec(markup)?.[1] ?? 0)
+    expect(scaleOf(small) / scaleOf(big)).toBeCloseTo(SMALL_CREST_SCALE, 5)
+    expect(small).toContain(`translate(0 ${SMALL_LIFT})`)
+    expect(big).toContain('translate(0 0)')
+    /* The boost rides the SVG transform attribute and the lift rides a group
+       with no CSS transform of its own, because `.pip-crest-hinge` already
+       owns `transform` for the blocked wilt and `.pip-figure` owns it for the
+       pose. Put either in CSS and the state would silently drop it. */
+    expect(CHARACTER_CSS).not.toMatch(/\.pip--sm[^{]*\.pip-crest-hinge\s*\{[^}]*transform:/)
+    expect(CHARACTER_CSS).not.toMatch(/\.pip-frame\s*\{[^}]*transform:/)
+  })
+
+  it('keeps the four eye shapes measurably different at the size they are read', () => {
+    /* The cold reader's second finding was that two same-coloured agents were
+       hard to separate at a true 32px, which put the question to the eyes as
+       well as to the crown. Measured on the emitted markup rather than judged:
+       the four variants differ in shape AND in width, so `lens` cannot quietly
+       become `oval` after an edit. The raster sheet is what confirms it to a
+       human; this is what fails the build. */
+    const widths = new Set<number>()
+    const shapes = new Set<string>()
+    for (let variant = 0; variant < EYE_COUNT; variant += 1) {
+      const markup = eyeShape(variant, 16, 16)
+      shapes.add(markup.replace(/[-\d.]+/g, ''))
+      const numbers = (markup.match(/-?\d*\.?\d+/g) ?? []).map(Number)
+      widths.add(Math.max(...numbers) - Math.min(...numbers))
+    }
+    expect(shapes.size, 'four eye variants, four different constructions').toBe(EYE_COUNT)
+    expect(widths.size, 'four eye variants, four different widths').toBeGreaterThanOrEqual(3)
+    /* `lens` is the only one with a hole, and the hole is what carries it at
+       32px. Its inner radius must stay a real fraction of the outer one. */
+    const lens = eyeShape(3, 16, 16)
+    expect(lens).toContain('fill-rule="evenodd"')
+    expect(lens).toMatch(/1\.35 1\.35/)
   })
 
   it('stands every body on the same floor, so a row of Pips lines up', () => {
@@ -296,6 +356,13 @@ describe('the markup', () => {
     for (const [index, state] of PIP_STATES.entries()) {
       expect(markups[index]).toContain(`pip--${state}`)
     }
+  })
+
+  it('carries all three eye layers, so a state is a class and never a re-render', () => {
+    const markup = pipSvg('Tone Coach', { size: 32, state: 'idle' })
+    expect(markup).toContain('pip-eyes-open')
+    expect(markup).toContain('pip-eyes-arc')
+    expect(markup).toContain('pip-eyes-cross')
   })
 
   it('names every state in words, never a code', () => {
@@ -393,6 +460,64 @@ describe('character.css', () => {
 
   it('gives every state a rule', () => {
     for (const state of PIP_STATES) expect(CHARACTER_CSS).toContain(`.pip--${state} `)
+  })
+
+  it('never lets colour be the only thing separating two states', () => {
+    /* THE COLD READER'S FIRST FINDING, turned into a check. `blocked` and
+       `blocked-error` shared a pose and differed only in the hue of the
+       outline, so a colour-blind viewer saw one state where the product means
+       two. The general rule is that colour must never be the sole carrier of a
+       distinction, and this asserts it structurally: whatever `blocked-error`
+       does that `blocked` does not must include at least one property that is
+       not a colour. */
+    const COLOUR_PROPERTIES = ['stroke', 'fill', 'color', 'background', 'border-color']
+
+    function declarationsFor(state: string): Set<string> {
+      /* `.pip--blocked` must not match `.pip--blocked-error`, so the class
+         token needs a boundary. */
+      const token = new RegExp(`\\.pip--${state}(?![\\w-])`)
+      const found = new Set<string>()
+      const ruleRe = /([^{}]+)\{([^}]*)\}/g
+      let rule: RegExpExecArray | null
+      while ((rule = ruleRe.exec(CHARACTER_CSS)) !== null) {
+        const [, selectorList, body] = rule
+        for (const selector of selectorList.split(',')) {
+          if (!token.test(selector)) continue
+          const target = selector.trim().split(/\s+/).slice(1).join(' ') || ':self'
+          for (const declaration of body.split(';')) {
+            const property = declaration.split(':')[0]?.trim()
+            if (property) found.add(`${target} { ${property} }`)
+          }
+        }
+      }
+      return found
+    }
+
+    const blocked = declarationsFor('blocked')
+    const error = declarationsFor('blocked-error')
+    expect(blocked.size).toBeGreaterThan(0)
+
+    const onlyError = [...error].filter((entry) => !blocked.has(entry))
+    expect(onlyError.length, 'blocked-error does nothing blocked does not').toBeGreaterThan(0)
+
+    const nonColour = onlyError.filter(
+      (entry) => !COLOUR_PROPERTIES.some((property) => entry.endsWith(`{ ${property} }`)),
+    )
+    expect(
+      nonColour,
+      `blocked-error differs from blocked only by colour: ${onlyError.join(', ')}`,
+    ).not.toHaveLength(0)
+
+    /* And name the shape cue, so a future edit that removes it fails with a
+       sentence rather than with an arithmetic surprise. */
+    expect(error).toContain('.pip-eyes-cross { display }')
+    expect(error).toContain('.pip-eyes-open { display }')
+    expect(blocked).not.toContain('.pip-eyes-cross { display }')
+  })
+
+  it('thickens the crown and the crosses at the small tier only', () => {
+    expect(CHARACTER_CSS).toMatch(/\.pip--sm \.pip-crest-hinge \.pip-stroke\s*\{[^}]*stroke-width/)
+    expect(CHARACTER_CSS).toMatch(/\.pip--sm \.pip-eyes-cross \.pip-stroke\s*\{[^}]*stroke-width/)
   })
 })
 

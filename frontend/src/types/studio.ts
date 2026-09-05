@@ -232,6 +232,21 @@ export interface ChatEntry {
   tone: TraceTone
   /** Everything the row is not saying, for the per-row disclosure. */
   raw: TraceRaw
+  /**
+   * How many times this exact line was reported in a row, when more than once.
+   *
+   * A failure often arrives twice - the agent raises it and the run repeats it,
+   * or a retry hits the same wall - and a cold reader met four identical rows
+   * of one sentence. Consecutive duplicates of the SAME line for the SAME node
+   * fold into the first row and raise this instead, so the trace says a thing
+   * happened rather than saying it four times. The count is shown in the row's
+   * disclosure ("reported 4×") and never in the line, because the line is the
+   * sentence and the count is a fact about the log.
+   *
+   * Absent means once. Only ever set on an error row; see
+   * `useValidatorRun::pushTraceLine` for why the fold is narrow.
+   */
+  repeats?: number
   /** How a later frame finds this row again. See `trace/interpret.ts`. */
   coalesceKey?: string
   coalesceScope?: 'run' | 'tail'

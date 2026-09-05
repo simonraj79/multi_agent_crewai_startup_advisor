@@ -370,6 +370,16 @@ function tokenNote(entry: ChatEntry): string {
                 <div v-if="tokenNote(row.entry)" data-testid="trace-tokens">
                   <dt>Tokens</dt><dd>{{ tokenNote(row.entry) }}</dd>
                 </div>
+                <!--
+                  How many times this exact line came in a row. In the
+                  disclosure and never in the sentence: the sentence is what
+                  happened and the count is a fact about the log, and a reader
+                  scanning for the failure should not have to read past a
+                  multiplier to find it.
+                -->
+                <div v-if="(row.entry.repeats ?? 1) > 1" data-testid="trace-repeats">
+                  <dt>Reported</dt><dd>{{ row.entry.repeats }}&times;</dd>
+                </div>
               </dl>
               <p class="trace-raw-message">{{ row.entry.raw.message }}</p>
               <pre data-testid="trace-raw">{{ row.entry.raw.details }}</pre>
@@ -439,7 +449,11 @@ function tokenNote(entry: ChatEntry): string {
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: 14px 14px 28px;
+  /* The other half of the seam: the first trace row starts a clear gap below
+     the dialogue block's border rather than a hairline under it, so the two
+     regions read as two. `--space-6` rather than the 14px that was here,
+     because the value is a token or it does not exist. */
+  padding: var(--space-6) 14px 28px;
   scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
 

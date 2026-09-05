@@ -335,7 +335,24 @@ test.describe('T2.8 — frame budget', () => {
       flush()
 
       const launchIndex = idle.length
-      await launchRun(page, 'A claim auditor for newsroom drafts')
+
+      /*
+       * EVERYTHING THAT DRIVES THE RUN IS INSIDE THIS TRY, and the artifact is
+       * written after it whatever happened.
+       *
+       * `perf.json` is the evidence T2.8 is graded on, and on the first full run
+       * it arrived carrying ONE of its two arms: this test threw inside the gate
+       * loop, twenty lines above `record()`, so the live measurement was taken,
+       * discarded and never written. A measurement that only survives the happy
+       * path is not evidence — the run that fails is exactly the one whose
+       * numbers a reader wants. So a drive failure becomes a string in
+       * `driveProblems`, the sampler is read either way, and the assertion that
+       * the run was drivable is made BELOW `record()` with everything else.
+       */
+      const driveProblems: string[] = []
+      await launchRun(page, 'A claim auditor for newsroom drafts').catch((error: Error) => {
+        driveProblems.push(`launch: ${error.message}`)
+      })
 
       /*
        * Gates answered as soon as they open — but the first two openings of the
@@ -362,8 +379,8 @@ test.describe('T2.8 — frame budget', () => {
       const until = Date.now() + 240_000
       let status = 'unknown'
       let replies = 0
-      while (Date.now() < until) {
-        status = await statusValue(page)
+      while (Date.now() < until && driveProblems.length === 0) {
+        status = await statusValue(page).catch(() => 'unknown')
         if (TERMINAL.includes(status)) break
         if (await card.first().isVisible().catch(() => false)) {
           const title = (await card.locator('h2').innerText().catch(() => '')).trim()
@@ -396,14 +413,18 @@ test.describe('T2.8 — frame budget', () => {
            * increments once per opening; `e2e/gateReply.ts` carries the full
            * reasoning.
            */
-          if (revise) await waitForGateReopen(page, title, pass)
-          else await expect(card).toHaveCount(0, { timeout: 60_000 })
+          try {
+            if (revise) await waitForGateReopen(page, title, pass)
+            else await expect(card).toHaveCount(0, { timeout: 60_000 })
+          } catch (error) {
+            driveProblems.push(`${revise ? 'revise' : 'approve'} at "${title}": ${(error as Error).message}`)
+          }
         }
         await page.waitForTimeout(250)
       }
 
-      const all = await samples(page)
-      const runFrames = await readSequence(page)
+      const all = await samples(page).catch(() => [] as number[])
+      const runFrames = await readSequence(page).catch(() => -1)
       const stats = measure(all.slice(launchIndex))
       const overBudget = all
         .slice(launchIndex)
@@ -422,6 +443,7 @@ test.describe('T2.8 — frame budget', () => {
         runFrames,
         gateReplies: replies,
         terminalStatus: status,
+        driveProblems,
         ...stats,
         overBudget,
         reachesCriterionFrameFloor: runFrames >= MIN_REPLAY_FRAMES,
@@ -429,6 +451,10 @@ test.describe('T2.8 — frame budget', () => {
         pageErrors,
       })
 
+      expect(
+        driveProblems,
+        'the run could not be driven to a terminal state; the numbers above were still recorded',
+      ).toEqual([])
       expect(pageErrors, 'an uncaught exception invalidates the measurement').toEqual([])
       expect(TERMINAL, `the run never reached a terminal state (last: ${status})`).toContain(status)
       expect(
@@ -515,6 +541,10 @@ test.describe('T2.8 — frame budget', () => {
           script.push({ frame: { ...frame, seq: sequence }, gapMs: gap })
         }
       }
+      // These two, and only these two, are asserted before `record()`. They fire
+      // before the page has been opened, so there is no measurement in
+      // existence to write down - unlike everything below, which is asserted
+      // after the artifact is on disk.
       expect(
         script.length,
         `the two committed frame logs total ${script.length} frames, below the criterion's ${MIN_REPLAY_FRAMES}`,
@@ -568,19 +598,41 @@ test.describe('T2.8 — frame budget', () => {
       flush()
 
       const launchIndex = idle.length
-      await launchRun(page, 'A claim auditor that checks numbers in newsroom drafts')
 
-      // The run the POST really created, kept so it can be cancelled below: the
-      // socket it would have streamed on belongs to this test.
-      const runId = await activeRunId(page)
+      /*
+       * Same shape as the live arm, and for the same reason: the artifact is
+       * written whatever happened. A replay that stalls half way through is a
+       * far more interesting row in `perf.json` than a missing one, and the
+       * timeout it would otherwise die on takes the numbers with it.
+       *
+       * The replay is raced against a bound rather than awaited outright, so a
+       * handler that never resolves becomes a recorded `driveProblems` entry
+       * instead of a test timeout with no evidence at all.
+       */
+      const driveProblems: string[] = []
+      let runId: string | null = null
+      try {
+        await launchRun(page, 'A claim auditor that checks numbers in newsroom drafts')
+        // The run the POST really created, kept so it can be cancelled below:
+        // the socket it would have streamed on belongs to this test.
+        runId = await activeRunId(page)
+        const stalled = Symbol('stalled')
+        const outcome = await Promise.race([
+          replayFinished,
+          new Promise((resolve) => setTimeout(() => resolve(stalled), 180_000)),
+        ])
+        if (outcome === stalled) {
+          driveProblems.push(`the replay stalled after ${sent} of ${script.length} frames`)
+        }
+        // Let the last frames land and the console settle before the window closes.
+        await page.waitForTimeout(1_000)
+      } catch (error) {
+        driveProblems.push((error as Error).message)
+      }
 
-      await replayFinished
-      // Let the last frames land and the console settle before the window closes.
-      await page.waitForTimeout(1_000)
-
-      const all = await samples(page)
-      const applied = await readSequence(page)
-      const status = await statusValue(page)
+      const all = await samples(page).catch(() => [] as number[])
+      const applied = await readSequence(page).catch(() => -1)
+      const status = await statusValue(page).catch(() => 'unknown')
       const stats = measure(all.slice(launchIndex))
       const overBudget = all
         .slice(launchIndex)
@@ -599,6 +651,7 @@ test.describe('T2.8 — frame budget', () => {
         framesSent: sent,
         runFrames: applied,
         terminalStatus: status,
+        driveProblems,
         ...stats,
         overBudget,
         consoleErrors,
@@ -611,6 +664,10 @@ test.describe('T2.8 — frame budget', () => {
         await page.request.post(`/api/runs/${runId}/cancel`).catch(() => undefined)
       }
 
+      expect(
+        driveProblems,
+        'the replay could not be driven to the end; the numbers above were still recorded',
+      ).toEqual([])
       expect(pageErrors, 'an uncaught exception invalidates the measurement').toEqual([])
       expect(sent, 'the replay did not send every frame').toBe(script.length)
       expect(

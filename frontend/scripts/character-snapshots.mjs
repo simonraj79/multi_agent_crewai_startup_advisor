@@ -106,6 +106,14 @@ const fixture = {
     'A mismatch is not a broken test. It means a character changed, and every ' +
     'screenshot, reload and running node changed with it. Regenerate only on ' +
     'purpose, and say so in the commit.',
+  reminted:
+    'Re-minted 2026-09-05 after two changes a cold reader found: blocked-error ' +
+    'gained x_x eyes so colour is not the only thing separating it from ' +
+    'blocked, and the crown is drawn 1.3x below 48px with the figure dropped 2 ' +
+    'units to fit it. Both change the markup at size 32, so every hash below ' +
+    'moved. It was re-minted by running this script - a separate process, ' +
+    'plain Node, no Vite and no jsdom - and NOT by copying what the spec ' +
+    'produced, which would have made the cross-process claim circular.',
   snapshots,
   diagnostics,
 }

@@ -1,61 +1,96 @@
 $ git diff main...HEAD --stat
-# run by RV3, branch run-shell/cast at 27b256e, merge-base with main = 6291fee47ecee14d9e21cb5a2adb246764f593b0, 2026-09-05T14:54:17+08:00
+# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, merge-base with main = 6291fee47ecee14d9e21cb5a2adb246764f593b0, 2026-09-05T15:56:58+08:00
 
  .gitignore                                         |   16 +
- docs/design.md                                     |  156 ++-
+ docs/design.md                                     |  157 ++-
  docs/run-shell/CHARACTERS.md                       |  401 ++++++
  docs/run-shell/DEFINITION-OF-DONE.md               |  112 ++
- docs/run-shell/FOLLOW-UPS.md                       |   42 +
- docs/run-shell/SHELL-SCOPE.md                      |  483 +++++++
+ docs/run-shell/FOLLOW-UPS.md                       |   48 +
+ docs/run-shell/SHELL-SCOPE.md                      |  516 +++++++
+ docs/run-shell/evidence/G1/capture-notes.json      |  225 +++
+ docs/run-shell/evidence/G1/graph-at-gate.png       |  Bin 0 -> 265614 bytes
+ docs/run-shell/evidence/G1/graph.png               |  Bin 0 -> 231417 bytes
+ docs/run-shell/evidence/G1/invented-flow.json      |  512 +++++++
+ docs/run-shell/evidence/G1/notes.md                |  291 ++++
+ docs/run-shell/evidence/G1/run.ndjson              |   81 ++
+ docs/run-shell/evidence/G1/trace.png               |  Bin 0 -> 58059 bytes
+ docs/run-shell/evidence/G2/grep.txt                |   47 +
+ docs/run-shell/evidence/G3/playwright.txt          |  234 ++++
+ docs/run-shell/evidence/G3/reload-map.json         |   25 +
+ docs/run-shell/evidence/G3/vitest.txt              |   17 +
+ docs/run-shell/evidence/G4/g1-roles.json           |   37 +
  docs/run-shell/evidence/G4/roles-sheet.html        |  464 +++++++
- docs/run-shell/evidence/G4/roles-sheet.png         |  Bin 0 -> 393824 bytes
+ docs/run-shell/evidence/G4/roles-sheet.png         |  Bin 0 -> 433010 bytes
+ docs/run-shell/evidence/R/baselines.md             |  116 ++
+ docs/run-shell/evidence/R/build.txt                |   24 +
+ docs/run-shell/evidence/R/diff-stat.txt            |  122 ++
+ docs/run-shell/evidence/R/playwright.txt           |  801 +++++++++++
+ docs/run-shell/evidence/R/python.txt               |  227 +++
+ docs/run-shell/evidence/R/typecheck.txt            |    5 +
+ docs/run-shell/evidence/R/vitest.txt               |   19 +
  docs/run-shell/evidence/README.md                  |   16 +
+ docs/run-shell/evidence/RV3-REPORT.md              |  164 +++
+ docs/run-shell/evidence/S/empty.png                |  Bin 0 -> 193839 bytes
+ docs/run-shell/evidence/S/narrow.png               |  Bin 0 -> 68046 bytes
+ docs/run-shell/evidence/T1/data-layer-diff.txt     |   11 +
  docs/run-shell/evidence/T1/enum-audit.md           |  189 +++
+ docs/run-shell/evidence/T1/vitest.txt              |   17 +
  docs/run-shell/evidence/T2/characters-32px.html    |  463 +++++++
  docs/run-shell/evidence/T2/characters-32px.png     |  Bin 0 -> 126571 bytes
+ .../evidence/T2/interpretation-vitest.txt          |   17 +
  docs/run-shell/evidence/T2/no-timers.txt           |  172 +++
+ docs/run-shell/evidence/T2/node-running.png        |  Bin 0 -> 7388 bytes
  docs/run-shell/evidence/T2/originality.md          |   96 ++
+ docs/run-shell/evidence/T2/perf-notes.md           |  223 +++
+ docs/run-shell/evidence/T2/perf.json               |   55 +
+ docs/run-shell/evidence/T2/reduced-motion.png      |  Bin 0 -> 254724 bytes
+ .../evidence/T2/render-cost-bench.spec.ts.txt      |  129 ++
  docs/run-shell/evidence/T2/rowers-grep.txt         |  119 ++
  docs/run-shell/evidence/T2/states-32px.html        |  462 +++++++
  docs/run-shell/evidence/T2/states-32px.png         |  Bin 0 -> 161688 bytes
- docs/run-shell/evidence/T2/vocabulary.md           |  160 +++
+ docs/run-shell/evidence/T2/tie-in.png              |  Bin 0 -> 255310 bytes
+ docs/run-shell/evidence/T2/vocabulary.md           |  242 ++++
+ docs/run-shell/evidence/T3/after-390.png           |  Bin 0 -> 66365 bytes
  docs/run-shell/evidence/T3/before-1180.png         |  Bin 0 -> 199519 bytes
  docs/run-shell/evidence/T3/before-1440-light.png   |  Bin 0 -> 270883 bytes
  docs/run-shell/evidence/T3/before-1440.png         |  Bin 0 -> 238556 bytes
  docs/run-shell/evidence/T3/before-390.png          |  Bin 0 -> 106235 bytes
  .../run-shell/evidence/T3/before-report-header.png |  Bin 0 -> 33649 bytes
  docs/run-shell/evidence/T3/before-trace-rail.png   |  Bin 0 -> 62698 bytes
- docs/run-shell/evidence/T3/builder-visual.txt      |   31 +
- docs/run-shell/evidence/T3/contrast.md             |  338 +++++
- docs/run-shell/evidence/T3/literals.txt            |  191 +++
- docs/run-shell/evidence/T3/scope-order.txt         |   26 +
- frontend/e2e/cast-perf.spec.ts                     |  630 +++++++++
- frontend/e2e/cast.spec.ts                          | 1438 ++++++++++++++++++++
+ docs/run-shell/evidence/T3/builder-visual.txt      |   60 +
+ docs/run-shell/evidence/T3/contrast-rv3-rerun.txt  |   50 +
+ docs/run-shell/evidence/T3/contrast.md             |  366 +++++
+ docs/run-shell/evidence/T3/literals.txt            |   55 +
+ docs/run-shell/evidence/T3/scope-order.txt         |   24 +
+ frontend/e2e/cast-perf.spec.ts                     |  650 +++++++++
+ frontend/e2e/cast.spec.ts                          | 1460 ++++++++++++++++++++
  frontend/e2e/desktop-1080.spec.ts                  |    4 +-
+ frontend/e2e/gateReply.ts                          |  126 ++
  frontend/e2e/stream-failure.spec.ts                |    4 +-
- frontend/e2e/studio.spec.ts                        |    4 +-
+ frontend/e2e/studio.spec.ts                        |   36 +-
+ frontend/e2e/visual/run-canvas.spec.ts             |   64 +-
  frontend/scripts/character-sheet.mjs               |  492 +++++++
  frontend/scripts/character-snapshots.mjs           |  115 ++
  frontend/scripts/character-stats.mjs               |  189 +++
- frontend/scripts/contrast-audit.mjs                |  348 +++++
- frontend/src/assets/styles/character.css           |  305 +++++
- frontend/src/assets/styles/motion.css              |   94 ++
+ frontend/scripts/contrast-audit.mjs                |  445 ++++++
+ frontend/src/assets/styles/character.css           |  305 ++++
+ frontend/src/assets/styles/motion.css              |  152 +-
  frontend/src/assets/styles/node-card.css           |   62 +-
  frontend/src/assets/styles/tokens.css              |  197 +++
  frontend/src/characters/pip.ts                     |  526 +++++++
- frontend/src/components/AgentCharacter.vue         |   92 ++
- frontend/src/components/ChatRail.vue               |  319 ++++-
- frontend/src/components/CrewProgress.vue           |   79 +-
- frontend/src/components/DialogueRail.vue           |  250 +++-
- frontend/src/components/GateCard.vue               |  170 ++-
+ frontend/src/components/AgentCharacter.vue         |  197 +++
+ frontend/src/components/ChatRail.vue               |  538 ++++++--
+ frontend/src/components/CrewProgress.vue           |  119 +-
+ frontend/src/components/DialogueRail.vue           |  389 +++++-
+ frontend/src/components/GateCard.vue               |  190 ++-
  frontend/src/components/HandoffToken.vue           |   63 +-
- frontend/src/components/ReportPanel.vue            |  368 +++--
+ frontend/src/components/ReportPanel.vue            |  372 +++--
  frontend/src/components/RunHistory.vue             |   25 +-
- frontend/src/components/StatusPanel.vue            |  193 ++-
+ frontend/src/components/StatusPanel.vue            |  218 ++-
  frontend/src/components/WorkflowEdge.vue           |   18 +-
- frontend/src/components/WorkflowNode.vue           |  184 ++-
- frontend/src/composables/useRunChoreography.ts     |  397 +++++-
- frontend/src/composables/useValidatorRun.ts        |  287 ++--
+ frontend/src/components/WorkflowNode.vue           |  212 ++-
+ frontend/src/composables/useRunChoreography.ts     |  469 ++++++-
+ frontend/src/composables/useValidatorRun.ts        |  504 +++++--
  frontend/src/data/runStatusDisplay.ts              |  140 ++
  frontend/src/data/serverLimits.ts                  |   15 +
  frontend/src/data/verdictDisplay.ts                |  587 ++++++++
@@ -65,13 +100,13 @@ $ git diff main...HEAD --stat
  frontend/src/trace/speech.ts                       |  106 ++
  frontend/src/types/studio.ts                       |   66 +
  frontend/src/utils/humanise.ts                     |  297 ++++
- frontend/src/views/StudioView.vue                  |   67 +-
- frontend/tests/characterDeterminism.spec.ts        |  153 +++
+ frontend/src/views/StudioView.vue                  |   55 +-
+ frontend/tests/characterDeterminism.spec.ts        |  153 ++
  frontend/tests/characterStates.spec.ts             |  677 +++++++++
- frontend/tests/characterSystem.spec.ts             |  525 +++++++
+ frontend/tests/characterSystem.spec.ts             |  551 ++++++++
  frontend/tests/designTokens.spec.ts                |  274 ++++
  frontend/tests/dialogueRail.spec.ts                |  175 ++-
- frontend/tests/fixtures/characterSnapshots.json    |  152 +++
+ frontend/tests/fixtures/characterSnapshots.json    |  152 ++
  frontend/tests/fixtures/serializerFrames.ndjson    |   34 +
  frontend/tests/fixtures/syntheticRun.ndjson        |   97 ++
  frontend/tests/fixtures/syntheticRunGated.ndjson   |   96 ++
@@ -88,6 +123,7 @@ $ git diff main...HEAD --stat
  frontend/tests/runChoreography.spec.ts             |   32 +-
  frontend/tests/stageLane.spec.ts                   |   45 +-
  frontend/tests/traceInterpretation.spec.ts         |  621 +++++++++
+ frontend/tests/traceRow.spec.ts                    |  275 ++++
  frontend/tests/verdictDisplay.spec.ts              |  325 +++++
  frontend/tests/verdictFrame.spec.ts                |   75 +-
  src/brief_crew/builder/descriptor.py               |   74 +-
@@ -98,7 +134,7 @@ $ git diff main...HEAD --stat
  tests/service/test_builder_runner.py               |   16 +-
  tests/service/test_synthetic_choreography.py       |   46 +-
  tests/service/test_synthetic_identity_frames.py    |  329 +++++
- 97 files changed, 18146 insertions(+), 734 deletions(-)
+ 133 files changed, 23107 insertions(+), 840 deletions(-)
 
 ===========================================================================
 Every PYTHON file changed on this branch
@@ -120,3 +156,11 @@ $ git diff main...HEAD --name-only -- src/brief_crew/builder/
 ===========================================================================
 src/brief_crew/builder/descriptor.py
 <<< end >>>
+
+===========================================================================
+R2 scope check: the four forbidden surfaces, named one at a time
+===========================================================================
+  src/brief_crew/validator_flow.py              NO DIFF
+  src/brief_crew/schemas                        NO DIFF
+  src/brief_crew/validator_guardrails.py        NO DIFF
+  src/brief_crew/config.py                      NO DIFF

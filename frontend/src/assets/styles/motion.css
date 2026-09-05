@@ -390,9 +390,29 @@
    drift apart, and five rules under four different rationales can.
    --------------------------------------------------------------------------- */
 .studio-shell:not(.is-builder) .node-eyebrow,
-.studio-shell:not(.is-builder) .quarantine-count,
 .studio-shell:not(.is-builder) .node-active-query,
 .studio-shell:not(.is-builder) .node-active-hint,
 .studio-shell:not(.is-builder) .node-usage {
   color: var(--text-meta);
 }
+
+/* `.quarantine-count` IS NOT IN THAT LIST, and leaving it out is the whole of
+   the second lesson.
+
+   It was in it for one revision, and `e2e/visual/run-canvas.spec.ts:243`
+   caught the consequence within the hour - which is exactly what that
+   assertion was written for, and its comment says so in advance:
+   `.quarantine-count` and `.node-state` are TWO CLASSES ON ONE ELEMENT
+   (`WorkflowNode.vue`: `class="node-state quarantine-count"`) setting `color`
+   at identical specificity, and `.node-state` wins only by being written
+   later. A rule at `.studio-shell:not(.is-builder) .quarantine-count` is
+   (0,2,0) against `.node-state`'s (0,1,0), so it did not recolour a chip - it
+   INVERTED the cascade the card is built on.
+
+   And the pairing it was fixing does not exist. `.quarantine-count`'s
+   `--text-40` never reaches a screen, because `.node-state` overrides it on
+   every element that ever carries it; the chip renders `--text-muted`, which
+   measures 6.85:1 in dark and 6.42:1 in light. The audit had been modelling a
+   declaration the cascade discards - a pairing nobody could see failing, whose
+   "fix" broke one anybody could. The row below it in `contrast-audit.mjs`
+   measures what the element actually paints instead. */

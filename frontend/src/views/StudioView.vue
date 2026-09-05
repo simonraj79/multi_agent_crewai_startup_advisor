@@ -224,6 +224,29 @@ watch(
 
 const chatCollapsed = ref(window.matchMedia('(max-width: 860px)').matches)
 const controlsCollapsed = ref(false)
+
+/**
+ * The scrim behind an open rail, and the one gesture it carries.
+ *
+ * Below 640px both rails are OVERLAYS - they cover the console rather than
+ * shrinking it - and a cold reader at 390px found the consequence: the rail sat
+ * on the console with nothing between them, so a sliver of half-cut console
+ * text showed down the edge and nothing on screen said which layer was live.
+ * A scrim is the answer to that question, and dismissing it is the gesture
+ * every overlay on a phone has.
+ *
+ * Rendered whenever a rail is open at ANY width and hidden above 640px by CSS,
+ * so the breakpoint stays a fact about the stylesheet and this file never
+ * learns that a phone exists. Closing BOTH is deliberate: a scrim means "put
+ * the layer over the content away", and at this width opening one rail does not
+ * close the other, so a scrim that closed only one would leave the reader
+ * looking at the same defect with one fewer control.
+ */
+const aRailIsOpen = computed(() => !chatCollapsed.value || !controlsCollapsed.value)
+function closeRails(): void {
+  chatCollapsed.value = true
+  controlsCollapsed.value = true
+}
 const activeView = ref<'graph' | 'activity'>('graph')
 
 watch(activeView, (view) => {
@@ -345,6 +368,28 @@ function backToValidator(): void {
     </header>
 
     <main class="studio-main">
+      <!--
+        The scrim. `studio.css` hides it above 640px, where the rails are docked
+        columns and there is nothing to dismiss; below it, a rail covers the
+        console and this is both the answer to "which layer is live" and the way
+        back out.
+
+        A `<button>` because it is a control and should carry a control's
+        semantics, but OUT of the tab order and hidden from the accessibility
+        tree - and that pair is deliberate rather than lazy. Both rails already
+        have real toggle buttons that are focusable, labelled, and do exactly
+        this; a third control here would be a duplicate announced twice and
+        tabbed through once, buying nobody a capability they did not have. It is
+        a pointer affordance for a gesture the keyboard already has.
+      -->
+      <button
+        v-if="aRailIsOpen"
+        class="rail-scrim"
+        type="button"
+        tabindex="-1"
+        aria-hidden="true"
+        @click="closeRails"
+      />
       <!--
         `identityFor` and `castState` are handed to all three surfaces from ONE
         store (`useRunChoreography`, by way of the run composable), which is the

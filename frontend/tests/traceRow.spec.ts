@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { mount } from '@vue/test-utils'
 import type { App } from 'vue'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -5,8 +7,8 @@ import ChatRail from '../src/components/ChatRail.vue'
 import WorkflowNode from '../src/components/WorkflowNode.vue'
 import { NODE_DATA_KEYS, sameNodeData, useValidatorRun } from '../src/composables/useValidatorRun'
 import type { StudioNodeData } from '../src/composables/useValidatorRun'
-import type { ChatEntry } from '../src/types/studio'
-import { FakeStudioApi, flush, frameFactory, withSetup, zeroUsage } from './helpers'
+import type { ChatEntry, FrameData, StudioFrame } from '../src/types/studio'
+import { FakeStudioApi, RUN_ID, flush, frameFactory, withSetup, zeroUsage } from './helpers'
 
 /**
  * The trace row after the polish pass, and the duplicate DOM id that a
@@ -121,6 +123,146 @@ describe('the compact row', () => {
     const details = rail([chatEntry()]).get('.trace-raw').element as HTMLDetailsElement
     expect(details.open).toBe(false)
     expect(details.querySelector('summary')?.textContent).toBe('Details')
+  })
+})
+
+describe('the seam between the dialogue block and the trace list', () => {
+  /*
+   * A cold reader saw a `▸ Details` line cut in half where the two regions
+   * meet, and read it as an overlap. Nothing overlaps: the dialogue list is a
+   * scroll box capped at `40vh`, and at the cap it was ending FLUSH against its
+   * own border with the first trace row a hairline below - which is what a
+   * rendering fault looks like. The fix is a band outside the scroller
+   * (`.dialogue-rail`'s `padding-bottom`) plus a clear gap above the first row
+   * (`.rail-list`'s `padding-top`).
+   *
+   * THE PIXELS ARE NOT ASSERTED HERE and cannot be: jsdom applies no scoped
+   * stylesheet and lays nothing out, so a mount that claimed to measure this
+   * would be measuring nothing. `e2e/cast.spec.ts`'s captures are where the
+   * seam is looked at. What a mount CAN pin is the structural precondition the
+   * fix rests on - the dialogue sits in its own slot ABOVE the scrolling list,
+   * not inside it - because putting it back inside would make a real overlap
+   * possible again and no amount of padding would help.
+   */
+  it('puts the dialogue in its own slot above the scrolling trace list', () => {
+    const wrapper = mount(ChatRail, {
+      props: { entries: [chatEntry()], collapsed: false },
+      slots: { above: '<div class="dialogue-rail">spoken</div>' },
+    })
+    const slot = wrapper.get('.rail-slot')
+    expect(slot.find('.dialogue-rail').exists()).toBe(true)
+    // The list is a SIBLING of the slot, so the two regions cannot interleave.
+    expect(wrapper.get('.rail-list').find('.dialogue-rail').exists()).toBe(false)
+    const children = Array.from(wrapper.element.children).map((el) => (el as Element).className)
+    expect(children.indexOf('rail-slot')).toBeLessThan(
+      children.findIndex((name) => name.includes('rail-list')),
+    )
+    wrapper.unmount()
+  })
+})
+
+describe('an identical failure, twice in a row, is one row', () => {
+  let api: FakeStudioApi
+  let run: ReturnType<typeof useValidatorRun>
+  let app: App
+  let build: ReturnType<typeof frameFactory>
+
+  beforeEach(async () => {
+    localStorage.clear()
+    api = new FakeStudioApi()
+    build = frameFactory()
+    ;[run, app] = withSetup(() => useValidatorRun(api))
+    await run.initialize()
+    await run.launch()
+  })
+
+  afterEach(() => app.unmount())
+
+  const failure = (nodeId: string, error: string) =>
+    build('node_state', {
+      event_type: 'NODE_END',
+      level: 'ERROR',
+      node_id: nodeId,
+      message: `${nodeId} failed`,
+      details: { stage: 'error', error },
+    })
+
+  it('folds the duplicate and counts it in the disclosure', async () => {
+    // `evidence/S/failure.png`: the same sentence four times, twice from the
+    // agent and twice from "System", each cut at the same word. A reader counts
+    // four failures.
+    api.emit(failure('step-1', 'the provider refused the request'))
+    await flush()
+    api.emit(failure('step-1', 'the provider refused the request'))
+    await flush()
+
+    const errors = run.chatEntries.value.filter((row) => row.tone === 'error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0].repeats).toBe(2)
+
+    const wrapper = mount(ChatRail, { props: { entries: run.chatEntries.value, collapsed: false } })
+    // In the DISCLOSURE and never in the sentence: the sentence is what
+    // happened, the count is a fact about the log.
+    expect(wrapper.get('.trace-line').text()).not.toContain('2')
+    expect(wrapper.get('[data-testid="trace-repeats"]').text()).toContain('2')
+    wrapper.unmount()
+  })
+
+  it('says nothing about repeats when a failure happened once', async () => {
+    api.emit(failure('step-1', 'the provider refused the request'))
+    await flush()
+    const wrapper = mount(ChatRail, { props: { entries: run.chatEntries.value, collapsed: false } })
+    expect(wrapper.find('[data-testid="trace-repeats"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps two DIFFERENT failures, and two nodes failing alike, apart', async () => {
+    // Same node, different sentence: two things went wrong. Different nodes,
+    // same sentence: two branches hit the same wall, which is the fact.
+    api.emit(failure('step-1', 'the provider refused the request'))
+    await flush()
+    api.emit(failure('step-1', 'the signing key is missing'))
+    await flush()
+    api.emit(failure('step-2', 'the signing key is missing'))
+    await flush()
+    const errors = run.chatEntries.value.filter((row) => row.tone === 'error')
+    expect(errors).toHaveLength(3)
+    expect(errors.every((row) => row.repeats === undefined)).toBe(true)
+  })
+
+  it('does not fold a repeat that is no longer consecutive', async () => {
+    // A failure that recurs after other rows keeps its own place in the
+    // sequence, because WHEN it happened again is the interesting part.
+    api.emit(failure('step-1', 'the provider refused the request'))
+    await flush()
+    api.emit(
+      build('llm', {
+        event_type: 'MODEL_CALL',
+        node_id: 'step-1',
+        details: { stage: 'before', model: 'google/gemini-3.5-flash-lite' },
+      }),
+    )
+    await flush()
+    api.emit(failure('step-1', 'the provider refused the request'))
+    await flush()
+    const errors = run.chatEntries.value.filter((row) => row.tone === 'error')
+    expect(errors).toHaveLength(2)
+  })
+
+  it("keeps the first row's id and clock when it folds", async () => {
+    // A row that jumped its own timestamp because the same thing was reported
+    // again would move under the reader, and its Vue key would change for no
+    // reason at all.
+    api.emit(failure('step-1', 'the provider refused the request'))
+    await flush()
+    const first = run.chatEntries.value.filter((row) => row.tone === 'error')[0]
+    const { id, seq, timestamp } = first
+    api.emit(failure('step-1', 'the provider refused the request'))
+    await flush()
+    const folded = run.chatEntries.value.filter((row) => row.tone === 'error')[0]
+    expect(folded.id).toBe(id)
+    expect(folded.seq).toBe(seq)
+    expect(folded.timestamp).toBe(timestamp)
   })
 })
 
@@ -272,4 +414,74 @@ describe('the card payload comparison is exhaustive (T2.8)', () => {
     const sameCallNewObject = { ...base, activeCall: { ...base.activeCall! } }
     expect(sameNodeData(base, sameCallNewObject)).toBe(true)
   })
+})
+
+/* ------------------------------------------------------------------ *
+ *  T2.1 - every row carries its sentence in `.trace-line`             *
+ * ------------------------------------------------------------------ */
+
+function fixtureFrames(name: string): FrameData[] {
+  const path = resolve(process.cwd(), 'tests', 'fixtures', name)
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf8')
+    .split(/\r?\n/)
+    .map((row) => row.trim())
+    .filter(Boolean)
+    .map((row) => {
+      const parsed = JSON.parse(row) as StudioFrame | FrameData
+      return 'data' in parsed && parsed.type === 'frame' ? parsed.data : (parsed as FrameData)
+    })
+    .map((frame, index) => ({ ...frame, run_id: RUN_ID, seq: index + 1 }))
+}
+
+const FIXTURES = ['syntheticRunGated.ndjson', 'syntheticRun.ndjson', 'serializerFrames.ndjson'] as const
+
+describe('every trace row carries a sentence', () => {
+  /*
+   * A verification run read 24 of the rows of a 119-event run as an EMPTY line
+   * and recorded it against T2.1. This is that assertion in the one place it
+   * can be made deterministically: the real interpreter over a committed frame
+   * log, the real rail mounted over the result, every row inspected.
+   *
+   * It is deliberately not a screenshot's question. What the browser measures
+   * is `innerText`, which is the RENDERED text - and a row scrolled out of view
+   * under `content-visibility: auto` renders nothing at all. This asserts what
+   * the DOM says, which is the half this component is responsible for.
+   */
+  for (const name of FIXTURES) {
+    it(`renders one non-empty line per row over ${name}`, async () => {
+      const api = new FakeStudioApi()
+      const [run, app] = withSetup(() => useValidatorRun(api)) as [
+        ReturnType<typeof useValidatorRun>,
+        App,
+      ]
+      await run.initialize()
+      await run.launch()
+      const frames = fixtureFrames(name)
+      expect(frames.length, `${name} is missing or empty`).toBeGreaterThan(0)
+      for (const frame of frames) {
+        api.emit(frame)
+        await flush()
+      }
+
+      const entries = run.chatEntries.value
+      expect(entries.length, `${name} produced no rows`).toBeGreaterThan(0)
+      const wrapper = mount(ChatRail, { props: { entries, collapsed: false } })
+
+      const rows = wrapper.findAll('.trace-entry')
+      const lines = wrapper.findAll('.trace-line')
+      expect(lines.length, 'a row rendered no `.trace-line` at all').toBe(rows.length)
+
+      const blank = lines
+        .map((line, index) => ({ index, text: line.text().trim() }))
+        .filter((row) => row.text.length === 0)
+      expect(
+        blank.map((row) => `row ${row.index}: empty line`),
+        'a row reached the rail with nothing to say (T2.1)',
+      ).toEqual([])
+
+      wrapper.unmount()
+      app.unmount()
+    }, 60_000)
+  }
 })

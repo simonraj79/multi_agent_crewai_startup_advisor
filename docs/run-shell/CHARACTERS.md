@@ -15,7 +15,7 @@ decides that an agent is `working` rather than `speaking` is W3's and W4's work.
 | Generator | [`frontend/src/characters/pip.ts`](../../frontend/src/characters/pip.ts) — pure, no imports, no DOM, no clock |
 | Component | [`frontend/src/components/AgentCharacter.vue`](../../frontend/src/components/AgentCharacter.vue) |
 | Stylesheet | [`frontend/src/assets/styles/character.css`](../../frontend/src/assets/styles/character.css) |
-| Tests | `frontend/tests/characterSystem.spec.ts` (39), `frontend/tests/characterDeterminism.spec.ts` (30) |
+| Tests | `frontend/tests/characterSystem.spec.ts` (44), `frontend/tests/characterDeterminism.spec.ts` (30) |
 | Sheets | `frontend/scripts/character-sheet.mjs` → `evidence/T2/characters-32px.png`, `evidence/T2/states-32px.png`, `evidence/G4/roles-sheet.png` |
 | Figures below | `frontend/scripts/character-stats.mjs` — **regenerate, never quote** |
 
@@ -45,7 +45,7 @@ other measurement was fitted around it.
 | **Body** | 4 — `pebble`, `drop`, `bean`, `bell` | `mix32(h)` bits **0–7** mod 4 | Silhouette is the only identity cue that survives 32 px, so it carries the widest variation: squat-and-wide, tall-and-tapered, two-lobed-with-a-waist, flared-with-two-feet. All four stand on the same floor (`y = 28`) so a row of Pips lines up, and all four are one closed path so the crest can be cut from the same fill. |
 | **Eyes** | 4 — `round`, `oval`, `square`, `lens` | bits **8–15** mod 4 | **Shapes, not expressions.** Expression belongs to the state; an identity that already looked like it was winking could not then be asked to look worried. `lens` is a donut and is the one variant that needs no sparkle. |
 | **Resting mouth** | 3 — `smile`, `cat-w`, `oh` | bits **16–23** mod 3 | Only `idle` wears it; the other five states override the mouth. That is exactly why this axis gets three variants and not six — two thirds of its value would be spent on states the agent is not in. |
-| **Crown** | 6 — `antenna`, `sprout`, `curl`, `ring`, `fin`, `ears` | bits **24–31** mod 6 | One group, `currentColor`, hinged at the body's own crown point. It is also the part that **wilts** when the agent is blocked. |
+| **Crown** | 6 — `antenna`, `sprout`, `curl`, `ring`, `fin`, `ears` | bits **24–31** mod 6 | One group, `currentColor`, hinged at the body's own crown point. It is also the part that **wilts** when the agent is blocked, and the part that is drawn **1.3× larger below 48 px** — see §4, where the reason is a cold reader's finding rather than a preference. |
 | **Colour** | 12 — `--character-1 … --character-12` | **raw FNV-1a mod 12** (not the mixed word) | Byte for byte the index `useRunChoreography.characterIndex` already assigns, so a Pip is the colour its node's medallion and handoff token already are. |
 
 **4 × 4 × 3 × 6 × 12 = 3,456 distinct characters**, and all 3,456 are reachable
@@ -173,7 +173,7 @@ re-renders on a frame — a run event sets a class.
 | **working** | Leans in `rotate(5deg)`. Eyes squint to `scaleY(0.4)` — two bars. Short flat mouth. Detail tier off. | `pip-bob`, **2600 ms** ease-in-out infinite: `translateY(0 → −0.9 → 0)` on the shell only. ≈0.9 px of travel at 32 px. | Keeps the lean and the squint. | Node is running. |
 | **speaking** | Tips back `rotate(-3deg)`. Eyes open. Big filled oval mouth. | `pip-speak`, **640 ms** ease-in-out infinite: `scaleY(1 → 0.42 → 1)` on the mouth *only*, inside a ~5 px box. | Mouth stays fully open. | The agent is producing text a rail is revealing. |
 | **blocked** | Eyes widen `scaleY(1.14)`. Crown **wilts** `rotate(-22deg)` about its own hinge. Small downward mouth. `--warn-border` outline. | **None**, beyond a one-shot 480 ms `pip-settle` on arrival. | Identical after 480 ms. | A human gate is open on this node. |
-| **blocked-error** | The same pose, outline from `--err-border`. | Same one-shot. | Identical. | The node failed. |
+| **blocked-error** | Same wilt, same frown, **eyes closed into two crosses** (`×_×`), outline from `--err-border`. | Same one-shot. | Identical. | The node failed. |
 | **done** | Eyes close into two arcs `^ ^`. Wide filled grin. Settles `scale(1.04, 0.95)`. | **None.** | Identical. | Node completed. |
 
 The right-hand column is what the state *means*, not something this module
@@ -189,10 +189,50 @@ does not pulse: a pulsing ring on the one node waiting for a person competes
 with the gate card that is asking them for something, and an amber outline at
 32 px is already the loudest signal this system has.
 
-**`blocked` and `blocked-error` are one pose in two colours.** At 32 px the
-readable signal is the outline plus the wilt; asking a face that size to
-separate "waiting for you" from "broken" by expression would fail at exactly
-the size that matters. The outline colour is the distinction.
+**`blocked` and `blocked-error` are separated by two signals, not one, and the
+second one was added after a cold reader found its absence.** Given the sheets
+alone, the reader reported that the amber and the red outline were the only
+difference between the two states — which means a colour-blind viewer sees one
+state where the product means two. The general rule that breaks is that colour
+must never be the sole carrier of a distinction, so `blocked-error` now also
+closes its eyes into two crosses. The cross is the kawaii idiom for it, it is
+four straight strokes so it survives the 32 px raster where a subtler
+expression would not, and it is the largest change the eyes can make short of
+closing them entirely, which `done` already owns. The wilt, the frown and the
+pose stay shared, so the two states still read as one family.
+
+`characterSystem.spec.ts` asserts this structurally rather than by eye: it
+parses `character.css`, collects what each state's rules declare, and requires
+that whatever `blocked-error` does and `blocked` does not includes at least one
+property that is not a colour.
+
+### The small tier is not the big one scaled down
+
+Below 48 px three things change, and each was measured rather than guessed.
+The detail tier goes off (cheeks and sparkles are mud at that size). The crown
+is drawn **1.3× larger** (`SMALL_CREST_SCALE`). And the whole figure **drops
+two units** down the box (`SMALL_LIFT`) so the bigger crown still fits.
+
+The crown grew because the same cold reader could not confidently separate two
+same-coloured agents at a true 32 px. That is measurable rather than a matter
+of taste: at 32 px the body and the eyes are shared vocabulary across a
+sixteen-node graph, so the crown is doing nearly all of the identifying work,
+and the crown was five or six units of a 32-unit box — two or three actual
+pixels. One of the confused pair wore a `fin`, which at that size was
+indistinguishable from the `bell` body's own peak.
+
+**The drop rather than a shrink is the point.** Making headroom by scaling the
+figure down would have taken the eyes with it, and the eyes are the other thing
+that has to survive 32 px. The box has four unused units under the floor and
+this spends two of them. `characterSystem.spec.ts` re-measures all twenty-four
+(body × crest) pairs at **both** tiers, because growing the crown is exactly
+the change most likely to put one back outside the box.
+
+Both numbers are applied by the generator and not by CSS, and that is forced:
+`.pip-crest-hinge` already owns `transform` for the blocked wilt and
+`.pip-figure` owns it for the pose, and `transform` is one property — a CSS
+boost on either would be silently dropped the moment a state applied. The spec
+asserts that neither selector grows a `transform` rule.
 
 **Every loop starts at its reduced-motion pose.** `pip-bob` is written
 `0% → translateY(0)` and `pip-speak` `0% → scaleY(1)` specifically so that a
@@ -248,7 +288,8 @@ cases a fraction of a difference that already passes.
 
 ## 6. Measured, not asserted
 
-Regenerated on 2026-09-05 by `cd frontend && node scripts/character-stats.mjs`,
+Regenerated on 2026-09-05, after the cold reader's two changes, by
+`cd frontend && node scripts/character-stats.mjs`,
 against `src/characters/pip.ts` at head. **Re-run it rather than quoting this
 block** — the command is the contract and the number never is.
 
@@ -289,8 +330,8 @@ last-character edit -> same character     0.00009
 five spellings of one name -> 1 character
 empty role -> node id                     {"key":"n7 second pass","named":false}
 
-markup size at 32px (no detail tier)      1574 bytes
-markup size at 96px (detail tier on)      1752 bytes
+markup size at 32px (no detail tier)      1822 bytes
+markup size at 96px (detail tier on)      1998 bytes
 ```
 
 **The 450-role corpus is the sample that matters**, and it is included because
@@ -329,28 +370,48 @@ being designed:
 - **The bean's mouth was in its waist.** `mouthDy` became a per-body number.
 - **The `oh` mouth vanished.** `rx/ry` went 1.6/1.3 → 1.8/1.5.
 
-The fourth was found by the first sheet rendered in this repository, and is the
-one change to the adopted design's geometry:
+The fourth was found by the first sheet rendered in this repository:
 
 - **Four of the twenty-four (body × crest) pairs poked out of the top of the
   viewBox** and were cut flat by the raster — `bean` + `ring` worst at −0.72
   units. Because `.pip-svg` sets `overflow: visible` they were not clipped in
   the live DOM; they spilled outside the figure's own box instead, which on a
   32 px node slot is the same defect in a different coat. The antenna and the
-  ring were shortened and the bean's `crestScale` cut from 0.94 to 0.86. Every
-  pair now clears the top edge by at least 0.40 units, and
-  `characterSystem.spec.ts` measures all twenty-four rather than trusting this
-  paragraph.
+  ring were shortened and the bean's `crestScale` cut from 0.94 to 0.86.
+
+The fifth and sixth came from a **cold reader who saw only these sheets** and
+neither the code nor the brief, which is the one instrument this system cannot
+supply for itself:
+
+- **`blocked` and `blocked-error` differed only in the hue of the outline** —
+  amber against red — so a colour-blind viewer saw one state where the product
+  means two. `blocked-error` now closes its eyes into two crosses as well. §4
+  carries the reasoning and the structural check that keeps colour from ever
+  being the sole difference again.
+- **Two same-coloured agents were separable when magnified but not "in
+  isolation" at a true 32 px.** The crown was carrying nearly all of the
+  identifying work at five or six units of a 32-unit box. It is now drawn 1.3×
+  below 48 px with the figure dropped two units to fit it — see §4. The same
+  finding put the eyes under suspicion, so the four variants were rasterised on
+  one body at 32 px in both themes: `lens` turned out to be the *most*
+  distinctive of the four, not the least — its open centre survives clearly,
+  where `round` and `oval` are the closest pair. No widening was needed, and
+  the spec now measures that the four differ in construction and in width so a
+  later edit cannot quietly collapse them.
+
+Every (body × crest) pair clears the top edge by at least **0.45 units at the
+large tier and 0.52 at the small one**, and `characterSystem.spec.ts` measures
+all twenty-four at both tiers rather than trusting these paragraphs.
 
 ## 8. Regenerating everything
 
 ```powershell
 Push-Location frontend
 
-# the three evidence sheets (HTML kept beside each PNG)
-node scripts/character-sheet.mjs
-# ...and, after the freeze, with the G1 flow's roles:
-node scripts/character-sheet.mjs --roles <roles>.json
+# the three evidence sheets (HTML kept beside each PNG). ALWAYS pass --roles:
+# the committed sheets include the flow RV authored after the freeze, and a
+# bare run would silently drop it back to the three the system shipped with.
+node scripts/character-sheet.mjs --roles ../docs/run-shell/evidence/G4/g1-roles.json
 
 # the cross-process determinism fixture
 node scripts/character-snapshots.mjs
@@ -363,10 +424,13 @@ Pop-Location
 ```
 
 `--roles` takes a JSON file shaped
-`{ "flows": [{ "name": "...", "note": "...", "roles": ["..."] }] }`. The fourth
-section of `evidence/G4/roles-sheet.png` is deliberately empty and says so on
-its own face: RV fills it in after the freeze by re-running the sheet script
-with the invented flow's roles.
+`{ "flows": [{ "name": "...", "note": "...", "roles": ["..."] }] }`, resolved
+against the working directory. `docs/run-shell/evidence/G4/g1-roles.json` is
+the committed one, and its fourth entry is the `Clinic Rota Planner` flow RV
+authored after the freeze — five roles the cast's builder never saw, which is
+what makes G4's claim about an unfamiliar flow checkable rather than asserted.
+A flow with an empty `roles` array renders as a labelled empty section rather
+than disappearing, which is how that slot was held open before RV filled it.
 
 ## 9. Originality
 
@@ -384,8 +448,8 @@ in this tree and none of which was opened while this was drawn.
 Every part is a path written by hand in `pip.ts` as SVG numbers. **No part is
 traced from, rotoscoped from, or modelled on an existing character**, no asset
 was downloaded, no sprite sheet exists, and there is no image file of any kind
-in the system: the whole cast is 1,574 bytes of generated markup per figure and
-a stylesheet.
+in the system: the whole cast is 1,822 bytes of generated markup per figure
+and a stylesheet.
 
 What a Pip actually resembles is a **river stone, a seed pod, an acorn** —
 closed, weighted, sitting on a floor — and that is the point: these are small

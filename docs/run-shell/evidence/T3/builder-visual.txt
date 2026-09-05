@@ -5,10 +5,10 @@ $ cd frontend && npx playwright test e2e/visual/builder-canvas.spec.ts
 # (1440x900 chromium, 390x844 mobile) - and none carries maxDiffPixels, so
 # these are byte comparisons.
 #
-# RE-RUN BY RV3 at the branch HEAD 27b256e (2026-09-05), after the cast landed.
-# W5's copy of this file measured 40e17dc, which is three commits earlier and
-# before W1's and W4's files landed; this run is the one T3.5's verifier owns.
-# Backend: SYNTHETIC=1 on :8099 (full line in evidence/R/playwright.txt).
+# RV3 SECOND PASS at 16f3be5, 2026-09-05T16:05:04+08:00. Exit code 0.
+# Round two touched motion.css, node-card.css, tokens.css and six components,
+# so this is the run that matters: T3.5 asks whether the token work reached
+# the builder, and round two is where the token work happened.
 #
 # NO BASELINE WAS REGENERATED. Proved rather than asserted - the sixteen PNGs
 # were md5-summed before and after and the two lists are identical:
@@ -21,25 +21,23 @@ $ cd frontend && npx playwright test e2e/visual/builder-canvas.spec.ts
 Running 16 tests using 1 worker
 
   ✓   1 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.5s)
-  ✓   2 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.3s)
-  ✓   3 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.5s)
-  ✓   4 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.3s)
-  ✓   5 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.2s)
-  ✓   6 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.3s)
-  ✓   7 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.5s)
-  ✓   8 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.2s)
-  ✓   9 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.2s)
-  ✓  10 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.2s)
-  ✓  11 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.4s)
-  ✓  12 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.2s)
-  ✓  13 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.1s)
-  ✓  14 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.2s)
-  ✓  15 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.4s)
-  ✓  16 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.1s)
+  ✓   2 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.4s)
+  ✓   3 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.7s)
+  ✓   4 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.5s)
+  ✓   5 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.5s)
+  ✓   6 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.5s)
+  ✓   7 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.9s)
+  ✓   8 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.6s)
+  ✓   9 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.3s)
+  ✓  10 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.3s)
+  ✓  11 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.6s)
+  ✓  12 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.3s)
+  ✓  13 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.2s)
+  ✓  14 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.3s)
+  ✓  15 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.5s)
+  ✓  16 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.3s)
 
-  16 passed (45.9s)
-
-# exit code: 0
+  16 passed (48.9s)
 
 # The sixteen baseline md5s, unchanged by this run:
 #   d44e029b5696fe0e0a1b0e86c2945dcb *e2e/visual/builder-canvas.spec.ts-snapshots/gallery-dark-chromium-win32.png

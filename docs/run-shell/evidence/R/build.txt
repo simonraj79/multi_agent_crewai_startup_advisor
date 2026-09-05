@@ -1,5 +1,6 @@
 $ npm run build       # from frontend/
-# run by RV3, branch run-shell/cast at 27b256e, 2026-09-05T14:57:26+08:00
+# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T16:00:04+08:00
+# exit code: 0
 
 
 > frontend@0.0.0 build
@@ -11,14 +12,12 @@ transforming...
 rendering chunks...
 computing gzip size...
 dist/index.html                   0.88 kB │ gzip:   0.50 kB
-dist/assets/index-C-rfjCGa.css  209.24 kB │ gzip:  32.22 kB
-dist/assets/index-BG_pzglQ.js   917.04 kB │ gzip: 287.18 kB
+dist/assets/index-rm1XPUOu.css  209.74 kB │ gzip:  32.31 kB
+dist/assets/index-tO4Lwuiy.js   921.12 kB │ gzip: 288.59 kB
 
-[32m✓ built in 706ms[39m
+[32m✓ built in 672ms[39m
 [33m[plugin builtin:vite-reporter] 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-
-# exit code: 0

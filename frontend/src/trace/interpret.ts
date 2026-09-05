@@ -182,12 +182,79 @@ export function firstSentence(value: unknown, max = MAX_QUOTED_CHARS): string {
   return clip(sentence, max)
 }
 
-/** Clip to `max` characters on a word boundary where one is near. */
+/**
+ * A SCREAMING_SNAKE token: the shape T1.3's regex bans from the run shell.
+ *
+ * Three characters minimum after the first, so `OK`, `ID` and `AI` are left
+ * alone - they are words a person writes - while `SYNTHETIC_FAILURE`,
+ * `RATE_LIMIT` and `MODEL_ERROR` are not.
+ */
+const SHOUTED_CODE = /\b[A-Z][A-Z0-9_]{3,}\b/g
+
+/** The same shape at the very front of a sentence, with its colon. */
+const LEADING_CODE = /^\s*[A-Z][A-Z0-9_]{3,}:\s*/
+
+/**
+ * The first sentence of an ERROR, in words a person can read.
+ *
+ * A backend exception is the one payload this layer quotes verbatim, and it is
+ * the one most likely to arrive wearing an internal name. T1.3 found this in a
+ * browser rather than in a fixture: a failing run's row read
+ *
+ *   Run failed: SYNTHETIC_FAILURE: fm_cast_refusal attempt 1…
+ *
+ * and the criterion is that no raw internal code reaches the run shell's DOM.
+ * Two rules, and each is a different kind of noise:
+ *
+ * 1. **A leading `CODE:` prefix is dropped.** It is a namespace, not a
+ *    sentence - the reader learns nothing from being told which subsystem
+ *    raised the thing, and the whole raw text is one click away in the row's
+ *    disclosure. Only the LEADING one goes: a code in the middle is usually
+ *    the subject of the sentence.
+ * 2. **Every remaining shouted token is humanised.** `RATE_LIMIT` becomes
+ *    "Rate limit", which is the same fact spelled the way the rest of the rail
+ *    spells one.
+ *
+ * Humanised BEFORE the clip, so the ellipsis still lands on the bound the
+ * criterion measures: `humaniseCode` can lengthen a token (`RATE_LIMIT` is a
+ * character longer as "Rate limit"), and clipping first would let a sentence
+ * grow back past 140 characters after it had been cut to fit.
+ */
+export function errorSentence(value: unknown, max = MAX_QUOTED_CHARS): string {
+  const flat = plain(value)
+  if (!flat) return ''
+  if (looksStructured(flat)) return ''
+  const stop = flat.search(/[.!?](\s|$)/)
+  const sentence = stop > 0 ? flat.slice(0, stop) : flat
+  const named = sentence.replace(LEADING_CODE, '')
+  // `|| sentence` - a message that is NOTHING but a code keeps it rather than
+  // becoming an empty row. "Run failed: Synthetic failure" is a poor sentence
+  // and "Run failed:" is a broken one.
+  const body = named.trim() ? named : sentence
+  return clip(body.replace(SHOUTED_CODE, (code) => humaniseCode(code)).trim(), max)
+}
+
+/**
+ * Clip to `max` characters ON A WORD BOUNDARY.
+ *
+ * It used to take the boundary only when one fell past 60% of the budget and
+ * cut mid-word otherwise, and a cold reader met the result: four rows of a
+ * failure ending `…attempt 1…`, which reads as a broken string rather than as
+ * a sentence that goes on. A half word is worse than a shorter line, because
+ * the reader cannot tell whether the text is truncated or the value is.
+ *
+ * So the last space wins whenever there is one. The ONLY case that still cuts
+ * inside a word is a single token longer than the whole budget - a URL, a
+ * stack frame, a base64 blob - where there is no boundary to cut at and the
+ * alternative is an empty row. The full text is one click away in the
+ * disclosure either way.
+ */
 export function clip(value: string, max: number): string {
   if (value.length <= max) return value
   const cut = value.slice(0, max - 1)
   const space = cut.lastIndexOf(' ')
-  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`
+  const kept = space > 0 ? cut.slice(0, space) : cut
+  return `${kept.trimEnd()}…`
 }
 
 /** A duration a person reads, from milliseconds. */
@@ -477,7 +544,7 @@ function agentLine(frame: FrameData, ctx: TraceContext): TraceLine | null {
     )
   }
   if (stage === 'error') {
-    const why = firstSentence(frame.details.error)
+    const why = errorSentence(frame.details.error)
     const what = task ? `${who} could not finish ${task}` : `${who} could not finish`
     // Deliberately UNCOALESCED. A failure is rare, it is the row a reader is
     // looking for, and letting it share a key with the node's completion means
@@ -499,7 +566,7 @@ function nodeStateLine(frame: FrameData, ctx: TraceContext): TraceLine | null {
   // transform that threw is the most important thing on the page, and it is
   // the one lifecycle frame that is never coalesced away.
   if (stage === 'error' || frame.level === 'ERROR') {
-    const why = firstSentence(frame.details.error)
+    const why = errorSentence(frame.details.error)
     return line(frame, why ? `${label} could not finish: ${why}` : `${label} could not finish`, 'error', who)
   }
   // `paused` is CrewAI saying a method is parked. The gate frame that follows
@@ -573,7 +640,14 @@ function llmLine(frame: FrameData, ctx: TraceContext): TraceLine | null {
   }
   if (stage === 'after') {
     const took = elapsedFor(frame, ctx, key)
-    return line(frame, took ? `${who} thought for ${took}` : `${who} finished thinking`, 'info', who, {
+    // "thought for 1ms" is a true statement that reads as a broken one: the
+    // number is the wire's, the reader's question is whether the model took
+    // any noticeable time, and under a second the honest answer is no. A
+    // sub-second figure also moves run to run for reasons that are the
+    // harness's rather than the agent's. The exact milliseconds stay in the
+    // row's disclosure, where a number belongs.
+    const briefly = took && !took.endsWith('ms') ? `${who} thought for ${took}` : `${who} thought briefly`
+    return line(frame, took ? briefly : `${who} finished thinking`, 'info', who, {
       key,
       precedence: TRACE_TERMINAL_PRECEDENCE,
       scope: 'run',
@@ -697,7 +771,7 @@ function runStateLine(frame: FrameData): TraceLine | null {
   if (status === 'completed') return runLine(frame, 'Run finished', 'info')
   if (status === 'cancelled' || status === 'cancelling') return runLine(frame, 'Run cancelled', 'warn')
   if (status === 'failed') {
-    const why = firstSentence(frame.details.error)
+    const why = errorSentence(frame.details.error)
     return runLine(frame, why ? `Run failed: ${why}` : 'Run failed', 'error')
   }
   if (status === 'running' || status === 'queued' || frame.event_type.includes('WORKFLOW_START')) {
@@ -710,7 +784,10 @@ function runStateLine(frame: FrameData): TraceLine | null {
 
 function errorLine(frame: FrameData, ctx: TraceContext): TraceLine {
   const who = identityFor(frame, ctx)
-  const why = firstSentence(frame.details.error) || firstSentence(frame.details.message) || firstSentence(frame.message)
+  const why =
+    errorSentence(frame.details.error)
+    || errorSentence(frame.details.message)
+    || errorSentence(frame.message)
   const runLevel = !frame.node_id || frame.event_type.includes('WORKFLOW')
   if (runLevel) return runLine(frame, why ? `Run failed: ${why}` : 'Run failed', 'error')
   return line(frame, why ? `${who} hit an error: ${why}` : `${who} hit an error`, 'error', who)

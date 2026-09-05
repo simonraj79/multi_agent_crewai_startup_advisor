@@ -1,5 +1,5 @@
 $ git diff main...HEAD --stat -- src/brief_crew/schemas src/brief_crew/validator_guardrails.py src/brief_crew/validator_flow.py
-# run by RV3, branch run-shell/cast at 27b256e, merge-base 6291fee, 2026-09-05T14:54:11+08:00
+# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, merge-base 6291fee, 2026-09-05T15:56:49+08:00
 
 <<< end of output (empty above means no diff) >>>
 
@@ -8,4 +8,4 @@ $ git diff main...HEAD -- src/brief_crew/config.py | grep -E "RUBRIC|FLOOR|CONFI
 <<< end of output (empty above means no scoring constant moved) >>>
 
 $ git diff main...HEAD --stat -- src/brief_crew/config.py
-<<< end of output >>>
+<<< end of output (empty means config.py has no diff at all) >>>

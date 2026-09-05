@@ -287,6 +287,162 @@ describe('a call is one row, not two', () => {
 })
 
 /* ------------------------------------------------------------------ *
+ *  T1.3 - no raw internal code reaches the row                        *
+ * ------------------------------------------------------------------ */
+
+describe('a model call reports a time a person can use', () => {
+  it('says "thought briefly" under a second rather than a millisecond count', () => {
+    // "thought for 1ms" is a true statement that reads as a broken one: the
+    // number is the wire's, the reader's question is whether the model took any
+    // noticeable time, and under a second the honest answer is no. It also
+    // moves run to run for reasons that are the harness's rather than the
+    // agent's. The exact figure stays in the row's disclosure.
+    const quick = say('llm', {
+      node_id: 'step-1',
+      duration_ms: 1,
+      details: { stage: 'after', model: 'google/gemini-3.5-flash-lite' },
+    })
+    expect(quick?.text).toBe('Declared Role thought briefly')
+  })
+
+  it('keeps the seconds once there are any', () => {
+    const slow = say('llm', {
+      node_id: 'step-1',
+      duration_ms: 4200,
+      details: { stage: 'after', model: 'google/gemini-3.5-flash-lite' },
+    })
+    expect(slow?.text).toBe('Declared Role thought for 4.2s')
+  })
+
+  it('says it finished when the wire reported no duration at all', () => {
+    const unknown = say('llm', {
+      node_id: 'step-1',
+      details: { stage: 'after', model: 'google/gemini-3.5-flash-lite' },
+    })
+    expect(unknown?.text).toBe('Declared Role finished thinking')
+  })
+})
+
+describe('an error line is words, not the backend exception', () => {
+  /** The regex T1.3 measures, and `e2e/cast.spec.ts` runs over every row. */
+  const RAW_CODE = /[A-Z][A-Z0-9]+(_[A-Z0-9]+)+/g
+
+  /**
+   * The exact string a verification run read off the failing node's row, taken
+   * from `RV3-REPORT.md`'s T1.3 entry rather than invented here:
+   *
+   *   Run failed: SYNTHETIC_FAILURE: fm_cast_refusal attempt 1…
+   *
+   * The token is the synthetic injector's own, so the specific word is a
+   * harness artefact - but the PATH is not, and the path is what the criterion
+   * is about: `interpret.ts` quoted the backend's exception text unfiltered.
+   */
+  const RAW = 'SYNTHETIC_FAILURE: fm_cast_refusal attempt 1 of 1 for node fm_cast_refusal'
+
+  it('drops the leading CODE: namespace off a run failure', () => {
+    const failed = say('run_state', {
+      event_type: 'WORKFLOW_END',
+      level: 'ERROR',
+      node_id: 'workflow',
+      message: 'ValidatorFlow failed',
+      details: { status: 'failed', error: RAW },
+    })
+    expect(failed?.tone).toBe('error')
+    expect(failed?.text).toBe('Run failed: fm_cast_refusal attempt 1 of 1 for node fm_cast_refusal')
+    expect(failed?.text.match(RAW_CODE)).toBeNull()
+  })
+
+  it('humanises a shouted token that is not the leading namespace', () => {
+    // A code in the middle is usually the subject of the sentence, so it is
+    // spelled the way the rest of the rail spells one rather than dropped.
+    const failed = say('node_state', {
+      node_id: 'step-1',
+      level: 'ERROR',
+      details: { stage: 'error', error: 'the provider answered RATE_LIMIT and gave up' },
+    })
+    expect(failed?.text).toBe(
+      'Declared Role could not finish: the provider answered Rate limit and gave up',
+    )
+    expect(failed?.text.match(RAW_CODE)).toBeNull()
+  })
+
+  it('keeps a message that is NOTHING but a code, humanised', () => {
+    // Dropping the leading namespace here would leave "Run failed:" - a
+    // sentence broken off mid-clause, which is worse than a clumsy one.
+    const failed = say('run_state', {
+      event_type: 'WORKFLOW_END',
+      level: 'ERROR',
+      node_id: 'workflow',
+      details: { status: 'failed', error: 'MODEL_REFUSED' },
+    })
+    expect(failed?.text).toBe('Run failed: Model refused')
+    expect(failed?.text.match(RAW_CODE)).toBeNull()
+  })
+
+  it('leaves short capitals alone, because they are words somebody wrote', () => {
+    // `OK`, `ID` and `AI` are not internal codes and humanising them would be
+    // the fix doing damage of its own.
+    const failed = say('node_state', {
+      node_id: 'step-1',
+      level: 'ERROR',
+      details: { stage: 'error', error: 'the AI gave no ID for the run' },
+    })
+    expect(failed?.text).toBe('Declared Role could not finish: the AI gave no ID for the run')
+  })
+
+  it('clips a long first sentence on a WORD boundary', () => {
+    // A cold reader met four rows ending `…attempt 1…`. A half word is worse
+    // than a shorter line: the reader cannot tell whether the text was
+    // truncated or the value was. The last space wins whenever there is one.
+    const long =
+      'the upstream provider refused the request because the configured account '
+      + 'has no remaining quota for this model today'
+    const failed = say('node_state', {
+      node_id: 'step-1',
+      level: 'ERROR',
+      details: { stage: 'error', error: long },
+    })
+    const quoted = failed!.text.replace('Declared Role could not finish: ', '')
+    expect(quoted.endsWith('…')).toBe(true)
+    const body = quoted.slice(0, -1)
+    // The last character before the ellipsis is the end of a word, and every
+    // word in the clip is a whole word from the original.
+    expect(body.endsWith(' ')).toBe(false)
+    expect(long.startsWith(body)).toBe(true)
+    expect(long[body.length] === ' ' || long.length === body.length).toBe(true)
+  })
+
+  it('still clips inside a token that is longer than the whole budget', () => {
+    // A URL, a stack frame, a base64 blob. There is no boundary to cut at and
+    // an empty row is worse than a cut one; the whole text is in the
+    // disclosure either way.
+    const blob = `x${'y'.repeat(200)}`
+    const failed = say('node_state', {
+      node_id: 'step-1',
+      level: 'ERROR',
+      details: { stage: 'error', error: blob },
+    })
+    expect(failed!.text.endsWith('…')).toBe(true)
+    expect(failed!.text.length).toBeLessThan(blob.length)
+  })
+
+  it('holds the whole raw text in the disclosure, unchanged', () => {
+    // Nothing is dropped, only moved: T2.1's rule is that the payload sits
+    // behind a per-row disclosure, and a reader who wants the exception gets
+    // every character of it there.
+    const failed = say('run_state', {
+      event_type: 'WORKFLOW_END',
+      level: 'ERROR',
+      node_id: 'workflow',
+      message: RAW,
+      details: { status: 'failed', error: RAW },
+    })
+    expect(failed?.raw.details).toContain('SYNTHETIC_FAILURE')
+    expect(failed?.raw.message).toBe(RAW)
+  })
+})
+
+/* ------------------------------------------------------------------ *
  *  The vocabulary, case by case                                       *
  * ------------------------------------------------------------------ */
 

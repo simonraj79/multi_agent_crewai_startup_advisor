@@ -279,6 +279,20 @@
   --shadow-rail-start: 18px 0 38px rgba(0, 0, 0, 0.34);
   --shadow-rail-end: -18px 0 38px rgba(0, 0, 0, 0.34);
   --shadow-sheet: 0 -18px 38px rgba(0, 0, 0, 0.34);
+
+  /* THE SCRIM behind an overlay rail (<= 640px only).
+
+     Not `--fade-strong`, which was the obvious candidate and is wrong for the
+     job: at `rgba(26,26,26,.96)` it does not DIM the console, it erases it, and
+     a reader who can no longer see what is underneath has lost the thing the
+     scrim exists to place them in. A scrim answers "which layer is live" by
+     leaving the other one legible and quiet.
+
+     .58 in dark is enough to take the canvas below the rail's own text without
+     taking it away. It is deliberately not a `--fade-*`: those three are the
+     canvas heading's gradient stops and this is a different job that only
+     happens to be a translucent black. */
+  --scrim: rgba(10, 10, 10, 0.58);
 }
 
 /* ===========================================================================
@@ -402,6 +416,9 @@
   --shadow-raised: 0 2px 6px rgba(15, 20, 25, 0.08), 0 14px 34px rgba(15, 20, 25, 0.12);
   --shadow-overlay: 0 8px 24px rgba(15, 20, 25, 0.16);
   --shadow-inset-well: inset 0 1px 0 rgba(15, 20, 25, 0.08);
+  /* Cooler and lighter on paper: ink at .34 reads as a dimmed page, where the
+     dark theme's .58 would read as a hole cut in one. */
+  --scrim: rgba(15, 20, 25, 0.34);
 }
 
 /* ---------------------------------------------------------------------------

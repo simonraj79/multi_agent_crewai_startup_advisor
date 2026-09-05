@@ -99,6 +99,22 @@
   display: none;
 }
 
+/* THE SMALL TIER IS NOT JUST THE BIG ONE SCALED DOWN. Below 48px the crown is
+   drawn 1.3x by the generator (see `SMALL_CREST_SCALE`) and the figure drops
+   two units to keep it in the box, because at 32px the crown is doing nearly
+   all of the identifying work and it was two or three actual pixels tall. The
+   two rules here are the other half of that: a crown whose stroke stays at 1.7
+   grows in reach without growing in weight, and a cross drawn for a 96px face
+   is a smudge at 32px. Both are pre-scale numbers - the crown's group carries
+   the 1.3x, so its stroke lands near 2.6. */
+.pip--sm .pip-crest-hinge .pip-stroke {
+  stroke-width: 2;
+}
+
+.pip--sm .pip-eyes-cross .pip-stroke {
+  stroke-width: 2;
+}
+
 /* POSE AND EXPRESSION. Both eye layers and all five mouths are in the markup;
    exactly one of each is ever shown, so the mark count on screen stays at four
    - body, eye, eye, mouth. */
@@ -115,7 +131,8 @@
   transform-origin: 50% 50%;
 }
 
-.pip-eyes-arc {
+.pip-eyes-arc,
+.pip-eyes-cross {
   display: none;
 }
 
@@ -175,13 +192,30 @@
    signal this system has. What it does instead is settle once, when the class
    arrives, which is a 480ms arrival rather than an ambient state.
 
-   `blocked` and `blocked-error` are ONE POSE in two colours. At 32px the
-   readable signal is the outline plus the wilt; asking a face that size to
-   separate "waiting for you" from "broken" by expression would fail at exactly
-   the size that matters. The outline colour is the distinction. */
-.pip--blocked .pip-eyes-open,
-.pip--blocked-error .pip-eyes-open {
+   `blocked` and `blocked-error` share the pose, the frown and the wilt, and
+   they are told apart by TWO signals, not one. A cold reader given only the
+   sheets reported that the amber and the red outline were the sole difference,
+   which means a colour-blind viewer sees one state where the product means
+   two - a real defect, and the general rule it breaks is that colour must
+   never be the only carrier of a distinction. So `blocked-error` also closes
+   its eyes into two crosses. It is the kawaii idiom for it, it is four
+   straight strokes so it survives the 32px raster where a subtler expression
+   would not, and it is the largest change the eyes can make short of closing
+   them entirely, which `done` already owns. */
+.pip--blocked .pip-eyes-open {
   transform: scaleY(1.14);
+}
+
+.pip--blocked-error .pip-eyes-open {
+  display: none;
+}
+
+.pip--blocked-error .pip-eyes-cross {
+  display: block;
+}
+
+.pip-eyes-cross .pip-stroke {
+  stroke-width: 1.9;
 }
 
 .pip--blocked .pip-crest-hinge,

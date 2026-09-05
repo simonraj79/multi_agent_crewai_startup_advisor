@@ -5,148 +5,149 @@
   "hashOf": "sha256(pipSvg(identityFor(role).key, { size: 32, state: 'idle' })), utf8",
   "fallbackNodeId": "n7_second_pass",
   "note": "A mismatch is not a broken test. It means a character changed, and every screenshot, reload and running node changed with it. Regenerate only on purpose, and say so in the commit.",
+  "reminted": "Re-minted 2026-09-05 after two changes a cold reader found: blocked-error gained x_x eyes so colour is not the only thing separating it from blocked, and the crown is drawn 1.3x below 48px with the figure dropped 2 units to fit it. Both change the markup at size 32, so every hash below moved. It was re-minted by running this script - a separate process, plain Node, no Vite and no jsdom - and NOT by copying what the spec produced, which would have made the cross-process claim circular.",
   "snapshots": {
-    "Scoper": "47b7e772933d4cbbddad42acf4abe94e766e9fd07dd3e21beb72b69a012f6bf0",
-    "Market Analyst": "33b875e30fd1d5a69c1edb135d64c80d8fa3c99435d6d3ef325ec2d39162514a",
-    "Sentiment Analyst": "6a6e720bea6536d89e19c0765f6c14dce2430f99e009f3fdd7d81fb3db25bfdb",
-    "Feasibility Analyst": "b4f3d0cf0a4ead35fa082b758e26d4a4c8bc158ed29232c2a43e481dd16773ac",
-    "Synthesist": "86fd8c8e13cd0c76a18ee9ba181a851d6036b830ed785cae187e665852c6d8cf",
-    "Reporter": "0c00ab4a5d0aceee96153699896d12df5c48f093c530f4c8a62a3a01c377f9e8",
-    "Researcher": "01019e10487b1a822dbaf72ff8e1a9b40f78db73f2afed59a95729e276896edb",
-    "Analyst": "ef888d27fb3892d645e0ebbf207bde6396b02f52a210e6c9ba32fecbea84855d",
-    "Writer": "c4eff4def802bcd2407847dbb57c095c6e7590727e79e42db94e199e19b80a4b",
-    "Tone Coach": "2d9ff9f2663b6b732aaa1d237ba4574ddc4943d2fc6ac9d3e0ca0c75976cb31b",
-    "Fact Checker": "a68eb4e16945be8f93e1862878d11ea860eb2ca712b5da9b46bae6c4c443e0b8",
-    "Localisation Lead": "6e7dc4870d294274d24c0c5b8bf4e0ca8ae79a9ff075e9418d41d9c0fddd1bcb",
-    "Pricing Strategist": "fe3c781e9b94c418a5174efc890f236d51b0c8387411617d7041e3be8ca07edd",
-    "  MARKET   ANALYST ": "33b875e30fd1d5a69c1edb135d64c80d8fa3c99435d6d3ef325ec2d39162514a",
-    "market-analyst": "33b875e30fd1d5a69c1edb135d64c80d8fa3c99435d6d3ef325ec2d39162514a",
-    "Sentiment Analysts": "0d9474521b5107737479ce92f824b96fdc3f6b34e3f38404cb0ac14d0cc0af99",
-    "Résumé Writer": "b1654c01c82eade18cbd0d2caf6bbfd48f68f8e5faaa0e92d9ff4f9b66ac682b",
-    "Resume Writer": "b1654c01c82eade18cbd0d2caf6bbfd48f68f8e5faaa0e92d9ff4f9b66ac682b",
-    "Senior Analyst": "8fcce59be4aae25ba083804494519ed66a680815290448009ea641c290ab7a72",
-    "": "b09e8a1a9f74fbef1f8d518f42c4c3976412920f937c2d7c0b77caa05fdbef51"
+    "Scoper": "580c1087bc34674e31d5e52b45f93c08d7639c53ea9a7b439fd285154cd58511",
+    "Market Analyst": "9c571992c820a286cd173d3a8b1093a84ca411b8000faeb379a62555f3d7da27",
+    "Sentiment Analyst": "0af5cc2ad8732c56cb4ff01f2c69f11a02fee2fe928bfff5dfe3c0c59a7baa92",
+    "Feasibility Analyst": "e645091b4be80c00edd57deabe8f639db1c5a0569bd2093e846d64287fc025b1",
+    "Synthesist": "302e58bee77c3b046a6885129b6f443ac183f82ceb5afd1269706668aa9e90b4",
+    "Reporter": "863a69b84072c73d1f5539e1871a7add09acdc55c866f17789c3a2503c347a6a",
+    "Researcher": "7024f7c3440b2d9f3db3d938ec322ecb7951855b3e3e9a2e73b077d8a8de280f",
+    "Analyst": "596ed1bda2a179421cde62fd65ebfdee47a61b171a09f3abdcea46039cbc526c",
+    "Writer": "98295e5e8d4146b766a7f8245d8120d53bc3fdd93b883b87d255f9deb42b1fc6",
+    "Tone Coach": "271c9aa1396c3d098a12941572867c3fa20891d9d7eacd2a843969fa50365527",
+    "Fact Checker": "91f32e1f6c6a9870f2941fade1aad1202455b80c926e6667ac8730f0fad85108",
+    "Localisation Lead": "8aaf48b5cbd6e132bcf8af5789ab1655e30c5ee52ed29df4c0637c5ae7633166",
+    "Pricing Strategist": "efb8b0189a0359d61526ac30517e1b4c379eb5131785d32d48988a20264ec57d",
+    "  MARKET   ANALYST ": "9c571992c820a286cd173d3a8b1093a84ca411b8000faeb379a62555f3d7da27",
+    "market-analyst": "9c571992c820a286cd173d3a8b1093a84ca411b8000faeb379a62555f3d7da27",
+    "Sentiment Analysts": "e977ae1e534d4b6e03b337463cb1b75f703a8a8358110f19ce3993b4ab1c6fab",
+    "Résumé Writer": "aa8bebdedf3a95e457c921d417baa93d86fba747af75515047c45f8749a48067",
+    "Resume Writer": "aa8bebdedf3a95e457c921d417baa93d86fba747af75515047c45f8749a48067",
+    "Senior Analyst": "611d91cd49633b5bb0634f64a4f5f15027991f0b51f320dd5454dc1b5b12b6df",
+    "": "9693ca736a4e83e17bf321dfde8ec84f7a79fb8348a412e2628661a05d5ae9f0"
   },
   "diagnostics": {
     "Scoper": {
       "seed": "scoper",
       "named": true,
       "parts": "bell/lens/cat-w/fin/c12",
-      "bytes": 1634
+      "bytes": 1882
     },
     "Market Analyst": {
       "seed": "market analyst",
       "named": true,
       "parts": "pebble/oval/cat-w/antenna/c8",
-      "bytes": 1433
+      "bytes": 1681
     },
     "Sentiment Analyst": {
       "seed": "sentiment analyst",
       "named": true,
       "parts": "pebble/lens/smile/antenna/c5",
-      "bytes": 1617
+      "bytes": 1865
     },
     "Feasibility Analyst": {
       "seed": "feasibility analyst",
       "named": true,
       "parts": "bean/lens/oh/curl/c5",
-      "bytes": 1622
+      "bytes": 1861
     },
     "Synthesist": {
       "seed": "synthesist",
       "named": true,
       "parts": "pebble/lens/oh/antenna/c12",
-      "bytes": 1602
+      "bytes": 1850
     },
     "Reporter": {
       "seed": "reporter",
       "named": true,
       "parts": "bell/lens/oh/sprout/c1",
-      "bytes": 1598
+      "bytes": 1846
     },
     "Researcher": {
       "seed": "researcher",
       "named": true,
       "parts": "drop/lens/smile/ears/c12",
-      "bytes": 1634
+      "bytes": 1881
     },
     "Analyst": {
       "seed": "analyst",
       "named": true,
       "parts": "drop/square/cat-w/ring/c2",
-      "bytes": 1447
+      "bytes": 1694
     },
     "Writer": {
       "seed": "writer",
       "named": true,
       "parts": "bell/oval/smile/sprout/c7",
-      "bytes": 1414
+      "bytes": 1662
     },
     "Tone Coach": {
       "seed": "tone coach",
       "named": true,
       "parts": "pebble/lens/smile/sprout/c8",
-      "bytes": 1574
+      "bytes": 1822
     },
     "Fact Checker": {
       "seed": "fact checker",
       "named": true,
       "parts": "drop/round/cat-w/antenna/c5",
-      "bytes": 1444
+      "bytes": 1691
     },
     "Localisation Lead": {
       "seed": "localisation lead",
       "named": true,
       "parts": "bell/square/smile/ring/c2",
-      "bytes": 1434
+      "bytes": 1682
     },
     "Pricing Strategist": {
       "seed": "pricing strategist",
       "named": true,
       "parts": "bell/lens/cat-w/antenna/c10",
-      "bytes": 1672
+      "bytes": 1920
     },
     "  MARKET   ANALYST ": {
       "seed": "market analyst",
       "named": true,
       "parts": "pebble/oval/cat-w/antenna/c8",
-      "bytes": 1433
+      "bytes": 1681
     },
     "market-analyst": {
       "seed": "market analyst",
       "named": true,
       "parts": "pebble/oval/cat-w/antenna/c8",
-      "bytes": 1433
+      "bytes": 1681
     },
     "Sentiment Analysts": {
       "seed": "sentiment analysts",
       "named": true,
       "parts": "bean/oval/smile/antenna/c2",
-      "bytes": 1469
+      "bytes": 1708
     },
     "Résumé Writer": {
       "seed": "resume writer",
       "named": true,
       "parts": "bell/lens/smile/sprout/c10",
-      "bytes": 1615
+      "bytes": 1863
     },
     "Resume Writer": {
       "seed": "resume writer",
       "named": true,
       "parts": "bell/lens/smile/sprout/c10",
-      "bytes": 1615
+      "bytes": 1863
     },
     "Senior Analyst": {
       "seed": "senior analyst",
       "named": true,
       "parts": "bell/oval/smile/fin/c4",
-      "bytes": 1419
+      "bytes": 1667
     },
     "": {
       "seed": "n7 second pass",
       "named": false,
       "parts": "drop/lens/smile/ring/c4",
-      "bytes": 1613
+      "bytes": 1860
     }
   }
 }

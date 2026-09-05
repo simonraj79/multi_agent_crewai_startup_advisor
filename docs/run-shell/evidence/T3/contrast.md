@@ -5,7 +5,7 @@ Every colour is read from `tokens.css` and `motion.css`; every translucent
 token is composited over the surface stack `studio.css` actually paints.
 `need` is 4.5 for text (WCAG 1.4.3 AA) and 3.0 for a UI boundary (1.4.11).
 
-**330 pairings, 1 below the level they must meet.**
+**232 pairings, 0 below the level they must meet.**
 
 The `owner` column says which file a failure lives in, so the right person
 looks. It is **not** an exemption: the exit code counts every row. A run
@@ -36,7 +36,6 @@ that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 | dark | a section kicker in a rail | `--text-meta` | rail | 5.54 | 4.5 | pass | W5 | StatusPanel.vue .control-label |
 | dark | a metric label on a well | `--text-meta` | well in rail | 5.64 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dt |
 | dark | the stream line in a rail | `--text-meta` | rail | 5.54 | 4.5 | pass | W5 | StatusPanel.vue .stream-line |
-| dark | the workflow version mark | `--on-accent-cyan` | well in rail | 13.59 | 4.5 | pass | W5 | StatusPanel.vue .read-only-well .version |
 | dark | a control boundary on a well | `--border-control` | well in rail | 3.11 | 3 | pass | W5 | StatusPanel.vue textarea |
 | dark | a control boundary on a rail | `--border-control` | rail | 3.12 | 3 | pass | W5 | studio.css .segmented |
 | dark | the metrics grid rule | `--border-control` | well in rail | 3.11 | 3 | pass | W5 | studio.css .metrics-grid |
@@ -75,109 +74,61 @@ that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 | dark | a report link | `--link-strong` | rail | 9.48 | 4.5 | pass | W5 | ReportPanel.vue .report-sources a |
 | dark | a report score on a well | `--text-primary` | well in rail | 16.45 | 4.5 | pass | W5 | ReportPanel.vue .score-value |
 | dark | a trace bubble in a rail | `--text-body` | rail | 13.23 | 4.5 | pass | W4 | ChatRail.vue .trace-bubble |
-| dark | a rail kicker | `--accent-cyan` | rail | 12.88 | 4.5 | pass | W4 | ChatRail.vue:383 / DialogueRail.vue:467 .section-kicker |
-| dark | a rail text button | `--link-cyan` | rail | 9.48 | 4.5 | pass | W4 | DialogueRail.vue:625 .text-button |
-| dark | a call chip in a bubble | `--text-muted` | well in rail | 8.79 | 4.5 | pass | W4 | ChatRail.vue .call-chip |
+| dark | a rail kicker | `--on-accent-cyan` | rail | 12.88 | 4.5 | pass | W4 | ChatRail.vue:421 / DialogueRail.vue:471 .section-kicker |
+| dark | a rail text button | `--link-strong` | rail | 9.48 | 4.5 | pass | W4 | DialogueRail.vue:632 .text-button |
 | dark | body text on a card | `--text-body` | bg-node (card) | 10.87 | 4.5 | pass | W4 | node-card.css |
 | dark | quiet card text, run console | `--text-meta` | bg-node (card) | 5.02 | 4.5 | pass | W5 | motion.css .node-eyebrow / .node-usage / .node-active-hint |
+| dark | the node state chip | `--text-muted` | bg-node (card) | 6.85 | 4.5 | pass | W5 | node-card.css .node-state (also .quarantine-count) |
 | dark | quiet card text, THE BUILDER | `--text-40` | bg-node (card) | 5.02 | 4.5 | pass | builder | node-card.css .node-eyebrow (design canvas) |
 | dark | the focus ring on the app ground | `--on-accent-cyan` | bg-app | 12.84 | 3 | pass | W5 | studio.css :focus-visible |
-| dark | character-1 as small text on bg-node (card) | `--character-1` | bg-node (card) | 10.59 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-1 as a UI mark on bg-node (card) | `--character-1` | bg-node (card) | 10.59 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-1 as small text on bg-app | `--character-1` | bg-app | 12.84 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-1 as a UI mark on bg-app | `--character-1` | bg-app | 12.84 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-1 as small text on rail | `--character-1` | rail | 12.88 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-1 as a UI mark on rail | `--character-1` | rail | 12.88 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-1 as small text on canvas ground | `--character-1` | canvas ground | 12.65 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-1 as a UI mark on canvas ground | `--character-1` | canvas ground | 12.65 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-2 as small text on bg-node (card) | `--character-2` | bg-node (card) | 12.23 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-2 as a UI mark on bg-node (card) | `--character-2` | bg-node (card) | 12.23 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-2 as small text on bg-app | `--character-2` | bg-app | 14.83 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-2 as a UI mark on bg-app | `--character-2` | bg-app | 14.83 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-2 as small text on rail | `--character-2` | rail | 14.88 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-2 as a UI mark on rail | `--character-2` | rail | 14.88 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-2 as small text on canvas ground | `--character-2` | canvas ground | 14.61 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-2 as a UI mark on canvas ground | `--character-2` | canvas ground | 14.61 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-3 as small text on bg-node (card) | `--character-3` | bg-node (card) | 8.09 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-3 as a UI mark on bg-node (card) | `--character-3` | bg-node (card) | 8.09 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-3 as small text on bg-app | `--character-3` | bg-app | 9.81 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-3 as a UI mark on bg-app | `--character-3` | bg-app | 9.81 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-3 as small text on rail | `--character-3` | rail | 9.84 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-3 as a UI mark on rail | `--character-3` | rail | 9.84 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-3 as small text on canvas ground | `--character-3` | canvas ground | 9.66 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-3 as a UI mark on canvas ground | `--character-3` | canvas ground | 9.66 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-4 as small text on bg-node (card) | `--character-4` | bg-node (card) | 6.98 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-4 as a UI mark on bg-node (card) | `--character-4` | bg-node (card) | 6.98 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-4 as small text on bg-app | `--character-4` | bg-app | 8.47 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-4 as a UI mark on bg-app | `--character-4` | bg-app | 8.47 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-4 as small text on rail | `--character-4` | rail | 8.50 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-4 as a UI mark on rail | `--character-4` | rail | 8.50 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-4 as small text on canvas ground | `--character-4` | canvas ground | 8.34 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-4 as a UI mark on canvas ground | `--character-4` | canvas ground | 8.34 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-5 as small text on bg-node (card) | `--character-5` | bg-node (card) | 10.57 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-5 as a UI mark on bg-node (card) | `--character-5` | bg-node (card) | 10.57 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-5 as small text on bg-app | `--character-5` | bg-app | 12.81 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-5 as a UI mark on bg-app | `--character-5` | bg-app | 12.81 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-5 as small text on rail | `--character-5` | rail | 12.86 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-5 as a UI mark on rail | `--character-5` | rail | 12.86 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-5 as small text on canvas ground | `--character-5` | canvas ground | 12.62 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-5 as a UI mark on canvas ground | `--character-5` | canvas ground | 12.62 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-6 as small text on bg-node (card) | `--character-6` | bg-node (card) | 8.52 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-6 as a UI mark on bg-node (card) | `--character-6` | bg-node (card) | 8.52 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-6 as small text on bg-app | `--character-6` | bg-app | 10.33 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-6 as a UI mark on bg-app | `--character-6` | bg-app | 10.33 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-6 as small text on rail | `--character-6` | rail | 10.37 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-6 as a UI mark on rail | `--character-6` | rail | 10.37 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-6 as small text on canvas ground | `--character-6` | canvas ground | 10.18 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-6 as a UI mark on canvas ground | `--character-6` | canvas ground | 10.18 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-7 as small text on bg-node (card) | `--character-7` | bg-node (card) | 9.56 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-7 as a UI mark on bg-node (card) | `--character-7` | bg-node (card) | 9.56 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-7 as small text on bg-app | `--character-7` | bg-app | 11.59 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-7 as a UI mark on bg-app | `--character-7` | bg-app | 11.59 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-7 as small text on rail | `--character-7` | rail | 11.63 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-7 as a UI mark on rail | `--character-7` | rail | 11.63 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-7 as small text on canvas ground | `--character-7` | canvas ground | 11.42 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-7 as a UI mark on canvas ground | `--character-7` | canvas ground | 11.42 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-8 as small text on bg-node (card) | `--character-8` | bg-node (card) | 9.50 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-8 as a UI mark on bg-node (card) | `--character-8` | bg-node (card) | 9.50 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-8 as small text on bg-app | `--character-8` | bg-app | 11.52 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-8 as a UI mark on bg-app | `--character-8` | bg-app | 11.52 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-8 as small text on rail | `--character-8` | rail | 11.56 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-8 as a UI mark on rail | `--character-8` | rail | 11.56 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-8 as small text on canvas ground | `--character-8` | canvas ground | 11.35 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-8 as a UI mark on canvas ground | `--character-8` | canvas ground | 11.35 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-9 as small text on bg-node (card) | `--character-9` | bg-node (card) | 8.24 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-9 as a UI mark on bg-node (card) | `--character-9` | bg-node (card) | 8.24 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-9 as small text on bg-app | `--character-9` | bg-app | 10.00 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-9 as a UI mark on bg-app | `--character-9` | bg-app | 10.00 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-9 as small text on rail | `--character-9` | rail | 10.03 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-9 as a UI mark on rail | `--character-9` | rail | 10.03 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-9 as small text on canvas ground | `--character-9` | canvas ground | 9.85 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-9 as a UI mark on canvas ground | `--character-9` | canvas ground | 9.85 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-10 as small text on bg-node (card) | `--character-10` | bg-node (card) | 9.65 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-10 as a UI mark on bg-node (card) | `--character-10` | bg-node (card) | 9.65 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-10 as small text on bg-app | `--character-10` | bg-app | 11.70 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-10 as a UI mark on bg-app | `--character-10` | bg-app | 11.70 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-10 as small text on rail | `--character-10` | rail | 11.74 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-10 as a UI mark on rail | `--character-10` | rail | 11.74 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-10 as small text on canvas ground | `--character-10` | canvas ground | 11.52 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-10 as a UI mark on canvas ground | `--character-10` | canvas ground | 11.52 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-11 as small text on bg-node (card) | `--character-11` | bg-node (card) | 9.06 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-11 as a UI mark on bg-node (card) | `--character-11` | bg-node (card) | 9.06 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-11 as small text on bg-app | `--character-11` | bg-app | 10.99 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-11 as a UI mark on bg-app | `--character-11` | bg-app | 10.99 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-11 as small text on rail | `--character-11` | rail | 11.03 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-11 as a UI mark on rail | `--character-11` | rail | 11.03 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-11 as small text on canvas ground | `--character-11` | canvas ground | 10.83 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-11 as a UI mark on canvas ground | `--character-11` | canvas ground | 10.83 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-12 as small text on bg-node (card) | `--character-12` | bg-node (card) | 10.83 | 4.5 | pass | W4 | motion.css .node-character |
-| dark | character-12 as a UI mark on bg-node (card) | `--character-12` | bg-node (card) | 10.83 | 3 | pass | W4 | motion.css .node-character |
-| dark | character-12 as small text on bg-app | `--character-12` | bg-app | 13.14 | 4.5 | pass | W4 | an avatar on the app ground |
-| dark | character-12 as a UI mark on bg-app | `--character-12` | bg-app | 13.14 | 3 | pass | W4 | an avatar on the app ground |
-| dark | character-12 as small text on rail | `--character-12` | rail | 13.18 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-12 as a UI mark on rail | `--character-12` | rail | 13.18 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| dark | character-12 as small text on canvas ground | `--character-12` | canvas ground | 12.94 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| dark | character-12 as a UI mark on canvas ground | `--character-12` | canvas ground | 12.94 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-1 as a figure on bg-node (card) | `--character-1` | bg-node (card) | 10.59 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-1 as a figure on bg-app | `--character-1` | bg-app | 12.84 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-1 as a figure on rail | `--character-1` | rail | 12.88 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-1 as a figure on canvas ground | `--character-1` | canvas ground | 12.65 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-2 as a figure on bg-node (card) | `--character-2` | bg-node (card) | 12.23 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-2 as a figure on bg-app | `--character-2` | bg-app | 14.83 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-2 as a figure on rail | `--character-2` | rail | 14.88 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-2 as a figure on canvas ground | `--character-2` | canvas ground | 14.61 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-3 as a figure on bg-node (card) | `--character-3` | bg-node (card) | 8.09 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-3 as a figure on bg-app | `--character-3` | bg-app | 9.81 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-3 as a figure on rail | `--character-3` | rail | 9.84 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-3 as a figure on canvas ground | `--character-3` | canvas ground | 9.66 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-4 as a figure on bg-node (card) | `--character-4` | bg-node (card) | 6.98 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-4 as a figure on bg-app | `--character-4` | bg-app | 8.47 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-4 as a figure on rail | `--character-4` | rail | 8.50 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-4 as a figure on canvas ground | `--character-4` | canvas ground | 8.34 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-5 as a figure on bg-node (card) | `--character-5` | bg-node (card) | 10.57 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-5 as a figure on bg-app | `--character-5` | bg-app | 12.81 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-5 as a figure on rail | `--character-5` | rail | 12.86 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-5 as a figure on canvas ground | `--character-5` | canvas ground | 12.62 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-6 as a figure on bg-node (card) | `--character-6` | bg-node (card) | 8.52 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-6 as a figure on bg-app | `--character-6` | bg-app | 10.33 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-6 as a figure on rail | `--character-6` | rail | 10.37 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-6 as a figure on canvas ground | `--character-6` | canvas ground | 10.18 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-7 as a figure on bg-node (card) | `--character-7` | bg-node (card) | 9.56 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-7 as a figure on bg-app | `--character-7` | bg-app | 11.59 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-7 as a figure on rail | `--character-7` | rail | 11.63 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-7 as a figure on canvas ground | `--character-7` | canvas ground | 11.42 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-8 as a figure on bg-node (card) | `--character-8` | bg-node (card) | 9.50 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-8 as a figure on bg-app | `--character-8` | bg-app | 11.52 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-8 as a figure on rail | `--character-8` | rail | 11.56 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-8 as a figure on canvas ground | `--character-8` | canvas ground | 11.35 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-9 as a figure on bg-node (card) | `--character-9` | bg-node (card) | 8.24 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-9 as a figure on bg-app | `--character-9` | bg-app | 10.00 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-9 as a figure on rail | `--character-9` | rail | 10.03 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-9 as a figure on canvas ground | `--character-9` | canvas ground | 9.85 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-10 as a figure on bg-node (card) | `--character-10` | bg-node (card) | 9.65 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-10 as a figure on bg-app | `--character-10` | bg-app | 11.70 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-10 as a figure on rail | `--character-10` | rail | 11.74 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-10 as a figure on canvas ground | `--character-10` | canvas ground | 11.52 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-11 as a figure on bg-node (card) | `--character-11` | bg-node (card) | 9.06 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-11 as a figure on bg-app | `--character-11` | bg-app | 10.99 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-11 as a figure on rail | `--character-11` | rail | 11.03 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-11 as a figure on canvas ground | `--character-11` | canvas ground | 10.83 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| dark | character-12 as a figure on bg-node (card) | `--character-12` | bg-node (card) | 10.83 | 3 | pass | W4 | motion.css .node-character |
+| dark | character-12 as a figure on bg-app | `--character-12` | bg-app | 13.14 | 3 | pass | W4 | an avatar on the app ground |
+| dark | character-12 as a figure on rail | `--character-12` | rail | 13.18 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| dark | character-12 as a figure on canvas ground | `--character-12` | canvas ground | 12.94 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
 | light | body text on the app ground | `--text-body` | bg-app | 12.85 | 4.5 | pass | W5 | studio.css body |
 | light | muted text on the header | `--text-muted` | app-header | 6.16 | 4.5 | pass | W5 | studio.css .workflow-name |
 | light | meta text on the header | `--text-meta` | app-header | 5.06 | 4.5 | pass | W5 | studio.css .live-status |
@@ -201,7 +152,6 @@ that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 | light | a section kicker in a rail | `--text-meta` | rail | 5.05 | 4.5 | pass | W5 | StatusPanel.vue .control-label |
 | light | a metric label on a well | `--text-meta` | well in rail | 4.85 | 4.5 | pass | W5 | StatusPanel.vue .metrics-grid dt |
 | light | the stream line in a rail | `--text-meta` | rail | 5.05 | 4.5 | pass | W5 | StatusPanel.vue .stream-line |
-| light | the workflow version mark | `--on-accent-cyan` | well in rail | 5.18 | 4.5 | pass | W5 | StatusPanel.vue .read-only-well .version |
 | light | a control boundary on a well | `--border-control` | well in rail | 3.26 | 3 | pass | W5 | StatusPanel.vue textarea |
 | light | a control boundary on a rail | `--border-control` | rail | 3.35 | 3 | pass | W5 | studio.css .segmented |
 | light | the metrics grid rule | `--border-control` | well in rail | 3.26 | 3 | pass | W5 | studio.css .metrics-grid |
@@ -240,115 +190,61 @@ that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 | light | a report link | `--link-strong` | rail | 6.30 | 4.5 | pass | W5 | ReportPanel.vue .report-sources a |
 | light | a report score on a well | `--text-primary` | well in rail | 14.88 | 4.5 | pass | W5 | ReportPanel.vue .score-value |
 | light | a trace bubble in a rail | `--text-body` | rail | 14.13 | 4.5 | pass | W4 | ChatRail.vue .trace-bubble |
-| light | a rail kicker | `--accent-cyan` | rail | 1.29 | 4.5 | **FAIL** | W4 | ChatRail.vue:383 / DialogueRail.vue:467 .section-kicker |
-| light | a rail text button | `--link-cyan` | rail | 4.98 | 4.5 | pass | W4 | DialogueRail.vue:625 .text-button |
-| light | a call chip in a bubble | `--text-muted` | well in rail | 5.42 | 4.5 | pass | W4 | ChatRail.vue .call-chip |
+| light | a rail kicker | `--on-accent-cyan` | rail | 5.85 | 4.5 | pass | W4 | ChatRail.vue:421 / DialogueRail.vue:471 .section-kicker |
+| light | a rail text button | `--link-strong` | rail | 6.30 | 4.5 | pass | W4 | DialogueRail.vue:632 .text-button |
 | light | body text on a card | `--text-body` | bg-node (card) | 14.83 | 4.5 | pass | W4 | node-card.css |
 | light | quiet card text, run console | `--text-meta` | bg-node (card) | 5.13 | 4.5 | pass | W5 | motion.css .node-eyebrow / .node-usage / .node-active-hint |
+| light | the node state chip | `--text-muted` | bg-node (card) | 6.42 | 4.5 | pass | W5 | node-card.css .node-state (also .quarantine-count) |
 | light | quiet card text, THE BUILDER | `--text-40` | bg-node (card) | 4.31 | 4.5 | **FAIL** | builder | node-card.css .node-eyebrow (design canvas) |
 | light | the focus ring on the app ground | `--on-accent-cyan` | bg-app | 5.32 | 3 | pass | W5 | studio.css :focus-visible |
-| light | character-1 as small text on bg-node (card) | `--character-1` | bg-node (card) | 5.53 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-1 as a UI mark on bg-node (card) | `--character-1` | bg-node (card) | 5.53 | 3 | pass | W4 | motion.css .node-character |
-| light | character-1 as small text on bg-app | `--character-1` | bg-app | 4.79 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-1 as a UI mark on bg-app | `--character-1` | bg-app | 4.79 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-1 as small text on rail | `--character-1` | rail | 5.27 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-1 as a UI mark on rail | `--character-1` | rail | 5.27 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-1 as small text on canvas ground | `--character-1` | canvas ground | 4.64 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-1 as a UI mark on canvas ground | `--character-1` | canvas ground | 4.64 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-2 as small text on bg-node (card) | `--character-2` | bg-node (card) | 6.25 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-2 as a UI mark on bg-node (card) | `--character-2` | bg-node (card) | 6.25 | 3 | pass | W4 | motion.css .node-character |
-| light | character-2 as small text on bg-app | `--character-2` | bg-app | 5.41 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-2 as a UI mark on bg-app | `--character-2` | bg-app | 5.41 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-2 as small text on rail | `--character-2` | rail | 5.96 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-2 as a UI mark on rail | `--character-2` | rail | 5.96 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-2 as small text on canvas ground | `--character-2` | canvas ground | 5.24 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-2 as a UI mark on canvas ground | `--character-2` | canvas ground | 5.24 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-3 as small text on bg-node (card) | `--character-3` | bg-node (card) | 6.32 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-3 as a UI mark on bg-node (card) | `--character-3` | bg-node (card) | 6.32 | 3 | pass | W4 | motion.css .node-character |
-| light | character-3 as small text on bg-app | `--character-3` | bg-app | 5.48 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-3 as a UI mark on bg-app | `--character-3` | bg-app | 5.48 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-3 as small text on rail | `--character-3` | rail | 6.02 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-3 as a UI mark on rail | `--character-3` | rail | 6.02 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-3 as small text on canvas ground | `--character-3` | canvas ground | 5.30 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-3 as a UI mark on canvas ground | `--character-3` | canvas ground | 5.30 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-4 as small text on bg-node (card) | `--character-4` | bg-node (card) | 6.58 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-4 as a UI mark on bg-node (card) | `--character-4` | bg-node (card) | 6.58 | 3 | pass | W4 | motion.css .node-character |
-| light | character-4 as small text on bg-app | `--character-4` | bg-app | 5.70 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-4 as a UI mark on bg-app | `--character-4` | bg-app | 5.70 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-4 as small text on rail | `--character-4` | rail | 6.27 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-4 as a UI mark on rail | `--character-4` | rail | 6.27 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-4 as small text on canvas ground | `--character-4` | canvas ground | 5.51 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-4 as a UI mark on canvas ground | `--character-4` | canvas ground | 5.51 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-5 as small text on bg-node (card) | `--character-5` | bg-node (card) | 5.93 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-5 as a UI mark on bg-node (card) | `--character-5` | bg-node (card) | 5.93 | 3 | pass | W4 | motion.css .node-character |
-| light | character-5 as small text on bg-app | `--character-5` | bg-app | 5.14 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-5 as a UI mark on bg-app | `--character-5` | bg-app | 5.14 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-5 as small text on rail | `--character-5` | rail | 5.65 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-5 as a UI mark on rail | `--character-5` | rail | 5.65 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-5 as small text on canvas ground | `--character-5` | canvas ground | 4.97 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-5 as a UI mark on canvas ground | `--character-5` | canvas ground | 4.97 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-6 as small text on bg-node (card) | `--character-6` | bg-node (card) | 6.29 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-6 as a UI mark on bg-node (card) | `--character-6` | bg-node (card) | 6.29 | 3 | pass | W4 | motion.css .node-character |
-| light | character-6 as small text on bg-app | `--character-6` | bg-app | 5.45 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-6 as a UI mark on bg-app | `--character-6` | bg-app | 5.45 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-6 as small text on rail | `--character-6` | rail | 5.99 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-6 as a UI mark on rail | `--character-6` | rail | 5.99 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-6 as small text on canvas ground | `--character-6` | canvas ground | 5.27 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-6 as a UI mark on canvas ground | `--character-6` | canvas ground | 5.27 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-7 as small text on bg-node (card) | `--character-7` | bg-node (card) | 5.61 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-7 as a UI mark on bg-node (card) | `--character-7` | bg-node (card) | 5.61 | 3 | pass | W4 | motion.css .node-character |
-| light | character-7 as small text on bg-app | `--character-7` | bg-app | 4.86 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-7 as a UI mark on bg-app | `--character-7` | bg-app | 4.86 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-7 as small text on rail | `--character-7` | rail | 5.35 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-7 as a UI mark on rail | `--character-7` | rail | 5.35 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-7 as small text on canvas ground | `--character-7` | canvas ground | 4.70 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-7 as a UI mark on canvas ground | `--character-7` | canvas ground | 4.70 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-8 as small text on bg-node (card) | `--character-8` | bg-node (card) | 6.34 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-8 as a UI mark on bg-node (card) | `--character-8` | bg-node (card) | 6.34 | 3 | pass | W4 | motion.css .node-character |
-| light | character-8 as small text on bg-app | `--character-8` | bg-app | 5.50 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-8 as a UI mark on bg-app | `--character-8` | bg-app | 5.50 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-8 as small text on rail | `--character-8` | rail | 6.04 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-8 as a UI mark on rail | `--character-8` | rail | 6.04 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-8 as small text on canvas ground | `--character-8` | canvas ground | 5.32 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-8 as a UI mark on canvas ground | `--character-8` | canvas ground | 5.32 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-9 as small text on bg-node (card) | `--character-9` | bg-node (card) | 6.73 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-9 as a UI mark on bg-node (card) | `--character-9` | bg-node (card) | 6.73 | 3 | pass | W4 | motion.css .node-character |
-| light | character-9 as small text on bg-app | `--character-9` | bg-app | 5.83 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-9 as a UI mark on bg-app | `--character-9` | bg-app | 5.83 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-9 as small text on rail | `--character-9` | rail | 6.42 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-9 as a UI mark on rail | `--character-9` | rail | 6.42 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-9 as small text on canvas ground | `--character-9` | canvas ground | 5.65 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-9 as a UI mark on canvas ground | `--character-9` | canvas ground | 5.65 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-10 as small text on bg-node (card) | `--character-10` | bg-node (card) | 6.12 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-10 as a UI mark on bg-node (card) | `--character-10` | bg-node (card) | 6.12 | 3 | pass | W4 | motion.css .node-character |
-| light | character-10 as small text on bg-app | `--character-10` | bg-app | 5.30 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-10 as a UI mark on bg-app | `--character-10` | bg-app | 5.30 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-10 as small text on rail | `--character-10` | rail | 5.83 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-10 as a UI mark on rail | `--character-10` | rail | 5.83 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-10 as small text on canvas ground | `--character-10` | canvas ground | 5.13 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-10 as a UI mark on canvas ground | `--character-10` | canvas ground | 5.13 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-11 as small text on bg-node (card) | `--character-11` | bg-node (card) | 6.07 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-11 as a UI mark on bg-node (card) | `--character-11` | bg-node (card) | 6.07 | 3 | pass | W4 | motion.css .node-character |
-| light | character-11 as small text on bg-app | `--character-11` | bg-app | 5.26 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-11 as a UI mark on bg-app | `--character-11` | bg-app | 5.26 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-11 as small text on rail | `--character-11` | rail | 5.79 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-11 as a UI mark on rail | `--character-11` | rail | 5.79 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-11 as small text on canvas ground | `--character-11` | canvas ground | 5.09 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-11 as a UI mark on canvas ground | `--character-11` | canvas ground | 5.09 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-12 as small text on bg-node (card) | `--character-12` | bg-node (card) | 5.77 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-12 as a UI mark on bg-node (card) | `--character-12` | bg-node (card) | 5.77 | 3 | pass | W4 | motion.css .node-character |
-| light | character-12 as small text on bg-app | `--character-12` | bg-app | 5.00 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-12 as a UI mark on bg-app | `--character-12` | bg-app | 5.00 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-12 as small text on rail | `--character-12` | rail | 5.49 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-12 as a UI mark on rail | `--character-12` | rail | 5.49 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-12 as small text on canvas ground | `--character-12` | canvas ground | 4.84 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-12 as a UI mark on canvas ground | `--character-12` | canvas ground | 4.84 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-
-## What is still failing, and where it lives
-
-| owner | theme | pair | ratio | need | site | the fix |
-| :---: | --- | --- | ---: | ---: | --- | --- |
-| **W4** | light | a rail kicker | 1.29 | 4.5 | ChatRail.vue:383 / DialogueRail.vue:467 .section-kicker | var(--on-accent-cyan) |
+| light | character-1 as a figure on bg-node (card) | `--character-1` | bg-node (card) | 5.53 | 3 | pass | W4 | motion.css .node-character |
+| light | character-1 as a figure on bg-app | `--character-1` | bg-app | 4.79 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-1 as a figure on rail | `--character-1` | rail | 5.27 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-1 as a figure on canvas ground | `--character-1` | canvas ground | 4.64 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-2 as a figure on bg-node (card) | `--character-2` | bg-node (card) | 6.25 | 3 | pass | W4 | motion.css .node-character |
+| light | character-2 as a figure on bg-app | `--character-2` | bg-app | 5.41 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-2 as a figure on rail | `--character-2` | rail | 5.96 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-2 as a figure on canvas ground | `--character-2` | canvas ground | 5.24 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-3 as a figure on bg-node (card) | `--character-3` | bg-node (card) | 6.32 | 3 | pass | W4 | motion.css .node-character |
+| light | character-3 as a figure on bg-app | `--character-3` | bg-app | 5.48 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-3 as a figure on rail | `--character-3` | rail | 6.02 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-3 as a figure on canvas ground | `--character-3` | canvas ground | 5.30 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-4 as a figure on bg-node (card) | `--character-4` | bg-node (card) | 6.58 | 3 | pass | W4 | motion.css .node-character |
+| light | character-4 as a figure on bg-app | `--character-4` | bg-app | 5.70 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-4 as a figure on rail | `--character-4` | rail | 6.27 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-4 as a figure on canvas ground | `--character-4` | canvas ground | 5.51 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-5 as a figure on bg-node (card) | `--character-5` | bg-node (card) | 5.93 | 3 | pass | W4 | motion.css .node-character |
+| light | character-5 as a figure on bg-app | `--character-5` | bg-app | 5.14 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-5 as a figure on rail | `--character-5` | rail | 5.65 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-5 as a figure on canvas ground | `--character-5` | canvas ground | 4.97 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-6 as a figure on bg-node (card) | `--character-6` | bg-node (card) | 6.29 | 3 | pass | W4 | motion.css .node-character |
+| light | character-6 as a figure on bg-app | `--character-6` | bg-app | 5.45 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-6 as a figure on rail | `--character-6` | rail | 5.99 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-6 as a figure on canvas ground | `--character-6` | canvas ground | 5.27 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-7 as a figure on bg-node (card) | `--character-7` | bg-node (card) | 5.61 | 3 | pass | W4 | motion.css .node-character |
+| light | character-7 as a figure on bg-app | `--character-7` | bg-app | 4.86 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-7 as a figure on rail | `--character-7` | rail | 5.35 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-7 as a figure on canvas ground | `--character-7` | canvas ground | 4.70 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-8 as a figure on bg-node (card) | `--character-8` | bg-node (card) | 6.34 | 3 | pass | W4 | motion.css .node-character |
+| light | character-8 as a figure on bg-app | `--character-8` | bg-app | 5.50 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-8 as a figure on rail | `--character-8` | rail | 6.04 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-8 as a figure on canvas ground | `--character-8` | canvas ground | 5.32 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-9 as a figure on bg-node (card) | `--character-9` | bg-node (card) | 6.73 | 3 | pass | W4 | motion.css .node-character |
+| light | character-9 as a figure on bg-app | `--character-9` | bg-app | 5.83 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-9 as a figure on rail | `--character-9` | rail | 6.42 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-9 as a figure on canvas ground | `--character-9` | canvas ground | 5.65 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-10 as a figure on bg-node (card) | `--character-10` | bg-node (card) | 6.12 | 3 | pass | W4 | motion.css .node-character |
+| light | character-10 as a figure on bg-app | `--character-10` | bg-app | 5.30 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-10 as a figure on rail | `--character-10` | rail | 5.83 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-10 as a figure on canvas ground | `--character-10` | canvas ground | 5.13 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-11 as a figure on bg-node (card) | `--character-11` | bg-node (card) | 6.07 | 3 | pass | W4 | motion.css .node-character |
+| light | character-11 as a figure on bg-app | `--character-11` | bg-app | 5.26 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-11 as a figure on rail | `--character-11` | rail | 5.79 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-11 as a figure on canvas ground | `--character-11` | canvas ground | 5.09 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-12 as a figure on bg-node (card) | `--character-12` | bg-node (card) | 5.77 | 3 | pass | W4 | motion.css .node-character |
+| light | character-12 as a figure on bg-app | `--character-12` | bg-app | 5.00 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-12 as a figure on rail | `--character-12` | rail | 5.49 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-12 as a figure on canvas ground | `--character-12` | canvas ground | 4.84 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
 
 ## Measured, and out of this audit’s scope
 
@@ -363,4 +259,4 @@ original so nobody rediscovers it; they are not counted by the exit code.
 | dark | quiet card text, THE BUILDER | 5.02 | 4.5 | pass | node-card.css .node-eyebrow (design canvas) | var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6 |
 | light | quiet card text, THE BUILDER | 4.31 | 4.5 | below AA | node-card.css .node-eyebrow (design canvas) | var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6 |
 
-1 pairings still fail: 1 in W4's files.
+Every pairing the run shell paints meets AA in both themes.

@@ -470,11 +470,15 @@ cost is a baseline regeneration. Together they are the "Option B" commit.
 > fix. And `contrast-audit.mjs` no longer counts W5's rows only: RV's third pass
 > was right that a script exiting 0 over seventeen failing pairings is a gate
 > measuring the wrong thing. `owner` is a label on a failure now, never an
-> exemption from one. **330 pairings, 328 in scope, 1 failing** — and that one is W4's.
+> exemption from one. **232 pairings, 230 in scope, 0 failing — the script exits 0.**
+> The count fell from 330 because four rows were asserting colours the shell had
+> stopped painting, and because the twelve character colours are measured once
+> each rather than twice: they carry a FIGURE now, not two initials, so 1.4.11's
+> 3.0 is the level and 1.4.3's 4.5 never applied to them.
 >
 > | Still open | Why |
 > | --- | --- |
-> | `ChatRail.vue:383` and `DialogueRail.vue:467` `.section-kicker` (1.29) | W4 owns both files this round; the token is `--on-accent-cyan`. The two `.text-button` rows are gone: `ChatRail` no longer has one, and the single remaining `--link-cyan` site sits on a rail rather than on a well, where it passes |
+> | ~~`ChatRail.vue` / `DialogueRail.vue` `.section-kicker` (1.29)~~ | **CLOSED by W4**: both now declare `--on-accent-cyan` — 12.88 dark, 5.85 light. The audit row was still asserting the old token, which is the second time a row outlived the source it describes |
 > | ~~`node-card.css` `.node-meta` (4.31)~~ | **CLOSED for the run console**: `motion.css` overrides the card's five quiet-text sites to `--text-meta` behind the run-console guard, 4.31 → **5.13**, with no pixel moved in dark and none in the builder. The builder's own card keeps 4.31 and is §6.6 |
 
 
@@ -494,7 +498,7 @@ These are the contrast failures the run shell renders in files W5 must not open.
 | `ReportPanel.vue` `.verdict-badge.is-warn` / `.is-fail` | `--ink-on-brand` on a fill that flips dark in light: **2.84 / 2.24** | **CLOSED 2026-09-05**: `--ink-on-warn` / `--ink-on-err`, 5.60 / 7.05. The token pair is W5's, because `tokens.css` is the only place that knows a theme exists; the two-line adoption was made in W1's file with the orchestrator's leave while W1 was idle | W1 → **W5** |
 | `GateCard.vue` `.gate-card` | `linear-gradient(145deg, rgba(255,204,0,.09), rgba(255,255,255,.025))` — the white stop is invisible on paper; its border is 1.69:1 | `--warn-bg` / `--warn-border-strong` | **W1** |
 | `ChatRail.vue` `.call-chip` | `rgba(0,0,0,.2)` — a dark chip on a light bubble; `--text-muted` on it drops to **3.40:1** | `var(--surface-well)`, or `.chip` | **W3** |
-| `ChatRail.vue` `.section-kicker`, `.text-button` | `--accent-cyan` 1.29:1, `--link-cyan` 4.41:1 light | `--on-accent-cyan`, `--link-strong` | **W3** |
+| ~~`ChatRail.vue` `.section-kicker`, `.text-button`~~ | ~~`--accent-cyan` 1.29:1, `--link-cyan` 4.41:1 light~~ | **CLOSED by W4 2026-09-05**; `.call-chip` no longer exists at all | ~~W3~~ |
 | `DialogueRail.vue` `.text-button`, avatar | `--link-cyan`, `--character-*` | `--link-strong`; see the character row | **W3/W2** |
 | Seven `rgba(153,234,249,…)` / `rgba(170,255,205,…)` literals in `ChatRail`, `DialogueRail`, `ReportPanel` | literals | `color-mix(in srgb, var(--accent-*) N%, transparent)`, the form `FieldRow.vue` already uses | **W1/W3** |
 | The 9px type sites (`CrewProgress` ×2) and the remaining 10px ones | below the six-step scale | `--type-meta` | **W4** |

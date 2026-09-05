@@ -16,10 +16,10 @@ const emit = defineEmits<{
 
 /**
  * Mirrors `GATE_NOTE_FIELD` in `src/brief_crew/service/registry.py`. It is the
- * free-text lever both gates carry, and the only field the verdict gate has:
- * on a Revise reply the server lifts it to the payload's top level, where
- * `route_scope` / `route_verdict` read it and hand it to the crew that reruns
- * the step. Prose, not a value - so it gets a box, not a line.
+ * free-text lever a gate carries whatever flow declared it: on a send-back
+ * reply the server lifts it to the payload's top level, where the paired
+ * router reads it and hands it to whatever reruns the step. Prose, not a
+ * value - so it gets a box, not a line.
  */
 const NOTE_FIELD = 'feedback'
 
@@ -39,17 +39,20 @@ watch(
 const confidence = computed(() => props.gate.confidence == null ? '' : `${Math.round(props.gate.confidence * 100)}% confidence`)
 
 /**
- * Values the operator reads but cannot change. The verdict gate's whole payload
- * lands here: `Verdict` recomputes the composite score, confidence, band,
- * floors, provisional flag and label and discards whatever it was sent, and the
- * scored inputs to that arithmetic are bound to the rubric and to tool-returned
- * URLs by guardrails that never see a gate reply. Offering any of it as an
- * input would invite an edit that cannot land - the operator sets VALIDATE,
- * submits, and watches REJECT come back.
+ * Values the operator reads but cannot change.
  *
- * They are shown in full because they are the reason to approve or revise; the
- * lever for disagreeing with them is Revise plus a note, which sends the
- * Synthesist back to rescore against the same evidence.
+ * The server splits a gate's payload in two and this is the half an edit does
+ * not reach: anything the flow recomputes from its own work on every pass, and
+ * anything bound to what a tool actually returned. Offering one of those as an
+ * input invites an edit that cannot land - the operator types a value, submits,
+ * and watches the server's own answer come back instead.
+ *
+ * They are shown in full because they are the reason to approve or send back;
+ * the lever for disagreeing with them is a send-back reply plus a note, which
+ * returns the step to whatever produced it. The measured case that shaped all
+ * of this was the idea validator's scoring gate, whose entire payload is
+ * recomputed and discarded on every pass - but the rule is about gates, not
+ * about that flow.
  */
 const derived = computed(() => props.gate.derived ?? [])
 
@@ -58,24 +61,25 @@ function label(key: string): string {
   return humaniseCode(key) || key
 }
 
-/** The gate's own headline verdict, in words rather than as `NEEDS_WORK`. */
+/** The gate's own headline outcome, if it carries one, in words. */
 const verdictWord = computed(() => verdictLabel(props.gate.verdict))
 
 /**
  * One row of the read-only payload, decoded far enough to be read.
  *
- * The verdict gate used to dump this whole payload into a `<pre>`: an operator
- * was asked to approve or revise a decision presented to them as
- * `FATAL FLOORS / []`, `DECISION REASON / null` and `NEEDS_WORK`. Every one of
- * those has an English answer, and none of them needed a new concept to
- * produce it - `describeValue` in `data/verdictDisplay.ts` is the same table
- * the report panel reads.
+ * This used to be dumped into a `<pre>` whole: an operator was asked to
+ * approve or send back a decision presented to them as `FATAL FLOORS / []`,
+ * `DECISION REASON / null` and `NEEDS_WORK`. Every one of those has an English
+ * answer, and none of them needed a new concept to produce it - `describeValue`
+ * in `data/verdictDisplay.ts` humanises whatever it is handed and falls through
+ * to the general humaniser for a code it has never seen, so a gate from a flow
+ * written next week decodes without an edit here.
  *
- * The decoding stops at one level, deliberately. A `Verdict` dimension is
- * `{score, anchor_matched, evidence_urls, evidence_thin}` and that flattens
- * into four readable pairs; anything nested deeper than that is a structure,
- * not a sentence, and structures go behind a collapsed `<details>` where a
- * developer can still read them and an operator is not made to.
+ * The decoding stops at one level, deliberately. The worked example was a
+ * scoring gate's `{score, anchor_matched, evidence_urls, evidence_thin}`, which
+ * flattens into four readable pairs; anything nested deeper than that is a
+ * structure, not a sentence, and structures go behind a collapsed `<details>`
+ * where a developer can still read them and an operator is not made to.
  */
 interface DerivedPair {
   label: string
@@ -256,16 +260,15 @@ function submit(outcome: string): void {
     </p>
 
     <!-- Read-only, and never rendered as an input. Placed above the form so the
-         operator reads what the validator computed before deciding, and so no
-         control here can be mistaken for something their edit would reach. -->
+         operator reads what the run computed before deciding, and so no control
+         here can be mistaken for something their edit would reach. -->
     <section v-if="derived.length" class="gate-derived" aria-labelledby="gate-derived-title">
       <h3 id="gate-derived-title">
         <Lock :size="12" aria-hidden="true" />
-        <span>Computed by the validator</span>
+        <span>Computed by the run</span>
       </h3>
       <p class="gate-derived-note">
-        Recomputed by the server from the scores and the evidence behind them, so an edit here
-        could not change them. To change the outcome, choose Revise and say what to reconsider.
+        Recomputed by the server from what produced it; edit the inputs above and it is recomputed.
       </p>
       <dl>
         <template v-for="row in derivedRows" :key="row.key">
@@ -301,7 +304,7 @@ function submit(outcome: string): void {
           v-model="fields[key]"
           rows="3"
           :readonly="!gate.editable"
-          placeholder="What should be reconsidered? Sent with a Revise reply."
+          placeholder="What should be reconsidered? Sent with your reply."
         />
         <input v-else v-model="fields[key]" :readonly="!gate.editable" autocomplete="off" />
       </label>

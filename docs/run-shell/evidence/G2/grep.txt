@@ -1,15 +1,14 @@
 $ grep -rniE "Scoper|Market Analyst|Sentiment|Feasibility|Synthesist|Reporter|market_task|scope_idea|research_market|MarketCrew|demand|headroom" frontend/src/characters frontend/src/trace frontend/src/components/AgentCharacter.vue frontend/src/composables/useRunChoreography.ts
-# run by RV3 from the repo root, branch run-shell/cast at 27b256e, 2026-09-05T14:53:48+08:00
+# RV3 SECOND PASS, from the repo root, branch run-shell/cast at 16f3be5, 2026-09-05T15:56:30+08:00
 
 frontend/src/composables/useRunChoreography.ts:137: * Deliberately generous rather than clever: `Scoper` passes on the capital and
 
-# exit status of the grep above: 0
-
 ---------------------------------------------------------------------------
-RV3's judgement of every hit
+RV3's judgement of every hit  (second pass, 16f3be5)
 ---------------------------------------------------------------------------
 
-1 hit, 0 product hits.
+1 hit, 0 product hits. Unchanged from the first pass at 27b256e, and re-judged
+rather than carried forward.
 
   frontend/src/composables/useRunChoreography.ts:137
 
@@ -19,9 +18,9 @@ RV3's judgement of every hit
       kebab token."
 
   DISPOSITION: comment, naming an EXAMPLE. It is the last line of the JSDoc
-  above `readsAsRole()` (lines 126-144), which decides whether a descriptor's
-  `agent_role` reads as a role a human wrote or as a node id. The function
-  body is three lines and contains no role list at all:
+  above `readsAsRole()`, which decides whether a descriptor's `agent_role`
+  reads as a role a human wrote or as a node id. The function body is three
+  lines and contains no role list at all:
 
       export function readsAsRole(value: string | undefined): boolean {
         const trimmed = (value ?? '').trim()
@@ -37,11 +36,15 @@ VERDICT: G2 PASS. No Idea Validator role, task name, crew name, node id or
 dimension name reaches the logic of `frontend/src/characters/*`,
 `frontend/src/trace/*`, `AgentCharacter.vue` or `useRunChoreography.ts`.
 
-Files covered by the grep (all of them, none excluded):
-  frontend/src/characters/pip.ts                     (526 lines)
-  frontend/src/trace/interpret.ts                    (783 lines)
-  frontend/src/trace/speech.ts                       (106 lines)
-  frontend/src/components/AgentCharacter.vue          (92 lines)
-  frontend/src/composables/useRunChoreography.ts     (958 lines)
+Files covered by the grep (all of them, none excluded) at 16f3be5:
+  frontend/src/characters/pip.ts                     ( 526 lines)
+  frontend/src/trace/interpret.ts                    ( 783 lines)
+  frontend/src/trace/speech.ts                       ( 106 lines)
+  frontend/src/components/AgentCharacter.vue         ( 197 lines, was 92)
+  frontend/src/composables/useRunChoreography.ts     (1024 lines, was 958)
+
+Round two grew two of the five files by 271 lines between them and the grep
+still answers the same thing, which is the half of this criterion that only a
+re-run can establish.
 
 No test fixture was excluded, because the grep's paths contain no fixtures.

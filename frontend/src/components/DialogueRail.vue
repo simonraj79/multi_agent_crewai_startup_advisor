@@ -5,6 +5,7 @@ import type { PipState } from '../characters/pip'
 import { ChevronDown, ChevronUp, MessagesSquare, Scissors } from 'lucide-vue-next'
 import { collapsedPreview, type DialogueEntry } from '../composables/useRunChoreography'
 import { readSpeech, renderSpeech, type Speech } from '../trace/speech'
+import { humaniseTask } from '../utils/humanise'
 import { MAX_UTTERANCE_CHARS } from '../data/serverLimits'
 
 /**
@@ -202,6 +203,8 @@ interface SpokenRow {
   html: string
   seed: string
   pose: PipState
+  /** The task in words - `market_task` -> "Market". '' when none was named. */
+  task: string
 }
 
 const rowCache = new Map<string, SpokenRow>()
@@ -226,6 +229,10 @@ const shown = computed<SpokenRow[]>(() =>
     ) {
       return cached
     }
+    // `task` is derived from `entry` and needs no key of its own: the entry
+    // object is replaced whenever anything about it changes, and identity
+    // above already covers that.
+
     // Reveal is a float so the reveal can advance by fractions of a character
     // between frames; the slice is where it becomes text.
     const visible = speech.text.slice(0, Math.floor(entry.revealed))
@@ -242,6 +249,10 @@ const shown = computed<SpokenRow[]>(() =>
       html: renderSpeech(visible),
       seed,
       pose,
+      // `market_task` -> "Market", `scoping_task` -> "Scoping". The identifier
+      // is CrewAI's, and the rail was showing it raw and then cutting it in
+      // half at 330px - `scoping_ta…`, which is neither the name nor a word.
+      task: humaniseTask(entry.task),
     }
     rowCache.set(entry.callId, row)
     return row
@@ -351,11 +362,27 @@ function clock(at: number): string {
         </span>
 
         <div class="dialogue-body">
+          <!--
+            TWO LINES, and the name owns the first one.
+
+            It was one flex row - name, task chip, time - with the name
+            ellipsised at whatever was left. Every real role this product has
+            is three or four words ("Startup validation scoper", "Market
+            evidence analyst"), so at a 330px rail the name was the thing being
+            cut, which is exactly backwards: the name is who is speaking and
+            the task is a detail about what they are speaking about. A name is
+            also the one string here that must never be truncated - two agents
+            can share a prefix, and "Startup validation…" names both.
+
+            So the name takes the full width and may wrap to two lines, the
+            time stays pinned right on the same baseline, and the task drops to
+            a muted second line where it has room to be a whole word.
+          -->
           <header class="dialogue-meta">
             <strong>{{ row.entry.role }}</strong>
-            <span v-if="row.entry.task" class="dialogue-task">{{ row.entry.task }}</span>
             <time class="dialogue-time">{{ clock(row.entry.at) }}</time>
           </header>
+          <p v-if="row.task" class="dialogue-task panel-meta">{{ row.task }}</p>
 
           <!--
             NOT speech. A guardrail LLM answering `{"valid":true,...}` is a
@@ -447,6 +474,8 @@ function clock(at: number): string {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
+  /* The band the scroll box's cut edge stops inside. See `.dialogue-list`. */
+  padding-bottom: var(--space-2);
   background: var(--surface-well);
   border-bottom: 1px solid var(--border-default);
 }
@@ -499,6 +528,21 @@ function clock(at: number): string {
   min-height: 0;
   flex: 0 1 auto;
   overflow: auto;
+  /*
+   * THE BOTTOM PADDING IS THE SEAM, and a cold reader found it: the last thing
+   * in a dialogue entry is its `▸ Details` summary, and at the cap this box cut
+   * it in half against the border - so the half-line read as the trace list
+   * below overlapping the dialogue above. Nothing overlaps; a scroll container
+   * was ending flush, one pixel from another region's first row, which is what
+   * a rendering fault looks like.
+   *
+   * 12px was not enough because it is INSIDE the scroll box: it spaces the
+   * content when the reader is at the end and does nothing at any other scroll
+   * position, which is where a half-row is cut. The band below is outside the
+   * scroller (`.dialogue-rail`'s own padding), so the cut edge is always inset
+   * from the boundary and a partial row reads as "there is more here" rather
+   * than as two regions colliding.
+   */
   padding: 4px 14px 12px;
   scrollbar-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent) transparent;
 }
@@ -532,9 +576,29 @@ function clock(at: number): string {
 
 .dialogue-body { min-width: 0; }
 .dialogue-meta { display: flex; align-items: baseline; gap: 8px; }
-.dialogue-meta strong { overflow: hidden; color: var(--text-title); font: 600 var(--fs-12)/1.3 var(--font-body); white-space: nowrap; text-overflow: ellipsis; }
-.dialogue-task { flex: 0 1 auto; overflow: hidden; color: var(--text-40); font: 500 10px/1.3 var(--font-mono); white-space: nowrap; text-overflow: ellipsis; }
-.dialogue-time { flex: 0 0 auto; margin-left: auto; color: var(--text-40); font: 400 10px/1.3 var(--font-mono); }
+/* `min-width: 0` so the name may shrink inside the flex row, and NO
+   `text-overflow`: it wraps instead. `overflow-wrap: anywhere` is the guard
+   against the one string that cannot wrap on a space - a single unbroken
+   sixty-character role - which would otherwise widen the rail rather than
+   fold. */
+.dialogue-meta strong {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  color: var(--text-title);
+  font: 600 var(--fs-12)/1.3 var(--font-body);
+}
+/* Second line, and `.panel-meta` in the markup carries the colour and the type
+   role - W5's global for exactly this, so the two rails say a quiet fact the
+   same way. What is left here is the spacing and the one rule that matters:
+   a chip is never cut mid-word. */
+.dialogue-task {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+.dialogue-time { flex: 0 0 auto; margin-left: auto; color: var(--text-meta); font: 400 10px/1.3 var(--font-mono); }
 
 /*
  * No `white-space: pre-wrap` any more, and its absence is the fix rather than a

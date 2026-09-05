@@ -33,13 +33,17 @@
  * --------------------------------------------------------------------------- */
 
 /**
- * Six states. `blocked` is "a human is holding this up"; `blocked-error` is
- * the same pose in the error colour, for a node that failed. They are one
- * pose deliberately: at 32px the readable signal is the outline plus the
- * wilted crown, and asking a 32px face to distinguish "waiting for you" from
- * "broken" by expression alone would fail at exactly the size that matters.
- * The colour of the outline is the distinction, and it is the loudest one the
- * palette has.
+ * Six states. `blocked` is "a human is holding this up"; `blocked-error` is a
+ * node that failed.
+ *
+ * They share the pose, the frown and the wilted crown, and they are separated
+ * by TWO signals: the outline colour (`--warn-border` against `--err-border`)
+ * AND the eyes, which close into two crosses for the error. The second signal
+ * exists because a cold reader given only the evidence sheets reported that
+ * the outline hue was the sole difference - which means a colour-blind viewer
+ * sees one state where the product means two. Colour is never allowed to be
+ * the only carrier of a distinction, and a cross is four straight strokes, so
+ * it is one of the few expressions that survives the 32px raster.
  */
 export type PipState = 'idle' | 'working' | 'speaking' | 'blocked' | 'blocked-error' | 'done'
 
@@ -397,7 +401,7 @@ export function crestShape(variant: number): string {
     case 2: // curl
       return '<path d="M -3.0 0.6 C -2.7 -3.8 1.4 -6.3 4.3 -4.6 C 2.1 -4.6 -0.3 -3.2 -1.0 -0.2 Z" />'
     case 3: // ring
-      return '<ellipse cx="0" cy="-4.3" rx="4.2" ry="1.35" fill="none" class="pip-stroke" />'
+      return '<ellipse cx="0" cy="-4.15" rx="4.2" ry="1.3" fill="none" class="pip-stroke" />'
     case 4: // fin
       return '<path d="M -4.8 0.8 C -3.6 -3.6 -1.3 -5.4 0 -5.4 C 1.3 -5.4 3.6 -3.6 4.8 0.8 Z" />'
     case 5: // ears
@@ -445,6 +449,27 @@ export function pipPartsLabel(key: string): string {
 export const DETAIL_MIN_SIZE = 48
 
 /**
+ * How much bigger the crown is drawn below `DETAIL_MIN_SIZE`, and how far the
+ * whole figure drops to make room for it.
+ *
+ * A COLD READER FOUND THE DEFECT THIS FIXES. Given the sheets alone, they
+ * could separate two same-coloured agents when magnified but "would not bet on
+ * it in isolation" at a true 32px. The reason is measurable: at 32px the body
+ * and the eyes are shared vocabulary, so the crown is doing nearly all of the
+ * identifying work, and the crown was 5 or 6 units of a 32-unit box - two to
+ * three actual pixels. One of the pair wore a `fin`, which at that size was
+ * indistinguishable from the `bell` body's own peak.
+ *
+ * So below 48px the crown is drawn 1.3x and the figure is moved 2 units down
+ * the box to keep every crown inside it. The DROP rather than a shrink is the
+ * point: shrinking the figure to make room at the top would have taken the eyes down
+ * with it, and the eyes are the other thing that has to survive 32px. The box
+ * has four unused units under the floor and this spends two of them.
+ */
+export const SMALL_CREST_SCALE = 1.3
+export const SMALL_LIFT = 2
+
+/**
  * The whole character, as one inline SVG string. No raster, no sprite sheet,
  * no external file, no font, no network.
  *
@@ -481,6 +506,20 @@ export function pipSvg(key: string, options: PipOptions = {}): string {
     `<path class="pip-stroke" d="M ${n(rx - 3.0)} ${n(ey + 0.9)} Q ${n(rx)} ${n(ey - 2.7)} ${n(rx + 3.0)} ${n(ey + 0.9)}" />` +
     `</g>`
 
+  /* The x_x eyes, and they exist because a cold reader caught the defect: the
+     amber outline was the ONLY thing separating "a human is holding this up"
+     from "this failed", so a colour-blind viewer saw one state where the
+     product means two. Colour must never be the sole carrier of a distinction.
+     A cross is the kawaii idiom for it, it is two straight strokes so it
+     survives the 32px raster where a subtler face would not, and it is the
+     largest change the eyes can make short of closing them - which `done`
+     already owns. */
+  const eyesCross =
+    `<g class="pip-eyes-cross pip-ink">` +
+    `<path class="pip-stroke" d="M ${n(lx - 2.6)} ${n(ey - 2.6)} L ${n(lx + 2.6)} ${n(ey + 2.6)} M ${n(lx + 2.6)} ${n(ey - 2.6)} L ${n(lx - 2.6)} ${n(ey + 2.6)}" />` +
+    `<path class="pip-stroke" d="M ${n(rx - 2.6)} ${n(ey - 2.6)} L ${n(rx + 2.6)} ${n(ey + 2.6)} M ${n(rx + 2.6)} ${n(ey - 2.6)} L ${n(rx - 2.6)} ${n(ey + 2.6)}" />` +
+    `</g>`
+
   const detailMarkup = detail
     ? `<g class="pip-detail">` +
       `<ellipse class="pip-cheek" cx="${n(lx - 2.7)}" cy="${n(ey + 3.6)}" rx="1.9" ry="1.25" />` +
@@ -498,9 +537,18 @@ export function pipSvg(key: string, options: PipOptions = {}): string {
     `<g class="pip-mouth pip-mouth--done"><path d="M ${n(16 - 3.3)} ${n(my - 0.9)} A 3.3 3.3 0 0 0 ${n(16 + 3.3)} ${n(my - 0.9)} Z" /></g>` +
     `</g>`
 
+  /* The crown grows below 48px, and the figure drops to make room. Both are
+     done here rather than in CSS, for one reason each. The SCALE cannot be a
+     CSS transform on `.pip-crest-hinge` because the blocked wilt already owns
+     that property on that element, and `transform` is one property - the wilt
+     would silently drop the boost. The LIFT cannot go on `.pip-figure` for the
+     same reason (the pose owns it there), so it rides an outer group with no
+     CSS transform of its own. */
+  const crestScale = body.crestScale * (small ? SMALL_CREST_SCALE : 1)
+  const lift = small ? SMALL_LIFT : 0
   const crest =
     `<g class="pip-crest-hinge" style="transform-origin:${n(body.crownX)}px ${n(body.crownY)}px">` +
-    `<g transform="translate(${n(body.crownX)} ${n(body.crownY)}) scale(${n(body.crestScale)})">${crestShape(id.crest)}</g>` +
+    `<g transform="translate(${n(body.crownX)} ${n(body.crownY)}) scale(${n(crestScale)})">${crestShape(id.crest)}</g>` +
     `</g>`
 
   /* The state and size classes ride on the SVG as well as on the component's
@@ -514,12 +562,15 @@ export function pipSvg(key: string, options: PipOptions = {}): string {
     `<svg class="pip-svg pip--${state}${small ? ' pip--sm' : ''}" viewBox="0 0 32 32" ` +
     `width="${size}" height="${size}" aria-hidden="true" focusable="false" ` +
     `style="color:var(--character-${id.colour})">` +
+    `<g class="pip-frame" transform="translate(0 ${n(lift)})">` +
     `<g class="pip-figure">` +
     `<g class="pip-shell">${crest}<path class="pip-body" d="${body.d}" /></g>` +
     detailMarkup +
     eyesOpen +
     eyesArc +
+    eyesCross +
     mouths +
+    `</g>` +
     `</g>` +
     `</svg>`
   )

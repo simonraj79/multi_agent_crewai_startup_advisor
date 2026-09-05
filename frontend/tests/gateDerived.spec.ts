@@ -92,7 +92,11 @@ describe('GateCard separates what an edit reaches from what it does not', () => 
     expect(block.text()).toContain('5.0')
     // ...and none of it is typeable.
     expect(block.findAll('input, textarea, select')).toHaveLength(0)
-    expect(block.text()).toContain('could not change them')
+    // Product-neutral: this card renders a gate from ANY flow, and a
+    // user-authored graph has no validator, no scores and no evidence.
+    expect(block.text()).toContain('Computed by the run')
+    expect(block.text()).toContain('edit the inputs above and it is recomputed')
+    expect(block.text()).not.toMatch(/validator|rubric|dimension score/i)
   })
 
   it('decodes a json value into labelled rows rather than dumping it', () => {

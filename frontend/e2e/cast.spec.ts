@@ -1,7 +1,8 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { reviseGate } from './gateReply'
+import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
 
 /**
  * The cast, in a real browser — `docs/run-shell/DEFINITION-OF-DONE.md`
@@ -128,6 +129,53 @@ function writeEvidence(contents: string, ...parts: string[]): void {
   expect.soft(existsSync(target), `evidence not written: ${target}`).toBe(true)
 }
 
+/** The three blocks T1.1's cold reader is given, in the order they are read. */
+const REPORT_HEADER_BLOCKS = ['.report-head', '.report-flags', '.verdict-summary'] as const
+
+/**
+ * The report's top region — the chips, the decided-by block and the scores —
+ * captured as one picture and returned as one string.
+ *
+ * A CLIP rather than an element screenshot, because there is no single element
+ * around those three: `.report-head`, `.report-flags` and `.verdict-summary` are
+ * siblings, and T1.1 asks for all three together. The box runs from the head's
+ * top to the last present block's bottom, which is what the before-capture set
+ * did and what makes the before/after pair comparable.
+ *
+ * The text comes back so the caller can assert on exactly what the reader was
+ * shown, rather than on a different query that might not be the same pixels.
+ */
+async function captureReportHeader(page: Page, ...parts: string[]): Promise<string> {
+  const clip = await page.evaluate((blocks: readonly string[]) => {
+    const head = document.querySelector(`.report-panel ${blocks[0]}`)
+    if (!head) return null
+    const present = blocks
+      .map((selector) => document.querySelector(`.report-panel ${selector}`))
+      .filter((el): el is Element => el !== null)
+    const top = head.getBoundingClientRect()
+    const bottom = present[present.length - 1].getBoundingClientRect()
+    return {
+      x: Math.max(0, Math.floor(top.x)),
+      y: Math.max(0, Math.floor(top.y)),
+      width: Math.ceil(top.width),
+      height: Math.ceil(bottom.bottom - top.top),
+    }
+  }, REPORT_HEADER_BLOCKS)
+  expect(clip, 'the report panel has no `.report-head` to clip').not.toBeNull()
+
+  const file = evidencePath(...parts)
+  await page.screenshot({ path: file, clip: clip! })
+  expect.soft(existsSync(file), `capture not written: ${file}`).toBe(true)
+
+  return page.evaluate((blocks: readonly string[]) =>
+    blocks
+      .map((selector) => document.querySelector(`.report-panel ${selector}`))
+      .filter((el): el is Element => el !== null)
+      .map((el) => (el as HTMLElement).innerText)
+      .join('\n'),
+  REPORT_HEADER_BLOCKS)
+}
+
 /* ------------------------------------------------------------- console rules */
 
 /**
@@ -221,6 +269,22 @@ function traceRows(page: Page): Locator {
   return page.locator('.chat-rail .trace-entry')
 }
 
+/**
+ * The one-sentence text of every trace row.
+ *
+ * READ THESE WITH `allTextContents()`, NEVER `allInnerTexts()`, and the
+ * distinction is not pedantry - it cost a full suite run and 24 phantom
+ * failures. `.trace-entry` carries `content-visibility: auto`, so a row the
+ * browser has skipped rendering has NO layout, and `innerText` is defined in
+ * terms of rendered text: it returns `''` for every row outside the viewport
+ * while `textContent` returns the sentence that is really there. A rail of 130
+ * rows is mostly outside the viewport by construction, so the wrong reader
+ * reports the product as broken in exact proportion to how well the product
+ * optimises.
+ *
+ * `toHaveText` is safe on the same elements: it uses `textContent` unless asked
+ * for `useInnerText`.
+ */
 function traceLines(page: Page): Locator {
   return page.locator('.chat-rail .trace-entry .trace-line')
 }
@@ -989,30 +1053,21 @@ test.describe('the completed run', () => {
       await shotOf(traceRail(page), page, 'T2', 'trace-completed.png')
       await shot(page, 'S', 'long-run.png')
 
-      // T1: the report's own header, clipped the way the before-capture was —
-      // from the top of `.report-head` to the bottom of the scores.
+      /*
+       * T1: the report header on the ORDINARY run — the plain case.
+       *
+       * `report-header-PLAIN.png`, not `report-header.png`, and the rename is
+       * the point rather than tidying. The synthetic double always returns five
+       * 3s at 0.62 confidence with no floor (`service/runner.py`), so this run
+       * can never show the "WHAT DECIDED THIS RUN" block — there is nothing
+       * overriding the arithmetic for it to show. T1.1 is about exactly that
+       * block, so its capture is taken by the override test below and this one
+       * becomes the control: the same header without an override, so a reader
+       * can see what the block adds.
+       */
       const report = page.locator('.report-panel')
       await expect(report, 'the completed run did not open its report').toBeVisible()
-      const clip = await page.evaluate(() => {
-        const head = document.querySelector('.report-panel .report-head')
-        if (!head) return null
-        const last =
-          document.querySelector('.report-panel .verdict-summary') ??
-          document.querySelector('.report-panel .report-flags') ??
-          head
-        const top = head.getBoundingClientRect()
-        const bottom = last.getBoundingClientRect()
-        return {
-          x: Math.max(0, Math.floor(top.x)),
-          y: Math.max(0, Math.floor(top.y)),
-          width: Math.ceil(top.width),
-          height: Math.ceil(bottom.bottom - top.top),
-        }
-      })
-      expect(clip, 'the report panel has no `.report-head` to clip').not.toBeNull()
-      const headerFile = evidencePath('T1', 'report-header.png')
-      await page.screenshot({ path: headerFile, clip: clip! })
-      expect.soft(existsSync(headerFile), `capture not written: ${headerFile}`).toBe(true)
+      const headerText = await captureReportHeader(page, 'T1', 'report-header-plain.png')
 
       // T3: the other two widths and the light theme, on the same finished run
       // so the pixels stay comparable — the before set was captured the same way.
@@ -1055,7 +1110,7 @@ test.describe('the completed run', () => {
       const visibleRows = await traceRows(page).count()
       const earlier = page.locator('[data-testid="trace-earlier"]')
       const foldedRows = (await earlier.count())
-        ? Number(/^(\d+)/.exec((await earlier.innerText()).trim())?.[1] ?? 0)
+        ? Number(/^(\d+)/.exec(((await earlier.textContent()) ?? '').trim())?.[1] ?? 0)
         : 0
       const rowCount = visibleRows + foldedRows
       expect(rowCount, 'a completed run produced no trace rows at all').toBeGreaterThanOrEqual(1)
@@ -1081,7 +1136,7 @@ test.describe('the completed run', () => {
         'trace rows carry no `.trace-line`; the one-sentence text has no stable hook (T2.1)',
       ).toBe(auditedRows)
 
-      const lines = await traceLines(page).allInnerTexts()
+      const lines = await traceLines(page).allTextContents()
 
       // The S3 companion is written HERE, before the hygiene verdict, for the
       // same reason the captures came first: a red on line 3 must not cost the
@@ -1126,6 +1181,52 @@ test.describe('the completed run', () => {
           'in `runLongToCompletion` (the cap is 3 per gate) rather than lowering this floor.',
       ).toBeGreaterThanOrEqual(S3_MIN_FRAMES)
 
+      /*
+       * When a line comes back empty, SAY WHY IT LOOKED EMPTY.
+       *
+       * This was written after 24 rows read as empty and it has already paid for
+       * itself once: the answer was `content-visibility: auto` on `.trace-entry`
+       * emptying `innerText` for every off-screen row, a measuring fault and not
+       * a product one. The read above is `allTextContents()` now, so that
+       * particular cause is gone - and the diagnostic stays, because
+       * "row 7: empty line" still cannot distinguish the three things it can
+       * mean: the interpretation layer produced no sentence, the sentence moved
+       * to another element, or the element holds it and is not rendering it.
+       * Only the first is a T2.1 defect.
+       *
+       * `innerText` is reported BESIDE `textContent` deliberately: a row where
+       * the two disagree is a rendering fact, and that disagreement is exactly
+       * the tell that named the last cause. Three offenders, because a message
+       * naming twenty-four is a message nobody reads.
+       */
+      const emptyLineSamples = lines.some((raw) => raw.trim().length === 0)
+        ? await page.evaluate(() =>
+            Array.from(document.querySelectorAll('.chat-rail .trace-entry'))
+              .map((row) => {
+                const line = row.querySelector('.trace-line') as HTMLElement | null
+                return { row, line }
+              })
+              .filter(({ line }) => (line?.textContent ?? '').trim().length === 0)
+              .slice(0, 3)
+              .map(({ row, line }) => {
+                const style = line ? window.getComputedStyle(line) : null
+                return {
+                  node: row.getAttribute('data-node') ?? '(none)',
+                  hasLineElement: line !== null,
+                  innerText: (line?.innerText ?? '').trim().slice(0, 120),
+                  textContent: (line?.textContent ?? '').trim().slice(0, 120),
+                  display: style?.display ?? '',
+                  rowContentVisibility:
+                    window.getComputedStyle(row).getPropertyValue('content-visibility'),
+                  visibility: style?.visibility ?? '',
+                  fontSize: style?.fontSize ?? '',
+                  height: line ? Math.round(line.getBoundingClientRect().height) : -1,
+                  html: row.outerHTML.replace(/\s+/g, ' ').slice(0, 300),
+                }
+              }),
+          )
+        : []
+
       const problems: string[] = []
       lines.forEach((raw, index) => {
         const line = raw.trim()
@@ -1141,7 +1242,17 @@ test.describe('the completed run', () => {
         const codes = rawCodesIn(line)
         if (codes.length) problems.push(`row ${index}: raw code ${codes.join(', ')} — "${line}"`)
       })
-      expect(problems, 'the trace is not one short human sentence per row (T2.1)').toEqual([])
+      const diagnostics = emptyLineSamples.length
+        ? [
+            '',
+            'Empty `.trace-line` diagnostics, up to three offenders:',
+            JSON.stringify(emptyLineSamples, null, 2),
+          ].join('\n')
+        : ''
+      expect(
+        problems,
+        `the trace is not one short human sentence per row (T2.1)${diagnostics}`,
+      ).toEqual([])
 
       // Every disclosure closed by default — the whole point of putting the
       // payload behind one is that nobody has to scroll past it.
@@ -1155,19 +1266,342 @@ test.describe('the completed run', () => {
       ).not.toHaveCount(0)
 
       // T1.3, in the browser rather than over a fixture: no raw internal code
-      // reaches the header a cold reader is asked to read.
-      const headerText = await page.evaluate(() =>
-        ['.report-head', '.report-flags', '.verdict-summary']
-          .map((selector) => document.querySelector(`.report-panel ${selector}`))
-          .filter((el): el is Element => el !== null)
-          .map((el) => (el as HTMLElement).innerText)
-          .join('\n'),
-      )
+      // reaches the header a cold reader is asked to read. The text is the one the
+      // capture returned, so this asserts about the picture on disk rather than
+      // about a second query that might not have matched the same pixels.
       expect(headerText.trim().length, 'the report header rendered no text').toBeGreaterThan(0)
       expect(
         rawCodesIn(headerText),
         'raw SNAKE_CASE reached the report header (T1.3)',
       ).toEqual([])
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
+})
+
+/* ========================================================================== */
+/* T1.1 — the override block, which no live synthetic run can produce         */
+/* ========================================================================== */
+
+/**
+ * The verdict shapes that override the arithmetic, read off the committed
+ * real-serializer fixture.
+ *
+ * `frontend/tests/fixtures/backendVerdictFrames.json` is a `verdict` frame as
+ * `events/serializer.py` really wrote it, which is what makes this a capture of
+ * the product rather than of a hand-typed object. Two shapes are interesting,
+ * and the fixture is asked which of them it holds rather than told:
+ *
+ *  - a FATAL FLOOR (`fatal_floors` non-empty) — the headline is composed from
+ *    the dimension and its score, "Demand scored 0 of 5.";
+ *  - INSUFFICIENT EVIDENCE (`decision_reason: "INSUFFICIENT_EVIDENCE"`) — low
+ *    confidence pre-empted every floor, and the headline is the stored sentence
+ *    "Too little evidence to judge."
+ *
+ * Measured 2026-09-05: the fixture holds the FLOOR shape (`FLOOR_NO_DEMAND`,
+ * REJECT at 4.2, demand 0) and one clean NEEDS_WORK with no override at all.
+ * There is no INSUFFICIENT_EVIDENCE entry, so one capture is taken today — and
+ * the discovery is written as a filter rather than as a constant precisely so
+ * that adding such an entry to the fixture produces the second capture with no
+ * edit here.
+ */
+interface OverrideShape {
+  readonly kind: 'floor' | 'insufficient'
+  readonly file: string
+  readonly code: string
+  readonly details: Record<string, unknown>
+}
+
+function fixtureFile(name: string): string {
+  return path.resolve(process.cwd(), 'tests', 'fixtures', name)
+}
+
+function overrideShapes(): OverrideShape[] {
+  const frames = JSON.parse(
+    readFileSync(fixtureFile('backendVerdictFrames.json'), 'utf-8'),
+  ) as { details?: Record<string, unknown> }[]
+
+  const found = new Map<OverrideShape['kind'], OverrideShape>()
+  for (const frame of frames) {
+    const details = frame.details
+    if (!details) continue
+    const floors = Array.isArray(details.fatal_floors) ? (details.fatal_floors as string[]) : []
+    const reason = typeof details.decision_reason === 'string' ? details.decision_reason : null
+    if (reason === 'INSUFFICIENT_EVIDENCE' && !found.has('insufficient')) {
+      found.set('insufficient', {
+        kind: 'insufficient',
+        file: 'report-header-insufficient.png',
+        code: reason,
+        details,
+      })
+    } else if (floors.length > 0 && !found.has('floor')) {
+      found.set('floor', {
+        kind: 'floor',
+        file: 'report-header.png',
+        code: reason ?? floors[0],
+        details,
+      })
+    }
+  }
+  return [...found.values()]
+}
+
+/** `demand` -> `D`, for the thin-evidence chip that must agree with the verdict. */
+const DIMENSION_LETTERS: Record<string, string> = {
+  demand: 'D',
+  market: 'M',
+  competitive_room: 'C',
+  feasibility: 'F',
+  headroom_over_free: 'X',
+}
+
+interface ReplayStep {
+  frame: Record<string, unknown>
+  gapMs: number
+}
+
+/** Live pace with the idle waits compressed, as `cast-perf.spec.ts` uses. */
+const REPLAY_MAX_GAP_MS = 250
+
+/**
+ * The gated synthetic run, with its verdict swapped for a real one that
+ * overrides the arithmetic.
+ *
+ * `syntheticRunGated.ndjson` is the 96-frame stream the free backend really
+ * serves through both gates, so everything except the verdict is the product's
+ * own bytes. Three things are patched and each is named here rather than left
+ * for a reader to diff:
+ *
+ *  1. `seq` is renumbered from 1. One file is replayed whole so nothing moves,
+ *     but it is stated because the client deduplicates on that field and the
+ *     next person to concatenate a second log here will need to know.
+ *  2. the `verdict` frame's `details` become the fixture's, and its `message` is
+ *     rewritten to agree — a message still reading `NEEDS_WORK at 6.0` beside a
+ *     REJECT would be a fabricated frame rather than a patched one.
+ *  3. the terminal `run_state`'s `result` gets `provisional: true`, a
+ *     `thin_dimensions` list derived from the verdict's own low scores, and the
+ *     verdict word — so the chips above the block say what the block says.
+ */
+function overrideScript(details: Record<string, unknown>): ReplayStep[] {
+  const rows = readFileSync(fixtureFile('syntheticRunGated.ndjson'), 'utf-8')
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as { data?: Record<string, unknown> })
+    .map((row) => row.data ?? (row as unknown as Record<string, unknown>))
+
+  const dimensions = (details.dimensions ?? {}) as Record<string, number>
+  const thin = Object.entries(dimensions)
+    .filter(([, score]) => typeof score === 'number' && score <= 1)
+    .map(([key]) => DIMENSION_LETTERS[key])
+    .filter((letter): letter is string => Boolean(letter))
+
+  const steps: ReplayStep[] = []
+  let previous: number | null = null
+  let sequence = 0
+  for (const frame of rows) {
+    const at = Date.parse(String(frame.ts ?? ''))
+    const gap =
+      previous === null || Number.isNaN(at)
+        ? 0
+        : Math.min(Math.max(at - previous, 0), REPLAY_MAX_GAP_MS)
+    if (!Number.isNaN(at)) previous = at
+    sequence += 1
+
+    let patched: Record<string, unknown> = { ...frame, seq: sequence }
+    if (frame.kind === 'verdict') {
+      patched = {
+        ...patched,
+        details: { ...details },
+        message:
+          `Verdict ${String(details.verdict)} at ${String(details.composite_score)} ` +
+          `(confidence ${String(details.confidence)})`,
+      }
+    }
+    if (frame.kind === 'run_state' && frame.event_type === 'WORKFLOW_END') {
+      const frameDetails = { ...((frame.details ?? {}) as Record<string, unknown>) }
+      const result = { ...((frameDetails.result ?? {}) as Record<string, unknown>) }
+      result.provisional = true
+      result.verdict = details.verdict
+      // Fall back to the fixture's own list rather than shipping an empty chip:
+      // a verdict with no dimension at or under 1 — an INSUFFICIENT_EVIDENCE one,
+      // for instance — is still provisional and still thin somewhere.
+      result.thin_dimensions = thin.length > 0 ? thin : result.thin_dimensions
+      frameDetails.result = result
+      patched = { ...patched, details: frameDetails }
+    }
+    steps.push({ frame: patched, gapMs: gap })
+  }
+  return steps
+}
+
+/** The full run id, from the identity-scoped pointer the console writes. */
+async function activeRunId(page: Page): Promise<string | null> {
+  const raw = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    storageKeyFor(DEFAULT_SYNTHETIC_USER, 'validator-active-run'),
+  )
+  if (!raw) return null
+  try {
+    return (JSON.parse(raw) as { runId?: string }).runId ?? null
+  } catch {
+    return null
+  }
+}
+
+test.describe('the report names what decided the run', () => {
+  test(
+    'T1.1: a verdict an override decided is captured with its block, its dimension and its score',
+    { tag: '@launch' },
+    async ({ page }) => {
+      test.setTimeout(300_000)
+      const watch = watchConsole(page)
+
+      const shapes = overrideShapes()
+      expect(
+        shapes.length,
+        'backendVerdictFrames.json holds no verdict that overrides the arithmetic, so T1.1 has ' +
+          'nothing to capture. Add a frame with `fatal_floors` non-empty or ' +
+          '`decision_reason: "INSUFFICIENT_EVIDENCE"`.',
+      ).toBeGreaterThan(0)
+
+      /*
+       * WHY THIS IS A REPLAY AND NOT A RUN.
+       *
+       * `SyntheticValidatorRunner` returns five 3s at 0.62 confidence with no
+       * floor and nothing provisional, every single time — so the free path
+       * cannot reach the state T1.1 is about, and the header captured from a
+       * live synthetic run shows a report with no override block in it at all.
+       * That is not a defect in the double: a stand-in that invented a REJECT
+       * would be worse than one that declines to. It is a gap between what the
+       * free path can produce and what the criterion is about, and the honest
+       * way across it is to feed the console a verdict the REAL serializer
+       * wrote and let every other frame, and the whole client, be the product's.
+       *
+       * The socket is owned rather than proxied (`routeWebSocket` with no
+       * `connectToServer`), exactly as `cast-perf.spec.ts` does it. Launch is
+       * still pressed for real, so the run row, the graph read and the transport
+       * probe are all genuine; only the frames are the fixture's.
+       */
+      let script: ReplayStep[] = []
+      let resolveReplay: () => void = () => undefined
+      let sent = 0
+
+      await page.routeWebSocket(
+        (url) => url.pathname === '/ws',
+        (ws) => {
+          ws.onMessage(() => undefined)
+          const runId = new URL(ws.url()).searchParams.get('run_id') ?? 'replay'
+          const mine = script
+          void (async () => {
+            for (const step of mine) {
+              await new Promise((resolve) => setTimeout(resolve, step.gapMs))
+              try {
+                ws.send(JSON.stringify({ type: 'frame', data: { ...step.frame, run_id: runId } }))
+              } catch {
+                // The page navigated away mid-replay: the next shape owns the
+                // next socket, and this one has nothing left to say.
+                return
+              }
+              sent += 1
+            }
+            resolveReplay()
+          })()
+        },
+      )
+
+      for (const shape of shapes) {
+        await test.step(`${shape.kind}: ${shape.code}`, async () => {
+          script = overrideScript(shape.details)
+          sent = 0
+          const replayed = new Promise<void>((resolve) => {
+            resolveReplay = resolve
+          })
+
+          await openStudio(page)
+          await launchRun(page, 'A claim auditor that checks numbers in newsroom drafts')
+          const runId = await activeRunId(page)
+
+          await replayed
+          expect(sent, 'the replay did not send every frame').toBe(script.length)
+          await waitForCompletion(page)
+
+          const report = page.locator('.report-panel')
+          await expect(report, 'the replayed run did not open its report').toBeVisible()
+
+          const block = report.locator('.verdict-decision')
+          await expect(
+            block,
+            'the report shows no "what decided this run" block for a verdict an override decided',
+          ).toHaveCount(1)
+
+          // CAPTURED BEFORE THE WORDING IS ASSERTED. T1.1's artifact is the
+          // picture, and a red on a sentence must not cost the cold reader the
+          // one thing they are asked to read.
+          const headerText = await captureReportHeader(page, 'T1', shape.file)
+
+          await expect(
+            block.locator('h3 span'),
+            'the block is not labelled with the words the criterion names',
+          ).toHaveText('WHAT DECIDED THIS RUN')
+          await expect(block).toHaveAttribute('data-code', shape.code)
+
+          const headline = (await block.locator('.decision-headline').innerText()).trim()
+          if (shape.kind === 'floor') {
+            /*
+             * "Names a dimension and 0 of 5", asserted as a SHAPE rather than
+             * against one literal: which dimension floored is the fixture's to
+             * say, `verdictDisplay.headlineFor` composes
+             * "{Dimension} scored {n} of 5." from the score on the wire, and
+             * pinning "Demand" here would turn this into a test of the fixture.
+             */
+            expect(
+              headline,
+              'the floor headline does not name a dimension and its score',
+            ).toMatch(/^[A-Z][A-Za-z ]+ scored 0 of 5\.$/)
+          } else {
+            expect(headline).toBe('Too little evidence to judge.')
+          }
+
+          // The scores and the chips are in the same picture, which is what
+          // makes the block readable without the paragraph beneath it.
+          await expect(
+            report.locator('.verdict-scores .score-row'),
+            'the scorecard is missing from the region T1.1 captures',
+          ).not.toHaveCount(0)
+          await expect(
+            report.locator('.report-flag.is-provisional'),
+            'the provisional chip is missing beside an override the run is provisional on',
+          ).toHaveCount(1)
+
+          // T1.3, over the very text the capture shows.
+          expect(
+            rawCodesIn(headerText),
+            `raw SNAKE_CASE reached the report header for ${shape.code}`,
+          ).toEqual([])
+
+          /*
+           * Tidy, and then forget.
+           *
+           * The POST created a real synthetic run whose frames nobody read;
+           * cancelling releases the gate it is parked on. Clearing the pointer
+           * is the half that matters for correctness: without it the NEXT
+           * shape's page load restores this run and opens a socket BEFORE
+           * Launch is pressed, and the next script replays into the previous
+           * run.
+           */
+          if (runId) {
+            await page.request.post(`/api/runs/${runId}/cancel`).catch(() => undefined)
+          }
+          await page.evaluate(() => {
+            try {
+              window.localStorage.clear()
+            } catch {
+              /* a browser with site data blocked has nothing to forget */
+            }
+          })
+        })
+      }
 
       expect(watch.unexpected).toEqual([])
     },
@@ -1438,7 +1872,7 @@ test.describe('S4 — a failed run', () => {
 
       await shot(page, 'S', 'failure.png')
 
-      const line = (await errorRow.locator('.trace-line').innerText()).trim()
+      const line = ((await errorRow.locator('.trace-line').textContent()) ?? '').trim()
       expect(line.length, 'the error line is empty').toBeGreaterThan(0)
       expect(
         line.length,

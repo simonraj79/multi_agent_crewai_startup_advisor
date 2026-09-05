@@ -338,8 +338,8 @@ const STATE_NOTE = {
   idle: 'still &middot; resting mouth',
   working: 'lean + squint &middot; 2.6s bob',
   speaking: 'tip back + open &middot; 0.64s mouth',
-  blocked: 'wide + wilt + warn outline &middot; STILL',
-  'blocked-error': 'same pose, error outline &middot; STILL',
+  blocked: 'wide eyes + wilt + warn outline &middot; STILL',
+  'blocked-error': 'x_x eyes + wilt + error outline &middot; STILL',
   done: 'arc eyes + grin &middot; still',
 }
 
@@ -366,7 +366,7 @@ function statesSheet() {
     '',
     `<div class="scheme" data-scheme="dark">
       <h1>Pips <span>&mdash; six states, two characters, at 96px and at a true 32px raster</span></h1>
-      <p class="lede">One SVG, six CSS classes. Both eye layers and all five mouths are in the markup and
+      <p class="lede">One SVG, six CSS classes. All three eye layers and all five mouths are in the markup and
       exactly one of each is ever shown, so the mark count on screen stays at four.
       <strong>Idle, blocked, blocked-error and done are static.</strong> Only working and speaking loop, and
       both loops start at their reduced-motion pose &mdash; a still at t = 0 and a still with motion
@@ -415,13 +415,15 @@ function flowCard(flow, scheme, size) {
 function rolesSheet() {
   const at = (scheme, size) => FLOWS.map((flow) => flowCard(flow, scheme, size)).join('')
   return page(
-    'Pips - roles from three flows',
+    'Pips - roles across flows',
     '',
     `<div class="scheme" data-scheme="dark">
-      <h1>Pips <span>&mdash; roles from three different flows, at 96px and at a true 32px raster</span></h1>
-      <p class="lede">Three flows, one system, no per-flow art. Every character is a pure function of its role
-      string, so a flow the cast's builder never saw gets real characters rather than a row of grey
-      question marks. The fourth section is empty on purpose &mdash; see its note.</p>
+      <h1>Pips <span>&mdash; roles from ${FLOWS.length} different flows, at 96px and at a true 32px raster</span></h1>
+      <p class="lede">One system, no per-flow art. Every character is a pure function of its role string,
+      so a flow the cast's builder never saw gets real characters rather than a row of grey question
+      marks. The last section is exactly that case: its flow was authored after the cast was frozen,
+      by somebody else, and nothing about it was known when these shapes were drawn. A flow whose
+      role list is empty renders as a labelled empty section rather than vanishing.</p>
       <h2>A &mdash; dark theme, 96px</h2>
       ${at('dark', 96)}
       <h2>B &mdash; dark theme, 32px raster</h2>

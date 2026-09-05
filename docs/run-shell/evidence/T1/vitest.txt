@@ -1,5 +1,6 @@
 $ npx vitest run tests/verdictDisplay.spec.ts tests/noRawCodes.spec.ts       # from frontend/
-# run by RV3, branch run-shell/cast at 27b256e, 2026-09-05T14:56:45+08:00
+# RV3 SECOND PASS, branch run-shell/cast at 16f3be5, 2026-09-05T15:59:21+08:00
+# vitest exit code: 0
 
 
  RUN  v4.1.11 D:/MultiAgentSystem/frontend
@@ -7,11 +8,6 @@ $ npx vitest run tests/verdictDisplay.spec.ts tests/noRawCodes.spec.ts       # f
 
  Test Files  2 passed (2)
       Tests  27 passed (27)
-   Start at  14:56:46
-   Duration  933ms (transform 286ms, setup 0ms, import 398ms, tests 64ms, environment 874ms)
+   Start at  15:59:20
+   Duration  918ms (transform 275ms, setup 0ms, import 372ms, tests 63ms, environment 878ms)
 
-
-# vitest exit code: 0 -- corroborated by the "Test Files N passed" and
-# "Tests N passed" lines above, which are vitest's own. (The wrapper that
-# printed this line read $? one command late; the figure is right and the
-# summary above it is the thing to read.)

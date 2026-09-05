@@ -80,10 +80,36 @@ describe('the dialogue rail', () => {
     )
   })
 
-  it('shows the role and the task it was working', () => {
+  it('shows the role and the task it was working, the task in words', () => {
+    // `market_task` is CrewAI's identifier and it was rendered raw, then cut
+    // in half by the chip's own ellipsis at a 330px rail - `market_ta…`, which
+    // is neither the name nor a word. `humaniseTask` drops the noun the
+    // surface already supplies and leaves "Market".
     const wrapper = rail([entry()])
     expect(wrapper.text()).toContain('Market Analyst')
-    expect(wrapper.text()).toContain('market_task')
+    expect(wrapper.get('.dialogue-task').text()).toBe('Market')
+    expect(wrapper.text()).not.toContain('market_task')
+  })
+
+  it('never truncates the NAME, and never cuts the task mid-word', () => {
+    // Every real role this product has is three or four words, so at a narrow
+    // rail the name was the thing being ellipsised - which is backwards: two
+    // agents can share a prefix, and "Startup validation…" names both of them.
+    // The name now takes the row and may wrap; the task goes to a second line.
+    const wrapper = rail([entry({ role: 'Startup validation scoper', task: 'scoping_task' })])
+    const name = wrapper.get('.dialogue-meta strong')
+    expect(name.text()).toBe('Startup validation scoper')
+    expect(name.attributes('style') ?? '').not.toContain('ellipsis')
+    const task = wrapper.get('.dialogue-task')
+    expect(task.text()).toBe('Scoping')
+    // Second line, in the shell's own quiet-fact class rather than a private one.
+    expect(task.classes()).toContain('panel-meta')
+    expect(task.element.tagName).toBe('P')
+  })
+
+  it('renders no task line at all when the entry names none', () => {
+    // An empty chip is a gap the eye reads as a missing fact.
+    expect(rail([entry({ task: '' })]).find('.dialogue-task').exists()).toBe(false)
   })
 
   it('folds an older entry to one line and opens it on demand', async () => {

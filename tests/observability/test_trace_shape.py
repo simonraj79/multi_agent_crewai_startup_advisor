@@ -13,6 +13,7 @@ emits, and asserts on the observations a backend would receive.
 from __future__ import annotations
 
 import importlib.util
+import os
 import socket
 import time
 import unittest
@@ -20,7 +21,7 @@ from unittest import mock
 from uuid import uuid4
 
 from brief_crew.events.models import FrameKind, FrameLevel, UIEventType
-from brief_crew.observability.backend import iso, trace_id_for
+from brief_crew.observability.backend import iso, nanoseconds, trace_id_for
 from brief_crew.observability.langfuse_exporter import (
     STATUS_COMPLETED,
     RunFacts,
@@ -606,9 +607,35 @@ class RootSpanTests(unittest.TestCase):
     def setUp(self) -> None:
         from opentelemetry.sdk.trace import TracerProvider
 
-        self.provider = TracerProvider(shutdown_on_exit=False)
+        # `OTEL_SDK_DISABLED` is read by `TracerProvider.__init__` from the
+        # PROCESS ENVIRONMENT (`opentelemetry/sdk/trace/__init__.py:1335`), and
+        # a disabled provider hands back a `NoOpTracer` whose spans are
+        # `NonRecordingSpan` - which has no `.parent` at all.
+        #
+        # That is not hypothetical here and it is not CrewAI's tracing:
+        # `tests/perf/__init__.py:10` calls
+        # `scripts.perf_metrics.disable_crewai_telemetry()`, which
+        # `setdefault`s `OTEL_SDK_DISABLED=true` for the whole process, and
+        # `unittest discover` IMPORTS every test package before it runs a
+        # single test. So under `discover -s tests` this class ran with the SDK
+        # disabled and errored on `.parent`, while passing alone - an
+        # order-dependent failure whose cause is an import, not an execution
+        # order, which is why running the modules in the obvious pairs never
+        # reproduced it.
+        #
+        # A test about span plumbing has to OWN the state its subject needs.
+        with mock.patch.dict(os.environ, {"OTEL_SDK_DISABLED": "false"}):
+            self.provider = TracerProvider(shutdown_on_exit=False)
         self.addCleanup(self.provider.shutdown)
         self.tracer = self.provider.get_tracer("a test")
+        # Asserted, not assumed: if a future OpenTelemetry disables a provider
+        # by some other route, this says so in one line instead of raising
+        # `AttributeError: 'NonRecordingSpan' object has no attribute 'parent'`
+        # forty lines away.
+        self.assertFalse(
+            self.provider._disabled,
+            "the test's own tracer provider is disabled; it cannot record a span",
+        )
 
     def _span_the_sdk_way(self, trace_id: str):
         """`start_observation(trace_context={"trace_id": ...})`, reproduced.
@@ -688,6 +715,42 @@ class RootSpanTests(unittest.TestCase):
         observation = _Observation()
         observation._otel_span = _FrozenSpan()
         _detach_fabricated_parent(observation)
+
+    def test_a_non_recording_span_is_left_exactly_as_it_is(self) -> None:
+        """The shape production meets when the OpenTelemetry SDK is disabled.
+
+        `OTEL_SDK_DISABLED=true` - which `scripts/perf_metrics.py` sets, so any
+        process that imports the perf harness has it - makes every provider
+        hand back a `NonRecordingSpan`. It carries no `_parent`, no `.parent`
+        and no writable attributes, and the detach must neither raise nor
+        invent one: with the SDK disabled nothing is exported at all, and an
+        exporter that raised here would turn "telemetry is off" into "the run
+        failed", which is row E2 exactly backwards.
+        """
+
+        from opentelemetry import trace as otel_trace_api
+
+        from brief_crew.observability.backend import _detach_fabricated_parent
+
+        span = otel_trace_api.NonRecordingSpan(
+            otel_trace_api.SpanContext(
+                trace_id=int(trace_id_for(RUN_ID), 16),
+                span_id=0x1234567890ABCDEF,
+                trace_flags=otel_trace_api.TraceFlags(0x01),
+                is_remote=False,
+            )
+        )
+
+        class _Observation:
+            pass
+
+        observation = _Observation()
+        observation._otel_span = span
+        _detach_fabricated_parent(observation)
+        self.assertFalse(hasattr(span, "parent"))
+        self.assertEqual(
+            int(trace_id_for(RUN_ID), 16), span.get_span_context().trace_id
+        )
 
 
 @unittest.skipUnless(
@@ -924,6 +987,117 @@ class BilledCostResolutionTests(unittest.TestCase):
 
         exporter, backend = self._run(self._EventuallyIndexed(not_before=99), ticks=0)
         exporter.close()
+        self.assertEqual([], [o.name for o in backend.observations if not o.ended])
+
+    def test_a_failed_run_does_not_mark_a_priced_generation_as_failed(self) -> None:
+        """A generation held for a price is CLOSED, not open. Contract 6.
+
+        Measured on the paid `builder-toolfail-2` run: **both** generations
+        succeeded and were billed - `cost_source: openrouter-billed` - and both
+        arrived at `level=ERROR` carrying the RUN's failure message, because
+        the run failed while their lookups were still pending and the terminal
+        sweep ends "every open observation" at the run's own level.
+
+        A generation waiting on a lookup has already returned. It carries its
+        own end timestamp and its own level; the only thing outstanding is a
+        question about money asked of somebody else. The sweep must leave it
+        alone, and the lookup must still end it.
+        """
+
+        lookup = self._EventuallyIndexed(not_before=2)
+        from brief_crew.observability.backend import RecordingBackend
+        from brief_crew.observability.langfuse_exporter import LangfuseExporter
+        from brief_crew.observability.policy import ExporterPolicy
+
+        backend = RecordingBackend()
+        exporter = LangfuseExporter(
+            ExporterPolicy(
+                public_key="pk",
+                secret_key="sk",
+                base_url="http://langfuse.invalid",
+                enabled=True,
+                environment="live",
+                billed_lookup_deadline_seconds=240.0,
+            ),
+            sender=backend,
+            cost_lookup=lookup,
+            start_thread=False,
+        )
+        recorder = Recorder()
+        recorder.run_started({"idea": "an idea"})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.model_call("n1", "c1", response_id="gen-a", **IDENTITY)
+        recorder.model_call("n1", "c2", response_id="gen-b", **IDENTITY)
+        recorder.node_ended("n1", **IDENTITY)
+        # The run fails while both lookups are still pending.
+        recorder.run_failed("the tool refused", error_class="ToolExecutionFailedError")
+
+        clock = [1000.0]
+        with mock.patch(
+            "brief_crew.observability.langfuse_exporter.monotonic",
+            side_effect=lambda: clock[0],
+        ):
+            exporter._absorb(_Item(run_id=RUN_ID, frames=tuple(recorder.frames)))
+            clock[0] += 1.0
+            exporter._settle()
+
+            generations = by_role(backend.observations, "generation")
+            self.assertEqual(2, len(generations))
+            for generation in generations:
+                with self.subTest(name=generation.name):
+                    self.assertFalse(
+                        generation.ended, "the terminal sweep ended a pending price"
+                    )
+                    self.assertNotEqual("ERROR", generation.level)
+                    self.assertIsNone(generation.status_message)
+            run_span = by_role(backend.observations, "run")[0]
+            self.assertEqual("ERROR", run_span.level, "the RUN did fail")
+
+            for _ in range(6):
+                clock[0] += 60.0
+                exporter._settle()
+                time.sleep(0.05)
+                exporter._settle()
+
+        try:
+            after = by_role(backend.observations, "generation")
+            # The AFTER frame is when the call ended, and it is what
+            # `generation.end` records; the token frame that follows only adds
+            # usage. Asserting against it is what proves the run's terminal
+            # timestamp was not substituted.
+            after_frames = [
+                frame
+                for frame in recorder.frames
+                if frame.kind is FrameKind.LLM
+                and dict(frame.details).get("stage") == "after"
+            ]
+            ends = {nanoseconds(frame.ts) for frame in after_frames}
+            self.assertEqual(2, len(ends))
+            for generation in after:
+                with self.subTest(name=generation.name):
+                    self.assertTrue(generation.ended)
+                    self.assertNotEqual("ERROR", generation.level)
+                    self.assertEqual(
+                        "openrouter-billed", generation.metadata["cost_source"]
+                    )
+                    # Its OWN timestamp, not the run's terminal one.
+                    self.assertIn(generation.end_ns, ends)
+            self.assertEqual(
+                [], [o.name for o in backend.observations if o.as_type != "event" and not o.ended]
+            )
+        finally:
+            exporter.close()
+
+    def test_closing_ends_a_priced_generation_of_a_failed_run_the_same_way(self) -> None:
+        """The other exit from the same state: the process stops first."""
+
+        exporter, backend = self._run(self._EventuallyIndexed(not_before=99), ticks=0)
+        exporter.close()
+        generation = by_role(backend.observations, "generation")[0]
+        self.assertTrue(generation.ended)
+        self.assertEqual(
+            "app-estimate (lookup failed)", generation.metadata["cost_source"]
+        )
         self.assertEqual([], [o.name for o in backend.observations if not o.ended])
 
 

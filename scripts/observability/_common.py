@@ -503,9 +503,79 @@ CREDENTIAL_PREFIXES = (
     "AIza",
 )
 
-_CREDENTIAL_PREFIX_PATTERN = re.compile(
-    "(?:" + "|".join(re.escape(p) for p in CREDENTIAL_PREFIXES) + r")[A-Za-z0-9_\-]+"
+# A credential shape must start at a TOKEN BOUNDARY, and `fc-` must be
+# followed by real key material.
+#
+# MEASURED, and it damaged evidence: the previous pattern matched a prefix
+# WHEREVER it appeared, and a hex UUID can contain one. Run id
+# `1a0bea14-ffb3-459d-b5fc-f714a76e5f71` contains `fc-` at offset 21, so it was
+# written to disk as `1a0bea14-ffb3-459d-b5<redacted>` in ELEVEN files -
+# including `langfuse-session.json`'s `id`, which is the field DoD row A1 is
+# verified on (`evidence/proof/validator-live-2/README.md`). A UUID group ends
+# in `fc` about 1.5 % of the time, so it was silent and recurring, and it also
+# produced 358 of the 461 shape WARNs in the last scan.
+#
+# Two rules close it, and neither weakens the one that matters:
+#
+# 1. **Boundary.** Nothing alphanumeric, `_` or `-` may precede the prefix. A
+#    hex digit and a hyphen are both excluded by that, which is exactly the
+#    UUID case; a real key in JSON, a header or a URL is preceded by a quote, a
+#    space, `=`, `:` or `/` and still matches.
+# 2. **`fc-` needs 20+ hex characters after it.** A Firecrawl key is `fc-`
+#    plus 32 hex; twenty is well below that and far above anything a UUID tail
+#    can supply once rule 1 has excluded the ones glued to a hex digit.
+#
+# The exact-VALUE rule below is untouched and stays unconditional: a string
+# equal to (or containing) a credential this process holds is redacted wherever
+# it appears, boundary or no boundary. Shape is a heuristic; a value is a fact.
+CREDENTIAL_BOUNDARY = r"(?<![0-9A-Za-z_-])"
+
+#: A Firecrawl key is `fc-` + 32 hex. The floor is deliberately below that so a
+#: shorter future key still trips it, and far above a UUID's 12-hex tail.
+FC_MIN_HEX_CHARS = 20
+
+_GENERIC_PREFIXES = tuple(p for p in CREDENTIAL_PREFIXES if p != "fc-")
+CREDENTIAL_PREFIX_PATTERN = re.compile(
+    CREDENTIAL_BOUNDARY
+    + "(?:"
+    + r"fc-[0-9a-f]{%d,}" % FC_MIN_HEX_CHARS
+    + "|(?:"
+    + "|".join(re.escape(prefix) for prefix in _GENERIC_PREFIXES)
+    + r")[A-Za-z0-9_\-]*"
+    + ")"
 )
+
+# The REDACTOR's spelling of the same rule, and the one difference is
+# deliberate: the tail must be NON-empty. `secret_scan.py` wants to report a
+# bare `pk-lf-` written in prose - the DoD lists the prefixes as scan patterns
+# and a scanner silent about its own specification would be useless - but a
+# redactor that rewrote a bare prefix would mangle exactly that prose, which is
+# the same class of damage as the UUID above. One definition, two spellings,
+# both stated here rather than typed twice.
+_CREDENTIAL_PREFIX_PATTERN = re.compile(
+    CREDENTIAL_BOUNDARY
+    + "(?:"
+    + r"fc-[0-9a-f]{%d,}" % FC_MIN_HEX_CHARS
+    + "|(?:"
+    + "|".join(re.escape(prefix) for prefix in _GENERIC_PREFIXES)
+    + r")[A-Za-z0-9_\-]+"
+    + ")"
+)
+CREDENTIAL_REDACTION_PATTERN = _CREDENTIAL_PREFIX_PATTERN
+
+
+def split_credential_match(text: str) -> tuple[str, str]:
+    """`(prefix, tail)` for one match of `CREDENTIAL_PREFIX_PATTERN`.
+
+    Longest prefix first so a future pair that share a stem cannot be split at
+    the shorter one. Returns the whole string as the prefix if none matches,
+    which cannot happen for a real match and is not worth raising over.
+    """
+
+    for prefix in sorted(CREDENTIAL_PREFIXES, key=len, reverse=True):
+        if text.startswith(prefix):
+            return prefix, text[len(prefix) :]
+    return text, ""
 
 # Same rule `secret_scan.py` uses, so the redactor and the scanner cannot
 # disagree about what counts as a credential variable.

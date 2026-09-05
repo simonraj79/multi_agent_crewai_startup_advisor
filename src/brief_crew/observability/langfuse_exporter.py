@@ -95,6 +95,7 @@ from brief_crew.observability.content import (
     content_or_description,
     fingerprint,
     policy_details,
+    safe_identity,
     safe_message,
 )
 from brief_crew.observability.mapping import (
@@ -300,6 +301,14 @@ class _NodeScope:
     task_key: str = ""
     agent: _Span | None = None
     agent_key: str = ""
+    #: The error facts of a frame that named this node's failure without
+    #: closing it. The app emits TWO NODE_END frames on a builder node failure
+    #: - the first carrying `error_class` and its text under `message`, the
+    #: second carrying `error` and no class - and only the second one closes
+    #: the span. Both are facts about ONE execution, so the first is remembered
+    #: here and merged into the close rather than becoming a lone EVENT nobody
+    #: joins up.
+    pending_error: tuple[str | None, str | None] | None = None
     #: Whether this scope has seen the node's OWN start frame. A scope can be
     #: opened by something that arrives first - the edge frame naming this node
     #: as its destination precedes the node's start on the no-cost path - and
@@ -351,6 +360,16 @@ class _RunState:
     #: `run_completed` one lands AFTER the terminal frame, which is why the run
     #: span's own end is deferred to `_close_out`.
     metrics: dict[str, Any] = field(default_factory=dict)
+    #: Error facts seen on a frame that closed no span, keyed by node id. The
+    #: scope may not exist yet when the frame arrives, so the map outlives it.
+    node_errors: dict[str, tuple[str | None, str | None]] = field(default_factory=dict)
+    #: Error spans held open because the frame that closed them named no
+    #: exception class, waiting for one from the node or the run terminal. Each
+    #: entry carries the timestamp the span WOULD have ended at, so the wait
+    #: costs the timeline nothing. See `_close_span`.
+    deferred_errors: list[tuple[str, _Span, datetime, str, str | None]] = field(
+        default_factory=list
+    )
     #: CrewAI event classes the frame pipeline counted and did not convert, as
     #: the terminal frame reported them. Never a table held here: the count is
     #: the serializer's and this only carries it out.
@@ -945,7 +964,7 @@ class LangfuseExporter:
         generation.metadata["cost_source"] = "openrouter-billed"
         generation.metadata["openrouter_cost_usd"] = billed.total_usd
         if billed.provider:
-            generation.metadata["provider"] = self._safe(billed.provider, limit=128)
+            generation.metadata["provider"] = self._id(billed.provider, limit=128)
         generation.cost_usd = billed.total_usd
         # The frame pipeline's usage normalisation drops these two, so the only
         # place a reasoning-tier call's real split can come from is the
@@ -981,6 +1000,16 @@ class LangfuseExporter:
             self._event(state, frame, details, parent=self._run_handle(state))
             return
 
+        if disposition.kind == RUN and frame.event_type is UIEventType.NODE_END:
+            # An ERROR-kind frame ending a NODE rather than the run: the
+            # builder runtime's own failure frame. It carries the class and
+            # closes nothing, so its facts are put on the node scope for the
+            # NODE_END that does close it, and it is STILL recorded as an
+            # EVENT - it carries `attempt`, `will_retry`, `routed` and
+            # `fallback_model`, which are a retry story nothing else tells.
+            self._remember_node_error(state, frame, details)
+            self._event(state, frame, details, parent=self._scope(state, frame, details))
+            return
         if disposition.kind == NODE:
             self._handle_node(state, frame, details)
         elif disposition.kind == ACTOR:
@@ -1037,14 +1066,14 @@ class LangfuseExporter:
         metadata = self._base_metadata(state, frame, details or {})
         metadata.update(
             {
-                "run_id": self._safe(facts.run_id, limit=128),
-                "workflow_id": self._safe(facts.workflow_id, limit=256),
-                "app_session_id": self._safe(facts.session_id, limit=256),
-                "gates": self._safe(facts.gates, limit=32),
-                "mode": self._safe(facts.mode, limit=32),
+                "run_id": self._id(facts.run_id, limit=128),
+                "workflow_id": self._id(facts.workflow_id, limit=256),
+                "app_session_id": self._id(facts.session_id, limit=256),
+                "gates": self._id(facts.gates, limit=32),
+                "mode": self._id(facts.mode, limit=32),
                 "synthetic": self.policy.synthetic,
-                "user_id": self._safe(facts.user_id, limit=256),
-                "graph_version": self._safe(facts.graph_version, limit=128),
+                "user_id": self._id(facts.user_id, limit=256),
+                "graph_version": self._id(facts.graph_version, limit=128),
                 "observation_role": "run",
             }
         )
@@ -1137,7 +1166,7 @@ class LangfuseExporter:
         counts: dict[str, int] = {}
         for name, value in list(reported.items())[:64]:
             try:
-                counts[safe_message(name, secret_values, limit=128)] = int(value)
+                counts[safe_identity(name, secret_values, limit=128)] = int(value)
             except (TypeError, ValueError):
                 continue
         if counts:
@@ -1208,7 +1237,13 @@ class LangfuseExporter:
             return
         status, level, message, error_class = self._terminal_of(frame, details)
         state.terminal = status
+        # The frame's own class wins; a class seen earlier in the run is the
+        # fallback, because the registry's failure terminal named none at all
+        # until this round and an old deployment's frames still will not.
+        error_class = error_class or state.terminal_error_class
         state.terminal_error_class = error_class
+        if error_class and message and not message.startswith(f"{error_class}:"):
+            message = self._safe(f"{error_class}: {message}")
         closing_level = {
             STATUS_COMPLETED: _WARNING,
             STATUS_FAILED: _ERROR,
@@ -1226,13 +1261,37 @@ class LangfuseExporter:
         for generation in list(state.generations.values()):
             if generation.closed:
                 continue
+            if any(
+                pending.generation is generation for pending in self._pending_lookups
+            ):
+                # HELD FOR A PRICE, NOT UNFINISHED - and the difference is what
+                # this sweep got wrong. Contract section 6 ends every
+                # observation still open at the terminal and marks it with the
+                # run's own level, which is right for work that really was
+                # interrupted. A generation waiting on the billed-cost lookup
+                # is not that: it has already returned, it already carries its
+                # own end timestamp (its after-frame's) and its own level, and
+                # the only thing outstanding is a question about money asked of
+                # somebody else.
+                #
+                # Measured on the paid `builder-toolfail-2` run: BOTH
+                # generations succeeded and were billed - `cost_source:
+                # openrouter-billed` - and both arrived at `level=ERROR`
+                # carrying the RUN's failure message, because the run failed
+                # while their lookups were pending. Two successful model calls,
+                # reported as failures, in the surface a reader uses to find
+                # which call failed.
+                #
+                # It is ended by `_settle_lookups` when the lookup lands or
+                # gives up, and by `close()`'s force-settle if the process
+                # stops first - both with its recorded timestamp - so nothing
+                # here is left without an end time either way.
+                continue
             generation.end = generation.end or frame.ts
             if generation.level == _DEFAULT and status != STATUS_COMPLETED:
                 generation.level = closing_level
                 generation.status_message = closing_message
-            if generation.awaiting_usage_since is None and not any(
-                pending.generation is generation for pending in self._pending_lookups
-            ):
+            if generation.awaiting_usage_since is None:
                 self._complete_generation(state, generation)
         for span in list(state.tools.values()):
             self._close_span(state, span, frame.ts, closing_level, closing_message)
@@ -1247,6 +1306,11 @@ class LangfuseExporter:
                 error_class=error_class,
             )
         state.nodes.clear()
+        # Everything still held for a class it will now never get. The class
+        # the run itself ended with is the best answer available, and after
+        # this nothing is left without an end time - which is D3, guaranteed by
+        # the same sweep that already guaranteed it for open spans.
+        self._release_deferred(state, None, error_class or state.terminal_error_class)
 
         # The run span is NOT ended here, and that is the fix for the metrics
         # defect rather than a tidying. The registry's final `run_completed`
@@ -1439,6 +1503,24 @@ class LangfuseExporter:
 
         return safe_message(value, self.policy.secret_values, limit=limit)
 
+    def _id(self, value: Any, *, limit: int = 512) -> str:
+        """An identity value on its way out. Exact-value scrub only.
+
+        The counterpart to `_safe`, and the split is the point: free text gets
+        the shape heuristic because a credential can be anywhere in it; an
+        IDENTIFIER gets exact-value comparison only, because a heuristic that
+        rewrites the field a reader joins on is worse than the leak it is
+        guarding against. See `content.safe_identity` for the run id that was
+        corrupted by getting this wrong.
+        """
+
+        return safe_identity(value, self.policy.secret_values, limit=limit)
+
+    def _id_or_none(self, value: Any, *, limit: int = 512) -> Any:
+        if value is None:
+            return None
+        return self._id(value, limit=limit)
+
     def _safe_or_none(self, value: Any, *, limit: int = 1024) -> Any:
         """`_safe`, but a value the frame did not carry stays `None`.
 
@@ -1473,8 +1555,20 @@ class LangfuseExporter:
         """
 
         error_class = str(details.get("error_class") or "").strip()
-        message = self._safe(details.get("error"))
-        if error_class and message:
+        # BOTH keys, because the app writes the sentence under either. The
+        # builder runtime's node-failure frame puts its text under `message`
+        # and is the ONE frame in a failing builder run that carries the class;
+        # every other error frame puts it under `error`. Reading `error` alone
+        # meant the frame with the class produced the fallback string, so even
+        # once that frame was consulted its sentence was thrown away.
+        raw = details.get("error")
+        if not raw:
+            raw = details.get("message")
+        message = self._safe(raw)
+        if error_class and message and not message.startswith(f"{error_class}:"):
+            # `startswith` because that same builder frame has ALREADY prefixed
+            # the class into its `message`, and `BadRequestError:
+            # BadRequestError: …` is worse than either half.
             message = self._safe(f"{error_class}: {message}")
         return (message or fallback), (error_class or None)
 
@@ -1497,9 +1591,9 @@ class LangfuseExporter:
 
         base = {
             "run_id": state.facts.run_id,
-            "node_id": self._safe(frame.node_id, limit=256),
-            "agent_role": self._safe_or_none(details.get("agent_role"), limit=256),
-            "task_name": self._safe_or_none(details.get("task_name"), limit=256),
+            "node_id": self._id(frame.node_id, limit=256),
+            "agent_role": self._id_or_none(details.get("agent_role"), limit=256),
+            "task_name": self._id_or_none(details.get("task_name"), limit=256),
             "frame_seq": frame.seq,
             "frame_kind": frame.kind.value,
             "event_type": frame.event_type.value,
@@ -1573,12 +1667,32 @@ class LangfuseExporter:
         *,
         close_only: bool = False,
         error_class: str | None = None,
+        defer_node_id: str | None = None,
     ) -> None:
         if level == _ERROR:
             # Present-and-null on an error observation that genuinely has no
             # class, absent on one that did not fail: a reader can then tell
             # "this failure named no exception" from "this did not fail".
             span.metadata["error_class"] = error_class
+            if error_class is None and defer_node_id is not None:
+                # HELD, not ended. The class arrives on a LATER frame than the
+                # one that closes this span - measured on the paid
+                # `builder-agentfail-2` run, where the agent and task closed on
+                # seq 45 and the only frame naming `BadRequestError` was seq 47
+                # - so "propagate inward from the node" cannot work in frame
+                # order, and the span has to wait for it.
+                #
+                # Waiting costs the data nothing: `end_time` is an explicit
+                # argument on this transport, so the timestamp recorded here is
+                # the one that is finally written whenever the wait ends. And
+                # the wait is bounded by the run itself - `_finish_run` flushes
+                # every deferred span, so D3 (nothing left without an end time)
+                # holds by the same sweep that already guaranteed it.
+                span.metadata["deferred_for_error_class"] = True
+                state.deferred_errors.append(
+                    (defer_node_id, span, end, level, message)
+                )
+                return
         if not close_only:
             self._call(
                 state,
@@ -1690,13 +1804,20 @@ class LangfuseExporter:
         level: str = _DEFAULT,
         message: str | None = None,
         error_class: str | None = None,
+        defer_node_id: str | None = None,
     ) -> None:
         task = scope.task
         if task is None:
             return
         if scope.agent is not None:
             self._close_span(
-                state, scope.agent, end, level, message, error_class=error_class
+                state,
+                scope.agent,
+                end,
+                level,
+                message,
+                error_class=error_class,
+                defer_node_id=defer_node_id,
             )
             scope.agent = None
             scope.agent_key = ""
@@ -1708,7 +1829,15 @@ class LangfuseExporter:
             name="task_attempts",
             value=task.generations,
         )
-        self._close_span(state, task, end, level, message, error_class=error_class)
+        self._close_span(
+            state,
+            task,
+            end,
+            level,
+            message,
+            error_class=error_class,
+            defer_node_id=defer_node_id,
+        )
         scope.task = None
         scope.task_key = ""
 
@@ -1751,6 +1880,54 @@ class LangfuseExporter:
     # Per-disposition handlers
     # ------------------------------------------------------------------
 
+    def _release_deferred(
+        self, state: _RunState, node_id: str | None, error_class: str | None
+    ) -> None:
+        """End the spans held for a class, with the timestamps they recorded.
+
+        `node_id` None releases everything, which is what the run terminal
+        does: whatever class is known by then is the best answer available, and
+        an observation must not outlive the run without an end time (D3).
+        """
+
+        keep: list[tuple[str, _Span, datetime, str, str | None]] = []
+        for held_node, span, end, level, message in state.deferred_errors:
+            if node_id is not None and held_node != node_id:
+                keep.append((held_node, span, end, level, message))
+                continue
+            span.metadata["error_class"] = error_class
+            span.metadata.pop("deferred_for_error_class", None)
+            if error_class and message and not message.startswith(f"{error_class}:"):
+                message = self._safe(f"{error_class}: {message}")
+            self._call(
+                state,
+                "update",
+                span.handle,
+                metadata=span.metadata,
+                level=level,
+                status_message=message,
+            )
+            self._call(state, "end", span.handle, end_ns=transport.nanoseconds(end))
+        state.deferred_errors = keep
+
+    def _remember_node_error(
+        self, state: _RunState, frame: FrameData, details: Mapping[str, Any]
+    ) -> None:
+        """Hold a class that arrived on a frame which closes nothing."""
+
+        message, error_class = self._error_fields(details, "")
+        if not (message or error_class):
+            return
+        state.node_errors[frame.node_id] = (message or None, error_class)
+        scope = state.nodes.get(frame.node_id)
+        if scope is not None:
+            scope.pending_error = (message or None, error_class)
+        if error_class and state.terminal_error_class is None:
+            # The run's own terminal may name no class - the registry's
+            # WORKFLOW_END did not, before this round - so the first class seen
+            # anywhere in the run is kept as the fallback for the run span.
+            state.terminal_error_class = error_class
+
     def _handle_node(
         self, state: _RunState, frame: FrameData, details: Mapping[str, Any]
     ) -> None:
@@ -1780,6 +1957,8 @@ class LangfuseExporter:
             if scope is None:
                 self._scope(state, frame, details)
                 scope = state.nodes.pop(frame.node_id, None)
+                if scope is not None and frame.node_id in state.node_errors:
+                    scope.pending_error = state.node_errors[frame.node_id]
             if scope is None:
                 # The node is already finished and this is a second end for it.
                 self._event(state, frame, details, parent=self._run_handle(state))
@@ -1791,6 +1970,23 @@ class LangfuseExporter:
             if stage == "error" or level == _ERROR:
                 message, error_class = self._error_fields(details, "the step failed")
                 level = _ERROR
+                remembered = scope.pending_error if scope is not None else None
+                if remembered is not None:
+                    # The sibling frame's facts, merged onto the one span. Its
+                    # class wins outright (this frame has none) and its
+                    # sentence wins only if this frame produced nothing.
+                    message = message or remembered[0] or message
+                    error_class = error_class or remembered[1]
+                    if (
+                        error_class
+                        and message
+                        and not message.startswith(f"{error_class}:")
+                    ):
+                        # The prefix has to be applied AFTER the merge as well
+                        # as inside `_error_fields`: the class and the sentence
+                        # came from two different frames, so neither of them
+                        # could have done it alone.
+                        message = self._safe(f"{error_class}: {message}")
             payload_output = content_or_description(
                 details.get("output_preview", details.get("result")),
                 capture=self.policy.capture_content,
@@ -1800,6 +1996,9 @@ class LangfuseExporter:
             self._close_scope(
                 state, scope, frame.ts, level, message, payload_output, error_class
             )
+            # The class this node ended with is what its held-open children
+            # were waiting for.
+            self._release_deferred(state, frame.node_id, error_class)
             state.finished_nodes.add(frame.node_id)
             return
         self._event(state, frame, details, parent=self._scope(state, frame, details))
@@ -1855,12 +2054,15 @@ class LangfuseExporter:
                 message,
                 payload_output,
                 error_class=error_class,
+                defer_node_id=frame.node_id,
             )
             scope.agent = None
             scope.agent_key = ""
             return
         if task_key and scope.task is not None and scope.task_key == task_key:
-            self._close_task(state, scope, frame.ts, level, message, error_class)
+            self._close_task(
+                state, scope, frame.ts, level, message, error_class, frame.node_id
+            )
             return
         self._event(state, frame, details, parent=parent)
 
@@ -1897,11 +2099,11 @@ class LangfuseExporter:
             return
         if stage == "after":
             generation.end = frame.ts
-            generation.metadata["finish_reason"] = self._safe_or_none(
+            generation.metadata["finish_reason"] = self._id_or_none(
                 details.get("finish_reason"), limit=128
             )
             generation.response_id = details.get("response_id") or None
-            generation.metadata["response_id"] = self._safe_or_none(
+            generation.metadata["response_id"] = self._id_or_none(
                 generation.response_id, limit=128
             )
             generation.awaiting_usage_since = monotonic()
@@ -1927,7 +2129,7 @@ class LangfuseExporter:
         metadata = self._base_metadata(state, frame, details)
         metadata.update(
             {
-                "call_id": self._safe(call_id, limit=256),
+                "call_id": self._id(call_id, limit=256),
                 "attempt": attempt,
                 "cost_source": "app-estimate",
                 "observation_role": "generation",
@@ -2102,10 +2304,10 @@ class LangfuseExporter:
                 state, frame, details
             )
             if scope is not None:
-                scope.span.metadata["entered_from"] = self._safe_or_none(
+                scope.span.metadata["entered_from"] = self._id_or_none(
                     details.get("from"), limit=256
                 )
-                scope.span.metadata["entered_by_port"] = self._safe_or_none(
+                scope.span.metadata["entered_by_port"] = self._id_or_none(
                     details.get("port"), limit=256
                 )
             return
@@ -2432,6 +2634,10 @@ def _event_name(
 
     gate_id = details.get("gate_id")
     if gate_id:
+        # `safe_message`, not `safe_identity`: a gate id is named by the
+        # author's own document, not generated by this system, so it is not one
+        # of the identifiers the exact-value rule protects - and it is a place
+        # a planted key has actually been found.
         return f"gate:{safe_message(gate_id, secret_values, limit=96)}"
     if frame.kind in (
         FrameKind.GATE_OPEN,

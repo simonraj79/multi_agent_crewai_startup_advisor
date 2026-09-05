@@ -62,7 +62,11 @@ from brief_crew.events import (
 )
 from brief_crew.service.models import RunStatus
 from brief_crew.service.runner import BriefFlowRunner, RunExecution, Runner
-from brief_crew.events.serializer import error_class_of, normalize_usage
+from brief_crew.events.serializer import (
+    error_class_of,
+    error_class_or_type,
+    normalize_usage,
+)
 
 
 DEFAULT_SUBSCRIBER_CAPACITY = 512
@@ -2792,7 +2796,15 @@ class RunRegistry:
                 # and the run-level frame is what a client reads last.
                 details={
                     "error": str(exc),
-                    **error_class_of(exc),
+                    # `error_class_or_type`, not `error_class_of`: the latter
+                    # reads a DECLARED discriminator attribute and answers
+                    # nothing for an ordinary exception, so this frame - the
+                    # run's own failure terminal - carried the provider's
+                    # sentence and no class. Measured on the paid
+                    # `builder-agentfail-2` run: `trace.output.error_class` was
+                    # null for a run that died of a `BadRequestError`, and the
+                    # exception object was in hand right here.
+                    **error_class_or_type(exc),
                     **record.capture.serializer.unhandled_report(),
                 },
                 level=FrameLevel.ERROR,

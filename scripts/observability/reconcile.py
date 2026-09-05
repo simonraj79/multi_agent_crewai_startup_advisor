@@ -448,11 +448,20 @@ def generation_count_section(
 ) -> tuple[str, dict[str, Any]]:
     """E1(a): GENERATION observations in the session vs the app's LLM calls.
 
-    The app figure is the count of LLM **after** frames, which is what
-    `pull_app_run.py`'s `calls` list is: one entry per completed model call. A
-    Langfuse count above it is a second copy; below it is a loss, and E1 is only
-    about the first - but both are reported, because a script that looked for a
-    duplicate and silently accepted a shortfall would answer half the question.
+    **The app figure is ATTEMPTS, not completions**, and that correction is
+    RECONCILIATION.md discrepancy 3. It used the after-frame count -
+    `pull_app_run.py`'s `calls` list, one entry per call that produced tokens -
+    which is 0 on a run whose every call was refused. `builder-agentfail` made
+    six calls, all rejected 400 by the provider: six LLM **error** frames, six
+    ERROR generations in Langfuse, and this check printed **FAIL: 0 app calls
+    vs 6 generations** over a pair that agrees perfectly. One generation is
+    written per call ATTEMPT, successful or failed, so attempts is the
+    comparator, and the split is printed on both sides so a reader sees the
+    0 + 6 = 6 rather than having to reconstruct it.
+
+    A Langfuse count above the app's attempts is a second copy and reads FAIL;
+    below is a SHORTFALL, which is a loss rather than an E1 failure and is
+    labelled as one instead of being quietly accepted.
     """
 
     if not langfuse or not langfuse.get("observation_count"):
@@ -460,52 +469,106 @@ def generation_count_section(
             "**NOT CHECKED** - no Langfuse observations were pulled for this run.",
             {"langfuse": None, "app": None, "verdict": "NOT CHECKED"},
         )
+
+    lf_calls = list(langfuse.get("calls") or [])
     lf_generations = int(
         (langfuse.get("observation_types") or {}).get("GENERATION")
         or (langfuse.get("totals") or {}).get("calls")
         or 0
     )
-    app_calls = app.get("calls") if app else None
-    app_count = len(app_calls) if isinstance(app_calls, list) else None
-    if app_count is None and app:
-        value = (app.get("totals") or {}).get("calls")
-        app_count = int(value) if value is not None else None
-    if app_count is None:
+    # A refused call is a GENERATION at level ERROR; everything else succeeded
+    # as far as Langfuse is concerned.
+    lf_failed = sum(1 for call in lf_calls if str(call.get("level") or "") == "ERROR")
+    lf_ok = (len(lf_calls) - lf_failed) if lf_calls else None
+    if lf_calls and len(lf_calls) != lf_generations:
+        # The GENERATION type count is the authority; the calls list is what
+        # the split is derived from, and a disagreement is worth showing.
+        lf_ok = lf_generations - lf_failed
+
+    app_ok: int | None = None
+    app_failed: int | None = None
+    if app:
+        calls = app.get("calls")
+        if isinstance(calls, list):
+            app_ok = len(calls)
+        elif (app.get("totals") or {}).get("calls") is not None:
+            app_ok = int((app.get("totals") or {}).get("calls"))
+        failed = app.get("failed_calls")
+        if isinstance(failed, (list, tuple)):
+            app_failed = len(failed)
+        elif isinstance(failed, int):
+            app_failed = failed
+    app_attempts = (
+        None if app_ok is None else app_ok + int(app_failed or 0)
+    )
+
+    if app_attempts is None:
         verdict = "NOT CHECKED"
         note = "no app figures, so there is nothing to compare the count against."
-    elif lf_generations == app_count:
+    elif lf_generations == app_attempts:
         verdict = "PASS"
-        note = "one GENERATION observation per LLM call: no second copy inside the session."
-    elif lf_generations > app_count:
+        note = (
+            "one GENERATION observation per LLM call ATTEMPT: no second copy "
+            "inside the session."
+        )
+    elif lf_generations > app_attempts:
         verdict = "**FAIL**"
         note = (
-            f"{lf_generations - app_count} MORE generation(s) in Langfuse than the app "
-            "made calls - that is a duplicate report, which is what E1 forbids."
+            f"{lf_generations - app_attempts} MORE generation(s) in Langfuse than "
+            "the app attempted calls - that is a duplicate report, which is what "
+            "E1 forbids."
         )
     else:
         verdict = "**SHORTFALL**"
         note = (
-            f"{app_count - lf_generations} call(s) the app made are missing from "
-            "Langfuse. Not a duplicate, so not an E1 failure - a loss, which D3/E5 "
-            "own. Read it with the drop counter in the exporter's summary line."
+            f"{app_attempts - lf_generations} call attempt(s) the app made are "
+            "missing from Langfuse. Not a duplicate, so not an E1 failure - a "
+            "loss, which D3/E5 own. Read it with the drop counter in the "
+            "exporter's summary line."
         )
+    if (
+        verdict == "PASS"
+        and app_failed is not None
+        and lf_ok is not None
+        and (app_ok, app_failed) != (lf_ok, lf_failed)
+    ):
+        note += (
+            f" The totals agree; the ok/failed SPLIT does not "
+            f"({app_ok}/{app_failed} app against {lf_ok}/{lf_failed} Langfuse), "
+            "which is a level-mapping question rather than a count one."
+        )
+
     table = md_table(
-        ["measurement", "value"],
+        ["measurement", "app", "Langfuse"],
         [
-            ["GENERATION observations in the session", lf_generations],
-            ["LLM after-frames the app recorded", app_count if app_count is not None else "n/a"],
             [
-                "app calls that FAILED (an ERROR generation, no tokens)",
-                _count_of((app or {}).get("failed_calls")),
+                "calls that COMPLETED (app: LLM after-frames; LF: level != ERROR)",
+                _or_na(app_ok),
+                _or_na(lf_ok),
             ],
-            ["verdict", verdict],
+            [
+                "calls that FAILED (app: LLM error frames; LF: level == ERROR)",
+                _or_na(app_failed),
+                _or_na(lf_failed),
+            ],
+            [
+                "**call ATTEMPTS / GENERATION observations** - the comparator",
+                _or_na(app_attempts),
+                lf_generations,
+            ],
+            ["verdict", verdict, ""],
         ],
     )
     return f"{table}\n\n{note}", {
         "langfuse": lf_generations,
-        "app": app_count,
+        "langfuse_ok": lf_ok,
+        "langfuse_failed": lf_failed,
+        "app": app_attempts,
+        "app_ok": app_ok,
+        "app_failed": app_failed,
         "verdict": verdict,
     }
+
 
 
 def _count_of(value: Any) -> Any:

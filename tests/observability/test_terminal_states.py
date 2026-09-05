@@ -17,7 +17,7 @@ from __future__ import annotations
 import pathlib
 import unittest
 
-from brief_crew.events.models import FrameKind, UIEventType
+from brief_crew.events.models import FrameKind, FrameLevel, UIEventType
 from brief_crew.observability.backend import nanoseconds
 from brief_crew.observability.langfuse_exporter import (
     STATUS_CANCELLED,
@@ -520,3 +520,228 @@ class RunMetricsFallbackTests(unittest.TestCase):
         self.assertEqual(140, metrics["usage"]["prompt_tokens"])
         self.assertEqual(25, metrics["usage"]["completion_tokens"])
         self.assertAlmostEqual(0.002, metrics["usage"]["cost_usd"], places=6)
+
+
+class BuilderAgentFailureTests(unittest.TestCase):
+    """The real frame sequence of a paid failing run, replayed (B3 / D1).
+
+    Copied from `evidence/proof/builder-agentfail-2/frames.ndjson` seq 44-50,
+    because the two rounds that got this wrong were both wrong about the SHAPE
+    rather than about the intent, and a made-up failure would have passed both
+    times:
+
+      44  AGENT_CALL  ERROR  `error`, no class      (crew-level)
+      45  AGENT_CALL  ERROR  `error`, no class      <- closes the agent and task
+      46  AGENT_CALL  ERROR  `error`, no class
+      47  ERROR/NODE_END     `error_class`, text under **`message`**  <- closes NOTHING
+      48  NODE_END    ERROR  `error`, no class      <- closes the node
+      49  ERROR/WORKFLOW_END `error`, and now a class
+      50  ERROR/WORKFLOW_END the registry's copy
+
+    Two things make it hard and both are in that table. The one frame carrying
+    the class closes nothing and puts its sentence under a different key; and
+    the agent and task close on seq 45, TWO frames before the class exists - so
+    no amount of propagating inward from the node can reach them in frame
+    order. The exporter holds them open instead, with the timestamp they would
+    have ended at, and ends them when the class arrives.
+    """
+
+    PROVIDER_MESSAGE = (
+        "Error code: 400 - {'error': {'message': \"This endpoint's maximum "
+        "context length is 8192 tokens\"}}"
+    )
+
+    #: CrewAI stamps four identity keys on every agent, task and LLM event, and
+    #: the real seq 44-46 differ in WHICH of them they carry - which is what
+    #: decides who closes what. Copied rather than simplified.
+    FULL_IDENTITY = {
+        **IDENTITY,
+        "agent_id": "b0f2f0d0-0000-4000-8000-000000000001",
+        "task_id": "44c89b2c-3cf5-45a1-9295-86c83d6e9d90",
+    }
+
+    def setUp(self) -> None:
+        self.exporter, self.backend = exporter_for()
+        recorder = Recorder()
+        recorder.run_started({"idea": "an idea"})
+        recorder.node_started("sound_the_channel", **self.FULL_IDENTITY)
+        recorder.add(
+            FrameKind.LLM,
+            UIEventType.MODEL_CALL,
+            "sound_the_channel",
+            {"stage": "before", "call_id": "c1", "model": "m", **self.FULL_IDENTITY},
+        )
+        # seq 44-46, verbatim in shape: a crew-level failure naming a bare
+        # `task`, then the TASK failure naming `task_name` and `task_id` and no
+        # agent at all - that is the frame that closes the task span and, under
+        # it, the agent - then a second crew-level one naming nobody.
+        for extra in (
+            {"task": "Task"},
+            {
+                "task_name": IDENTITY["task_name"],
+                "task_id": self.FULL_IDENTITY["task_id"],
+            },
+            {},
+        ):
+            recorder.add(
+                FrameKind.AGENT,
+                UIEventType.AGENT_CALL,
+                "sound_the_channel",
+                {"stage": "error", "error": self.PROVIDER_MESSAGE, **extra},
+                level=FrameLevel.ERROR,
+            )
+        # seq 47: the builder runtime's own frame - the ONLY one with the class,
+        # its text under `message`, and it closes nothing.
+        recorder.add(
+            FrameKind.ERROR,
+            UIEventType.NODE_END,
+            "sound_the_channel",
+            {
+                "stage": "error",
+                "error_class": "BadRequestError",
+                "message": f"BadRequestError: {self.PROVIDER_MESSAGE}",
+                "attempt": 1,
+                "will_retry": False,
+                "routed": False,
+            },
+            level=FrameLevel.ERROR,
+        )
+        # seq 48: the frame that actually closes the node.
+        recorder.add(
+            FrameKind.NODE_STATE,
+            UIEventType.NODE_END,
+            "sound_the_channel",
+            {"stage": "error", "error": self.PROVIDER_MESSAGE},
+            level=FrameLevel.ERROR,
+        )
+        # seq 49: the run's terminal, which since 2026-09-06 names the class.
+        recorder.add(
+            FrameKind.ERROR,
+            UIEventType.WORKFLOW_END,
+            "workflow",
+            {"error": self.PROVIDER_MESSAGE, "error_class": "BadRequestError"},
+            level=FrameLevel.ERROR,
+        )
+        drive(self.exporter, recorder.frames)
+        self.frames = recorder.frames
+        self.observations = self.backend.observations
+
+    def test_all_four_observations_name_the_exception_class(self) -> None:
+        """The row, in one assertion. Pass 2 had `None` on every one of these."""
+
+        for role in ("agent", "task", "node", "run"):
+            with self.subTest(role=role):
+                observation = by_role(self.observations, role)[0]
+                self.assertEqual(
+                    "BadRequestError",
+                    observation.metadata.get("error_class"),
+                    f"{role} still does not name the class",
+                )
+                self.assertTrue(
+                    (observation.status_message or "").startswith("BadRequestError: "),
+                    observation.status_message,
+                )
+
+    def test_the_trace_output_names_it_too(self) -> None:
+        run_span = by_role(self.observations, "run")[0]
+        output = self.backend.trace_output[run_span.trace_id]
+        self.assertEqual(STATUS_FAILED, output["status"])
+        self.assertEqual("BadRequestError", output["error_class"])
+        self.assertTrue(str(output["reason"]).startswith("BadRequestError: "))
+
+    def test_the_class_is_not_prefixed_twice(self) -> None:
+        """Seq 47 has already written `BadRequestError: …` into its own text."""
+
+        for observation in self.observations:
+            with self.subTest(name=observation.name):
+                self.assertNotIn(
+                    "BadRequestError: BadRequestError", observation.status_message or ""
+                )
+
+    def test_every_span_still_ends_at_its_own_closing_frames_timestamp(self) -> None:
+        """The property holding a span open must not cost (D3, and B4).
+
+        `end_time` is explicit on this transport, so a span released three
+        frames later still records the moment it actually closed. If that ever
+        stopped being true, a held agent would appear to have run until the end
+        of the run.
+        """
+
+        by_seq = {frame.seq: frame for frame in self.frames}
+        agent = by_role(self.observations, "agent")[0]
+        task = by_role(self.observations, "task")[0]
+        node = by_role(self.observations, "node")[0]
+        run = by_role(self.observations, "run")[0]
+        # seq 5 is the agent/task closer here (the recorder numbers from 1);
+        # find it by shape rather than by a magic number.
+        # The agent span is closed by the AGENT frame that NAMES the agent -
+        # seq 45 in the paid run. Seq 44 names only a task and seq 46 names
+        # nobody, and both become events, which is the shape this test would
+        # otherwise assert against the wrong frame.
+        agent_closer = next(
+            frame
+            for frame in self.frames
+            if frame.kind is FrameKind.AGENT
+            and dict(frame.details).get("stage") == "error"
+            and dict(frame.details).get("task_id")
+        )
+        node_closer = next(
+            frame
+            for frame in self.frames
+            if frame.kind is FrameKind.NODE_STATE
+            and frame.event_type is UIEventType.NODE_END
+        )
+        terminal = next(
+            frame
+            for frame in self.frames
+            if frame.event_type is UIEventType.WORKFLOW_END
+        )
+        del by_seq
+        self.assertEqual(nanoseconds(agent_closer.ts), agent.end_ns)
+        self.assertEqual(nanoseconds(agent_closer.ts), task.end_ns)
+        self.assertEqual(nanoseconds(node_closer.ts), node.end_ns)
+        self.assertEqual(nanoseconds(terminal.ts), run.end_ns)
+
+    def test_nothing_is_left_without_an_end_time(self) -> None:
+        self.assertEqual(
+            [], [o.name for o in self.observations if o.as_type != "event" and not o.ended]
+        )
+        for observation in self.observations:
+            if observation.as_type != "event":
+                self.assertIsNotNone(observation.end_ns, observation.name)
+
+    def test_the_frame_that_closed_nothing_is_still_recorded(self) -> None:
+        """Seq 47 carries `attempt`, `will_retry` and `routed` - a retry story
+        no other frame tells - so it stays an EVENT as well as being merged."""
+
+        events = [o for o in self.observations if o.as_type == "event"]
+        retry = [o for o in events if "attempt" in (o.metadata.get("details") or {})]
+        self.assertEqual(1, len(retry))
+        self.assertFalse(retry[0].metadata["details"]["will_retry"])
+
+    def test_a_held_span_is_released_even_if_the_node_never_names_a_class(self) -> None:
+        """The other exit: the run terminal releases whatever is still held.
+
+        Without it a failing run whose node frame carried no class would leave
+        the agent and task open for ever, which is a worse defect than the one
+        being fixed.
+        """
+
+        exporter, backend = exporter_for()
+        recorder = Recorder()
+        recorder.run_started({})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.add(
+            FrameKind.AGENT,
+            UIEventType.AGENT_CALL,
+            "n1",
+            {"stage": "error", "error": "no class anywhere", **IDENTITY},
+            level=FrameLevel.ERROR,
+        )
+        recorder.run_failed("no class anywhere", error_class="")
+        drive(exporter, recorder.frames)
+        spans = [o for o in backend.observations if o.as_type != "event"]
+        self.assertEqual([], [o.name for o in spans if not o.ended])
+        agent = by_role(backend.observations, "agent")[0]
+        self.assertIn("error_class", agent.metadata)
+        self.assertIsNone(agent.metadata["error_class"])

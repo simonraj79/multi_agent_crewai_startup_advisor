@@ -276,6 +276,33 @@ def error_class_of(error: Any) -> dict[str, str]:
     return {}
 
 
+def error_class_or_type(error: Any) -> dict[str, str]:
+    """`error_class_of`, falling back to the exception's own type name.
+
+    `error_class_of` reads a declared `.error_class` ATTRIBUTE - the C6
+    discriminator, `credential-not-yours` and its kin - and answers nothing for
+    an ordinary exception. That is right where a client is meant to branch on a
+    known code, and wrong for a trace: the paid `builder-agentfail-2` run ended
+    on a `BadRequestError` and **not one observation in the trace named it**,
+    because the terminal frames carried the provider's sentence and no class at
+    all. The one frame that had it was the builder runtime's, which spells the
+    class itself.
+
+    So this prefers the declared discriminator and falls back to
+    `type(error).__name__` when the value is a real exception. A STRING error
+    yields nothing, deliberately: CrewAI stringifies several of its own error
+    events before emitting them, and reading a class out of prose would be
+    inventing one.
+    """
+
+    declared = error_class_of(error)
+    if declared:
+        return declared
+    if isinstance(error, BaseException):
+        return {"error_class": type(error).__name__[:64]}
+    return {}
+
+
 #: How many messages of one call are read for the fingerprint. A prompt is a
 #: conversation and a conversation is bounded by the agent's `max_iter`; this
 #: is far above any of them and exists so that a malformed event carrying an
@@ -551,7 +578,7 @@ class FieldBoundedSerializer:
             # same way a false completion does.
             if not scope.is_root(event.flow_name, claim=False):
                 return (self._nested_flow_draft(timestamp, node_id, event.flow_name, "failed", "error", {"error": self.clip(str(event.error))}, FrameLevel.ERROR),)
-            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} failed", {"error": self.clip(str(event.error)), **self.unhandled_report()}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.ERROR, UIEventType.WORKFLOW_END, registry.workflow_node_id, f"{event.flow_name} failed", {"error": self.clip(str(event.error)), **error_class_or_type(event.error), **self.unhandled_report()}, FrameLevel.ERROR),)
 
         # The run's product, not a lifecycle transition - see `events/verdict.py`
         # for why it is an event at all. Placed here, with the flow-level
@@ -575,7 +602,7 @@ class FieldBoundedSerializer:
                 frames.append(self._draft(timestamp, FrameKind.EDGE_TAKEN, UIEventType.EDGE_PROCESS, node_id, f"{event.method_name} routed to {route}", {"from": node_id, "to": registry.resolve_route(event.method_name, route), "route": self.clip(route)}))
             return tuple(frames)
         if isinstance(event, MethodExecutionFailedEvent):
-            return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} failed", {"stage": "error", "error": self.clip(str(event.error)), **error_class_of(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.NODE_STATE, UIEventType.NODE_END, node_id, f"{event.method_name} failed", {"stage": "error", "error": self.clip(str(event.error)), **error_class_or_type(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, HumanFeedbackRequestedEvent):
             return (self._draft(timestamp, FrameKind.GATE_OPEN, UIEventType.HUMAN_INTERACTION, node_id, event.message, {"stage": "before", "gate_id": event.request_id, "options": self.clip(event.emit), "output": self.clip(event.output)}),)
@@ -601,7 +628,7 @@ class FieldBoundedSerializer:
             details.update(envelope)
             return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} completed", details, level, duration_ms),)
         if isinstance(event, ToolUsageErrorEvent):
-            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} failed", {"stage": "error", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} failed", {"stage": "error", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "error": self.clip(event.error), **error_class_or_type(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, LLMCallStartedEvent):
             # Three ADDITIVE fields, and none of them is the prompt. This event
@@ -654,7 +681,7 @@ class FieldBoundedSerializer:
                 self._draft(timestamp, FrameKind.TOKEN, UIEventType.MODEL_CALL, node_id, "Token usage recorded", {"call_id": event.call_id, "model": model, "usage": usage, "cost_usd": cost_usd}),
             )
         if isinstance(event, LLMCallFailedEvent):
-            return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call failed", {"stage": "error", "call_id": event.call_id, "model": event.model, "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call failed", {"stage": "error", "call_id": event.call_id, "model": event.model, "error": self.clip(event.error), **error_class_or_type(event.error)}, FrameLevel.ERROR),)
         if isinstance(event, LLMStreamChunkEvent):
             return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, "Model stream chunk", {"stage": "chunk", "call_id": event.call_id, "chunk": self.clip(event.chunk)}),)
 
@@ -663,21 +690,21 @@ class FieldBoundedSerializer:
         if isinstance(event, AgentExecutionCompletedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._agent_role(event)} completed", {"stage": "after", "task": self._task_name(event), "output": self.clip(event.output)}),)
         if isinstance(event, AgentExecutionErrorEvent):
-            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._agent_role(event)} failed", {"stage": "error", "task": self._task_name(event), "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._agent_role(event)} failed", {"stage": "error", "task": self._task_name(event), "error": self.clip(event.error), **error_class_or_type(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, TaskStartedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} started", {"stage": "before"}),)
         if isinstance(event, TaskCompletedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} completed", {"stage": "after"}),)
         if isinstance(event, TaskFailedEvent):
-            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} failed", {"stage": "error", "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} failed", {"stage": "error", "error": self.clip(event.error), **error_class_or_type(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, CrewKickoffStartedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} started", {"stage": "before"}),)
         if isinstance(event, CrewKickoffCompletedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} completed", {"stage": "after", "total_tokens": event.total_tokens}),)
         if isinstance(event, CrewKickoffFailedEvent):
-            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} failed", {"stage": "error", "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} failed", {"stage": "error", "error": self.clip(event.error), **error_class_or_type(event.error)}, FrameLevel.ERROR),)
 
         # A guardrail retry is a *second* full task execution on the same tier,
         # and until this branch existed it was the largest unexplained cost in a

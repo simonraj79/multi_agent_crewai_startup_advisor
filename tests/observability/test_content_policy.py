@@ -23,18 +23,29 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import pathlib
 import unittest
 from unittest import mock
 
 from brief_crew.events.models import FrameKind, FrameLevel, UIEventType
 from brief_crew.observability.content import (
+    CREDENTIAL_BOUNDARY,
+    FC_MIN_HEX_CHARS,
     STRUCTURAL_STRING_KEYS,
     credential_values_in_environment,
     policy_details,
+    safe_identity,
     safe_message,
     scrub_text,
 )
-from tests.observability.replay import Recorder, RunFacts, drive, exporter_for
+from brief_crew.events.redaction import REDACTED
+from tests.observability.replay import (
+    Recorder,
+    RunFacts,
+    by_role,
+    drive,
+    exporter_for,
+)
 
 
 #: Shaped like a real provider key and belonging to nobody. It authenticates
@@ -128,10 +139,21 @@ class CaptureOnTests(unittest.TestCase):
 
 class ScrubberTests(unittest.TestCase):
     def test_every_prefix_the_contract_names_is_blanked(self) -> None:
-        for prefix in ("sk-or-", "sk-lf-", "pk-lf-", "fc-", "ghp_", "github_pat_", "pcsk_", "AIza"):
+        """Each prefix with a tail of the shape a real key of that kind has.
+
+        `fc-` is the odd one and it is odd deliberately: since 2026-09-06 it
+        needs **20+ hex characters** after it, because a Firecrawl key is
+        `fc-` + 32 hex while a UUID's tail supplies 12 - and about 1.5% of
+        UUIDs contain `fc-`. The other prefixes take any tail; only Firecrawl's
+        collides with something this system prints constantly.
+        """
+
+        for prefix in ("sk-or-", "sk-lf-", "pk-lf-", "ghp_", "github_pat_", "pcsk_", "AIza"):
             with self.subTest(prefix=prefix):
                 planted = f"{prefix}abcdefghijklmnop1234"
                 self.assertNotIn(planted, scrub_text(f"before {planted} after"))
+        planted = "fc-" + "a1b2c3d4e5" * 4
+        self.assertNotIn(planted, scrub_text(f"before {planted} after"))
 
     def test_a_value_held_in_this_process_is_blanked_by_comparison(self) -> None:
         secret = "a-value-that-is-long-enough-to-be-a-credential"
@@ -381,14 +403,154 @@ class SafeMessageTests(unittest.TestCase):
         longer matches it while most of it is still on the wire.
         """
 
-        text = ("x" * 40) + PLANTED_KEY
+        # A separator before the key, because since 2026-09-06 a prefix glued
+        # to an alphanumeric is deliberately NOT matched - that boundary is
+        # what stops a UUID containing `fc-` being rewritten. A real key in
+        # prose, JSON, a header or a URL is preceded by a space, a quote, `=`,
+        # `:` or `/`.
+        text = ("x" * 39) + " " + PLANTED_KEY
         cut = safe_message(text, limit=50)
         self.assertLessEqual(len(cut), 50)
         self.assertNotIn("sk-or-v1-", cut)
         # The whole key went, including the part that sat past the limit: the
         # control is that bounding first leaves `sk-or-v1-0` on the wire.
-        self.assertEqual(("x" * 40) + "***", cut)
+        self.assertEqual(("x" * 39) + " ***", cut)
+
+    def test_the_boundary_applies_to_fc_and_only_to_fc(self) -> None:
+        """The narrowing, asserted from both sides.
+
+        A UUID contains nothing but hex and hyphens, so `fc-` is the ONLY one
+        of these prefixes that can occur inside one - which is why it is the
+        only one the boundary guards. Applying the boundary to the others would
+        buy nothing and cost real detections: a key glued after a hyphen inside
+        an id is exactly what V-REVIEW's planted-key probe plants, and a
+        blanket boundary let six of them through.
+        """
+
+        # `fc-` after a hex digit: a UUID, left alone.
+        self.assertEqual("b5fc-f714a76e5f71", safe_message("b5fc-f714a76e5f71"))
+        # every other prefix after a hyphen: a key, removed.
+        self.assertEqual("gate-***", safe_message("gate-sk-or-v1-" + "0" * 64))
+        # and a real Firecrawl key still goes, hyphen or no hyphen.
+        self.assertEqual("id-***", safe_message("id-fc-" + "ab" * 16))
 
     def test_a_message_that_is_not_a_string_still_comes_back_as_one(self) -> None:
         self.assertEqual("", safe_message(None))
         self.assertEqual("404", safe_message(404))
+
+
+#: A REAL run id from the paid `validator-live-2` proof run. It contains `fc-`,
+#: which is Firecrawl's prefix, and it was rewritten to `…-b5***` on its way to
+#: Langfuse. About 1.5% of UUIDs contain `fc-`.
+UUID_WITH_A_PREFIX_IN_IT = "1a0bea14-ffb3-459d-b5fc-f714a76e5f71"
+
+
+class IdentityIsNeverGuessedAtTests(unittest.TestCase):
+    """An identifier is scrubbed by exact VALUE, never by shape.
+
+    The shape rule is a heuristic and identifiers are the fields a reader joins
+    on, so applying one to the other trades a hypothetical leak for a certain
+    corruption. Measured: the run id above reached
+    `trace.metadata.run_id` and the run span as `…-b5***`, so
+    `membership_check` reported FAIL for a run whose export was otherwise
+    perfect - and 85 of that run's 86 observations were fine, because they get
+    the id by a different path. A one-in-sixty, silent, primary-key defect.
+    """
+
+    def test_a_run_id_containing_a_prefix_survives_on_every_observation(self) -> None:
+        exporter, backend = exporter_for(
+            facts=RunFacts(
+                run_id=UUID_WITH_A_PREFIX_IN_IT,
+                workflow_id="a-workflow",
+                session_id="a-session",
+                inputs={"idea": "an idea"},
+            )
+        )
+        recorder = Recorder(run_id=UUID_WITH_A_PREFIX_IN_IT)
+        recorder.run_started({"idea": "an idea"})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.tool_call("n1", "an authored tool", **IDENTITY)
+        recorder.model_call("n1", "call-1", text="an answer", **IDENTITY)
+        recorder.node_ended("n1", **IDENTITY)
+        recorder.run_completed({"ok": True})
+        drive(exporter, recorder.frames, run_id=UUID_WITH_A_PREFIX_IN_IT)
+
+        self.assertTrue(backend.observations)
+        for observation in backend.observations:
+            with self.subTest(name=observation.name):
+                self.assertEqual(
+                    UUID_WITH_A_PREFIX_IN_IT,
+                    observation.metadata["run_id"],
+                    "the run id was rewritten by the shape rule",
+                )
+        run_span = by_role(backend.observations, "run")[0]
+        self.assertEqual(UUID_WITH_A_PREFIX_IN_IT, run_span.session_id)
+
+    def test_the_same_id_survives_as_a_node_a_call_and_a_tool_name(self) -> None:
+        """Every identity field, not only the one that was noticed."""
+
+        for key, value in (
+            ("node_id", f"node-{UUID_WITH_A_PREFIX_IN_IT}"),
+            ("call_id", f"call-{UUID_WITH_A_PREFIX_IN_IT}"),
+            ("agent_role", f"role {UUID_WITH_A_PREFIX_IN_IT}"),
+        ):
+            with self.subTest(key=key):
+                self.assertEqual(value, safe_identity(value))
+
+    def test_a_real_key_in_an_identity_field_is_still_removed(self) -> None:
+        """Exact-value comparison is kept and is unconditional: a value this
+        process actually holds is redacted wherever it appears, id or not."""
+
+        secret = "sk-or-v1-" + "0" * 64
+        self.assertEqual(f"node-{REDACTED}", safe_identity(f"node-{secret}", (secret,)))
+
+    def test_free_text_still_gets_the_shape_rule(self) -> None:
+        planted = "fc-" + "a" * 32
+        self.assertNotIn(planted, safe_message(f"could not reach with {planted}"))
+        planted = "sk-or-v1-" + "0" * 64
+        self.assertNotIn(planted, safe_message(f"refused the key {planted}"))
+
+    def test_the_shape_rule_leaves_a_uuid_in_free_text_alone_too(self) -> None:
+        """The boundary applies to prose as well: a log line naming a run id is
+        the commonest free-text string in this system."""
+
+        text = f"run {UUID_WITH_A_PREFIX_IN_IT} finished"
+        self.assertEqual(text, safe_message(text))
+
+    def test_a_structural_detail_key_takes_the_identity_rule(self) -> None:
+        described = policy_details(
+            {"run_id": UUID_WITH_A_PREFIX_IN_IT, "node_id": "n1"},
+            capture=False,
+        )
+        self.assertEqual(UUID_WITH_A_PREFIX_IN_IT, described["run_id"])
+
+    def test_the_boundary_constants_match_the_tooling(self) -> None:
+        """A mirror with the anti-rot test this repository builds them with.
+
+        `scripts/observability/_common.py` is another owner's file and states
+        the same two constants; a copy without a check is how a client mirror
+        agreed with itself at the wrong number for weeks.
+        """
+
+        source = (
+            pathlib.Path(__file__).resolve().parents[2]
+            / "scripts"
+            / "observability"
+            / "_common.py"
+        )
+        if not source.exists():  # pragma: no cover - the scripts are optional
+            self.skipTest("scripts/observability/_common.py is not on this machine")
+        text = source.read_text(encoding="utf-8")
+        self.assertIn(f'CREDENTIAL_BOUNDARY = r"{CREDENTIAL_BOUNDARY}"', text)
+        self.assertIn(f"FC_MIN_HEX_CHARS = {FC_MIN_HEX_CHARS}", text)
+        # The two CONSTANTS agree; the APPLICATION deliberately does not, and
+        # `content.py` says why where it narrows it. A scanner over committed
+        # evidence can afford a false negative; a redactor on the way out
+        # cannot, so only `fc-` - the one prefix a UUID can contain - takes the
+        # boundary here.
+
+    def test_a_short_fc_run_of_hex_is_not_a_firecrawl_key(self) -> None:
+        """The second half of the rule, in isolation: `fc-` needs 20+ hex."""
+
+        self.assertEqual("fc-abc123", safe_message(" fc-abc123").strip())
+        self.assertNotIn("fc-" + "a" * 20, safe_message("x fc-" + "a" * 20))

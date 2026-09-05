@@ -36,12 +36,53 @@ from brief_crew.events.models import MAX_MESSAGE_LENGTH
 from brief_crew.events.redaction import REDACTED, is_secret_key
 
 
+#: Nothing alphanumeric, `_` or `-` may precede a prefix for it to count.
+#:
+#: **This is the rule a UUID needed.** `fc-` is a Firecrawl prefix and a UUID
+#: contains `fc-` about 1.5% of the time - `1a0bea14-ffb3-459d-b5fc-f714a76e…`
+#: is a real run id from a paid proof run, and it reached Langfuse as
+#: `…-b5***`, so `membership_check` read FAIL for a run whose data was
+#: perfectly correct. A hex digit and a hyphen are both excluded here, which is
+#: exactly the UUID case; a real key in JSON, a header or a URL is preceded by
+#: a quote, a space, `=`, `:` or `/` and still matches.
+#:
+#: Mirrors `scripts/observability/_common.py:531,536` - the same two constants,
+#: written out rather than imported, because a runtime package importing a
+#: tooling script would be the wrong dependency direction and the scripts are
+#: another owner's. `tests/observability/test_content_policy.py` asserts the two
+#: agree.
+CREDENTIAL_BOUNDARY = r"(?<![0-9A-Za-z_-])"
+
+#: A Firecrawl key is `fc-` + 32 hex. The floor is below that so a shorter
+#: future key still trips, and far above a UUID's 12-hex tail.
+FC_MIN_HEX_CHARS = 20
+
 #: The prefixes the contract names, plus the shape each one is followed by.
 #: Deliberately a shape and not a list of hosts: the point of this rule is to
 #: catch a credential nobody declared.
 _KEY_SHAPES = re.compile(
-    r"(?:sk-or-|sk-lf-|pk-lf-|pcsk_|github_pat_|ghp_|gho_|ghs_|ghu_|fc-|AIza)"
-    r"[A-Za-z0-9_\-]{6,}"
+    "(?:"
+    # `fc-` is the ONLY prefix the boundary applies to, and that is a
+    # narrowing of the tooling's rule made deliberately here.
+    #
+    # The boundary exists to stop a UUID being mangled, and a UUID contains
+    # nothing but hex and hyphens - so `fc-` is the only one of these prefixes
+    # that can occur inside one. Applying the boundary to the others buys
+    # nothing and costs real detections: `gate-sk-or-v1-…` has its prefix
+    # preceded by a hyphen, and under a blanket boundary a planted key inside
+    # an id would survive. Measured - V-REVIEW's `e3_planted_key_probe.py`
+    # plants exactly that, and a blanket boundary reported six leaking
+    # conditions where there had been none.
+    #
+    # `scripts/observability/_common.py` applies the boundary to all of them
+    # because it is a SCANNER over committed evidence, where a false negative
+    # costs a warning nobody needed; this is a REDACTOR on the way out, where a
+    # false negative is a disclosure. Same two constants, one narrower
+    # application, stated rather than diverged silently.
+    + r"(?<![0-9a-f])fc-[0-9a-f]{%d,}" % FC_MIN_HEX_CHARS
+    + r"|(?:sk-or-|sk-lf-|pk-lf-|pcsk_|github_pat_|ghp_|gho_|ghs_|ghu_|AIza)"
+    + r"[A-Za-z0-9_\-]{6,}"
+    + ")"
 )
 
 #: A URL carrying userinfo - `scheme://user:password@host/...`. `DATABASE_URL`
@@ -159,6 +200,47 @@ def safe_message(
         if secret and secret in text:
             text = text.replace(secret, REDACTED)
     return _KEY_SHAPES.sub(REDACTED, text)[:limit]
+
+
+#: How long an identity value may be. An id, a role sentence or a node name;
+#: anything longer is not an identifier and is bounded rather than sent.
+MAX_IDENTITY_CHARS = 512
+
+
+def safe_identity(
+    value: Any, secret_values: Sequence[str] = (), *, limit: int = MAX_IDENTITY_CHARS
+) -> str:
+    """An ID on its way out: compared against real credentials, never guessed at.
+
+    The one rule, and the reason it is not `safe_message`: **an identity value
+    is scrubbed by EXACT VALUE, never by shape.** A run id, a node id, a call
+    id, a workflow id, an agent role, a task name - these are the fields a
+    reader joins on, and a heuristic that rewrites one silently breaks every
+    join that depends on it.
+
+    Measured: the paid `validator-live-2` run id
+    `1a0bea14-ffb3-459d-b5fc-f714a76e5f71` contains `fc-`, so the shape rule
+    rewrote it to `…-b5***` on the trace metadata and the run span, and
+    `membership_check` reported FAIL for a run whose export was otherwise
+    perfect. About **1.5%** of UUIDs contain `fc-`, so this was a silent,
+    recurring, one-in-sixty corruption of the primary key.
+
+    The exact-value rule is kept and is unconditional: a value equal to, or
+    containing, a credential this process actually holds is redacted wherever
+    it appears. Shape is a heuristic; a value is a fact - and an id has no
+    business looking like a key in the first place.
+    """
+
+    if value is None:
+        text = ""
+    elif isinstance(value, str):
+        text = value
+    else:
+        text = str(value)
+    for secret in secret_values:
+        if secret and secret in text:
+            text = text.replace(secret, REDACTED)
+    return text[:limit]
 
 
 def scrub_value(
@@ -350,6 +432,40 @@ STRUCTURAL_STRING_KEYS: frozenset[str] = frozenset(
     }
 )
 
+#: The structural keys that hold an IDENTIFIER, and therefore take the
+#: exact-value rule instead of the shape heuristic. Everything else in
+#: `STRUCTURAL_STRING_KEYS` - `reason`, `stage`, `status`, `outcome`, `route`,
+#: `verdict` - is a vocabulary word that can also carry free text, and free
+#: text is exactly where a credential hides.
+#:
+#: Named explicitly rather than derived, because the two halves want opposite
+#: treatments and the cost of getting either wrong is asymmetric: a leak in a
+#: `reason`, or a corrupted primary key in a `run_id`.
+IDENTITY_STRING_KEYS: frozenset[str] = frozenset(
+    {
+        # The decision's list, verbatim.
+        "agent_role",
+        "app_session_id",
+        "call_id",
+        "graph_version",
+        "node_id",
+        "response_id",
+        "run_id",
+        "task_name",
+        "tool",
+        "user_id",
+        "workflow_id",
+        # Plus four that ARE the same identifiers under another key: CrewAI's
+        # own UUIDs for the agent and the task, and the node id an edge frame
+        # names as its source and port. A UUID is the shape the corruption was
+        # measured on, so these are the ones most at risk of it.
+        "agent_id",
+        "from",
+        "port",
+        "task_id",
+    }
+)
+
 #: A vocabulary value is a word, not a paragraph. Anything longer than this
 #: under a structural key is described instead, because a key can be
 #: structural and still be handed something enormous.
@@ -386,6 +502,14 @@ def policy_details(
         return details
     if isinstance(details, str):
         if key in STRUCTURAL_STRING_KEYS and len(details) <= MAX_STRUCTURAL_CHARS:
+            if key in IDENTITY_STRING_KEYS:
+                # An IDENTIFIER: exact-value only. The shape rule has no
+                # business rewriting the field a reader joins on, and it did -
+                # a paid run's `run_id` containing `fc-` arrived as `…-b5***`.
+                return safe_identity(details, secret_values, limit=MAX_STRUCTURAL_CHARS)
+            # A vocabulary word that can also hold free text - a `reason`, a
+            # `status`, an `outcome`. Free text is where a credential hides, so
+            # this half keeps the shape rule.
             return scrub_text(details, secret_values)
         return described_string(details)
     if depth >= 4:

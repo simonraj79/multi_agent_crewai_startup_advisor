@@ -91,6 +91,11 @@ TOOL = "TOOL"
 AGENT = "AGENT"
 EVENT = "EVENT"
 
+#: `TRACE-CONTRACT.md` §4: the value `metadata.cost_source` takes once the
+#: out-of-band OpenRouter resolution has replaced the app's estimate. Anything
+#: else - `app-estimate`, `app-estimate (lookup failed)` - is still an estimate.
+BILLED_COST_SOURCE = "openrouter-billed"
+
 # The types that CAN end. D3 asks whether anything was left without an end
 # time; a Langfuse EVENT is a point in time and carries no `endTime` by
 # construction, so counting one as an unfinished span is a category error.
@@ -173,8 +178,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--poll-timeout",
         type=float,
-        default=120.0,
-        help="give up waiting for a stable observation count after N seconds (default 120)",
+        default=300.0,
+        help=(
+            "give up waiting for the trace to settle after N seconds (default "
+            "300). It is 300 and not 120 because the deferred billed-cost "
+            "lookup retries at 20/60/180 s, so a trace's COST fields keep "
+            "changing for ~4 minutes after the run ends - V-RECON measured "
+            "completeness at 210 s on validator-live-2, over the old default"
+        ),
     )
     parser.add_argument(
         "--poll-stable-seconds",
@@ -255,6 +266,36 @@ def count_observations(http: Http, trace_ids: Sequence[str]) -> int:
     return total
 
 
+def count_billed_generations(http: Http, trace_ids: Sequence[str]) -> tuple[int, int]:
+    """`(generations, of which billed)` for these traces, right now.
+
+    The observation COUNT stops moving long before the trace is finished: the
+    exporter's deferred billed-cost lookup retries at 20 / 60 / 180 s and
+    UPDATES each generation's `costDetails.total`, `metadata.cost_source`,
+    `openrouter_cost_usd` and `provider` in place. A pull that stopped at a
+    stable count therefore captured a trace whose money fields were still
+    changing - which is what E5 reconciles on.
+
+    Filtered server-side by `type=GENERATION` (verified: the endpoint honours
+    it) and filtered again here, because a filter this script cannot see
+    failing is a filter it should not trust.
+    """
+
+    generations = 0
+    billed = 0
+    for trace_id in trace_ids:
+        rows = fetch_all(
+            http, "/api/public/observations", {"traceId": trace_id, "type": GENERATION}
+        )
+        for row in rows:
+            if str(row.get("type") or "") != GENERATION:
+                continue
+            generations += 1
+            if str(metadata_of(row).get("cost_source") or "") == BILLED_COST_SOURCE:
+                billed += 1
+    return generations, billed
+
+
 def wait_for_ingestion(
     http: Http,
     run_id: str,
@@ -263,17 +304,35 @@ def wait_for_ingestion(
     stable_seconds: float,
     since: str | None,
 ) -> dict[str, Any]:
-    """Poll until the observation count stops moving, and say how long it took.
+    """Poll until the trace stops changing, and say how long it took and why.
 
-    The rule is *two samples at least `stable_seconds` apart agreeing on a
-    non-zero count*, never a fixed sleep: the measured shape of this ingestion
-    is a step (nothing for 14 s, then all 33 at once), and any fixed wait is
-    either a guess that is too short or a guess that is too long. A 429 - which
-    the smoke test hit five times in a row - lengthens the interval rather than
-    counting as an answer.
+    Two things settle at different times and BOTH are polled:
 
-    Returns a record even when it gives up: `stable: false` with the last count
-    is an honest measurement, and a caller that pulled anyway can say so.
+    * the **observation count**, which lands in one step - measured 14.1 s
+      after the terminal frame on smoke-live, all 33 at once;
+    * the count of generations whose `cost_source` is `openrouter-billed`,
+      which lands far later, because the exporter's deferred lookup retries at
+      20 / 60 / 180 s and rewrites the cost fields in place. V-RECON measured
+      one trace still completing at **210 s** - above the 120 s this function
+      used to wait, so a pull could return a trace whose money fields were
+      still moving and E5 would reconcile against a half-written number.
+
+    It stops for one of three reasons and RECORDS which, because they are not
+    equally good news:
+
+    * `all-billed`  - every generation carries a billed cost. Nothing is left
+      to change; this is the answer a paid run should give.
+    * `stable`      - both counts held across two samples at least
+      `stable_seconds` apart. Good, but a lookup that failed permanently also
+      looks like this, which is why the billed/estimate split is printed.
+    * `timeout`     - neither happened inside `--poll-timeout`. Honest, and
+      the figures say so rather than implying the trace was finished.
+
+    The interval grows as the wait goes on: fine-grained while the trace is
+    still invisible (the first figure a reader wants is when it APPEARED),
+    then widening towards `POLL_MAX_INTERVAL_SECONDS`, because after the first
+    minute the thing being waited for is a 180 s retry and polling it every
+    5 seconds only spends the rate limit.
     """
 
     started = time.monotonic()
@@ -289,23 +348,34 @@ def wait_for_ingestion(
         "first_visible_after_seconds": None,
         "stable_after_seconds": None,
         "stable": False,
+        "stopped_because": None,
         "observation_count": 0,
+        "generation_count": 0,
+        "billed_generations": 0,
+        "estimate_generations": 0,
         "trace_count": 0,
         "since": since,
         "first_visible_after_terminal_seconds": None,
         "stable_after_terminal_seconds": None,
     }
     interval = POLL_FIRST_INTERVAL_SECONDS
-    last_count: int | None = None
-    last_count_at: float | None = None
+    last_sample: tuple[int, int] | None = None
+    last_sample_at: float | None = None
+
+    def _elapsed_since_terminal() -> float | None:
+        if since_ts is None:
+            return None
+        return round((parse_ts(now_iso()) - since_ts).total_seconds(), 3)
 
     while True:
-        elapsed = time.monotonic() - started
         report["polls"] += 1
         try:
             traces = fetch_all(http, "/api/public/traces", {"sessionId": run_id})
             trace_ids = [str(t.get("id")) for t in traces if t.get("id")]
             count = count_observations(http, trace_ids) if trace_ids else 0
+            generations, billed = (
+                count_billed_generations(http, trace_ids) if trace_ids else (0, 0)
+            )
         except HttpError as error:
             if error.status == 429:
                 report["rate_limited_polls"] += 1
@@ -313,6 +383,7 @@ def wait_for_ingestion(
                 report["errors"] += 1
             interval = min(interval * 2, POLL_MAX_INTERVAL_SECONDS)
             if time.monotonic() - started >= timeout:
+                report["stopped_because"] = "timeout"
                 break
             time.sleep(min(interval, max(0.0, timeout - (time.monotonic() - started))))
             continue
@@ -321,41 +392,45 @@ def wait_for_ingestion(
         elapsed = now - started
         report["trace_count"] = len(trace_ids)
         report["observation_count"] = count
+        report["generation_count"] = generations
+        report["billed_generations"] = billed
+        report["estimate_generations"] = max(0, generations - billed)
         if count and report["first_visible_after_seconds"] is None:
             report["first_visible_after_seconds"] = round(elapsed, 3)
-            if since_ts is not None:
-                report["first_visible_after_terminal_seconds"] = round(
-                    (parse_ts(now_iso()) - since_ts).total_seconds(), 3
-                )
-        if (
-            count
-            and last_count == count
-            and last_count_at is not None
-            and (now - last_count_at) >= stable_seconds
-        ):
+            report["first_visible_after_terminal_seconds"] = _elapsed_since_terminal()
+
+        sample = (count, billed)
+        all_billed = bool(generations) and billed == generations
+        held = (
+            last_sample == sample
+            and last_sample_at is not None
+            and (now - last_sample_at) >= stable_seconds
+        )
+        if count and (all_billed or held):
             report["stable"] = True
+            report["stopped_because"] = "all-billed" if all_billed else "stable"
             report["stable_after_seconds"] = round(elapsed, 3)
-            if since_ts is not None:
-                report["stable_after_terminal_seconds"] = round(
-                    (parse_ts(now_iso()) - since_ts).total_seconds(), 3
-                )
+            report["stable_after_terminal_seconds"] = _elapsed_since_terminal()
             break
-        if last_count != count:
-            last_count = count
-            last_count_at = now
-            # A count that is still moving is worth re-sampling promptly; only
-            # a settled one has to wait out the stability window.
+        if last_sample != sample:
+            last_sample = sample
+            last_sample_at = now
             interval = POLL_FIRST_INTERVAL_SECONDS
         else:
-            interval = max(POLL_FIRST_INTERVAL_SECONDS, stable_seconds / 2.0)
+            # Settled on the observation side; what is left is a retry that may
+            # be 180 s away, so widen rather than spend the rate limit on it.
+            interval = min(
+                max(stable_seconds, elapsed / 10.0), POLL_MAX_INTERVAL_SECONDS
+            )
         if elapsed >= timeout:
+            report["stopped_because"] = "timeout"
             break
-        wait = min(interval, max(0.1, timeout - elapsed))
-        time.sleep(wait)
+        time.sleep(min(interval, max(0.1, timeout - elapsed)))
 
     report["finished_at"] = now_iso()
     report["elapsed_seconds"] = round(time.monotonic() - started, 3)
     return report
+
 
 
 # --- identity ---------------------------------------------------------------
@@ -512,6 +587,16 @@ def cost_of(observation: Mapping[str, Any]) -> float | None:
 # --- derivation -------------------------------------------------------------
 
 
+def _identity_source(own: Any, resolved: Any) -> str:
+    """Where one identity value came from: its own metadata, an ancestor, or
+    nowhere. `TRACE-CONTRACT.md` section 3 says every observation carries all
+    of them, so anything but `metadata` is a finding about the exporter."""
+
+    if own not in (None, ""):
+        return "metadata"
+    return "ancestor" if resolved not in (None, "") else "none"
+
+
 def derive_figures(
     run_id: str,
     session: Mapping[str, Any] | None,
@@ -552,9 +637,18 @@ def derive_figures(
             "node_id": node_id,
             "agent_role": agent_role,
             "task_name": task_name,
-            "identity_source": "metadata"
-            if meta.get("agent_role")
-            else ("ancestor" if agent_role else "none"),
+            # Provenance PER KEY. It was `agent_role` only, and the line
+            # `per-task.md` prints was therefore silent about the key that file
+            # groups on: three of `builder-agentfail`'s six generations had
+            # their `task_name` resolved from an ancestor while the report said
+            # "ANCESTOR ... 0" (RECONCILIATION.md discrepancy 5). The grouping
+            # was right; only the sentence about it was wrong.
+            "identity_source": _identity_source(meta.get("agent_role"), agent_role),
+            "identity_sources": {
+                "agent_role": _identity_source(meta.get("agent_role"), agent_role),
+                "task_name": _identity_source(meta.get("task_name"), task_name),
+                "node_id": _identity_source(meta.get("node_id"), node_id),
+            },
             "input_tokens": inp,
             "output_tokens": out,
             "total_tokens": total,
@@ -665,6 +759,16 @@ def derive_figures(
         "by_task_name": by_task,
         "by_model": by_model,
         "calls": calls,
+        # The billed/estimate split AS PULLED. The poll's own count is a
+        # separate figure recorded beside it: this one is what the saved files
+        # actually contain, and it is the number E5 reconciles against.
+        "cost_sources": _count(str(c.get("cost_source") or "(none)") for c in calls),
+        "billed_generations": sum(
+            1 for c in calls if str(c.get("cost_source") or "") == BILLED_COST_SOURCE
+        ),
+        "estimate_generations": sum(
+            1 for c in calls if str(c.get("cost_source") or "") != BILLED_COST_SOURCE
+        ),
         "response_ids": [c["response_id"] for c in calls if c.get("response_id")],
         "calls_without_response_id": sum(1 for c in calls if not c.get("response_id")),
         "duplicate_response_ids": {
@@ -1110,11 +1214,42 @@ def render_group(
             "compares the table only against Langfuse's own figures.",
             "",
         ]
+    # Both keys, always, and THIS table's key marked. Reporting only
+    # `agent_role` here made `per-task.md` claim a provenance it had not
+    # measured - see `_identity_source` above.
+    grouped_on = key.replace("by_", "")
+    provenance_rows = []
+    for identity_key in ("agent_role", "task_name"):
+        counted = {"metadata": 0, "ancestor": 0, "none": 0, "unrecorded": 0}
+        for call in figures["calls"]:
+            sources = call.get("identity_sources") or {}
+            source = sources.get(identity_key)
+            if source is None and identity_key == "agent_role":
+                # A figures file written before this split knows only the one
+                # key; guessing the other would be worse than saying so.
+                source = call.get("identity_source")
+            counted[source if source in counted else "unrecorded"] += 1
+        provenance_rows.append(
+            [
+                f"`{identity_key}`"
+                + ("  <- this table groups on it" if identity_key == grouped_on else ""),
+                counted["metadata"],
+                counted["ancestor"],
+                counted["none"],
+                counted["unrecorded"] or "",
+            ]
+        )
     lines += [
-        f"Generations whose identity came from an ANCESTOR rather than their own "
-        f"metadata: {sum(1 for c in figures['calls'] if c.get('identity_source') == 'ancestor')}"
-        f"; with no identity at all: "
-        f"{sum(1 for c in figures['calls'] if c.get('identity_source') == 'none')}.",
+        "## Where each generation's identity came from",
+        "",
+        md_table(
+            ["identity key", "own metadata", "an ANCESTOR", "nowhere", "not recorded"],
+            provenance_rows,
+        ),
+        "",
+        "TRACE-CONTRACT.md section 3 puts both keys on every observation, so a "
+        "non-zero ANCESTOR column is a finding about the exporter - even though "
+        "the grouping above is still correct, because the walk found the value.",
         "",
     ]
     return "\n".join(lines)
@@ -1164,6 +1299,23 @@ def render_visibility(visibility: Mapping[str, Any] | None) -> list[str]:
                     "yes" if visibility.get("stable") else "**NO - timed out**",
                 ],
                 ["observation count at that point", visibility.get("observation_count")],
+                ["generations at that point", visibility.get("generation_count")],
+                [
+                    "of those, carrying the BILLED cost",
+                    visibility.get("billed_generations"),
+                ],
+                [
+                    "of those, still on the app ESTIMATE",
+                    visibility.get("estimate_generations"),
+                ],
+                [
+                    "why the wait ended",
+                    {
+                        "all-billed": "every generation was billed - nothing left to change",
+                        "stable": "both counts held across the stability window",
+                        "timeout": "**TIMED OUT - the trace may still have been changing**",
+                    }.get(str(visibility.get("stopped_because")), visibility.get("stopped_because")),
+                ],
                 ["stability window (s)", secs(visibility.get("stability_window_seconds"))],
                 ["timeout (s)", secs(visibility.get("timeout_seconds"))],
             ],
@@ -1236,6 +1388,21 @@ def render_summary(figures: Mapping[str, Any]) -> str:
                     ["tool observations", figures["tool_call_count"]],
                     ["generation ids present", len(figures["response_ids"])],
                     ["generations with no id", figures["calls_without_response_id"]],
+                    [
+                        "generations with the BILLED cost (`openrouter-billed`)",
+                        figures.get("billed_generations"),
+                    ],
+                    [
+                        "generations still on the app ESTIMATE",
+                        figures.get("estimate_generations"),
+                    ],
+                    [
+                        "`cost_source` values seen",
+                        ", ".join(
+                            f"{k}:{v}" for k, v in (figures.get("cost_sources") or {}).items()
+                        )
+                        or "(none)",
+                    ],
                     [
                         "DUPLICATE generation ids (E1)",
                         f"**{len(duplicates)}**" if duplicates else "0",

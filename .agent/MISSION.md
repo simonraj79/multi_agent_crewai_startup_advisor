@@ -236,15 +236,18 @@ Three things a later wave must not get wrong:
 
 ## 7. The money rule
 
-**Balance: $27.216112** — `total_credits` 120, `total_usage` 92.783887525,
-measured 2026-09-05 after the gate-payload-as-prose and `max_iter`-exhaustion
-verification runs and confirmed unchanged twice. (It read $27.345242 earlier
+**Balance: $27.216078** — `total_credits` 120, `total_usage` 92.783921845,
+measured 2026-09-05 about twenty-five minutes after the gate-payload-as-prose
+and `max_iter`-exhaustion verification runs. An earlier reading three minutes
+past the second run said $27.216112 and was confirmed unchanged TWICE before
+moving by $0.000034, so read this one as the settled figure and read the lag
+warning below as meaning more than two confirmations. (It read $27.345242 earlier
 that day, $27.55 on 2026-09-04; an earlier note said $7.55 before the owner
 topped up. Re-measure rather than quote this — and read it LATE: the credits
 endpoint lags a completion by minutes, and every intermediate reading this
 programme has taken was low, never high.)
 
-**Spend to date on this programme: $0.186905 of the $5.00 allowance**, all of
+**Spend to date on this programme: $0.186939 of the $5.00 allowance**, all of
 it on 2026-09-04 and 2026-09-05:
 
 | what | spend | measured as | where |
@@ -259,9 +262,9 @@ it on 2026-09-04 and 2026-09-05:
 The acceptance run is the only row with no balance reading at all around it, and
 the column says so rather than letting six figures look like one kind of
 measurement. **The last two rows share ONE balance delta** — they ran back to
-back and only the pair was bracketed: **$0.038867** against **$0.038850**
-summed, a difference of $0.000017, the tightest agreement this page has
-recorded.
+back and only the pair was bracketed: **$0.038901** against **$0.038850**
+summed, a difference of $0.000051 — 0.13 %, the same order as every other
+measurement of this kind on that page.
 
 > **An unexplained $0.090263, recorded rather than smoothed over.** The reading
 > above this table was `total_usage` 92.654757565 after the gate-payload run.

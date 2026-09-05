@@ -226,3 +226,24 @@ qualification a reader should know, one sentence each.
 | 2026-09-06 | B3 / D1 / contract §6 | `statusMessage` on every error observation is `ExceptionClass: redacted message` and `metadata.error_class` is set, from the frame's `error_class`. | Paid proof `builder-agentfail`: the app's NODE_END frame carried `error_class: BadRequestError` and no Langfuse observation named it. |
 | 2026-09-06 | contract §4 | Billed-cost resolution is deferred and retried, because OpenRouter indexes a generation tens of seconds after completion. | Paid proof: 22 of 22 lookups failed inside a 3 s single-attempt deadline while the endpoint answered 404 for 60 s+. |
 
+## 8. Commit-hash map after the planted-key rewrite (2026-09-06)
+
+GitHub push protection refused the first push because the E3 proof's PLANTED
+FAKE key (`sk-or-v1-` + 64 zeros, never a real credential - F3 scanned 0 values)
+matches its OpenRouter key pattern. The tail was rewritten to
+`sk-or-v1-0000000000000000-planted-fake-key` in the five files that carried it
+(the E3 test constant and the four `capture-on` app-side files), through every
+unpushed commit, so the hashes the evidence prose cites are the PRE-rewrite
+ones. Map:
+
+| cited in the evidence | pushed |
+| --- | --- |
+| `e68dac4` | `9df7ee2` |
+| `7417270` | `77a5634` |
+| `ad6a696` | `77a8222` |
+| `c608953` | `38ed0c4` |
+| `58a1c0b` | `ba5a613` |
+| `1130f32` | `a20a3bc` |
+
+Nothing else in any commit changed; the exporter's scrub still blanks the new
+shape (E3 test and both probes re-run after the rewrite).

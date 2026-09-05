@@ -338,3 +338,25 @@ $0.08876144 billed). The other two priced runs agree to the cent. `brief-live` i
 the only run that leaned on the escalation tier, which is where cached and
 reasoning tokens live — and, by defect 1, exactly the split the trace does not
 carry.
+
+## 8. Commit-hash map after the planted-key rewrite (2026-09-06)
+
+GitHub push protection refused the first push because the E3 proof's PLANTED
+FAKE key (`sk-or-v1-` + 64 zeros, never a real credential - F3 scanned 0 values)
+matches its OpenRouter key pattern. The tail was rewritten to
+`sk-or-v1-0000000000000000-planted-fake-key` in the five files that carried it
+(the E3 test constant and the four `capture-on` app-side files), through every
+unpushed commit, so the hashes the evidence prose cites are the PRE-rewrite
+ones. Map:
+
+| cited in the evidence | pushed |
+| --- | --- |
+| `e68dac4` | `9df7ee2` |
+| `7417270` | `77a5634` |
+| `ad6a696` | `77a8222` |
+| `c608953` | `38ed0c4` |
+| `58a1c0b` | `ba5a613` |
+| `1130f32` | `a20a3bc` |
+
+Nothing else in any commit changed; the exporter's scrub still blanks the new
+shape (E3 test and both probes re-run after the rewrite).

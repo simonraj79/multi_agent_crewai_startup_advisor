@@ -732,6 +732,15 @@ number is right only on the day the scan prints it.
 
 ## Status
 
+> **CONTRACT, 2026-09-05 — the reserved state namespaces are FOUR:** `out__`,
+> `err__`, `turns__` and now **`decision__`**, plus the exact key `__builder__`.
+> A gate's paired router records the operator's decision under
+> `decision__<gate>` and never over `out__<gate>`, which is the payload they were
+> shown. Declared in `config.BUILDER_STATE_DECISION_PREFIX`; the finding, the
+> paid run that measured it and every file it touched are in `10-runtime.md`'s
+> Status. Recorded here by a fixer acting for the Integrator on this one
+> contract.
+
 **Planned.** Audit complete and all sixteen plan files written 2026-09-02.
 Every contract request raised by 02–08 during writing (five plus five
 problem codes, the `field` payload key, `budget.per_node`, the vocabulary's

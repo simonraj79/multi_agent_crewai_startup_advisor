@@ -70,6 +70,12 @@ const NODES = [
     // rather than derived, because the document is priced before a single
     // `Agent` is constructed.
     tier: 'escalation',
+    // `out__confirm` is the payload the operator was SHOWN at the gate - their
+    // brief, edits and all. It carried the router's reply metadata until
+    // 2026-09-05, which is paid-run defect 3: this crew was briefed on
+    // `{'decision': 'approve', 'honoured': False, 'turns_used': 0}` and its
+    // three specialists wrote about credit default swaps. What the operator
+    // ANSWERED is `${state.decision__confirm}` now, and nothing here wants it.
     promptInputs: { brief: out('confirm') },
   }),
   authoredAgent({

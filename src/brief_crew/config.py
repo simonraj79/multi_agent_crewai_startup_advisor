@@ -2509,6 +2509,26 @@ BUILDER_ERROR_ROUTER_PREFIX = "route_err_"
 # "this node exploded" the same state.
 BUILDER_STATE_ERROR_PREFIX = "err__"
 
+# Where a gate's paired router records what the operator DECIDED - the word,
+# whether a revise was honoured, the turn count and the rest of their reply.
+#
+# A namespace of its own since 2026-09-05, and the reason is a run that cost
+# money. A canvas gate compiles to two methods sharing one node id: the pause
+# renders the payload the operator is shown into `out__<gate>`, and the router
+# ran second and wrote `{"decision": "approve", "honoured": false, ...}` over
+# the top of it. So `${state.out__<gate>}` - the reference an author writes to
+# feed a gate's subject into the node below it - resolved to the REPLY METADATA
+# by the time anything read it. Measured in run `877f393f`: the task CrewAI
+# actually ran was `Size the market for {'decision': 'approve', 'honoured':
+# False, 'turns_used': 0} and name the buyer`, and three specialists wrote about
+# credit default swaps. It completed, it cost $0.029346, and every assertion the
+# suite makes about that template passed.
+#
+# The two questions are different - "what was this gate about" and "what did the
+# human say" - so they get different keys, exactly as `err__` is separate from
+# `out__` because a failed node's output is still null.
+BUILDER_STATE_DECISION_PREFIX = "decision__"
+
 # The ONE expression shape a `with:` value may take besides a JSON literal.
 # Single-key by construction: only `${state.a_value}` was ever measured
 # resolving, and nested dotted access into a sub-dict was not - which is why

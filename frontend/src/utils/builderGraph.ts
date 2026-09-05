@@ -59,6 +59,20 @@ import type {
  */
 export const STATE_TURNS_PREFIX = 'turns__'
 
+/**
+ * `config.py:BUILDER_STATE_DECISION_PREFIX` - where a gate's paired router
+ * records what the operator ANSWERED, since 2026-09-05.
+ *
+ * It is the same hazard as `turns__` and it is here for the same reason. The
+ * compiler's existence check reads
+ * `if referenced.startswith(BUILDER_STATE_OUTPUT_PREFIX)`, so a `decision__`
+ * reference to a node that no longer exists compiles clean, validates clean,
+ * and resolves to nothing for the life of the workflow. Renaming the gate has
+ * to carry its decision references with it, and `swapsFor` is where that
+ * happens.
+ */
+export const STATE_DECISION_PREFIX = 'decision__'
+
 /** A copied fragment of a document: what the clipboard carries, minus its own chrome. */
 export interface BuilderSubgraph {
   nodes: readonly BuilderNode[]
@@ -291,10 +305,10 @@ interface TokenSwap {
  * The token and bare-key swaps a set of renames implies.
  *
  * `out__<id>` follows every kind, because every node writes its return there.
- * `turns__<id>` follows only a GATE, because only a gate has a turn counter -
- * and being precise costs one conditional and buys the guarantee that this
- * never rewrites an author's own state key that merely happens to be spelled
- * like a derived one.
+ * `turns__<id>` and `decision__<id>` follow only a GATE, because only a gate has
+ * a turn counter and a recorded decision - and being precise costs one
+ * conditional and buys the guarantee that this never rewrites an author's own
+ * state key that merely happens to be spelled like a derived one.
  */
 function swapsFor(
   nodes: readonly BuilderNode[],
@@ -306,7 +320,9 @@ function swapsFor(
     const to = rename.get(node.id)
     if (to === undefined || to === node.id) continue
     const prefixes =
-      node.kind === 'gate' ? [STATE_OUTPUT_PREFIX, STATE_TURNS_PREFIX] : [STATE_OUTPUT_PREFIX]
+      node.kind === 'gate'
+        ? [STATE_OUTPUT_PREFIX, STATE_TURNS_PREFIX, STATE_DECISION_PREFIX]
+        : [STATE_OUTPUT_PREFIX]
     for (const prefix of prefixes) {
       const before = `${prefix}${node.id}`
       const after = `${prefix}${to}`

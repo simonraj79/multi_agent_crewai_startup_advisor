@@ -54,6 +54,7 @@ from brief_crew.config import (
     BUILDER_EVENT_LABEL_PATTERN,
     BUILDER_GATE_ROUTER_PREFIX,
     BUILDER_METHOD_IDENT_PATTERN,
+    BUILDER_STATE_DECISION_PREFIX,
     BUILDER_STATE_ERROR_PREFIX,
     BUILDER_STATE_OUTPUT_PREFIX,
     MAX_ATTACHMENT_NODES,
@@ -1334,7 +1335,7 @@ def _join_problems(document: BuilderDocument) -> list[Problem]:
 #: What a declared state key may not be called, because the compiler owns it.
 #: `_Plan.state_default()` writes every one of these, and a document key under
 #: the same name would let a run request overwrite a node's output, a node's
-#: failure, or a gate's turn counter.
+#: failure, a gate's turn counter, or the decision an operator gave at a gate.
 def _reserved_state_prefixes() -> tuple[str, ...]:
     # Imported inside the function: two of the three live in `runtime.py`, which
     # is a wire detail between two modules of this package rather than a
@@ -1346,6 +1347,7 @@ def _reserved_state_prefixes() -> tuple[str, ...]:
         BUILDER_STATE_OUTPUT_PREFIX,
         BUILDER_STATE_ERROR_PREFIX,
         BUILDER_STATE_TURNS_PREFIX,
+        BUILDER_STATE_DECISION_PREFIX,
     )
 
 

@@ -158,6 +158,7 @@
             }
           }
         },
+        "decision__confirm": null,
         "idea": "",
         "out__confirm": null,
         "out__draft": null,

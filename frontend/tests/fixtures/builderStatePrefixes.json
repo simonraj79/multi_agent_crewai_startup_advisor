@@ -1,0 +1,23 @@
+{
+  "_source": "scripts/emit_builder_fixtures.py::build_state_prefixes - the state namespaces the compiler owns, read out of config.py and builder/runtime.py. Regenerate; never edit.",
+  "declared": {
+    "BUILDER_STATE_OUTPUT_PREFIX": "out__",
+    "BUILDER_STATE_ERROR_PREFIX": "err__",
+    "BUILDER_STATE_TURNS_PREFIX": "turns__",
+    "BUILDER_STATE_DECISION_PREFIX": "decision__",
+    "BUILDER_STATE_KEY": "__builder__"
+  },
+  "membership": [
+    "__builder__",
+    "decision__",
+    "err__",
+    "out__",
+    "turns__"
+  ],
+  "refused_as_declared_key": [
+    "decision__",
+    "err__",
+    "out__",
+    "turns__"
+  ]
+}

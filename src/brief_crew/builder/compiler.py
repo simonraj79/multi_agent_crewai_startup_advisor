@@ -88,6 +88,7 @@ from brief_crew.config import (
     BUILDER_ERROR_ROUTER_PREFIX,
     BUILDER_GATE_ROUTER_PREFIX,
     BUILDER_ROUTER_OTHERWISE,
+    BUILDER_STATE_DECISION_PREFIX,
     BUILDER_STATE_ERROR_PREFIX,
     BUILDER_STATE_OUTPUT_PREFIX,
     GATE_EDITABLE_FIELDS_METADATA_KEY,
@@ -159,7 +160,11 @@ _STATE_REFERENCE = re.compile(r"\$\{state\.([a-z0-9_]{1,64})\}")
 
 # State keys the compiler owns. An input field that collided with one of these
 # would let a request body overwrite a node's output or a gate's turn counter.
-_RESERVED_STATE_PREFIXES = (BUILDER_STATE_OUTPUT_PREFIX, BUILDER_STATE_TURNS_PREFIX)
+_RESERVED_STATE_PREFIXES = (
+    BUILDER_STATE_OUTPUT_PREFIX,
+    BUILDER_STATE_TURNS_PREFIX,
+    BUILDER_STATE_DECISION_PREFIX,
+)
 
 
 class BuilderCompileError(RuntimeError):
@@ -1538,6 +1543,12 @@ class _Plan:
                 default.setdefault(_checked_field(node.config.field), "")
             if isinstance(node.config, GateConfig):
                 default[f"{BUILDER_STATE_TURNS_PREFIX}{node.id}"] = 0
+                # The gate's ANSWER, beside its subject and never over the top
+                # of it. Seeded null for the same CEL reason as everything else
+                # here: a router downstream of a gate that asks about
+                # `decision__<gate>` before the operator has replied must render
+                # empty rather than raise.
+                default[f"{BUILDER_STATE_DECISION_PREFIX}{node.id}"] = None
 
         for referenced in sorted(self._referenced_state_keys()):
             if referenced.startswith(BUILDER_STATE_OUTPUT_PREFIX):
@@ -1734,8 +1745,9 @@ def _checked_field(field: str) -> str:
         raise BuilderCompileError(
             f"the input field {field!r} collides with a state key the compiler owns "
             f"({BUILDER_STATE_KEY}, {BUILDER_STATE_OUTPUT_PREFIX}*, "
-            f"{BUILDER_STATE_TURNS_PREFIX}*). A request input under that name would "
-            "overwrite a node's output or a gate's turn counter"
+            f"{BUILDER_STATE_TURNS_PREFIX}*, {BUILDER_STATE_DECISION_PREFIX}*). A "
+            "request input under that name would overwrite a node's output, a gate's "
+            "turn counter, or the decision an operator gave at a gate"
         )
     return field
 

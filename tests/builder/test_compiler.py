@@ -294,8 +294,13 @@ def gated_loop(max_turns: int = 1) -> BuilderDocument:
             gate_node(max_turns=max_turns, editable_fields=("notes",)),
             transform_node(
                 "restate",
+                # `decision__confirm`, not `out__confirm`, and the difference is
+                # paid-run defect 3. The revise path wants what the operator
+                # SAID; `out__<gate>` is what they were shown. They were one key
+                # until 2026-09-05, which is why this read like a subject and
+                # behaved like reply metadata.
                 op="default",
-                args={"value": "${state.out__confirm}", "default": "no note"},
+                args={"value": "${state.decision__confirm}", "default": "no note"},
             ),
             router_node(key="turns__confirm", value=1),
             output_node("report", source="${state.out__confirm}"),

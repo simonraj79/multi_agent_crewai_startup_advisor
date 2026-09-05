@@ -695,7 +695,7 @@
       "problem": {
         "code": "state-key-reserved",
         "severity": "error",
-        "message": "the state key 'out__draft' is one the compiler owns (__builder__, and anything starting out__, err__, turns__). A declared key under that name would be overwritten by a node's own output, or would overwrite it - rename it",
+        "message": "the state key 'out__draft' is one the compiler owns (__builder__, and anything starting out__, err__, turns__, decision__). A declared key under that name would be overwritten by a node's own output, or would overwrite it - rename it",
         "node_id": null,
         "edge_id": null
       }

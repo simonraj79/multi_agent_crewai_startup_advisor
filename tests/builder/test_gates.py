@@ -199,7 +199,11 @@ class RouteGateTests(unittest.TestCase):
         return self._Flow(
             {
                 "turns__confirm": used,
-                "out__confirm": None,
+                # What `render_gate` left here: the payload the operator was
+                # SHOWN. Every assertion below about the router not touching it
+                # is meaningless against a `None`.
+                "out__confirm": '{"segment": "clinics", "notes": ""}',
+                "decision__confirm": None,
                 BUILDER_STATE_KEY: {
                     "gates": {
                         "n3_route_confirm": {
@@ -237,15 +241,68 @@ class RouteGateTests(unittest.TestCase):
         flow = self._flow(max_turns=1, used=1)
         self.assertEqual(self._route(flow, '{"decision": "revise"}'), "e3_approve")
         self.assertEqual(flow.state["turns__confirm"], 1)
-        self.assertFalse(flow.state["out__confirm"]["honoured"])
+        self.assertFalse(flow.state["decision__confirm"]["honoured"])
 
-    def test_the_gate_nodes_output_records_what_the_operator_said(self) -> None:
+    def test_the_decision_is_recorded_under_the_gates_own_namespace(self) -> None:
         flow = self._flow()
         self._route(flow, '{"decision": "revise", "feedback": "narrower"}')
         self.assertEqual(
-            flow.state["out__confirm"],
+            flow.state["decision__confirm"],
             {"decision": "revise", "honoured": True, "turns_used": 1, "feedback": "narrower"},
         )
+
+    def test_the_router_never_touches_the_payload_the_operator_was_shown(self) -> None:
+        """Paid-run defect 3, as an assertion.
+
+        This is the whole of it. `route_gate` used to `_record` its decision,
+        which writes `out__<gate>` - the key `render_gate` had already filled
+        with the gate's SUBJECT and the key every downstream
+        `${state.out__<gate>}` resolves through. Measured in run `877f393f`:
+        three specialists were briefed on
+        `{'decision': 'approve', 'honoured': False, 'turns_used': 0}` and wrote
+        about credit default swaps.
+        """
+
+        for reply in ('{"decision": "approve"}', '{"decision": "revise"}'):
+            with self.subTest(reply=reply):
+                flow = self._flow()
+                before = flow.state["out__confirm"]
+                self._route(flow, reply)
+                self.assertEqual(flow.state["out__confirm"], before)
+                self.assertNotIn("decision", flow.state["out__confirm"])
+
+    def test_an_operators_edits_replace_the_payload_and_nothing_else(self) -> None:
+        """The one thing the router may write there: the operator's own object.
+
+        `service/registry.py::_feedback_payload` sends an authored gate's edits
+        back under `fields`, and that mapping is the whole payload with the
+        edits applied - so it replaces the rendered one. The decision, the
+        `honoured` flag and the turn count never travel with it.
+        """
+
+        flow = self._flow()
+        self._route(
+            flow,
+            json.dumps(
+                {
+                    "decision": "approve",
+                    "fields": {"segment": "dental", "notes": "start with one clinic"},
+                }
+            ),
+        )
+        self.assertEqual(
+            json.loads(flow.state["out__confirm"]),
+            {"segment": "dental", "notes": "start with one clinic"},
+        )
+        self.assertEqual(flow.state["decision__confirm"]["decision"], "approve")
+
+    def test_a_reply_with_no_edits_leaves_the_rendered_payload_alone(self) -> None:
+        flow = self._flow()
+        self._route(flow, '{"decision": "approve", "feedback": "looks right"}')
+        self.assertEqual(
+            json.loads(flow.state["out__confirm"]), {"segment": "clinics", "notes": ""}
+        )
+        self.assertEqual(flow.state["decision__confirm"]["feedback"], "looks right")
 
     def test_re_entering_a_loop_re_arms_the_listener_first(self) -> None:
         # A multi-event or_() listener is fired once and skipped forever after,
@@ -341,9 +398,22 @@ class DurableGateTests(unittest.TestCase):
         self.assertIn("decision=approve", self.paused.context.message)
 
     def test_an_approve_reply_completes_the_run(self) -> None:
+        """And the OUTPUT node downstream of the gate carries the gate's subject.
+
+        `gated_loop`'s report node is `source: "${state.out__confirm}"`, which
+        is the reference paid-run defect 3 was found through. Until 2026-09-05
+        this run's deliverable was
+        `{"decision": "approve", "honoured": false, "turns_used": 0}` - and the
+        assertion here was `result[BODY_KEY] == json.dumps(state["out__confirm"])`,
+        which is true of whatever that key happens to hold and therefore proved
+        nothing. It names the payload now.
+        """
+
         flow = self._start()
         result, resumed = self._resume(flow.state["id"], {"decision": "approve"})
-        self.assertEqual(result[BODY_KEY], json.dumps(resumed.state["out__confirm"]))
+        self.assertEqual(json.loads(result[BODY_KEY]), {"segment": "clinics", "notes": ""})
+        self.assertEqual(json.loads(resumed.state["out__confirm"]), json.loads(result[BODY_KEY]))
+        self.assertEqual(resumed.state["decision__confirm"]["decision"], "approve")
         self.assertEqual(resumed.state["turns__confirm"], 0)
 
     def test_a_revise_reply_really_loops_back_to_the_gate(self) -> None:
@@ -359,8 +429,16 @@ class DurableGateTests(unittest.TestCase):
         self.assertEqual(again.context.method_name, gate)
         self.assertEqual(resumed.state["turns__confirm"], 1)
         self.assertIsNone(resumed.state["out__report"])
-        # The operator's own words reached the node on the revise path.
+        # The operator's own words reached the node on the revise path - through
+        # `decision__confirm`, which is where they are recorded, and never over
+        # the top of the payload the gate was about.
         self.assertEqual(resumed.state["out__restate"]["feedback"], "narrower")
+        self.assertEqual(resumed.state["decision__confirm"]["feedback"], "narrower")
+        # `out__confirm` is NOT still the first payload here, and that is the
+        # fixture rather than the contract: `restate` feeds back into the gate,
+        # so `render_gate` runs a second time and republishes what the revise
+        # path produced. What the contract guarantees is that the ROUTER never
+        # writes there - `RouteGateTests` drives that half directly.
 
     def test_the_second_gate_shows_what_the_revision_produced(self) -> None:
         flow = self._start()
@@ -385,7 +463,7 @@ class DurableGateTests(unittest.TestCase):
         )
         self.assertNotIsInstance(result, HumanFeedbackPending)
         self.assertEqual(resumed.state["turns__confirm"], 1)
-        self.assertFalse(resumed.state["out__confirm"]["honoured"])
+        self.assertFalse(resumed.state["decision__confirm"]["honoured"])
 
     def test_an_explicit_no_gates_run_never_pauses_at_all(self) -> None:
         # The service sets `no_gates` only after checking its own flag, and it

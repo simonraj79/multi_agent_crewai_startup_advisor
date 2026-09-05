@@ -129,8 +129,23 @@ has not been re-run for money since.
 
 **Spend: $0.017892 by the service**, which takes the programme's recorded total
 to **$0.125492** of the $5.00 allowance ($0.0417 acceptance + $0.065893 template
-sweep + this). The balance is read late, for the reason the previous section
-gives, and is recorded in the report of the session that spent it.
+sweep + this).
+
+| | |
+| --- | --- |
+| balance before | **$27.385625** (`total_usage` 92.614374845) |
+| balance after | **$27.367552** (`total_usage` 92.632447785) |
+| **real spend** | **$0.018073** |
+| the service's own `cost_usd` | **$0.017892** |
+| difference | **$0.000181** |
+
+The "after" row was read ~10 minutes past the run and confirmed unchanged twice;
+an intermediate read four minutes in said $0.001656, which is the lag the
+section above documents. **The difference is 1.0 % and it is larger than the
+sweep's**, which agreed to $0.000049 over six runs — one run, one endpoint, and
+the obvious candidate is `:nitro` routing the cheap-tier calls above the
+published floor, which `NITRO_PRICE_FACTOR` exists for. One sample is not a
+finding; it is a thing to watch on the next paid run.
 
 ## What each run's OUTPUT actually did
 

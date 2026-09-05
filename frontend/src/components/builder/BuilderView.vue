@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, provide, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import {
   ChevronLeft,
@@ -193,6 +193,78 @@ const flowTest = useFlowTest({
 /** The panel's own element, for the canvas's settling re-fit (13 D1). */
 const testPanelRef = ref<{ $el?: HTMLElement } | null>(null)
 const testPanelEl = computed<HTMLElement | null>(() => testPanelRef.value?.$el ?? null)
+
+/** The canvas element, for the same observer. Single-root, so `$el` is it. */
+const canvasFrameRef = ref<{ $el?: HTMLElement } | null>(null)
+const canvasFrameEl = computed<HTMLElement | null>(() => canvasFrameRef.value?.$el ?? null)
+
+/*
+ * WHO WRITES `flowTest.paneHeight` — and until now, nobody did.
+ *
+ * `useFlowTest` declares it `ref(0)` with the comment "Written by the shell's
+ * observer", and `maxHeight` is `max(PANEL_MIN_PX, paneHeight * 0.6)`. With no
+ * writer that resolves to `max(160, 0)` = **160**, which is also `PANEL_MIN_PX`
+ * — so the panel's floor and its ceiling were the same number and the drag
+ * handle was inert. Measured in a real browser at 1920x1080 before this fix:
+ * thirty `Shift+ArrowUp` on the handle moved it from 160px to 160px, with
+ * `aria-valuenow` and `aria-valuemax` both reading `160`. Plan 13 D1's 60% stop
+ * had never once been reachable in the product.
+ *
+ * `tests/testPanel.spec.ts` could not see it, and the reason generalises: all
+ * four of its height assertions SET `paneHeight` by hand before asserting on
+ * the clamp. That proves the arithmetic and says nothing about whether anything
+ * feeds it — the same shape as plan 12's own integration closer, where
+ * `ProblemsPanel` had accepted a `runProblems` prop since the plan landed and
+ * nothing fed it either.
+ *
+ * The pane is the CANVAS PLUS THE PANEL, which is the space the two share and
+ * split. That sum is invariant under the split — both are rows of a fixed-height
+ * grid and the canvas is the `minmax(0, 1fr)` one — so observing both and adding
+ * them cannot chase its own tail: growing the panel shrinks the canvas by the
+ * same pixels and the total does not move. Measured at 1920x1080: 569 + 160 =
+ * 729, and 729 again at every stop on the way to the ceiling.
+ */
+let paneObserver: ResizeObserver | null = null
+
+function measurePane(): void {
+  const canvas = canvasFrameEl.value
+  const panel = testPanelEl.value
+  if (!canvas || !panel) return
+  const total = canvas.getBoundingClientRect().height + panel.getBoundingClientRect().height
+  // Zero is a tree that is unmounting, not a pane anybody can see; keeping the
+  // last real figure means a teardown cannot collapse the ceiling to the floor.
+  if (total > 0) flowTest.paneHeight.value = total
+}
+
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined') return
+  paneObserver = new ResizeObserver(() => measurePane())
+})
+
+/*
+ * Both elements are template refs in this component's own template, and Vue
+ * assigns those in a post-render effect AFTER `onMounted` — so observing them
+ * from the mount hook alone observes nothing. This is the same watch-for-the-
+ * element-arriving shape `BuilderCanvas` already needed for `dock` and `panel`,
+ * and for the same reason. Not `immediate`: an immediate post-flush callback is
+ * queued from setup, ahead of the mounted hook, and would run before the
+ * observer exists.
+ */
+watch(
+  [canvasFrameEl, testPanelEl],
+  ([canvas, panel], previous) => {
+    for (const gone of previous ?? []) if (gone) paneObserver?.unobserve(gone)
+    if (canvas) paneObserver?.observe(canvas)
+    if (panel) paneObserver?.observe(panel)
+    measurePane()
+  },
+  { flush: 'post' },
+)
+
+onBeforeUnmount(() => {
+  paneObserver?.disconnect()
+  paneObserver = null
+})
 
 /**
  * `run` while a test run has an id, `design` otherwise.
@@ -2017,6 +2089,7 @@ watch(
           />
 
           <BuilderCanvas
+            ref="canvasFrameRef"
             :canvas="canvas"
             :label="doc.name"
             :read-only="persistence.viewingVersion.value"

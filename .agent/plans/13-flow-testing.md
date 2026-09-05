@@ -400,3 +400,43 @@ product defect, and neither file waits for the other; test-panel does not carry
 `failure-modes`' `Retry-After` wait. If the full suite starts failing there, that
 is the cause and the fix is to give test-panel the same wait, not to raise the
 limit.
+
+### Criterion 1's 60 % stop had no writer, and the handle was inert — 2026-09-05
+
+Found at 1920×1080 by `frontend/e2e/desktop-1080.spec.ts`, which opens the test
+panel and drives it to its ceiling. Measured before any change: thirty
+`Shift+ArrowUp` on the resize handle moved the panel from **160 px to 160 px**,
+with `aria-valuenow` and `aria-valuemax` both reading `160`.
+
+`useFlowTest` declares `paneHeight = ref(0)` with the comment *"Written by the
+shell's observer"* and computes `maxHeight = max(PANEL_MIN_PX, paneHeight *
+PANEL_MAX_FRACTION)`. **Nothing in `src/` ever wrote it**, so that resolved to
+`max(160, 0)` — the floor and the ceiling were the same number, and D1's
+resizable panel could not be resized in either direction. The 60 % stop this
+plan's criterion 1 names has never once been reachable in the product.
+
+**Why `testPanel.spec.ts` could not see it.** All four of its height assertions
+set `harness.test.paneHeight.value` by hand before asserting on the clamp — 900,
+then 1200, then 500. That proves the arithmetic and says nothing about whether
+anything feeds it. The same shape as plan 12's own integration closer, where
+`ProblemsPanel` had accepted a `runProblems` prop since the plan landed and
+nothing fed that either; the mount asserts structure and never asks what the
+value was in a browser.
+
+**The fix**, in `BuilderView.vue` beside `testPanelEl`: one `ResizeObserver` over
+the canvas element and the panel element, writing their **sum** into
+`flowTest.paneHeight`. The sum rather than either alone, because that is the
+space the two share and split, and it is invariant under the split — both are
+rows of a fixed-height grid whose canvas row is the `minmax(0, 1fr)` one, so
+growing the panel shrinks the canvas by the same pixels and the observer cannot
+chase its own tail. A zero total is ignored, so an unmounting tree cannot
+collapse the ceiling back onto the floor. Measured at 1920×1080 after the fix:
+canvas 569 + panel 160 = **729** at rest, and **437 px = 59.9 %** at the
+ceiling, with the canvas re-fitting under it and 729 unchanged at every stop.
+
+Criterion 1 stays **met** and its evidence line is unchanged: the clamp, the
+tabs and the observed re-fit were all true. What was missing is a fifth thing
+the criterion did not ask for and a jsdom mount cannot supply. The guard is
+`desktop-1080.spec.ts`'s `4 · the test panel at 60% of the pane`, which asserts
+the measured fraction is between 0.58 and 0.61 — a real browser, because that is
+the only place the question has an answer (MISSION §9 trap 13).

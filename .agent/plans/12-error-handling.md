@@ -233,7 +233,17 @@ model is asking a second judge until one agrees.
 
 ### Built — 2026-09-04
 
-Eight of ten met, one partial, one not reached. What shipped: two crew fields
+Eight of ten met, one partial, one not reached.
+
+> **Amended 2026-09-05: the partial is closed and the count is now nine of ten
+> met.** Criterion 10 was reviewed at 1920×1080 — the viewport the owner ruled
+> it done at — and passes six of six modes in both themes. The verdict table,
+> and the two things it deliberately does not claim, are in
+> `### Criterion 10 at 1920×1080 — 2026-09-05` at the foot of this file. The
+> line above is left as written rather than edited, because it was the honest
+> count on the day and the amendment is what changed.
+
+What shipped: two crew fields
 the runtime was discarding in silence, five failure modes that now say which
 kind of failure they were, an error port that takes its edges with it, an error
 edge that is a class rather than a tint, a run-phase group in the problems dock,
@@ -251,7 +261,7 @@ answer.
 | 7 | **met** | `frontend/tests/errorEdge.spec.ts`, **12 passed** |
 | 8 | **met, and one clause is a contradiction** | `frontend/tests/retryField.spec.ts`, **11 passed**. `retry-over-max` cannot arise — see contradiction 2 |
 | 9 | **met** | `docs/tech-stack.md` §6's wider scan lists both, with the regeneration command beside it; the list moved five → seven |
-| 10 | **partial** | Every trigger exists and is one knob; the cause is on the node (`.workflow-node.is-error`, asserted in a browser). NOT DONE: the four-screenshot review at 1440×900 and 390×844 in both themes, and "a path forward one click away" is plan 11's **Re-run from here**, which does not exist in this worktree |
+| 10 | ~~**partial**~~ **met at 1920×1080** | Struck through rather than rewritten, because the sentence beside it was true on 2026-09-04: every trigger existed and was one knob, and the screenshot review was NOT done. Both halves it named are now closed — **Re-run from here** landed with plan 11 at integration, and the review was run on **2026-09-05** at the one viewport the owner ruled it done at. Six of six modes legible and recoverable in both themes, with contrast measured: see `### Criterion 10 at 1920×1080 — 2026-09-05` at the foot of this file, which owns the verdict table |
 
 ### Criterion 1's arithmetic, which is not the criterion's
 
@@ -462,3 +472,54 @@ with a red node on it.
 Six unit assertions in `frontend/tests/testPanel.spec.ts`, including the replay
 door, the CrewAI echo frames, the clear on relaunch, and a control that every
 frame still reaches the console the tap wrapped.
+
+### Criterion 10 at 1920×1080 — 2026-09-05
+
+**Owner's ruling: criterion 10 is done at 1920×1080 ONLY.** The criterion as
+written asks for two viewports (1440×900 and 390×844) in both themes; the owner
+has narrowed it to the monitor the product is used on. Everything below is that
+one viewport, both themes, measured in a real browser by
+`frontend/e2e/desktop-1080.spec.ts` against a `SYNTHETIC=1` backend on 8094 with
+the five-mode `SYNTHETIC_FAILURE` string and `BUILDER_ALLOW_GATELESS_GRAPHS=1`.
+$0.00 spent.
+
+**Both words are measurements, not opinions.**
+
+- *Legible* = the failing card carries `.workflow-node.is-error`, its
+  `node-error-message` is visible **with the pointer parked in a corner**, that
+  sentence answers `elementFromPoint` at its own centre (so nothing is painted
+  over it), and its text clears **WCAG AA for small text, 4.5:1**, composited
+  against the first opaque backdrop above it. `isVisible()` alone would not do:
+  it asks about layout and `visibility` and never about occlusion — which is
+  what the first capture taken this session proved, four cards authored at
+  `{x:0, y:0}` stacking on top of each other and one card's error line reading
+  under another card's header.
+- *Recoverable* = **Re-run from here** is visible and enabled without opening,
+  hovering or scrolling anything. For the cyclic mode, which never runs, it is
+  the problems dock's row naming the router.
+
+| mode | legible | recoverable | dark | light | measured |
+| --- | --- | --- | --- | --- | --- |
+| bad_key | **yes** | **yes** | ✓ | ✓ | `SyntheticBadCredential: … attempt 1` on the card; contrast **12.23:1** dark, **6.53:1** light |
+| tool_timeout | **yes** | **yes** | ✓ | ✓ | `SyntheticToolTimeout: … attempt 1`; same contrast pair |
+| refusal | **yes** | **yes** | ✓ | ✓ | `SyntheticRefusal: … attempt 1`; same contrast pair |
+| malformed_output | **yes** | **yes** | ✓ | ✓ | `SyntheticMalformedOutput: … attempt 1`; same contrast pair |
+| rate_limit | **yes** | **yes** | ✓ | ✓ | `SyntheticRateLimitError: … attempt 1`; same contrast pair |
+| cyclic_graph | **yes** | **yes** | ✓ | ✓ | never runs: `problem-back-edge-not-router` in the dock at **13.18:1** dark / **12.85:1** light, exactly one `.builder-edge.has-error`, publish refused, and the sentence says *"insert a router node between 'second' and 'first'"* |
+
+**Six of six, in both themes.** Criterion 10 is **met** at 1920×1080 and the
+`| 10 | partial |` row above is superseded by this section. Two things it is
+explicitly NOT: it is not a claim about 390×844, which the owner's ruling
+removed rather than this session satisfying; and it is not a claim about paid
+models, because every one of the five running modes is a `SYNTHETIC_FAILURE`
+value and the sixth never reaches a model at all.
+
+Captures for a human to read are written to `benchmarks/ours/1080/`
+(`6-crit10-<mode>-<theme>.png`, twelve of them), gitignored by the global `*.png`
+rule like every other capture set here.
+
+**One thing the criterion asks for that this section does not claim.** The
+criterion's wording is *"a critic can trigger all six modes from the UI using
+only `SYNTHETIC_FAILURE`"*. Five of the six are triggered exactly that way; the
+sixth needs no knob because `bounds.py` refuses it at validate and again at
+publish, which this plan's own D8 table records as a decision rather than a gap.

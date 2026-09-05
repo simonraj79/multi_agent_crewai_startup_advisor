@@ -147,6 +147,96 @@ the obvious candidate is `:nitro` routing the cheap-tier calls above the
 published floor, which `NITRO_PRICE_FACTOR` exists for. One sample is not a
 finding; it is a thing to watch on the next paid run.
 
+## The verification run — the gate payload, 2026-09-05
+
+The other half of the previous section's closing paragraph. It said defect 3
+*"is not exercised here"* and that `hierarchical-delegation` — the template that
+met it for money — *"has not been re-run for money since"*. It has now.
+
+Same backend recipe (`PORT=8097`, no `SYNTHETIC`, `/docs` → **404**), same
+template, same saved input, same `approve` at the same gate. Against
+`main` = **`847f282`**, where `route_gate` records the decision under
+`decision__<gate>` and `out__<gate>` keeps the payload the operator was shown.
+
+| template | run id | status | elapsed | prompt / completion | calls | `cost_usd` | static | measured / static | gates |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `hierarchical-delegation` | `d1fdeea6` | **completed** | 54.5 s | 7,231 / 4,886 | 9 | $0.022287 | $0.5235 | **4.26 %** | 1 approve |
+
+Per node, both on `team` because the members are priced inside the crew:
+`gemini-3.5-flash-lite:nitro` 3 calls $0.0022559, `gemini-3.8-flash` 6 calls
+$0.020031. Evidence:
+[`live/2026-09-05-hierarchical-delegation-decision-ns.json`](live/2026-09-05-hierarchical-delegation-decision-ns.json),
+which carries the full flow state, all 149 frames and all three checks.
+
+### The three checks, from the run rather than from the diff
+
+**(a) The two state keys are separate.** `GET /api/runs/d1fdeea6…/state`:
+
+```json
+"out__confirm":      "{\"summary\": \"Plan the launch of a keyboard-first task manager for engineering teams.\"}",
+"decision__confirm": {"decision": "approve", "honoured": false, "turns_used": 0}
+```
+
+The payload is where a downstream node reads it and the decision is beside it,
+not on top of it. On 2026-09-05 before the fix, `out__confirm` **was** that
+second object.
+
+**(b) The specialists are briefed on the payload.** The three declared tasks, as
+CrewAI interpolated them — these are the exact strings that were
+`{'decision': 'approve', 'honoured': False, 'turns_used': 0}` last time:
+
+```text
+Size the market for {"summary": "Plan the launch of a keyboard-first task manager for engineering teams."} and name the buyer.
+Define the v1 scope for {"summary": "Plan the launch of a keyboard-first task manager for engineering teams."} in five bullets.
+List the three ways {"summary": "Plan the launch of a keyboard-first task manager for engineering teams."} fails, and the early …
+```
+
+Six task names appear in the frame stream; the other three are the hierarchical
+manager's own delegation prose and carry no interpolation, so the check that
+holds of **all six** is the negative one: **no task name carries the decision
+dict.** The manager's delegation context is on topic too — it briefs the Market
+Specialist on *"a keyboard-first task manager for engineering teams (similar in
+ethos to Linear)"*.
+
+**(c) The body is on topic.** 1,219 characters about command-palette hotkeys,
+Markdown-only interfaces rejected by PMs and designers, bi-directional GitHub
+webhook races and multi-seat provisioning. The previous run's body, at a dearer
+$0.029346, was about counterparty default and AML screening.
+
+### Spend
+
+| | |
+| --- | --- |
+| balance before | **$27.367552** (`total_usage` 92.632447785) |
+| balance after | **$27.345242** (`total_usage` 92.654757565) |
+| **real spend** | **$0.022310** |
+| the service's own `cost_usd` | **$0.022287** |
+| difference | **$0.000023** |
+
+Read three minutes past the run and confirmed unchanged three times. **The
+difference is 0.10 %**, back in line with the sweep's $0.000049 over six runs and
+an order tighter than the previous section's 1.0 %. That does not resolve the
+`:nitro` question either — it is a second single sample, and the honest reading
+is that one run's difference is noise in both directions.
+
+Programme total: **$0.148038** of the $5.00 allowance — MISSION.md §7 owns
+that figure and its four rows.
+
+### What is still off topic, and it is not the gate
+
+Two residuals, neither of them defect 3 and neither of them new:
+
+- **The payload reaches the prompt as its JSON envelope**, not as prose — the
+  task literally reads `Size the market for {"summary": "…"} and name the
+  buyer.` Every model handled it and every output is on topic, so this costs
+  nothing today; it is a shape nobody chose, and the first author who writes a
+  gate whose payload has three keys will find out what it renders as.
+- **The crew node's result is the LAST task's output**, so the deliverable is
+  the Risk specialist's three failure modes and not a synthesis of market,
+  product and risk. That is `CrewOutput.raw`'s semantics, it was recorded as a
+  separate observation when the sweep ran, and it is unchanged. A template that
+  wants a synthesis needs a node that writes one.
+
 ## What each run's OUTPUT actually did
 
 The table above says the runs completed. This says whether they did the job,
@@ -158,7 +248,7 @@ which is a different question and the one worth the money.
 | `sequential-pipeline` | **Did its job, minus its sources.** A 5,265-character brief with a headline and three sections, on topic and genuinely readable. But its sources list reads *"the source analysis did not carry external URLs"* — the URLs the researcher found do not survive `research -> analyse -> write`. |
 | `conditional-router` | **Routed correctly.** "charged me twice … refund" classified `billing`; the billing desk answered and the other two never ran — 2 calls for the whole graph. The reply then invents an account history ($29.00 on 1 November 2023, a gateway timeout, a refund it says it has processed), which is what a support-desk prompt with no tools and no account data will do. |
 | `reflection-loop` | **Looped.** `generate` ran twice and `critique` twice: the first draft scored under 8, the second passed, and the router took `done`. A decent 1,247-character PM explainer. The card's claim is accurate. |
-| `hierarchical-delegation` | **Completed, and answered the wrong question.** Defect 3. The three specialists were briefed on a Python dict and wrote about credit default swaps. |
+| `hierarchical-delegation` | **Completed, and answered the wrong question.** Defect 3. The three specialists were briefed on a Python dict and wrote about credit default swaps. **Re-run for money at `847f282` and on topic** — the gate-payload section above. |
 
 ### The news post, verbatim
 
@@ -344,8 +434,14 @@ is why this is the only one affected and why nothing caught it.
 
 Two candidate repairs, and they are not equivalent: rewire the template to
 `${state.brief}`, or stop the router clobbering the pause's output. The second is
-a contract change. **Neither is made here**, because a paid-run session is not
+a contract change. **Neither was made here**, because a paid-run session is not
 where a contract moves.
+
+> **FIXED on `main` = `847f282`, and verified for money on 2026-09-05.** The
+> second repair was taken: the decision has its own `decision__<gate>` key and
+> `out__<gate>` keeps the payload, so no template needed rewiring. Re-run
+> `d1fdeea6` on the same template with the same input passes all three checks —
+> the gate-payload section above.
 
 ### 4 — `sequential-pipeline` loses its sources between the analyst and the writer.
 

@@ -450,3 +450,73 @@ class UnhandledTallyOnEveryTerminalTests(unittest.TestCase):
             "`record.capture.serializer.unhandled_report()` into its details",
         )
 
+
+class RunMetricsFallbackTests(unittest.TestCase):
+    """`run_metrics` when the app emitted no METRICS frame at all.
+
+    Measured on the paid `builder-agentfail` run: `trace.metadata.run_metrics`
+    was **null**. The app emits a metrics snapshot only when usage MOVES, and
+    that run made six model calls of which every one failed - so nothing was
+    billed, nothing changed, and no snapshot was ever emitted. A reader opening
+    the run most obviously worth reading found no totals, which reads as "the
+    exporter lost them" rather than as "there were none".
+
+    `source` distinguishes the two origins, because they are not equally
+    trustworthy: `app-snapshot` is the registry's own reconciled view;
+    `exporter-tally` is only what this exporter managed to emit.
+    """
+
+    def test_a_run_with_no_metrics_frame_gets_the_exporters_own_tally(self) -> None:
+        exporter, backend = exporter_for()
+        recorder = Recorder()
+        recorder.run_started({"idea": "an idea"})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.model_call_failed("n1", "call-1", **IDENTITY)
+        recorder.run_failed("every call failed", error_class="BadRequestError")
+        drive(exporter, recorder.frames)
+        metrics = by_role(backend.observations, "run")[0].metadata["run_metrics"]
+        self.assertEqual("exporter-tally", metrics["source"])
+        self.assertEqual(1, metrics["usage"]["call_count"])
+        # Nothing was priced, and zero dollars is a claim nobody made.
+        self.assertIsNone(metrics["usage"]["cost_usd"])
+        self.assertEqual(STATUS_FAILED, metrics["reason"])
+
+    def test_a_run_with_a_snapshot_still_uses_the_apps_own_figures(self) -> None:
+        exporter, backend = exporter_for()
+        recorder = Recorder()
+        recorder.run_started({"idea": "an idea"})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.model_call("n1", "call-1", **IDENTITY)
+        recorder.node_ended("n1", **IDENTITY)
+        recorder.run_completed({"ok": True})
+        recorder.add(
+            FrameKind.METRICS,
+            UIEventType.METRICS_UPDATED,
+            "workflow",
+            {
+                "reason": "run_completed",
+                "usage": {"call_count": 6, "cost_usd": 0.0022745},
+                "frames": {"captured": 90, "dropped": 0},
+            },
+        )
+        drive(exporter, recorder.frames)
+        metrics = by_role(backend.observations, "run")[0].metadata["run_metrics"]
+        self.assertEqual("app-snapshot", metrics["source"])
+        self.assertEqual(6, metrics["usage"]["call_count"])
+
+    def test_the_tally_totals_what_the_exporter_actually_emitted(self) -> None:
+        exporter, backend = exporter_for()
+        recorder = Recorder()
+        recorder.run_started({"idea": "an idea"})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.model_call("n1", "call-1", prompt_tokens=100, completion_tokens=20, **IDENTITY)
+        recorder.model_call("n1", "call-2", prompt_tokens=40, completion_tokens=5, **IDENTITY)
+        recorder.node_ended("n1", **IDENTITY)
+        recorder.run_completed({"ok": True})
+        drive(exporter, recorder.frames)
+        metrics = by_role(backend.observations, "run")[0].metadata["run_metrics"]
+        self.assertEqual("exporter-tally", metrics["source"])
+        self.assertEqual(2, metrics["usage"]["call_count"])
+        self.assertEqual(140, metrics["usage"]["prompt_tokens"])
+        self.assertEqual(25, metrics["usage"]["completion_tokens"])
+        self.assertAlmostEqual(0.002, metrics["usage"]["cost_usd"], places=6)

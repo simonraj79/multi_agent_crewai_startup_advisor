@@ -601,7 +601,7 @@ class FieldBoundedSerializer:
             details.update(envelope)
             return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} completed", details, level, duration_ms),)
         if isinstance(event, ToolUsageErrorEvent):
-            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} failed", {"stage": "error", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "error": self.clip(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.TOOL, UIEventType.TOOL_CALL, node_id, f"{event.tool_name} failed", {"stage": "error", "tool": event.tool_name, "query": self.tool_query(event.tool_args), "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, LLMCallStartedEvent):
             # Three ADDITIVE fields, and none of them is the prompt. This event
@@ -654,7 +654,7 @@ class FieldBoundedSerializer:
                 self._draft(timestamp, FrameKind.TOKEN, UIEventType.MODEL_CALL, node_id, "Token usage recorded", {"call_id": event.call_id, "model": model, "usage": usage, "cost_usd": cost_usd}),
             )
         if isinstance(event, LLMCallFailedEvent):
-            return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call failed", {"stage": "error", "call_id": event.call_id, "model": event.model, "error": self.clip(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, f"{event.model or 'model'} call failed", {"stage": "error", "call_id": event.call_id, "model": event.model, "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
         if isinstance(event, LLMStreamChunkEvent):
             return (self._draft(timestamp, FrameKind.LLM, UIEventType.MODEL_CALL, node_id, "Model stream chunk", {"stage": "chunk", "call_id": event.call_id, "chunk": self.clip(event.chunk)}),)
 
@@ -663,21 +663,21 @@ class FieldBoundedSerializer:
         if isinstance(event, AgentExecutionCompletedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._agent_role(event)} completed", {"stage": "after", "task": self._task_name(event), "output": self.clip(event.output)}),)
         if isinstance(event, AgentExecutionErrorEvent):
-            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._agent_role(event)} failed", {"stage": "error", "task": self._task_name(event), "error": self.clip(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._agent_role(event)} failed", {"stage": "error", "task": self._task_name(event), "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, TaskStartedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} started", {"stage": "before"}),)
         if isinstance(event, TaskCompletedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} completed", {"stage": "after"}),)
         if isinstance(event, TaskFailedEvent):
-            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} failed", {"stage": "error", "error": self.clip(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} failed", {"stage": "error", "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
 
         if isinstance(event, CrewKickoffStartedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} started", {"stage": "before"}),)
         if isinstance(event, CrewKickoffCompletedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} completed", {"stage": "after", "total_tokens": event.total_tokens}),)
         if isinstance(event, CrewKickoffFailedEvent):
-            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} failed", {"stage": "error", "error": self.clip(event.error)}, FrameLevel.ERROR),)
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{event.crew_name or 'Crew'} failed", {"stage": "error", "error": self.clip(event.error), **error_class_of(event.error)}, FrameLevel.ERROR),)
 
         # A guardrail retry is a *second* full task execution on the same tier,
         # and until this branch existed it was the largest unexplained cost in a

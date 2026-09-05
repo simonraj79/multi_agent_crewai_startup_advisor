@@ -89,6 +89,16 @@ PAGE_LIMIT = 100
 GENERATION = "GENERATION"
 TOOL = "TOOL"
 AGENT = "AGENT"
+EVENT = "EVENT"
+
+# The types that CAN end. D3 asks whether anything was left without an end
+# time; a Langfuse EVENT is a point in time and carries no `endTime` by
+# construction, so counting one as an unfinished span is a category error.
+# MEASURED on the paid proof runs: the headline read 38 / 10 / 19 / 22 while
+# the number of unfinished SPANS was 0 on every one of the six
+# (`evidence/proof/cancelled/open-spans-by-type.txt`). The rule is by
+# exclusion, not by allow-list: a type this script has never seen is assumed
+# to close, because the failure that matters is missing a real open span.
 
 # The five roles TRACE-CONTRACT.md §2 gives the hierarchy. Langfuse's native
 # AGENT and TOOL types ARE the contract's agent and tool - §2's "a SPAN with
@@ -100,6 +110,7 @@ ROLE_TASK = "task"
 ROLE_AGENT = "agent"
 ROLE_TOOL = "tool"
 ROLE_GENERATION = "generation"
+ROLE_EVENT = "event"
 
 # How long a single poll waits before the next count sample while the trace is
 # still invisible. Deliberately shorter than the stability window: the first
@@ -368,9 +379,19 @@ def observation_role(observation: Mapping[str, Any]) -> str:
         return ROLE_AGENT
     if kind == TOOL:
         return ROLE_TOOL
+    if kind == EVENT:
+        return ROLE_EVENT
     meta = metadata_of(observation)
     role = str(meta.get("observation_role") or "").strip().lower()
-    if role in {ROLE_RUN, ROLE_NODE, ROLE_TASK, ROLE_AGENT, ROLE_TOOL, ROLE_GENERATION}:
+    if role in {
+        ROLE_RUN,
+        ROLE_NODE,
+        ROLE_TASK,
+        ROLE_AGENT,
+        ROLE_TOOL,
+        ROLE_GENERATION,
+        ROLE_EVENT,
+    }:
         return role
     name = str(observation.get("name") or "")
     if name == "run" and not observation.get("parentObservationId"):
@@ -380,6 +401,20 @@ def observation_role(observation: Mapping[str, Any]) -> str:
     if meta.get("agent_role") and name == str(meta.get("agent_role")):
         return ROLE_AGENT
     return ROLE_NODE
+
+
+def can_end(observation: Mapping[str, Any]) -> bool:
+    """Could this observation have an `endTime` at all?
+
+    Everything except an EVENT. `TRACE-CONTRACT.md` §2 makes an EVENT the
+    catch-all for a frame that is a moment rather than an interval - a gate
+    opening, an unknown frame kind - and Langfuse gives it no end time to have.
+    D3 ("nothing is left without an end time once a terminal frame has been
+    seen") is a question about spans, and an instrument that answers it by
+    counting events reports a broken exporter on a healthy run.
+    """
+
+    return observation_role(observation) != ROLE_EVENT
 
 
 def role_label(observation: Mapping[str, Any], role: str) -> str:
@@ -552,19 +587,31 @@ def derive_figures(
             )
 
     totals = sum_buckets(by_node)
-    open_observations = [
-        {
+
+    def _open_entry(o: Mapping[str, Any]) -> dict[str, Any]:
+        return {
             "id": o.get("id"),
             "traceId": o.get("traceId"),
             "type": o.get("type"),
+            "role": observation_role(o),
             "name": o.get("name"),
             "startTime": o.get("startTime"),
             "level": o.get("level"),
             "run_id": metadata_of(o).get("run_id"),
+            "can_end": can_end(o),
         }
-        for o in observations
-        if not o.get("endTime")
-    ]
+
+    # Kept whole - every observation with a null endTime, EVENTs included - so
+    # nothing is hidden. The D3 number is the non-EVENT subset below it.
+    open_all = [_open_entry(o) for o in observations if not o.get("endTime")]
+    open_observations = [entry for entry in open_all if entry["can_end"]]
+    open_counts = {
+        "total": len(open_all),
+        "non_event": len(open_observations),
+        "event": len(open_all) - len(open_observations),
+        "by_type": _count(str(entry["type"] or "") for entry in open_all),
+        "by_role": _count(str(entry["role"]) for entry in open_all),
+    }
 
     tool_observations = [
         {
@@ -625,7 +672,12 @@ def derive_figures(
         },
         "tool_calls": tool_observations,
         "tool_call_count": len(tool_observations),
+        # `open_observations` is the D3 list: observations that COULD have
+        # ended and did not. `open_observations_all` keeps the EVENTs too, so
+        # a reader can see both halves without re-deriving either.
         "open_observations": open_observations,
+        "open_observations_all": open_all,
+        "open_counts": open_counts,
         "scores": [
             {
                 "name": s.get("name"),
@@ -1151,7 +1203,20 @@ def render_summary(figures: Mapping[str, Any]) -> str:
                         )
                         or "(none)",
                     ],
-                    ["open observations", len(figures["open_observations"])],
+                    # Three different numbers, and the previous table
+                    # printed only the middle one under the D3 label.
+                    [
+                        "unfinished spans (D3: non-EVENT, endTime null)",
+                        (figures.get("open_counts") or {}).get("non_event"),
+                    ],
+                    [
+                        "observations with endTime null, all types",
+                        (figures.get("open_counts") or {}).get("total"),
+                    ],
+                    [
+                        "of those, EVENT (no endTime by construction)",
+                        (figures.get("open_counts") or {}).get("event"),
+                    ],
                     ["scores", len(figures["scores"])],
                     ["wall clock (s)", secs(figures.get("wall_clock_seconds"))],
                 ],
@@ -1358,17 +1423,64 @@ def main(argv: list[str] | None = None) -> int:
     save_text("hierarchy.txt", hierarchy_text(observations, traces))
 
     open_observations = figures["open_observations"]
-    open_lines = [f"open observations (endTime is null): {len(open_observations)}"]
-    open_lines.append(f"run_id: {args.run_id}   checked: {now_iso()}")
-    open_lines.append(f"observations examined: {figures['observation_count']}")
-    open_lines.append("")
+    open_all = figures["open_observations_all"]
+    counts = figures["open_counts"]
+    # The HEADLINE is the D3 number and nothing else: observations that could
+    # have ended and did not. The total and the per-type split sit beside it so
+    # a reader sees both figures rather than having to trust one - the previous
+    # headline counted EVENTs and read 38 on a paid run whose unfinished-span
+    # count was 0.
+    open_lines = [
+        "unfinished spans (non-EVENT observations with endTime null): "
+        f"{counts['non_event']}",
+        "",
+        f"run_id: {args.run_id}   checked: {now_iso()}",
+        f"observations examined: {figures['observation_count']}",
+        "",
+        "The split, because these are three different numbers:",
+        f"  observations with endTime null, ALL types  : {counts['total']}",
+        f"  of those, EVENT (no endTime by construction): {counts['event']}",
+        f"  of those, able to end and still open (D3)   : {counts['non_event']}",
+        "",
+        "  by type: "
+        + (
+            ", ".join(f"{k or '(none)'}={v}" for k, v in counts["by_type"].items())
+            or "(nothing open)"
+        ),
+        "  by role: "
+        + (
+            ", ".join(f"{k}={v}" for k, v in counts["by_role"].items())
+            or "(nothing open)"
+        ),
+        "",
+        "A Langfuse EVENT is a point in time and carries no endTime:",
+        "TRACE-CONTRACT.md section 2 makes it the catch-all for a gate opening or",
+        "an unknown frame kind. Counting one as an unfinished span is a category",
+        "error, and it is the one this file made until 2026-09-06 - it read 38 on",
+        "a paid run whose unfinished-span count was 0. See",
+        "evidence/proof/cancelled/open-spans-by-type.txt.",
+        "",
+    ]
     for observation in open_observations:
         open_lines.append(
             f"  {observation['type']} {observation['name']} id={observation['id']} "
             f"start={observation['startTime']} run_id={observation['run_id']}"
         )
     if not open_observations:
-        open_lines.append("  (none - DoD D3 is satisfied for this run)")
+        open_lines.append("  (no unfinished span - DoD D3 is satisfied for this run)")
+    if counts["event"]:
+        open_lines += [
+            "",
+            f"The {counts['event']} EVENT observation(s) with no endTime, listed for",
+            "completeness. None of these is a D3 finding:",
+        ]
+        for observation in open_all:
+            if observation["can_end"]:
+                continue
+            open_lines.append(
+                f"  {observation['type']} {observation['name']} "
+                f"id={observation['id']} start={observation['startTime']}"
+            )
     save_text("open-spans.txt", "\n".join(open_lines))
 
     print(render_summary(figures))

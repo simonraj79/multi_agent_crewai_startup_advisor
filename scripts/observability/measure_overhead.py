@@ -20,14 +20,28 @@ all of that into one arm - the same control discipline the run-shell
 performance work used.
 
 The exporter's per-run summary line (`TRACE-CONTRACT.md` §10) is parsed out of
-the captured server log:
+the captured server log. Its key names are the EXPORTER's, copied from
+`src/brief_crew/observability/langfuse_exporter.py`'s `SUMMARY_FORMAT`:
 
-    langfuse-exporter run=<id> enqueued=<n> dropped=<n> sent=<n> http_errors=<n>
-      lookup_ok=<n> lookup_failed=<n> enqueue_p50_us=<n> enqueue_p95_us=<n>
+    langfuse-exporter run=<id> frames_enqueued=<n> frames_dropped=<n>
+      observations_sent=<n> http_errors=<n> lookup_ok=<n> lookup_failed=<n>
+      enqueue_p50_us=<n> enqueue_p95_us=<n>
 
-**If that line is absent the script says "not found" and still reports the wall
-clock.** The exporter is built by another worker; a harness that only worked
-once the thing it measures existed could never have been tested.
+**Those names are load-bearing and this script got them wrong until
+2026-09-06.** It summed `enqueued` / `sent` / `dropped` - an EARLIER spelling,
+which the exporter itself records replacing (its comment: *"an earlier spelling
+read `enqueued=95 sent=108`, two different things counted in two different
+units"*) - so `line.get(key, 0)` matched nothing and a perfectly healthy log
+printed **0 / 0 / 0** where the truth was 482 / 205 / 0. Measured by V-RECON
+over a real ON log; `evidence/perf/raw-harness-findings.txt` carries the proof.
+The repair is not only the new names: a counter no line carries now reads
+**ABSENT**, never 0, and any key in the line this script does not know about is
+reported as unknown - so the next rename is a loud row rather than a quiet zero.
+
+**If the line is absent altogether the script says "not found" and still
+reports the wall clock.** The exporter is built by another worker; a harness
+that only worked once the thing it measures existed could never have been
+tested.
 
 Processes are started with `subprocess.Popen` and killed with
 `taskkill /PID <pid> /T /F` on Windows - never `pkill`, which reports success
@@ -48,6 +62,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import statistics
@@ -74,6 +89,25 @@ from _common import (  # noqa: E402
 )
 
 TERMINAL = {"completed", "failed", "cancelled"}
+
+# The EXPORTER's own key names, and the only place this file spells them.
+# Read from `langfuse_exporter.py`'s SUMMARY_FORMAT, never from memory: the
+# previous set was an earlier spelling of the same line, so every total read
+# zero over a log that carried 482 frames.
+EXPORTER_COUNTER_KEYS = (
+    "frames_enqueued",
+    "frames_dropped",
+    "observations_sent",
+    "http_errors",
+    "lookup_ok",
+    "lookup_failed",
+)
+EXPORTER_LATENCY_KEYS = ("enqueue_p50_us", "enqueue_p95_us")
+# `run` is the run id, not a counter. Anything else in the line is a key this
+# harness has never heard of and is reported as such.
+EXPORTER_KNOWN_KEYS = frozenset(
+    ("run", *EXPORTER_COUNTER_KEYS, *EXPORTER_LATENCY_KEYS)
+)
 SUMMARY_LINE = re.compile(r"langfuse-exporter\s+(?P<body>[^\r\n]*)")
 KEY_VALUE = re.compile(r"(?P<key>[a-z_0-9]+)=(?P<value>[^\s]+)")
 DEFAULT_IDEA = (
@@ -113,7 +147,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "an extra environment variable for BOTH server arms (repeatable). "
             "Held equal across arms by construction, so it cannot bias the "
             "delta. Use it to point LANGFUSE_BASE_URL at a black-hole port "
-            "when the measurement must not reach the real project."
+            "when the measurement must not reach the real project. Applied "
+            "AFTER `import brief_crew` in the child, because that import calls "
+            "load_dotenv(override=True) and .env would otherwise win; "
+            "--use-serve-exe has no such seam and refuses a name .env declares."
         ),
     )
     parser.add_argument(
@@ -124,6 +161,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "launcher. NOTE: nothing in the app calls logging.basicConfig, so "
             "under serve.exe the exporter's INFO summary line is dropped by "
             "logging.lastResort and the p50/p95 half of E4 cannot be measured."
+        ),
+    )
+    parser.add_argument(
+        "--summary-wait",
+        type=float,
+        default=20.0,
+        help=(
+            "seconds to wait, after the last run, for the exporter to write "
+            "one summary line per run before the backends are killed. The "
+            "line is logged when the trace CLOSES, which lags the run; killing "
+            "at once loses it and the table reads 'not found' (default 20)"
         ),
     )
     parser.add_argument("--start-timeout", type=float, default=90.0)
@@ -177,6 +225,27 @@ class Backend:
         return ""
 
 
+def dotenv_declared_names() -> set[str]:
+    """The variable NAMES `.env` declares. Values are never read or returned.
+
+    Used only to refuse a `--env` that `.env` would silently overrule under
+    `--use-serve-exe`; the message names variables, never their contents.
+    """
+
+    path = repo_root() / ".env"
+    if not path.is_file():
+        return set()
+    names: set[str] = set()
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name = line.partition("=")[0].strip()
+        if name:
+            names.add(name)
+    return names
+
+
 def start_backend(
     name: str, port: int, args: argparse.Namespace, out_dir: Path, exporter_on: bool
 ) -> Backend:
@@ -209,6 +278,19 @@ def start_backend(
         env["LANGFUSE_EXPORT_ENABLED"] = "0"
     # Applied AFTER the arm's own switch, so an operator can override anything
     # except the one variable that distinguishes the arms.
+    #
+    # MEASURED 2026-09-06, and this is why they are ALSO passed through
+    # OBS_OVERHEAD_ENV_JSON below: putting a variable in the child's
+    # environment is NOT enough. `brief_crew/__init__.py` calls
+    # `load_dotenv(_ENV_PATH, override=True)` at package import - override=True
+    # deliberately, for the shadowed-PINECONE_API_KEY reason its own docstring
+    # gives - so `.env` re-asserts every name it declares over whatever this
+    # script set. The README's own recommended use, pointing LANGFUSE_BASE_URL
+    # at a black-hole port so a measurement cannot reach the real project, was
+    # therefore INERT whenever `.env` declared that name, which it does:
+    # `config.LANGFUSE_BASE_URL == injected` read False.
+    # `evidence/perf/raw-harness-findings.txt` carries the proof.
+    overrides: dict[str, str] = {}
     extra: list[str] = []
     for item in args.env:
         key, _, value = str(item).partition("=")
@@ -216,7 +298,25 @@ def start_backend(
         if not key or key == "LANGFUSE_EXPORT_ENABLED":
             continue
         env[key] = value
+        overrides[key] = value
         extra.append(f"{key}={value}")
+
+    if overrides and args.use_serve_exe:
+        # serve.exe imports brief_crew itself and there is no seam to re-apply
+        # anything after that import, so here the .env really does win. Refuse,
+        # naming the variables, rather than run a measurement whose knobs were
+        # silently discarded. NAMES only - a value could be a credential.
+        shadowed = sorted(set(overrides) & dotenv_declared_names())
+        if shadowed:
+            raise SystemExit(
+                "--use-serve-exe cannot honour --env for a name that .env "
+                "declares: " + ", ".join(shadowed) + ". brief_crew's package "
+                "import calls load_dotenv(override=True), and serve.exe offers "
+                "no point after it at which to re-apply. Drop --use-serve-exe "
+                "(the default launcher re-applies them after the import), or "
+                "remove those names from .env."
+            )
+    env["OBS_OVERHEAD_ENV_JSON"] = json.dumps(overrides)
 
     # MEASURED 2026-09-05: nothing in `src/brief_crew/` calls
     # `logging.basicConfig` or `dictConfig`, and uvicorn's own config attaches
@@ -233,15 +333,39 @@ def start_backend(
         command_argv = [str(serve)]
         launcher = str(serve)
     else:
+        # The order of these five statements is the whole fix for --env, and
+        # each one is where it is for a reason:
+        #   1. configure logging, or the exporter's INFO summary line is
+        #      dropped by logging.lastResort (the comment above);
+        #   2. take the overrides out of the environment BEFORE anything can
+        #      inherit them into a grandchild;
+        #   3. `import brief_crew` - this is the load_dotenv(override=True);
+        #   4. re-apply the overrides, which now WIN over .env;
+        #   5. only then import the app, because `brief_crew.config` reads
+        #      os.getenv at ITS import and this is the first thing to pull it
+        #      in. `brief_crew/__init__.py` does not import config, which is
+        #      what makes step 4 land in time.
+        # It prints the NAMES it re-applied into the captured server log, so a
+        # reader of the evidence can see the override happened rather than
+        # trust that it did. Never the values.
         bootstrap = (
-            "import logging;"
+            "import json,logging,os;"
             "logging.basicConfig(level=logging.INFO,"
             " format='%(asctime)s %(levelname)s %(name)s %(message)s');"
+            "_overrides=json.loads(os.environ.pop('OBS_OVERHEAD_ENV_JSON','{}') or '{}');"
+            "import brief_crew;"
+            "os.environ.update(_overrides);"
+            "print('overhead-launcher: --env re-applied after brief_crew "
+            "import (names only): ' + (', '.join(sorted(_overrides)) or '(none)'),"
+            " flush=True);"
             "from brief_crew.service.app import serve;"
             "serve()"
         )
         command_argv = [str(python), "-c", bootstrap]
-        launcher = f'{python} -c "logging.basicConfig(level=INFO); serve()"'
+        launcher = (
+            f'{python} -c "logging.basicConfig(level=INFO); import brief_crew; '
+            'os.environ.update(--env); serve()"'
+        )
 
     log_path = out_dir / f"server-{name}.log"
     handle = log_path.open("wb")
@@ -365,6 +489,84 @@ def parse_exporter_lines(log_text: str) -> list[dict[str, Any]]:
     return parsed
 
 
+def aggregate_exporter(lines: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """Total each counter the exporter emits - and say when it emitted none.
+
+    `None` rather than `0` for a counter no line carries, because those two
+    are the whole defect this function exists to close: summing a key that is
+    not in the line gave `0`, and `0 frames enqueued` is a perfectly plausible
+    reading of a broken exporter. A missing key is now ABSENT, and the keys the
+    lines DID carry are reported beside it, so the next time the exporter
+    renames a field the table says which name it used.
+    """
+
+    result: dict[str, Any] = {"lines": len(lines), "raw": list(lines)}
+    if not lines:
+        return result
+    keys_seen = sorted({key for line in lines for key in line})
+    result["keys_seen"] = keys_seen
+    result["unknown_keys"] = [k for k in keys_seen if k not in EXPORTER_KNOWN_KEYS]
+    result["missing_keys"] = [
+        k for k in EXPORTER_COUNTER_KEYS + EXPORTER_LATENCY_KEYS if k not in keys_seen
+    ]
+    for key in EXPORTER_COUNTER_KEYS:
+        present = [line[key] for line in lines if isinstance(line.get(key), (int, float))]
+        result[f"{key}_total"] = sum(int(value) for value in present) if present else None
+        result[f"{key}_lines"] = len(present)
+    for key in EXPORTER_LATENCY_KEYS:
+        values = [
+            float(line[key]) for line in lines if isinstance(line.get(key), (int, float))
+        ]
+        result[f"{key}_mean"] = round(statistics.fmean(values), 1) if values else None
+    return result
+
+
+def wait_for_summaries(
+    backends: Mapping[str, "Backend"],
+    expected: Mapping[str, int],
+    timeout: float,
+) -> dict[str, Any]:
+    """Wait for the exporter to write its per-run summary lines, then stop.
+
+    MEASURED 2026-09-06: the exporter logs a run's summary when the trace
+    CLOSES, which is behind the run's terminal frame by however long the
+    flush thread takes - and against an unreachable host (the `--env
+    LANGFUSE_BASE_URL=<dead port>` this README recommends) the SDK's own
+    retries put that several seconds later still. `taskkill` fires the instant
+    the last poll returns, so a two-run arm at `--branch-delay 1` produced
+    **zero** summary lines from an exporter that was demonstrably running and
+    demonstrably erroring - the table read "not found", which is the same
+    false negative as the 0/0/0 above wearing a different hat.
+
+    So: poll each arm's log until it holds one summary line per run, or until
+    the timeout. Bounded, never a blind sleep, and what it waited for is
+    recorded - a run that times out here says so rather than reporting an
+    exporter that never ran.
+    """
+
+    deadline = time.monotonic() + max(0.0, timeout)
+    report: dict[str, Any] = {"timeout_seconds": timeout, "arms": {}}
+    started = time.monotonic()
+    while True:
+        counts = {
+            name: len(parse_exporter_lines(backend.read_log()))
+            for name, backend in backends.items()
+        }
+        # Only the ON arm is waited on: the OFF arm has the exporter disabled
+        # and legitimately produces no summary line ever, so waiting for one
+        # there would burn the whole timeout on every measurement.
+        satisfied = counts.get("on", 0) >= int(expected.get("on", 0) or 0)
+        if satisfied or time.monotonic() >= deadline:
+            report["waited_seconds"] = round(time.monotonic() - started, 3)
+            report["reached_expected"] = satisfied
+            report["arms"] = {
+                name: {"summary_lines": counts.get(name, 0), "runs": expected.get(name, 0)}
+                for name in backends
+            }
+            return report
+        time.sleep(0.5)
+
+
 def summarise(values: list[float]) -> dict[str, Any]:
     if not values:
         return {"n": 0, "mean": None, "min": None, "max": None, "median": None, "stdev": None}
@@ -376,6 +578,12 @@ def summarise(values: list[float]) -> dict[str, Any]:
         "median": statistics.median(values),
         "stdev": statistics.stdev(values) if len(values) > 1 else 0.0,
     }
+
+
+def _absent_or(value: Any) -> Any:
+    """`ABSENT` for a counter no summary line carried - never a rendered 0."""
+
+    return "**ABSENT**" if value is None else value
 
 
 def render(report: Mapping[str, Any]) -> str:
@@ -397,23 +605,44 @@ def render(report: Mapping[str, Any]) -> str:
         )
     delta = report.get("wall_clock_delta_seconds")
     exporter_rows = []
+    key_notes: list[str] = []
     for name in ("on", "off"):
         arm = arms.get(name) or {}
         exporter = arm.get("exporter") or {}
         if not exporter.get("lines"):
-            exporter_rows.append([name, "not found", "-", "-", "-", "-", "-"])
+            exporter_rows.append([name, "not found", *(["-"] * 8)])
             continue
         exporter_rows.append(
             [
                 name,
                 exporter["lines"],
-                exporter.get("enqueued_total"),
-                exporter.get("sent_total"),
-                exporter.get("dropped_total"),
-                exporter.get("enqueue_p50_us_mean"),
-                exporter.get("enqueue_p95_us_mean"),
+                # ABSENT, never 0: a counter the line did not carry is a
+                # measurement that was not taken.
+                *(
+                    _absent_or(exporter.get(f"{key}_total"))
+                    for key in EXPORTER_COUNTER_KEYS
+                ),
+                _absent_or(exporter.get("enqueue_p50_us_mean")),
+                _absent_or(exporter.get("enqueue_p95_us_mean")),
             ]
         )
+        if exporter.get("missing_keys"):
+            key_notes.append(
+                f"- **{name} arm: the summary line carried none of** "
+                + ", ".join(f"`{k}`" for k in exporter["missing_keys"])
+                + ". Those cells read ABSENT rather than 0. The keys it DID "
+                "carry were: "
+                + ", ".join(f"`{k}`" for k in exporter.get("keys_seen", []))
+                + " - if the exporter renamed a field, `EXPORTER_COUNTER_KEYS` "
+                "in this script is what has to follow it."
+            )
+        if exporter.get("unknown_keys"):
+            key_notes.append(
+                f"- **{name} arm: the summary line carried keys this harness "
+                "does not know**: "
+                + ", ".join(f"`{k}`" for k in exporter["unknown_keys"])
+                + ". They are in `overhead.json` under `raw` and are not summed."
+            )
 
     lines = [
         "# Exporter overhead - DoD E4",
@@ -457,16 +686,32 @@ def render(report: Mapping[str, Any]) -> str:
             [
                 "arm",
                 "summary lines",
-                "enqueued",
-                "sent",
-                "dropped",
+                *EXPORTER_COUNTER_KEYS,
                 "enqueue p50 us (mean)",
                 "enqueue p95 us (mean)",
             ],
             exporter_rows,
         ),
         "",
+        "Column names are the exporter's own, verbatim. `observations_sent` "
+        "counts scores as well as observations (`evidence/smoke-live/README.md`",
+        "section 5), so it is NOT an observation count despite the name.",
+        "",
+        *key_notes,
+        "" if key_notes else None,
     ]
+    lines = [line for line in lines if line is not None]
+    wait = report.get("summary_wait") or {}
+    if wait and not wait.get("reached_expected"):
+        lines += [
+            f"**The ON arm produced {(wait.get('arms') or {}).get('on', {}).get('summary_lines')} "
+            f"summary line(s) for {(wait.get('arms') or {}).get('on', {}).get('runs')} run(s) "
+            f"within the {secs(wait.get('timeout_seconds'))} s wait** "
+            f"(waited {secs(wait.get('waited_seconds'))} s). The exporter logs a run's "
+            "summary when the trace closes, which lags the run - raise "
+            "`--summary-wait` before concluding anything about the exporter.",
+            "",
+        ]
     if not (arms.get("on") or {}).get("exporter", {}).get("lines"):
         lines += [
             "**No `langfuse-exporter` summary line was found in the ON arm's log.**",
@@ -542,6 +787,14 @@ def main(argv: list[str] | None = None) -> int:
                     f"{run['wall_clock_seconds']:.2f}s ({run['run_id']})",
                     file=sys.stderr,
                 )
+        summary_wait = wait_for_summaries(
+            {name: backends[name] for name in ("on", "off")},
+            {
+                name: sum(1 for r in runs if r["arm"] == name)
+                for name in ("on", "off")
+            },
+            args.summary_wait,
+        )
     finally:
         for backend in started:
             backend.stop()
@@ -552,19 +805,7 @@ def main(argv: list[str] | None = None) -> int:
         wall = summarise([float(r["wall_clock_seconds"]) for r in arm_runs])
         log_text = backends[name].read_log()
         exporter_lines = parse_exporter_lines(log_text)
-        exporter: dict[str, Any] = {"lines": len(exporter_lines), "raw": exporter_lines}
-        if exporter_lines:
-            for key in ("enqueued", "sent", "dropped", "http_errors", "lookup_ok", "lookup_failed"):
-                exporter[f"{key}_total"] = sum(
-                    int(line.get(key, 0) or 0) for line in exporter_lines
-                )
-            for key in ("enqueue_p50_us", "enqueue_p95_us"):
-                values = [
-                    float(line[key]) for line in exporter_lines if isinstance(line.get(key), (int, float))
-                ]
-                exporter[f"{key}_mean"] = (
-                    round(statistics.fmean(values), 1) if values else None
-                )
+        exporter = aggregate_exporter(exporter_lines)
         arms[name] = {"runs": len(arm_runs), "wall_clock": wall, "exporter": exporter}
 
     on_mean = (arms["on"]["wall_clock"] or {}).get("mean")
@@ -576,6 +817,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = {
         "generated_at": now_iso(),
+        "summary_wait": summary_wait,
         "runs_per_arm": args.runs,
         "workflow_id": args.workflow_id,
         "branch_delay": args.branch_delay,

@@ -3592,13 +3592,26 @@ LANGFUSE_MAX_BILLED_LOOKUPS_PER_RUN = _env_positive_int(
 #: fake latency rather than as a delay.
 LANGFUSE_LOOKUP_WORKERS = _env_positive_int("LANGFUSE_LOOKUP_WORKERS", 4)
 
-#: How long a finished model call waits for its billed cost before being ended
-#: with the app's estimate. A span cannot be revised after it ends on this SDK,
-#: so the resolution has to happen BEFORE the end - and that means a deadline,
-#: because a provider that never answers must not hold a trace open. Six times
-#: the measured median.
+#: The total window a finished model call is given to acquire its billed cost.
+#: A span cannot be revised after it ends on this SDK, so the resolution has to
+#: happen BEFORE the end - which means a bound, because a provider that never
+#: answers must not hold a generation open for ever.
+#:
+#: **240s, and it was 3.0 until 2026-09-06, when the paid proof runs measured
+#: that the succeeding branch was unreachable.** OpenRouter does not index a
+#: generation for tens of seconds: one fresh completion answered `404` to 58
+#: consecutive `GET /api/v1/generation?id=` probes from +0.71s to +60.06s, so a
+#: window closing at 3s could not ever catch a record that does not exist at
+#: 60s - and `lookup_ok` was **0 on all 22 paid generations** while
+#: `/readyz` reported the feature on. The same 22 ids answered `200` when
+#: re-probed the next day, which is what says the window was the only thing
+#: wrong. See `_LOOKUP_ATTEMPT_DELAYS` in the exporter for the schedule this
+#: bounds; shortening it buys fewer attempts, not a faster answer.
+#:
+#: Nothing waits on this: the run's trace closes on the terminal frame either
+#: way, and only the generation observation is held open.
 LANGFUSE_BILLED_LOOKUP_DEADLINE_SECONDS = _env_positive_float(
-    "LANGFUSE_BILLED_LOOKUP_DEADLINE_SECONDS", 3.0
+    "LANGFUSE_BILLED_LOOKUP_DEADLINE_SECONDS", 240.0
 )
 
 #: Where the billed-cost resolution asks. Not a knob anybody should move; it is

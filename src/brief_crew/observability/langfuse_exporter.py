@@ -143,6 +143,45 @@ _LATENCY_SAMPLES = 8192
 #: gone wrong.
 _USAGE_GRACE_SECONDS = 2.0
 
+#: When to ASK OpenRouter for a generation's billed cost, in seconds after the
+#: call finished. Measured, on the paid proof runs, and the previous single
+#: attempt at +3s was unreachable by construction:
+#:
+#:   * one fresh completion, then `GET /api/v1/generation?id=` every ~0.5s:
+#:     **58 consecutive 404s from +0.71s to +60.06s**
+#:     (`evidence/proof/openrouter-index-latency.json`);
+#:   * the same 22 ids from the four paid runs, re-probed by hand the next day:
+#:     **22 of 22 answered 200**, 349-841ms, with a real `total_cost` and
+#:     `provider_name`.
+#:
+#: So the record does appear - tens of seconds to minutes later - and the only
+#: thing wrong with the old code was that it stopped asking after three
+#: seconds. `lookup_ok` was 0 on every paid generation for that reason alone.
+#:
+#: Three attempts rather than a poll: this costs at most three free GETs per
+#: generation, and a schedule that starts at 20s and ends at 180s brackets both
+#: the measured indexing window and the tail nobody has measured.
+_LOOKUP_ATTEMPT_DELAYS: tuple[float, ...] = (20.0, 60.0, 180.0)
+
+
+@dataclass(slots=True)
+class _PendingLookup:
+    """One generation waiting for its billed cost, AFTER its run has closed.
+
+    Held on the exporter rather than on the run state, and that is the whole
+    design: the window has to survive the trace closing, because the record
+    does not exist while the run is still going. The run span ends at the
+    terminal frame's timestamp as it always did; only the generation stays
+    open, and its own end time is its own frame's, passed explicitly - so
+    waiting three minutes to ask about money moves nothing on the timeline.
+    """
+
+    state: "_RunState"
+    generation: "_Generation"
+    attempt: int = 0
+    next_at: float = 0.0
+    future: "Future[BilledCost | None] | None" = None
+
 _SHUTDOWN = object()
 
 #: How long `close()` waits for the export thread to notice the sentinel, and
@@ -323,6 +362,7 @@ class _RunState:
     terminal_ts: "datetime | None" = None
     terminal_level: str = _DEFAULT
     terminal_message: str | None = None
+    terminal_error_class: str | None = None
     run_span_ended: bool = False
     counters: dict[str, int] = field(
         default_factory=lambda: {
@@ -414,6 +454,11 @@ class LangfuseExporter:
         self._finished: "deque[tuple[str, dict[str, Any]]]" = deque(
             maxlen=_FINISHED_STATS_KEPT
         )
+        #: Generations still waiting for a billed cost. Deliberately NOT on the
+        #: run state: this list is what keeps the retry window open after the
+        #: run's trace has closed, which is the only time the provider has
+        #: actually indexed the generation.
+        self._pending_lookups: list[_PendingLookup] = []
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
         if start_thread:
@@ -604,6 +649,17 @@ class LangfuseExporter:
                     "the langfuse export thread did not stop within %ss",
                     _CLOSE_JOIN_SECONDS,
                 )
+        else:
+            # No live drain thread to hand the sentinel to - because one was
+            # never started, or because it stopped. Settle here instead, or a
+            # generation still waiting on a billed-cost lookup is left with no
+            # end time, which is row D3 broken by the one path that is supposed
+            # to guarantee it. `force=True` gives up on every pending lookup
+            # and ends what it was holding.
+            try:
+                self._settle(force=True)
+            except Exception:  # pragma: no cover - closing must never raise
+                logger.debug("the langfuse exporter could not settle", exc_info=True)
         if self._pool is not None:
             self._pool.shutdown(wait=False, cancel_futures=True)
         for closable in (self._cost_lookup, self._backend):
@@ -754,67 +810,150 @@ class LangfuseExporter:
 
     def _settle(self, *, force: bool = False) -> None:
         now = monotonic()
+        self._settle_lookups(force=force, now=now)
         for state in list(self._states.values()):
             for generation in list(state.generations.values()):
                 if generation.closed:
                     continue
                 if (
-                    generation.lookup is None
-                    and generation.awaiting_usage_since is not None
+                    generation.awaiting_usage_since is not None
                     and (force or now - generation.awaiting_usage_since >= _USAGE_GRACE_SECONDS)
                 ):
                     self._complete_generation(state, generation)
-                if generation.lookup is not None:
-                    self._settle_lookup(state, generation, force=force, now=now)
             if (
                 state.awaiting_summary
                 and not self._outstanding(state)
                 and (force or now >= state.summary_ready_at)
             ):
-                self._close_out(state)
+                # Two phases, and the split is the fix. The RUN span ends as
+                # soon as its work is done, at the terminal frame's own
+                # timestamp - a reader gets a closed trace immediately. The
+                # summary waits for the billed-cost lookups, because
+                # `lookup_ok` logged before they have run reports zero for a
+                # feature that is about to succeed, which is the same shape of
+                # lie as `http_errors=0` before the final flush.
+                self._terminal_finish(state)
+                if force or not self._run_has_pending(state):
+                    self._close_out(state)
+
+    def _run_has_pending(self, state: _RunState) -> bool:
+        return any(pending.state is state for pending in self._pending_lookups)
 
     @staticmethod
     def _outstanding(state: _RunState) -> bool:
-        return any(not gen.closed for gen in state.generations.values())
+        """Generations still waiting for their TOKEN frame - not for money.
 
-    def _settle_lookup(
-        self, state: _RunState, generation: _Generation, *, force: bool, now: float
-    ) -> None:
-        future = generation.lookup
-        if future is None:
+        A cost lookup used to count here, and that is what made the deferred
+        retry impossible: a run could not close until every generation had been
+        priced, and the provider does not index a generation until long after
+        the run is over. The two waits are now separate because they are two
+        different questions.
+        """
+
+        return any(
+            not gen.closed and gen.awaiting_usage_since is not None
+            for gen in state.generations.values()
+        )
+
+    def _settle_lookups(self, *, force: bool, now: float) -> None:
+        """Ask, wait, ask again, and give up out loud. Bounded three ways.
+
+        Runs on the export thread on every drain tick, so a pending lookup
+        costs nothing between its scheduled attempts.
+        """
+
+        if not self._pending_lookups:
             return
-        billed: BilledCost | None = None
-        if future.done():
-            try:
-                billed = future.result()
-            except Exception:
+        keep: list[_PendingLookup] = []
+        for pending in self._pending_lookups:
+            if self._advance_lookup(pending, force=force, now=now):
+                keep.append(pending)
+        self._pending_lookups = keep
+
+    def _advance_lookup(self, pending: _PendingLookup, *, force: bool, now: float) -> bool:
+        """One pending lookup, one tick. True when it is still pending."""
+
+        state, generation = pending.state, pending.generation
+        if generation.closed:
+            return False
+        future = pending.future
+        if future is not None:
+            if not future.done():
+                if not force:
+                    return True
+                future.cancel()
                 billed = None
-        elif force or (
-            generation.lookup_deadline is not None and now >= generation.lookup_deadline
-        ):
-            # A provider that has not answered by the deadline must not hold a
-            # trace open. The estimate stands and the observation says so.
-            future.cancel()
-        else:
-            return
-        generation.lookup = None
-        if billed is None:
-            state.counters["lookup_failed"] += 1
-            generation.metadata["cost_source"] = "app-estimate (lookup failed)"
-        else:
-            state.counters["lookup_ok"] += 1
-            generation.metadata["cost_source"] = "openrouter-billed"
-            generation.metadata["openrouter_cost_usd"] = billed.total_usd
-            if billed.provider:
-                generation.metadata["provider"] = billed.provider
-            generation.cost_usd = billed.total_usd
-            # The frame pipeline's usage normalisation drops these two, so the
-            # only place a reasoning-tier call's real split can come from is
-            # the provider's own record.
-            if billed.reasoning_tokens is not None:
-                generation.usage["reasoning"] = billed.reasoning_tokens
-            if billed.cached_tokens is not None:
-                generation.usage["cached"] = billed.cached_tokens
+            else:
+                try:
+                    billed = future.result()
+                except Exception:
+                    billed = None
+            pending.future = None
+            if billed is not None:
+                self._apply_billed(state, generation, billed)
+                return False
+            # An attempt that came back empty is the ordinary case early on:
+            # OpenRouter answers 404 until it has indexed the generation.
+            if pending.attempt >= len(_LOOKUP_ATTEMPT_DELAYS) or force:
+                self._give_up_on_lookup(state, generation)
+                return False
+            pending.next_at = now + self._delay_for(pending.attempt)
+            return True
+        if force:
+            self._give_up_on_lookup(state, generation)
+            return False
+        if now < pending.next_at:
+            return True
+        if pending.attempt >= len(_LOOKUP_ATTEMPT_DELAYS):
+            self._give_up_on_lookup(state, generation)
+            return False
+        pending.attempt += 1
+        response_id = generation.response_id or ""
+        try:
+            pending.future = self._pool.submit(self._cost_lookup.lookup, response_id)  # type: ignore[union-attr]
+        except Exception:
+            self._give_up_on_lookup(state, generation)
+            return False
+        return True
+
+    def _delay_for(self, attempt: int) -> float:
+        """The next wait, truncated to the operator's total window.
+
+        `LANGFUSE_BILLED_LOOKUP_DEADLINE_SECONDS` is that window: an operator
+        who shortens it gets fewer attempts rather than a different schedule,
+        and one who sets it below the first delay gets one attempt and an
+        honest `app-estimate (lookup failed)`.
+        """
+
+        index = min(attempt, len(_LOOKUP_ATTEMPT_DELAYS) - 1)
+        return min(
+            _LOOKUP_ATTEMPT_DELAYS[index],
+            max(0.0, float(self.policy.billed_lookup_deadline_seconds)),
+        )
+
+    def _give_up_on_lookup(self, state: _RunState, generation: _Generation) -> None:
+        state.counters["lookup_failed"] += 1
+        generation.metadata["cost_source"] = "app-estimate (lookup failed)"
+        self._end_generation(state, generation)
+
+    def _apply_billed(
+        self, state: _RunState, generation: _Generation, billed: BilledCost
+    ) -> None:
+        """The provider's own figure replaces the estimate, and says so."""
+
+        state.counters["lookup_ok"] += 1
+        generation.metadata["cost_source"] = "openrouter-billed"
+        generation.metadata["openrouter_cost_usd"] = billed.total_usd
+        if billed.provider:
+            generation.metadata["provider"] = self._safe(billed.provider, limit=128)
+        generation.cost_usd = billed.total_usd
+        # The frame pipeline's usage normalisation drops these two, so the only
+        # place a reasoning-tier call's real split can come from is the
+        # provider's own record.
+        if billed.reasoning_tokens is not None:
+            generation.usage["reasoning"] = billed.reasoning_tokens
+        if billed.cached_tokens is not None:
+            generation.usage["cached"] = billed.cached_tokens
         self._end_generation(state, generation)
 
     # ------------------------------------------------------------------
@@ -1006,16 +1145,14 @@ class LangfuseExporter:
 
     def _terminal_of(
         self, frame: FrameData, details: Mapping[str, Any]
-    ) -> tuple[str, str, str | None]:
-        """(status, level, statusMessage) for a terminal frame. Section 6."""
+    ) -> tuple[str, str, str | None, str | None]:
+        """(status, level, statusMessage, error_class) for a terminal. Section 6."""
 
         status = str(details.get("status") or "")
         secrets = self.policy.secret_values
         if frame.kind is FrameKind.ERROR:
-            error_class = str(details.get("error_class") or "").strip()
-            message = safe_message(str(details.get("error") or "").strip(), secrets)
-            joined = f"{error_class}: {message}" if error_class else message
-            return STATUS_FAILED, _ERROR, safe_message(joined, secrets) or "the run failed"
+            message, error_class = self._error_fields(details, "the run failed")
+            return STATUS_FAILED, _ERROR, message, error_class
         if status == STATUS_CANCELLED:
             reason = str(details.get("reason") or "").strip()
             # An operator's cancel, a budget stop and a run orphaned by a
@@ -1036,6 +1173,7 @@ class LangfuseExporter:
                     f"stopped by the run cost ceiling ({reason}): estimated "
                     f"${_as_float(details.get('cost_usd')):.4f} against a "
                     f"${_as_float(details.get('ceiling_usd')):.2f} ceiling",
+                    None,
                 )
             if reason == INTERRUPTED_REASON:
                 # Failed, not cancelled: nobody chose it and the run did not
@@ -1046,6 +1184,7 @@ class LangfuseExporter:
                     STATUS_FAILED,
                     _ERROR,
                     "interrupted by a service restart before the run finished",
+                    None,
                 )
             if reason:
                 # Some other machine-initiated stop. It is still a cancel - the
@@ -1055,19 +1194,21 @@ class LangfuseExporter:
                     STATUS_CANCELLED,
                     _WARNING,
                     f"cancelled ({safe_message(reason, secrets, limit=128)})",
+                    None,
                 )
-            return STATUS_CANCELLED, _WARNING, "cancelled by operator"
+            return STATUS_CANCELLED, _WARNING, "cancelled by operator", None
         if status == STATUS_COMPLETED:
-            return STATUS_COMPLETED, _DEFAULT, None
-        return status or STATUS_COMPLETED, _DEFAULT, None
+            return STATUS_COMPLETED, _DEFAULT, None, None
+        return status or STATUS_COMPLETED, _DEFAULT, None, None
 
     def _finish_run(
         self, state: _RunState, frame: FrameData, details: Mapping[str, Any]
     ) -> None:
         if state.terminal is not None:
             return
-        status, level, message = self._terminal_of(frame, details)
+        status, level, message, error_class = self._terminal_of(frame, details)
         state.terminal = status
+        state.terminal_error_class = error_class
         closing_level = {
             STATUS_COMPLETED: _WARNING,
             STATUS_FAILED: _ERROR,
@@ -1089,13 +1230,22 @@ class LangfuseExporter:
             if generation.level == _DEFAULT and status != STATUS_COMPLETED:
                 generation.level = closing_level
                 generation.status_message = closing_message
-            if generation.lookup is None and generation.awaiting_usage_since is None:
+            if generation.awaiting_usage_since is None and not any(
+                pending.generation is generation for pending in self._pending_lookups
+            ):
                 self._complete_generation(state, generation)
         for span in list(state.tools.values()):
             self._close_span(state, span, frame.ts, closing_level, closing_message)
         state.tools.clear()
         for scope in list(state.nodes.values()):
-            self._close_scope(state, scope, frame.ts, closing_level, closing_message)
+            self._close_scope(
+                state,
+                scope,
+                frame.ts,
+                closing_level,
+                closing_message,
+                error_class=error_class,
+            )
         state.nodes.clear()
 
         # The run span is NOT ended here, and that is the fix for the metrics
@@ -1168,8 +1318,9 @@ class LangfuseExporter:
         if run_span is None or state.run_span_ended or state.terminal_ts is None:
             return
         state.run_span_ended = True
-        if state.metrics:
-            run_span.metadata["run_metrics"] = state.metrics
+        run_span.metadata["run_metrics"] = self._run_metrics(state)
+        if state.terminal_level == _ERROR:
+            run_span.metadata["error_class"] = state.terminal_error_class
         if state.unhandled_events:
             # C3's other half. The frame pipeline converts a subset of CrewAI's
             # event classes and counts the rest, and until this reached a trace
@@ -1180,7 +1331,11 @@ class LangfuseExporter:
             # happened.
             run_span.metadata["unhandled_event_counts"] = state.unhandled_events
         message = state.terminal_message
-        payload_output = {"status": state.terminal, "reason": message}
+        payload_output = {
+            "status": state.terminal,
+            "reason": message,
+            "error_class": state.terminal_error_class,
+        }
         self._call(state, "set_trace_output", run_span.handle, payload_output)
         self._call(
             state,
@@ -1202,7 +1357,56 @@ class LangfuseExporter:
             state.terminal_level,
             message,
             close_only=True,
+            error_class=state.terminal_error_class,
         )
+
+    def _run_metrics(self, state: _RunState) -> dict[str, Any]:
+        """The run's totals, from the app's snapshot or from what was exported.
+
+        `run_metrics` was **null** on the paid `builder-agentfail` run, because
+        the app emits a METRICS frame only when usage MOVES and that run made
+        six model calls of which every one failed - so nothing was ever billed,
+        nothing changed, and no snapshot was emitted. A reader opening the run
+        that is most obviously worth reading found no totals at all, which
+        reads as "the exporter lost them" rather than as "there were none".
+
+        Zero is a fine answer and this is where it gets said. `source`
+        distinguishes the two, because they are not equally trustworthy: the
+        app's snapshot is the registry's own reconciled view of the run, while
+        the tally is only what THIS exporter managed to emit - correct for
+        every generation it saw, silent about any it did not.
+        """
+
+        if state.metrics:
+            return {**state.metrics, "source": "app-snapshot"}
+        calls = 0
+        usage: dict[str, int] = {}
+        cost = 0.0
+        priced = False
+        for generation in state.generations.values():
+            calls += 1
+            for name, value in generation.usage.items():
+                try:
+                    usage[name] = usage.get(name, 0) + int(value)
+                except (TypeError, ValueError):
+                    continue
+            if generation.cost_usd is not None:
+                cost += float(generation.cost_usd)
+                priced = True
+        return {
+            "source": "exporter-tally",
+            "reason": state.terminal or "unknown",
+            "usage": {
+                "call_count": calls,
+                "prompt_tokens": usage.get("input", 0),
+                "completion_tokens": usage.get("output", 0),
+                "total_tokens": usage.get("total", 0),
+                # `None` and not `0.0` when nothing was priced: a run whose
+                # every call failed spent nothing the app can see, and zero
+                # dollars is a claim `compute_cost_usd` did not make.
+                "cost_usd": cost if priced else None,
+            },
+        }
 
     # ------------------------------------------------------------------
     # Spans
@@ -1247,6 +1451,32 @@ class LangfuseExporter:
         if value is None:
             return None
         return self._safe(value, limit=limit)
+
+    def _error_fields(
+        self, details: Mapping[str, Any], fallback: str
+    ) -> tuple[str, str | None]:
+        """`(statusMessage, error_class)` for any failing frame, contract 4/6.
+
+        One helper, because the paid proof runs found the answer differing per
+        observation type: `builder-agentfail`'s NODE_END frame carried
+        `error_class: "BadRequestError"` and **no agent, task, node or run
+        observation named it** - only the TOOL did. So a reader looking at the
+        agent that failed saw a sentence and had to guess whether it was a
+        provider refusal, a timeout or a bug, which is exactly what row B3
+        asks the trace to answer.
+
+        The class goes in TWO places on purpose: in front of the message,
+        because that is the line a console shows without opening anything, and
+        in `metadata.error_class`, because a sentence cannot be grouped and a
+        field can - "how many runs failed with `BadRequestError` this week" is
+        the question the row is really about.
+        """
+
+        error_class = str(details.get("error_class") or "").strip()
+        message = self._safe(details.get("error"))
+        if error_class and message:
+            message = self._safe(f"{error_class}: {message}")
+        return (message or fallback), (error_class or None)
 
     def _base_metadata(
         self, state: _RunState, frame: FrameData, details: Mapping[str, Any]
@@ -1342,7 +1572,13 @@ class LangfuseExporter:
         payload_output: Any = None,
         *,
         close_only: bool = False,
+        error_class: str | None = None,
     ) -> None:
+        if level == _ERROR:
+            # Present-and-null on an error observation that genuinely has no
+            # class, absent on one that did not fail: a reader can then tell
+            # "this failure named no exception" from "this did not fail".
+            span.metadata["error_class"] = error_class
         if not close_only:
             self._call(
                 state,
@@ -1453,12 +1689,15 @@ class LangfuseExporter:
         end: datetime,
         level: str = _DEFAULT,
         message: str | None = None,
+        error_class: str | None = None,
     ) -> None:
         task = scope.task
         if task is None:
             return
         if scope.agent is not None:
-            self._close_span(state, scope.agent, end, level, message)
+            self._close_span(
+                state, scope.agent, end, level, message, error_class=error_class
+            )
             scope.agent = None
             scope.agent_key = ""
         self._call(
@@ -1469,7 +1708,7 @@ class LangfuseExporter:
             name="task_attempts",
             value=task.generations,
         )
-        self._close_span(state, task, end, level, message)
+        self._close_span(state, task, end, level, message, error_class=error_class)
         scope.task = None
         scope.task_key = ""
 
@@ -1481,12 +1720,32 @@ class LangfuseExporter:
         level: str = _DEFAULT,
         message: str | None = None,
         payload_output: Any = None,
+        error_class: str | None = None,
     ) -> None:
-        self._close_task(state, scope, end, level, message)
+        """The node and everything under it, with the SAME class on each.
+
+        The class travels inwards deliberately. A node that failed with
+        `BadRequestError` failed because the agent under it did, and a reader
+        who opens the agent - which is where they land, because it is the thing
+        with a name - must not have to climb back out to find out what went
+        wrong.
+        """
+
+        self._close_task(state, scope, end, level, message, error_class)
         if scope.agent is not None:
-            self._close_span(state, scope.agent, end, level, message)
+            self._close_span(
+                state, scope.agent, end, level, message, error_class=error_class
+            )
             scope.agent = None
-        self._close_span(state, scope.span, end, level, message, payload_output)
+        self._close_span(
+            state,
+            scope.span,
+            end,
+            level,
+            message,
+            payload_output,
+            error_class=error_class,
+        )
 
     # ------------------------------------------------------------------
     # Per-disposition handlers
@@ -1528,10 +1787,9 @@ class LangfuseExporter:
             stage = str(details.get("stage") or "")
             level = _LEVELS.get(frame.level, _DEFAULT)
             message = None
+            error_class = None
             if stage == "error" or level == _ERROR:
-                error_class = str(details.get("error_class") or "").strip()
-                error = str(details.get("error") or "").strip()
-                message = self._safe(f"{error_class}: {error}" if error_class else error)
+                message, error_class = self._error_fields(details, "the step failed")
                 level = _ERROR
             payload_output = content_or_description(
                 details.get("output_preview", details.get("result")),
@@ -1539,7 +1797,9 @@ class LangfuseExporter:
                 prefix="output",
                 secret_values=self.policy.secret_values,
             )
-            self._close_scope(state, scope, frame.ts, level, message, payload_output)
+            self._close_scope(
+                state, scope, frame.ts, level, message, payload_output, error_class
+            )
             state.finished_nodes.add(frame.node_id)
             return
         self._event(state, frame, details, parent=self._scope(state, frame, details))
@@ -1574,9 +1834,10 @@ class LangfuseExporter:
         scope = state.nodes.get(frame.node_id)
         level = _LEVELS.get(frame.level, _DEFAULT)
         message = None
+        error_class = None
         if stage == "error" or level == _ERROR:
             level = _ERROR
-            message = self._safe(details.get("error")) or "the step failed"
+            message, error_class = self._error_fields(details, "the step failed")
         payload_output = content_or_description(
             details.get("output"),
             capture=self.policy.capture_content,
@@ -1586,12 +1847,20 @@ class LangfuseExporter:
         if scope is None:
             return
         if agent_key and scope.agent is not None and scope.agent_key == agent_key:
-            self._close_span(state, scope.agent, frame.ts, level, message, payload_output)
+            self._close_span(
+                state,
+                scope.agent,
+                frame.ts,
+                level,
+                message,
+                payload_output,
+                error_class=error_class,
+            )
             scope.agent = None
             scope.agent_key = ""
             return
         if task_key and scope.task is not None and scope.task_key == task_key:
-            self._close_task(state, scope, frame.ts, level, message)
+            self._close_task(state, scope, frame.ts, level, message, error_class)
             return
         self._event(state, frame, details, parent=parent)
 
@@ -1617,9 +1886,10 @@ class LangfuseExporter:
         if stage == "error":
             generation.end = frame.ts
             generation.level = _ERROR
-            generation.status_message = (
-                self._safe(details.get("error")) or "the model call failed"
-            )
+            (
+                generation.status_message,
+                generation.metadata["error_class"],
+            ) = self._error_fields(details, "the model call failed")
             # A failed call carries no provider generation id - CrewAI's failure
             # event has no field for one - so there is nothing to resolve and
             # nothing to wait for.
@@ -1750,25 +2020,28 @@ class LangfuseExporter:
         """
 
         generation.awaiting_usage_since = None
-        if generation.closed or generation.lookup is not None:
+        if generation.closed:
             return
         if (
             self._pool is not None
             and generation.response_id
+            and len(self._pending_lookups) < self.policy.max_billed_lookups_per_run
             and state.counters["lookup_ok"] + state.counters["lookup_failed"]
             < self.policy.max_billed_lookups_per_run
         ):
-            response_id = generation.response_id
-            try:
-                generation.lookup = self._pool.submit(
-                    self._cost_lookup.lookup, response_id
+            # Scheduled, not started. The first attempt is _LOOKUP_ATTEMPT_DELAYS
+            # seconds away because the provider has nothing to answer with
+            # before then, and the generation simply stays open until it does -
+            # which no longer holds anything up, because a pending lookup is not
+            # what `_outstanding` means any more.
+            self._pending_lookups.append(
+                _PendingLookup(
+                    state=state,
+                    generation=generation,
+                    next_at=monotonic() + self._delay_for(0),
                 )
-                generation.lookup_deadline = (
-                    monotonic() + self.policy.billed_lookup_deadline_seconds
-                )
-                return
-            except Exception:
-                generation.lookup = None
+            )
+            return
         self._end_generation(state, generation)
 
     def _end_generation(self, state: _RunState, generation: _Generation) -> None:
@@ -1983,9 +2256,10 @@ class LangfuseExporter:
             )
         level = _LEVELS.get(frame.level, _DEFAULT)
         message = None
+        error_class = None
         if stage == "error" or level == _ERROR:
             level = _ERROR
-            message = self._safe(details.get("error")) or "the tool failed"
+            message, error_class = self._error_fields(details, "the tool failed")
         elif details.get("failure"):
             level = _WARNING
             message = self._safe(details.get("failure"))
@@ -1995,7 +2269,9 @@ class LangfuseExporter:
             prefix="output",
             secret_values=self.policy.secret_values,
         )
-        self._close_span(state, span, frame.ts, level, message, payload_output)
+        self._close_span(
+            state, span, frame.ts, level, message, payload_output, error_class=error_class
+        )
 
     def _handle_score(
         self, state: _RunState, frame: FrameData, details: Mapping[str, Any]

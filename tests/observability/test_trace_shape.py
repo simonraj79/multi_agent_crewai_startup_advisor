@@ -14,12 +14,18 @@ from __future__ import annotations
 
 import importlib.util
 import socket
+import time
 import unittest
+from unittest import mock
 from uuid import uuid4
 
-from brief_crew.events.models import FrameKind, UIEventType
+from brief_crew.events.models import FrameKind, FrameLevel, UIEventType
 from brief_crew.observability.backend import iso, trace_id_for
-from brief_crew.observability.langfuse_exporter import RunFacts
+from brief_crew.observability.langfuse_exporter import (
+    STATUS_COMPLETED,
+    RunFacts,
+    _Item,
+)
 from tests.observability.replay import (
     RUN_ID,
     Recorder,
@@ -759,3 +765,247 @@ class RootSpanThroughTheBackendTests(unittest.TestCase):
         child_span = self._require_recording(child)
         self.assertIsNotNone(child_span.parent)
         self.assertEqual(run_span.context.span_id, child_span.parent.span_id)
+
+
+class BilledCostResolutionTests(unittest.TestCase):
+    """Contract 4: the lookup is DEFERRED and RETRIED, because 404 is normal.
+
+    The paid proof runs found this feature's succeeding branch unreachable:
+    `lookup_ok` was **0 on all 22 generations across four runs**, every one
+    reading `cost_source = "app-estimate (lookup failed)"`, while `/readyz`
+    reported `resolve_billed_cost: true`. The cause was measured and it was
+    only ever the window - OpenRouter answered 404 to 58 consecutive probes
+    from +0.71s to +60.06s after a completion, and the exporter made ONE
+    attempt inside a 3.0s deadline. The same 22 ids answered 200 the next day
+    with a real `total_cost` and `provider_name`, which is what says the code,
+    the URL, the auth and the parsing were all right.
+
+    The fake below is that provider: it 404s (returns None) for the first
+    `not_before` attempts and then answers. The clock is driven by hand, because
+    a test that waited 20 real seconds for the first attempt would be a test
+    nobody runs.
+    """
+
+    class _EventuallyIndexed:
+        """404 until the Nth call, then a real `BilledCost`. Counts its calls."""
+
+        def __init__(self, not_before: int) -> None:
+            self.not_before = not_before
+            self.calls = 0
+
+        def lookup(self, response_id: str):
+            self.calls += 1
+            if self.calls < self.not_before:
+                return None
+            from brief_crew.observability.billed_cost import BilledCost
+
+            return BilledCost(
+                total_usd=0.00658725,
+                provider="Google AI Studio",
+                upstream_usd=None,
+                reasoning_tokens=1115,
+                cached_tokens=0,
+            )
+
+        def close(self) -> None:
+            return None
+
+    def _run(self, lookup, ticks: int = 8):
+        """One run through the exporter with a hand-driven clock."""
+
+        from brief_crew.observability.backend import RecordingBackend
+        from brief_crew.observability.langfuse_exporter import LangfuseExporter
+        from brief_crew.observability.policy import ExporterPolicy
+
+        backend = RecordingBackend()
+        exporter = LangfuseExporter(
+            ExporterPolicy(
+                public_key="pk",
+                secret_key="sk",
+                base_url="http://langfuse.invalid",
+                enabled=True,
+                environment="live",
+                billed_lookup_deadline_seconds=240.0,
+            ),
+            sender=backend,
+            cost_lookup=lookup,
+            start_thread=False,
+        )
+        recorder = Recorder()
+        recorder.run_started({"idea": "an idea"})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.model_call("n1", "call-1", response_id="gen-1788625988-x", **IDENTITY)
+        recorder.node_ended("n1", **IDENTITY)
+        recorder.run_completed({"ok": True})
+
+        clock = [1000.0]
+        with mock.patch(
+            "brief_crew.observability.langfuse_exporter.monotonic",
+            side_effect=lambda: clock[0],
+        ):
+            exporter._absorb(_Item(run_id=RUN_ID, frames=tuple(recorder.frames)))
+            # One second: past the flush interval, so the RUN closes, and far
+            # short of the first lookup attempt at +20s.
+            clock[0] += 1.0
+            exporter._settle()
+            # Then a minute at a time, letting the pool's futures land.
+            for _ in range(ticks):
+                clock[0] += 60.0
+                exporter._settle()
+                time.sleep(0.05)
+                exporter._settle()
+        return exporter, backend
+
+    def test_a_generation_indexed_late_is_repriced_with_the_provider_figure(self) -> None:
+        lookup = self._EventuallyIndexed(not_before=3)
+        exporter, backend = self._run(lookup)
+        try:
+            generation = by_role(backend.observations, "generation")[0]
+            self.assertGreaterEqual(lookup.calls, 3, "it stopped asking too early")
+            self.assertEqual("openrouter-billed", generation.metadata["cost_source"])
+            self.assertEqual(0.00658725, generation.metadata["openrouter_cost_usd"])
+            self.assertEqual("Google AI Studio", generation.metadata["provider"])
+            self.assertEqual({"total": 0.00658725}, generation.cost_details)
+            # The two splits the frame pipeline drops, which are the only
+            # reason contract 4 wants this lookup at all.
+            self.assertEqual(1115, generation.usage_details["reasoning"])
+            self.assertEqual(0, generation.usage_details["cached"])
+        finally:
+            exporter.close()
+
+    def test_the_run_closes_without_waiting_for_the_money(self) -> None:
+        """The property that makes a 180-second window survivable.
+
+        A pending cost lookup used to count as outstanding work, so a run could
+        not close until every generation was priced - which is why the window
+        had to be three seconds, and why it could never work. The run span now
+        ends on the terminal frame and only the generation waits.
+        """
+
+        lookup = self._EventuallyIndexed(not_before=3)
+        exporter, backend = self._run(lookup, ticks=0)
+        try:
+            run_span = by_role(backend.observations, "run")[0]
+            self.assertTrue(run_span.ended, "the trace waited for a cost lookup")
+            self.assertEqual(
+                STATUS_COMPLETED, backend.trace_output[run_span.trace_id]["status"]
+            )
+            self.assertFalse(by_role(backend.observations, "generation")[0].ended)
+        finally:
+            exporter.close()
+
+    def test_a_generation_never_indexed_keeps_the_estimate_and_says_so(self) -> None:
+        class _Never:
+            calls = 0
+
+            def lookup(self, response_id: str):
+                type(self).calls += 1
+                return None
+
+            def close(self) -> None:
+                return None
+
+        exporter, backend = self._run(_Never())
+        try:
+            generation = by_role(backend.observations, "generation")[0]
+            self.assertEqual(
+                "app-estimate (lookup failed)", generation.metadata["cost_source"]
+            )
+            self.assertNotIn("openrouter_cost_usd", generation.metadata)
+            self.assertTrue(generation.ended, "a lookup that never lands must still end")
+            # Bounded: three scheduled attempts, not a poll.
+            self.assertLessEqual(_Never.calls, 3)
+        finally:
+            exporter.close()
+
+    def test_closing_ends_a_generation_still_waiting_for_its_price(self) -> None:
+        """`close()` is bounded, so a pending lookup cannot outlive the process
+        as an observation with no end time (row D3)."""
+
+        exporter, backend = self._run(self._EventuallyIndexed(not_before=99), ticks=0)
+        exporter.close()
+        self.assertEqual([], [o.name for o in backend.observations if not o.ended])
+
+
+class ErrorClassTests(unittest.TestCase):
+    """Contract 4/6: an error observation NAMES its exception class.
+
+    Measured on the paid `builder-agentfail` run: the app's NODE_END frame
+    carried `error_class: "BadRequestError"` and **no agent, task, node or run
+    observation named it** - only the TOOL did. A reader who opened the agent
+    that failed, which is the thing with a name and therefore where they land,
+    saw a sentence and had to guess whether it was a provider refusal, a
+    timeout or a bug.
+
+    The class travels INWARDS from the frame that carries it to everything that
+    frame closes, and it goes in two places: in front of the message, which is
+    the line a console shows without opening anything, and in
+    `metadata.error_class`, because a sentence cannot be grouped and a field
+    can.
+    """
+
+    def setUp(self) -> None:
+        self.exporter, self.backend = exporter_for()
+        recorder = Recorder()
+        recorder.run_started({"idea": "an idea"})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.tool_call("n1", "an authored tool", error="the tool blew up", **IDENTITY)
+        recorder.model_call_failed("n1", "call-1", error="the model refused", **IDENTITY)
+        recorder.add(
+            FrameKind.NODE_STATE,
+            UIEventType.NODE_END,
+            "n1",
+            {
+                "stage": "error",
+                "error": "This endpoint's maximum context length is 8192 tokens",
+                "error_class": "BadRequestError",
+                **IDENTITY,
+            },
+            level=FrameLevel.ERROR,
+        )
+        recorder.run_failed(
+            "This endpoint's maximum context length is 8192 tokens",
+            error_class="BadRequestError",
+        )
+        drive(self.exporter, recorder.frames)
+        self.observations = self.backend.observations
+
+    def test_the_node_agent_and_task_all_name_the_class(self) -> None:
+        for role in ("node", "task", "agent"):
+            with self.subTest(role=role):
+                observation = by_role(self.observations, role)[0]
+                self.assertEqual("ERROR", observation.level)
+                self.assertEqual("BadRequestError", observation.metadata["error_class"])
+                self.assertTrue(
+                    (observation.status_message or "").startswith("BadRequestError: "),
+                    observation.status_message,
+                )
+
+    def test_the_run_span_and_the_trace_output_name_it(self) -> None:
+        run_span = by_role(self.observations, "run")[0]
+        self.assertEqual("BadRequestError", run_span.metadata["error_class"])
+        output = self.backend.trace_output[run_span.trace_id]
+        self.assertEqual("BadRequestError", output["error_class"])
+        self.assertTrue(str(output["reason"]).startswith("BadRequestError: "))
+
+    def test_an_error_with_no_class_carries_the_key_as_null(self) -> None:
+        """Present-and-null, not absent: "this failure named no exception" and
+        "this did not fail" have to be different answers."""
+
+        tool = by_role(self.observations, "tool")[0]
+        self.assertEqual("ERROR", tool.level)
+        self.assertIn("error_class", tool.metadata)
+        self.assertIsNone(tool.metadata["error_class"])
+        self.assertEqual("the tool blew up", tool.status_message)
+
+    def test_a_successful_observation_carries_no_error_class_at_all(self) -> None:
+        exporter, backend = exporter_for()
+        recorder = Recorder()
+        recorder.run_started({})
+        recorder.node_started("n1", **IDENTITY)
+        recorder.node_ended("n1", **IDENTITY)
+        recorder.run_completed({"ok": True})
+        drive(exporter, recorder.frames)
+        for observation in backend.observations:
+            with self.subTest(name=observation.name):
+                self.assertNotIn("error_class", observation.metadata)

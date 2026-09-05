@@ -23,6 +23,7 @@ of it:
 from __future__ import annotations
 
 import logging
+import os
 
 from brief_crew.observability.langfuse_exporter import (
     LangfuseExporter,
@@ -82,12 +83,20 @@ def exporter_state(exporter: object, *, synthetic: bool = False) -> dict[str, ob
         "reason": None,
         "environment": policy.environment,
         "capture_content": bool(policy.capture_content),
-        # The effective answer, not the knob: the lookup is skipped outright on
-        # a synthetic run, whose generation ids are fabricated and can only
-        # ever 404. Reporting the knob here would say "on" for a process that
-        # will never make the call.
+        # The effective answer, not the knob, and it now includes the KEY.
+        #
+        # `GET /api/v1/generation?id=` answers only for the key that made the
+        # request - the same id returns 401 with no `Authorization` header,
+        # measured - so with `OPENROUTER_API_KEY` unset the lookup returns
+        # `None` on every call and the feature cannot work however the flag is
+        # set. Reporting the knob said `true` for a process that would never
+        # resolve anything, which is exactly the state row D5 exists to make
+        # visible before money is spent. The lookup is also skipped outright on
+        # a synthetic run, whose ids are fabricated.
         "resolve_billed_cost": bool(
-            policy.resolve_billed_cost and not policy.synthetic
+            policy.resolve_billed_cost
+            and not policy.synthetic
+            and os.environ.get("OPENROUTER_API_KEY", "").strip()
         ),
     }
 

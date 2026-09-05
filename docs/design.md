@@ -15,7 +15,7 @@ is planned rather than shipped it says so.
 | `assets/styles/node-card.css` | the node card shared by the run console and the builder | ~250 |
 | `assets/styles/builder.css` | the builder's tenancy of the card, ports, edges, palette, rails | |
 | `assets/styles/motion.css` (planned, 11) | run-time choreography and the character palette | |
-| `assets/styles/character.css` | the cast's own sheet, imported LAST | |
+| `assets/styles/character.css` | the cast: the character parts, their five states, and their own reduced-motion block (§5). Imported **last** | |
 | `studio.css` | layout, import order, breakpoints, the global reduced-motion block | 551 |
 
 `studio.css:1-21` imports Google Fonts → `tokens.css` → `node-card.css` →
@@ -252,11 +252,24 @@ is live. **The design canvas is still** — no infinite animation at rest
 | `--motion-fast` / `--motion-medium` | 160 ms / 260 ms |
 | `--ease-out` | `cubic-bezier(.22, 1, .36, 1)` |
 
-Reduced motion is honoured in three places and every new animation joins
-one of them: the global block (`studio.css:306-314`), the card's named
-keyframes (`node-card.css:268`), and the builder's (`builder.css:871-880`,
-which also clears `stroke-dasharray` so a frozen dashed line does not read as
-a rendering fault).
+Reduced motion is honoured in **four** sheets now and every new animation joins
+one of them: the global block (`studio.css`), the card's named keyframes
+(`node-card.css`), the builder's (`builder.css`, which also clears
+`stroke-dasharray` so a frozen dashed line does not read as a rendering fault),
+and **`character.css`**, whose own `@media (prefers-reduced-motion: reduce)`
+block sets `animation: none` on every character loop — a cast that keeps its
+pose is the whole requirement, and the pose is what carries the state.
+
+**The global block is a blanket, not a stop, and the distinction has now cost
+one real defect.** It sets `animation-duration: .01ms` and
+`animation-iteration-count: 1`, which for a *spinner* does not stop the
+rotation — it freezes it at whatever angle .01ms of a 0.8s cycle happens to
+reach, so a reduced-motion reader got a permanently crooked loader for as long
+as a log export takes to prepare. Every named block above exists because the
+blanket cannot express "stop", only "hurry". `StatusPanel.vue`'s
+`.download-spinner` was the last animation in the run shell with no named rule
+and has one now, matching what `RunHistory.vue` and `SignInPanel.vue` already
+do for the identical icon.
 
 ## 6. Breakpoints
 

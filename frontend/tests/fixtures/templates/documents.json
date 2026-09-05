@@ -192,8 +192,8 @@
             "goal": "Turn a pile of facts into the two or three tensions that actually decide the question.",
             "backstory": "You read research the way an editor reads a draft: looking for the places where two true things pull in opposite directions, because that is where the reader learns something.",
             "task": {
-              "description": "From the research below, name the three tensions a reader must understand, and give the evidence for each.\n\nRESEARCH:\n{research}",
-              "expected_output": "Three headed sections. Each names one tension in a short phrase, explains it in two or three sentences, and cites the facts on both sides.",
+              "description": "From the research below, name the three tensions a reader must understand, and give the evidence for each.\n\nThe research carries a URL under each finding, and those URLs are the only sources anything after you will have. Carry every one you rely on through to your Sources section, copied character for character.\n\nRESEARCH:\n{research}",
+              "expected_output": "Three headed sections. Each names one tension in a short phrase, explains it in two or three sentences, and cites the facts on both sides. Then a final \"## Sources\" section listing, one per line, every URL from the research you relied on — verbatim, no shortening, and no URL that was not in the research.",
               "output_schema": null,
               "markdown": false,
               "async_execution": false
@@ -249,8 +249,8 @@
             "goal": "Write something a busy reader finishes and can act on.",
             "backstory": "You write briefs for people who will read them once, on a phone, between meetings. You put the answer first and you never pad.",
             "task": {
-              "description": "Write a 600-word brief from the analysis below. Headline, three sections, and a sources list at the end.\n\nANALYSIS:\n{analysis}",
-              "expected_output": "Markdown. An H1 headline, three H2 sections of roughly 200 words each, and a final \"Sources\" list of the URLs the research carried.",
+              "description": "Write a 600-word brief from the analysis below. Headline, three sections, and a sources list at the end.\n\nCite only URLs that appear in the analysis's Sources section. Do not invent a URL and do not reconstruct one from memory. If a claim you want to make has no source in the analysis, make it anyway and mark it \"(unsourced)\".\n\nANALYSIS:\n{analysis}",
+              "expected_output": "Markdown. An H1 headline, three H2 sections of roughly 200 words each, and a final \"## Sources\" list carrying every URL the analysis passed on — verbatim, all of them, and no others. Any claim with no source in the analysis is marked \"(unsourced)\" where it is made.",
               "output_schema": null,
               "markdown": true,
               "async_execution": false

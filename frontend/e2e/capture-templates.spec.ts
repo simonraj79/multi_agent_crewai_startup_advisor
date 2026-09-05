@@ -38,10 +38,11 @@ const VIEWPORTS = [
 
 const THEMES = ['dark', 'light'] as const
 
-/** The gallery's six cards, and how many nodes each draws once opened. */
+/** The gallery's seven cards, and how many nodes each draws once opened. */
 const TEMPLATES = [
   { id: 'blank', title: 'Blank canvas', nodes: 2 },
   { id: 'sequential-pipeline', title: 'Sequential pipeline', nodes: 7 },
+  { id: 'news-to-social', title: 'News to social post', nodes: 5 },
   { id: 'conditional-router', title: 'Conditional router', nodes: 10 },
   { id: 'reflection-loop', title: 'Reflection loop', nodes: 8 },
   { id: 'hierarchical-delegation', title: 'Hierarchical delegation', nodes: 7 },

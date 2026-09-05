@@ -263,11 +263,107 @@ reads frames and the run result).
 
 ## Status
 
+### News template — 2026-09-05
+
+A **fifth** pattern template, `news-to-social`, added on the owner's request:
+an agent that searches the week's discussion of a subject and writes the social
+post from it. The gallery's first row is **seven** cards now and
+`ALL_BUILDER_TEMPLATES` is nine; the ordering rule and the demoted "more" row
+are unchanged.
+
+It is the smallest graph in the gallery that still does a whole job - five
+nodes, two of them billable - and it is the cheapest: **$0.3205 floor,
+$0.4284 static, $0.5355 with the 1.25x margin** against the $10.00 ceiling, all
+regenerated from the committed fixture rather than typed. `validate_document`
+answers `[]`.
+
+| | |
+| --- | --- |
+| `subject` | input, `What should the post be about?` |
+| `research` | authored agent, **cheap** tier (`{{workhorse}}`), `max_iter: 3` |
+| `search` | tool, `analyze_community_sentiment`, attached to `research` |
+| `write` | authored agent, **escalation** tier (`{{escalation}}`), no tools, `markdown: true` |
+| `post` | output, `markdown_body` |
+
+Four departures from what this plan's earlier sections assume, each measured
+rather than reasoned:
+
+1. **It has NO gate, and it is the first template that chose that.** Assumption
+   1 above says every template carries a human gate above its first billable
+   node, and that is right for the four that came before: it is what makes them
+   launchable by a signed-OUT visitor. This one is written to run
+   **unattended**, and a gate is the one thing that makes that impossible. The
+   price is exactly one thing - `create_run` answers **403** for a signed-out
+   caller unless `BUILDER_ALLOW_GATELESS_GRAPHS` is set - and it is paid in the
+   open: the card carries a `caveat` saying so, and `PublishDialog` already
+   renders the refusal sentence verbatim before anybody shares a link.
+   `UNGATED_BY_DESIGN` in `test_templates.py` is now two, and the test that
+   names them fails if a third appears.
+2. **The tool is NOT `firecrawl_search`, and `BUILDER_PLATFORM_FIRECRAWL_DEFAULT`
+   cannot make it one.** That flag is read at exactly one site -
+   `research_market_landscape`'s `credential_optional`, `builder/tools.py:578` -
+   whose factory falls back to the process `FIRECRAWL_API_KEY`. The three
+   `firecrawl_*` entries are `credential_optional=False` unconditionally and
+   `_firecrawl` **raises** without a credential, so no flag reaches them. A
+   template naming one would open with `tool-credential-required` on a graph
+   nobody had touched and could not run from a cold sign-in. Same conclusion as
+   assumption 2 above, reached from a different entry.
+3. **Its input field is `subject`, not `topic`.** `sequential-pipeline` already
+   declares `topic`, and `testInputs.ts` resolves a saved sample **by field** -
+   a cloned document carries no provenance, so the field is all there is to key
+   on. Two templates sharing a field share a sample, and `AI agents` is not the
+   prompt somebody opening the research pipeline should be handed. The prompt
+   VARIABLE is still `{topic}`; only the state key differs, which is the one
+   place in the gallery that distinction is visible.
+4. **The `@launch` E2E's green line does not prove an anonymous launch works,
+   and the file now says so.** Every request in `e2e/templates.spec.ts` goes
+   through the e2e Vite proxy, which forwards `X-Synthetic-User: e2e-user`, so
+   the API sees a **signed-in** caller - which is the case this template was
+   written for, and the reason it completes with no flag set. The anonymous 403
+   is proved where it can actually be reached, in
+   `test_workflow_ownership.py::test_an_anonymous_launch_of_a_gateless_graph_is_still_403`.
+   A first draft of this test skipped on a 403 that never arrives; that dead
+   branch was removed once the header was found.
+
+Criteria 1-8 hold for the fifth template as they do for the other four, by the
+same tests extended rather than by new ones: `templates.spec.ts` (client and
+server), `test_client_fixtures.py`, `test_templates.py`, `builder-layout.spec.ts`
+and `e2e/templates.spec.ts`. It is in `capture-templates.spec.ts` too, so
+criterion 10's capture run covers it. **Criterion 9 is still the owner's money**
+and this session spent **$0.00**.
+
+**What a paid run of it needs**, exactly: a signed-in caller (or
+`BUILDER_ALLOW_GATELESS_GRAPHS=1`), `OPENROUTER_API_KEY`, and nothing else - the
+attached search is keyless. `POST /api/sessions/{id}/runs` with
+`{"workflow_id": "<published id>", "inputs": {"subject": "AI agents"}}`. No
+gate reply is needed. Projecting the paid acceptance run's measured 2.8% of
+static onto $0.4284 gives roughly **$0.012**; the figure to authorise against is
+the static $0.4284.
+
+### Measured, 2026-09-05
+
+```text
+Python           <see the build report>
+Frontend unit    1705 passed in 84 files
+vue-tsc -b --force    exit 0
+E2E              131 collected - 123 passed, 8 skipped, 0 failed
+```
+
+The eight skips are environment knobs this session did not set - `E2E_MCP_URL`,
+and `SYNTHETIC_FAILURE` for `failure-modes.spec.ts` and `test-panel.spec.ts` -
+and each skip names the knob it wants. The two `gallery-*.png` visual baselines
+WERE re-recorded, because the gallery is this change's own surface and it gained
+a card by design; nothing else was re-baselined. `benchmarks/perf/canvas.json`
+is rewritten by every perf run and was reverted rather than committed.
+
+### The four, as built — 2026-09-04
+
 **Built · 2026-09-04.** Eight of the ten criteria are met. Criterion 9 is the
 owner's money and criterion 10 is a capture run rather than a code change.
 
-The gallery leads with **six** templates and keeps the two library-agent ones in
-a demoted second row. The four new ones are authored end to end - every prompt
+The gallery led with **six** templates and kept the two library-agent ones in a
+demoted second row. (Seven and two since 2026-09-05 — the section above.) The
+four new ones are authored end to end - every prompt
 on the canvas is a prompt an author may edit - name their models by role rather
 than by slug, validate with **zero problems**, publish, and reach a completed
 run with a non-empty body from a cold sign-in with nothing configured.

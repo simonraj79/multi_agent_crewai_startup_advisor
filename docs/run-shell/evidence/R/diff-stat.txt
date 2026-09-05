@@ -1,11 +1,11 @@
 $ git diff main...HEAD --stat
-# RV3 FIFTH PASS, branch run-shell/cast at c2966e7, merge-base with main = 6291fee47ecee14d9e21cb5a2adb246764f593b0, 2026-09-05T19:10:16+08:00
+# RV3 SIXTH PASS, branch run-shell/cast at a182ed6, merge-base with main = 6291fee47ecee14d9e21cb5a2adb246764f593b0, 2026-09-05T19:43:07+08:00
 
  .gitignore                                         |   16 +
  docs/design.md                                     |  196 +-
  docs/run-shell/CHARACTERS.md                       |  495 +++++
  docs/run-shell/DEFINITION-OF-DONE.md               |  112 +
- docs/run-shell/FOLLOW-UPS.md                       |   57 +
+ docs/run-shell/FOLLOW-UPS.md                       |   62 +
  docs/run-shell/SHELL-SCOPE.md                      |  520 +++++
  docs/run-shell/VERDICT.md                          |   43 +
  docs/run-shell/evidence/G1/capture-notes.json      |  216 ++
@@ -15,69 +15,70 @@ $ git diff main...HEAD --stat
  docs/run-shell/evidence/G1/notes.md                |  462 +++++
  docs/run-shell/evidence/G1/run.ndjson              |   81 +
  docs/run-shell/evidence/G1/trace.png               |  Bin 0 -> 62020 bytes
- docs/run-shell/evidence/G2/grep.txt                |   52 +
- docs/run-shell/evidence/G3/playwright.txt          |   97 +
+ docs/run-shell/evidence/G2/grep.txt                |   59 +
+ docs/run-shell/evidence/G3/playwright.txt          |   65 +
  docs/run-shell/evidence/G3/reload-map.json         |   25 +
  docs/run-shell/evidence/G3/vitest.txt              |   13 +
  docs/run-shell/evidence/G4/g1-roles.json           |   37 +
  docs/run-shell/evidence/G4/roles-sheet.html        |  500 +++++
  docs/run-shell/evidence/G4/roles-sheet.png         |  Bin 0 -> 434175 bytes
- docs/run-shell/evidence/R/baselines.md             |  319 +++
+ docs/run-shell/evidence/R/baselines.md             |  351 ++++
  docs/run-shell/evidence/R/build.txt                |   23 +
  docs/run-shell/evidence/R/builder-1227.md          |  143 ++
  docs/run-shell/evidence/R/diff-stat.txt            |  196 ++
- docs/run-shell/evidence/R/playwright.txt           |  392 ++++
- docs/run-shell/evidence/R/python.txt               |  235 +++
+ docs/run-shell/evidence/R/playwright.txt           |  417 ++++
+ docs/run-shell/evidence/R/python.txt               |  241 +++
  docs/run-shell/evidence/R/typecheck.txt            |    5 +
- docs/run-shell/evidence/R/vitest.txt               |   32 +
+ docs/run-shell/evidence/R/vitest.txt               |   20 +
  docs/run-shell/evidence/RC/answers-2.md            |  362 ++++
+ docs/run-shell/evidence/RC/answers-3.md            |  434 ++++
  docs/run-shell/evidence/RC/answers.md              |  243 +++
  docs/run-shell/evidence/README.md                  |   16 +
- docs/run-shell/evidence/RV3-REPORT.md              |  718 +++++++
+ docs/run-shell/evidence/RV3-REPORT.md              |  889 ++++++++
  docs/run-shell/evidence/S/empty.png                |  Bin 0 -> 193865 bytes
- docs/run-shell/evidence/S/failure.png              |  Bin 0 -> 177164 bytes
- docs/run-shell/evidence/S/first-run.png            |  Bin 0 -> 249604 bytes
+ docs/run-shell/evidence/S/failure.png              |  Bin 0 -> 177048 bytes
+ docs/run-shell/evidence/S/first-run.png            |  Bin 0 -> 249213 bytes
  docs/run-shell/evidence/S/long-run.md              |   25 +
- docs/run-shell/evidence/S/long-run.png             |  Bin 0 -> 227664 bytes
+ docs/run-shell/evidence/S/long-run.png             |  Bin 0 -> 227398 bytes
  docs/run-shell/evidence/S/narrow-rail-open.png     |  Bin 0 -> 63056 bytes
- docs/run-shell/evidence/S/narrow.png               |  Bin 0 -> 53264 bytes
- docs/run-shell/evidence/T1/cold-read.md            |   66 +
- docs/run-shell/evidence/T1/data-layer-diff.txt     |   17 +
+ docs/run-shell/evidence/S/narrow.png               |  Bin 0 -> 53596 bytes
+ docs/run-shell/evidence/T1/cold-read.md            |   88 +
+ docs/run-shell/evidence/T1/data-layer-diff.txt     |   15 +
  docs/run-shell/evidence/T1/enum-audit.md           |  189 ++
- .../evidence/T1/report-header-insufficient.png     |  Bin 0 -> 50120 bytes
+ .../evidence/T1/report-header-insufficient.png     |  Bin 0 -> 50099 bytes
  docs/run-shell/evidence/T1/report-header-plain.png |  Bin 0 -> 47158 bytes
- docs/run-shell/evidence/T1/report-header.png       |  Bin 0 -> 50418 bytes
+ docs/run-shell/evidence/T1/report-header.png       |  Bin 0 -> 50545 bytes
  docs/run-shell/evidence/T1/vitest.txt              |   13 +
  docs/run-shell/evidence/T2/characters-32px.html    |  497 +++++
  docs/run-shell/evidence/T2/characters-32px.png     |  Bin 0 -> 153236 bytes
  .../evidence/T2/interpretation-vitest.txt          |   13 +
- docs/run-shell/evidence/T2/no-timers.txt           |   57 +
+ docs/run-shell/evidence/T2/no-timers.txt           |   55 +
  docs/run-shell/evidence/T2/node-running.png        |  Bin 0 -> 7350 bytes
  docs/run-shell/evidence/T2/originality.md          |  179 ++
  docs/run-shell/evidence/T2/perf-notes.md           |  401 ++++
  docs/run-shell/evidence/T2/perf.json               |  243 +++
  .../evidence/T2/profile-longtasks-blur.json        |  166 ++
  docs/run-shell/evidence/T2/profile-longtasks.json  |  432 ++++
- docs/run-shell/evidence/T2/reduced-motion.png      |  Bin 0 -> 260985 bytes
+ docs/run-shell/evidence/T2/reduced-motion.png      |  Bin 0 -> 260562 bytes
  .../evidence/T2/render-cost-bench.spec.ts.txt      |  129 ++
  docs/run-shell/evidence/T2/rowers-grep.txt         |   53 +
  docs/run-shell/evidence/T2/states-32px.html        |  496 +++++
  docs/run-shell/evidence/T2/states-32px.png         |  Bin 0 -> 169523 bytes
- docs/run-shell/evidence/T2/tie-in.png              |  Bin 0 -> 264133 bytes
- docs/run-shell/evidence/T2/trace-completed.png     |  Bin 0 -> 72235 bytes
- docs/run-shell/evidence/T2/vocabulary.md           |  313 +++
- docs/run-shell/evidence/T3/after-1180.png          |  Bin 0 -> 197490 bytes
- docs/run-shell/evidence/T3/after-1440-light.png    |  Bin 0 -> 245436 bytes
- docs/run-shell/evidence/T3/after-1440.png          |  Bin 0 -> 234022 bytes
- docs/run-shell/evidence/T3/after-390.png           |  Bin 0 -> 52784 bytes
+ docs/run-shell/evidence/T2/tie-in.png              |  Bin 0 -> 259731 bytes
+ docs/run-shell/evidence/T2/trace-completed.png     |  Bin 0 -> 72234 bytes
+ docs/run-shell/evidence/T2/vocabulary.md           |  337 +++
+ docs/run-shell/evidence/T3/after-1180.png          |  Bin 0 -> 193900 bytes
+ docs/run-shell/evidence/T3/after-1440-light.png    |  Bin 0 -> 245185 bytes
+ docs/run-shell/evidence/T3/after-1440.png          |  Bin 0 -> 233092 bytes
+ docs/run-shell/evidence/T3/after-390.png           |  Bin 0 -> 52803 bytes
  docs/run-shell/evidence/T3/before-1180.png         |  Bin 0 -> 199519 bytes
  docs/run-shell/evidence/T3/before-1440-light.png   |  Bin 0 -> 270883 bytes
  docs/run-shell/evidence/T3/before-1440.png         |  Bin 0 -> 238556 bytes
  docs/run-shell/evidence/T3/before-390.png          |  Bin 0 -> 106235 bytes
  .../run-shell/evidence/T3/before-report-header.png |  Bin 0 -> 33649 bytes
  docs/run-shell/evidence/T3/before-trace-rail.png   |  Bin 0 -> 62698 bytes
- docs/run-shell/evidence/T3/builder-visual.txt      |   59 +
- docs/run-shell/evidence/T3/contrast-rv3-rerun.txt  |   49 +
+ docs/run-shell/evidence/T3/builder-visual.txt      |   57 +
+ docs/run-shell/evidence/T3/contrast-rv3-rerun.txt  |   43 +
  docs/run-shell/evidence/T3/contrast.md             |  266 +++
  docs/run-shell/evidence/T3/literals.txt            |   51 +
  docs/run-shell/evidence/T3/scope-order.txt         |   34 +
@@ -98,36 +99,37 @@ $ git diff main...HEAD --stat
  frontend/src/assets/styles/character.css           |  339 +++
  frontend/src/assets/styles/motion.css              |  172 +-
  frontend/src/assets/styles/node-card.css           |   62 +-
- frontend/src/assets/styles/tokens.css              |  223 ++
+ frontend/src/assets/styles/tokens.css              |  228 ++
  frontend/src/characters/pip.ts                     |  612 ++++++
  frontend/src/components/AgentCharacter.vue         |  197 ++
  frontend/src/components/ChatRail.vue               |  612 +++++-
  frontend/src/components/CrewProgress.vue           |  145 +-
- frontend/src/components/DialogueRail.vue           |  463 ++++-
+ frontend/src/components/DialogueRail.vue           |  562 ++++-
  frontend/src/components/GateCard.vue               |  247 ++-
  frontend/src/components/HandoffToken.vue           |   63 +-
- frontend/src/components/ReportPanel.vue            |  487 +++--
+ frontend/src/components/ReportPanel.vue            |  551 +++--
  frontend/src/components/RunHistory.vue             |   25 +-
- frontend/src/components/StatusPanel.vue            |  292 ++-
+ frontend/src/components/StatusPanel.vue            |  368 +++-
  frontend/src/components/WorkflowEdge.vue           |   18 +-
  frontend/src/components/WorkflowNode.vue           |  229 ++-
- frontend/src/composables/useRunChoreography.ts     |  493 ++++-
+ frontend/src/composables/useRunChoreography.ts     |  500 ++++-
  frontend/src/composables/useValidatorRun.ts        |  532 ++++-
- frontend/src/data/runStatusDisplay.ts              |  140 ++
+ frontend/src/data/runStatusDisplay.ts              |  180 ++
  frontend/src/data/serverLimits.ts                  |   15 +
  frontend/src/data/verdictDisplay.ts                |  587 ++++++
  frontend/src/services/studioApi.ts                 |   31 +-
- frontend/src/studio.css                            |  584 +++++-
+ frontend/src/studio.css                            |  588 +++++-
  frontend/src/trace/interpret.ts                    |  879 ++++++++
  frontend/src/trace/speech.ts                       |  106 +
  frontend/src/types/studio.ts                       |   81 +
  frontend/src/utils/humanise.ts                     |  297 +++
- frontend/src/views/StudioView.vue                  |  134 +-
+ frontend/src/views/StudioView.vue                  |  153 +-
+ frontend/tests/builderShell.spec.ts                |   40 +
  frontend/tests/characterDeterminism.spec.ts        |  153 ++
  frontend/tests/characterStates.spec.ts             |  677 ++++++
  frontend/tests/characterSystem.spec.ts             |  738 +++++++
  frontend/tests/designTokens.spec.ts                |  274 +++
- frontend/tests/dialogueRail.spec.ts                |  205 +-
+ frontend/tests/dialogueRail.spec.ts                |  332 ++-
  frontend/tests/fixtures/backendVerdictFrames.json  |   36 +
  frontend/tests/fixtures/characterSnapshots.json    |  153 ++
  frontend/tests/fixtures/serializerFrames.ndjson    |   34 +
@@ -143,9 +145,9 @@ $ git diff main...HEAD --stat
  frontend/tests/nodeChoreography.spec.ts            |    8 +-
  frontend/tests/nodeCrew.spec.ts                    |  131 +-
  frontend/tests/realVerdictFrameShape.spec.ts       |   51 +-
- frontend/tests/reportVisibility.spec.ts            |  137 ++
+ frontend/tests/reportVisibility.spec.ts            |  210 ++
  frontend/tests/runChoreography.spec.ts             |   32 +-
- frontend/tests/serverLimits.spec.ts                |   53 +
+ frontend/tests/serverLimits.spec.ts                |  138 +-
  frontend/tests/stageLane.spec.ts                   |   45 +-
  frontend/tests/traceInterpretation.spec.ts         |  777 +++++++
  frontend/tests/traceRow.spec.ts                    |  741 +++++++
@@ -160,7 +162,7 @@ $ git diff main...HEAD --stat
  tests/service/test_builder_runner.py               |   16 +-
  tests/service/test_synthetic_choreography.py       |   46 +-
  tests/service/test_synthetic_identity_frames.py    |  329 +++
- 159 files changed, 28889 insertions(+), 908 deletions(-)
+ 161 files changed, 30168 insertions(+), 938 deletions(-)
 
 ===========================================================================
 Every PYTHON file changed on this branch
@@ -191,6 +193,6 @@ R2 scope check: the four forbidden surfaces, named one at a time
   src/brief_crew/config.py                      NO DIFF
 
 No src/brief_crew file has changed since the FIRST pass. Rounds two through
-six are frontend, tests and docs only:
+seven are frontend, tests and docs only:
   $ git diff 16f3be5..HEAD --name-only -- src/
   <<< empty >>>

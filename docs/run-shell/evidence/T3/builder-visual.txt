@@ -1,13 +1,11 @@
 $ cd frontend && npx playwright test e2e/visual/builder-canvas.spec.ts
 #
 # DEFINITION-OF-DONE.md T3.5: the builder workspace is unchanged by the token
-# work. Sixteen committed baselines - four states x two themes x two viewports
-# - and none carries maxDiffPixels, so these are byte comparisons.
+# work. Sixteen committed baselines, none with maxDiffPixels - byte comparisons.
 #
-# RV3 FIFTH PASS at c2966e7, 2026-09-05T19:13:05+08:00. Exit 0, 16/16, 41.1s.
-# Round six added 46 lines to studio.css and new --rail-cover-* variables,
-# which the design canvas shares with the run shell, so this is again the run
-# that matters: if any of it had reached the builder, these sixteen would say so.
+# RV3 SIXTH PASS at a182ed6 (product source = 2cea4b9), 2026-09-05T19:43:46+08:00.
+# Exit 0, 16/16, 41.7s. Round seven moved --scrim in tokens.css, which the
+# design canvas shares with the run shell, so this is again the run that matters.
 #
 # NO BASELINE WAS REGENERATED. Proved rather than asserted:
 #   $ md5sum e2e/visual/builder-canvas.spec.ts-snapshots/*.png > before
@@ -15,11 +13,11 @@ $ cd frontend && npx playwright test e2e/visual/builder-canvas.spec.ts
 #   $ md5sum e2e/visual/builder-canvas.spec.ts-snapshots/*.png > after
 #   $ diff before after      ->  no output
 #
-# Five passes, five greens, no regeneration in any of them.
+# Six passes, six greens, no regeneration in any of them.
 
 Running 16 tests using 1 worker
 
-  ✓   1 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.3s)
+  ✓   1 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.4s)
   ✓   2 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.2s)
   ✓   3 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.4s)
   ✓   4 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.2s)
@@ -30,13 +28,13 @@ Running 16 tests using 1 worker
   ✓   9 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.2s)
   ✓  10 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.1s)
   ✓  11 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.3s)
-  ✓  12 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.0s)
+  ✓  12 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.1s)
   ✓  13 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.0s)
   ✓  14 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.1s)
   ✓  15 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.3s)
-  ✓  16 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.0s)
+  ✓  16 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.1s)
 
-  16 passed (41.1s)
+  16 passed (41.7s)
 
 # The sixteen baseline md5s, unchanged by this run:
 #   d44e029b5696fe0e0a1b0e86c2945dcb *e2e/visual/builder-canvas.spec.ts-snapshots/gallery-dark-chromium-win32.png

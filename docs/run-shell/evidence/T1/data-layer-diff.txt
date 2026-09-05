@@ -1,5 +1,5 @@
 $ git diff main...HEAD --stat -- src/brief_crew/schemas src/brief_crew/validator_guardrails.py src/brief_crew/validator_flow.py
-# RV3 FIFTH PASS, branch run-shell/cast at c2966e7, merge-base 6291fee, 2026-09-05T19:10:16+08:00
+# RV3 SIXTH PASS, branch run-shell/cast at a182ed6, merge-base 6291fee, 2026-09-05T19:43:07+08:00
 
 <<< end of output (empty above means no diff) >>>
 
@@ -10,6 +10,6 @@ $ git diff main...HEAD -- src/brief_crew/config.py | grep -E "RUBRIC|FLOOR|CONFI
 $ git diff main...HEAD --stat -- src/brief_crew/config.py
 <<< end of output (empty means config.py has no diff at all) >>>
 
-Five passes, five empty answers. Round six humanised the node card's error
-text, which is frontend/src/trace/interpret.ts reshaping a string the
-backend already sent - no verdict, no floor and no constant moved to do it.
+Six passes, six empty answers. Round seven added runStatusDisplay entries and
+a ticking ELAPSED clock, both of which read a run's state and neither of
+which computes one.

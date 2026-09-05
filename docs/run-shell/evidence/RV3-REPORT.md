@@ -1,21 +1,223 @@
 # RV3 — verification report
 
-Five passes. **The fifth, at `c2966e7`, is the current verdict**; the fourth
-(`8ae40ec`), third (`601baef`), second (`16f3be5`) and first (`27b256e`) are kept
-below it under their own headings, because what each round fixed is only legible
-against what the previous pass found.
+Six passes. **The sixth, at `2cea4b9`, is the current verdict**; the five before
+it are kept below under their own headings, because what each round fixed is
+only legible against what the previous pass found.
 
 RV3 built none of this work and edited no product code. The one product-tree
 change RV3 is permitted is regenerating the PNGs under
 `frontend/e2e/visual/run-canvas.spec.ts-snapshots/` — two in the first pass, one
 in the second, all three in the third and again in the fourth, and **none in the
-fifth**, each named with a reason in [`evidence/R/baselines.md`](R/baselines.md)
-and each after the failing diff was recorded first.
+fifth or sixth**, each named with a reason in
+[`evidence/R/baselines.md`](R/baselines.md).
 
 `G1`, `G4`'s sheet and every `RC` row belong to other workers and are marked
 **NOT VERIFIED BY ME**. A missing artifact is recorded as **FAIL**, not as a
 pass with a note.
 
+---
+
+# SIXTH PASS — `2cea4b9`, 2026-09-05 (targeted)
+
+A **targeted** re-run of the surfaces round seven touched. The full Playwright
+suite was last run at `8ae40ec` (163 tests, 160 passed, 3 failed, 0 skipped,
+12.8 m) and R1 cites it explicitly rather than pretending to a sweep.
+
+The branch head is `a182ed6`, a docs-only commit on top of `2cea4b9`; the product
+source is identical at both. Round seven is eight frontend files — `tokens.css`,
+`DialogueRail.vue`, `ReportPanel.vue`, `StatusPanel.vue`, `useRunChoreography.ts`,
+`runStatusDisplay.ts`, `studio.css`, `StudioView.vue`. No Python.
+
+Before anything ran: every listener on 5273 / 5274 / 5275 / 8099 / 8791 was
+hunted and none existed, and all five answered nothing — so Playwright started
+its own Vite from this tree and `reuseExistingServer` had nothing to reuse.
+
+## 1. What was run, and what it said
+
+| | |
+| --- | --- |
+| `e2e/visual/run-canvas.spec.ts` | **3/3 passed, 22.0 s, NO regeneration** — md5s unchanged |
+| `e2e/visual/builder-canvas.spec.ts` | **16/16 passed, 41.7 s, no regeneration** |
+| `e2e/cast.spec.ts` + `e2e/studio.spec.ts` | **17/17 passed, 2.9 m** — rewrote every capture |
+| `e2e/cast-perf.spec.ts` alone | **1 passed, 1 failed** — T2.8, by one drop at the median |
+| Vitest | **93 files, 2007 tests, 0 failed**, exit 0 |
+| Types | `npx vue-tsc -b --force` — **exit 0** |
+| Build | `npm run build` — **exit 0**, built in 709 ms |
+| Contrast | `node scripts/contrast-audit.mjs` — **exit 0**, 236 pairings, 234 in scope, **0 failing** |
+
+Backend: the usual `SYNTHETIC=1` line on :8099 with the six-mode
+`SYNTHETIC_FAILURE`; it survived the whole pass. Money spent: **zero**.
+
+## 2. T2.8 — the arms
+
+| arm | samples (over 34 ms) | median over 34 ms | median p95 | median max | intervals |
+| --- | --- | ---: | ---: | ---: | ---: |
+| **idle** | — (single) | **0** | 17.8 | 20.0 | 601 |
+| **hidden** | 4, 4, 3 | **4** | 18.3 | 80.8 | 554 |
+| **painted** | 5, 6, 4 | **5** | 18.4 | 78.0 | 549 |
+
+**`addedDrops = 1`, `p95Delta = 0.1 ms` against 4 ms of headroom,
+`passes: false` — FAIL.** Live arm, recorded and not graded: 152 frames,
+p50 16.7, p95 18.2, max 81.5, 3 over 34 ms.
+
+**Seven measurements of this comparison across four commits:**
+
+| commit | context | hidden median | painted median | addedDrops | |
+| --- | --- | ---: | ---: | ---: | :-: |
+| `601baef` | alone | 4 | 5 | 1 | FAIL |
+| `8ae40ec` | alone (1st) | 3 | 3 | **0** | PASS |
+| `8ae40ec` | full suite | 3 | 4 | 1 | FAIL |
+| `8ae40ec` | alone (2nd) | 6 | 7 | 1 | FAIL |
+| `c2966e7` | alone | 4 | 4 | **0** | PASS |
+| **`2cea4b9`** | **alone** | **4** | **5** | **1** | **FAIL** |
+
+Two of seven pass. The p95 arm has passed **every single time** (0.0–0.1 ms
+against 4 ms), and the painted arm's absolute p95 has been 18.1–18.4 ms in all
+of them, inside the retired ≤ 20 ms bar. The drop arm is a coin-flip on a
+one-frame difference while the control's own median has ranged 3 to 6.
+
+RV3's reading, unchanged from the fourth pass and now with three more samples:
+**the console's cost is at or below the instrument's noise floor**, and the
+criterion as written resolves that to FAIL more often than not. That is a fact
+about a one-frame threshold, not about the console — but the criterion is the
+criterion, so T2.8 is **FAIL** on this pass's measurement.
+
+## 3. The six captures, looked at
+
+**`S/empty.png` — the rest-state word is `Ready`, in all three places.** The
+header connection chip, the canvas heading and the status rail all read `Ready`,
+and the line beneath reads `ready · seq 0 · 0 dropped`. That is
+`runStatusDisplay` doing what it was added for; earlier passes had the header
+saying `Connected` at rest while the canvas said something else. ELAPSED `00:00`,
+Launch enabled, every node idle with its character, the trace rail saying "Run
+activity will appear here."
+
+**`T3/after-1440.png` — the Score breakdown table's rows are visible under
+SCORES.** `DIMENSION / SCORE / WEIGHT / NOTE` with Demand 3 · 0.30, Market
+3 · 0.20, Competitive room 3 · 0.20 all legible. In every earlier pass the
+sticky `2 CITED SOURCES` footer sat over exactly this table; the sources are now
+a block inside the report's one scroller and the table is readable. ELAPSED
+reads `00:30`.
+
+**`T2/reduced-motion.png` — ELAPSED `00:14`, non-zero.** Status `Running`, the
+canvas heading `Running`, the Launch control `Running…`. The dialogue drawer
+holds one entry and shows it **whole, ending "…with the shape of a real one."
+with its `› Details` toggle beneath it**.
+
+**`S/failure.png` — ELAPSED is `00:00`, and the canvas heading now says
+`Failed`.** The zero is the one thing the orchestrator asked me to check for a
+non-zero value, so it is worth being exact: this run started and failed inside
+the same second (CALLS 1, TOKENS 550, and the synthetic refusal fires on the
+first attempt), so `00:00` is an honest reading of a sub-second run rather than
+a stopped clock. The clock's realness is demonstrated by the other two captures
+(`00:14` and `00:30`), not by this one. The canvas heading reading `Failed`
+rather than `Error` is `runStatusDisplay` again, matching the status rail.
+
+**`S/narrow-rail-open.png` — the dimming reads now.** Measured at the element
+rather than judged by eye: exactly one `.rail-scrim`, computed
+`background-color: rgba(10, 10, 10, 0.72)`, `backdrop-filter: none`,
+`scrollWidth = 390` with the rail open. The strip of shell left visible beside
+the overlay is clearly a layer behind glass rather than a competing surface,
+which `.58` did not achieve. `tokens.css:297-309` records that judgement and the
+two cold reads behind it.
+
+**`T2/trace-completed.png` and `S/long-run.png` — the dialogue did NOT land at
+its end, and this is the one thing this pass did not confirm.** Both captures
+show the drawer's newest visible entry, the Synthesist's, **cut mid-sentence** at
+"…and I am", with its `› Details` toggle clipped by the drawer's bottom edge, and
+the drawer's own badge reading **8** while six entries are shown.
+
+RV3 measured it rather than leaving it to the eye. A throwaway spec drove a run
+to completion and read the dialogue scroller 2.5 s after the terminal frame:
+
+```
+selector        [role="log"]        (inside region "Agent dialogue")
+scrollTop       23
+scrollHeight    739
+clientHeight    360
+distance to end 356 px
+entries         6
+last entry bottom 843   scroller bottom 509   lastFullyVisible: false
+```
+
+The list is **23 px from the top and 356 px from the end**. Whatever the landing
+is meant to fire on, it had not fired in that state, and the two committed
+captures agree with the measurement. This is reported as an observation, not as
+a criterion failure: no DoD row asks the dialogue to land at its end, and every
+S and T2 row that does rest on the trace rail passes. But the round's own stated
+change is not visible in the evidence it produced.
+
+*(One caveat RV3 will not hide: the throwaway drove the ordinary two-gate journey,
+not `cast.spec.ts:1183`'s 119-event journey with three revise turns. The two
+committed captures come from that longer journey and show the same thing, so this
+is two observations of one behaviour rather than one.)*
+
+## 4. The table
+
+Rows this pass re-measured are marked *(re-run)*. Every other row **carries its
+fifth-pass verdict unchanged** and says so — round seven touched eight frontend
+files and no test, fixture or Python.
+
+| Id | Verdict | Evidence | What RV3 saw at `2cea4b9` |
+| --- | :---: | --- | --- |
+| **G1** | NOT VERIFIED BY ME | `evidence/G1/` | RV2's. Untouched in all six passes. |
+| **G2** | **PASS** *(re-run)* | `G2/grep.txt` | **1 hit, 0 product hits** — the `readsAsRole()` JSDoc example at `:138`. Round seven's own risk to this row was `runStatusDisplay`, a new module mapping a run STATE to one word: a state is not a role, and the module is not in the grep's paths. |
+| **G3** | **PASS** *(re-run)* | `G3/vitest.txt`, `G3/playwright.txt` | `cast.spec.ts:998`'s reload check green (15.6 s). |
+| **G4** | NOT VERIFIED BY ME | `G4/roles-sheet.png` | RC's Q4. |
+| **T1.1** | NOT VERIFIED BY ME | both report headers, `T1/cold-read.md`, `RC/answers.md` | `cast.spec.ts:1682` green; both headers rewritten. A third cold read landed in `a182ed6` — RV3 does not grade it. |
+| **T1.2** | **PASS** *(re-run)* | `T1/vitest.txt`, `T3/after-1440.png` | Unit green, and the score breakdown is now readable under SCORES: every dimension in words, `thin` chips, weights and notes. |
+| **T1.3** | **PASS** *(re-run)* | `S/failure.png`, `R/playwright.txt` | `cast.spec.ts:2095` green; the node card's error stays humanised (`Synthetic failure:`, not `SYNTHETIC_FAILURE:`). |
+| **T1.4** | **PASS** *(carried, pass 5)* | `T1/vitest.txt` | Green inside 2007/2007. |
+| **T1.5** | **PASS** *(re-run)* | `T1/data-layer-diff.txt` | All three diffs **empty**, `config.py` untouched. Six passes, six empty answers. |
+| **T2.1** | **PASS** *(re-run)* | `T2/trace-completed.png`, `T2/interpretation-vitest.txt` | `cast.spec.ts:1183` green in a browser. The dialogue-landing observation in section 3 is about the *dialogue drawer*, which is a separate surface from the trace rows this row is about. |
+| **T2.2** | **PASS** *(carried, pass 5)* | `T2/vocabulary.md` | `interpret.ts` unchanged this round; the serializer's ladder has never changed on this branch. |
+| **T2.3** | NOT VERIFIED BY ME | `T2/characters-32px.png`, `T2/states-32px.png` | RC's Q4. |
+| **T2.4** | **PASS** *(carried, pass 5)* | `CHARACTERS.md` | `pip.ts` unchanged this round. |
+| **T2.5** | **PASS** *(re-run — and this is the row round seven put at risk)* | `T2/no-timers.txt` | Round seven made ELAPSED **a real ticking clock**, so the question was where the `setInterval` landed. It is `StatusPanel.vue:211/234` — a panel of numbers in the control rail, driving one readout and no `data-state`. The criterion's own grep still returns **exactly the same three hits** in `useRunChoreography.ts` (`:259`, `:290`, `:826`), and `frontend/src/characters/` + `AgentCharacter.vue` return **zero** for all five clock routes, now with a ticking clock in the same application. |
+| **T2.6** | **PASS** *(re-run)* | `T2/tie-in.png` | `cast.spec.ts:907` green (2.9 s). |
+| **T2.7** | **PASS** *(re-run)* | `T2/reduced-motion.png` | `:1062` and `:1101` green. |
+| **T2.8** | **FAIL** *(re-run)* | `T2/perf.json` | Section 2. `addedDrops = 1`, `p95Delta = 0.1`, `passes: false`. |
+| **T2.9** | **PASS** *(carried, pass 5)* | `T2/rowers-grep.txt`, `T2/node-running.png` | `WorkflowNode.vue` unchanged this round; `node-running.png` re-captured anyway and the three rower classes still return zero across `frontend/src`. |
+| **T3.1** | **PASS** *(re-run)* | `T3/scope-order.txt` | Sixteen minutes fifty seconds; six rounds of `studio.css` edits cannot alter the order of the first two commits. |
+| **T3.2** | **PASS** *(re-run)* | `T3/literals.txt` | `designTokens.spec.ts` green inside 2007/2007, after a round that moved `--scrim` twice and added `runStatusDisplay` colours. |
+| **T3.3** | **PASS** *(re-run)* | `T3/contrast.md`, `T3/contrast-rv3-rerun.txt` | **exit 0**, 236 pairings, 234 in scope, **0 failing**, byte-identical to the committed file. `--scrim` moved and the count did not, which RV3 checked rather than took from the comment: `grep -c scrim contrast.md` returns **0**, so the scrim really is in no pairing. |
+| **T3.4** | **PASS** *(re-run)* | all `before-*` and `after-*` | All four rewritten and looked at; `after-1440.png` is the one that improved. |
+| **T3.5** | **PASS** *(re-run)* | `T3/builder-visual.txt` | **16/16 green, no regeneration**, md5s identical. Six passes, six greens. |
+| **S1** | **PASS** *(re-run)* | `S/empty.png` | Section 3 — the rest state reads `Ready` everywhere. |
+| **S2** | **PASS** *(re-run)* | `S/first-run.png` | `cast.spec.ts:764` green (18.2 s). |
+| **S3** | **PASS** *(re-run)* | `S/long-run.png`, `S/long-run.md` | `:1183` green. The newest **trace** row is visible at the bottom; the dialogue-drawer observation is section 3. |
+| **S4** | **PASS** *(re-run)* | `S/failure.png` | `:2095` green; one banner, `Failed` in both places, humanised error. |
+| **S5** | **PASS** *(re-run)* | `T2/reduced-motion.png` | Written by the passing `:1101`. |
+| **S6** | **PASS** *(re-run)* | `S/narrow.png`, `S/narrow-rail-open.png` | `:1867` green; the scrim measured at `.72` with no blur and `scrollWidth = 390`. |
+| **R1** | **FAIL** | `R/*` | **Targeted pass.** Cited from `8ae40ec`: **163 tests, 160 passed, 3 failed, 0 skipped, 12.8 m**. Measured here at `2cea4b9`: **37 of 38 Playwright tests green across four specs** (the one red is T2.8), **2007 Vitest**, `vue-tsc` 0, `npm run build` 0, contrast 0. The full suite's other two reds are the builder drag pair — `:1227` proved pre-existing on `main`, `:1552` passes alone. |
+| **R2** | **PASS** *(re-run)* | `R/diff-stat.txt` | Four forbidden surfaces each **NO DIFF**; `git diff 16f3be5..HEAD -- src/` **empty** — no `src/brief_crew` file has changed in seven rounds. |
+
+## 5. Things a reader should know that no criterion asks for
+
+1. **The dialogue drawer does not land on its newest entry.** Section 3, with the
+   scroll measurement. No DoD row requires it; the round said it did it; the
+   evidence says otherwise. Worth one look before the verdict table is signed.
+2. **`S/failure.png`'s ELAPSED is `00:00`** and that is honest — the run failed
+   inside a second. The ticking clock is demonstrated by `00:14` and `00:30` in
+   the other two captures.
+3. **The Python suite was not re-run** and does not need to be: no Python
+   changed, which `R/diff-stat.txt` proves with an empty
+   `git diff 16f3be5..HEAD -- src/`. `R/python.txt` carries the fourth pass's
+   **2544 / OK / 6 skipped** and says so at the top.
+4. **`builder.spec.ts:1227` is pre-existing and measured** —
+   `evidence/R/builder-1227.md`, HEAD 0/5 against `main` 1/5 with an identical
+   call log. It should be split out of remaining-work item 44.
+5. **Two artifacts still predate the character they show**: `G4/roles-sheet.png`,
+   `T2/characters-32px.png` and `T2/states-32px.png` were last written before the
+   bun crest. G4 and T2.3 turn on a reader looking at those.
+6. **Tally: 25 PASS, 2 FAIL, 4 NOT VERIFIED BY ME** over the 31 rows.
+   Pass 5 was 26 / 1 / 4; pass 4 was 25 / 2 / 4; pass 3, 25 / 2 / 4; pass 2,
+   22 / 5 / 4; pass 1, 19 / 8 / 4. The two FAILs are **T2.8**, which has passed
+   twice and failed five times on a one-frame threshold, and **R1**, whose
+   remaining reds are T2.8 plus one test proved pre-existing on `main` and one
+   that passes alone.
+
+---
 ---
 
 # FIFTH PASS — `c2966e7`, 2026-09-05 (targeted)

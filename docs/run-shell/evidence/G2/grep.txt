@@ -1,23 +1,15 @@
 $ grep -rniE "Scoper|Market Analyst|Sentiment|Feasibility|Synthesist|Reporter|market_task|scope_idea|research_market|MarketCrew|demand|headroom" frontend/src/characters frontend/src/trace frontend/src/components/AgentCharacter.vue frontend/src/composables/useRunChoreography.ts
-# RV3 FIFTH PASS, from the repo root, branch run-shell/cast at c2966e7, 2026-09-05T19:09:41+08:00
+# RV3 SIXTH PASS, from the repo root, branch run-shell/cast at a182ed6, 2026-09-05T19:42:48+08:00
 
 frontend/src/composables/useRunChoreography.ts:138: * Deliberately generous rather than clever: `Scoper` passes on the capital and
 
 ---------------------------------------------------------------------------
-RV3's judgement of every hit  (fifth pass, c2966e7)
+RV3's judgement of every hit  (sixth pass, a182ed6)
 ---------------------------------------------------------------------------
 
-1 hit, 0 product hits. Re-run and re-judged for the fifth time. Round six
-touched TWO of the four files this grep covers - interpret.ts (+27, the node
-card's error text is humanised and word-clipped) and useRunChoreography.ts
-(+24) - which is exactly when a role name gets typed into a humaniser.
+1 hit, 0 product hits. Re-run and re-judged for the sixth time.
 
-  frontend/src/composables/useRunChoreography.ts:138
-
-    " * Deliberately generous rather than clever: `Scoper` passes on the
-      capital and `market research analyst` passes on the spaces. What it
-      rejects is the one shape ids actually take here - a lowercase snake
-      or kebab token."
+  138: * Deliberately generous rather than clever: `Scoper` passes on the capital and
 
   DISPOSITION: comment, naming an EXAMPLE. It is the last line of the JSDoc
   above readsAsRole(), whose whole body is a whitespace-or-capital test:
@@ -31,29 +23,26 @@ card's error text is humanised and word-clipped) and useRunChoreography.ts
   No role list, no lookup, no branch on any name. Deleting the word
   `Scoper` from the comment would change no behaviour. Not product logic.
 
-  Worth saying about round six specifically: the error humaniser it added
-  to interpret.ts turns 'SYNTHETIC_FAILURE' into 'Synthetic failure' by
-  RESHAPING whatever matches a regex, not by looking a token up -
-  interpret.ts:192 is /[A-Z][A-Z0-9_]{3,}/g and :195 the same shape at
-  the front of a sentence, handed to utils/humanise.ts::humaniseCode. A
-  lookup table of known codes would have shown here as a hit. There is none.
+  Round seven's own risk to this criterion was runStatusDisplay - a new
+  module that maps a run STATE to one word. A state is not a role, the
+  module is not in this grep's paths, and the grep still answers the same.
 
 VERDICT: G2 PASS. No Idea Validator role, task name, crew name, node id or
 dimension name reaches the logic of frontend/src/characters/*,
 frontend/src/trace/*, AgentCharacter.vue or useRunChoreography.ts.
 
-Files covered by the grep (all of them, none excluded) at c2966e7:
+Files covered by the grep (all of them, none excluded) at a182ed6:
      612 frontend/src/characters/pip.ts
      879 frontend/src/trace/interpret.ts
      106 frontend/src/trace/speech.ts
      197 frontend/src/components/AgentCharacter.vue
-    1046 frontend/src/composables/useRunChoreography.ts
-    2840 total
+    1051 frontend/src/composables/useRunChoreography.ts
+    2845 total
 
-Growth across the five passes, which is why this is re-run and not cited:
-  pip.ts                  526 -> 526 -> 577 -> 612 -> 612
-  interpret.ts            783 -> 783 -> 860 -> 860 -> 879
-  AgentCharacter.vue       92 -> 197 -> 197 -> 197 -> 197
-  useRunChoreography.ts   958 -> 1024 -> 1024 -> 1024 -> 1046
+Growth across the six passes, which is why this is re-run and not cited:
+  pip.ts                  526 -> 526 -> 577 -> 612 -> 612 -> 612
+  interpret.ts            783 -> 783 -> 860 -> 860 -> 879 -> 879
+  AgentCharacter.vue       92 -> 197 -> 197 -> 197 -> 197 -> 197
+  useRunChoreography.ts   958 -> 1024 -> 1024 -> 1024 -> 1046 -> 1051
 
 No test fixture was excluded, because the grep's paths contain no fixtures.

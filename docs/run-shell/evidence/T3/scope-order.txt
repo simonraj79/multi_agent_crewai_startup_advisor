@@ -1,6 +1,7 @@
 $ git log --format='%h %ad %s' --date=iso -- docs/run-shell/SHELL-SCOPE.md frontend/src/studio.css
-# RV3 FIFTH PASS, branch run-shell/cast at c2966e7, 2026-09-05T19:13:20+08:00
+# RV3 SIXTH PASS, branch run-shell/cast at a182ed6, 2026-09-05T19:43:08+08:00
 
+2cea4b9 2026-09-05 19:31:29 +0800 fix(run-shell): the dialogue lands on its newest entry, the sources sit under the report, one word per run state, a scrim that reads, and a clock that ticks
 c2966e7 2026-09-05 19:00:52 +0800 fix(run-shell): the sheet steps aside for an overlay rail, and the node card's error is humanised and word-clipped
 8ae40ec 2026-09-05 18:19:48 +0800 fix(run-shell): the bun crest replaces the halo, the trace seam is a drawn edge, the drawer scrolls, the way back lives on the workflow well, and the sheet is isolated
 fec004d 2026-09-05 17:56:58 +0800 fix(shell): the report sheet and the control rail are opaque; the perf spec grades medians of alternating arms
@@ -29,6 +30,5 @@ fd84f57 2026-09-05 14:25:50 +0800 feat(shell): a token layer the rails inherit, 
 
 T3.1 holds and cannot stop holding: the scope document's first commit
 precedes the first studio.css change on this branch by sixteen minutes and
-fifty seconds. studio.css has now been touched in five rounds since - the
-last of them adding the --rail-cover-* variables - and the ORDER is a fact
-about the first two commits that no later edit can alter.
+fifty seconds. studio.css has now been touched in six rounds since, and the
+ORDER is a fact about the first two commits that no later edit can alter.

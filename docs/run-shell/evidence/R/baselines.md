@@ -1,4 +1,4 @@
-# R1 — the visual baselines, across five RV3 passes
+# R1 — the visual baselines, across six RV3 passes
 
 Written by RV3 (verification worker) on branch `run-shell/cast`. RV3 built none
 of this work. The only product-tree edit RV3 is permitted is regenerating the
@@ -6,9 +6,41 @@ three PNGs under `frontend/e2e/visual/run-canvas.spec.ts-snapshots/`, and only
 after first recording the failing diff.
 
 Backend for every run below: the free `SYNTHETIC=1` one on :8099. Playwright
-drove its own Vite on :5273, and from the fourth pass onward that was **verified
-rather than assumed** — `playwright.config.ts` sets `reuseExistingServer: true`
+drove its own Vite on :5273, and from the fourth pass onward that was verified
+rather than assumed — `playwright.config.ts` sets `reuseExistingServer: true`
 and a stale Vite would have made every capture a picture of an older bundle.
+
+---
+
+# SIXTH PASS — `2cea4b9`, 2026-09-05
+
+## Nothing moved, and nothing was regenerated
+
+```
+$ cd frontend
+$ npx playwright test e2e/visual/run-canvas.spec.ts
+# exit 0  ·  3 passed (22.0s)
+```
+
+Green on the first run, so `--update-snapshots` was never invoked, and the three
+md5s are byte-for-byte the fourth pass's — the last time they moved:
+
+| PNG | md5, unchanged since `8ae40ec` |
+| --- | --- |
+| `run-canvas-idle-chromium-win32.png` | `c0372c68b79f5862cf423d8f59bbaef1` |
+| `run-canvas-running-chromium-win32.png` | `68995bbcb458e3df2ce9f7bbd0789baf` |
+| `run-canvas-gate-waiting-chromium-win32.png` | `2833bddbbbe40cbd554d9121838366e3` |
+
+Worth checking rather than assuming, because round seven **did** move a token
+these crops could have seen: `--scrim` went to `rgba(10,10,10,.72)` dark and
+`rgba(15,20,25,.42)` light. The scrim only paints at ≤ 390 px behind an overlay
+rail, and these three are 1440 px captures of the `.validator-flow` canvas, so it
+never appears in them. The rest of round seven — the dialogue's landing, the
+sources block, `runStatusDisplay`, the ticking ELAPSED — is rail and sheet, all
+outside the crop.
+
+`e2e/visual/builder-canvas.spec.ts` was also green, 16/16, its sixteen md5s
+identical before and after. **Six passes, six greens, no regeneration in any.**
 
 ---
 

@@ -33,6 +33,39 @@ async function styleOf(target: Locator, property: string): Promise<string> {
 }
 
 /**
+ * `--recede-opacity` (`motion.css:48`), and `1` is the card at rest. Named so
+ * the assertions below compare against the TOKEN rather than against a number
+ * somebody typed twice.
+ */
+const RECEDE_OPACITY = 0.55
+
+/**
+ * Assert a card's opacity once it has stopped moving.
+ *
+ * `styleOf` samples one instant, and one instant is a measurement only while
+ * nothing is interpolating. `.workflow-node.is-receded` carries
+ * `transition: opacity var(--motion-medium) var(--ease-out)` — 260ms
+ * (`motion.css:96-100`) — so a read taken in the turn after the class lands
+ * reports the interpolation instead of the token. Measured three times,
+ * identically, across two sessions: **0.559 / 0.576 / 0.592** against an
+ * expected 0.55, and only ever inside a FULL-SUITE run. That is the tell: the
+ * race needs the machine busy enough for the read to arrive before the
+ * transition ends, so the file passes alone and fails in company, which reads
+ * exactly like a product defect and is not one.
+ *
+ * Polling is the fix rather than a wider tolerance or a sleep. A tolerance
+ * admits any point on the curve, which is precisely what criterion 3 says must
+ * not be there — "exactly the two levels" cannot be asserted with a band around
+ * each of them. A sleep guesses at a duration that is a token elsewhere. This
+ * waits for the value the token names and compares against it exactly.
+ */
+async function expectOpacity(target: Locator, expected: number, what: string): Promise<void> {
+  await expect
+    .poll(async () => Number(await styleOf(target, 'opacity')), { message: what })
+    .toBe(expected)
+}
+
+/**
  * The animations the element is ACTUALLY running.
  *
  * `getComputedStyle().animationName` echoes the declaration back whether or not
@@ -124,8 +157,8 @@ test.describe('the idle recede', () => {
     await expect(gateNode).toHaveCount(1, { timeout: 60_000 })
 
     const idle = page.locator('.workflow-node[aria-label^="Reporter,"]')
-    expect(Number(await styleOf(idle, 'opacity'))).toBeCloseTo(0.55, 2)
-    expect(Number(await styleOf(gateNode, 'opacity'))).toBe(1)
+    await expectOpacity(idle, RECEDE_OPACITY, 'the idle card recedes to the token')
+    await expectOpacity(gateNode, 1, 'the card the run is waiting on stays present')
 
     /*
      * Criterion 3 says TWO levels, and naming two cards cannot show that there
@@ -133,17 +166,27 @@ test.describe('the idle recede', () => {
      * P-09): the empty quarantine card carried an `opacity: 0.6` of its own,
      * which is a third step-back nobody declared and which reads on the canvas
      * as a fourth node state. The whole SET is the assertion now.
+     *
+     * Polled, and read RAW rather than rounded, for the reason `expectOpacity`
+     * gives: a `toFixed(2)` collapses 0.5549 onto 0.55, which is a tolerance
+     * wearing a set's clothes. Waiting for the transitions to land is what
+     * makes the exact comparison available.
      */
-    const levels = await page.evaluate(() =>
-      [
-        ...new Set(
-          [...document.querySelectorAll('.workflow-node')].map((card) =>
-            Number(Number(window.getComputedStyle(card).opacity).toFixed(2)),
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            [
+              ...new Set(
+                [...document.querySelectorAll('.workflow-node')].map((card) =>
+                  Number(window.getComputedStyle(card).opacity),
+                ),
+              ),
+            ].sort((left, right) => left - right),
           ),
-        ),
-      ].sort((left, right) => left - right),
-    )
-    expect(levels, 'exactly the two levels criterion 3 names').toEqual([0.55, 1])
+        { message: 'exactly the two levels criterion 3 names' },
+      )
+      .toEqual([RECEDE_OPACITY, 1])
 
     await page.locator('.gate-card').getByRole('button', { name: /^Approve/ }).click()
     await expect(page.locator('.gate-card h2')).toHaveText('Review verdict', { timeout: 60_000 })
@@ -154,9 +197,13 @@ test.describe('the idle recede', () => {
     })
     // Every card, including the ones that never ran. A finished run is a
     // settled record, not a page with thirteen dimmed cards on it.
+    //
+    // Polled for the same reason as the recede itself, mirrored: the terminal
+    // frame LIFTS the recede, so these three cards are transitioning 0.55 -> 1
+    // at the moment `completed` appears in the canvas meta.
     for (const label of ['Reporter,', 'Scoper,', 'Market Analyst,']) {
       const card = page.locator(`.workflow-node[aria-label^="${label}"]`).first()
-      expect(Number(await styleOf(card, 'opacity'))).toBe(1)
+      await expectOpacity(card, 1, `${label} steps forward on the terminal frame`)
     }
   })
 })
@@ -278,17 +325,20 @@ test.describe('a failed node', () => {
       card.classList.add('is-error')
     })
     const errored = page.locator('.workflow-node.is-error').first()
-    // The card carries a `transition` on `box-shadow`, so reading it in the
-    // same turn as the class change reports the interpolation's first frame -
-    // measured, `rgba(0, 0, 0, 0) 0px 0px 0px 0px`, which reads exactly like a
-    // missing rule. Let it settle first.
-    await page.waitForTimeout(400)
     // An errored card never glows and never recedes: a pulsing error is noise,
     // and a receded one is a failure the eye skips.
+    //
+    // The card carries a `transition` on `box-shadow` (`node-card.css:68`), so
+    // reading it in the same turn as the class change reports the
+    // interpolation's first frame - measured, `rgba(0, 0, 0, 0) 0px 0px 0px
+    // 0px`, which reads exactly like a missing rule. This used to be a fixed
+    // 400ms sleep, which is a guess at a duration that is a token; polling
+    // waits for the value instead.
+    await expectOpacity(errored, 1, 'the errored card does not recede')
+    await expect
+      .poll(() => styleOf(errored, 'box-shadow'), { message: 'the static danger ring' })
+      .toContain('rgba(255, 82, 82')
     expect(await animationsOn(errored)).toEqual([])
-    expect(Number(await styleOf(errored, 'opacity'))).toBe(1)
-    const ring = await styleOf(errored, 'box-shadow')
-    expect(ring).toContain('rgba(255, 82, 82')
   })
 })
 
@@ -329,7 +379,12 @@ test.describe('reduced motion', () => {
     await expect(gateNode).toHaveCount(1, { timeout: 60_000 })
 
     const idle = page.locator('.workflow-node[aria-label^="Reporter,"]')
-    expect(Number(await styleOf(idle, 'opacity'))).toBeCloseTo(0.55, 2)
+    // Reduced motion drops the TRANSITION (`motion.css`'s reduced-motion
+    // block), so this one is not racing - but it is asserted the same way as
+    // its full-motion twin, because a reader comparing the two legs should see
+    // one claim made once, and `toBeCloseTo(0.55, 2)` was admitting a band the
+    // token does not have.
+    await expectOpacity(idle, RECEDE_OPACITY, 'the recede survives reduced motion')
     expect(await animationsOn(idle)).toEqual([])
     for (const card of await page.locator('.workflow-node').all()) {
       expect(await animationsOn(card)).toEqual([])

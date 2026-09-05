@@ -1,8 +1,10 @@
 # RV3 — verification report
 
-Six passes. **The sixth, at `2cea4b9`, is the current verdict**; the five before
-it are kept below under their own headings, because what each round fixed is
-only legible against what the previous pass found.
+Seven passes. **The seventh, at `f733833`, is a capture-only run whose one
+finding closes the sixth pass's one open observation**; the sixth, at `2cea4b9`,
+carries the current verdict table, and the five before it are kept below under
+their own headings, because what each round fixed is only legible against what
+the previous pass found.
 
 RV3 built none of this work and edited no product code. The one product-tree
 change RV3 is permitted is regenerating the PNGs under
@@ -14,6 +16,62 @@ fifth or sixth**, each named with a reason in
 `G1`, `G4`'s sheet and every `RC` row belong to other workers and are marked
 **NOT VERIFIED BY ME**. A missing artifact is recorded as **FAIL**, not as a
 pass with a note.
+
+---
+
+# SEVENTH PASS — `f733833`, 2026-09-05 (capture-only)
+
+One file changed since the sixth pass — `DialogueRail.vue`, +76/−14 — so this is
+a capture run and a single measurement, not a table. **Every sixth-pass verdict
+below stands**, with one row's supporting observation withdrawn.
+
+**The dialogue drawer now lands on its end. The sixth pass's observation is
+closed.** RV3 re-measured with a throwaway spec driving the *same* 119-event
+journey `cast.spec.ts:1183` drives — launch, two revises at the scope gate,
+approve, one revise at the verdict gate, approve, wait for terminal — then read
+the scroller three times across four seconds:
+
+| | sixth pass, `2cea4b9` | seventh pass, `f733833` |
+| --- | ---: | ---: |
+| `scrollTop` | 23 | **468** |
+| `scrollHeight` / `clientHeight` | 739 / 360 | 828 / 360 |
+| **distance to end** | **356 px** | **0 px** |
+| entries shown (badge says 8) | 6 | **8** |
+| `lastFullyVisible` | false | **true** |
+| `lastHasDetails` / `detailsVisible` | true / — | **true / true** |
+
+Identical at ~500 ms, ~2 s and ~4 s after the terminal frame, so it lands and
+stays landed rather than being caught mid-animation.
+
+`T2/trace-completed.png` and `S/long-run.png` agree with the numbers: the newest
+dialogue entry is the **Validation report writer's**, shown **whole** — "Reporter
+here. … with the shape of a real one." — with its `› Details` toggle beneath it.
+In the sixth pass the newest visible entry was the Synthesist's, cut mid-sentence
+at "…and I am" with its toggle clipped by the drawer's edge. *(The bare
+`› Details` still visible above the first trace row is the **trace list's** own
+scroll showing the tail of a row whose header is above the fold — a different
+scroller, and normal for a list scrolled to its bottom.)*
+
+**Also run at this head, so the `R/*` artifacts match it:**
+
+| | |
+| --- | --- |
+| `e2e/cast.spec.ts` | **10/10 passed, 2.1 m**, exit 0 — rewrote every T1/T2/T3/S capture |
+| Vitest | **93 files, 2010 tests, 0 failed**, exit 0 (round eight adds three) |
+| Types | `npx vue-tsc -b --force` — **exit 0**, no diagnostics |
+
+Not re-run and unchanged from the sixth pass: `cast-perf.spec.ts` (so **T2.8
+stays FAIL** on that measurement), the two visual specs, `npm run build`, the
+contrast script, the greps and diffs, and the Python suite. `R/playwright.txt`,
+`R/build.txt`, `R/baselines.md`, `R/diff-stat.txt`, `R/python.txt`,
+`T3/contrast*`, `T3/builder-visual.txt`, `T3/scope-order.txt`, `G2/grep.txt`,
+`T1/data-layer-diff.txt` and `T2/no-timers.txt` all carry their earlier pass and
+say which.
+
+**Tally unchanged: 25 PASS, 2 FAIL, 4 NOT VERIFIED BY ME.** What changed is not a
+verdict but the honesty of one: the sixth pass's "the round's own stated change
+is not visible in the evidence it produced" no longer applies, and the note is
+withdrawn rather than left standing.
 
 ---
 

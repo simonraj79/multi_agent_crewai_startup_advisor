@@ -1,21 +1,20 @@
 $ npx vitest run       # from frontend/
-# RV3 SIXTH PASS (targeted), branch run-shell/cast at a182ed6 (product source = 2cea4b9), 2026-09-05T19:43:28+08:00
+# RV3 SEVENTH PASS (capture-only), branch run-shell/cast at f733833, 2026-09-05T19:56:38+08:00
 # vitest exit code: 0
-# 93 files / 2007 tests, all passed.
-#   pass 5 at c2966e7: 93 / 1987    pass 4 at 8ae40ec: 93 / 1979
-#   pass 3 at 601baef: 93 / 1963    pass 2 at 16f3be5: 93 / 1936
-#   pass 1 at 27b256e: 92 / 1926
-# Round seven adds twenty tests and no spec file.
+# 93 files / 2010 tests, all passed.
+#   pass 6 at 2cea4b9: 93 / 2007    pass 5 at c2966e7: 93 / 1987
+#   pass 4 at 8ae40ec: 93 / 1979    pass 3 at 601baef: 93 / 1963
+#   pass 2 at 16f3be5: 93 / 1936    pass 1 at 27b256e: 92 / 1926
+# Round eight is one file - DialogueRail.vue - and three tests.
 
 
  RUN  v4.1.11 D:/MultiAgentSystem/frontend
 
 warning: in the working copy of 'docs/run-shell/evidence/G3/reload-map.json', LF will be replaced by CRLF the next time Git touches it
 warning: in the working copy of 'docs/run-shell/evidence/S/long-run.md', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'docs/run-shell/evidence/T2/perf.json', LF will be replaced by CRLF the next time Git touches it
 
  Test Files  93 passed (93)
-      Tests  2007 passed (2007)
-   Start at  19:41:33
-   Duration  8.78s (transform 36.69s, setup 0ms, import 69.21s, tests 39.06s, environment 117.86s)
+      Tests  2010 passed (2010)
+   Start at  19:55:53
+   Duration  10.61s (transform 47.40s, setup 0ms, import 86.86s, tests 46.19s, environment 129.21s)
 

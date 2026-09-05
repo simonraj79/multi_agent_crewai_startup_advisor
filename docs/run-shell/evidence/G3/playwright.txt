@@ -1,98 +1,58 @@
-$ npx playwright test e2e/cast.spec.ts e2e/studio.spec.ts       # from frontend/
-$ npx playwright test e2e/cast-perf.spec.ts                     # from frontend/, alone
-# RV3 SIXTH PASS (targeted), branch run-shell/cast at a182ed6 (product source = 2cea4b9)
-# cast + studio  exit 0   -  17 passed, 0 failed, 2.9m
-# cast-perf       exit 1   -   1 passed, 1 failed, 1.8m  (T2.8, by one drop at the median)
+$ npx playwright test e2e/cast.spec.ts       # from frontend/, capture-only run
+# RV3 SEVENTH PASS, branch run-shell/cast at f733833, 2026-09-05T19:56:39+08:00
+# exit code 0  -  10 passed, 0 failed, 2.1m
 #
-# Backend: SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099 with
-# CREDENTIALS_MASTER_KEY, BUILDER_ALLOW_GATELESS_GRAPHS=1,
-# RUN_RATE_LIMIT_MAX_RUNS=100, MCP_ALLOW_INSECURE_LOCAL=1, SKILLS_ROOT and the
-# six-mode SYNTHETIC_FAILURE. Every listener on 5273/5274/5275/8099/8791 was
-# hunted first and none existed, so Playwright started its own Vite from this
-# tree - reuseExistingServer had nothing to reuse.
+# Backend: the usual SYNTHETIC=1 line on :8099 with the six-mode
+# SYNTHETIC_FAILURE. Every listener on 5273/5274/5275/8099/8791 was hunted
+# first and none existed, so Playwright started its own Vite from this tree.
 #
-# G3, the criterion this file is named for, passes: cast.spec.ts:998 keeps the
-# same character across a page reload (15.6s), and G3/reload-map.json records
-# the node-to-seed map before and after.
+# Round eight is one file, DialogueRail.vue (+76/-14): the dialogue lands on
+# its end after the reveal grows it, and on a restored terminal run.
 #
-# T2.8's arms are in evidence/T2/perf.json and in RV3-REPORT.md section 2:
-# hidden median 4 (4,4,3), painted median 5 (5,6,4), addedDrops 1,
-# p95Delta 0.1ms against 4ms of headroom, idle floor 0, passes: false.
+# THE MEASUREMENT THAT MATTERS, and it is FIXED.
+#
+# The sixth pass reported that the dialogue drawer did NOT land at its end:
+# scrollTop 23 of 379 possible, 356px short, newest entry cut mid-sentence
+# with its Details toggle clipped, 6 entries shown against a badge of 8.
+#
+# RV3 re-measured at this head with a throwaway spec that drives the SAME
+# 119-event journey cast.spec.ts:1183 does - launch, two revises at the scope
+# gate, approve, one revise at the verdict gate, approve, wait for terminal -
+# then read the scroller three times over four seconds:
+#
+#   DIALOGUE@~500ms  {"selector":"[role=\"log\"]","scrollTop":468,"scrollHeight":828,
+#     "clientHeight":360,"distanceToEnd":0,"entries":8,"lastEntryTop":323,
+#     "lastEntryBottom":487,"scrollerTop":149,"scrollerBottom":509,
+#     "lastFullyVisible":true,"lastHasDetails":true,"detailsBottom":487,
+#     "detailsVisible":true}
+#   DIALOGUE@~2000ms  identical
+#   DIALOGUE@~4000ms  identical
+#
+#   distanceToEnd 0 - the list is AT its end, and stays there.
+#   entries 8 - matching the drawer's own badge, where the sixth pass showed 6.
+#   lastFullyVisible true and detailsVisible true - the newest entry is whole
+#   and its Details toggle is inside the scroller, not clipped by it.
+#
+# T2/trace-completed.png and S/long-run.png agree: the newest entry is the
+# Validation report writer's, whole, ending '...with the shape of a real one.'
+# with its Details toggle beneath it.
 
-==================== cast.spec.ts + studio.spec.ts ====================
 [WebServer] (!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
 [WebServer]   - import "./syntheticUser" without a file extension (e2e/vite.e2e.config.ts:4:57). Add the file extension
 [WebServer] Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
 
-Running 17 tests using 1 worker
+Running 10 tests using 1 worker
 
-  ✓   1 [chromium] › e2e\cast.spec.ts:727:3 › the cast at rest › S1: every character is idle before a run, and the shell is not blank (800ms)
-  ✓   2 [chromium] › e2e\cast.spec.ts:764:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch (18.2s)
-  ✓   3 [chromium] › e2e\cast.spec.ts:907:3 › the graph and the trace show the same cast › T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state @launch (2.9s)
-  ✓   4 [chromium] › e2e\cast.spec.ts:998:3 › the character on a node is deterministic › G3: the same node keeps the same character across a page reload @launch (15.6s)
-  ✓   5 [chromium] › e2e\cast.spec.ts:1062:3 › motion stays quiet › T2.7: nothing animates offscreen and no more than twelve character animations run at once @launch (2.8s)
-  ✓   6 [chromium] › e2e\cast.spec.ts:1101:3 › motion stays quiet › T2.7/S5: reduced motion stops every part and keeps every state @launch (15.4s)
-  ✓   7 [chromium] › e2e\cast.spec.ts:1183:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch (34.9s)
-  ✓   8 [chromium] › e2e\cast.spec.ts:1682:3 › the report names what decided the run › T1.1: a verdict an override decided is captured with its block, its dimension and its score @launch (6.7s)
-  ✓   9 [chromium] › e2e\cast.spec.ts:1867:3 › the shell at 390x844 › S6: a run drives and finishes at 390px, and nothing overflows sideways @launch (18.3s)
-  ✓  10 [chromium] › e2e\cast.spec.ts:2095:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch (4.2s)
-  ✓  11 [chromium] › e2e\studio.spec.ts:143:3 › Validator Studio › renders the fixed validator topology (564ms)
-  ✓  12 [chromium] › e2e\studio.spec.ts:181:3 › Validator Studio › reports the live backend instead of falling back to the mock transport (512ms)
-  ✓  13 [chromium] › e2e\studio.spec.ts:204:3 › Validator Studio › runs the full operator journey through both gates to completion @launch (16.6s)
-  ✓  14 [chromium] › e2e\studio.spec.ts:339:3 › Validator Studio › marks the paused gate node Waiting while a human is being asked @launch (793ms)
-  ✓  15 [chromium] › e2e\studio.spec.ts:360:3 › Validator Studio › presents every verdict value as read-only and leaves only feedback editable @launch (16.4s)
-  ✓  16 [chromium] › e2e\studio.spec.ts:434:3 › Validator Studio › accepts a Revise reply at the scope gate and keeps the run going @launch (1.0s)
-  ✓  17 [chromium] › e2e\studio.spec.ts:484:3 › Validator Studio › recovers an in-flight run across a page reload @launch (16.6s)
+  ✓   1 [chromium] › e2e\cast.spec.ts:727:3 › the cast at rest › S1: every character is idle before a run, and the shell is not blank (833ms)
+  ✓   2 [chromium] › e2e\cast.spec.ts:764:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch (18.7s)
+  ✓   3 [chromium] › e2e\cast.spec.ts:907:3 › the graph and the trace show the same cast › T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state @launch (3.0s)
+  ✓   4 [chromium] › e2e\cast.spec.ts:998:3 › the character on a node is deterministic › G3: the same node keeps the same character across a page reload @launch (15.8s)
+  ✓   5 [chromium] › e2e\cast.spec.ts:1062:3 › motion stays quiet › T2.7: nothing animates offscreen and no more than twelve character animations run at once @launch (3.1s)
+  ✓   6 [chromium] › e2e\cast.spec.ts:1101:3 › motion stays quiet › T2.7/S5: reduced motion stops every part and keeps every state @launch (15.5s)
+  ✓   7 [chromium] › e2e\cast.spec.ts:1183:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch (35.3s)
+  ✓   8 [chromium] › e2e\cast.spec.ts:1682:3 › the report names what decided the run › T1.1: a verdict an override decided is captured with its block, its dimension and its score @launch (7.0s)
+  ✓   9 [chromium] › e2e\cast.spec.ts:1867:3 › the shell at 390x844 › S6: a run drives and finishes at 390px, and nothing overflows sideways @launch (18.6s)
+  ✓  10 [chromium] › e2e\cast.spec.ts:2095:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch (5.3s)
 
-  17 passed (2.9m)
+  10 passed (2.1m)
 EXIT=0
-
-==================== cast-perf.spec.ts, alone ====================
-[WebServer] (!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
-[WebServer]   - import "./syntheticUser" without a file extension (e2e/vite.e2e.config.ts:4:57). Add the file extension
-[WebServer] Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
-
-Running 2 tests using 1 worker
-
-  ✓  1 [chromium] › e2e\cast-perf.spec.ts:400:3 › T2.8 — frame budget › a real synthetic run is measured end to end and its numbers are recorded @launch (21.7s)
-  ✘  2 [chromium] › e2e\cast-perf.spec.ts:550:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch (1.4m)
-
-
-  1) [chromium] › e2e\cast-perf.spec.ts:550:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch 
-
-    Error: painting the console added 1 dropped frames at the median: 5 painted (samples 5, 6, 4) against 4 hidden (samples 4, 4, 3). Idle floor: 0. See D:\MultiAgentSystem\docs\run-shell\evidence\T2\perf.json.
-
-    expect(received).toBeLessThanOrEqual(expected)
-
-    Expected: <= 4
-    Received:    5
-
-      988 |           `${hidden.over34ms} hidden (samples ${drops(hiddenSamples)}). Idle floor: ` +
-      989 |           `${(arms.idle as { over34ms: number }).over34ms}. See ${PERF_JSON}.`,
-    > 990 |       ).toBeLessThanOrEqual(hidden.over34ms)
-          |         ^
-      991 |       expect(
-      992 |         painted.p95,
-      993 |         `painting the console cost ${p95Delta}ms of p95 at the median: ${painted.p95}ms painted ` +
-        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:990:9
-
-    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\test-failed-1.png
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    Error Context: test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\error-context.md
-
-    Error Context: test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\error-context.md
-
-    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\trace.zip
-    Usage:
-
-        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-fa72b-ommitted-frames-are-applied-chromium\trace.zip
-
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-  1 failed
-    [chromium] › e2e\cast-perf.spec.ts:550:3 › T2.8 — frame budget › the console adds no dropped frames of its own while 131 committed frames are applied @launch 
-  1 passed (1.8m)
-EXIT=1

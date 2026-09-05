@@ -1,0 +1,100 @@
+{
+ "generated_at": "2026-09-05T22:45:26Z",
+ "window": {
+  "startTime": "2026-09-05T19:39Z",
+  "endTime": "2026-09-05T22:45Z",
+  "hours": 3,
+  "note": "the same 3-hour window as the Render log pull"
+ },
+ "auth_key": {
+  "endpoint": "GET https://openrouter.ai/api/v1/auth/key",
+  "http_status": 200,
+  "key": "the app key (MultiAgentCrewAI), read from os.environ; no value printed or written",
+  "data": {
+   "label": "<redacted - a masked key label, still key-shaped>",
+   "is_management_key": false,
+   "is_provisioning_key": false,
+   "limit": null,
+   "limit_reset": null,
+   "limit_remaining": null,
+   "include_byok_in_limit": false,
+   "usage": 1.398751608,
+   "usage_daily": 0.55830553,
+   "usage_weekly": 1.083945958,
+   "usage_monthly": 1.083945958,
+   "byok_usage": 0,
+   "byok_usage_daily": 0,
+   "byok_usage_weekly": 0,
+   "byok_usage_monthly": 0,
+   "is_free_tier": false,
+   "expires_at": null,
+   "rate_limit": {
+    "requests": -1,
+    "interval": "10s",
+    "note": "This field is deprecated and safe to ignore."
+   }
+  },
+  "reading": "usage/usage_daily are ACCOUNT-KEY totals, not a 3-hour figure. usage_daily is the UTC day 2026-09-05, which also contains the four local proof runs earlier today. limit is null (no cap set on this key) and rate_limit.requests is -1, which OpenRouter's own response marks deprecated."
+ },
+ "activity": {
+  "endpoint": "GET https://openrouter.ai/api/v1/activity (management key)",
+  "http_status": 200,
+  "rows_returned": 272,
+  "granularity": "ONE ROW PER (UTC day, model, endpoint). There is no hour-level activity endpoint.",
+  "current_utc_day": {
+   "requested": "2026-09-05",
+   "http_status": 400,
+   "error": "{\"error\":{\"message\":\"Date must be within the last 30 (completed) UTC days\",\"code\":400}}",
+   "meaning": "the current UTC day cannot be queried - \"Date must be within the last 30 (completed) UTC days\" - so /activity CANNOT answer for this window at all. The per-generation reconciliation below is the substitute, and it is stricter."
+  },
+  "daily_totals_last_5_completed_days": {
+   "2026-08-30": {
+    "requests": 57,
+    "usage": 0.17591600000000002
+   },
+   "2026-09-01": {
+    "requests": 3783,
+    "usage": 2.1655189999999993
+   },
+   "2026-09-02": {
+    "requests": 3188,
+    "usage": 1.9318019999999998
+   },
+   "2026-09-03": {
+    "requests": 6093,
+    "usage": 5.309279000000001
+   },
+   "2026-09-04": {
+    "requests": 624,
+    "usage": 0.10178499999999999
+   }
+  }
+ },
+ "window_generations_via_per_generation_lookup": {
+  "method": "every GENERATION observation on the production trace carries metadata.response_id; each was resolved with GET https://openrouter.ai/api/v1/generation?id=<id> using the app key",
+  "generations": 12,
+  "lookups_that_failed": 0,
+  "total_cost_usd": 0.08794491,
+  "created_at_first": "2026-09-05T22:33:09.882Z",
+  "created_at_last": "2026-09-05T22:33:50.9Z",
+  "models": {
+   "google/gemini-3.8-flash-20260902": 5,
+   "google/gemini-3.5-flash-lite-20260721": 7
+  },
+  "providers": {
+   "Google AI Studio": 11,
+   "Google": 1
+  },
+  "langfuse_vs_openrouter_cost_mismatches": 0,
+  "reading": "12 generations, all inside the window and all inside the run. OpenRouter's own total_cost sums to the same figure Langfuse carries, to the cent and beyond."
+ },
+ "credits": {
+  "tool": "mcp__openrouter__get-credits",
+  "balance": "DELIBERATELY NOT RECORDED - repo rule; re-measure rather than quote",
+  "delta_vs_docs": {
+   "reference": "CLAUDE.md, the 2026-09-04 balance figure",
+   "delta_usd": -0.9157,
+   "reading": "0.9157 USD spent across the whole programme since that figure was taken"
+  }
+ }
+}

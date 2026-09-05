@@ -1,0 +1,46 @@
+[
+ {
+  "path": "/readyz",
+  "status": 200,
+  "body": {
+   "status": "ok",
+   "dependencies": {
+    "executor": {
+     "status": "ok",
+     "backend": null,
+     "workers": 1
+    },
+    "storage": {
+     "status": "ok",
+     "backend": "postgresql",
+     "workers": null
+    }
+   },
+   "gates": {
+    "open": 1,
+    "expired": 1,
+    "alerting": 1,
+    "expiries": 0,
+    "alerts": 0,
+    "sweeps": 44
+   },
+   "observability": {
+    "exporter": "enabled",
+    "reason": null,
+    "environment": "live",
+    "capture_content": false,
+    "resolve_billed_cost": true
+   }
+  }
+ },
+ {
+  "path": "/api/runs/40a9c597-0613-4a4f-9ce1-3d9252410445",
+  "status": 401,
+  "body": "{\"detail\":\"sign in to use this endpoint\"}"
+ },
+ {
+  "path": "/api/runs/40a9c597-0613-4a4f-9ce1-3d9252410445/frames?format=ndjson",
+  "status": 401,
+  "body": "{\"detail\":\"sign in to use this endpoint\"}"
+ }
+]

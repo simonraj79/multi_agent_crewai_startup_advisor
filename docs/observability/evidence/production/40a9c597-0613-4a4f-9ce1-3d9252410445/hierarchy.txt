@@ -1,0 +1,89 @@
+TRACE 40a9c59706134a4f9ce13d9252410445  name=idea-validator  session=40a9c597-0613-4a4f-9ce1-3d9252410445
+  roots (parentObservationId null): 1
+  - SPAN/run run
+    - SPAN/node scope_idea
+      - EVENT/event AGENT_CALL  [OPEN]
+      - SPAN/task scoping_task  (task=scoping_task)
+        - EVENT/event AGENT_CALL  [OPEN]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - AGENT/agent Startup validation scoper  (agent=Startup validation scoper task=scoping_task)
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Startup validation scoper task=scoping_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+      - EVENT/event AGENT_CALL  [OPEN]
+    - SPAN/node confirm_scope
+    - SPAN/node route_scope
+    - SPAN/node research_market
+      - EVENT/event AGENT_CALL  [OPEN]
+      - SPAN/task market_task  (task=market_task)
+        - EVENT/event AGENT_CALL  [OPEN]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - AGENT/agent Market evidence analyst  (agent=Market evidence analyst task=market_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Market evidence analyst task=market_task)
+          - TOOL/tool research_market_landscape  (agent=Market evidence analyst task=market_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Market evidence analyst task=market_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Market evidence analyst task=market_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+      - EVENT/event AGENT_CALL  [OPEN]
+    - SPAN/node research_sentiment
+      - EVENT/event AGENT_CALL  [OPEN]
+      - SPAN/task sentiment_task  (task=sentiment_task)
+        - EVENT/event AGENT_CALL  [OPEN]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - AGENT/agent Community demand analyst  (agent=Community demand analyst task=sentiment_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Community demand analyst task=sentiment_task)
+          - TOOL/tool analyze_community_sentiment  (agent=Community demand analyst task=sentiment_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Community demand analyst task=sentiment_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+      - EVENT/event AGENT_CALL  [OPEN]
+    - SPAN/node research_feasibility
+      - EVENT/event AGENT_CALL  [OPEN]
+      - SPAN/task feasibility_task  (task=feasibility_task)
+        - EVENT/event AGENT_CALL  [OPEN]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - AGENT/agent Technical feasibility analyst  (agent=Technical feasibility analyst task=feasibility_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Technical feasibility analyst task=feasibility_task)
+          - TOOL/tool assess_technical_feasibility  (agent=Technical feasibility analyst task=feasibility_task)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Technical feasibility analyst task=feasibility_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+      - EVENT/event AGENT_CALL  [OPEN]
+    - SPAN/node synthesize
+      - EVENT/event AGENT_CALL  [OPEN]
+      - SPAN/task synthesis_task  (task=synthesis_task)
+        - EVENT/event AGENT_CALL  [OPEN]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - AGENT/agent Startup validation synthesist  (agent=Startup validation synthesist task=synthesis_task)
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Startup validation synthesist task=synthesis_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+      - EVENT/event AGENT_CALL  [OPEN]
+    - SPAN/node review_verdict
+    - SPAN/node route_verdict
+    - SPAN/node write_report
+      - EVENT/event AGENT_CALL  [OPEN]
+      - SPAN/task reporting_task  (task=reporting_task)  [ERROR]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - AGENT/agent Validation report writer  (agent=Validation report writer task=reporting_task)  [ERROR]
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Validation report writer task=reporting_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Validation report writer task=reporting_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+          - GENERATION/generation google/gemini-3.8-flash  (agent=Validation report writer task=reporting_task)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+      - EVENT/event AGENT_CALL  [ERROR]  [OPEN]
+    - SPAN/node persist

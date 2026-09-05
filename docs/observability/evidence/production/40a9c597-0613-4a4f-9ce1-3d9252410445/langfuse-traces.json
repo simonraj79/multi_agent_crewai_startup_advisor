@@ -1,0 +1,126 @@
+[
+  {
+    "id": "40a9c59706134a4f9ce13d9252410445",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "name": "idea-validator",
+    "timestamp": "2026-09-05T22:33:07.966Z",
+    "environment": "live",
+    "tags": [
+      "gates:auto",
+      "idea-validator",
+      "mode:run"
+    ],
+    "bookmarked": false,
+    "release": "7f8189d12ab9ede10a8825254d0455bfce5d187d",
+    "version": null,
+    "userId": "gkHdcQ0SRsnaVDWkCXD24AVvJ5vaFVVL",
+    "sessionId": "40a9c597-0613-4a4f-9ce1-3d9252410445",
+    "public": false,
+    "input": {
+      "input_chars": 73,
+      "input_fingerprint": "a2899d84a9e87754de8d40978d2dd011d992d072ca6f17bb219b5b77a1a92546",
+      "input_keys": [
+        "idea",
+        "no_gates"
+      ]
+    },
+    "output": {
+      "status": "completed",
+      "reason": null,
+      "error_class": null
+    },
+    "metadata": {
+      "run_id": "40a9c597-0613-4a4f-9ce1-3d9252410445",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "WORKFLOW_START",
+      "frame_ts": "2026-09-05T22:33:07.965Z",
+      "null_fields": "agent_role,task_name",
+      "workflow_id": "idea-validator",
+      "app_session_id": "cc0ecd32-6916-4a66-b63e-54d4bb6717b4",
+      "gates": "auto",
+      "mode": "run",
+      "synthetic": false,
+      "user_id": "gkHdcQ0SRsnaVDWkCXD24AVvJ5vaFVVL",
+      "graph_version": "9c6ca8a6fefbfffd",
+      "observation_role": "run",
+      "computed_result": {
+        "verdict": "REJECT",
+        "composite_score": 3.8,
+        "confidence": 0.42,
+        "confidence_band": {
+          "chars": 8,
+          "sha256": "b9b394371b969a9e492cc66098ca567b5bece5c88bdea569a1146120ab770f7f"
+        },
+        "provisional": true,
+        "fatal_floors": [
+          {
+            "chars": 15,
+            "sha256": "fbfb427faf389ad4a0672fa44520d7d42eb3cb5780aaea1a33e218f2bb2dc573"
+          }
+        ],
+        "decision_reason": "FLOOR_NO_MARKET",
+        "dimensions": {
+          "demand": 2,
+          "market": 0,
+          "competitive_room": 2,
+          "feasibility": 3,
+          "headroom_over_free": 3
+        },
+        "anchor_margins": {
+          "D": 1,
+          "M": 1,
+          "C": 1,
+          "F": 1,
+          "X": 1
+        }
+      },
+      "run_metrics": {
+        "reason": "run_completed",
+        "usage": {
+          "successful_requests": 12,
+          "prompt_tokens": 48908,
+          "completion_tokens": 14124,
+          "total_tokens": 63032,
+          "call_count": 12,
+          "elapsed_ms": 42454,
+          "cost_usd": 0.07775795
+        },
+        "frames": {
+          "captured": 180,
+          "dropped": 0,
+          "gaps": 0,
+          "emit_errors": 0,
+          "subscriber_dropped": 0,
+          "unattributed": 0
+        },
+        "source": "app-snapshot"
+      },
+      "unhandled_event_counts": {
+        "hook_dispatched": 29,
+        "agent_logs_started": 9,
+        "default_env": 1,
+        "flow_created": 1
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "langfuse.release": "7f8189d12ab9ede10a8825254d0455bfce5d187d",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "createdAt": "2026-09-05T22:33:35.000Z",
+    "updatedAt": "2026-09-05T22:34:29.566Z",
+    "externalId": null
+  }
+]

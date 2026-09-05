@@ -1,0 +1,73 @@
+{
+ "source": "https://agentic-crew-ai-api.onrender.com",
+ "probed_at": "2026-09-05T22:44:53Z",
+ "note": "Unauthenticated GETs. exporter_state omits the base URL and both Langfuse keys by construction (observability/__init__.py).",
+ "probes": {
+  "/readyz": {
+   "http_status": 200,
+   "body": {
+    "status": "ok",
+    "dependencies": {
+     "executor": {
+      "status": "ok",
+      "backend": null,
+      "workers": 1
+     },
+     "storage": {
+      "status": "ok",
+      "backend": "postgresql",
+      "workers": null
+     }
+    },
+    "gates": {
+     "open": 1,
+     "expired": 1,
+     "alerting": 1,
+     "expiries": 0,
+     "alerts": 0,
+     "sweeps": 53
+    },
+    "observability": {
+     "exporter": "enabled",
+     "reason": null,
+     "environment": "live",
+     "capture_content": false,
+     "resolve_billed_cost": true
+    }
+   }
+  },
+  "/healthz": {
+   "http_status": 200,
+   "body": {
+    "status": "ok",
+    "dependencies": {
+     "executor": {
+      "status": "ok",
+      "backend": null,
+      "workers": 1
+     },
+     "storage": {
+      "status": "ok",
+      "backend": "postgresql",
+      "workers": null
+     }
+    },
+    "gates": {
+     "open": 1,
+     "expired": 1,
+     "alerting": 1,
+     "expiries": 0,
+     "alerts": 0,
+     "sweeps": 53
+    }
+   }
+  }
+ },
+ "checks": {
+  "observability.exporter == enabled": true,
+  "observability.environment == live": true,
+  "observability.capture_content == false": true,
+  "observability.resolve_billed_cost == true": true,
+  "healthz storage.backend == postgresql": true
+ }
+}

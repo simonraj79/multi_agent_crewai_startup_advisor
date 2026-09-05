@@ -1,0 +1,19 @@
+{
+ "window": {
+  "from": "2026-09-05T22:23:07.966000Z",
+  "to": "2026-09-05T22:43:57.901000Z"
+ },
+ "traces": [
+  {
+   "id": "40a9c59706134a4f9ce13d9252410445",
+   "ts": "2026-09-05T22:33:07.966Z",
+   "name": "idea-validator",
+   "sessionId": "40a9c597-0613-4a4f-9ce1-3d9252410445",
+   "environment": "live",
+   "userId": "gkHdcQ0SRsnaVDWkCXD24AVvJ5vaFVVL",
+   "has_openrouter_api_key_name": false,
+   "is_this_run": true
+  }
+ ],
+ "e1c_count": 0
+}

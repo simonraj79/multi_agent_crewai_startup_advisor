@@ -225,10 +225,20 @@ const logFormat = ref<LogFormat>('ndjson')
 
     <div class="panel-section control-section compact-section">
       <span class="control-label panel-kicker">WORKFLOW</span>
+      <!--
+        The `M2` chip that used to sit here was the PRODUCT's build mark, and
+        it is still in the header two inches above. Inside a well labelled
+        WORKFLOW, beside a workflow's name, it read as that workflow's version -
+        so a published graph called "News to social post" was labelled M2, which
+        is a version it does not have and a claim nothing on the page could
+        check. A graph an author drew has a real version (`v1`, `v2`), and this
+        panel is not passed one; asserting the wrong number is worse than
+        asserting none, so the chip goes and the build mark stays where it is
+        true.
+      -->
       <div class="read-only-well panel-well">
         <GitBranch :size="15" aria-hidden="true" />
         <span class="workflow-title">{{ workflowName }}</span>
-        <span class="version">M2</span>
       </div>
     </div>
 
@@ -253,8 +263,15 @@ const logFormat = ref<LogFormat>('ndjson')
         </button>
       </div>
       <p class="control-hint">
+        <!--
+          "at every human gate", not "at the scope and verdict gates". Those two
+          are the Idea Validator's gates and nothing else's - this panel also
+          drives a graph somebody drew, whose gates are named whatever they
+          named them, and there may be one or five. A sentence that lists
+          another workflow's checkpoints is wrong on every workflow but one.
+        -->
         <template v-if="gatesMode === 'human'">
-          Pauses for you at the scope and verdict gates.
+          Pauses for you at every human gate.
         </template>
         <template v-else>
           Runs the whole pipeline without stopping. Costs more, and the
@@ -399,7 +416,7 @@ const logFormat = ref<LogFormat>('ndjson')
 .compact-section { padding-block: var(--space-5); }
 .control-label { display: block; margin-bottom: var(--space-3); }
 textarea { display: block; width: 100%; min-height: 104px; resize: vertical; padding: var(--space-4); color: var(--text-body); font: var(--type-body); border-radius: var(--r-lg); outline: 0; }
-textarea:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
+textarea:focus { border-color: var(--on-accent-cyan); box-shadow: var(--glow-input); }
 textarea:disabled { cursor: not-allowed; opacity: 0.64; }
 .field-meta { display: block; margin-top: var(--space-2); color: var(--text-meta); font: var(--type-meta); text-align: right; }
 /* The counter only raises its voice near the ceiling, because `maxlength` is a
@@ -412,7 +429,9 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
    rail. Ellipsis rather than wrap, so the panel's height does not change with
    the length of somebody's title. */
 .read-only-well .workflow-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.read-only-well .version { flex: 0 0 auto;  margin-left: auto; color: var(--on-accent-cyan); font: var(--type-kicker); }
+/* `.read-only-well .version` was here and is gone with the element it styled -
+   see the comment in the template. A rule for a class nothing renders is the
+   thing that makes the next person believe the element still exists. */
 .status-line { display: flex; align-items: center; justify-content: space-between; }
 .status-line .control-label { margin: 0; }
 .status-badge { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font: var(--type-meta); }

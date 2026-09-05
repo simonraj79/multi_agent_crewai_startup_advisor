@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { reviseGate } from './gateReply'
 
 /**
  * The cast, in a real browser — `docs/run-shell/DEFINITION-OF-DONE.md`
@@ -270,7 +271,17 @@ async function launchRun(page: Page, idea: string): Promise<void> {
   if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
   await expect(review).toHaveAttribute('aria-pressed', 'true')
 
-  await page.locator('#idea').fill(idea)
+  /*
+   * `textarea#idea`, and the tag is load-bearing.
+   *
+   * `#idea` alone resolved to TWO elements in S4 and failed on strict mode: the
+   * idea box, and a workflow node card whose Vue Flow node id is also `idea`
+   * (`WorkflowNode.vue` sets no `inheritAttrs: false`, so the id falls through
+   * to the article). A published graph is free to name a node anything, so this
+   * is not a quirk of one fixture — qualifying by tag is the fix that holds for
+   * every graph an author might draw.
+   */
+  await page.locator('textarea#idea').fill(idea)
   await expect(launchButton(page)).toBeEnabled()
 
   const limited = page.locator('[role="alert"]').filter({ hasText: /too many runs/i })
@@ -297,47 +308,28 @@ async function approveGate(page: Page): Promise<void> {
   await gateCard(page).getByRole('button', { name: /^Approve/ }).click()
 }
 
+/**
+ * Wait for the run to finish, keyed on the RAW status rather than on the word.
+ *
+ * This read `/completed/i` until T1 renamed the chip's copy to "Finished", and
+ * a spec that has to be edited every time a label is reworded is guarding the
+ * copy instead of the state. `data-status` exists on the chip for exactly this
+ * reader — it carries the raw status beside the human word — and `statusValue`
+ * still falls back to the text for a build that predates it.
+ */
 async function waitForCompletion(page: Page): Promise<void> {
-  await expect(statusBadge(page)).toHaveText(/finished/i, { timeout: 90_000 })
+  await expect
+    .poll(() => statusValue(page), {
+      timeout: 90_000,
+      message: 'the run never reached its terminal state',
+    })
+    .toMatch(/^(completed|finished)$/)
 }
 
 /** `seq N` off the stream line — the client's high-water mark of frames. */
 async function readSequence(page: Page): Promise<number> {
   const text = await page.locator('.status-panel .stream-line').innerText()
   return Number(/seq\s+(\d+)/.exec(text)?.[1] ?? -1)
-}
-
-/**
- * Send one gate back for a revision and wait for the SAME gate to re-open.
- *
- * The wait is on the card DETACHING first, and that ordering is not tidiness.
- * `waitForGate` only asserts the heading, which never changed — so polling it
- * straight after the click would pass against the card that is still on screen
- * unanswered, and the Approve that follows would land on a gate already replied
- * to and take a 409. `pendingGate` is nulled by `gate_closed`, which unmounts
- * the card, so its absence is the one unambiguous "the reply was taken".
- *
- * The feedback note is located as `form textarea` rather than by its label: the
- * scope gate offers five fields of which feedback is the only textarea, and the
- * verdict gate prunes every field but that one. One selector, both gates, no
- * dependence on the copy.
- */
-async function reviseGate(page: Page, title: string, note: string): Promise<void> {
-  const before = await readSequence(page)
-  await gateCard(page).locator('form textarea').first().fill(note)
-  await gateCard(page).getByRole('button', { name: /^Revise/ }).click()
-
-  await expect(gateCard(page), `the ${title} gate did not take the Revise reply`).toHaveCount(0, {
-    timeout: 60_000,
-  })
-  await waitForGate(page, title)
-  await expect
-    .poll(() => readSequence(page), {
-      timeout: 60_000,
-      message: 'a revise turn produced no new frames',
-    })
-    .toBeGreaterThan(before)
-  await expect(gateCard(page).getByRole('button', { name: /^Approve/ })).toBeEnabled()
 }
 
 /** Launch, approve both durable gates, and come back when the run is finished. */
@@ -563,22 +555,40 @@ test.describe('the states a character passes through', () => {
        * S2's two seconds are measured from the click, and both halves are
        * asserted before the capture so a slow first paint fails HERE rather
        * than leaving a capture that looks fine and a criterion nobody checked.
+       *
+       * "A LIVE CHARACTER", not "a working one", and the difference was measured
+       * rather than argued. This asserted `working` first and failed in two
+       * independent full runs with the branch delay set — because on the
+       * validator the scope node completes in milliseconds and the run parks at
+       * the scope gate, so nothing is `is-running` at ALL until a human answers.
+       * A verifier waited 90 s after Launch and never saw one, then saw one
+       * immediately after Approve. `SYNTHETIC_BRANCH_DELAY_SECONDS` delays the
+       * three research BRANCHES, which are downstream of a gate this criterion's
+       * two seconds never reach.
+       *
+       * So the premise was wrong, not the product. S2 asks whether the console
+       * says something is happening within two seconds of a click, and every
+       * pose except `idle` says that: `working` and `speaking` are the crew at
+       * it, `blocked` is the gate asking, `done` is a node already finished.
+       * `idle` is the only one that means "nothing has started", which is the
+       * state this is here to rule out.
        */
       const deadline = Date.now() + 2_000
       await expect
         .poll(
-          async () => (await liveCharacters(page)).length,
+          async () => (await startedCharacters(page)).length,
           {
             timeout: 2_000,
             message:
-              'no character reached `working` within 2s of Launch (S2). If every branch ' +
-              'finished instantly, start the backend with SYNTHETIC_BRANCH_DELAY_SECONDS=5.',
+              'no character left `idle` within 2s of Launch (S2): two seconds after the click ' +
+              'the canvas still says nothing has started.',
           },
         )
         .toBeGreaterThan(0)
       await expect(traceRows(page).first()).toBeVisible({
         timeout: Math.max(250, deadline - Date.now()),
       })
+      await expect(traceLines(page).first()).toBeVisible()
       await shot(page, 'S', 'first-run.png')
 
       /*
@@ -648,6 +658,18 @@ test.describe('the states a character passes through', () => {
     },
   )
 })
+
+/**
+ * The node ids whose character has left `idle` — the run has visibly begun.
+ *
+ * Broader than `liveCharacters` on purpose; S2's comment says why.
+ */
+async function startedCharacters(page: Page): Promise<string[]> {
+  const cast = await graphCast(page)
+  return Object.entries(cast)
+    .filter(([, node]) => node.state !== '' && node.state !== 'idle')
+    .map(([id]) => id)
+}
 
 /** The node ids whose character is currently working or speaking. */
 async function liveCharacters(page: Page): Promise<string[]> {

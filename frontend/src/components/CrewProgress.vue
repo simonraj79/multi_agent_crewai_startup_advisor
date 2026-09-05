@@ -536,7 +536,7 @@ const ariaSummary = computed(() => {
   text-overflow: ellipsis;
 }
 .crew-count { margin-left: auto; color: var(--text-muted); font: 600 var(--fs-11)/1 var(--font-mono); }
-.crew-progress.is-stalled .crew-headline { color: var(--warn-text); }
+.crew-progress.is-stalled .crew-headline { color: var(--warn-text-strong); }
 .crew-progress.is-foundered .crew-headline { color: var(--err-text); }
 
 /* Top padding reserves the lane the boat rows in. It must clear the stage
@@ -578,7 +578,7 @@ const ariaSummary = computed(() => {
   box-shadow: var(--shadow-overlay);
 }
 
-.crew-medallion.is-waiting { box-shadow: 0 0 0 2px var(--warn-border), var(--shadow-overlay); }
+.crew-medallion.is-waiting { box-shadow: 0 0 0 2px var(--warn-border-strong), var(--shadow-overlay); }
 
 .crew-river {
   position: absolute;
@@ -613,7 +613,7 @@ const ariaSummary = computed(() => {
   width: 22px;
   height: 22px;
   place-items: center;
-  color: var(--text-40);
+  color: var(--text-meta);
   font: 700 var(--fs-11)/1 var(--font-mono);
   background: var(--bg-node);
   border: 1px solid var(--border-default);
@@ -623,11 +623,11 @@ const ariaSummary = computed(() => {
 .crew-tick { width: 13px; height: 13px; }
 
 .crew-stage.is-completed .crew-marker { color: var(--ink-on-brand); background: var(--accent-mint); border-color: var(--accent-mint); }
-.crew-stage.is-running .crew-marker { color: var(--accent-cyan); border-color: var(--accent-cyan); }
-.crew-stage.is-waiting .crew-marker { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
-.crew-stage.is-error .crew-marker { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); }
+.crew-stage.is-running .crew-marker { color: var(--on-accent-cyan); border-color: var(--on-accent-cyan); }
+.crew-stage.is-waiting .crew-marker { color: var(--warn-text-strong); background: var(--warn-bg); border-color: var(--warn-border-strong); }
+.crew-stage.is-error .crew-marker { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border-strong); }
 
-.crew-label { color: var(--text-40); font: 600 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.03em; }
+.crew-label { color: var(--text-meta); font: 600 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.03em; }
 .crew-stage.is-current .crew-label { color: var(--text-title); }
 .crew-stage.is-completed .crew-label { color: var(--text-muted); }
 
@@ -642,9 +642,13 @@ const ariaSummary = computed(() => {
   border-radius: 50%;
   transition: background var(--motion-fast) ease;
 }
-.crew-branches i.is-completed { background: var(--accent-mint); }
-.crew-branches i.is-running { background: var(--accent-cyan); animation: pip-pulse 1.4s ease-in-out infinite; }
-.crew-branches i.is-waiting { background: var(--warn-text); }
+/* `--on-accent-*` and not the accent itself, because a 5px dot IS the
+   information: WCAG 1.4.11 asks 3.0 of it and the shared pastels measure
+   1.02-1.14 on paper. In the dark theme these tokens ARE the accents, so the
+   pips a reader of the dark console sees are unchanged. */
+.crew-branches i.is-completed { background: var(--on-accent-mint); }
+.crew-branches i.is-running { background: var(--on-accent-cyan); animation: pip-pulse 1.4s ease-in-out infinite; }
+.crew-branches i.is-waiting { background: var(--warn-text-strong); }
 .crew-branches i.is-error { background: var(--err-text); }
 
 @keyframes pip-pulse {
@@ -658,10 +662,10 @@ const ariaSummary = computed(() => {
 .crew-stage-lap {
   margin-top: 1px;
   padding: 0 4px;
-  color: var(--warn-text);
+  color: var(--warn-text-strong);
   font: 700 var(--fs-11)/1.5 var(--font-mono);
   background: var(--warn-bg);
-  border: 1px solid var(--warn-border);
+  border: 1px solid var(--warn-border-strong);
   border-radius: 999px;
 }
 
@@ -671,13 +675,13 @@ const ariaSummary = computed(() => {
   gap: 4px;
   align-items: center;
   padding: 1px 8px 1px 6px;
-  color: var(--warn-text);
+  color: var(--warn-text-strong);
   font: 600 var(--fs-11)/1.5 var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
   background: var(--warn-bg);
-  border: 1px solid var(--warn-border);
+  border: 1px solid var(--warn-border-strong);
   border-radius: 999px;
 }
 .crew-lap-icon { width: 12px; height: 12px; flex: 0 0 auto; }
@@ -702,14 +706,14 @@ const ariaSummary = computed(() => {
   transform: translateX(-50%);
 }
 .crew-oar-names span {
-  color: var(--text-40);
+  color: var(--text-meta);
   font: 600 9px/1.2 var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   transition: color var(--motion-fast) ease;
 }
-.crew-oar-names span.is-running { color: var(--accent-cyan); }
-.crew-oar-names span.is-completed { color: var(--accent-mint); }
+.crew-oar-names span.is-running { color: var(--on-accent-cyan); }
+.crew-oar-names span.is-completed { color: var(--on-accent-mint); }
 .crew-oar-names span.is-error { color: var(--err-text); }
 
 .crew-boat {
@@ -718,10 +722,10 @@ const ariaSummary = computed(() => {
   width: 68px;
   height: 30px;
   margin-left: -34px;
-  color: var(--accent-cyan);
+  color: var(--on-accent-cyan);
   transition: left var(--motion-medium) var(--ease-out);
 }
-.crew-progress.is-stalled .crew-boat { color: var(--warn-text); }
+.crew-progress.is-stalled .crew-boat { color: var(--warn-text-strong); }
 .crew-progress.is-foundered .crew-boat { color: var(--err-text); }
 .crew-boat-svg { width: 100%; height: 100%; overflow: visible; }
 

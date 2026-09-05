@@ -340,30 +340,30 @@ function submit(outcome: string): void {
 <style scoped>
 .gate-card { padding: var(--space-6); background: var(--warn-bg); border-bottom: 1px solid var(--warn-border-strong); }
 .gate-heading { display: flex; align-items: center; gap: 10px; }
-.gate-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--r-md); }
-.section-kicker { color: var(--warn-text); font: 700 var(--fs-11)/1 var(--font-mono); }
+.gate-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; color: var(--warn-text-strong); background: var(--warn-bg); border: 1px solid var(--warn-border-strong); border-radius: var(--r-md); }
+.section-kicker { color: var(--warn-text-strong); font: 700 var(--fs-11)/1 var(--font-mono); }
 .gate-heading h2 { margin: 3px 0 0; font-size: 16px; }
 .gate-card > p { margin: 12px 0; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.5; }
 .verdict-row { display: flex; align-items: center; justify-content: space-between; margin: 12px 0; padding: 9px 10px; background: var(--surface-well); border-left: 2px solid var(--warn-text); }
-.verdict-row strong { color: var(--warn-text); font: 700 var(--fs-13)/1 var(--font-mono); }
+.verdict-row strong { color: var(--warn-text-strong); font: 700 var(--fs-13)/1 var(--font-mono); }
 .verdict-row span { color: var(--text-muted); font: 500 var(--fs-11)/1 var(--font-mono); }
-.gate-late { display: flex; gap: 8px; margin: 12px 0 0; padding: 9px 10px; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--r-md); font-size: var(--fs-11); line-height: 1.5; }
+.gate-late { display: flex; gap: 8px; margin: 12px 0 0; padding: 9px 10px; color: var(--warn-text-strong); background: var(--warn-bg); border: 1px solid var(--warn-border-strong); border-radius: var(--r-md); font-size: var(--fs-11); line-height: 1.5; }
 .gate-late svg { flex: 0 0 auto; margin-top: 1px; }
-.late-tag { margin-left: 6px; padding: 1px 5px; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 999px; font: 700 var(--fs-11)/1.4 var(--font-mono); text-transform: uppercase; }
+.late-tag { margin-left: 6px; padding: 1px 5px; color: var(--warn-text-strong); background: var(--warn-bg); border: 1px solid var(--warn-border-strong); border-radius: 999px; font: 700 var(--fs-11)/1.4 var(--font-mono); text-transform: uppercase; }
 .gate-field { display: block; margin-top: 9px; }
-.gate-field span { display: block; margin-bottom: 5px; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
+.gate-field span { display: block; margin-bottom: 5px; color: var(--text-meta); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
 .gate-field input,
 .gate-field textarea { width: 100%; min-height: 40px; padding: 8px 9px; color: var(--text-body); font: inherit; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); outline: 0; }
 .gate-field textarea { min-height: 62px; resize: vertical; line-height: 1.45; }
 .gate-field input:focus,
-.gate-field textarea:focus { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
+.gate-field textarea:focus { border-color: var(--on-accent-cyan); box-shadow: var(--glow-input); }
 .gate-field input[readonly],
 .gate-field textarea[readonly] { color: var(--text-muted); }
 
 /* Deliberately not a form. Nothing here is an input, nothing here is focusable,
    and the lock in the heading says why before the operator reaches for it. */
 .gate-derived { margin-top: 13px; padding: 10px 11px; background: var(--surface-well); border: 1px solid var(--border-default); border-radius: var(--r-md); }
-.gate-derived h3 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--text-40); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
+.gate-derived h3 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--text-meta); font: 700 var(--fs-11)/1 var(--font-mono); text-transform: uppercase; }
 .gate-derived-note { margin: 7px 0 10px; color: var(--text-muted); font-size: var(--fs-11); line-height: 1.5; }
 .gate-derived dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0; }
 /* Sentence case, not shouted: `text-transform: uppercase` over a humanised key
@@ -383,8 +383,8 @@ function submit(outcome: string): void {
 /* The server decides how many options a gate has and in what order, so the row
    must not assume two with the primary second. */
 .gate-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 13px; }
-.gate-expiry { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--text-40); font-size: var(--fs-11); }
+.gate-expiry { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--text-meta); font-size: var(--fs-11); }
 .gate-expiry time { margin-left: auto; font-family: var(--font-mono); }
 /* Amber, not red: a passed deadline is a notice, not a failure. */
-.gate-expiry.is-expired { color: var(--warn-text); }
+.gate-expiry.is-expired { color: var(--warn-text-strong); }
 </style>

@@ -1,0 +1,19 @@
+$ npx vitest run       # from frontend/
+# run by RV3, branch run-shell/cast at 27b256e, 2026-09-05T14:56:21+08:00
+
+
+ RUN  v4.1.11 D:/MultiAgentSystem/frontend
+
+warning: in the working copy of 'docs/run-shell/evidence/G4/roles-sheet.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/run-shell/evidence/T3/scope-order.txt', LF will be replaced by CRLF the next time Git touches it
+
+ Test Files  92 passed (92)
+      Tests  1926 passed (1926)
+   Start at  14:56:22
+   Duration  10.70s (transform 44.34s, setup 0ms, import 84.46s, tests 44.45s, environment 146.97s)
+
+
+# vitest exit code: 0 -- corroborated by the "Test Files N passed" and
+# "Tests N passed" lines above, which are vitest's own. (The wrapper that
+# printed this line read $? one command late; the figure is right and the
+# summary above it is the thing to read.)

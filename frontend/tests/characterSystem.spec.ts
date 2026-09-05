@@ -467,13 +467,25 @@ describe('AgentCharacter', () => {
   it('observes while mounted, pauses offscreen, and disconnects on unmount', async () => {
     const observe = vi.fn()
     const disconnect = vi.fn()
-    type Entries = Array<{ isIntersecting: boolean }>
+    /*
+     * Entries carry a `target`, because the real ones do and because the
+     * component now routes by it: ONE `IntersectionObserver` serves every
+     * character on the page rather than one per character. A long run mounts a
+     * character on every graph node, every trace row and every spoken line -
+     * hundreds - and a scroll of the trace used to wake hundreds of observers
+     * with a single entry apiece. The observer is reference-counted, so the
+     * last character to unmount still disconnects it, which is what the name of
+     * this test claims and what the assertion below checks.
+     */
+    type Entries = Array<{ isIntersecting: boolean; target: Element }>
     /* A holder object rather than a `let`: TypeScript's control-flow analysis
        cannot see that the constructor below runs, so a plain binding stays
        narrowed to `null` and calling it is a compile error. */
     const captured: { notify: ((entries: Entries) => void) | null } = { notify: null }
+    let constructed = 0
     class FakeObserver {
       constructor(callback: (entries: Entries) => void) {
+        constructed += 1
         captured.notify = callback
       }
       observe = observe
@@ -490,15 +502,29 @@ describe('AgentCharacter', () => {
       expect(observe).toHaveBeenCalledTimes(1)
       expect(observe.mock.calls[0][0]).toBe(wrapper.element)
 
-      captured.notify?.([{ isIntersecting: false }])
+      captured.notify?.([{ isIntersecting: false, target: wrapper.element }])
       await wrapper.vm.$nextTick()
       expect(wrapper.classes()).toContain('pip--paused')
 
-      captured.notify?.([{ isIntersecting: true }])
+      captured.notify?.([{ isIntersecting: true, target: wrapper.element }])
       await wrapper.vm.$nextTick()
       expect(wrapper.classes()).not.toContain('pip--paused')
 
+      // A second character joins the SAME observer rather than building one.
+      const second = mountPip({ identity: 'Second Agent' })
+      expect(constructed).toBe(1)
+      expect(observe).toHaveBeenCalledTimes(2)
+
+      // And a notification about one does not touch the other.
+      captured.notify?.([{ isIntersecting: false, target: second.element }])
+      await second.vm.$nextTick()
+      expect(second.classes()).toContain('pip--paused')
+      expect(wrapper.classes()).not.toContain('pip--paused')
+
+      // The observer outlives the first unmount and dies with the last.
       wrapper.unmount()
+      expect(disconnect).toHaveBeenCalledTimes(0)
+      second.unmount()
       expect(disconnect).toHaveBeenCalledTimes(1)
     } finally {
       vi.unstubAllGlobals()

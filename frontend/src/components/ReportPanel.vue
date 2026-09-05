@@ -364,10 +364,10 @@ async function copyReport(): Promise<void> {
 }
 .verdict-confidence.is-high { color: var(--on-accent-mint); border-color: color-mix(in srgb, var(--accent-mint) 34%, transparent); }
 .verdict-confidence.is-moderate { color: var(--on-accent-cyan); border-color: color-mix(in srgb, var(--accent-cyan) 32%, transparent); }
-.verdict-confidence.is-low { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
+.verdict-confidence.is-low { color: var(--warn-text-strong); background: var(--warn-bg); border-color: var(--warn-border-strong); }
 
 .verdict-score { color: var(--text-title); font: 700 var(--fs-18)/1 var(--font-display); }
-.verdict-score small { color: var(--text-40); font: 500 var(--fs-12)/1 var(--font-mono); }
+.verdict-score small { color: var(--text-meta); font: 500 var(--fs-12)/1 var(--font-mono); }
 
 .report-flags { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4) var(--space-7) 0; }
 .report-flag {
@@ -378,7 +378,7 @@ async function copyReport(): Promise<void> {
   border: 1px solid var(--border-default);
   border-radius: var(--r-sm);
 }
-.report-flag.is-provisional { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
+.report-flag.is-provisional { color: var(--warn-text-strong); background: var(--warn-bg); border-color: var(--warn-border-strong); }
 
 /* Bounded so a long decision block can never squeeze the report body to
    nothing on a short viewport; it scrolls on its own instead. */
@@ -399,8 +399,8 @@ async function copyReport(): Promise<void> {
   padding: var(--space-5);
   border-radius: var(--r-md);
 }
-.verdict-decision.is-floor { background: var(--err-bg); border: 1px solid var(--err-border); }
-.verdict-decision.is-evidence { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+.verdict-decision.is-floor { background: var(--err-bg); border: 1px solid var(--err-border-strong); }
+.verdict-decision.is-evidence { background: var(--warn-bg); border: 1px solid var(--warn-border-strong); }
 
 .verdict-decision h3,
 .verdict-scores h3 {
@@ -413,7 +413,7 @@ async function copyReport(): Promise<void> {
   text-transform: uppercase;
 }
 .verdict-decision.is-floor h3 { color: var(--err-text); }
-.verdict-decision.is-evidence h3 { color: var(--warn-text); }
+.verdict-decision.is-evidence h3 { color: var(--warn-text-strong); }
 
 .decision-headline {
   margin: var(--space-3) 0 0;
@@ -452,10 +452,10 @@ async function copyReport(): Promise<void> {
 .score-question { color: var(--text-meta); font: 400 var(--fs-11)/1.35 var(--font-body); }
 .score-thin {
   padding: 1px 5px;
-  color: var(--warn-text);
+  color: var(--warn-text-strong);
   font: 700 var(--fs-11)/1.3 var(--font-mono);
   background: var(--warn-bg);
-  border: 1px solid var(--warn-border);
+  border: 1px solid var(--warn-border-strong);
   border-radius: var(--r-pill);
 }
 .score-track {
@@ -477,7 +477,7 @@ async function copyReport(): Promise<void> {
 .score-row.is-floored .score-track { background: var(--err-bg); box-shadow: inset 0 0 0 1px var(--err-border-strong); }
 .score-row.is-floored .score-value { color: var(--err-text); }
 .score-value { color: var(--text-primary); font: 700 var(--fs-13)/1 var(--font-mono); }
-.score-value small { color: var(--text-40); font-weight: 500; }
+.score-value small { color: var(--text-meta); font-weight: 500; }
 
 .report-actions { display: flex; flex: 0 0 auto; gap: 8px; }
 .report-button {

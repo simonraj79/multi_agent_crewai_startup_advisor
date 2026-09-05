@@ -1,0 +1,234 @@
+$ npx playwright test e2e/cast.spec.ts e2e/cast-perf.spec.ts       # from frontend/
+# run by RV3, branch run-shell/cast at 27b256e, 2026-09-05T15:03:15+08:00
+# backend (repo root, background):
+#   SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099
+#   CREDENTIALS_MASTER_KEY=Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE=
+#   BUILDER_ALLOW_GATELESS_GRAPHS=1 RUN_RATE_LIMIT_MAX_RUNS=100 MCP_ALLOW_INSECURE_LOCAL=1
+#   SKILLS_ROOT=D:/MultiAgentSystem/data/skills
+#   SYNTHETIC_FAILURE="fm_bad_key:bad_key:1,fm_tool_timeout:tool_timeout:1,fm_refusal:refusal:1,\
+#                      fm_malformed:malformed_output:1,fm_rate_limit:rate_limit:1,fm_cast_refusal:refusal:1"
+#   ./.venv/Scripts/serve.exe
+
+[WebServer] (!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+[WebServer]   - import "./syntheticUser" without a file extension (e2e/vite.e2e.config.ts:4:57). Add the file extension
+[WebServer] Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+Running 11 tests using 1 worker
+
+  ✘   1 [chromium] › e2e\cast-perf.spec.ts:311:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch (1.1m)
+  ✘   2 [chromium] › e2e\cast-perf.spec.ts:440:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch (12.4s)
+  ✓   3 [chromium] › e2e\cast.spec.ts:515:3 › the cast at rest › S1: every character is idle before a run, and the shell is not blank (802ms)
+  ✘   4 [chromium] › e2e\cast.spec.ts:552:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch (4.7s)
+  ✓   5 [chromium] › e2e\cast.spec.ts:665:3 › the graph and the trace show the same cast › T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state @launch (3.1s)
+  ✓   6 [chromium] › e2e\cast.spec.ts:756:3 › the character on a node is deterministic › G3: the same node keeps the same character across a page reload @launch (15.3s)
+  ✓   7 [chromium] › e2e\cast.spec.ts:820:3 › motion stays quiet › T2.7: nothing animates offscreen and no more than twelve character animations run at once @launch (2.9s)
+  ✓   8 [chromium] › e2e\cast.spec.ts:859:3 › motion stays quiet › T2.7/S5: reduced motion stops every part and keeps every state @launch (15.3s)
+  ✘   9 [chromium] › e2e\cast.spec.ts:941:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch (1.3m)
+  ✓  10 [chromium] › e2e\cast.spec.ts:1170:3 › the shell at 390x844 › S6: a run drives and finishes at 390px, and nothing overflows sideways @launch (18.5s)
+  ✘  11 [chromium] › e2e\cast.spec.ts:1363:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch (2.1s)
+
+
+  1) [chromium] › e2e\cast-perf.spec.ts:311:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('.gate-card')
+    Expected: 0
+    Received: 1
+    Timeout:  60000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 60000ms
+      - waiting for locator('.gate-card')
+        121 × locator resolved to 1 element
+            - unexpected value "1"
+
+
+      378 |             .catch(() => undefined)
+      379 |           replies += 1
+    > 380 |           await expect(card).toHaveCount(0, { timeout: 60_000 })
+          |                              ^
+      381 |         }
+      382 |         await page.waitForTimeout(250)
+      383 |       }
+        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:380:30
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\error-context.md
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › e2e\cast-perf.spec.ts:440:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch 
+
+    Error: 15 rAF intervals exceeded 34ms while 131 frames were applied (max 111.3ms, p95 31.2ms). See D:\MultiAgentSystem\docs\run-shell\evidence\T2\perf.json.
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 15
+
+      607 |         `${overBudget} rAF intervals exceeded ${budget.dropBudgetMs}ms while ${applied} frames ` +
+      608 |           `were applied (max ${stats.max}ms, p95 ${stats.p95}ms). See ${PERF_JSON}.`,
+    > 609 |       ).toBe(0)
+          |         ^
+      610 |       expect(
+      611 |         stats.p95,
+      612 |         `p95 was ${stats.p95}ms against a budget of ${budget.p95BudgetMs}ms over ${applied} ` +
+        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:609:9
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\error-context.md
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › e2e\cast.spec.ts:552:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch 
+
+    Error: no character reached `working` within 2s of Launch (S2). If every branch finished instantly, start the backend with SYNTHETIC_BRANCH_DELAY_SECONDS=5.
+
+    no character reached `working` within 2s of Launch (S2). If every branch finished instantly, start the backend with SYNTHETIC_BRANCH_DELAY_SECONDS=5.
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+    Call Log:
+    - Timeout 2000ms exceeded while waiting on the predicate
+
+      576 |           },
+      577 |         )
+    > 578 |         .toBeGreaterThan(0)
+          |          ^
+      579 |       await expect(traceRows(page).first()).toBeVisible({
+      580 |         timeout: Math.max(250, deadline - Date.now()),
+      581 |       })
+        at D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:578:10
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-the-states-a-characte-2bdc4-onds-then-blocked-then-done-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-the-states-a-characte-2bdc4-onds-then-blocked-then-done-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-the-states-a-characte-2bdc4-onds-then-blocked-then-done-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-the-states-a-characte-2bdc4-onds-then-blocked-then-done-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [chromium] › e2e\cast.spec.ts:941:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch 
+
+    Error: the Confirm scope gate did not take the Revise reply
+
+    expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('.gate-card')
+    Expected: 0
+    Received: 1
+    Timeout:  60000ms
+
+    Call log:
+      - the Confirm scope gate did not take the Revise reply with timeout 60000ms
+      - waiting for locator('.gate-card')
+        121 × locator resolved to 1 element
+            - unexpected value "1"
+
+
+      328 |   await gateCard(page).getByRole('button', { name: /^Revise/ }).click()
+      329 |
+    > 330 |   await expect(gateCard(page), `the ${title} gate did not take the Revise reply`).toHaveCount(0, {
+          |                                                                                   ^
+      331 |     timeout: 60_000,
+      332 |   })
+      333 |   await waitForGate(page, title)
+        at reviseGate (D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:330:83)
+        at runLongToCompletion (D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:373:3)
+        at D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:949:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [chromium] › e2e\cast.spec.ts:1363:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch 
+
+    Error: locator.fill: Error: strict mode violation: locator('#idea') resolved to 2 elements:
+        1) <article id="idea" zindex="0" role="group" type="workflow" selected="false" resizing="false" dragging="false" data-v-338bad55="" data-v-22a71763="" connectable="false" aria-label="idea, Idle" events="[object Object]" position="[object Object]" dimensions="[object Object]" class="workflow-node is-idle is-step">…</article> aka getByRole('group', { name: 'idea, Idle' })
+        2) <textarea rows="4" id="idea" maxlength="2000" data-v-217fa175="" class="panel-well" aria-describedby="idea-hint" value="An AI tool that turns Figma files into production React"></textarea> aka getByRole('textbox')
+
+    Call log:
+      - waiting for locator('#idea')
+
+
+      271 |   await expect(review).toHaveAttribute('aria-pressed', 'true')
+      272 |
+    > 273 |   await page.locator('#idea').fill(idea)
+          |                               ^
+      274 |   await expect(launchButton(page)).toBeEnabled()
+      275 |
+      276 |   const limited = page.locator('[role="alert"]').filter({ hasText: /too many runs/i })
+        at launchRun (D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:273:31)
+        at D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:1397:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    [chromium] › e2e\cast-perf.spec.ts:311:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch 
+    [chromium] › e2e\cast-perf.spec.ts:440:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch 
+    [chromium] › e2e\cast.spec.ts:552:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch 
+    [chromium] › e2e\cast.spec.ts:941:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch 
+    [chromium] › e2e\cast.spec.ts:1363:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch 
+  6 passed (3.8m)
+
+# npx playwright test exit code: 1  (5 failed, 6 passed)
+#
+# CORRECTED BY RV3 AFTER THE FACT. The capture wrapper read $? one command
+# too late and printed 0; Playwright exited 1, as the "5 failed" line above
+# says. The test results themselves are the tool's own output and untouched.
+# The same five failures reproduced in the full-suite run
+# (evidence/R/playwright.txt), which reports its exit code correctly.

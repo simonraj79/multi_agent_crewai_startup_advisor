@@ -86,8 +86,21 @@
 }
 
 :root[data-theme='light'] {
-  --character-1: #1b7f96;
-  --character-2: #1d7a4d;
+  /* FOUR OF THE TWELVE WERE 3.89-4.47:1 AS SMALL TEXT, and the four are the
+     ones whose hue is intrinsically light - teal, green, orange, olive - so
+     the same lightness that made them distinct in the dark palette left them
+     short on paper. Each is the SAME hue at 90% of its own value, measured
+     against the four grounds a character is drawn on (the app ground, the
+     canvas, a rail, and the crew strip, which is `--surface-overlay` over the
+     canvas rather than over the shell): worst readings 4.64, 5.24, 5.13 and
+     4.84 where they were 3.89, 4.47, 4.36 and 4.11.
+
+     90% and not 86%: the twelve have to stay TELLABLE APART at 32px (T2.3),
+     and darkening four of them further than the hue shift needs would pull
+     -1 toward -11 and -2 toward -7. A ratio bought at the cost of the
+     property the palette exists for is not a fix. */
+  --character-1: #187287;
+  --character-2: #1a6e45;
   --character-3: #2f5fa8;
   --character-4: #6b46b8;
   --character-5: #8a5a00;
@@ -95,9 +108,9 @@
   --character-7: #16755f;
   --character-8: #3a5f9e;
   --character-9: #7b3fa8;
-  --character-10: #a35a1e;
+  --character-10: #93511b;
   --character-11: #1a6b80;
-  --character-12: #5f7a1e;
+  --character-12: #566e1b;
 
   --recede-opacity: 0.5;
   --recede-saturate: 0.65;
@@ -345,4 +358,41 @@
   .is-armed,
   .is-awaiting-you { animation: none; }
   .is-armed { background-position: 0% 50%; }
+}
+
+/* ---------------------------------------------------------------------------
+   THE RUN CONSOLE'S TENANCY OF THE SHARED CARD'S QUIET TEXT.
+
+   `node-card.css` paints five things in `--text-40` - the eyebrow, the
+   quarantine count, the in-flight query, the duration hint and the usage row -
+   and in the light theme that token measures 4.31:1 against the card, which is
+   an AA failure on the labels a reader leans in for.
+
+   The fix is one token (`--text-meta`) and it is NOT made in `node-card.css`,
+   for the reason that sheet's own header gives: the card is shared, and the
+   builder's sixteen full-page baselines include eight LIGHT ones, so a change
+   there is a sixteen-screenshot regeneration this task cannot run. Here
+   instead, guarded to the run console, which is the same construction
+   `studio.css` uses for the brand mark and for `.segmented` - and this sheet is
+   already the run console's tenancy of that card (see the import comment in
+   `studio.css`), so it is where a run-console-only card rule belongs.
+
+   NOTHING MOVES IN DARK, at either end: `--text-meta`'s dark value is
+   `rgba(255,255,255,.52)`, identical to `--text-40`, and the three run-canvas
+   baselines are captured in dark only. The builder never matches the guard.
+   `docs/run-shell/SHELL-SCOPE.md` §6.6 is the commit that folds this back into
+   `node-card.css` and regenerates the eight light baselines; until then the
+   builder's own card keeps the 4.31 and the audit says so on its own row.
+
+   Four of the five selectors below render in the run console alone - a design
+   canvas has no run state - so only `.node-eyebrow` strictly needs the guard.
+   They are written as one rule anyway: five selectors under one guard cannot
+   drift apart, and five rules under four different rationales can.
+   --------------------------------------------------------------------------- */
+.studio-shell:not(.is-builder) .node-eyebrow,
+.studio-shell:not(.is-builder) .quarantine-count,
+.studio-shell:not(.is-builder) .node-active-query,
+.studio-shell:not(.is-builder) .node-active-hint,
+.studio-shell:not(.is-builder) .node-usage {
+  color: var(--text-meta);
 }

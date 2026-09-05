@@ -1,0 +1,17 @@
+$ npx vitest run tests/traceInterpretation.spec.ts tests/characterStates.spec.ts       # from frontend/
+# run by RV3, branch run-shell/cast at 27b256e, 2026-09-05T14:56:47+08:00
+
+
+ RUN  v4.1.11 D:/MultiAgentSystem/frontend
+
+
+ Test Files  2 passed (2)
+      Tests  66 passed (66)
+   Start at  14:56:47
+   Duration  1.50s (transform 602ms, setup 0ms, import 866ms, tests 743ms, environment 899ms)
+
+
+# vitest exit code: 0 -- corroborated by the "Test Files N passed" and
+# "Tests N passed" lines above, which are vitest's own. (The wrapper that
+# printed this line read $? one command late; the figure is right and the
+# summary above it is the thing to read.)

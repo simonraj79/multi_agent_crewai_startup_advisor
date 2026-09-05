@@ -4,6 +4,7 @@ import { Handle, Position } from '@vue-flow/core'
 import { Bot, Check, Cog, FileText, Inbox, RedoDot, RotateCcw, ShieldCheck, Split, TriangleAlert } from 'lucide-vue-next'
 import AgentCharacter from './AgentCharacter.vue'
 import type { PipState } from '../characters/pip'
+import type { CastMark } from '../composables/useRunChoreography'
 import type { StudioNodeData } from '../composables/useValidatorRun'
 import { MAX_NODE_CARD_ERROR_CHARS } from '../data/serverLimits'
 
@@ -18,12 +19,38 @@ import { MAX_NODE_CARD_ERROR_CHARS } from '../data/serverLimits'
  *
  * Optional, so a card mounted with no run behind it (the design-time gallery,
  * a spec, a mock transport) still draws a character rather than nothing.
+ *
+ * The type is the composable's `CastMark`, re-exported under the name the card
+ * and its specs already use. It is the composable's because the OBJECT has to
+ * come from there: `castFor` hands out a cached one so an unchanged card is
+ * handed the same object and Vue can skip it, and a type living here would
+ * invite a call site to build its own (T2.8).
  */
-export interface NodeCast {
-  /** The seed, already through the identity ladder. Never a node id if better exists. */
-  identity: string
-  state: PipState
-}
+export type NodeCast = CastMark
+
+/**
+ * NO FALLTHROUGH ATTRIBUTES, and the reason is a defect a spec found (S4).
+ *
+ * Vue Flow's node slot passes `id`, `position`, `dimensions`, `selected`,
+ * `dragging`, `zIndex` and half a dozen more as props of the slot scope, and
+ * `v-bind="nodeProps"` in `StudioView` forwards every one this component does
+ * not declare. They landed on the `<article>` as DOM attributes - most of them
+ * as the literal string `[object Object]`, and `id` as the node's own id.
+ *
+ * `id="idea"` on a card is not merely untidy: an authored graph whose input
+ * node is called `idea` produced a SECOND element with the id the launch
+ * textarea already has, and `document.querySelector('#idea')` then resolved to
+ * whichever came first in the document. A duplicate id is invalid HTML, it
+ * breaks `label[for]`, and it breaks every tool that addresses an element by
+ * id, a screen reader included.
+ *
+ * The node's id is still published, as `data-node-id` - an attribute that
+ * cannot collide with anything, on a card that is already found by
+ * `.vue-flow__node[data-id="…"] .workflow-node` in every spec that looks for
+ * one. Vue Flow's own wrapper keeps its `data-id`; nothing on this element was
+ * ever read.
+ */
+defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{ data: StudioNodeData; cast?: NodeCast }>()
 
@@ -274,6 +301,7 @@ const ariaLabel = computed(() => {
     ]"
     role="group"
     :aria-label="ariaLabel"
+    :data-node-id="data.nodeId"
   >
     <Handle v-if="!isQuarantine" class="node-handle" type="target" :position="Position.Top" />
 

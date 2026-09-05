@@ -1,0 +1,50 @@
+$ node scripts/contrast-audit.mjs            # from frontend/, plain reporter
+$ node scripts/contrast-audit.mjs --markdown # from frontend/, the committed artifact
+# re-run by RV3, branch run-shell/cast at 27b256e, 2026-09-05T14:58:09+08:00
+
+RESULT
+  plain run    exit 0
+  --markdown   exit 0
+  the --markdown output is BYTE-IDENTICAL to the committed
+  docs/run-shell/evidence/T3/contrast.md:
+    md5  358394a1099e54059400f734602b8d79   docs/run-shell/evidence/T3/contrast.md
+    md5  358394a1099e54059400f734602b8d79   (this re-run)
+  So the committed file is what the script writes today. Nothing was copied.
+
+WHAT THE EXIT CODE DOES AND DOES NOT SAY  --  read before quoting the 0.
+
+  300 pairings; 80 owned by W5, 0 of those failing; 17 handed over.
+
+  The script's own exit code counts W5's rows ONLY, by design and with the
+  reason in its docstring: a pairing painted in CrewProgress.vue cannot be
+  fixed from tokens.css, so a gate that failed on it would be a gate nobody
+  could pass. That is a sound rule for W5's task and it is NOT the criterion.
+
+  DEFINITION-OF-DONE T3.3 says: "every text/background pairing used by the
+  run shell measures >= 4.5:1 (normal text) or >= 3:1 (large text, UI
+  components), in both themes". SEVENTEEN pairings do not. RV3 therefore
+  records T3.3 as FAIL, on the script's own numbers, and lists them here.
+
+THE SEVENTEEN, verbatim from the plain run
+===========================================================================
+HANDED OVER - a real failure in a file this task must not open
+==============================================================================================================
+  W1  dark   2.70 < 3  the gate card boundary  GateCard.vue .gate-card  -> var(--warn-border-strong)
+  W3  light  1.29 < 4.5  a rail kicker  ChatRail.vue .section-kicker  -> var(--on-accent-cyan)
+  W3  light  4.41 < 4.5  a text button on raised  ChatRail.vue .text-button  -> var(--link-strong)
+  W3  light  4.41 < 4.5  a text button on a well  DialogueRail.vue .text-button  -> var(--link-strong)
+  W4  light  4.11 < 4.5  the crew marker on the canvas  CrewProgress.vue .crew-marker  -> var(--text-meta)
+  W4  light  1.14 < 4.5  a crew label on the canvas  CrewProgress.vue .crew-label  -> var(--on-accent-cyan)
+  W4  light  1.69 < 4.5  a crew kind as text  CrewProgress.vue crew kind  -> var(--on-accent-blue)
+  W4  light  1.02 < 3  a crew pip as a UI mark  CrewProgress.vue .crew-pip  -> var(--on-accent-mint)
+  W4  light  4.31 < 4.5  card meta on a card  node-card.css .node-meta  -> var(--text-meta)
+  W1  light  1.69 < 3  the gate card boundary  GateCard.vue .gate-card  -> var(--warn-border-strong)
+  W4  light  4.02 < 4.5  character-1 as small text on bg-app  an avatar on the app ground  -> darken in the light block only
+  W4  light  4.42 < 4.5  character-1 as small text on rail  DialogueRail.vue .dialogue-avatar  -> darken in the light block only
+  W4  light  3.89 < 4.5  character-1 as small text on canvas ground  CrewProgress.vue .crew-medallion  -> darken in the light block only
+  W4  light  4.47 < 4.5  character-2 as small text on canvas ground  CrewProgress.vue .crew-medallion  -> darken in the light block only
+  W4  light  4.36 < 4.5  character-10 as small text on canvas ground  CrewProgress.vue .crew-medallion  -> darken in the light block only
+  W4  light  4.24 < 4.5  character-12 as small text on bg-app  an avatar on the app ground  -> darken in the light block only
+  W4  light  4.11 < 4.5  character-12 as small text on canvas ground  CrewProgress.vue .crew-medallion  -> darken in the light block only
+
+  300 pairings; 80 owned here, 0 failing; 17 handed over.

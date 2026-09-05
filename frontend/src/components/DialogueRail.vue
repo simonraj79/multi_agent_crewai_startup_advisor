@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import AgentCharacter from './AgentCharacter.vue'
 import type { PipState } from '../characters/pip'
 import { ChevronDown, ChevronUp, MessagesSquare, Scissors } from 'lucide-vue-next'
 import { collapsedPreview, type DialogueEntry } from '../composables/useRunChoreography'
-import { readSpeech, renderSpeech } from '../trace/speech'
+import { readSpeech, renderSpeech, type Speech } from '../trace/speech'
 import { MAX_UTTERANCE_CHARS } from '../data/serverLimits'
 
 /**
@@ -69,13 +69,65 @@ const opened = ref(new Set<string>())
  * that scrolled only on arrival would leave the sentence being spoken below the
  * fold for the whole of it.
  */
+/**
+ * Follow the newest row, at most ONCE per animation frame, and only for a
+ * reader who is already at the bottom (T2.8).
+ *
+ * Three separate costs were in the old one line, and each is the kind a unit
+ * suite cannot see because jsdom implements no scrolling at all:
+ *
+ *  1. `behavior: 'smooth'` started a NEW animated scroll for every appended
+ *     row. A burst of a dozen frames in one millisecond - which is exactly what
+ *     the backend emits at a fan-out - started a dozen overlapping scroll
+ *     animations, none of which ever caught up.
+ *  2. Reading `scrollHeight` forces a synchronous layout. Doing it per frame,
+ *     after `nextTick`, is a layout thrash in the middle of the burst.
+ *  3. It fought the reader. Anybody who had scrolled up to read an earlier line
+ *     was yanked back to the bottom by the next frame.
+ *
+ * Coalescing on `requestAnimationFrame` fixes all three at once: at most one
+ * measurement and one scroll per painted frame, instant rather than animated,
+ * and skipped entirely when the reader has scrolled away. `PIN_SLACK_PX` is
+ * how far from the bottom still counts as "following" - a couple of rows, so a
+ * one-pixel wheel nudge does not un-pin the log.
+ */
+const PIN_SLACK_PX = 120
+let followHandle = 0
+
+function follow(): void {
+  if (props.collapsed || followHandle) return
+  const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null
+  const run = () => {
+    followHandle = 0
+    const element = list.value
+    if (!element || typeof element.scrollTo !== 'function') return
+    const distance = element.scrollHeight - element.scrollTop - element.clientHeight
+    if (distance > PIN_SLACK_PX) return
+    element.scrollTo({ top: element.scrollHeight, behavior: 'auto' })
+  }
+  if (!raf) {
+    run()
+    return
+  }
+  followHandle = raf(run)
+}
+
+onBeforeUnmount(() => {
+  if (followHandle && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(followHandle)
+})
+
+/*
+ * Watched on the REVEALED length as well as the count, because an entry
+ * revealing at 120 chars/second grows for seconds after it arrives and a rail
+ * that scrolled only on arrival would leave the sentence being spoken below the
+ * fold for the whole of it. That is also why the coalescing above matters more
+ * here than in the trace: this watcher fires on every `requestAnimationFrame`
+ * step of a reveal, and reading `scrollHeight` in each one is a forced layout
+ * sixty times a second.
+ */
 watch(
   () => [props.entries.length, props.entries.at(-1)?.revealed ?? 0] as const,
-  async () => {
-    if (props.collapsed) return
-    await nextTick()
-    list.value?.scrollTo({ top: list.value.scrollHeight, behavior: 'auto' })
-  },
+  () => follow(),
 )
 
 /**
@@ -88,7 +140,26 @@ watch(
  * machine answering a machine; it gets one line and its object behind the
  * disclosure.
  */
-const read = computed(() => props.entries.map((entry) => readSpeech(entry.text)))
+/**
+ * `readSpeech` per entry, cached by the ENTRY OBJECT (T2.8).
+ *
+ * An entry's `text` is fixed once its utterance lands; what changes afterwards
+ * is `revealed`, and `advanceReveal` only replaces the objects that moved. So
+ * object identity is an exact key, and without it this parsed every entry's
+ * whole text on every reveal tick - sixty times a second, for entries nobody
+ * had touched in a minute.
+ */
+const speechCache = new Map<string, { entry: DialogueEntry; speech: Speech }>()
+
+const read = computed(() =>
+  props.entries.map((entry) => {
+    const cached = speechCache.get(entry.callId)
+    if (cached && cached.entry === entry) return cached.speech
+    const speech = readSpeech(entry.text)
+    speechCache.set(entry.callId, { entry, speech })
+    return speech
+  }),
+)
 
 /**
  * The newest thing anybody actually SAID, which a structured result may not
@@ -106,27 +177,74 @@ const newestProseId = computed(() => {
   return ''
 })
 
-const shown = computed(() =>
+/**
+ * One row, and the SAME object back while nothing about it has moved (T2.8).
+ *
+ * The expensive part is `renderSpeech`, which escapes and marks up the visible
+ * slice. It ran for EVERY entry on every recompute, and a recompute happens on
+ * every reveal tick - `advanceReveal` is driven by `requestAnimationFrame`, so
+ * sixty times a second the rail re-rendered the markdown of every line anybody
+ * had ever said. Only one entry is ever revealing; the rest are finished text
+ * whose markup cannot have changed.
+ *
+ * The cache key is the entry OBJECT plus the two things outside it that the row
+ * draws: whether it is open, and the character's seed and pose. `v-memo="[row]"`
+ * in the template then skips an unchanged row entirely, and the key is honest
+ * because everything rendered is either in the row or derived from it.
+ */
+interface SpokenRow {
+  entry: DialogueEntry
+  speech: Speech
+  structured: boolean
+  open: boolean
+  preview: string
+  visible: string
+  html: string
+  seed: string
+  pose: PipState
+}
+
+const rowCache = new Map<string, SpokenRow>()
+
+const shown = computed<SpokenRow[]>(() =>
   props.entries.map((entry, index) => {
     const speech = read.value[index]
+    const open =
+      opened.value.has(entry.callId) ||
+      !entry.collapsed ||
+      entry.callId === newestProseId.value
+    const seed = seedOf(entry)
+    const pose = poseOf(entry)
+    const cached = rowCache.get(entry.callId)
+    if (
+      cached
+      && cached.entry === entry
+      && cached.speech === speech
+      && cached.open === open
+      && cached.seed === seed
+      && cached.pose === pose
+    ) {
+      return cached
+    }
     // Reveal is a float so the reveal can advance by fractions of a character
     // between frames; the slice is where it becomes text.
     const visible = speech.text.slice(0, Math.floor(entry.revealed))
-    return {
+    const row: SpokenRow = {
       entry,
       speech,
       structured: speech.kind === 'structured',
-      open:
-        opened.value.has(entry.callId) ||
-        !entry.collapsed ||
-        entry.callId === newestProseId.value,
+      open,
       preview: collapsedPreview(speech.text),
       visible,
       // Escape-first: every character is escaped BEFORE any structure is
       // recognised, so model output cannot become markup. See CLAUDE.md's note
       // on why the renderer is not `marked` + `dompurify`.
       html: renderSpeech(visible),
+      seed,
+      pose,
     }
+    rowCache.set(entry.callId, row)
+    return row
   }),
 )
 
@@ -207,6 +325,7 @@ function clock(at: number): string {
       <article
         v-for="row in shown"
         :key="row.entry.callId"
+        v-memo="[row]"
         class="dialogue-entry"
         :class="{ 'is-folded': !row.open, 'is-structured': row.structured }"
         :data-node="row.entry.nodeId"
@@ -228,12 +347,7 @@ function clock(at: number): string {
           :style="avatarStyle(row.entry.nodeId)"
           aria-hidden="true"
         >
-          <AgentCharacter
-            :identity="seedOf(row.entry)"
-            :state="poseOf(row.entry)"
-            :size="32"
-            :label="row.entry.role"
-          />
+          <AgentCharacter :identity="row.seed" :state="row.pose" :size="32" :label="row.entry.role" />
         </span>
 
         <div class="dialogue-body">
@@ -350,7 +464,11 @@ function clock(at: number): string {
 
 .dialogue-head:hover { color: var(--text-title); }
 .dialogue-head:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: -2px; }
-.section-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
+/* `--on-accent-cyan`, not `--accent-cyan`: the raw accent measures 1.29:1 on
+   the rail in the light theme (T3.3), because a colour chosen to glow on a
+   dark ground is nearly white on paper. The `--on-*` pair is the same hue
+   with a light-theme value that carries ink. */
+.section-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); }
 .dialogue-count {
   min-width: 22px;
   margin-left: auto;
@@ -508,7 +626,10 @@ function clock(at: number): string {
 .dialogue-fold:hover { color: var(--text-muted); }
 .dialogue-fold:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
 
-.text-button { margin-top: 5px; padding: 0; color: var(--link-cyan); background: none; border: 0; font: 600 var(--fs-11)/1.3 var(--font-body); cursor: pointer; }
+/* `--link-strong`, not `--link-cyan`: the latter measures 4.41:1 on a well in
+   the light theme and the bar for body-sized text is 4.5 (T3.3). `tokens.css`
+   carries the pair and says so. */
+.text-button { margin-top: 5px; padding: 0; color: var(--link-strong); background: none; border: 0; font: 600 var(--fs-11)/1.3 var(--font-body); cursor: pointer; }
 
 .dialogue-trimmed { display: flex; align-items: center; gap: 4px; margin: 5px 0 0; color: var(--warn-text); font: 500 10px/1.3 var(--font-mono); }
 .dialogue-tokens { margin: 5px 0 0; color: var(--text-muted); font: 500 10px/1.2 var(--font-mono); font-variant-numeric: tabular-nums; }

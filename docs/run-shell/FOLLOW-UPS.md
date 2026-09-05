@@ -37,6 +37,12 @@ refresh anyway.
 - `useValidatorRun.recoverIdea` reads `details.inputs.idea` by name rather than the workflow's `inputField` (latent for builder graphs; found by the boundary map).
 - The synthetic double still emits `node_state` for step nodes the real serializer would not attribute the same way; the trace hides them by kind, which rests on the descriptor's `kind` being right.
 
+## Found by authoring the G1 flow (RV2, 2026-09-05)
+
+- `builder/descriptor.py` drops attachment nodes from `nodes` but builds `edges` from `document.edges` unfiltered, so a tool attachment ships as a dangling edge and Vue Flow logs `Edge source or target is missing` on every render of the run canvas. A `warn`, so the zero-console-errors rule does not see it. Fix: filter `edges` on `target_port == "in"`, the predicate the same function already uses for `incoming`.
+- The gate's operator-facing `summary` says "Reply with JSON: decision=approve" while `GateReplyRequest` takes `outcome` and is `extra="forbid"`, so following the on-screen instruction over HTTP is a 422. The browser path is unaffected.
+- The synthetic builder runner has no per-node delay (`SYNTHETIC_BRANCH_DELAY_SECONDS` paces only the validator's branches), so a published graph's post-gate half completes in under a second and a mid-run capture needs socket throttling.
+
 ## Builder workspace (LEAVE)
 
 - The builder's `.segmented` had no base rule and rendered as native buttons in its header; the promoted global is guarded off the builder so its baselines stayed green. Lifting the guard is a builder change with a baseline regeneration.

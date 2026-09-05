@@ -15,7 +15,6 @@ import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
 import { useValidatorRun } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
-import type { NodeCast } from '../components/WorkflowNode.vue'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
 import type { SignedInUser } from '../composables/useAuthGate'
 
@@ -125,6 +124,10 @@ const {
   identityFor,
   castStates,
   castState,
+  // The cast, for one card. Cached by the store, so an unchanged card is handed
+  // the SAME object and Vue skips it - a literal built here would re-render all
+  // fourteen on every frame (T2.8).
+  castFor,
   initialize,
   launch,
   submitGate,
@@ -140,21 +143,6 @@ const {
   // sign-out. The handoff above is read the same way.
   userId: () => props.user?.id ?? null,
 })
-
-/**
- * The cast, for one node card.
- *
- * A tiny function rather than a field on `graphNodes`, and the reason is
- * ownership: `graphNodes` is the run composable's rebuild of the descriptor and
- * the cast is a different store's answer about the same node. Joining them here
- * keeps each store the only writer of its own facts, and keeps the card a
- * component that is TOLD who is standing on it rather than one that works it
- * out - which is what lets `speaking` and the gate's `blocked` exist at all,
- * since neither is derivable from the card's own state.
- */
-function castFor(nodeId: string): NodeCast {
-  return { identity: identityFor(nodeId), state: castState(nodeId) }
-}
 
 /**
  * What the header badge says about the backend.

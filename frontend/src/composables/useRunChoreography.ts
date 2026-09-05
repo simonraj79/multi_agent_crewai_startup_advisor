@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, shallowRef, type Ref } from 'vue'
 import { characterSeed, type PipState } from '../characters/pip'
 import type { FrameData, NodeRunState, RunStatus } from '../types/studio'
 
@@ -144,6 +144,23 @@ export function readsAsRole(value: string | undefined): boolean {
   return /\s/.test(trimmed) || /[A-Z]/.test(trimmed)
 }
 
+/**
+ * Who is standing on a node, and what they are doing - the pair every surface
+ * that draws a character binds to.
+ *
+ * Declared HERE rather than on the card, and handed out as a CACHED object
+ * rather than built at each call site, and the second half is a measured
+ * decision. `<WorkflowNode :cast="...">` is a prop: a fresh object literal is
+ * never `props`-equal, so building one in a template re-renders the card on
+ * every frame no matter how carefully its `data` was memoised. Counted in a
+ * mounted benchmark over 262 frames, that alone kept all fourteen cards
+ * re-rendering - 2,912 renders - with the `data` fix already in place.
+ */
+export interface CastMark {
+  identity: string
+  state: PipState
+}
+
 /** One token walking one edge. */
 export interface Handoff {
   /** Descriptor edge id, or `${from}-${to}` when the graph draws no such edge. */
@@ -239,7 +256,18 @@ export function useRunChoreography(options: RunChoreographyOptions) {
   const edgeIdFor = options.edgeIdFor ?? ((from: string, to: string) => `${from}-${to}`)
 
   const handoffs = ref<Handoff[]>([])
-  const dialogue = ref<DialogueEntry[]>([])
+  /**
+   * What the agents said. `shallowRef`, not `ref` (T2.8).
+   *
+   * Every write in this file replaces the array - `replaceAt`, a spread, a
+   * `map` - and never mutates an entry in place, which is the obligation a
+   * shallow ref imposes and which the reveal already met for its own reasons.
+   * What it buys is that an entry is a plain object rather than a proxy: the
+   * rail reads eight properties off each one per render, and the reveal step
+   * runs sixty times a second, so a deep ref was registering thousands of
+   * dependencies a second for text that had finished arriving minutes ago.
+   */
+  const dialogue = shallowRef<DialogueEntry[]>([])
   const stages = ref<RunStage[]>([])
   /** Node id -> the last error message the run reported for it. */
   const nodeErrors = ref<Record<string, string>>({})
@@ -321,6 +349,16 @@ export function useRunChoreography(options: RunChoreographyOptions) {
 
   /** Gate node id -> the node the last `edge_taken` into it came from. */
   const feeders = ref<Record<string, string>>({})
+
+  /**
+   * The last `{identity, state}` handed out per node, so an unchanged node is
+   * handed the SAME object again and its card can be skipped.
+   *
+   * A plain Map and not a `computed`: this is asked for one node at a time
+   * from a render function, and a per-node computed would be fourteen effects
+   * to create, invalidate and garbage-collect for a value that is two strings.
+   */
+  const castMarks = new Map<string, CastMark>()
 
   /** The last node a START frame named, as the feeder of last resort. */
   const lastStarted = ref('')
@@ -464,6 +502,22 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     return held
   })
 
+  /**
+   * One node's cast mark, stable while it says the same thing.
+   *
+   * The identity is read first and the state second, so a node that has
+   * neither still gets an object rather than two lookups and a literal.
+   */
+  function castFor(nodeId: string): CastMark {
+    const identity = identityFor(nodeId)
+    const state = castState(nodeId)
+    const cached = castMarks.get(nodeId)
+    if (cached && cached.identity === identity && cached.state === state) return cached
+    const mark: CastMark = { identity, state }
+    castMarks.set(nodeId, mark)
+    return mark
+  }
+
   /** Node id -> `PipState`, for everything that binds `<AgentCharacter :state>`. */
   const castStates = computed<Record<string, PipState>>(() => {
     const seen = new Set<string>([
@@ -553,6 +607,7 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     // node whose author has since renamed it.
     frameRoles.value = {}
     frameLife.value = {}
+    castMarks.clear()
     speaking.value = new Set()
     feeders.value = {}
     lastStarted.value = ''
@@ -868,12 +923,22 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     revealLast = at
     const grow = (elapsed / 1000) * REVEAL_CHARS_PER_SECOND
     let moving = false
-    dialogue.value = dialogue.value.map((entry) => {
+    let changed = false
+    const next = dialogue.value.map((entry) => {
       if (entry.revealed >= entry.text.length) return entry
       const revealed = Math.min(entry.text.length, entry.revealed + grow)
       if (revealed < entry.text.length) moving = true
+      if (revealed === entry.revealed) return entry
+      changed = true
       return { ...entry, revealed }
     })
+    // The ARRAY is replaced only when an entry actually moved (T2.8). This runs
+    // from `requestAnimationFrame`, so a step that reassigns regardless -
+    // which the first version did - invalidates every consumer sixty times a
+    // second for a rail in which nothing changed. It happens: `grow` is
+    // fractional, and two steps a quarter of a millisecond apart can leave a
+    // reveal on the same character.
+    if (changed) dialogue.value = next
     return moving
   }
 
@@ -928,6 +993,7 @@ export function useRunChoreography(options: RunChoreographyOptions) {
     characterSeedFor,
     castStates,
     castState,
+    castFor,
     loopingCharacters,
     speaking,
     frameRoles,

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { gatePass, waitForGateReopen } from './gateReply'
 import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
 
 /**
@@ -253,7 +254,10 @@ async function launchRun(page: Page, idea: string): Promise<void> {
   const review = page.getByRole('button', { name: 'Review', exact: true })
   if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
   await expect(review).toHaveAttribute('aria-pressed', 'true')
-  await page.locator('#idea').fill(idea)
+  // `textarea#idea`: a published graph may name a node `idea`, and Vue Flow's
+  // node id falls through to the card's DOM id, so the bare `#idea` matches two
+  // elements and fails on strict mode. Measured in `cast.spec.ts`'s S4.
+  await page.locator('textarea#idea').fill(idea)
   const launch = page.locator('[data-testid="launch-button"]')
   await expect(launch).toBeEnabled()
 
@@ -364,6 +368,7 @@ test.describe('T2.8 — frame budget', () => {
         if (await card.first().isVisible().catch(() => false)) {
           const title = (await card.locator('h2').innerText().catch(() => '')).trim()
           const revise = (revisesLeft[title] ?? 0) > 0
+          const pass = revise ? await gatePass(page, title) : 0
           if (revise) {
             revisesLeft[title] -= 1
             await card
@@ -377,7 +382,22 @@ test.describe('T2.8 — frame budget', () => {
             .click()
             .catch(() => undefined)
           replies += 1
-          await expect(card).toHaveCount(0, { timeout: 60_000 })
+          /*
+           * The two replies need OPPOSITE waits, and conflating them cost this
+           * test a red on its first full run.
+           *
+           * An approve leaves a real gap — the scope gate hands off to a fifteen
+           * second fan-out — so waiting for the card to detach is right. A
+           * revise does not: the server emits `gate_closed` and `gate_open` back
+           * to back, Vue coalesces them into one render, and `pendingGate` never
+           * passes through null. Waiting for a hole that is never there timed out
+           * at 60 s while the console sat there with the re-opened gate on
+           * screen. `waitForGateReopen` watches the gate node's pass count, which
+           * increments once per opening; `e2e/gateReply.ts` carries the full
+           * reasoning.
+           */
+          if (revise) await waitForGateReopen(page, title, pass)
+          else await expect(card).toHaveCount(0, { timeout: 60_000 })
         }
         await page.waitForTimeout(250)
       }

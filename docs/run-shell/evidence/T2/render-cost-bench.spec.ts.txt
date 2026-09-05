@@ -1,0 +1,129 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+import { defineComponent, h, nextTick } from 'vue'
+import ChatRail from '../src/components/ChatRail.vue'
+import DialogueRail from '../src/components/DialogueRail.vue'
+import WorkflowNode from '../src/components/WorkflowNode.vue'
+import { characterIndex } from '../src/composables/useRunChoreography'
+import { useValidatorRun } from '../src/composables/useValidatorRun'
+import type { FrameData, StudioFrame } from '../src/types/studio'
+import { FakeStudioApi, RUN_ID, flush } from './helpers'
+
+function loadFrames(name: string): FrameData[] {
+  const path = resolve(process.cwd(), 'tests', 'fixtures', name)
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .map((row) => row.trim())
+    .filter(Boolean)
+    .map((row) => {
+      const parsed = JSON.parse(row) as StudioFrame | FrameData
+      return 'data' in parsed && parsed.type === 'frame' ? parsed.data : (parsed as FrameData)
+    })
+}
+
+function percentile(sorted: number[], p: number): number {
+  if (!sorted.length) return 0
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))]
+}
+
+const REPEATS = Number(process.env.BENCH_REPEATS ?? 2)
+
+async function measure(parts: { canvas: boolean; trace: boolean; spoken: boolean }, label: string) {
+  const api = new FakeStudioApi()
+  let run!: ReturnType<typeof useValidatorRun>
+  let nodeRenders = 0
+  let railRenders = 0
+
+  const CountingNode = defineComponent({
+    props: { data: { type: Object, required: true }, cast: { type: Object, required: false } },
+    setup(props) {
+      return () => {
+        nodeRenders += 1
+        return h(WorkflowNode, { data: props.data, cast: props.cast } as never)
+      }
+    },
+  })
+
+  const Harness = defineComponent({
+    setup() {
+      run = useValidatorRun(api)
+      return () => {
+        railRenders += 1
+        return [
+          parts.canvas
+            ? h('div', { class: 'canvas' },
+                run.graphNodes.value.map((node) =>
+                  h(CountingNode, {
+                    key: node.id,
+                    data: node.data,
+                    cast: run.castFor(node.id),
+                  }),
+                ),
+              )
+            : null,
+          parts.trace
+            ? h(ChatRail, {
+                entries: run.chatEntries.value,
+                collapsed: false,
+                characterOf: characterIndex,
+                identityOf: run.identityFor,
+                stateOf: run.castState,
+              })
+            : null,
+          parts.spoken
+            ? h(DialogueRail, {
+                entries: run.dialogue.value,
+                collapsed: false,
+                characterOf: characterIndex,
+                identityOf: run.identityFor,
+                stateOf: run.castState,
+              })
+            : null,
+        ]
+      }
+    },
+  })
+
+  const wrapper = mount(Harness, { global: { stubs: { Handle: true } } })
+  await run.initialize()
+  await run.launch()
+  await nextTick()
+
+  const one = [...loadFrames('serializerFrames.ndjson'), ...loadFrames('syntheticRun.ndjson')]
+  const frames: FrameData[] = []
+  for (let pass = 0; pass < REPEATS; pass += 1) frames.push(...one)
+  const numbered = frames.map((frame, index) => ({ ...frame, run_id: RUN_ID, seq: index + 1 }))
+
+  const costs: number[] = []
+  for (const frame of numbered) {
+    const started = performance.now()
+    api.emit(frame)
+    await flush()
+    await nextTick()
+    costs.push(performance.now() - started)
+  }
+
+  const sorted = [...costs].sort((a, b) => a - b)
+  const total = costs.reduce((a, b) => a + b, 0)
+  // eslint-disable-next-line no-console
+  console.log(
+    `BENCH[${label}] frames=${costs.length} total=${total.toFixed(0)}ms mean=${(total / costs.length).toFixed(2)} ` +
+    `p95=${percentile(sorted, 0.95).toFixed(2)} max=${sorted[sorted.length - 1].toFixed(2)} ` +
+    `nodeRenders=${nodeRenders} harnessRenders=${railRenders} ` +
+    `rows=${run.chatEntries.value.length} spoken=${run.dialogue.value.length} pips=${wrapper.findAll('.pip').length} ` +
+    `domElements=${wrapper.element.querySelectorAll('*').length} ` +
+    `perTraceRow=${(wrapper.findAll('.trace-entry').length ? Math.round(wrapper.findAll('.trace-entry').map((r) => r.element.querySelectorAll('*').length).reduce((a, b) => a + b, 0) / wrapper.findAll('.trace-entry').length) : 0)}`,
+  )
+  wrapper.unmount()
+}
+
+describe('render cost per frame', () => {
+  it('canvas only', async () => { await measure({ canvas: true, trace: false, spoken: false }, 'canvas') }, 180_000)
+  it('trace only', async () => { await measure({ canvas: false, trace: true, spoken: false }, 'trace') }, 180_000)
+  it('spoken only', async () => { await measure({ canvas: false, trace: false, spoken: true }, 'spoken') }, 180_000)
+  it('everything', async () => { await measure({ canvas: true, trace: true, spoken: true }, 'all') }, 180_000)
+  it('ran', () => { expect(true).toBe(true) })
+})

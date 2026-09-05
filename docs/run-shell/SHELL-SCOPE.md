@@ -432,8 +432,21 @@ cost is a baseline regeneration. Together they are the "Option B" commit.
 5. **Drop the `:where(.studio-shell:not(.is-builder))` guard on `.segmented`**
    and the two `:not(.is-builder)` guards in the header, so the builder's
    Build/Run pair stops being two native buttons too. Same commit as 4.
-6. **`node-card.css`'s five `--text-40` sites** stay at 4.11:1 in light. One swap
-   to `--text-meta`; W4's file; inside both baseline sets.
+6. **`node-card.css`'s five `--text-40` sites** — the eyebrow, the quarantine
+   count, the in-flight query, the duration hint and the usage row — measure
+   **4.31:1** in light. **The RUN CONSOLE's copy of them is fixed** (round two):
+   `motion.css` now overrides all five to `--text-meta` behind
+   `.studio-shell:not(.is-builder)`, which is that sheet's own tenancy of the
+   shared card, and the run console reads **5.13:1**. Nothing moved in dark —
+   `--text-meta`'s dark value is `--text-40`'s — and the three run-canvas
+   baselines are captured in dark only, so no pixel moved there either.
+
+   **The BUILDER's copy still reads 4.31.** Closing it means editing
+   `node-card.css`, which is inside the builder's sixteen full-page baselines,
+   eight of them light — so it is one token swap plus a regeneration, and it is
+   this follow-up. `contrast-audit.mjs` measures the builder's row and prints it
+   under *out of scope* so nobody has to rediscover it; the run shell's row is
+   in scope and passes.
 7. **The 109 accent-as-text sites across 32 files** that `tokens.css` already
    counts. `--on-accent-*` makes the sweep mechanical.
 8. **`.markdown-body`'s document scale** (22/18/15px + `0.88em`) is deliberately
@@ -444,6 +457,26 @@ cost is a baseline regeneration. Together they are the "Option B" commit.
 ---
 
 ## 7. Handed to a named owner, with the token to use
+
+> **ROUND TWO, 2026-09-05: thirteen of these seventeen are CLOSED, and the
+> exemption that let them stay open is gone.**
+>
+> Ownership moved from *plan* to *file* once every builder finished, so
+> `CrewProgress.vue`, `motion.css`, `ReportPanel.vue` and `GateCard.vue` came to
+> W5 and their rows were fixed with the tokens this table already named. The
+> character palette's four short colours were darkened to 90 % of their own
+> light values — the same hue, because the twelve have to stay tellable apart at
+> 32 px and a ratio bought by collapsing two of them toward each other is not a
+> fix. And `contrast-audit.mjs` no longer counts W5's rows only: RV's third pass
+> was right that a script exiting 0 over seventeen failing pairings is a gate
+> measuring the wrong thing. `owner` is a label on a failure now, never an
+> exemption from one. **330 pairings, 328 in scope, 1 failing** — and that one is W4's.
+>
+> | Still open | Why |
+> | --- | --- |
+> | `ChatRail.vue:383` and `DialogueRail.vue:467` `.section-kicker` (1.29) | W4 owns both files this round; the token is `--on-accent-cyan`. The two `.text-button` rows are gone: `ChatRail` no longer has one, and the single remaining `--link-cyan` site sits on a rail rather than on a well, where it passes |
+> | ~~`node-card.css` `.node-meta` (4.31)~~ | **CLOSED for the run console**: `motion.css` overrides the card's five quiet-text sites to `--text-meta` behind the run-console guard, 4.31 → **5.13**, with no pixel moved in dark and none in the builder. The builder's own card keeps 4.31 and is §6.6 |
+
 
 These are the contrast failures the run shell renders in files W5 must not open.
 `evidence/T3/contrast.md` lists each one with its measured ratio and marks it

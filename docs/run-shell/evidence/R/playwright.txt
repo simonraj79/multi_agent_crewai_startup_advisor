@@ -1,0 +1,801 @@
+$ npx playwright test        # from frontend/, the WHOLE suite, both projects
+# run by RV3, branch run-shell/cast at 27b256e
+#
+# BACKEND (repo root, background, restarted clean immediately before this run):
+#   SYNTHETIC=1
+#   SYNTHETIC_BRANCH_DELAY_SECONDS=5
+#   PORT=8099
+#   CREDENTIALS_MASTER_KEY=Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE=
+#   BUILDER_ALLOW_GATELESS_GRAPHS=1
+#   RUN_RATE_LIMIT_MAX_RUNS=100          (.agent/MISSION.md section 8)
+#   MCP_ALLOW_INSECURE_LOCAL=1           (.agent/MISSION.md section 8)
+#   SKILLS_ROOT=D:/MultiAgentSystem/data/skills
+#   SYNTHETIC_FAILURE="fm_bad_key:bad_key:1,fm_tool_timeout:tool_timeout:1,
+#                      fm_refusal:refusal:1,fm_malformed:malformed_output:1,
+#                      fm_rate_limit:rate_limit:1,fm_cast_refusal:refusal:1"
+#   ./.venv/Scripts/serve.exe
+#
+# The SYNTHETIC_FAILURE value is the five-mode string in e2e/failure-modes.spec.ts's
+# header COMBINED with e2e/cast.spec.ts's own sixth entry - the grammar is comma
+# separated with a node prefix per entry (builder_runner.py::parse_synthetic_failures),
+# and every node it names is one only those two files author, so one backend serves
+# the whole suite and no other file's run fails.
+#
+# MCP FIXTURE: tests/service/mcp_fixture_server.py build_server(port=8791) on
+# streamable-http, with E2E_MCP_URL=http://127.0.0.1:8791/mcp exported for Playwright.
+# Without it e2e/builder-mcp.spec.ts SKIPS rather than stubbing.
+#
+# Playwright started its own Vite on :5273 (e2e/vite.e2e.config.ts -> :8099).
+# Zero console errors are tolerated; the suite enforces that itself.
+
+[WebServer] (!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+[WebServer]   - import "./syntheticUser" without a file extension (e2e/vite.e2e.config.ts:4:57). Add the file extension
+[WebServer] Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+Running 162 tests using 1 worker
+
+  ✓    1 [chromium] › e2e\builder-layout.spec.ts:264:3 › Flow builder layout › does not move the Build/Run toggle when a notice appears (D-15-14) (2.0s)
+  ✓    2 [chromium] › e2e\builder-layout.spec.ts:310:3 › Flow builder layout › gives the empty gallery the page, not the 236px palette column (744ms)
+  ✓    3 [chromium] › e2e\builder-layout.spec.ts:411:3 › Flow builder layout › lands every node of the validator template inside the canvas pane (761ms)
+  ✓    4 [chromium] › e2e\builder-layout.spec.ts:476:3 › Flow builder layout › lands every node of every pattern template inside the canvas pane (2.9s)
+  ✓    5 [chromium] › e2e\builder-layout.spec.ts:536:3 › Flow builder layout › lands every node of the 48-node perf fixture inside the canvas pane (934ms)
+  ✓    6 [chromium] › e2e\builder-layout.spec.ts:594:3 › Flow builder layout › keeps all three shell columns present and non-zero once a document is open (776ms)
+  ✓    7 [chromium] › e2e\builder-layout.spec.ts:709:3 › a docked strip never makes the graph unreadable (D-15-2) › keeps titles legible with Versions, the banner and the delete strip docked (1.4s)
+  ✓    8 [chromium] › e2e\builder-layout.spec.ts:808:3 › the document menu clears the rows it operates on (D-15-25) › opens the menu clear of the version panel at 1440x900 (913ms)
+  ✓    9 [chromium] › e2e\builder-layout.spec.ts:888:3 › what the pane cannot show, it says (D-15-2, round 4) › counts the off-pane nodes with a dock open, and Fit clears the count (1.4s)
+  ✓   10 [chromium] › e2e\builder-layout.spec.ts:941:3 › the gallery reads as four cards and one trash (D-15-26, D-15-27) › separates the trash from Export by at least 16px (462ms)
+  ✓   11 [chromium] › e2e\builder-layout.spec.ts:961:3 › the gallery reads as four cards and one trash (D-15-26, D-15-27) › keeps the caveat card within reach of its siblings (504ms)
+  ✓   12 [chromium] › e2e\builder-layout.spec.ts:1036:3 › the saved-graphs library (D-15-4) › shows every distinguishing word and keeps every row reachable (787ms)
+  ✓   13 [chromium] › e2e\builder-layout.spec.ts:1161:3 › the canvas stays legible at the zooms it picks for itself › no edge is ever thinner than the design width in DEVICE pixels (P-06) (2.2s)
+  ✓   14 [chromium] › e2e\builder-layout.spec.ts:1207:3 › the canvas stays legible at the zooms it picks for itself › the minimap gets out of the way of a node underneath it (P-07) (2.0s)
+  ✓   15 [chromium] › e2e\builder-mcp.spec.ts:124:3 › an MCP server, added and discovered for real › adds a server by URL, discovers it, checks two tools and shows each preview (2.0s)
+  ✓   16 [chromium] › e2e\builder-models.spec.ts:110:3 › the model registry, from the picker › a cheaper model lowers the ENFORCED figure within one validate cycle (1.8s)
+  ✓   17 [chromium] › e2e\builder-models.spec.ts:173:3 › the model registry, from the picker › disables a parameter the chosen model cannot honour, and names it (1.0s)
+  ✓   18 [chromium] › e2e\builder-perf.spec.ts:370:3 › canvas performance at the bound maximum › the sampler can actually see a stall, which is what makes a green run mean anything (2.2s)
+  ✓   19 [chromium] › e2e\builder-perf.spec.ts:425:3 › canvas performance at the bound maximum › records what an IDLE canvas costs, so a busy one can be compared to it (8.0s)
+  ✓   20 [chromium] › e2e\builder-perf.spec.ts:453:3 › canvas performance at the bound maximum › records the same gesture over ONE node, to say where the late frames come from (7.9s)
+  ✓   21 [chromium] › e2e\builder-perf.spec.ts:514:3 › canvas performance at the bound maximum › holds the frame budget on the 48-node fixture (8.3s)
+  ✓   22 [chromium] › e2e\builder-perf.spec.ts:533:3 › canvas performance at the bound maximum › holds the same budget on a 60-node graph the server would refuse to size (8.3s)
+  ✓   23 [chromium] › e2e\builder-skills.spec.ts:140:3 › skills, from paste to attached › the palette names all three attachment families in one line each (657ms)
+  ✓   24 [chromium] › e2e\builder-skills.spec.ts:170:3 › skills, from paste to attached › pastes a SKILL.md, lists it under mine, attaches it and renders its body (1.2s)
+  ✓   25 [chromium] › e2e\builder-skills.spec.ts:238:3 › skills, from paste to attached › shows the package parser own sentence when a pack will not parse (923ms)
+  ✓   26 [chromium] › e2e\builder-tools.spec.ts:132:3 › the tool catalogue, on the canvas › names every catalogue entry in a sub-list under the tool tile (695ms)
+  ✓   27 [chromium] › e2e\builder-tools.spec.ts:165:3 › the tool catalogue, on the canvas › attaches a tool to an agent and takes both away in one undo (845ms)
+  ✓   28 [chromium] › e2e\builder-tools.spec.ts:198:3 › the tool catalogue, on the canvas › leaves a tool dropped on a transform unattached, and says so in the dock (1.7s)
+  ✓   29 [chromium] › e2e\builder-tools.spec.ts:240:3 › the tool catalogue, on the canvas › shows the amber no-key chip and the dock row until a credential is chosen (2.6s)
+  ✓   30 [chromium] › e2e\builder-tools.spec.ts:321:1 › drags a NAMED tool out of the sub-list and lands that tool (782ms)
+  ✓   31 [chromium] › e2e\builder.spec.ts:303:3 › Flow builder › places a node, wires it, and watches validation go red then green (2.7s)
+  ✓   32 [chromium] › e2e\builder.spec.ts:355:3 › Flow builder › refuses a connection into the input node at the mouse, and commits nothing (1.0s)
+  ✓   33 [chromium] › e2e\builder.spec.ts:399:3 › Flow builder › creates a node and its edge from a port drag as ONE undo step (1.2s)
+  ✓   34 [chromium] › e2e\builder.spec.ts:447:3 › Flow builder › aborts the port menu with Escape and leaves the history untouched (1.0s)
+  ✓   35 [chromium] › e2e\builder.spec.ts:474:3 › Flow builder › deletes a router branch and its edge together, and one undo restores both (1.5s)
+  ✓   36 [chromium] › e2e\builder.spec.ts:521:3 › Flow builder › configures a node in the docked inspector and the card says so at once (1.8s)
+  ✓   37 [chromium] › e2e\builder.spec.ts:558:3 › Flow builder › aligns a marquee selection in exactly one undo step (1.2s)
+  ✓   38 [chromium] › e2e\builder.spec.ts:630:3 › Flow builder › resolves a save conflict without discarding the author work (979ms)
+  ✓   39 [chromium] › e2e\builder.spec.ts:697:3 › Flow builder › walks to a problem from the panel, fixes it, publishes, and the graph launches @launch (2.7s)
+  ✓   40 [chromium] › e2e\builder.spec.ts:835:3 › Flow builder › never presents an unchecked document as ready to publish (2.4s)
+  ✓   41 [chromium] › e2e\builder.spec.ts:896:3 › Flow builder › ends the keyboard connect gesture it starts, and Escape keeps working after (978ms)
+  ✓   42 [chromium] › e2e\builder.spec.ts:947:3 › Flow builder › completes a keyboard link with Tab and Enter (928ms)
+  ✓   43 [chromium] › e2e\builder.spec.ts:970:3 › Flow builder › focuses the node filter with / and dims what does not match (714ms)
+  ✓   44 [chromium] › e2e\builder.spec.ts:995:3 › Flow builder › lets a keyboard author out of the canvas (642ms)
+  ✓   45 [chromium] › e2e\builder.spec.ts:1027:3 › Flow builder › opens a prior version read-only, and Restore makes it the next head (1.3s)
+  ✓   46 [chromium] › e2e\builder.spec.ts:1105:3 › Flow builder › recovers the open document across a reload without offering a stale draft (1.0s)
+  ✓   47 [chromium] › e2e\builder.spec.ts:1185:3 › the canvas, in a browser › connects at 50 / 100 / 150 % zoom, ten times out of ten (19.4s)
+  ✘   48 [chromium] › e2e\builder.spec.ts:1227:3 › the canvas, in a browser › paints the target handle green when it will take the edge and red when it will not (15.8s)
+  ✓   49 [chromium] › e2e\builder.spec.ts:1283:3 › the canvas, in a browser › says no to a refused drop, and commits nothing when it does (1.5s)
+  ✓   50 [chromium] › e2e\builder.spec.ts:1324:3 › the canvas, in a browser › shows the port name on the dangling line while a gate branch is dragged (984ms)
+  ✓   51 [chromium] › e2e\builder.spec.ts:1365:3 › the canvas, in a browser › places the first node of a new graph in one click from the landing page (617ms)
+  ✓   52 [chromium] › e2e\builder.spec.ts:1391:3 › the canvas, in a browser › keeps the zoom limits the plan sets, and the port target inside them (762ms)
+  ✓   53 [chromium] › e2e\builder.spec.ts:1506:3 › attachments and the inspector › attaches a tool by dropping it on an agent, in one undo step (1.0s)
+  ✓   54 [chromium] › e2e\builder.spec.ts:1552:3 › attachments and the inspector › attaches a tool by DRAGGING its port onto the agent, not only by dropping (2.2s)
+  ✓   55 [chromium] › e2e\builder.spec.ts:1609:3 › attachments and the inspector › attaches with the T hotkey when an agent is selected, and places it loose when none is (1.9s)
+  ✓   56 [chromium] › e2e\builder.spec.ts:1668:3 › attachments and the inspector › leaves a tool dropped on empty canvas unattached, and says so (1.6s)
+  ✓   57 [chromium] › e2e\builder.spec.ts:1700:3 › attachments and the inspector › surfaces a problem that lives behind the Expert switch, and walks to its node (2.1s)
+  ✓   58 [chromium] › e2e\builder.spec.ts:1790:3 › attachments and the inspector › turns the Expert switch on and focuses the control a hidden problem blames (2.1s)
+  ✓   59 [chromium] › e2e\builder.spec.ts:1836:3 › attachments and the inspector › is fully keyboard reachable: every control of an authored agent, and the dock (2.6s)
+  ✓   60 [chromium] › e2e\builder.spec.ts:1927:3 › attachments and the inspector › configures an agent in nine pointer actions, ending valid (2.8s)
+  ✓   61 [chromium] › e2e\capture-run.spec.ts:161:3 › plan 11 capture set › captures the run console in five states, two viewports, two themes (52.2s)
+  ✓   62 [chromium] › e2e\capture-templates.spec.ts:66:3 › plan 14 capture set › captures the gallery and every template, two viewports, two themes (38.1s)
+  ✘   63 [chromium] › e2e\cast-perf.spec.ts:311:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch (1.1m)
+  ✘   64 [chromium] › e2e\cast-perf.spec.ts:440:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch (12.4s)
+  ✓   65 [chromium] › e2e\cast.spec.ts:515:3 › the cast at rest › S1: every character is idle before a run, and the shell is not blank (812ms)
+  ✘   66 [chromium] › e2e\cast.spec.ts:552:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch (4.7s)
+  ✓   67 [chromium] › e2e\cast.spec.ts:665:3 › the graph and the trace show the same cast › T2.6: mid-run, every running node and its trace rows carry one seed and agree on the state @launch (3.1s)
+  ✓   68 [chromium] › e2e\cast.spec.ts:756:3 › the character on a node is deterministic › G3: the same node keeps the same character across a page reload @launch (15.3s)
+  ✓   69 [chromium] › e2e\cast.spec.ts:820:3 › motion stays quiet › T2.7: nothing animates offscreen and no more than twelve character animations run at once @launch (2.8s)
+  ✓   70 [chromium] › e2e\cast.spec.ts:859:3 › motion stays quiet › T2.7/S5: reduced motion stops every part and keeps every state @launch (15.7s)
+  ✘   71 [chromium] › e2e\cast.spec.ts:941:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch (1.3m)
+  ✓   72 [chromium] › e2e\cast.spec.ts:1170:3 › the shell at 390x844 › S6: a run drives and finishes at 390px, and nothing overflows sideways @launch (18.6s)
+  ✘   73 [chromium] › e2e\cast.spec.ts:1363:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch (1.3s)
+1080 gallery: 4 of 9 cards above the fold
+1080 validator on open: zoom 0.7333 · smallest title 9.53px (13px CSS on route_scope) · card titles 11px · 5 of 16 clipped [{"id":"revise_scope","overflow":26},{"id":"route_scope","overflow":26},{"id":"market_analyst","overflow":26},{"id":"revise_verdict","overflow":26},{"id":"route_verdict","overflow":4}] · 0 wholly off-pane
+  ✓   74 [chromium] › e2e\desktop-1080.spec.ts:383:3 › 1 · the gallery and the sixteen-node template › the gallery fits, and every validator node is whole and legible (2.3s)
+1080 validator light: zoom 0.7333 · title 9.53px · 5 clipped · 0 off-pane
+  ✓   75 [chromium] › e2e\desktop-1080.spec.ts:459:3 › 1 · the gallery and the sixteen-node template › light theme keeps the same fit (2.3s)
+1080 versions+delete: pane 505px · zoom 0.7333 · title 9.53px · 5 clipped · 5 off-pane · 5 titles cut [{"id":"revise_scope","overflow":120},{"id":"route_scope","overflow":120},{"id":"market_analyst","overflow":120},{"id":"revise_verdict","overflow":121},{"id":"route_verdict","overflow":98}]
+  ✓   76 [chromium] › e2e\desktop-1080.spec.ts:493:3 › 2 · versions plus the delete strip › says what it hides and lets a pan reach it, with both docked (4.0s)
+1080 inspector 3-inspector-expert-dark: 0 clipped controls
+  ✓   77 [chromium] › e2e\desktop-1080.spec.ts:655:3 › 3 · the inspector with expert settings on › no control is clipped and the dock is visible — dark (2.3s)
+1080 inspector 7c-inspector-expert-light: 0 clipped controls
+  ✓   78 [chromium] › e2e\desktop-1080.spec.ts:664:3 › 3 · the inspector with expert settings on › no control is clipped and the dock is visible — light (2.3s)
+1080 test panel: 437px of 729 = 59.9% · canvas 0.733 -> 0.7333 · 15 clipped · 8 off-pane
+  ✓   79 [chromium] › e2e\desktop-1080.spec.ts:680:3 › 4 · the test panel at 60% of the pane › the canvas re-fits and nothing sits under the panel (3.0s)
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+1080 console mid-run (dark): {"nodes":7,"offPane":0,"lane":true,"rail":true,"status":true,"pageScrolls":false}
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:45 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+1080 console completed (dark): panel {"elapsed":"00:00","calls":"3","tokens":"1.8K","cost":"$0.0016"} · server {"frames":50,"frameSpanSeconds":0.399,"tokenFrames":3}
+  ✓   80 [chromium] › e2e\desktop-1080.spec.ts:991:3 › 5 · a published graph, mid-run and completed › the run console at 1920x1080 — dark @launch (3.7s)
+[WebServer] 3:16:48 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+1080 console mid-run (light): {"nodes":7,"offPane":0,"lane":true,"rail":true,"status":true,"pageScrolls":false}
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:16:49 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+1080 console completed (light): panel {"elapsed":"00:00","calls":"3","tokens":"1.8K","cost":"$0.0016"} · server {"frames":50,"frameSpanSeconds":0.449,"tokenFrames":3}
+  ✓   81 [chromium] › e2e\desktop-1080.spec.ts:999:3 › 5 · a published graph, mid-run and completed › the run console at 1920x1080 — light @launch (3.8s)
+crit10 dark bad_key: legible=true recoverable=true contrast=12.23:1 — "SyntheticBadCredential: SYNTHETIC_FAILURE: fm_bad_key attempt 1 (SyntheticBadCredential)"
+  ✓   82 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch bad_key is legible and recoverable — dark (2.0s)
+crit10 dark tool_timeout: legible=true recoverable=true contrast=12.23:1 — "SyntheticToolTimeout: SYNTHETIC_FAILURE: fm_tool_timeout attempt 1 (SyntheticToolTimeout)"
+  ✓   83 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch tool_timeout is legible and recoverable — dark (1.6s)
+crit10 dark refusal: legible=true recoverable=true contrast=12.23:1 — "SyntheticRefusal: SYNTHETIC_FAILURE: fm_refusal attempt 1 (SyntheticRefusal)"
+  ✓   84 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch refusal is legible and recoverable — dark (1.6s)
+crit10 dark malformed_output: legible=true recoverable=true contrast=12.23:1 — "SyntheticMalformedOutput: SYNTHETIC_FAILURE: fm_malformed attempt 1 (SyntheticMalformedOutput)"
+  ✓   85 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch malformed_output is legible and recoverable — dark (1.7s)
+crit10 dark rate_limit: legible=true recoverable=true contrast=12.23:1 — "SyntheticRateLimitError: SYNTHETIC_FAILURE: fm_rate_limit attempt 1 (SyntheticRateLimitError)"
+  ✓   86 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch rate_limit is legible and recoverable — dark (1.6s)
+crit10 dark cyclic_graph: legible=true recoverable=true contrast=13.18:1 — "back-edge-not-router edge 'e3' closes a loop from 'second' back to 'first', and 'second' is a agent node. A loop-closing node MUST be a router: insert a router node between 'second' and 'first' and draw the back edge from that router instead. This is measured, not cautious - with a plain node here the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing, with no exception and no warning second"
+  ✓   87 [chromium] › e2e\desktop-1080.spec.ts:1337:5 › 6 · plan 12 criterion 10 at 1920x1080 › the cyclic graph is refused legibly — dark (697ms)
+crit10 light bad_key: legible=true recoverable=true contrast=6.53:1 — "SyntheticBadCredential: SYNTHETIC_FAILURE: fm_bad_key attempt 1 (SyntheticBadCredential)"
+  ✓   88 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch bad_key is legible and recoverable — light (1.7s)
+crit10 light tool_timeout: legible=true recoverable=true contrast=6.53:1 — "SyntheticToolTimeout: SYNTHETIC_FAILURE: fm_tool_timeout attempt 1 (SyntheticToolTimeout)"
+  ✓   89 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch tool_timeout is legible and recoverable — light (1.6s)
+crit10 light refusal: legible=true recoverable=true contrast=6.53:1 — "SyntheticRefusal: SYNTHETIC_FAILURE: fm_refusal attempt 1 (SyntheticRefusal)"
+  ✓   90 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch refusal is legible and recoverable — light (1.6s)
+crit10 light malformed_output: legible=true recoverable=true contrast=6.53:1 — "SyntheticMalformedOutput: SYNTHETIC_FAILURE: fm_malformed attempt 1 (SyntheticMalformedOutput)"
+  ✓   91 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch malformed_output is legible and recoverable — light (1.7s)
+crit10 light rate_limit: legible=true recoverable=true contrast=6.53:1 — "SyntheticRateLimitError: SYNTHETIC_FAILURE: fm_rate_limit attempt 1 (SyntheticRateLimitError)"
+  ✓   92 [chromium] › e2e\desktop-1080.spec.ts:1282:7 › 6 · plan 12 criterion 10 at 1920x1080 › @launch rate_limit is legible and recoverable — light (1.6s)
+crit10 light cyclic_graph: legible=true recoverable=true contrast=12.85:1 — "back-edge-not-router edge 'e3' closes a loop from 'second' back to 'first', and 'second' is a agent node. A loop-closing node MUST be a router: insert a router node between 'second' and 'first' and draw the back edge from that router instead. This is measured, not cautious - with a plain node here the join fires once, the second arrival is suppressed, and the run ends normally having produced nothing, with no exception and no warning second"
+  ✓   93 [chromium] › e2e\desktop-1080.spec.ts:1337:5 › 6 · plan 12 criterion 10 at 1920x1080 › the cyclic graph is refused legibly — light (776ms)
+  ✓   94 [chromium] › e2e\failure-modes.spec.ts:301:3 › the failure reaches the screen › @launch the failed node turns red on the run console, message and all (3.5s)
+  ✓   95 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch bad_key fails legibly and re-runs from the failed node (490ms)
+  ✓   96 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch tool_timeout fails legibly and re-runs from the failed node (473ms)
+  ✓   97 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch refusal fails legibly and re-runs from the failed node (481ms)
+  ✓   98 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch malformed_output fails legibly and re-runs from the failed node (491ms)
+  ✓   99 [chromium] › e2e\failure-modes.spec.ts:412:5 › the five failure modes that run › @launch rate_limit fails legibly and re-runs from the failed node (471ms)
+  ✓  100 [chromium] › e2e\failure-modes.spec.ts:465:3 › the cyclic graph never gets as far as a run › publish is refused, the closing edge is highlighted, and the sentence says how (696ms)
+  ✓  101 [chromium] › e2e\isolation.spec.ts:266:3 › Per-user isolation › Alice authors a graph, stores a key and publishes, and every row says it is hers (2.1s)
+  ✓  102 [chromium] › e2e\isolation.spec.ts:347:3 › Per-user isolation › Bob's gallery lists no graph of Alice's, and his picker no key of hers (859ms)
+  ✓  103 [chromium] › e2e\isolation.spec.ts:384:3 › Per-user isolation › a deep link to Alice's document lands Bob on the empty builder (322ms)
+  ✓  104 [chromium] › e2e\isolation.spec.ts:417:3 › Per-user isolation › Bob's console pointed at Alice's workflow stays live, shows the server's sentence, and cannot launch @launch (451ms)
+  ✓  105 [chromium] › e2e\isolation.spec.ts:509:3 › Per-user isolation › the next person on the same browser inherits nothing of Alice's, and her sign-out clears what she wrote @launch (1.1s)
+journey: 2.0s of a 240s budget
+  ✓  106 [chromium] › e2e\journey.spec.ts:100:3 › The four-minute journey › a cold sign-in reaches a visible result in under four minutes @launch (2.2s)
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:24 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:26 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:26 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:26 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:26 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:26 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+  ✓  107 [chromium] › e2e\published-run.spec.ts:72:3 › a published graph in the run console › paints a phase lane that advances in order @launch (9.0s)
+[WebServer] 3:17:33 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:33 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+[WebServer] 3:17:33 PM [vite] (client) [console.warn] [Vue Flow]: Edge source or target is missing
+[WebServer] Edge: e6 
+[WebServer] Source: search 
+[WebServer] Target: research
+  ✓  108 [chromium] › e2e\published-run.spec.ts:130:3 › a published graph in the run console › gives the lane medallions rather than the validator's boat @launch (1.4s)
+  ✓  109 [chromium] › e2e\stream-failure.spec.ts:137:3 › a dropped socket loses nothing › @launch the stream dies mid-run, the reload keeps every completed node, and the run finishes (19.0s)
+  ✓  110 [chromium] › e2e\stream-failure.spec.ts:211:3 › a dropped socket loses nothing › @launch a reload with no socket drop at all is the control (3.3s)
+  ✓  111 [chromium] › e2e\studio.spec.ts:143:3 › Validator Studio › renders the fixed validator topology (662ms)
+  ✓  112 [chromium] › e2e\studio.spec.ts:181:3 › Validator Studio › reports the live backend instead of falling back to the mock transport (573ms)
+  ✘  113 [chromium] › e2e\studio.spec.ts:204:3 › Validator Studio › runs the full operator journey through both gates to completion @launch (16.0s)
+  ✓  114 [chromium] › e2e\studio.spec.ts:330:3 › Validator Studio › marks the paused gate node Waiting while a human is being asked @launch (1.1s)
+  ✘  115 [chromium] › e2e\studio.spec.ts:351:3 › Validator Studio › presents every verdict value as read-only and leaves only feedback editable @launch (16.6s)
+  ✓  116 [chromium] › e2e\studio.spec.ts:410:3 › Validator Studio › accepts a Revise reply at the scope gate and keeps the run going @launch (1.4s)
+  ✓  117 [chromium] › e2e\studio.spec.ts:460:3 › Validator Studio › recovers an in-flight run across a page reload @launch (16.8s)
+  ✓  118 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch sequential-pipeline opens, publishes and completes with a body (1.5s)
+  ✓  119 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch news-to-social opens, publishes and completes with a body (1.1s)
+  ✓  120 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch conditional-router opens, publishes and completes with a body (1.4s)
+  ✓  121 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch reflection-loop opens, publishes and completes with a body (1.4s)
+  ✓  122 [chromium] › e2e\templates.spec.ts:173:5 › Templates run from a cold sign-in › @launch hierarchical-delegation opens, publishes and completes with a body (1.4s)
+  ✓  123 [chromium] › e2e\test-panel.spec.ts:279:3 › The docked test panel › the Run tab completes a published graph and shows a result body inline @launch (4.2s)
+  ✓  124 [chromium] › e2e\test-panel.spec.ts:335:3 › The docked test panel › the Node tab names the mocks it has not got, and runs one node once it has @launch (4.5s)
+  ✓  125 [chromium] › e2e\test-panel.spec.ts:461:3 › The docked test panel › the Dry-run tab prices the graph and creates no run at all (1.0s)
+  ✓  126 [chromium] › e2e\test-panel.spec.ts:494:3 › The docked test panel › a failed test run puts the node in the problems dock, under its own heading @launch (3.7s)
+  ✓  127 [chromium] › e2e\test-panel.spec.ts:587:3 › The docked test panel › the Code tab shows what a DRAFT compiled to, without publishing it (806ms)
+  ✓  128 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.2s)
+  ✓  129 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.3s)
+  ✓  130 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.4s)
+  ✓  131 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.3s)
+  ✓  132 [chromium] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.2s)
+  ✓  133 [chromium] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.3s)
+  ✓  134 [chromium] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.4s)
+  ✓  135 [chromium] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.3s)
+  ✓  136 [chromium] › e2e\visual\choreography.spec.ts:113:3 › characters › one agent is one colour on the card, in the rail and on the token (6.0s)
+  ✓  137 [chromium] › e2e\visual\choreography.spec.ts:140:3 › characters › every card wears a medallion, and the quarantine node does not (572ms)
+  ✓  138 [chromium] › e2e\visual\choreography.spec.ts:150:3 › the idle recede › steps every other card back mid-run and lifts on the terminal frame (25.5s)
+  ✓  139 [chromium] › e2e\visual\choreography.spec.ts:212:3 › the handoff › a token walks the edge and is gone inside its own bound @launch (3.1s)
+  ✓  140 [chromium] › e2e\visual\choreography.spec.ts:262:3 › the handoff › no card animation runs on a canvas whose run is over @launch (30.7s)
+  ✓  141 [chromium] › e2e\visual\choreography.spec.ts:282:3 › the launch sequence › the control glows from the press, and the cards land staggered (895ms)
+  ✓  142 [chromium] › e2e\visual\choreography.spec.ts:311:3 › a failed node › says what went wrong on the card @launch (1.0s)
+  ✓  143 [chromium] › e2e\visual\choreography.spec.ts:346:3 › the dialogue rail › opens itself on the first utterance and reveals text @launch (856ms)
+  ✓  144 [chromium] › e2e\visual\choreography.spec.ts:371:3 › reduced motion › keeps the recede, drops the movement @launch (1.1s)
+  ✓  145 [chromium] › e2e\visual\node-grammar.spec.ts:252:3 › the node grammar at working zoom › draws all ten kinds with a distinct silhouette, accent and eyebrow at 0.5 (2.6s)
+  ✓  146 [chromium] › e2e\visual\node-grammar.spec.ts:309:3 › the node grammar at working zoom › captures the same ten at 1.0 and one close-up per family (2.4s)
+  ✓  147 [chromium] › e2e\visual\run-canvas.spec.ts:181:3 › the run canvas survives the node-card extraction › looks the same idle, and the card shell resolves as authored (808ms)
+  ✘  148 [chromium] › e2e\visual\run-canvas.spec.ts:249:3 › the run canvas survives the node-card extraction › looks the same with a branch in flight, and still animates @launch (16.4s)
+  ✓  149 [chromium] › e2e\visual\run-canvas.spec.ts:338:3 › the run canvas survives the node-card extraction › looks the same paused at a gate @launch (1.2s)
+  ✓  150 [chromium] › e2e\capture-handoff.spec.ts:24:1 › records a token walking the fan-out @launch (5.7s)
+  ✓  151 [mobile] › e2e\mobile.spec.ts:48:3 › the builder at 390x844 › opens the gallery without the page scrolling sideways (609ms)
+  ✓  152 [mobile] › e2e\mobile.spec.ts:74:3 › the builder at 390x844 › opens a graph, and the palette is a bottom sheet rather than a rail (1.0s)
+  ✓  153 [mobile] › e2e\mobile.spec.ts:117:3 › the builder at 390x844 › opens the inspector as a full-width overlay over the canvas (2.6s)
+  ✓  154 [mobile] › e2e\mobile.spec.ts:158:3 › the builder at 390x844 › still pans and zooms the canvas, which is what this viewport is for (2.2s)
+  ✓  155 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in dark › gallery — dark (2.1s)
+  ✓  156 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in dark › one node — dark (2.2s)
+  ✓  157 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in dark › sixteen-node template — dark (2.4s)
+  ✓  158 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in dark › problem state — dark (3.2s)
+  ✓  159 [mobile] › e2e\visual\builder-canvas.spec.ts:151:5 › the builder canvas in light › gallery — light (2.1s)
+  ✓  160 [mobile] › e2e\visual\builder-canvas.spec.ts:164:5 › the builder canvas in light › one node — light (2.2s)
+  ✓  161 [mobile] › e2e\visual\builder-canvas.spec.ts:170:5 › the builder canvas in light › sixteen-node template — light (2.4s)
+  ✓  162 [mobile] › e2e\visual\builder-canvas.spec.ts:184:5 › the builder canvas in light › problem state — light (3.1s)
+
+
+  1) [chromium] › e2e\builder.spec.ts:1227:3 › the canvas, in a browser › paints the target handle green when it will take the edge and red when it will not 
+
+    TimeoutError: locator.hover: Timeout 15000ms exceeded.
+    Call log:
+      - waiting for locator('.vue-flow__handle.source[data-nodeid="tool_1"][data-handleid="attach"]')
+        - locator resolved to <div data-nodeid="tool_1" data-handleid="attach" data-handlepos="right" data-id="builder-flow-tool_1-attach-source" class="vue-flow__handle vue-flow__handle-right vue-flow__handle-attach nodrag nopan source connectable connectablestart connectableend connectionindicator builder-port is-port-out is-port-attach"></div>
+      - attempting hover action
+        2 × waiting for element to be visible and stable
+          - element is not stable
+        - retrying hover action
+        - waiting 20ms
+        2 × waiting for element to be visible and stable
+          - element is not stable
+        - retrying hover action
+          - waiting 100ms
+        - waiting for element to be visible and stable
+        - element is not stable
+      27 × retrying hover action
+           - waiting 500ms
+           - waiting for element to be visible and stable
+           - element is visible and stable
+           - scrolling into view if needed
+           - done scrolling
+           - <span data-v-ff58a1fa="" class="problem-message">tool_1 names the tool 'tool', which is not in thi…</span> from <section data-v-ff58a1fa="" data-v-1207ed5f="" class="problems-panel">…</section> subtree intercepts pointer events
+      - retrying hover action
+        - waiting 500ms
+
+
+      1258 |     // Hold one drag open across both hovers, so the two answers are the same
+      1259 |     // gesture rather than two gestures that happened to agree.
+    > 1260 |     await port(page, tool.id, 'attach').hover()
+           |                                         ^
+      1261 |     await page.mouse.down()
+      1262 |
+      1263 |     await attach.hover()
+        at D:\MultiAgentSystem\frontend\e2e\builder.spec.ts:1260:41
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\builder-the-canvas-in-a-br-d739b-ge-and-red-when-it-will-not-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\builder-the-canvas-in-a-br-d739b-ge-and-red-when-it-will-not-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\builder-the-canvas-in-a-br-d739b-ge-and-red-when-it-will-not-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\builder-the-canvas-in-a-br-d739b-ge-and-red-when-it-will-not-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › e2e\cast-perf.spec.ts:311:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('.gate-card')
+    Expected: 0
+    Received: 1
+    Timeout:  60000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 60000ms
+      - waiting for locator('.gate-card')
+        121 × locator resolved to 1 element
+            - unexpected value "1"
+
+
+      378 |             .catch(() => undefined)
+      379 |           replies += 1
+    > 380 |           await expect(card).toHaveCount(0, { timeout: 60_000 })
+          |                              ^
+      381 |         }
+      382 |         await page.waitForTimeout(250)
+      383 |       }
+        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:380:30
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\error-context.md
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-28d58-hrough-a-real-synthetic-run-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › e2e\cast-perf.spec.ts:440:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch 
+
+    Error: 15 rAF intervals exceeded 34ms while 131 frames were applied (max 109.1ms, p95 32.3ms). See D:\MultiAgentSystem\docs\run-shell\evidence\T2\perf.json.
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 15
+
+      607 |         `${overBudget} rAF intervals exceeded ${budget.dropBudgetMs}ms while ${applied} frames ` +
+      608 |           `were applied (max ${stats.max}ms, p95 ${stats.p95}ms). See ${PERF_JSON}.`,
+    > 609 |       ).toBe(0)
+          |         ^
+      610 |       expect(
+      611 |         stats.p95,
+      612 |         `p95 was ${stats.p95}ms against a budget of ${budget.p95BudgetMs}ms over ${applied} ` +
+        at D:\MultiAgentSystem\frontend\e2e\cast-perf.spec.ts:609:9
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\error-context.md
+
+    Error Context: test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-perf-T2-8-—-frame-bud-c33bc-es-are-applied-at-live-pace-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [chromium] › e2e\cast.spec.ts:552:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch 
+
+    Error: no character reached `working` within 2s of Launch (S2). If every branch finished instantly, start the backend with SYNTHETIC_BRANCH_DELAY_SECONDS=5.
+
+    no character reached `working` within 2s of Launch (S2). If every branch finished instantly, start the backend with SYNTHETIC_BRANCH_DELAY_SECONDS=5.
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+    Call Log:
+    - Timeout 2000ms exceeded while waiting on the predicate
+
+      576 |           },
+      577 |         )
+    > 578 |         .toBeGreaterThan(0)
+          |          ^
+      579 |       await expect(traceRows(page).first()).toBeVisible({
+      580 |         timeout: Math.max(250, deadline - Date.now()),
+      581 |       })
+        at D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:578:10
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-the-states-a-characte-2bdc4-onds-then-blocked-then-done-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-the-states-a-characte-2bdc4-onds-then-blocked-then-done-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-the-states-a-characte-2bdc4-onds-then-blocked-then-done-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-the-states-a-characte-2bdc4-onds-then-blocked-then-done-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [chromium] › e2e\cast.spec.ts:941:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch 
+
+    Error: the Confirm scope gate did not take the Revise reply
+
+    expect(locator).toHaveCount(expected) failed
+
+    Locator:  locator('.gate-card')
+    Expected: 0
+    Received: 1
+    Timeout:  60000ms
+
+    Call log:
+      - the Confirm scope gate did not take the Revise reply with timeout 60000ms
+      - waiting for locator('.gate-card')
+        121 × locator resolved to 1 element
+            - unexpected value "1"
+
+
+      328 |   await gateCard(page).getByRole('button', { name: /^Revise/ }).click()
+      329 |
+    > 330 |   await expect(gateCard(page), `the ${title} gate did not take the Revise reply`).toHaveCount(0, {
+          |                                                                                   ^
+      331 |     timeout: 60_000,
+      332 |   })
+      333 |   await waitForGate(page, title)
+        at reviseGate (D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:330:83)
+        at runLongToCompletion (D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:373:3)
+        at D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:949:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-the-completed-run-T2--32d44-report-three-widths-on-disk-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [chromium] › e2e\cast.spec.ts:1363:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch 
+
+    Error: locator.fill: Error: strict mode violation: locator('#idea') resolved to 2 elements:
+        1) <article id="idea" zindex="0" role="group" type="workflow" selected="false" resizing="false" dragging="false" data-v-338bad55="" data-v-22a71763="" connectable="false" aria-label="idea, Idle" events="[object Object]" position="[object Object]" dimensions="[object Object]" class="workflow-node is-idle is-step">…</article> aka getByRole('group', { name: 'idea, Idle' })
+        2) <textarea rows="4" id="idea" maxlength="2000" data-v-217fa175="" class="panel-well" aria-describedby="idea-hint" value="An AI tool that turns Figma files into production React"></textarea> aka getByRole('textbox')
+
+    Call log:
+      - waiting for locator('#idea')
+
+
+      271 |   await expect(review).toHaveAttribute('aria-pressed', 'true')
+      272 |
+    > 273 |   await page.locator('#idea').fill(idea)
+          |                               ^
+      274 |   await expect(launchButton(page)).toBeEnabled()
+      275 |
+      276 |   const limited = page.locator('[role="alert"]').filter({ hasText: /too many runs/i })
+        at launchRun (D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:273:31)
+        at D:\MultiAgentSystem\frontend\e2e\cast.spec.ts:1397:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\cast-S4-—-a-failed-run-S4--2e4fa-ce-says-why-in-one-sentence-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) [chromium] › e2e\studio.spec.ts:204:3 › Validator Studio › runs the full operator journey through both gates to completion @launch 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator: locator('.gate-card').locator('form .gate-field').locator('span')
+    Timeout: 15000ms
+    - Expected  - 5
+    + Received  + 5
+
+      Array [
+    -   "startup idea",
+    -   "category",
+    -   "target user",
+    -   "market query",
+    -   "feedback",
+    +   "Startup idea",
+    +   "Category",
+    +   "Target user",
+    +   "Market query",
+    +   "Feedback",
+      ]
+
+    Call log:
+      - Expect "toHaveText" with timeout 15000ms
+      - waiting for locator('.gate-card').locator('form .gate-field').locator('span')
+        33 × locator resolved to 5 elements
+
+
+      222 |       const scopeFields = gateCard(page).locator('form .gate-field')
+      223 |       await expect(scopeFields).toHaveCount(5)
+    > 224 |       await expect(scopeFields.locator('span')).toHaveText(
+          |                                                 ^
+      225 |         ['startup idea', 'category', 'target user', 'market query', 'feedback'],
+      226 |         { useInnerText: false },
+      227 |       )
+        at D:\MultiAgentSystem\frontend\e2e\studio.spec.ts:224:49
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\studio-Validator-Studio-ru-09770-gh-both-gates-to-completion-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\studio-Validator-Studio-ru-09770-gh-both-gates-to-completion-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\studio-Validator-Studio-ru-09770-gh-both-gates-to-completion-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\studio-Validator-Studio-ru-09770-gh-both-gates-to-completion-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) [chromium] › e2e\studio.spec.ts:351:3 › Validator Studio › presents every verdict value as read-only and leaves only feedback editable @launch 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    Expected: ArrayContaining ["verdict", "confidence", "cheapest next test"]
+    Received: ["Verdict", "Confidence", "Cheapest next test", "Scope reply"]
+
+      369 |       // so a stale client cannot go on offering an edit the server discards.
+      370 |       const derivedKeys = (await derived.locator('dt').allTextContents()).map((text) => text.trim())
+    > 371 |       expect(derivedKeys).toEqual(
+          |                           ^
+      372 |         expect.arrayContaining(['verdict', 'confidence', 'cheapest next test']),
+      373 |       )
+      374 |
+        at D:\MultiAgentSystem\frontend\e2e\studio.spec.ts:371:27
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\studio-Validator-Studio-pr-ac67b-aves-only-feedback-editable-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\studio-Validator-Studio-pr-ac67b-aves-only-feedback-editable-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\studio-Validator-Studio-pr-ac67b-aves-only-feedback-editable-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\studio-Validator-Studio-pr-ac67b-aves-only-feedback-editable-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9) [chromium] › e2e\visual\run-canvas.spec.ts:249:3 › the run canvas survives the node-card extraction › looks the same with a branch in flight, and still animates @launch 
+
+    TimeoutError: locator.evaluate: Timeout 15000ms exceeded.
+    Call log:
+      - waiting for locator('.workflow-node.is-running').first().locator('.node-crew-oar').first()
+
+
+      116 |  */
+      117 | async function animationsOn(target: Locator): Promise<string[]> {
+    > 118 |   return target.evaluate((el) =>
+          |                 ^
+      119 |     el
+      120 |       .getAnimations()
+      121 |       .map((a) => (a as CSSAnimation).animationName)
+        at animationsOn (D:\MultiAgentSystem\frontend\e2e\visual\run-canvas.spec.ts:118:17)
+        at D:\MultiAgentSystem\frontend\e2e\visual\run-canvas.spec.ts:305:20
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\visual-run-canvas-the-run--a7784-n-flight-and-still-animates-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\visual-run-canvas-the-run--a7784-n-flight-and-still-animates-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\visual-run-canvas-the-run--a7784-n-flight-and-still-animates-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\visual-run-canvas-the-run--a7784-n-flight-and-still-animates-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9 failed
+    [chromium] › e2e\builder.spec.ts:1227:3 › the canvas, in a browser › paints the target handle green when it will take the edge and red when it will not 
+    [chromium] › e2e\cast-perf.spec.ts:311:3 › T2.8 — frame budget › the console keeps its frame budget through a real synthetic run @launch 
+    [chromium] › e2e\cast-perf.spec.ts:440:3 › T2.8 — frame budget › the console keeps its frame budget while 131 committed frames are applied at live pace @launch 
+    [chromium] › e2e\cast.spec.ts:552:3 › the states a character passes through › S2: a working character and an interpreted line inside two seconds, then blocked, then done @launch 
+    [chromium] › e2e\cast.spec.ts:941:3 › the completed run › T2.1/S3/T1/T3: a 119-event run stays legible — sentences in the trace, a reason in the report, three widths on disk @launch 
+    [chromium] › e2e\cast.spec.ts:1363:3 › S4 — a failed run › S4: the failing node wears the blocked-error character and the trace says why in one sentence @launch 
+    [chromium] › e2e\studio.spec.ts:204:3 › Validator Studio › runs the full operator journey through both gates to completion @launch 
+    [chromium] › e2e\studio.spec.ts:351:3 › Validator Studio › presents every verdict value as read-only and leaves only feedback editable @launch 
+    [chromium] › e2e\visual\run-canvas.spec.ts:249:3 › the run canvas survives the node-card extraction › looks the same with a branch in flight, and still animates @launch 
+  153 passed (13.1m)
+
+# npx playwright test exit code: 1

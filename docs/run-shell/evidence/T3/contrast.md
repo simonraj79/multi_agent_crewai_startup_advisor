@@ -5,10 +5,11 @@ Every colour is read from `tokens.css` and `motion.css`; every translucent
 token is composited over the surface stack `studio.css` actually paints.
 `need` is 4.5 for text (WCAG 1.4.3 AA) and 3.0 for a UI boundary (1.4.11).
 
-**300 pairings. 80 are W5's and 0 of those fail.**
-17 failing rows belong to another worker's file and are listed
-separately with the token to use; `docs/run-shell/SHELL-SCOPE.md` §7 is the
-same list in prose. The exit code counts W5's rows only.
+**330 pairings, 1 below the level they must meet.**
+
+The `owner` column says which file a failure lives in, so the right person
+looks. It is **not** an exemption: the exit code counts every row. A run
+that exits 0 is the whole of T3.3, and one that exits 1 names what is left.
 
 | theme | pair | fg token | background | ratio | need | verdict | owner | site |
 | --- | --- | --- | --- | ---: | ---: | :---: | :---: | --- |
@@ -48,23 +49,38 @@ same list in prose. The exit code counts W5's rows only.
 | dark | a warn banner boundary | `--warn-border-strong` | warn-bg over rail | 3.10 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
 | dark | an error banner on its tint | `--err-text` | err-bg over rail | 10.66 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
 | dark | an error banner boundary | `--err-border-strong` | err-bg over rail | 3.03 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
-| dark | a trace bubble in a rail | `--text-body` | rail | 13.23 | 4.5 | pass | W3 | ChatRail.vue .trace-bubble |
-| dark | a rail kicker | `--accent-cyan` | rail | 12.88 | 4.5 | pass | W3 | ChatRail.vue .section-kicker |
-| dark | a text button on raised | `--link-cyan` | raised in rail | 8.18 | 4.5 | pass | W3 | ChatRail.vue .text-button |
-| dark | a text button on a well | `--link-cyan` | well in rail | 9.99 | 4.5 | pass | W3 | DialogueRail.vue .text-button |
-| dark | a call chip in a bubble | `--text-muted` | well in rail | 8.79 | 4.5 | pass | W3 | ChatRail.vue .call-chip |
-| dark | the crew marker on the canvas | `--text-40` | canvas ground | 5.49 | 4.5 | pass | W4 | CrewProgress.vue .crew-marker |
-| dark | a crew label on the canvas | `--accent-cyan` | canvas ground | 12.65 | 4.5 | pass | W4 | CrewProgress.vue .crew-label |
-| dark | a crew kind as text | `--accent-blue` | rail | 9.84 | 4.5 | pass | W4 | CrewProgress.vue crew kind |
-| dark | a crew pip as a UI mark | `--accent-mint` | canvas ground | 14.61 | 3 | pass | W4 | CrewProgress.vue .crew-pip |
-| dark | card meta on a card | `--text-40` | bg-node (card) | 5.02 | 4.5 | pass | W4 | node-card.css .node-meta |
-| dark | body text on a card | `--text-body` | bg-node (card) | 10.87 | 4.5 | pass | W4 | node-card.css |
 | dark | the verdict badge, needs work | `--ink-on-warn` | the warn badge | 13.04 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-warn |
 | dark | the verdict badge, reject | `--ink-on-err` | the err badge | 11.85 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-fail |
 | dark | the verdict badge, validate | `--ink-on-brand` | the pass badge | 14.37 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-pass |
-| dark | a report link | `--link-cyan` | rail | 9.48 | 4.5 | pass | W1 | ReportPanel.vue .report-sources a |
-| dark | a report score on a well | `--text-primary` | well in rail | 16.45 | 4.5 | pass | W1 | ReportPanel.vue .score-value |
-| dark | the gate card boundary | `--warn-border` | warn-bg over rail | 2.70 | 3 | handed to W1 | W1 | GateCard.vue .gate-card |
+| dark | the crew headline | `--text-title` | the crew strip | 17.39 | 4.5 | pass | W5 | CrewProgress.vue .crew-headline |
+| dark | the crew count | `--text-muted` | the crew strip | 8.29 | 4.5 | pass | W5 | CrewProgress.vue .crew-count |
+| dark | a stalled crew headline | `--warn-text-strong` | the crew strip | 13.44 | 4.5 | pass | W5 | CrewProgress.vue .is-stalled |
+| dark | a foundered crew headline | `--err-text` | the crew strip | 12.22 | 4.5 | pass | W5 | CrewProgress.vue .is-foundered |
+| dark | a stage label on the strip | `--text-meta` | the crew strip | 5.53 | 4.5 | pass | W5 | CrewProgress.vue .crew-label |
+| dark | a stage marker on its own disc | `--text-meta` | bg-node (card) | 5.02 | 4.5 | pass | W5 | CrewProgress.vue .crew-marker |
+| dark | a running stage marker | `--on-accent-cyan` | bg-node (card) | 10.59 | 4.5 | pass | W5 | CrewProgress.vue .is-running .crew-marker |
+| dark | a waiting stage marker | `--warn-text-strong` | warn-bg over canvas | 10.10 | 4.5 | pass | W5 | CrewProgress.vue .is-waiting .crew-marker |
+| dark | a completed branch pip | `--on-accent-mint` | the crew strip | 14.82 | 3 | pass | W5 | CrewProgress.vue .crew-branches i |
+| dark | a running branch pip | `--on-accent-cyan` | the crew strip | 12.83 | 3 | pass | W5 | CrewProgress.vue .crew-branches i |
+| dark | a waiting branch pip | `--warn-text-strong` | the crew strip | 13.44 | 3 | pass | W5 | CrewProgress.vue .crew-branches i |
+| dark | the boat | `--on-accent-cyan` | the crew strip | 12.83 | 3 | pass | W5 | CrewProgress.vue .crew-boat |
+| dark | an oar caption | `--text-meta` | the crew strip | 5.53 | 4.5 | pass | W5 | CrewProgress.vue .crew-oar-names |
+| dark | the gate icon boundary | `--warn-border-strong` | warn-bg over rail | 3.10 | 3 | pass | W5 | GateCard.vue .gate-icon |
+| dark | the gate kicker | `--warn-text-strong` | rail | 13.50 | 4.5 | pass | W5 | GateCard.vue .section-kicker |
+| dark | a gate field label | `--text-meta` | rail | 5.54 | 4.5 | pass | W5 | GateCard.vue .gate-field span |
+| dark | a low-confidence chip | `--warn-text-strong` | warn-bg over rail | 10.33 | 4.5 | pass | W5 | ReportPanel.vue .verdict-confidence.is-low |
+| dark | a provisional flag | `--warn-text-strong` | warn-bg over rail | 10.33 | 4.5 | pass | W5 | ReportPanel.vue .report-flag.is-provisional |
+| dark | a floor block boundary | `--err-border-strong` | err-bg over rail | 3.03 | 3 | pass | W5 | ReportPanel.vue .verdict-decision.is-floor |
+| dark | a score denominator | `--text-meta` | well in rail | 5.64 | 4.5 | pass | W5 | ReportPanel.vue .score-value small |
+| dark | a report link | `--link-strong` | rail | 9.48 | 4.5 | pass | W5 | ReportPanel.vue .report-sources a |
+| dark | a report score on a well | `--text-primary` | well in rail | 16.45 | 4.5 | pass | W5 | ReportPanel.vue .score-value |
+| dark | a trace bubble in a rail | `--text-body` | rail | 13.23 | 4.5 | pass | W4 | ChatRail.vue .trace-bubble |
+| dark | a rail kicker | `--accent-cyan` | rail | 12.88 | 4.5 | pass | W4 | ChatRail.vue:383 / DialogueRail.vue:467 .section-kicker |
+| dark | a rail text button | `--link-cyan` | rail | 9.48 | 4.5 | pass | W4 | DialogueRail.vue:625 .text-button |
+| dark | a call chip in a bubble | `--text-muted` | well in rail | 8.79 | 4.5 | pass | W4 | ChatRail.vue .call-chip |
+| dark | body text on a card | `--text-body` | bg-node (card) | 10.87 | 4.5 | pass | W4 | node-card.css |
+| dark | quiet card text, run console | `--text-meta` | bg-node (card) | 5.02 | 4.5 | pass | W5 | motion.css .node-eyebrow / .node-usage / .node-active-hint |
+| dark | quiet card text, THE BUILDER | `--text-40` | bg-node (card) | 5.02 | 4.5 | pass | builder | node-card.css .node-eyebrow (design canvas) |
 | dark | the focus ring on the app ground | `--on-accent-cyan` | bg-app | 12.84 | 3 | pass | W5 | studio.css :focus-visible |
 | dark | character-1 as small text on bg-node (card) | `--character-1` | bg-node (card) | 10.59 | 4.5 | pass | W4 | motion.css .node-character |
 | dark | character-1 as a UI mark on bg-node (card) | `--character-1` | bg-node (card) | 10.59 | 3 | pass | W4 | motion.css .node-character |
@@ -198,40 +214,55 @@ same list in prose. The exit code counts W5's rows only.
 | light | a warn banner boundary | `--warn-border-strong` | warn-bg over rail | 3.83 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-warn |
 | light | an error banner on its tint | `--err-text` | err-bg over rail | 6.14 | 4.5 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
 | light | an error banner boundary | `--err-border-strong` | err-bg over rail | 3.12 | 3 | pass | W5 | StatusPanel.vue .panel-banner.is-error |
-| light | a trace bubble in a rail | `--text-body` | rail | 14.13 | 4.5 | pass | W3 | ChatRail.vue .trace-bubble |
-| light | a rail kicker | `--accent-cyan` | rail | 1.29 | 4.5 | handed to W3 | W3 | ChatRail.vue .section-kicker |
-| light | a text button on raised | `--link-cyan` | raised in rail | 4.41 | 4.5 | handed to W3 | W3 | ChatRail.vue .text-button |
-| light | a text button on a well | `--link-cyan` | well in rail | 4.41 | 4.5 | handed to W3 | W3 | DialogueRail.vue .text-button |
-| light | a call chip in a bubble | `--text-muted` | well in rail | 5.42 | 4.5 | pass | W3 | ChatRail.vue .call-chip |
-| light | the crew marker on the canvas | `--text-40` | canvas ground | 4.11 | 4.5 | handed to W4 | W4 | CrewProgress.vue .crew-marker |
-| light | a crew label on the canvas | `--accent-cyan` | canvas ground | 1.14 | 4.5 | handed to W4 | W4 | CrewProgress.vue .crew-label |
-| light | a crew kind as text | `--accent-blue` | rail | 1.69 | 4.5 | handed to W4 | W4 | CrewProgress.vue crew kind |
-| light | a crew pip as a UI mark | `--accent-mint` | canvas ground | 1.02 | 3 | handed to W4 | W4 | CrewProgress.vue .crew-pip |
-| light | card meta on a card | `--text-40` | bg-node (card) | 4.31 | 4.5 | handed to W4 | W4 | node-card.css .node-meta |
-| light | body text on a card | `--text-body` | bg-node (card) | 14.83 | 4.5 | pass | W4 | node-card.css |
 | light | the verdict badge, needs work | `--ink-on-warn` | the warn badge | 5.60 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-warn |
 | light | the verdict badge, reject | `--ink-on-err` | the err badge | 7.05 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-fail |
 | light | the verdict badge, validate | `--ink-on-brand` | the pass badge | 14.37 | 4.5 | pass | W5 | ReportPanel.vue .verdict-badge.is-pass |
-| light | a report link | `--link-cyan` | rail | 4.98 | 4.5 | pass | W1 | ReportPanel.vue .report-sources a |
-| light | a report score on a well | `--text-primary` | well in rail | 14.88 | 4.5 | pass | W1 | ReportPanel.vue .score-value |
-| light | the gate card boundary | `--warn-border` | warn-bg over rail | 1.69 | 3 | handed to W1 | W1 | GateCard.vue .gate-card |
+| light | the crew headline | `--text-title` | the crew strip | 18.49 | 4.5 | pass | W5 | CrewProgress.vue .crew-headline |
+| light | the crew count | `--text-muted` | the crew strip | 6.10 | 4.5 | pass | W5 | CrewProgress.vue .crew-count |
+| light | a stalled crew headline | `--warn-text-strong` | the crew strip | 5.91 | 4.5 | pass | W5 | CrewProgress.vue .is-stalled |
+| light | a foundered crew headline | `--err-text` | the crew strip | 7.16 | 4.5 | pass | W5 | CrewProgress.vue .is-foundered |
+| light | a stage label on the strip | `--text-meta` | the crew strip | 5.04 | 4.5 | pass | W5 | CrewProgress.vue .crew-label |
+| light | a stage marker on its own disc | `--text-meta` | bg-node (card) | 5.13 | 4.5 | pass | W5 | CrewProgress.vue .crew-marker |
+| light | a running stage marker | `--on-accent-cyan` | bg-node (card) | 6.14 | 4.5 | pass | W5 | CrewProgress.vue .is-running .crew-marker |
+| light | a waiting stage marker | `--warn-text-strong` | warn-bg over canvas | 4.51 | 4.5 | pass | W5 | CrewProgress.vue .is-waiting .crew-marker |
+| light | a completed branch pip | `--on-accent-mint` | the crew strip | 6.23 | 3 | pass | W5 | CrewProgress.vue .crew-branches i |
+| light | a running branch pip | `--on-accent-cyan` | the crew strip | 5.84 | 3 | pass | W5 | CrewProgress.vue .crew-branches i |
+| light | a waiting branch pip | `--warn-text-strong` | the crew strip | 5.91 | 3 | pass | W5 | CrewProgress.vue .crew-branches i |
+| light | the boat | `--on-accent-cyan` | the crew strip | 5.84 | 3 | pass | W5 | CrewProgress.vue .crew-boat |
+| light | an oar caption | `--text-meta` | the crew strip | 5.04 | 4.5 | pass | W5 | CrewProgress.vue .crew-oar-names |
+| light | the gate icon boundary | `--warn-border-strong` | warn-bg over rail | 3.83 | 3 | pass | W5 | GateCard.vue .gate-icon |
+| light | the gate kicker | `--warn-text-strong` | rail | 5.93 | 4.5 | pass | W5 | GateCard.vue .section-kicker |
+| light | a gate field label | `--text-meta` | rail | 5.05 | 4.5 | pass | W5 | GateCard.vue .gate-field span |
+| light | a low-confidence chip | `--warn-text-strong` | warn-bg over rail | 5.07 | 4.5 | pass | W5 | ReportPanel.vue .verdict-confidence.is-low |
+| light | a provisional flag | `--warn-text-strong` | warn-bg over rail | 5.07 | 4.5 | pass | W5 | ReportPanel.vue .report-flag.is-provisional |
+| light | a floor block boundary | `--err-border-strong` | err-bg over rail | 3.12 | 3 | pass | W5 | ReportPanel.vue .verdict-decision.is-floor |
+| light | a score denominator | `--text-meta` | well in rail | 4.85 | 4.5 | pass | W5 | ReportPanel.vue .score-value small |
+| light | a report link | `--link-strong` | rail | 6.30 | 4.5 | pass | W5 | ReportPanel.vue .report-sources a |
+| light | a report score on a well | `--text-primary` | well in rail | 14.88 | 4.5 | pass | W5 | ReportPanel.vue .score-value |
+| light | a trace bubble in a rail | `--text-body` | rail | 14.13 | 4.5 | pass | W4 | ChatRail.vue .trace-bubble |
+| light | a rail kicker | `--accent-cyan` | rail | 1.29 | 4.5 | **FAIL** | W4 | ChatRail.vue:383 / DialogueRail.vue:467 .section-kicker |
+| light | a rail text button | `--link-cyan` | rail | 4.98 | 4.5 | pass | W4 | DialogueRail.vue:625 .text-button |
+| light | a call chip in a bubble | `--text-muted` | well in rail | 5.42 | 4.5 | pass | W4 | ChatRail.vue .call-chip |
+| light | body text on a card | `--text-body` | bg-node (card) | 14.83 | 4.5 | pass | W4 | node-card.css |
+| light | quiet card text, run console | `--text-meta` | bg-node (card) | 5.13 | 4.5 | pass | W5 | motion.css .node-eyebrow / .node-usage / .node-active-hint |
+| light | quiet card text, THE BUILDER | `--text-40` | bg-node (card) | 4.31 | 4.5 | **FAIL** | builder | node-card.css .node-eyebrow (design canvas) |
 | light | the focus ring on the app ground | `--on-accent-cyan` | bg-app | 5.32 | 3 | pass | W5 | studio.css :focus-visible |
-| light | character-1 as small text on bg-node (card) | `--character-1` | bg-node (card) | 4.64 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-1 as a UI mark on bg-node (card) | `--character-1` | bg-node (card) | 4.64 | 3 | pass | W4 | motion.css .node-character |
-| light | character-1 as small text on bg-app | `--character-1` | bg-app | 4.02 | 4.5 | handed to W4 | W4 | an avatar on the app ground |
-| light | character-1 as a UI mark on bg-app | `--character-1` | bg-app | 4.02 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-1 as small text on rail | `--character-1` | rail | 4.42 | 4.5 | handed to W4 | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-1 as a UI mark on rail | `--character-1` | rail | 4.42 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-1 as small text on canvas ground | `--character-1` | canvas ground | 3.89 | 4.5 | handed to W4 | W4 | CrewProgress.vue .crew-medallion |
-| light | character-1 as a UI mark on canvas ground | `--character-1` | canvas ground | 3.89 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-2 as small text on bg-node (card) | `--character-2` | bg-node (card) | 5.33 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-2 as a UI mark on bg-node (card) | `--character-2` | bg-node (card) | 5.33 | 3 | pass | W4 | motion.css .node-character |
-| light | character-2 as small text on bg-app | `--character-2` | bg-app | 4.61 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-2 as a UI mark on bg-app | `--character-2` | bg-app | 4.61 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-2 as small text on rail | `--character-2` | rail | 5.07 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-2 as a UI mark on rail | `--character-2` | rail | 5.07 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-2 as small text on canvas ground | `--character-2` | canvas ground | 4.47 | 4.5 | handed to W4 | W4 | CrewProgress.vue .crew-medallion |
-| light | character-2 as a UI mark on canvas ground | `--character-2` | canvas ground | 4.47 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-1 as small text on bg-node (card) | `--character-1` | bg-node (card) | 5.53 | 4.5 | pass | W4 | motion.css .node-character |
+| light | character-1 as a UI mark on bg-node (card) | `--character-1` | bg-node (card) | 5.53 | 3 | pass | W4 | motion.css .node-character |
+| light | character-1 as small text on bg-app | `--character-1` | bg-app | 4.79 | 4.5 | pass | W4 | an avatar on the app ground |
+| light | character-1 as a UI mark on bg-app | `--character-1` | bg-app | 4.79 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-1 as small text on rail | `--character-1` | rail | 5.27 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-1 as a UI mark on rail | `--character-1` | rail | 5.27 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-1 as small text on canvas ground | `--character-1` | canvas ground | 4.64 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-1 as a UI mark on canvas ground | `--character-1` | canvas ground | 4.64 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-2 as small text on bg-node (card) | `--character-2` | bg-node (card) | 6.25 | 4.5 | pass | W4 | motion.css .node-character |
+| light | character-2 as a UI mark on bg-node (card) | `--character-2` | bg-node (card) | 6.25 | 3 | pass | W4 | motion.css .node-character |
+| light | character-2 as small text on bg-app | `--character-2` | bg-app | 5.41 | 4.5 | pass | W4 | an avatar on the app ground |
+| light | character-2 as a UI mark on bg-app | `--character-2` | bg-app | 5.41 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-2 as small text on rail | `--character-2` | rail | 5.96 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-2 as a UI mark on rail | `--character-2` | rail | 5.96 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-2 as small text on canvas ground | `--character-2` | canvas ground | 5.24 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-2 as a UI mark on canvas ground | `--character-2` | canvas ground | 5.24 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
 | light | character-3 as small text on bg-node (card) | `--character-3` | bg-node (card) | 6.32 | 4.5 | pass | W4 | motion.css .node-character |
 | light | character-3 as a UI mark on bg-node (card) | `--character-3` | bg-node (card) | 6.32 | 3 | pass | W4 | motion.css .node-character |
 | light | character-3 as small text on bg-app | `--character-3` | bg-app | 5.48 | 4.5 | pass | W4 | an avatar on the app ground |
@@ -288,14 +319,14 @@ same list in prose. The exit code counts W5's rows only.
 | light | character-9 as a UI mark on rail | `--character-9` | rail | 6.42 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
 | light | character-9 as small text on canvas ground | `--character-9` | canvas ground | 5.65 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
 | light | character-9 as a UI mark on canvas ground | `--character-9` | canvas ground | 5.65 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-10 as small text on bg-node (card) | `--character-10` | bg-node (card) | 5.20 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-10 as a UI mark on bg-node (card) | `--character-10` | bg-node (card) | 5.20 | 3 | pass | W4 | motion.css .node-character |
-| light | character-10 as small text on bg-app | `--character-10` | bg-app | 4.51 | 4.5 | pass | W4 | an avatar on the app ground |
-| light | character-10 as a UI mark on bg-app | `--character-10` | bg-app | 4.51 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-10 as small text on rail | `--character-10` | rail | 4.96 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-10 as a UI mark on rail | `--character-10` | rail | 4.96 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-10 as small text on canvas ground | `--character-10` | canvas ground | 4.36 | 4.5 | handed to W4 | W4 | CrewProgress.vue .crew-medallion |
-| light | character-10 as a UI mark on canvas ground | `--character-10` | canvas ground | 4.36 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-10 as small text on bg-node (card) | `--character-10` | bg-node (card) | 6.12 | 4.5 | pass | W4 | motion.css .node-character |
+| light | character-10 as a UI mark on bg-node (card) | `--character-10` | bg-node (card) | 6.12 | 3 | pass | W4 | motion.css .node-character |
+| light | character-10 as small text on bg-app | `--character-10` | bg-app | 5.30 | 4.5 | pass | W4 | an avatar on the app ground |
+| light | character-10 as a UI mark on bg-app | `--character-10` | bg-app | 5.30 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-10 as small text on rail | `--character-10` | rail | 5.83 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-10 as a UI mark on rail | `--character-10` | rail | 5.83 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-10 as small text on canvas ground | `--character-10` | canvas ground | 5.13 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-10 as a UI mark on canvas ground | `--character-10` | canvas ground | 5.13 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
 | light | character-11 as small text on bg-node (card) | `--character-11` | bg-node (card) | 6.07 | 4.5 | pass | W4 | motion.css .node-character |
 | light | character-11 as a UI mark on bg-node (card) | `--character-11` | bg-node (card) | 6.07 | 3 | pass | W4 | motion.css .node-character |
 | light | character-11 as small text on bg-app | `--character-11` | bg-app | 5.26 | 4.5 | pass | W4 | an avatar on the app ground |
@@ -304,35 +335,32 @@ same list in prose. The exit code counts W5's rows only.
 | light | character-11 as a UI mark on rail | `--character-11` | rail | 5.79 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
 | light | character-11 as small text on canvas ground | `--character-11` | canvas ground | 5.09 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
 | light | character-11 as a UI mark on canvas ground | `--character-11` | canvas ground | 5.09 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
-| light | character-12 as small text on bg-node (card) | `--character-12` | bg-node (card) | 4.90 | 4.5 | pass | W4 | motion.css .node-character |
-| light | character-12 as a UI mark on bg-node (card) | `--character-12` | bg-node (card) | 4.90 | 3 | pass | W4 | motion.css .node-character |
-| light | character-12 as small text on bg-app | `--character-12` | bg-app | 4.24 | 4.5 | handed to W4 | W4 | an avatar on the app ground |
-| light | character-12 as a UI mark on bg-app | `--character-12` | bg-app | 4.24 | 3 | pass | W4 | an avatar on the app ground |
-| light | character-12 as small text on rail | `--character-12` | rail | 4.67 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-12 as a UI mark on rail | `--character-12` | rail | 4.67 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
-| light | character-12 as small text on canvas ground | `--character-12` | canvas ground | 4.11 | 4.5 | handed to W4 | W4 | CrewProgress.vue .crew-medallion |
-| light | character-12 as a UI mark on canvas ground | `--character-12` | canvas ground | 4.11 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-12 as small text on bg-node (card) | `--character-12` | bg-node (card) | 5.77 | 4.5 | pass | W4 | motion.css .node-character |
+| light | character-12 as a UI mark on bg-node (card) | `--character-12` | bg-node (card) | 5.77 | 3 | pass | W4 | motion.css .node-character |
+| light | character-12 as small text on bg-app | `--character-12` | bg-app | 5.00 | 4.5 | pass | W4 | an avatar on the app ground |
+| light | character-12 as a UI mark on bg-app | `--character-12` | bg-app | 5.00 | 3 | pass | W4 | an avatar on the app ground |
+| light | character-12 as small text on rail | `--character-12` | rail | 5.49 | 4.5 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-12 as a UI mark on rail | `--character-12` | rail | 5.49 | 3 | pass | W4 | DialogueRail.vue .dialogue-avatar |
+| light | character-12 as small text on canvas ground | `--character-12` | canvas ground | 4.84 | 4.5 | pass | W4 | CrewProgress.vue .crew-medallion |
+| light | character-12 as a UI mark on canvas ground | `--character-12` | canvas ground | 4.84 | 3 | pass | W4 | CrewProgress.vue .crew-medallion |
 
-## Handed over — the token to use
+## What is still failing, and where it lives
 
-| owner | theme | pair | ratio | need | site | use |
+| owner | theme | pair | ratio | need | site | the fix |
 | :---: | --- | --- | ---: | ---: | --- | --- |
-| **W1** | dark | the gate card boundary | 2.70 | 3 | GateCard.vue .gate-card | var(--warn-border-strong) |
-| **W3** | light | a rail kicker | 1.29 | 4.5 | ChatRail.vue .section-kicker | var(--on-accent-cyan) |
-| **W3** | light | a text button on raised | 4.41 | 4.5 | ChatRail.vue .text-button | var(--link-strong) |
-| **W3** | light | a text button on a well | 4.41 | 4.5 | DialogueRail.vue .text-button | var(--link-strong) |
-| **W4** | light | the crew marker on the canvas | 4.11 | 4.5 | CrewProgress.vue .crew-marker | var(--text-meta) |
-| **W4** | light | a crew label on the canvas | 1.14 | 4.5 | CrewProgress.vue .crew-label | var(--on-accent-cyan) |
-| **W4** | light | a crew kind as text | 1.69 | 4.5 | CrewProgress.vue crew kind | var(--on-accent-blue) |
-| **W4** | light | a crew pip as a UI mark | 1.02 | 3 | CrewProgress.vue .crew-pip | var(--on-accent-mint) |
-| **W4** | light | card meta on a card | 4.31 | 4.5 | node-card.css .node-meta | var(--text-meta) |
-| **W1** | light | the gate card boundary | 1.69 | 3 | GateCard.vue .gate-card | var(--warn-border-strong) |
-| **W4** | light | character-1 as small text on bg-app | 4.02 | 4.5 | an avatar on the app ground | darken in the light block only |
-| **W4** | light | character-1 as small text on rail | 4.42 | 4.5 | DialogueRail.vue .dialogue-avatar | darken in the light block only |
-| **W4** | light | character-1 as small text on canvas ground | 3.89 | 4.5 | CrewProgress.vue .crew-medallion | darken in the light block only |
-| **W4** | light | character-2 as small text on canvas ground | 4.47 | 4.5 | CrewProgress.vue .crew-medallion | darken in the light block only |
-| **W4** | light | character-10 as small text on canvas ground | 4.36 | 4.5 | CrewProgress.vue .crew-medallion | darken in the light block only |
-| **W4** | light | character-12 as small text on bg-app | 4.24 | 4.5 | an avatar on the app ground | darken in the light block only |
-| **W4** | light | character-12 as small text on canvas ground | 4.11 | 4.5 | CrewProgress.vue .crew-medallion | darken in the light block only |
+| **W4** | light | a rail kicker | 1.29 | 4.5 | ChatRail.vue:383 / DialogueRail.vue:467 .section-kicker | var(--on-accent-cyan) |
 
-Every pairing this task owns passes in both themes.
+## Measured, and out of this audit’s scope
+
+The builder’s design canvas is a different product surface with its own
+sixteen pixel baselines. It shares exactly one sheet with the run shell -
+`node-card.css` - and where the run console overrides a value of that card
+for its own tenancy, the builder keeps the original. These rows measure the
+original so nobody rediscovers it; they are not counted by the exit code.
+
+| theme | pair | ratio | need | verdict | site | the fix |
+| --- | --- | ---: | ---: | :---: | --- | --- |
+| dark | quiet card text, THE BUILDER | 5.02 | 4.5 | pass | node-card.css .node-eyebrow (design canvas) | var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6 |
+| light | quiet card text, THE BUILDER | 4.31 | 4.5 | below AA | node-card.css .node-eyebrow (design canvas) | var(--text-meta) in node-card.css, plus a regeneration of the 8 light builder baselines - SHELL-SCOPE.md 6.6 |
+
+1 pairings still fail: 1 in W4's files.

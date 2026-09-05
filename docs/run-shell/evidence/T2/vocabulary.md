@@ -158,3 +158,85 @@ disclosure that is collapsed by default.
    `details` (`serializer.py:466`), and unlike every other message on this
    ladder that one is authored text addressed to a person. The service's own
    `gate_open` carries `title` in `details` and is preferred when present.
+
+---
+
+## Verified by RV3
+
+Checked 2026-09-05 on `run-shell/cast` at `27b256e` by reading the table above
+against `src/brief_crew/events/serializer.py::_event_drafts` (lines 394–652,
+the range the header names) and against `src/brief_crew/service/registry.py`'s
+own frames. RV3 built none of this.
+
+**Method.** Two enumerations rather than a skim, because a skim of a ladder is
+how a kind goes missing:
+
+```bash
+# 1. every FrameKind that can exist at all
+./.venv/Scripts/python.exe -c "from brief_crew.events.models import FrameKind; print([k.value for k in FrameKind])"
+# ['run_state','node_state','edge_taken','agent','tool','llm','token','gate_open',
+#  'gate_closed','gate_expired','gate_alert','metrics','guardrail','reasoning',
+#  'verdict','error']
+
+# 2. every kind the SERVICE emits outside the serializer, since the table claims those too
+grep -noE "FrameKind\.[A-Z_]+" src/brief_crew/service/registry.py | sort -u
+# ERROR, GATE_ALERT, GATE_CLOSED, GATE_EXPIRED, GATE_OPEN, LLM, METRICS,
+# RUN_STATE, TOKEN, VERDICT
+```
+
+**Result: no missing kind and no missing stage.** All sixteen `FrameKind`
+values have a row, and every `stage` the serializer writes is named. The
+mapping, walked branch by branch down `_event_drafts`:
+
+| serializer branch | emits | table row |
+| --- | --- | --- |
+| `FlowStartedEvent` (root) | `run_state` `status: running` | ✓ |
+| `FlowFinishedEvent` (root) | `run_state` `status: completed` | ✓ |
+| `FlowFailedEvent` (root) | `error`, `WORKFLOW_END`, no node | ✓ run-level `error` row |
+| `Flow*` (**nested**, `_nested_flow_draft` :867) | `agent` at `before` / `after` / `error` | ✓ by the three `agent` rows — see the note below |
+| `VerdictComputedEvent` | `verdict` | ✓ |
+| `MethodExecutionStarted/Finished/Failed` | `node_state` `before` / `after` / `error` | ✓ |
+| …router arm of `Finished` | `edge_taken` | ✓ (no row, canvas owns it) |
+| `MethodExecutionPausedEvent` | `node_state` `paused` | ✓ (no row) |
+| `HumanFeedbackRequested/Received` | `gate_open` `before` / `gate_closed` `after` | ✓ |
+| `ToolUsageStarted/Finished/Error` | `tool` `before` / `after` / `error` | ✓ |
+| `ToolValidateInputError`, `ToolSelectionError`, `ToolExecutionError` | `tool` `error` | ✓ same row |
+| `LLMCallStarted/Completed/Failed` | `llm` `before` / `after` **+ `utterance` + `token`** / `error` | ✓ all five |
+| `LLMStreamChunkEvent` | `llm` `chunk` | ✓ (no row) |
+| `AgentExecutionStarted/Completed/Error` | `agent` `before` / `after` / `error` | ✓ |
+| `TaskStarted/Completed/Failed` | `agent` `before` / `after` / `error` | ✓ same rows |
+| `CrewKickoffStarted/Completed/Failed` | `agent` `before` / `after` / `error` | ✓ same rows, and departure 1 explains the choice |
+| `LLMGuardrailStarted/Completed` | `guardrail` `before` / `after` (± `success`) | ✓ both after-arms |
+| `AgentLogsExecutionEvent` | `reasoning` `thinking` | ✓ |
+| `MCPConnectionFailedEvent` | `error` `stage: error`, node-level | ✓ node-level `error` row |
+| `Skill Activated/Loaded/Used` | `agent` `skill` | ✓ |
+| `SkillLoadFailedEvent` | `error` `stage: error`, node-level | ✓ node-level `error` row |
+| unmatched → `record_unhandled` | nothing | ✓ *unknown kind* row |
+| `registry.py` | `gate_expired`, `gate_alert`, `metrics`, `run_state` cancelled/failed | ✓ |
+
+**Three notes, none of them a gap, all of them things a reader would otherwise
+have to re-derive:**
+
+1. **The nested-flow frames have no row of their own and do not need one.**
+   `_nested_flow_draft` deliberately emits `FrameKind.AGENT` — its docstring
+   says so and gives the reason (an agent executor is often the only frame
+   between a task starting and a tool call, and `AGENT` moves no run status
+   anywhere in the client). So they land on the three `agent` rows. The table
+   would read more completely with a line saying that, but nothing is
+   unnarrated.
+2. **`llm` at `stage: "after"` is one of THREE frames from one event.**
+   `LLMCallCompletedEvent` returns a triple — `after`, `utterance`, `token` —
+   and the table has a row for each of the three, which is the half a reader
+   is most likely to get wrong.
+3. **`guardrail` has no `error` stage** because the serializer has no
+   `LLMGuardrailFailed` branch; only Started and Completed exist. The table
+   correctly lists no such row.
+
+**One row of the table RV3 could not check against the ladder**, and it is
+outside the ladder by construction: the `verdict` row's `Scored {n}/10 —
+{label}` comes from `_verdict_draft`, which is at `serializer.py:8xx` rather
+than in the 394–652 range. It exists and it emits `FrameKind.VERDICT`; the
+sentence itself is `interpret.ts`'s and is asserted by
+`traceInterpretation.spec.ts`.
+
+**Verdict: T2.2's vocabulary table is complete against the serializer.**

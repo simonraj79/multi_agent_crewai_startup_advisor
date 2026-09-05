@@ -126,6 +126,29 @@ async function animationsOn(target: Locator): Promise<string[]> {
 }
 
 /**
+ * Every animation actually RUNNING inside an element, its descendants included.
+ *
+ * `animationsOn` asks one element what it is running, which is the right
+ * question for a card or a dot. A character is a small tree - the root `.pip`
+ * carries the state and a part inside it carries the motion - so the same
+ * question has to be asked with `{ subtree: true }` or it answers `[]` about a
+ * character that is visibly moving. Filtered to `running`, because that is the
+ * distinction reduced motion turns on and a paused animation is still an
+ * animation.
+ */
+async function animationsInside(target: Locator): Promise<string[]> {
+  return target.evaluate((el) =>
+    el
+      .getAnimations({ subtree: true })
+      .filter((animation) => animation.playState === 'running')
+      .map((animation) => (animation as CSSAnimation).animationName)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0)
+      .map((name) => name.replace(/-[0-9a-f]{8}$/, ''))
+      .sort(),
+  )
+}
+
+/**
  * The same animations WITH their period and their curve.
  *
  * Names alone were what this audit checked, and a name is the half a
@@ -302,11 +325,37 @@ test.describe('the run canvas survives the node-card extraction', () => {
         'node-pulse 2s ease-out',
       ])
       expect(await animationsOn(running.locator('.state-dot'))).toEqual(['dot-pulse'])
-      expect(await animationsOn(running.locator('.node-crew-oar').first()))
-        .toEqual(['node-oar-stroke'])
-      expect(await animationsOn(running.locator('.node-crew-hull'))).toEqual(['node-hull-bob'])
-      expect(await animationsOn(running.locator('.node-crew-rower').first()))
-        .toEqual(['node-rower-pull'])
+
+      /*
+       * THE CAST, where the two-rower crew used to be.
+       *
+       * This asserted `node-oar-stroke`, `node-hull-bob` and `node-rower-pull`
+       * on `.node-crew-oar` / `-hull` / `-rower` until 2026-09-05, when T2.9
+       * removed all three by design: "the two-rower crew and the icon medallion
+       * are replaced, not duplicated". The rule is still the same rule - a
+       * running card must be visibly working, and the audit is the only
+       * instrument that can say so, because `toHaveScreenshot` cancels every
+       * infinite animation before it captures - so what changed is the subject
+       * and not the question.
+       *
+       * Three assertions, because "there is a character" and "it is the right
+       * one" and "it is moving" fail for three different reasons and a reader
+       * of the red deserves to be told which.
+       */
+      const pip = running.locator('.pip')
+      await expect(
+        pip,
+        'the running card does not mount exactly one character',
+      ).toHaveCount(1)
+      expect(
+        (await pip.getAttribute('data-state')) ?? '',
+        'the character on a running card is not in a live pose',
+      ).toMatch(/^(working|speaking)$/)
+      expect(
+        await animationsInside(pip),
+        'the character on a running card resolved no running animation',
+      ).not.toEqual([])
+
       expect(await animationsOn(running.locator('.node-active-dot')))
         .toEqual(['node-active-pulse'])
 
@@ -326,7 +375,10 @@ test.describe('the run canvas survives the node-card extraction', () => {
       // time across the fan-out, and this asserts about whichever it now is.
       await expect(page.locator('.workflow-node.is-running')).toHaveCount(1, { timeout: 30_000 })
       expect(await animationsOn(running)).toEqual([])
-      expect(await animationsOn(running.locator('.node-crew-oar').first())).toEqual([])
+      expect(
+        await animationsInside(running.locator('.pip')),
+        'the character kept moving under reduced motion',
+      ).toEqual([])
       // The elapsed COUNT keeps advancing under reduced motion; only the dot
       // stops. That is deliberate and is asserted so it stays deliberate.
       expect(await animationsOn(running.locator('.node-active-dot'))).toEqual([])

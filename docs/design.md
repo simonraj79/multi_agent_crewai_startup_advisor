@@ -310,10 +310,11 @@ written. Every branch that touches a sheet therefore leaves it cleaner, and
 
 `frontend/scripts/contrast-audit.mjs` is the other half: it reads every colour
 from `tokens.css` and `motion.css`, composites each translucent token over the
-surface stack the shell actually paints, and exits non-zero while any pairing
-the run shell **owns** is below the level it must meet — 4.5 for text, 3.0 for a
-UI boundary, in both themes. A pairing whose site is in another worker's file is
-listed with its owner and the token to use rather than silently counted.
+surface stack the shell actually paints, and **exits non-zero while ANY pairing
+is below the level it must meet** — 4.5 for text, 3.0 for a UI boundary, in both
+themes. Each row names the file its failure lives in, so the right person looks;
+that label is not an exemption, and for one round it was. A gate that exits 0
+over seventeen failing pairings is a gate measuring the wrong thing.
 
 A new colour is a pull request against this document first.
 

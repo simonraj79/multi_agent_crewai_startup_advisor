@@ -55,6 +55,7 @@ const GROUP_TITLES: Record<HotkeyGroup, string> = {
   edit: 'Editing',
   select: 'Selecting',
   navigate: 'Navigating',
+  canvas: 'The canvas',
   document: 'The workflow',
 }
 

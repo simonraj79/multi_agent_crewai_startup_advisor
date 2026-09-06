@@ -1371,6 +1371,16 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
   margin: 0 auto;
 }
 
+/* The product sentence, under the header's brand and above everything the page
+   holds (ROUND-2 X2). `--space-6` OFF the page's `--space-8` row gap rather
+   than a rule of its own: it is the brand's second line, so it must read as
+   attached to the header and not as the first of the page's four blocks. */
+.home-lede {
+  margin: calc(var(--space-6) * -1) 0 0;
+  color: var(--text-muted);
+  font: var(--type-body);
+}
+
 .home-resuming,
 .home-empty {
   display: flex;

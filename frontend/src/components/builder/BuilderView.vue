@@ -2636,4 +2636,45 @@ watch(
 @media (max-width: 860px) {
   .workspace-switch { display: none; }
 }
+
+/* THE TWO TOGGLES STOP ANCHORING TO COLUMNS THAT NO LONGER EXIST (RV4
+   follow-up 3).
+
+   Both hang off a rail's inner edge - `left: var(--chat-width)` for the
+   palette, `right: var(--control-width)` for the inspector - which is right
+   while those variables name real COLUMNS. At 640 and below they do not:
+   `studio.css` turns the palette into a full-width BOTTOM SHEET and the
+   inspector into a `width: 100%` overlay, and the two variables keep their
+   builder values (236px and 340px) describing tracks nothing lays out any
+   more. So the toggles land in the middle of the strip.
+
+   Measured at 390x844 on a saved document, by scanning `elementFromPoint`
+   across each element's own centre line:
+
+     Expand the inspector   x 18  y 65  32x38   z 2
+     Expand the palette     x 236 y 65  32x38   z 2
+     .document-name  "News to social post"   10 of 133 columns covered
+     .save-chip      "saved - v1"            28 of  78 columns covered
+
+   and they cover each OTHER at around 600, where the inspector's right edge
+   (600 - 340 = 260) is inside the palette's box (236-268). Neither is
+   reachable by widening the bar's inset: the palette's toggle is at the middle
+   of the row, not at its edge.
+
+   The bar already declares the answer for the case where the anchors DO mean
+   something - `padding: 0 40px`, the same inset `.canvas-heading` carries in
+   `studio.css` and for the same stated reason, that these two controls are
+   positioned into this strip from either side and outrank it. Sending them to
+   the edges at this breakpoint puts them back inside that inset, which is
+   where the 40px was reserved for them in the first place.
+
+   Why they outrank a bar whose `z-index` is 9 at all: they are children of
+   `.studio-main`, siblings of `.graph-workspace`, and `.graph-workspace` is
+   `z-index: 0` - a stacking context, so the bar's 9 is spent inside it and
+   never reaches these. That is CLAUDE.md section 12's `.canvas-heading`
+   defect exactly, on a new surface. */
+@media (max-width: 640px) {
+  .rail-toggle { left: 0; }
+  .control-toggle { right: 0; }
+}
 </style>

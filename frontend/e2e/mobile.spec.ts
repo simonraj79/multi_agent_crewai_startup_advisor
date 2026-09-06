@@ -297,6 +297,39 @@ test.describe('the builder at 390x844', () => {
     )
     expect(hitsPublish, 'Publish is reachable at its own centre').toBe(true)
 
+    /*
+     * AND THE IDENTITY ROW IS NOT PRINTED THROUGH (RV4 follow-up 3).
+     *
+     * The two rail toggles are children of `.studio-main`, siblings of
+     * `.graph-workspace`, and `.graph-workspace` is `z-index: 0` - a stacking
+     * context - so the bar's own `z-index: 9` is spent inside it and never
+     * reaches them. They anchored to `var(--chat-width)` / `var(--control-width)`,
+     * which at this width name columns `studio.css` has already turned into a
+     * bottom sheet and a full-width overlay, so they landed in the middle of
+     * the strip: measured, `Expand the inspector` at x18 covering 10 of the
+     * name's 133 columns and `Expand the palette` at x236 covering 28 of the
+     * save chip's 78.
+     *
+     * Scanned across the whole centre LINE rather than sampled at the centre
+     * point, because that is how the defect was found: the chip's own centre
+     * was clear while a third of it was under a button.
+     */
+    for (const target of ['.document-name', '.save-chip']) {
+      const covered = await page.evaluate((selector) => {
+        const el = document.querySelector(selector)
+        if (!el) return -1
+        const rect = el.getBoundingClientRect()
+        const y = Math.round(rect.top + rect.height / 2)
+        let hits = 0
+        for (let x = Math.ceil(rect.left); x < Math.floor(rect.right); x += 1) {
+          const top = document.elementFromPoint(x, y)
+          if (top && top !== el && !el.contains(top)) hits += 1
+        }
+        return hits
+      }, target)
+      expect(covered, `${target} is printed through at 390`).toBe(0)
+    }
+
     expect(errors).toEqual([])
   })
 

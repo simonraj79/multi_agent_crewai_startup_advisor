@@ -512,17 +512,47 @@ function backToValidator(): void {
             workflow id IS the `#/build/<id>` this lands on. The built-in
             validator has no document, so it keeps the gallery.
           -->
-          <button type="button" :aria-pressed="false" @click="emit('build', buildTarget)">
-            <PenTool :size="14" aria-hidden="true" /> Build
+          <!--
+            `aria-label` ALWAYS, not only when the word is hidden. Below 860px
+            this pair collapses to this half alone and the word goes with it
+            (R10, below), so the accessible name has to come from somewhere the
+            media query cannot reach - and a label that appears at one width and
+            not another is a control that is announced differently on a phone.
+            It says the same thing the visible word does, so nothing changes
+            above the breakpoint.
+          -->
+          <button
+            type="button"
+            :aria-pressed="false"
+            aria-label="Build"
+            title="Open this workflow in Build"
+            data-testid="build-switch"
+            @click="emit('build', buildTarget)"
+          >
+            <PenTool :size="14" aria-hidden="true" />
+            <span class="switch-word">Build</span>
           </button>
           <button type="button" :aria-pressed="true">
-            <Play :size="14" aria-hidden="true" /> Run
+            <Play :size="14" aria-hidden="true" />
+            <span class="switch-word">Run</span>
           </button>
         </div>
 
-        <span class="live-status" :class="`is-${connection}`" aria-live="polite">
+        <!--
+          The word is in a span so the 390 block below can take it out of the
+          LAYOUT without taking it out of the page: `.sr-only` there, not
+          `display: none`, because this element is `aria-live` and a live region
+          that renders nothing announces nothing. `title` puts it back within
+          reach of a pointer, and the dot keeps its colour either way.
+        -->
+        <span
+          class="live-status"
+          :class="`is-${connection}`"
+          aria-live="polite"
+          :title="connectionLabel"
+        >
           <Radio :size="13" aria-hidden="true" />
-          {{ connectionLabel }}
+          <span class="live-word">{{ connectionLabel }}</span>
         </span>
 
         <div v-if="user" class="account-chip">
@@ -875,9 +905,69 @@ function backToValidator(): void {
    control. */
 .handoff-banner .icon-button:disabled { cursor: not-allowed; opacity: 0.42; }
 
+/*
+ * R10, THE CONSOLE'S HALF (ROUND-2 row R10, AUDIT-R2 C1).
+ *
+ * This block used to read `.workspace-switch { display: none }`, with the
+ * comment "first thing to go when the header runs out of room; `#/build` is
+ * still a URL and the builder is still reachable." Measured at 390x844: a
+ * console had NO route to Build at all - `#/build` is a URL only to somebody
+ * who knows to type one, and the audit's C1 counted that as one of the two
+ * halves of a mode switch that does not exist on a phone.
+ *
+ * THE PAIR COLLAPSES TO ITS ONE USEFUL HALF rather than growing a menu. `Run`
+ * is the mode you are already in - a segmented control whose second half is
+ * the current page is redundant at any width and unaffordable at this one -
+ * and `Build` is the route that was missing. Icon-only, because the header had
+ * SEVEN pixels of slack: measured on this tree before the change at 390, the
+ * brand runs 16-58, the breadcrumb 58-261, the transport chip 275-329 and the
+ * account chip 343-383 of 390. A worded button is ~78px and would have taken
+ * that out of the workflow's own name, which U2 spent a ruling keeping.
+ *
+ * The word is `display: none` rather than `visibility: hidden` - the opposite
+ * of the choice `BuilderView`'s Run half makes two files over, and for the
+ * opposite reason: there the two labels must reserve the wider one's width so
+ * the control cannot move under a pointer, and here the whole point is to give
+ * the width back. The accessible name is on `aria-label` above, so it survives
+ * either way.
+ */
+/*
+ * WHERE THE 36px COMES FROM, measured rather than hoped.
+ *
+ * At 390 before this change the header ran brand 16-58, breadcrumb 58-261,
+ * transport chip 275-329, account chip 343-383 of 390 - seven pixels of slack.
+ * Putting the switch back at its icon width alone pushed `.header-context` to
+ * 433 and the account chip clean off the right edge, measured. So two things
+ * give the width back at 390 and only at 390, and neither is the workflow's
+ * own name, which U2 spent a ruling keeping:
+ *
+ *   the gap    14px -> 8px across four items, 18px
+ *   the word   the transport chip keeps its dot and gives up its word to
+ *              `.sr-only` - roughly 34px, and it is the one thing in this
+ *              header that says nothing about which workflow you are looking at
+ *
+ * Measured after: the account chip's right edge is back inside the viewport.
+ * These rules are SCOPED to this component, so the builder's header - which has
+ * its own switch, its own rule and no transport chip - is untouched.
+ */
+@media (max-width: 640px) {
+  .header-context { gap: var(--space-3); }
+  .live-status .live-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 @media (max-width: 860px) {
-  /* First thing to go when the header runs out of room; `#/build` is still a
-     URL and the builder is still reachable. */
-  .workspace-switch { display: none; }
+  .workspace-switch { grid-template-columns: auto; }
+  /* The current mode. `aria-pressed` is the state, so the selector is the fact
+     rather than a position that a later edit could reorder. */
+  .workspace-switch button[aria-pressed='true'] { display: none; }
+  .workspace-switch button { padding: 0 var(--space-3); }
+  .workspace-switch .switch-word { display: none; }
 }
 </style>

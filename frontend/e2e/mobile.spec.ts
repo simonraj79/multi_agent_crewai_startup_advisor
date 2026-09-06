@@ -265,3 +265,79 @@ test.describe('the builder at 390x844', () => {
     expect(errors).toEqual([])
   })
 })
+
+/**
+ * R10, THE CONSOLE'S HALF (ROUND-2 row R10, AUDIT-R2 C1).
+ *
+ * `.workspace-switch` was `display: none` below 860px on the CONSOLE too - a
+ * second, independent rule in `StudioView.vue`'s own scoped style, which WB
+ * correctly left alone because `StudioView.vue` was being changed for R1-R4 at
+ * the time. So a console at 390 had no route to Build at all: `#/build` is a
+ * URL only to somebody who knows to type one.
+ *
+ * The pair now collapses to its ONE useful half. `Run` is the mode you are
+ * already in; `Build` is the route that was missing. Icon-only, because the
+ * header had seven pixels of slack - measured, and the two things that give the
+ * width back at this width are the context gap and the transport chip's word,
+ * neither of which is the workflow's own name.
+ */
+test.describe('the run console at 390x844', () => {
+  test('offers a route to Build, and the header still fits', async ({ page }) => {
+    const errors = watchConsole(page)
+    await page.goto('/#/run')
+    await expect(page.locator('.status-panel')).toBeVisible()
+
+    const build = page.locator('.workspace-switch').getByRole('button', { name: 'Build' })
+    await expect(build).toBeVisible()
+
+    // REACHABLE, not merely rendered: `toBeVisible` asks about an element's own
+    // box and says nothing about what is painted over it, and this control sits
+    // in a 52px bar between a breadcrumb and an account chip.
+    const box = (await build.boundingBox())!
+    const hits = await page.evaluate(
+      (point) =>
+        document
+          .elementFromPoint(point.x, point.y)
+          ?.closest('[data-testid="build-switch"]') !== null,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    )
+    expect(hits, 'Build is reachable at its own centre').toBe(true)
+
+    /*
+     * THE HEADER DOES NOT OVERFLOW, asked of every child rather than of the
+     * document. Measured while writing this: giving the switch back at its icon
+     * width alone pushed `.header-context` to 433 of 390 and the account chip
+     * clean off the right edge - and `document.scrollWidth` still answered 390,
+     * because the page does not scroll for a child that is simply outside it.
+     */
+    const header = await page.evaluate(() => {
+      const bar = document.querySelector('.app-header') as HTMLElement
+      const children = [...bar.querySelectorAll(':scope > *, .header-context > *')]
+        .filter((el) => getComputedStyle(el).display !== 'none')
+        .map((el) => ({
+          cls: el.className.toString().slice(0, 30),
+          right: Math.round(el.getBoundingClientRect().right),
+        }))
+      return {
+        height: Math.round(bar.getBoundingClientRect().height),
+        viewport: window.innerWidth,
+        widest: Math.max(...children.map((c) => c.right)),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        offRight: children.filter((c) => c.right > window.innerWidth).map((c) => c.cls),
+      }
+    })
+    expect(header.offRight, 'header children hanging off the right edge').toEqual([])
+    expect(header.widest).toBeLessThanOrEqual(header.viewport)
+    // One row, not two: a wrapped header is the other way this control could
+    // have been "fitted".
+    expect(header.height).toBe(52)
+    expect(header.overflow).toBeLessThanOrEqual(1)
+
+    // And it is WA's handler, not a second one: the same `build` emit the
+    // worded button fires at 1440.
+    await build.click()
+    await expect(page).toHaveURL(/#\/build/)
+
+    expect(errors).toEqual([])
+  })
+})

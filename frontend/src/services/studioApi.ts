@@ -685,7 +685,7 @@ export class StudioApi {
    * THROWS on failure rather than returning `[]`, and that is the whole point.
    * A `catch { return [] }` here converted every 401, 5xx, CORS refusal and
    * network drop into the positive claim "you have no runs" - which the panel
-   * renders as "Nothing yet. Launch a validation and it will appear here."
+   * renders as "Nothing yet. Run a workflow and it will appear here."
    *
    * Observed in production on 2026-09-01: a run that had genuinely completed,
    * and that `GET /api/runs` returned when asked directly, showed as an empty

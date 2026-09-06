@@ -137,7 +137,10 @@ async function leftDrag(page: Page, pane: Locator, options?: { space?: boolean }
   return { panned: (await transformOf(page)) !== before, marqueed }
 }
 
-const NAMES = ['Zoom in', 'Zoom out', 'Fit the graph to the view', 'Select tool', 'Hand tool']
+// `workflow`, not `graph` - X1's rename reached `CanvasControls.vue`'s
+// `aria-label` and line 252's assertion on WC1's branch, and this constant on
+// WB's. Neither branch could see the other's half; only the merged tree fails.
+const NAMES = ['Zoom in', 'Zoom out', 'Fit the workflow to the view', 'Select tool', 'Hand tool']
 
 const selectButton = (page: Page) => page.getByRole('button', { name: 'Select tool' })
 const handButton = (page: Page) => page.getByRole('button', { name: 'Hand tool' })

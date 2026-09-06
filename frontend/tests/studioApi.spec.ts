@@ -594,7 +594,7 @@ describe('StudioApi http surface', () => {
  * A failed request must never be reported as an empty result.
  *
  * `listRuns` swallowed every failure into `[]`, and `RunHistory.vue` renders an
- * empty list as "Nothing yet. Launch a validation and it will appear here."
+ * empty list as "Nothing yet. Run a workflow and it will appear here."
  * Observed in production on 2026-09-01: a run that had genuinely completed, and
  * that `GET /api/runs` returned when asked directly, showed as no runs at all.
  * The likely trigger is the first paint racing the token mint - one 401, and

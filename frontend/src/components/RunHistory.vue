@@ -183,7 +183,12 @@ const isEmpty = computed(() => loaded.value && !loading.value && runs.value.leng
     </p>
 
     <p v-else-if="isEmpty" class="run-history-empty">
-      Nothing yet. Launch a validation and it will appear here.
+      <!-- `Run`, and `a workflow` - this list holds the runs of any of them,
+           including one somebody drew, and it said `Launch a validation` (X1,
+           ruling 5). The two files that QUOTE this sentence in a comment are
+           corrected with it, so the next reader is not sent looking for a
+           string that no longer exists. -->
+      Nothing yet. Run a workflow and it will appear here.
     </p>
 
     <ul v-else class="run-history-list">

@@ -708,7 +708,7 @@ function backToValidator(): void {
           :pan-on-drag="panOnDrag"
           :fit-view-on-init="true"
           :fit-view-options="FIT_VIEW_OPTIONS"
-          :aria-label="`${canvasTitle} workflow graph`"
+          :aria-label="`${canvasTitle} workflow canvas`"
         >
           <template #node-workflow="nodeProps">
             <!--
@@ -797,7 +797,7 @@ function backToValidator(): void {
                narrow a ref inside the template the way a direct `v-if` does. -->
           <div v-if="handoffBannerShown && handoff" class="handoff-banner" role="status">
             <span>
-              Running your published graph <strong>{{ handoff.name }}</strong>. It asks for
+              Running your published workflow <strong>{{ handoff.name }}</strong>. It asks for
               <code>{{ handoff.inputField }}</code>.
             </span>
             <button

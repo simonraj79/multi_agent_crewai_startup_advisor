@@ -114,7 +114,7 @@ function onHandleKey(event: KeyboardEvent): void {
     class="test-panel"
     :class="{ 'is-open': test.open.value, 'is-dragging': dragging }"
     :style="style"
-    aria-label="Test this flow"
+    aria-label="Test this workflow"
     data-testid="test-panel"
     :data-open="test.open.value ? 'true' : 'false'"
   >
@@ -133,7 +133,7 @@ function onHandleKey(event: KeyboardEvent): void {
       @keydown="onHandleKey"
     />
 
-    <div class="test-tabs" role="tablist" aria-label="Test this flow">
+    <div class="test-tabs" role="tablist" aria-label="Test this workflow">
       <FlaskConical class="test-tabs-icon" :size="13" aria-hidden="true" />
       <button
         v-for="name in TEST_TABS"

@@ -294,15 +294,16 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <!--
-      A real server refused this graph (D-01-2). Until 2026-09-03 the console
-      answered that by drawing the demonstration graph under the refused
-      workflow's name with a green Launch; now the canvas is empty, Launch is
-      disabled, and this says why in the server's own words.
+      A real server refused this workflow (D-01-2). Until 2026-09-03 the
+      console answered that by drawing the demonstration graph under the
+      refused workflow's name with a green Launch; now the canvas is empty,
+      the primary button is disabled, and this says why in the server's own
+      words.
     -->
     <div v-if="graphProblem" class="panel-banner is-error graph-banner" role="alert">
       <TriangleAlert :size="15" aria-hidden="true" />
       <span>
-        <strong>This graph cannot be launched from here.</strong>
+        <strong>This workflow cannot be launched from here.</strong>
         The server answered: {{ graphProblem }}
       </span>
     </div>

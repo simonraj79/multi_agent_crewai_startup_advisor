@@ -69,7 +69,7 @@ file names.
 
 | Support file | Role |
 | --- | --- |
-| `__init__.py` | makes `unittest discover` walk the directory at all — [gotchas](../../../gotchas-and-insights.md) 20, the trap that once held this repository's Python count at 65 |
+| `__init__.py` | makes `unittest discover` walk the directory at all — gotchas 20 (`docs/gotchas-and-insights.md`, local working notes, not in the repository), the trap that once held this repository's Python count at 65 |
 | `replay.py` | the shared frame builder. Named so the default `test*.py` pattern walks past it; builds real `FrameData`, not a lookalike |
 
 ## 3. Observability tests OUTSIDE `tests/observability/`

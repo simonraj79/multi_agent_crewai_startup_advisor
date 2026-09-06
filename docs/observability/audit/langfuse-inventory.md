@@ -32,7 +32,7 @@ by a file, it says NOT CHECKED and why.
 
 API base `${LANGFUSE_BASE_URL}`, HTTP basic auth public:secret. Console at
 `https://us.cloud.langfuse.com/project/cmto3mj7t06ykad0ipon3ksbw/...`, signed in as
-`simoraj@gmail.com`. **No login wall was hit** — the session was already authenticated.
+the owner's Google account (address redacted from the public copy). **No login wall was hit** — the session was already authenticated.
 
 **Two API snapshots were taken, deliberately**, because the console showed rows that the
 first snapshot did not (§6.1):
@@ -200,7 +200,7 @@ What follows regardless: **the cost figures inherit OpenRouter's blind spots.**
 `openrouter.input_unit_price` is the base rate, and the three requests that used
 `:nitro` (`rawRequest.provider = {sort: "throughput"}`, plus every probe request) still
 report the base rate — so the `:nitro` price spread that
-[`CLAUDE.md` item 41](../../../CLAUDE.md) warns about is **invisible here**, not bounded by
+`CLAUDE.md` item 41 (local working notes, not in the repository) warns about is **invisible here**, not bounded by
 it. Reasoning tokens are billed inside `output` with no separate line
 (761 of the Scoper's 1,006 output tokens were reasoning). Embeddings, rerank and Firecrawl
 raise no OpenRouter LLM call and appear nowhere.

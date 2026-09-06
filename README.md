@@ -1,4 +1,4 @@
-# Agentic Crew AI Studio
+# Crew Studio
 
 [![CI](https://github.com/simonraj79/multi_agent_crewai_startup_advisor/actions/workflows/ci.yml/badge.svg)](https://github.com/simonraj79/multi_agent_crewai_startup_advisor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -10,9 +10,10 @@
 CrewAI flow and runs it — and the run console shows you what the agents are
 actually doing.**
 
-The product is **Crew Studio**: one home that lists every workflow, a canvas per
-workflow with the same pan, zoom and fit controls in Build and Run, and one mark on
-every surface.
+The product is named **Crew Studio**
+([`frontend/src/data/brand.ts`](frontend/src/data/brand.ts) is the only place it
+is spelled). A *workflow* has two modes, **Build** and **Run**, and both are the
+same canvas with the same zoom, fit and Select/Hand controls.
 
 Not a picture of a flow: agents, crews, human approval gates, routers, joins and
 cycles are parsed into a typed document, structurally bounded, priced before a
@@ -20,9 +21,15 @@ token is spent, compiled into a `crewai.flow/v1` declaration, and executed by th
 same service that streams every event back to the browser.
 
 Live deployment: **<https://agentic-crew-ai-studio.onrender.com>** (API at
-<https://agentic-crew-ai-api.onrender.com>). Sign-in is Google and currently
-limited to approved test accounts, so the fastest way to try the product is the
-**free local synthetic mode** below — it needs no API keys and spends nothing.
+<https://agentic-crew-ai-api.onrender.com>; both names are declared in
+[`render.yaml`](render.yaml)). Sign-in there is Google only, so your account may
+not be able to open it — the fastest way to try the product is the **free local
+synthetic mode** below. It needs no API keys and spends nothing.
+
+> The GitHub repository is still named `multi_agent_crewai_startup_advisor` and
+> the Python package is still `brief_crew`. Both predate the product name and
+> are left alone on purpose: renaming either breaks existing clones, imports and
+> deploy hooks.
 
 ---
 
@@ -55,14 +62,20 @@ workflow, and the server turns it into a running CrewAI flow.
 
 - **Ten node kinds** — `input`, `agent`, `crew`, `gate`, `router`, `transform`,
   `output`, plus three attachment kinds (`tool`, `mcp`, `skill`) you hang off an
-  agent or a crew.
-- **Two model tiers** — `cheap` and `escalation` — both resolved from a
-  regenerated OpenRouter registry ([`data/models.json`](data/models.json)) with a
-  hard **$1.00 per 1M input tokens** ceiling that a test enforces over the whole
-  source tree.
+  agent or a crew. Regenerate the list rather than trusting this one:
+
+  ```bash
+  python -c "import typing; from brief_crew.builder.document import NodeKind, Tier; print(typing.get_args(NodeKind), typing.get_args(Tier))"
+  ```
+
+- **Two model tiers** — `cheap` and `escalation` — checked at import against a
+  registry regenerated from the live OpenRouter catalogue
+  ([`data/models.json`](data/models.json)), which carries a hard **$1.00 per 1M
+  input tokens** ceiling.
 - **A budget meter that prices the graph before it runs.** Every node is costed
   as a worst case (every guardrail retried, every tool loop at `max_iter`, every
-  cycle at its ceiling), with a 1.25× margin against a per-run ceiling. A graph
+  cycle at its ceiling), with a 1.25× margin against a per-run ceiling
+  (`GRAPH_STATIC_BUDGET_MARGIN` and `MAX_RUN_COST_USD` in `config.py`). A graph
   that would blow the ceiling is refused at publish with a dollar figure, not a
   node count.
 - **Structural bounds that catch the failures CrewAI does not.** One canvas gate
@@ -71,11 +84,13 @@ workflow, and the server turns it into a running CrewAI flow.
   normally having produced nothing — silently. The compiler refuses the shape
   instead.
 - **No author-supplied code, ever.** Every compiled action resolves to one of a
-  closed set of compiler-owned entrypoints. Author data arrives as *values*,
-  never as names of things to import or run.
-- **Nine templates in the gallery**, including the six-agent idea validator
-  (16 nodes, 22 edges, two revise loops), a sequential pipeline, a conditional
-  router, a reflection loop, hierarchical delegation, and a news-to-social flow.
+  closed set of compiler-owned entrypoints (`config.BUILDER_ACTION_REFS`).
+  Author data arrives as *values*, never as names of things to import or run.
+- **Nine templates in the gallery** (`ALL_BUILDER_TEMPLATES` in
+  [`frontend/src/data/builderTemplates.ts`](frontend/src/data/builderTemplates.ts)),
+  including the six-agent idea validator — 16 nodes, 22 edges, two revise loops —
+  a sequential pipeline, a conditional router, a reflection loop, hierarchical
+  delegation, and a news-to-social flow.
 - Export, import, duplicate, version history, publish and unpublish, with
   per-user isolation and an AES-256-GCM credential vault for BYO API keys.
 
@@ -84,21 +99,22 @@ workflow, and the server turns it into a running CrewAI flow.
 Every run is a live agent trace beside whatever the flow produced.
 
 - **Every agent gets a character.** A "Pip" — a rounded body, two oversized eyes,
-  a mouth and a crown flourish cut from the body's own fill — is derived
-  deterministically from the agent's role string. 4 bodies × 4 eye shapes ×
-  3 mouths × 6 crowns × 12 colours = **3,456 reachable characters**, all
-  legible at 32 px, the same character on the node and in the trace rail. A flow
-  authored next week gets a cast with no code change.
+  a mouth and a crest cut from the body's own fill — is derived deterministically
+  from the agent's role string. `PIP_COMBINATIONS` in
+  [`frontend/src/characters/pip.ts`](frontend/src/characters/pip.ts) is
+  4 bodies × 4 eye shapes × 3 mouths × 6 crests × 12 colours = **3,456
+  characters**, each drawn to stay readable at 32 px, the same character on the
+  node and in the trace rail. A flow authored next week gets a cast with no code
+  change.
 - **Six states, driven by run events, not by a clock**: `idle`, `working`,
   `speaking`, `blocked`, `blocked-error`, `done`. Blocked and blocked-error are
-  separated by *two* signals (a wilted crown plus `×_×` eyes), not by colour
-  alone. Reduced-motion is respected, and the number of live animations on the
-  page is bounded whatever the graph's size.
+  separated by *two* signals (the outline colour and `×_×` eyes), not by colour
+  alone, and `prefers-reduced-motion` is honoured.
 - **Every event becomes one human-readable line — or nothing.** The trace layer
-  is pure: one frame in, one sentence out, capped at 140 characters. The verb
-  comes from the frame kind and the words inside the tool name the framework
-  emitted, never from a hardcoded list of this repo's own agents. The raw payload
-  is one click away behind a per-row disclosure, not in the way.
+  is pure: one frame in, one sentence out, capped at `MAX_TRACE_LINE_CHARS`
+  (140). The verb comes from the frame kind and the words inside the tool name
+  the framework emitted, never from a hardcoded list of this repo's own agents.
+  The raw payload is one click away behind a per-row disclosure, not in the way.
 - **The verdict panel says what decided the run.** It keys on the decision reason
   rather than on the list of triggered floors, so a floor that did *not* decide
   the outcome is demoted to an also-ran instead of being presented as the cause.
@@ -112,7 +128,7 @@ Every run is a live agent trace beside whatever the flow produced.
 
 | Flow | What it is |
 | --- | --- |
-| **Idea Validator** | Six agents — Scoper, Market Analyst, Sentiment Analyst, Feasibility Analyst, Synthesist, Reporter — with three research branches running in parallel against Firecrawl, Hacker News and GitHub. Two durable human gates that survive the process dying. A scored, cited verdict against a ratified rubric, with mechanical guardrails that recompute the arithmetic and check every citation closes over real tool results. |
+| **Idea Validator** | Six agents — Scoper, Market Analyst, Sentiment Analyst, Feasibility Analyst, Synthesist, Reporter — with three research branches running in parallel against Firecrawl, Hacker News and GitHub. Two durable human gates that survive the process dying. A scored, cited verdict against the fixed rubric in `config.RUBRIC_ANCHORS`, with mechanical guardrails that recompute the arithmetic and check every citation closes over real tool results. |
 | **Brief Crew** | The original Researcher → Analyst → Writer pipeline behind a warm Pinecone vector cache, so repeat runs on a topic get cheaper. Writes `output/brief.md`. |
 
 The validator also exists **as a builder template**, so you can open it, edit it
@@ -134,10 +150,11 @@ Python, and the gallery card says so.
   boundary, admission control on the one endpoint that spends money (body size,
   input size, per-client rate limit, queue depth), and a fully free
   `SYNTHETIC=1` mode for everything else.
-- **A no-cost test suite.** Thousands of Python and frontend unit tests plus a
-  Playwright browser suite, all against mocks and deterministic doubles. CI runs
-  with **no credentials at all** — that is what makes "costs nothing and touches
-  no network" checkable rather than aspirational.
+- **A no-cost test suite.** Python and frontend unit tests plus a Playwright
+  browser suite, all against mocks and deterministic doubles. CI runs with **no
+  credentials at all** — no `secrets.*` reference appears in
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — which is what makes
+  "costs nothing and touches no network" checkable rather than aspirational.
 - **Human gates that survive a restart.** A run paused for a person is durable:
   the reply is a compare-and-set, a duplicate answers 409, a reply that cannot
   start its resume is rolled back rather than left committed, and a run
@@ -150,8 +167,14 @@ Python, and the gallery card says so.
 
 ## How a run looks
 
-There are no screenshots committed to this repository. What you see when you
-press Launch:
+This README has no screenshots. The committed pictures of the UI are the
+Playwright visual baselines under
+[`frontend/e2e/visual/`](frontend/e2e/visual/) — the builder canvas and the run
+canvas, light and dark, desktop and mobile — plus the run-console
+captures and recorded test output under
+[`docs/run-shell/evidence/`](docs/run-shell/evidence/).
+
+What you see when you press **Run**:
 
 1. **The canvas** draws the flow's topology — one card per node, each carrying
    its kind icon, its label and (for agent nodes) its character.
@@ -161,7 +184,7 @@ press Launch:
 3. **The trace rail fills, one sentence per event.** *"Market Analyst searched
    the web for competitors."* Not `AgentExecutor market_task` and not
    `5168 in · 3994 out`. Each row has a disclosure holding the raw frame.
-4. **A gate opens.** The node's character wilts its crown and widens its eyes,
+4. **A gate opens.** The node's character wilts its crest and widens its eyes,
    the node goes amber, and a gate card appears with editable fields and
    read-only derived values. The run waits — across a page refresh, across a
    process restart — until a person answers `approve` or `revise`.
@@ -183,8 +206,8 @@ deterministic doubles — the plumbing is real, the agents are not.
 
 | | |
 | --- | --- |
-| **Python** | 3.13 recommended (3.10–3.13 supported; CrewAI requires `<3.14`) |
-| **Node** | 24 |
+| **Python** | 3.13 (`.python-version`). `pyproject.toml` allows `>=3.10,<3.14` |
+| **Node** | 24 (what CI and `render.yaml` pin) |
 | **Git** | any recent version |
 
 Optional but recommended: [`uv`](https://docs.astral.sh/uv/) — the lockfile
@@ -215,9 +238,9 @@ python -m venv .venv
 pip install -e ".[service]"
 ```
 
-> The `service` extra (FastAPI, Uvicorn, SQLAlchemy, psycopg, PyJWT) is required
-> for the studio and for the `tests/service` and `tests/integration` suites. The
-> CLI-only crews work without it.
+> The `service` extra (FastAPI, Uvicorn, SQLAlchemy, psycopg, PyJWT, Langfuse)
+> is required for the studio and for the `tests/service` and `tests/integration`
+> suites. The CLI-only crews work without it.
 
 ### 2. Configure keys
 
@@ -225,9 +248,13 @@ pip install -e ".[service]"
 cp .env.example .env
 ```
 
-[`.env.example`](.env.example) is the canonical, annotated list — every variable
-names the file that reads it and what happens if you leave it blank. `.env` is
-gitignored.
+[`.env.example`](.env.example) is annotated: each variable it lists names the
+file that reads it and what happens if you leave it blank. `.env` is gitignored.
+It covers the model, tool and service knobs; the authentication, credential-vault
+and Langfuse variables are **not** in it — those are documented beside their
+constants in [`src/brief_crew/config.py`](src/brief_crew/config.py), in
+[`render.yaml`](render.yaml) and in
+[`frontend/server/auth.ts`](frontend/server/auth.ts).
 
 **Nothing below is needed for the free synthetic mode.** For real runs:
 
@@ -267,7 +294,7 @@ CREDENTIALS_MASTER_KEY="$(python -c 'import base64,secrets;print(base64.b64encod
 $env:SYNTHETIC = "1"
 $env:SYNTHETIC_BRANCH_DELAY_SECONDS = "5"
 $env:PORT = "8000"
-$env:CREDENTIALS_MASTER_KEY = "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE="
+$env:CREDENTIALS_MASTER_KEY = (.\.venv\Scripts\python.exe -c "import base64,secrets;print(base64.b64encode(secrets.token_bytes(32)).decode())")
 .\.venv\Scripts\serve.exe
 ```
 
@@ -286,8 +313,10 @@ design.
 > finishes a branch instantly, so without it there is no "running" moment to
 > watch, and the visual E2E specs fail with `No branch stayed in flight`.
 
-> `PORT=8000` is where the Vite dev server proxies. `SYNTHETIC=1` is what makes
-> that port free — the *same* port without it is the paid backend.
+> `PORT=8000` is where the Vite dev server proxies (`frontend/vite.config.ts`).
+> `SYNTHETIC=1` is what makes that port free — the *same* port without it is the
+> paid backend. The Playwright harness uses `8099` instead; see
+> [Testing](#testing).
 
 ### 4. Start the frontend
 
@@ -297,14 +326,20 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173/>. With no auth server running the console detects
-that auth is unconfigured and opens the studio directly — no Google sign-in
-needed for local development.
+Open <http://localhost:5173/>. With no auth server running the app detects that
+auth is unconfigured and opens the studio directly — no Google sign-in needed for
+local development.
 
-- `#/` — the run console
-- `#/build` — the flow builder canvas and template gallery
+- `#/` — the **home**: the built-in Idea Validator, your saved workflows, and the
+  template gallery
+- `#/run` — the **run console**
+- `#/build` — the **builder**; `#/build/<document-id>` opens a saved workflow
 
-Press **Launch** and watch a full synthetic run: gates, revise loops, trace,
+(The three hashes are parsed by
+[`frontend/src/composables/useWorkspaceRoute.ts`](frontend/src/composables/useWorkspaceRoute.ts),
+which is this project's own hash router rather than `vue-router`.)
+
+Press **Run** and watch a full synthetic run: gates, revise loops, trace,
 verdict and report, for free.
 
 ### 5. Optional: the auth server
@@ -330,8 +365,8 @@ npm run dev:server        # listens on :3000, which vite.config.ts proxies /api/
 ## Using the CLI
 
 The package installs five console scripts
-([`pyproject.toml`](pyproject.toml) → `[project.scripts]`); `serve` is the one
-covered above.
+([`pyproject.toml`](pyproject.toml) → `[project.scripts]`): `run_crew`,
+`kickoff`, `plot`, `validate` and `serve`. `serve` is the one covered above.
 
 ```bash
 # Brief Crew — the three-agent sequential crew. Writes output/brief.md.
@@ -367,20 +402,24 @@ branches one at a time.
 - **OpenRouter only.** Every agent LLM comes from `CHEAP_MODEL` or
   `ESCALATION_MODEL` in [`src/brief_crew/config.py`](src/brief_crew/config.py).
   There is no direct OpenAI fallback, and startup rejects any model constant or
-  YAML override that does not carry the `openrouter/` prefix.
-- **A hard price ceiling of $1.00 per 1M input tokens**, enforced by
-  `tests/test_model_ceiling.py` scanning the *source tree* — not just the
-  registry, because a registry checked against itself proves nothing. The
-  registry [`data/models.json`](data/models.json) is regenerated from the live
-  OpenRouter catalogue by [`scripts/refresh_models.py`](scripts/refresh_models.py),
-  never typed from memory.
+  YAML override that does not carry the `openrouter/` prefix
+  (`service/app.py` raises `must use the openrouter/ provider prefix`).
+- **A hard price ceiling of $1.00 per 1M input tokens**
+  (`config.MODEL_PRICE_CEILING_IN`), enforced by
+  [`tests/test_model_ceiling.py`](tests/test_model_ceiling.py) scanning the
+  *source tree* — not just the registry, because a registry checked against
+  itself proves nothing. The registry [`data/models.json`](data/models.json) is
+  regenerated from the live OpenRouter catalogue by
+  [`scripts/refresh_models.py`](scripts/refresh_models.py), never typed from
+  memory.
 - **Every cost figure is an estimate**: tokens × a local price table. OpenRouter's
   own per-generation cost never reaches the process, and `:nitro` routes on speed
   rather than price, so the effective rate can exceed the published one.
 - **`MAX_RUN_COST_USD`** (default `$10`) is a real per-run ceiling, recomputed as
   the run proceeds and enforced at the next step boundary.
 - Do not install `crewai[litellm]` — OpenRouter is a native CrewAI provider at
-  the pinned version.
+  the pinned version, and `pyproject.toml` says so where the dependency is
+  declared.
 
 ---
 
@@ -392,6 +431,7 @@ src/brief_crew/
   crews/            brief_crew/ and validator_crew/ — @CrewBase wrappers,
                     with every prompt in config/agents.yaml + config/tasks.yaml
   events/           the per-run event spine: frames, node registry, token/cost
+  observability/    the Langfuse exporter, a second consumer of that spine
   schemas/          the validator contracts and the deterministic verdict
   service/          FastAPI app, WebSocket, registry, SQL persistence,
                     builder API, credentials, auth (JWT verification)
@@ -401,14 +441,16 @@ src/brief_crew/
   validator_flow.py the six-agent flow and the `validate` CLI
 
 frontend/
+  src/views/        HomeView (#/) and StudioView (#/run)
   src/components/   the run console — canvas nodes, rails, gate card, report
   src/components/builder/   the builder — palette, canvas, inspector, gallery
   src/characters/   the Pip generator
   src/trace/        frame → one human sentence
-  src/composables/  run state, choreography, builder document, auth gate
+  src/composables/  run state, choreography, builder document, auth gate, routing
+  src/assets/styles/  tokens.css and the surface stylesheets
   server/           Hono + Better Auth (Google), serves the built SPA
   tests/            Vitest unit specs
-  e2e/              Playwright specs
+  e2e/              Playwright specs, including visual baselines
 
 data/models.json          the OpenRouter registry, regenerated not typed
 data/skills/builtin/      the four built-in skill packs
@@ -430,6 +472,9 @@ doubles.
 # Python — unit and integration
 .venv/bin/python -m unittest discover -s tests -t .
 
+# ...or one directory at a time, which is faster and easier to read
+.venv/bin/python -m unittest discover -s tests/builder -t .
+
 # Frontend — Vitest (single pass, no watch)
 cd frontend && npm test
 
@@ -438,35 +483,48 @@ cd frontend && npx vue-tsc -b --force
 ```
 
 End-to-end, in a real browser. Playwright deliberately starts **no** Python
-backend — an automated suite must not be able to press Launch against a paid
-one — so start the free backend yourself first (step 3 above, on port `8099`),
-then:
+backend — an automated suite must not be able to press Run against a paid one —
+so start the free backend yourself on `8099` first:
+
+```bash
+# from the repository root, in its own shell
+SYNTHETIC=1 SYNTHETIC_BRANCH_DELAY_SECONDS=5 PORT=8099 \
+CREDENTIALS_MASTER_KEY="$(python -c 'import base64,secrets;print(base64.b64encode(secrets.token_bytes(32)).decode())')" \
+  .venv/bin/serve
+```
 
 ```bash
 cd frontend
 npx playwright install chromium     # first time only
 npx playwright test
-E2E_API_TARGET=http://127.0.0.1:8099 npx playwright test   # if the backend is elsewhere
+E2E_API_TARGET=http://127.0.0.1:8094 npx playwright test   # if the backend is elsewhere
 ```
 
 Notes that will otherwise cost you an afternoon:
 
 - Playwright starts its own second Vite server (`e2e/vite.e2e.config.ts`, port
-  `5273`) which proxies to `127.0.0.1:8099` and stubs the auth origin.
-- Specs tagged `@launch` press Launch for real. They are free against a synthetic
+  `5273`, moved with `E2E_UI_PORT`) which proxies to `127.0.0.1:8099` and stubs
+  the auth origin.
+- Specs tagged `@launch` start a run for real. They are free against a synthetic
   backend; pointed at a paid origin with `E2E_BASE_URL` they are not.
-  `npx playwright test --grep-invert @launch` excludes them.
-- `e2e/builder-mcp.spec.ts` **skips** unless you start the MCP fixture server and
-  set `E2E_MCP_URL` — it refuses to stub what it is there to verify.
+  `npx playwright test --grep-invert @launch` excludes them, and
+  `npx playwright test --list` tells you how many of each there are.
+- `e2e/builder-mcp.spec.ts` **skips** unless you start the MCP fixture server
+  (`tests/service/mcp_fixture_server.py`) and set `E2E_MCP_URL` — it refuses to
+  stub what it is there to verify.
+- Visual specs compare against the committed baselines in
+  `e2e/visual/*-snapshots/`, which were captured on Windows Chromium; another
+  platform will need them regenerated.
 - **Add an `__init__.py` in the same commit as any new test directory**, or
   `unittest discover` walks past it in silence and reports a green `OK` over
   tests it never ran.
 - On Windows, stop a stray backend with `Stop-Process -Name serve -Force`.
   `pkill` reports success and leaves the old process serving stale code.
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the Python suite,
-the frontend type-check, build and unit tests on every push, plus a two-writer
-PostgreSQL 18 concurrency job on `main`. It carries no credentials by design.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs three jobs: the
+Python suite, the frontend type-check + build + unit tests, and — on `main` only
+— a two-writer PostgreSQL 18 concurrency test. It carries no credentials by
+design.
 
 ---
 
@@ -478,12 +536,13 @@ its nodes, agents, tasks, tools and model calls, with durations, token counts,
 the per-generation cost OpenRouter actually billed, and the exception class on
 anything that failed.
 
-It is **off by default** and turns on when `LANGFUSE_PUBLIC_KEY`,
-`LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` are set; with any of them missing
-the exporter is a no-op that logs one line at startup. `GET /readyz` reports its
-state. Nothing it does can fail a run: it is a second consumer of the same
-bounded event pipeline the UI reads, and an unreachable Langfuse changes only
-the exporter's own counters.
+It is **off by default** and turns on when `LANGFUSE_PUBLIC_KEY` and
+`LANGFUSE_SECRET_KEY` are both set (`LANGFUSE_BASE_URL` defaults to Langfuse
+Cloud); `LANGFUSE_EXPORT_ENABLED` overrides that either way. With the keys
+missing the exporter is a no-op that logs one line at startup. `GET /readyz`
+reports its state in an `observability` object. Nothing it does can fail a run:
+it is a second consumer of the same bounded event pipeline the UI reads, and an
+unreachable Langfuse changes only the exporter's own counters.
 
 **Content is not sent.** A model call carries a fingerprint of its rendered
 prompt plus message and character counts, never the text. Setting
@@ -491,7 +550,8 @@ prompt plus message and character counts, never the text. Setting
 outbound is scrubbed for credential shapes either way.
 
 The audit, the trace contract, the definition of done and the full evidence tree
-live in [`docs/observability/`](docs/observability/).
+live in [`docs/observability/`](docs/observability/) — start with
+[`TRACE-CONTRACT.md`](docs/observability/TRACE-CONTRACT.md).
 
 ---
 
@@ -506,21 +566,21 @@ live in [`docs/observability/`](docs/observability/).
 | `agentic-crew-ai-api` | Python (web service) | The FastAPI service. |
 | `agentic-crew-ai-db` | PostgreSQL 18 | Durable runs, frames, gates, documents and credentials. Its IP allow list is empty, which is *why* the region is load-bearing. |
 
-Both web services carry `autoDeploy: yes`, so a merge to `main` **is** a deploy.
-Before merging, confirm `CREDENTIALS_MASTER_KEY` is set on the API service —
-`render.yaml` sets `AUTH_BASE_URL`, and the two together are a deliberate startup
-refusal rather than a degraded feature. A [`Dockerfile`](Dockerfile) exists as an
-alternative container path; the Blueprint does not use it.
+The manifest does not set `autoDeploy`, so the services take Render's default and
+a push to `main` redeploys them — treat a merge as a deploy. Before merging,
+confirm `CREDENTIALS_MASTER_KEY` is set on the API service: `render.yaml` sets
+`AUTH_BASE_URL`, and the two together are a deliberate startup refusal rather
+than a degraded feature. A [`Dockerfile`](Dockerfile) exists as an alternative
+container path; the Blueprint does not use it.
 
 ---
 
 ## Getting help
 
 - **Bugs and questions** → [open an issue](https://github.com/simonraj79/multi_agent_crewai_startup_advisor/issues).
-- **Environment variables** → [`.env.example`](.env.example) documents every one,
-  with the file that reads it and the consequence of leaving it blank.
-- **Constants, ceilings and defaults** → [`src/brief_crew/config.py`](src/brief_crew/config.py).
-  Each one carries the reasoning beside it.
+- **Environment variables** → [`.env.example`](.env.example) for the model, tool
+  and service knobs; [`src/brief_crew/config.py`](src/brief_crew/config.py) for
+  everything else, each constant with the reasoning beside it.
 - **What the API offers** → run a synthetic backend and open `/docs`; the OpenAPI
   schema is generated from the code.
 - **Agent behaviour** → the prompts are YAML and are meant to be read:
@@ -555,14 +615,14 @@ Branch from `main`, and before you open a PR:
    model — not in code, not in defaults, not in examples, not in tests. If you
    change `CHEAP_MODEL` or `ESCALATION_MODEL`, move `PRICES` in the same commit.
    A price written in prose is stale; look it up.
-5. **Never launch against a paid backend in a test.** Use `SYNTHETIC=1`. E2E
-   specs that press Launch are tagged `@launch`.
+5. **Never start a run against a paid backend in a test.** Use `SYNTHETIC=1`.
+   E2E specs that start a run are tagged `@launch`.
 6. **Map every canvas node to a real CrewAI primitive.** If a node cannot map,
    the node design is wrong — fix the design, never fake the runtime.
 7. **Do not regress Brief Crew.** `run_crew()`, `kickoff()`, `output/brief.md`
    and `output/last_run.json` behaviour is preserved deliberately.
 8. **Use design tokens.** No new colours, spacing or type scales — a value is a
-   token in `frontend/src/assets/styles/` or it does not exist.
+   token in `frontend/src/assets/styles/tokens.css` or it does not exist.
 
 Commit messages here describe the *behaviour* that changed and the evidence for
 it, not the files touched.

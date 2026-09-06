@@ -16,7 +16,7 @@ Three variables on the API service, and nothing on the studio service:
 
 | Name | Shape | Why |
 |---|---|---|
-| `LANGFUSE_PUBLIC_KEY` | secret, `sync: false` | Half of the Basic-auth pair. "Public" names its role in Langfuse's own model, not its sensitivity — Langfuse echoes it on every object its API serves ([gotchas](../../../gotchas-and-insights.md) 60), so it is treated as a credential here |
+| `LANGFUSE_PUBLIC_KEY` | secret, `sync: false` | Half of the Basic-auth pair. "Public" names its role in Langfuse's own model, not its sensitivity — Langfuse echoes it on every object its API serves (gotchas 60, `docs/gotchas-and-insights.md`, local working notes, not in the repository), so it is treated as a credential here |
 | `LANGFUSE_SECRET_KEY` | secret, `sync: false` | The other half |
 | `LANGFUSE_BASE_URL` | literal, `https://us.cloud.langfuse.com` | Not a secret. A literal for the same reason `CORS_ALLOW_ORIGINS` is one: a value knowable when the manifest is written should not be a manual step that can be missed. The value was compared against `.env` in Python and the comparison printed `True` — the comparison, not the value |
 

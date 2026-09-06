@@ -2490,8 +2490,21 @@ watch(
    variable-height strip between a node and the row that names it. */
 .graph-workspace > .test-panel { grid-row: 6; }
 
-.workspace-switch { grid-template-columns: auto auto; padding: 2px; }
-.workspace-switch button { min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }
+/* `display: grid` STATED HERE, and it is not a flourish (RV4 follow-up 6).
+   `studio.css`'s `.segmented` base is scoped `:where(.studio-shell:not(.is-builder))`,
+   so this control inherited no `display` at all and the `grid-template-columns`
+   below reached nothing: the two halves were inline-blocks on a BASELINE, which
+   is why they could sit 15px out of vertical alignment with each other. A grid
+   row stretches both halves to one height by construction, which is the same
+   thing the console's own switch has always done. */
+.workspace-switch { display: grid; grid-template-columns: auto auto; align-items: stretch; padding: 2px; }
+/* `height`, not `min-height` (RV4 follow-up 6). A minimum is a floor, and the
+   stacked spare label below turned it into a variable: measured at 1440 on
+   `ux/round-2`, the `Run` half was 96.7 x 41 against `Build`'s 67.8 x 28, so the
+   segmented pair had two different heights and one of them overhung the 52px
+   header. The control is one row of one line of text in both states, so its
+   height is a constant and is written as one. */
+.workspace-switch button { height: 28px; padding: 0 10px; font-size: var(--fs-12); }
 /* The Run switch while this workflow is unpublished (item 57). The console's
    own `.segmented button:disabled` rule is scoped `:not(.is-builder)`, so the
    builder gets none of it; this is that rule's pair, and it is the affordance
@@ -2501,7 +2514,14 @@ watch(
 /* One grid cell, two labels, the wider one always paying for the width. See
    the comment on the markup: D-15-14 pins this control against moving. */
 .workspace-switch .switch-label { display: grid; }
-.workspace-switch .switch-label > span { grid-area: 1 / 1; }
+/* `white-space: nowrap` on BOTH, and it is the whole of follow-up 6's cause.
+   The spare label is in the DOM to reserve the WIDER label's width so the
+   control cannot move (D-15-14) - but a label free to wrap answers that demand
+   by taking a second LINE instead, and `Publish to run` did exactly that,
+   growing the button to 41px while its sibling stayed 28. Reserving a width
+   means reserving it on one line; anything else reserves a height nobody
+   asked for. */
+.workspace-switch .switch-label > span { grid-area: 1 / 1; white-space: nowrap; }
 .workspace-switch .switch-label > span.is-spare { visibility: hidden; }
 
 /* A toast in the header row, in the layout (never over the canvas, R15): an

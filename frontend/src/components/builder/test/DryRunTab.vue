@@ -115,7 +115,7 @@ const planSteps = computed<string[]>(() => {
       </section>
 
       <p class="test-verdict" :class="result.valid ? 'is-ok' : 'is-bad'" data-testid="test-dry-verdict">
-        {{ result.valid ? 'This graph compiles.' : `${errors.length} problem(s) block it.` }}
+        {{ result.valid ? 'This workflow compiles.' : `${errors.length} problem(s) block it.` }}
       </p>
 
       <ul v-if="errors.length || warnings.length" class="test-problems" data-testid="test-dry-problems">

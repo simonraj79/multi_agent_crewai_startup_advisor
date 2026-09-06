@@ -177,7 +177,7 @@ describe('the dock renders them under their own heading', () => {
     })
     expect(wrapper.find('[data-testid="problems-headline"]').text()).toBe('1 error')
     expect(wrapper.find('ul[aria-label="Run problems"]').exists()).toBe(true)
-    expect(wrapper.find('ul[aria-label="Whole-graph problems"]').exists()).toBe(true)
+    expect(wrapper.find('ul[aria-label="Whole-workflow problems"]').exists()).toBe(true)
   })
 
   it('renders nothing extra when the last run was clean', () => {

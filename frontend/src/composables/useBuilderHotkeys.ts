@@ -368,7 +368,7 @@ export const HOTKEY_BINDINGS: readonly HotkeyBinding[] = [
   {
     id: 'fit-view',
     group: 'navigate',
-    label: 'Fit the whole graph',
+    label: 'Fit the whole workflow',
     chords: [{ key: 'f' }],
     allowInTextEntry: false,
     run: (actions) => actions.fitView(),

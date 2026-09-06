@@ -187,7 +187,7 @@ function applyPaste(): void {
   }
   if (badTypes.length) {
     refusals.push(
-      `${badTypes.join(', ')} - this document carries only ${TYPES.join(', ')}, because the compiler builds a flat pydantic class from it`,
+      `${badTypes.join(', ')} - this workflow carries only ${TYPES.join(', ')}, because the compiler builds a flat pydantic class from it`,
     )
   }
   if (refusals.length) {

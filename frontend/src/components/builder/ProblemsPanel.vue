@@ -363,7 +363,7 @@ defineExpose({ next, previous })
           </ul>
         </template>
 
-        <ul v-if="documentRows.length" class="problems-group" aria-label="Whole-graph problems">
+        <ul v-if="documentRows.length" class="problems-group" aria-label="Whole-workflow problems">
           <li v-for="(row, index) in documentRows" :key="row.key">
             <button
               type="button"
@@ -381,7 +381,7 @@ defineExpose({ next, previous })
               <span class="problem-code">{{ row.problem.code }}</span>
               <span class="problem-message">{{ row.problem.message }}</span>
               <span v-if="row.fromPublish" class="problem-tag">from publish</span>
-              <span class="problem-anchor">whole graph</span>
+              <span class="problem-anchor">whole workflow</span>
             </button>
           </li>
         </ul>

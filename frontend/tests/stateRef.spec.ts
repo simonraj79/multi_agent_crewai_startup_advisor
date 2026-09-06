@@ -116,7 +116,7 @@ describe('the reference picker offers only keys that resolve', () => {
 
     await wrapper.get('input').setValue('${state.out__nothing')
     expect(wrapper.findAll('.ref-option')).toHaveLength(0)
-    expect(wrapper.get('.ref-empty').text()).toContain('No key in this graph matches')
+    expect(wrapper.get('.ref-empty').text()).toContain('No key in this workflow matches')
   })
 })
 
@@ -182,7 +182,7 @@ describe('being out of scope warns and never refuses', () => {
 
   it('names a key no node produces at all', async () => {
     const wrapper = mountRef({ nodeId: nodeId('scoper'), modelValue: '${state.out__ghost}' })
-    expect(wrapper.get('.field-help').text()).toContain('No node in this graph is called ghost')
+    expect(wrapper.get('.field-help').text()).toContain('No node in this workflow is called ghost')
   })
 
   it('has no opinion about a key the compiler seeds under another prefix', async () => {

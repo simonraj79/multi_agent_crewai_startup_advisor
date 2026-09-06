@@ -60,7 +60,7 @@ function commitName(): void {
   }
   if (name === props.doc.name) return
   emit('commit', {
-    label: 'Rename graph',
+    label: 'Rename workflow',
     next: { ...props.doc, name },
     coalesceKey: 'document:name',
   })
@@ -146,7 +146,7 @@ function commitJoin(id: NodeId, all: boolean): void {
       :used="nameDraft.length"
       :max="vocabulary.bounds.max_name_chars"
       :warn-at="10"
-      help="What this graph is called in the library and in the run history."
+      help="What this workflow is called in your list and in your run history."
       v-slot="row"
     >
       <input
@@ -167,7 +167,7 @@ function commitJoin(id: NodeId, all: boolean): void {
       mono
       :note="undeclared ? 'declared by no node' : undefined"
       :note-warn="undeclared"
-      help="The key a launch must carry inside `inputs`. Chosen from what the input nodes declare, because a value nothing declares is a graph that cannot start."
+      help="The key a launch must carry inside `inputs`. Chosen from what the input nodes declare, because a value nothing declares is a workflow that cannot start."
       v-slot="row"
     >
       <select
@@ -207,7 +207,7 @@ function commitJoin(id: NodeId, all: boolean): void {
           </div>
         </li>
       </ul>
-      <p v-else class="empty-note">No node in this graph has more than one edge arriving.</p>
+      <p v-else class="empty-note">No node in this workflow has more than one edge arriving.</p>
     </FieldRow>
   </div>
 </template>

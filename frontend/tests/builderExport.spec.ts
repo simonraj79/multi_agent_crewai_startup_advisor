@@ -333,7 +333,7 @@ describe('Export from the document bar', () => {
     await openMenu(wrapper)
     const item = wrapper.get('[data-testid="menu-export"]')
     expect(item.attributes('disabled')).toBeDefined()
-    expect(item.attributes('title')).toContain('Save this graph first')
+    expect(item.attributes('title')).toContain('Save this workflow first')
     await item.trigger('click')
     await settled()
 

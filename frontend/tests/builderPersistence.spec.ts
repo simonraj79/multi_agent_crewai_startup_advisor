@@ -728,7 +728,7 @@ describe('ConflictDialog', () => {
     expect(text).toContain('only_mine')
     expect(text).toContain('Different in both')
     expect(text).toContain('Renamed by them')
-    expect(text).toContain('Graph settings')
+    expect(text).toContain('Workflow settings')
   })
 
   it('hands the fetched head back with whichever resolution was chosen', async () => {

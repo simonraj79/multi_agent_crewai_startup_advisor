@@ -186,7 +186,7 @@ const filePicker = ref<HTMLInputElement | null>(null)
 const MENU_OFFSET_PX = 6
 
 /** What `title` says on a stored-document action while nothing is stored. */
-const NOT_STORED = 'Save this graph first - this acts on the stored version'
+const NOT_STORED = 'Save this workflow first - this acts on the stored version'
 
 /**
  * Whether Unpublish has anything to act on, as far as THIS session knows.
@@ -367,7 +367,7 @@ function cancelRename(): void {
         class="document-name-input"
         type="text"
         :maxlength="maxNameChars"
-        aria-label="Graph name"
+        aria-label="Workflow name"
         @blur="commitRename"
         @keydown.enter.prevent="commitRename"
         @keydown.esc.prevent="cancelRename"
@@ -500,7 +500,7 @@ function cancelRename(): void {
           id="document-menu"
           class="document-menu"
           role="menu"
-          aria-label="Document actions"
+          aria-label="Workflow actions"
           data-testid="document-menu"
         >
           <!--
@@ -744,7 +744,7 @@ function cancelRename(): void {
   background: var(--surface-panel);
   border: 1px solid var(--border-default);
   border-radius: var(--r-lg);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--shadow-overlay);
 }
 
 .document-menu-item {

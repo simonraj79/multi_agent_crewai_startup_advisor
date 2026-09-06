@@ -499,7 +499,7 @@ describe('the panel shows every problem at once, worst first', () => {
 
   it('says a whole-graph problem is anchored to the whole graph', () => {
     const wrapper = mountPanel({ problems: [problem('billable-count')] })
-    expect(wrapper.get('.problem-anchor').text()).toBe('whole graph')
+    expect(wrapper.get('.problem-anchor').text()).toBe('whole workflow')
   })
 
   it('is a live region, so a fixed problem is announced without a focus move', () => {

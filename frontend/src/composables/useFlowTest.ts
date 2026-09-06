@@ -350,9 +350,9 @@ export function useFlowTest(options: FlowTestOptions) {
 
   /** Why Run is unavailable, in a sentence, or `''` when it is available. */
   const runBlockedReason = computed(() => {
-    if (!options.documentId()) return 'Save this graph before testing it.'
+    if (!options.documentId()) return 'Save this workflow before testing it.'
     if (!options.published()) {
-      return 'Publish this graph to test it — a run resolves the workflow the service has registered.'
+      return 'Publish this workflow to test it — a run resolves the version the service has registered.'
     }
     if (!inputValue.value.trim()) return `Type a value for ${inputField.value}.`
     return ''
@@ -412,7 +412,7 @@ export function useFlowTest(options: FlowTestOptions) {
   async function saveTestInput(label: string, { fromLastRun = false } = {}): Promise<void> {
     const id = options.documentId()
     if (!id) {
-      problem.value = 'Save this graph before saving a test input for it.'
+      problem.value = 'Save this workflow before saving a test input for it.'
       return
     }
     savingInput.value = true
@@ -503,7 +503,7 @@ export function useFlowTest(options: FlowTestOptions) {
   async function runDryRun(): Promise<void> {
     const workflowId = options.documentId()
     if (!workflowId) {
-      problem.value = 'Save this graph before a dry run.'
+      problem.value = 'Save this workflow before a dry run.'
       return
     }
     dryRunPending.value = true
@@ -539,7 +539,7 @@ export function useFlowTest(options: FlowTestOptions) {
       // version that worked would be the most misleading thing on the page.
       compiledProblems.value =
         error instanceof BuilderPublishRefusedError ? error.problems : []
-      problem.value = messageOf(error, 'this graph could not be compiled.')
+      problem.value = messageOf(error, 'this workflow could not be compiled.')
     } finally {
       compiledPending.value = false
     }
@@ -587,12 +587,12 @@ export function useFlowTest(options: FlowTestOptions) {
   const stateGroups = computed<StateGroup[]>(() => {
     const state = stateResult.value?.state ?? {}
     const groups: StateGroup[] = [
-      { prefix: '', label: 'This graph', entries: [] },
+      { prefix: '', label: 'This workflow', entries: [] },
       { prefix: 'out__', label: 'Node outputs', entries: [] },
       { prefix: 'err__', label: 'Node errors', entries: [] },
       { prefix: 'turns__', label: 'Gate turns', entries: [] },
       { prefix: 'decision__', label: 'Gate decisions', entries: [] },
-      { prefix: '__builder__', label: 'Graph metadata', entries: [] },
+      { prefix: '__builder__', label: 'Workflow metadata', entries: [] },
     ]
     for (const key of Object.keys(state).sort()) {
       const prefix = RESERVED_STATE_PREFIXES.find((candidate) => key.startsWith(candidate)) ?? ''

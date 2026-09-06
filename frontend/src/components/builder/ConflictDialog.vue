@@ -260,7 +260,7 @@ const empty = computed(
         <span class="conflict-icon" aria-hidden="true"><AlertTriangle :size="18" /></span>
         <div>
           <span class="conflict-kicker">SAVE CONFLICT</span>
-          <h2 id="conflict-title">This graph changed while you were editing it</h2>
+          <h2 id="conflict-title">This workflow changed while you were editing it</h2>
         </div>
       </header>
 
@@ -317,7 +317,7 @@ const empty = computed(
           </section>
 
           <section v-if="diff.settings.length" aria-labelledby="conflict-settings">
-            <h3 id="conflict-settings">Graph settings</h3>
+            <h3 id="conflict-settings">Workflow settings</h3>
             <dl>
               <template v-for="change in diff.settings" :key="change.field">
                 <dt>{{ change.field }}</dt>
@@ -363,8 +363,8 @@ const empty = computed(
 </template>
 
 <style scoped>
-.conflict-scrim { position: fixed; z-index: var(--z-toast); inset: 0; display: grid; padding: 24px; place-items: center; background: rgba(0, 0, 0, 0.6); backdrop-filter: var(--blur-panel); }
-.conflict-dialog { display: flex; width: min(640px, 100%); max-height: min(84vh, 720px); flex-direction: column; gap: 12px; padding: 20px; background: var(--surface-overlay); border: 1px solid var(--warn-border); border-radius: var(--r-2xl); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); outline: 0; }
+.conflict-scrim { position: fixed; z-index: var(--z-toast); inset: 0; display: grid; padding: 24px; place-items: center; background: var(--scrim); backdrop-filter: var(--blur-panel); }
+.conflict-dialog { display: flex; width: min(640px, 100%); max-height: min(84vh, 720px); flex-direction: column; gap: 12px; padding: 20px; background: var(--surface-overlay); border: 1px solid var(--warn-border); border-radius: var(--r-2xl); box-shadow: var(--shadow-overlay); outline: 0; }
 .conflict-dialog:focus-visible { border-color: var(--accent-cyan); box-shadow: var(--glow-input); }
 .conflict-dialog header { display: flex; align-items: center; gap: 10px; }
 .conflict-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--r-md); }

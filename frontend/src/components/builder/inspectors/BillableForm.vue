@@ -430,7 +430,7 @@ function convertToAuthored(): void {
       mono
       :note="libraryUnknown ? 'not in this build' : undefined"
       :note-warn="libraryUnknown"
-      help="Keys the YAML agent registry. Prompts live in YAML; a document names an id and never a role."
+      help="Keys the YAML agent registry. Prompts live in YAML; a workflow names an id and never a role."
       v-slot="row"
     >
       <select
@@ -478,7 +478,7 @@ function convertToAuthored(): void {
       field="convert"
       :node-id="id"
       group
-      help="Starts an authored agent from this node, keeping its tier, ceilings and prompt inputs. It cannot copy the library agent's prompts - those live in YAML on the server and a document never carries one - so what you get is a starting point that says where it came from."
+      help="Starts an authored agent from this node, keeping its tier, ceilings and prompt inputs. It cannot copy the library agent's prompts - those live in YAML on the server and a workflow never carries one - so what you get is a starting point that says where it came from."
     >
       <button type="button" class="convert-button" @click="convertToAuthored">
         <PenLine :size="12" aria-hidden="true" />
@@ -518,7 +518,7 @@ function convertToAuthored(): void {
       field="credential_id"
       :node-id="id"
       :note="keyed.config.credential_id ? 'your key' : 'platform key'"
-      help="Bring your own OpenRouter key and this node's calls are billed to it. The document keeps only the key's id; the secret stays in the vault and is resolved inside the run."
+      help="Bring your own OpenRouter key and this node's calls are billed to it. The workflow keeps only the key's id; the secret stays in the vault and is resolved inside the run."
       v-slot="row"
     >
       <CredentialPicker
@@ -541,7 +541,7 @@ function convertToAuthored(): void {
       :max="vocabulary.bounds.max_agent_iter"
       :help="
         libraryCrew
-          ? 'Accepted by the schema and ignored at run time - a crew runs whole. It round-trips so a save does not change the document.'
+          ? 'Accepted by the schema and ignored at run time - a crew runs whole. It round-trips so a save does not change the workflow.'
           : `How many reasoning passes one call may take, up to ${vocabulary.bounds.max_agent_iter}.`
       "
       @commit="commitCount('max_iter', $event)"

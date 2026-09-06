@@ -652,7 +652,7 @@ export function useBuilderDocument(initial: BuilderDocument) {
   }
 
   function setName(name: string): void {
-    commit('Rename graph', { ...doc.value, name }, 'doc:name')
+    commit('Rename workflow', { ...doc.value, name }, 'doc:name')
   }
 
   /**

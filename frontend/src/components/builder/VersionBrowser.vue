@@ -246,7 +246,7 @@ function weight(bytes: number): string {
     </p>
 
     <p v-if="!documentId" class="version-empty">
-      Save this graph and every version it is stored at will be listed here.
+      Save this workflow and every version it is stored at will be listed here.
     </p>
     <p v-else-if="loading" class="version-empty" role="status">
       <Loader :size="14" aria-hidden="true" /> Reading the stored versions…

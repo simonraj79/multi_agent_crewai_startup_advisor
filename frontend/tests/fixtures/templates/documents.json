@@ -22,7 +22,7 @@
   "documents": {
     "blank": {
       "schema": "builder.flow/v1",
-      "name": "Untitled graph",
+      "name": "Untitled workflow",
       "version": 1,
       "input_field": "idea",
       "nodes": [
@@ -2412,7 +2412,7 @@
     "news-to-social": {
       "title": "News to social post",
       "blurb": "Search this week’s discussion of a topic and write the post about it.",
-      "teaches": "That two agents and one tool are a whole product, and that a graph with no gate runs unattended for whoever is signed in.",
+      "teaches": "That two agents and one tool are a whole product, and that a workflow with no gate runs unattended for whoever is signed in.",
       "modifyFirst": "The subject. One box, everything downstream changes, nothing else has to.",
       "caveat": "No human gate, so it runs unattended — which means only a signed-in caller may launch it. Hand the link to somebody signed out and the service answers 403; add a gate above the researcher if you need that. The search is Hacker News, which needs no key; swap it for a Firecrawl web search in the inspector once you have added one."
     },
@@ -2446,7 +2446,7 @@
     },
     "minimal-gated-agent": {
       "title": "Minimal gated agent",
-      "blurb": "Input, a human gate, one agent, one result — the smallest graph anyone can launch.",
+      "blurb": "Input, a human gate, one agent, one result — the smallest workflow anyone can launch.",
       "teaches": "Why a gate sits above the first agent: while nobody is signed in, human inaction is the spend cap.",
       "modifyFirst": "The agent's prompt inputs, which are what the scoping task interpolates.",
       "caveat": null

@@ -513,7 +513,7 @@ describe('the gallery is the empty state and the way back into saved work', () =
 
   it('says so when there are no saved graphs yet', async () => {
     const { wrapper } = await gallery()
-    expect(wrapper.find('.gallery-empty').text()).toContain('No saved graphs yet')
+    expect(wrapper.find('.gallery-empty').text()).toContain('Nothing saved yet')
   })
 
   describe("the author's own graphs come first, in an order they can read (D-15-15)", () => {

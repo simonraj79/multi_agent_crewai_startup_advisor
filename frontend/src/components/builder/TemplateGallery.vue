@@ -211,7 +211,7 @@ async function loadLibrary(): Promise<void> {
     libraryProblem.value = ''
   } catch (error) {
     libraryProblem.value =
-      error instanceof Error ? error.message : 'your saved graphs could not be loaded.'
+      error instanceof Error ? error.message : 'your saved workflows could not be loaded.'
   } finally {
     libraryLoading.value = false
   }
@@ -265,7 +265,7 @@ async function unpublishRefused(): Promise<void> {
     )
   } catch (error) {
     deleteProblem.value =
-      error instanceof Error ? error.message : 'the graph could not be unpublished.'
+      error instanceof Error ? error.message : 'the workflow could not be unpublished.'
   } finally {
     unpublishing.value = false
   }
@@ -295,7 +295,7 @@ async function confirmDelete(): Promise<void> {
     cancelDelete()
   } catch (error) {
     deleteProblem.value =
-      error instanceof Error ? error.message : 'the graph could not be deleted.'
+      error instanceof Error ? error.message : 'the workflow could not be deleted.'
     deleteRefused.value = error instanceof BuilderConflictError
   } finally {
     deleteInFlight.value = false
@@ -367,20 +367,20 @@ const orderedLibrary = computed(() =>
     <section class="gallery-library" aria-labelledby="gallery-library-title">
       <header class="gallery-heading">
         <div>
-          <span class="gallery-kicker">YOUR GRAPHS</span>
+          <span class="gallery-kicker">YOUR WORKFLOWS</span>
           <h2 id="gallery-library-title">Saved here</h2>
         </div>
       </header>
 
       <p v-if="libraryLoading" class="gallery-empty" role="status">
-        <Loader :size="14" aria-hidden="true" /> Reading your saved graphs…
+        <Loader :size="14" aria-hidden="true" /> Reading your saved workflows…
       </p>
       <p v-else-if="libraryProblem" class="gallery-empty is-problem" role="alert">
         <TriangleAlert :size="14" aria-hidden="true" /> {{ libraryProblem }}
       </p>
       <p v-else-if="library.length === 0" class="gallery-empty">
         <FilePlus2 :size="14" aria-hidden="true" />
-        No saved graphs yet. Pick a shape below and it is yours the moment you save it.
+        Nothing saved yet. Pick a template below and it is yours the moment you save it.
       </p>
 
       <ul v-else class="library-list">

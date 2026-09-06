@@ -236,7 +236,7 @@ const PAIRS = [
   ['muted text on the header', 'text-muted', 'app-header', 'studio.css .workflow-name', 'text', 'W5', ''],
   ['meta text on the header', 'text-meta', 'app-header', 'studio.css .live-status', 'text', 'W5', ''],
   ['brand mark on the header', 'on-accent-cyan', 'app-header', 'studio.css .brand-mark', 'ui', 'W5', ''],
-  ['brand M2 on the header', 'on-accent-mint', 'app-header', 'studio.css .brand-lockup span', 'text', 'W5', ''],
+  ['brand wordmark on the header', 'on-accent-mint', 'app-header', 'studio.css .brand-lockup .brand-wordmark', 'text', 'W5', ''],
   ['canvas kicker on the canvas', 'on-accent-cyan', 'canvas ground', 'studio.css .canvas-kicker', 'text', 'W5', ''],
   ['canvas meta on the canvas', 'text-muted', 'canvas ground', 'studio.css .canvas-meta span', 'text', 'W5', ''],
   ['canvas version code on a well', 'text-meta', 'well on canvas', 'studio.css .canvas-meta code', 'text', 'W5', ''],

@@ -223,11 +223,21 @@ test.describe('Validator Studio', () => {
   test('reports the live backend instead of falling back to the mock transport', async ({ page }) => {
     await openStudio(page)
 
-    // `MOCK_GRAPH.version` is deliberately prefixed `mock-of-`, so the graph
-    // version on the canvas is an unambiguous statement of which transport
-    // served this page. The mock fallback exists for a missing backend; it
-    // silently masking a broken one is the failure this pins.
-    await expect(page.locator('.canvas-meta code')).not.toHaveText(/^mock-/)
+    // `MOCK_GRAPH.version` is deliberately prefixed `mock-of-`, so the
+    // workflow version is an unambiguous statement of which transport served
+    // this page. The mock fallback exists for a missing backend; it silently
+    // masking a broken one is the failure this pins.
+    //
+    // Read from the RAIL, not from `.canvas-meta code`: the version moved off
+    // the canvas heading into the `Details` disclosure (AUDIT-R2 N6). It is in
+    // the DOM whether that is open or shut, and `toHaveText` reads
+    // `textContent`, so this needs no interaction.
+    await expect(page.locator('[data-testid="graph-version"]')).not.toHaveText(/^mock-/)
+    await expect(page.locator('[data-testid="graph-version"]')).not.toBeEmpty()
+    // And it is off the heading's visible line, where it was a bare
+    // sixteen-character hash on the first surface a visitor reads.
+    await expect(page.locator('.canvas-meta code')).toHaveCount(0)
+    await expect(page.locator('#graph-title')).toHaveAttribute('title', /^Version /)
     await expect(page.locator('.live-status')).not.toHaveText(/mock/i)
     await expect(page.locator('.status-panel .stream-line')).not.toContainText('Mock stream')
     await expect(page.locator('.status-panel .read-only-well')).toContainText('Idea Validator')

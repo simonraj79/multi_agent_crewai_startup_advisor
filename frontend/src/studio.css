@@ -374,7 +374,10 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
    sentence case already. Left in place it would title-case the multi-word
    labels: "Waiting For You". */
 .canvas-meta span { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font: var(--type-meta); }
-.canvas-meta code { padding: var(--space-1) var(--space-2); color: var(--text-meta); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); }
+/* `.canvas-meta code` was here and is gone with the element it styled: the
+   graph version moved off this line into the heading's `title` and the rail's
+   `Details` block (AUDIT-R2 N6). A rule for a class nothing renders is what
+   makes the next reader believe the element still exists. */
 
 .validator-flow { width: 100%; height: 100%; }
 

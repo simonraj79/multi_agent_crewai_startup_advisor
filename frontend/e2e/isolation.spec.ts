@@ -357,7 +357,9 @@ test.describe('Per-user isolation', () => {
     await expect(library.locator('[role="status"]')).toHaveCount(0)
     await expect(library.locator('[role="alert"]')).toHaveCount(0)
     await expect(library.locator('.library-row')).toHaveCount(0)
-    await expect(library).toContainText(/no saved graphs yet/i)
+    // `Nothing saved yet…` since X1's rename - it read `No saved graphs yet`,
+    // and this is a third defect only the merged tree can see.
+    await expect(library).toContainText(/nothing saved yet/i)
     await expect(page.locator('.library-name', { hasText: ALICE_GRAPH_NAME })).toHaveCount(0)
 
     // The picker on Bob's own agent node lists only the platform key.
@@ -454,7 +456,9 @@ test.describe('Per-user isolation', () => {
        * words in a banner that cannot be dismissed, and no Launch.
        */
       await expect(page.locator('.live-status')).not.toHaveText(/mock/i)
-      await expect(page.locator('.canvas-meta code')).not.toHaveText(/^mock-/)
+      // The version reads from the rail's `Details` block now, not from the
+      // canvas heading (AUDIT-R2 N6). Present in the DOM either way.
+      await expect(page.locator('[data-testid="graph-version"]')).not.toHaveText(/^mock-/)
       await expect(page.locator('.vue-flow__node')).toHaveCount(0)
       await expect(page.locator('.status-panel .transport-banner')).toHaveCount(0)
       const refusal = page.locator('.status-panel .graph-banner')

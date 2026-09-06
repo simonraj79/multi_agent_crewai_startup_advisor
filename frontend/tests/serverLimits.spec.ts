@@ -387,6 +387,22 @@ describe('the rail reads input, launch, then status', () => {
     expect(panel.find('.control-logs .download-row').exists()).toBe(true)
   })
 
+  it('carries the workflow version inside the disclosure, labelled', () => {
+    // On the canvas it was a bare `9c6ca8a6fefbfffd` beside the run's status,
+    // with nothing saying what it was of (AUDIT-R2 N6). In here it can afford
+    // three words - a value nobody can name is not readable just because it is
+    // on screen - and it is the value two E2E specs read to prove the console
+    // is not silently in mock mode.
+    const panel = mountPanel({ graphVersion: '9c6ca8a6fefbfffd' })
+    const details = panel.get('[data-testid="status-details"]')
+    expect(details.find('[data-testid="graph-version"]').exists()).toBe(true)
+    expect(details.get('[data-testid="graph-version"]').text()).toBe('9c6ca8a6fefbfffd')
+    expect(details.text()).toContain('Workflow version')
+
+    // Absent rather than an empty chip while the descriptor has not arrived.
+    expect(mountPanel().find('[data-testid="graph-version"]').exists()).toBe(false)
+  })
+
   it('shuts the instrumentation away, and leaves the state and the run id out', () => {
     const panel = mountPanel({ runId: 'a0629576-1111-2222-3333-444455556666', lastSequence: 97 })
     const details = panel.get('[data-testid="status-details"]')

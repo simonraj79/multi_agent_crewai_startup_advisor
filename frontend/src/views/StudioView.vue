@@ -646,7 +646,19 @@ function backToValidator(): void {
               effect, which is still the common case.
             -->
             <span class="canvas-kicker">{{ canvasKicker }}</span>
-            <h2 id="graph-title">{{ canvasTitle }}</h2>
+            <!--
+              THE GRAPH VERSION IS IN A `title` NOW, not on the line (AUDIT-R2
+              N6, item 9's ruling extended). It rendered as a bare
+              `9c6ca8a6fefbfffd` beside the run's status, on the surface a
+              first-time visitor reads first, and it is a sixteen-character
+              ETag body with no reader on this screen. It is still READABLE in
+              two places: hovering the workflow's name, and the rail's own
+              `Details` disclosure, which is where the rest of the
+              instrumentation went. `title` on the heading rather than on the
+              whole heading block, because the version is a fact about THIS
+              workflow and the name is the thing it is about.
+            -->
+            <h2 id="graph-title" :title="`Version ${descriptor.version}`">{{ canvasTitle }}</h2>
           </div>
           <div class="canvas-meta">
             <!--
@@ -656,7 +668,6 @@ function backToValidator(): void {
               for and this surface had never been routed through it.
             -->
             <span><Activity :size="13" aria-hidden="true" />{{ runStatusDisplay(status).label }}</span>
-            <code>{{ descriptor.version }}</code>
           </div>
         </div>
 
@@ -846,6 +857,7 @@ function backToValidator(): void {
             :download-message="downloadMessage"
             :workflow-name="workflowName || undefined"
             :input-label="identity.inputLabel"
+            :graph-version="descriptor.version"
             :can-return-home="identity.authored"
             @launch="launch"
             @cancel="cancel"

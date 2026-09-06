@@ -88,6 +88,18 @@ const props = withDefaults(defineProps<{
   workflowName?: string
   inputLabel?: string
   /**
+   * The graph descriptor's version - the ETag body, `mock-of-…` on the mock
+   * transport (AUDIT-R2 N6).
+   *
+   * It used to render as a bare sixteen-character hash on the CANVAS heading,
+   * beside the run's status, on the first surface a visitor reads. It is
+   * instrumentation, so it is here, inside the same `Details` disclosure as the
+   * stream counters - and it is the value two specs read to prove the console
+   * is not silently in mock mode, which is why it is in the DOM whether the
+   * disclosure is open or shut.
+   */
+  graphVersion?: string
+  /**
    * A published graph is loaded, so there is somewhere to go back TO.
    *
    * A boolean rather than an inference from `workflowName`, which would be the
@@ -99,6 +111,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   workflowName: BUILT_IN_WORKFLOW_NAME,
   inputLabel: 'IDEA TO VALIDATE',
+  graphVersion: '',
   graphProblem: '',
   canReturnHome: false,
 })
@@ -542,6 +555,10 @@ const logFormat = ref<LogFormat>('ndjson')
           <span>seq {{ lastSequence }}</span>
           <span :class="{ 'has-drops': droppedFrames > 0 }">{{ droppedFrames }} dropped</span>
         </div>
+        <p v-if="graphVersion" class="graph-version-line">
+          Workflow version
+          <code class="graph-version" data-testid="graph-version" :title="graphVersion">{{ graphVersion }}</code>
+        </p>
       </details>
       <code v-if="runId" class="run-id" :title="runId">{{ runId.slice(0, 8) }}</code>
     </div>
@@ -673,6 +690,12 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
 .stream-line i.is-connecting, .stream-line i.is-reconnecting { color: var(--warn-text-strong); }
 .stream-line .has-drops { color: var(--err-text); }
 .run-id { display: inline-block; margin-top: var(--space-3); padding: var(--space-1) var(--space-2); color: var(--text-muted); font: var(--type-meta); background: var(--surface-well); border-radius: var(--r-sm); }
+/* LABELLED, unlike the hash it replaces. On the canvas it was a bare
+   `9c6ca8a6fefbfffd` with nothing saying what it was of; in here it can afford
+   three words, and a value nobody can name is not readable just because it is
+   on screen. */
+.graph-version-line { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: var(--space-3) 0 0; color: var(--text-meta); font: var(--type-meta); }
+.graph-version { padding: var(--space-1) var(--space-2); color: var(--text-muted); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); overflow-wrap: anywhere; }
 .control-actions { display: grid; gap: var(--space-3); padding: var(--space-6); }
 /* The same block treatment as `.control-actions`, one section lower. Two rules
    rather than one shared class, because the two are not the same thing and a

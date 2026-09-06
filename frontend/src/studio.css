@@ -1162,7 +1162,7 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
   /* THE WORDMARK STANDS DOWN ON A PHONE, and both canvases, not one.
 
      Measured at 390 with the wordmark in: the console's header read
-     `[mark] CREW STUDIO Validator Studio((*)) Ready [sign out]` with the
+     `[mark] CREW STUDIO <workflow name>((*)) Ready [sign out]` with the
      workflow's name touching the status icon - no gap at all, because eleven
      characters of kicker ate the whole of the row's slack. The header at this
      width has to carry a brand, a workflow, a status and an account; the mark

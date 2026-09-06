@@ -102,7 +102,11 @@ function launchButton(page: Page): Locator {
 }
 
 function downloadButton(page: Page): Locator {
-  return page.locator('.status-panel .control-actions button', { hasText: 'Download logs' })
+  // `.control-logs`, not `.control-actions` (item 9): the primary and Cancel
+  // moved up the rail to sit under the input, and the log export - which is
+  // neither the action nor the status - stayed at the bottom in a block of its
+  // own.
+  return page.locator('.status-panel .control-logs button', { hasText: 'Download logs' })
 }
 
 function statusBadge(page: Page): Locator {
@@ -115,6 +119,7 @@ function gateCard(page: Page): Locator {
 
 /** `seq N` from the stream line - the client's high-water mark of frames. */
 async function readSequence(page: Page): Promise<number> {
+  await openStatusDetails(page)
   const text = await page.locator('.status-panel .stream-line').innerText()
   return Number(/seq\s+(\d+)/.exec(text)?.[1] ?? -1)
 }
@@ -394,7 +399,10 @@ test.describe('Validator Studio', () => {
       await expect(page.locator('.error-banner')).toHaveCount(0)
       // The primary button names a SECOND run once the first is history
       // (`Run again`, ROUND-2 ruling 5 - it read `Relaunch`).
-      await expect(launchButton(page)).toHaveText(/^run again$/i)
+      // Anchored around whitespace, not on it: the button holds an icon before
+      // its word, so `textContent` is ` Run again` and a `^`-anchored pattern
+      // fails on a leading space rather than on the label.
+      await expect(launchButton(page)).toHaveText(/^\s*run again\s*$/i)
 
       expect(watch.unexpected).toEqual([])
     },

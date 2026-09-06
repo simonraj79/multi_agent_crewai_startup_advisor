@@ -2513,7 +2513,20 @@ watch(
    segmented pair had two different heights and one of them overhung the 52px
    header. The control is one row of one line of text in both states, so its
    height is a constant and is written as one. */
-.workspace-switch button { height: 28px; padding: 0 10px; font-size: var(--fs-12); }
+/* `display: inline-flex` STATED HERE TOO (RV4 follow-up NEW 1). Clamping the
+   height fixed the BOX and stopped there - the button itself inherited no
+   `display` from the grid parent above, so a browser's own button default
+   blockifies to `block` inside a grid cell, and the icon and the label then
+   stack as two block boxes instead of sitting side by side. `Build` has no
+   `<span>` label so this was invisible on that half; `Run` does, and its word
+   rendered 11px below the button it belongs to - on the header's dark ground,
+   for the one word a first-time reader needs. `align-items: center` and
+   `gap: var(--space-2)` are `studio.css`'s `.segmented button` rule, verbatim -
+   the same tokens, so the two switches are one shape - and `justify-content:
+   center` matches it for the same reason. The stacked-label grid below is
+   unchanged: the reservation is a `display: grid` question, this fix is a
+   `display: inline-flex` one, and they nest exactly as before. */
+.workspace-switch button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 28px; padding: 0 10px; font-size: var(--fs-12); }
 /* The Run switch while this workflow is unpublished (item 57). The console's
    own `.segmented button:disabled` rule is scoped `:not(.is-builder)`, so the
    builder gets none of it; this is that rule's pair, and it is the affordance

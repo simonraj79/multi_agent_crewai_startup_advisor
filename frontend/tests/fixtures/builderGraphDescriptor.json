@@ -1,0 +1,160 @@
+{
+  "id": "ug_a96d869d",
+  "name": "News to social post",
+  "version": "ce4cbf2df2441543",
+  "start_nodes": [
+    "subject"
+  ],
+  "nodes": [
+    {
+      "id": "subject",
+      "label": "Subject",
+      "kind": "start",
+      "description": "Seed the run from inputs.subject.",
+      "eyebrow": "01 - INPUT",
+      "position": {
+        "x": 340,
+        "y": 0
+      },
+      "model": null,
+      "tool": null,
+      "flow_method_type": "start",
+      "human_feedback": false,
+      "condition_type": null,
+      "trigger_methods": [],
+      "router_events": [],
+      "crew": null,
+      "agent_role": null,
+      "task_name": null,
+      "metadata": {}
+    },
+    {
+      "id": "research",
+      "label": "Find the news",
+      "kind": "agent",
+      "description": "Run the authored agent 'News Researcher' on the cheap tier.",
+      "eyebrow": "02 - AGENT",
+      "position": {
+        "x": 340,
+        "y": 180
+      },
+      "model": "Cheap tier",
+      "tool": null,
+      "flow_method_type": "listen",
+      "human_feedback": false,
+      "condition_type": "OR",
+      "trigger_methods": [
+        "subject"
+      ],
+      "router_events": [],
+      "crew": null,
+      "agent_role": "News Researcher",
+      "task_name": null,
+      "metadata": {}
+    },
+    {
+      "id": "write",
+      "label": "Write the post",
+      "kind": "agent",
+      "description": "Run the authored agent 'Social Editor' on the escalation tier.",
+      "eyebrow": "03 - AGENT",
+      "position": {
+        "x": 340,
+        "y": 360
+      },
+      "model": "Escalation tier",
+      "tool": null,
+      "flow_method_type": "listen",
+      "human_feedback": false,
+      "condition_type": "OR",
+      "trigger_methods": [
+        "research"
+      ],
+      "router_events": [],
+      "crew": null,
+      "agent_role": "Social Editor",
+      "task_name": null,
+      "metadata": {}
+    },
+    {
+      "id": "post",
+      "label": "Post",
+      "kind": "output",
+      "description": "Hand back the run result under markdown_body.",
+      "eyebrow": "04 - OUTPUT",
+      "position": {
+        "x": 340,
+        "y": 540
+      },
+      "model": null,
+      "tool": null,
+      "flow_method_type": "listen",
+      "human_feedback": false,
+      "condition_type": "OR",
+      "trigger_methods": [
+        "write"
+      ],
+      "router_events": [],
+      "crew": null,
+      "agent_role": null,
+      "task_name": null,
+      "metadata": {}
+    },
+    {
+      "id": "unattributed",
+      "label": "Unattributed",
+      "kind": "quarantine",
+      "description": "Events that could not be joined to a declared node.",
+      "eyebrow": "INSTRUMENTATION",
+      "position": {
+        "x": 1130,
+        "y": 20
+      },
+      "model": null,
+      "tool": null,
+      "flow_method_type": null,
+      "human_feedback": false,
+      "condition_type": null,
+      "trigger_methods": [],
+      "router_events": [],
+      "crew": null,
+      "agent_role": null,
+      "task_name": null,
+      "metadata": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "subject",
+      "target": "research",
+      "label": null,
+      "condition_type": "OR",
+      "route": null
+    },
+    {
+      "id": "e2",
+      "source": "research",
+      "target": "write",
+      "label": null,
+      "condition_type": "OR",
+      "route": null
+    },
+    {
+      "id": "e3",
+      "source": "write",
+      "target": "post",
+      "label": null,
+      "condition_type": "OR",
+      "route": null
+    },
+    {
+      "id": "e4",
+      "source": "search",
+      "target": "research",
+      "label": null,
+      "condition_type": "OR",
+      "route": null
+    }
+  ]
+}

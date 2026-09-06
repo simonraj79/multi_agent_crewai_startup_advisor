@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import type { Edge, Node } from '@vue-flow/core'
 import { MOCK_GRAPH } from '../data/mockGraph'
+import { DOCUMENT_ID_PATTERN } from '../types/builder'
 import { scopedKey } from '../data/identityStorage'
 import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
@@ -168,6 +169,117 @@ export const ACTIVE_RUN_STORAGE_KEY = 'validator-active-run'
  * the loss is visible in the graph instead of silently disappearing.
  */
 export const QUARANTINE_NODE_ID = 'unattributed'
+
+/**
+ * Who this console is about, read off the run's OWN descriptor (item 55, R1).
+ *
+ * Every identity surface - the breadcrumb, the tab title, the canvas kicker and
+ * heading, the WORKFLOW well, the input label and the report's kicker - used to
+ * key on the `builder-run-handoff` record, which ONLY the publish dialog's
+ * "Run it" writes. A run reached any other way (the test panel, the Run switch,
+ * a restored pointer) therefore had no handoff and fell through to the
+ * validator's own wording: RV2 measured a finished `News to social post` run
+ * drawn as `RUN - BUILT IN / Evidence pipeline / Idea Validator / IDEA TO
+ * VALIDATE` on 2026-09-06. The handoff is a navigation record; the descriptor
+ * is the workflow, and the workflow is what the reader is looking at.
+ *
+ * MEASURED, not inferred, against `GET /api/workflows/{id}/graph` on the
+ * synthetic backend at :8111 on 2026-09-06 (`docs/ux-shell/evidence/R1/`):
+ *
+ *   builder    id "ug_a96d869d"   name "News to social post"
+ *              start_nodes ["subject"]
+ *              node subject -> { kind: "start", label: "Subject" }
+ *   validator  id "idea-validator" name "Idea Validator"
+ *              start_nodes ["scope_idea"]
+ *              node scope_idea -> { kind: "agent", label: "Scoper" }
+ *              kinds present: agent, gate, output, quarantine, router - NO start
+ *
+ * So two facts carry the whole of this, and both are the server's:
+ *
+ *   1. A builder graph registers under its own DOCUMENT id
+ *      (`builder/descriptor.py::builder_workflow_id` returns `document.id`) and
+ *      `BUILDER_DOCUMENT_ID_PATTERN` is `^ug_[0-9a-f]{8}$`, which neither
+ *      built-in id can match. That is the whole test for "somebody drew this",
+ *      and it is also the document id the Build switch needs (R3).
+ *   2. An AUTHORED input node is the only thing that projects to
+ *      `kind: "start"` (`DESCRIPTOR_KINDS` in the same file), and its `label`
+ *      is the word the author typed on the card. That is the input label.
+ *
+ * WHAT THE DESCRIPTOR DOES NOT CARRY IS THE INPUT FIELD KEY. `GraphDescriptor`
+ * is `extra="forbid"` over id / name / version / start_nodes / nodes / edges
+ * (`service/models.py:116`) and every builder node came back with
+ * `metadata: {}`, so `inputs.subject` is nowhere in this document. The key is
+ * passed in instead, from the run's own launch contract - the handoff at launch
+ * or `StoredRunContext.inputField` on a restore - which is the same value the
+ * POST used and therefore cannot disagree with the run on screen. It is only a
+ * FALLBACK for the label; the author's own node label wins.
+ *
+ * `workflowId` rather than `descriptor.id` decides `authored`, because the
+ * descriptor is `MOCK_GRAPH` until the first read resolves and the workflow id
+ * is known synchronously at construction. `served` is the guard that stops a
+ * not-yet-loaded (or refused) descriptor lending the validator's NAME to
+ * somebody else's graph.
+ */
+export interface WorkflowIdentity {
+  /** Somebody drew this workflow; it is not one of the two built-ins. */
+  authored: boolean
+  /** The workflow's name, or '' while the descriptor for it has not arrived. */
+  name: string
+  /** The canvas kicker: which of the two modes, and whose workflow it is. */
+  kicker: string
+  /** The canvas heading's own line, under the kicker. */
+  title: string
+  /** The label over the input box, as the author named the input. */
+  inputLabel: string
+}
+
+/** The one place the built-in validator's own second line is spelled. */
+const VALIDATOR_SUBTITLE = 'Evidence pipeline'
+/** The label the built-in validator has always given its input box. */
+const VALIDATOR_INPUT_LABEL = 'IDEA TO VALIDATE'
+
+export function workflowIdentity(
+  descriptor: GraphDescriptor,
+  workflowId: string,
+  inputField: string,
+  /**
+   * A name to show while the descriptor for this workflow has not arrived: the
+   * handoff's copy, which is the one thing it is genuinely for. Never allowed
+   * to override the served name.
+   */
+  provisionalName = '',
+): WorkflowIdentity {
+  const authored = DOCUMENT_ID_PATTERN.test(workflowId)
+  const served = descriptor.id === workflowId ? descriptor : null
+  // The third fallback is deliberately EMPTY for an authored graph rather than
+  // `descriptor.name`: `MOCK_GRAPH` is the validator, and a tick of "Idea
+  // Validator" over somebody else's graph is the defect this function exists
+  // to remove, not a nicety. A blank crumb for one frame is honest.
+  const name = served?.name || provisionalName || (authored ? '' : descriptor.name)
+
+  // The author's own input card, found through `start_nodes` so a stray node of
+  // kind `start` elsewhere in a graph could never be mistaken for the input.
+  const inputNode = served?.start_nodes
+    .map((id) => served.nodes.find((node) => node.id === id))
+    .find((node) => node?.kind === 'start')
+
+  return {
+    authored,
+    name,
+    kicker: authored ? 'RUN — YOUR WORKFLOW' : 'RUN — BUILT IN',
+    title: authored
+      ? name
+      : workflowId === DEFAULT_WORKFLOW_ID
+        ? VALIDATOR_SUBTITLE
+        : served?.name || name,
+    inputLabel: inputNode?.label
+      ? inputNode.label.toUpperCase()
+      : authored
+        ? `${inputField.replaceAll('_', ' ').toUpperCase()} TO RUN`
+        : VALIDATOR_INPUT_LABEL,
+  }
+}
+
 
 /**
  * How long a traversal keeps marching after its `edge_taken` frame. Every edge

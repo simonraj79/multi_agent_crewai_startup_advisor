@@ -15,7 +15,7 @@ import StatusPanel from '../components/StatusPanel.vue'
 import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
 import { useCanvasTool } from '../composables/useCanvasTool'
-import { useValidatorRun } from '../composables/useValidatorRun'
+import { useValidatorRun, workflowIdentity } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
 import { pageTitle } from '../data/brand'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
@@ -90,41 +90,14 @@ const flow = useVueFlow('studio-flow')
  */
 const FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 0.9 }
 
-/**
- * The workflow this console is pointed at, by name.
- *
- * `descriptor.name` is the graph it is ACTUALLY drawing, and after a builder
- * handoff that is the author's own workflow; the handoff carries the name so
- * the breadcrumb is right before the descriptor has arrived. This is the second
- * crumb, and it is what `document.title` reads.
- */
-const workflowName = computed(() => handoff.value?.name || descriptor.value.name)
-
-/**
- * What the canvas heading says.
- *
- * THE KICKER IS THE MODE, NOT THE GRAPH (`docs/ux-shell/DEFINITION-OF-DONE.md`
- * U4). It read `FIXED VALIDATOR GRAPH` / `PUBLISHED GRAPH`, which is three
- * vocabularies in two strings - `fixed`, `published` and `graph` - for a
- * distinction the reader has already been told twice by the time they reach it:
- * the breadcrumb above names the workflow and the handoff strip names the
- * publication. What the heading has to say that nothing else does is which of
- * the two modes of that workflow is on screen, and the pair is Build and Run.
- * The second clause keeps the one fact the old strings carried that is not said
- * elsewhere - whether this is the built-in workflow or one somebody drew - in
- * the same words the home page uses for it.
- *
- * `canvasTitle` still falls back to the validator's own wording verbatim, which
- * is the only thing this console could draw before the builder existed.
- */
-const canvasKicker = computed(() => (handoff.value ? 'RUN — YOUR WORKFLOW' : 'RUN — BUILT IN'))
-const canvasTitle = computed(() =>
-  handoff.value ? handoff.value.name || descriptor.value.name : 'Evidence pipeline',
-)
-
 
 const {
   descriptor,
+  // The workflow this console is pointed at, and the `inputs` key its launch
+  // must carry. Both are the composable's own state - seeded from the handoff
+  // or from the stored run context - and both feed `workflowIdentity` above.
+  workflowId,
+  inputField,
   idea,
   gatesMode,
   status,
@@ -181,17 +154,48 @@ const {
 })
 
 /**
+ * WHO THIS CONSOLE IS ABOUT — one computed, off the run's own descriptor
+ * (item 55, ROUND-2 R1).
+ *
+ * There were three computeds here and all three keyed on `handoff`, which only
+ * the publish dialog's "Run it" writes. The kicker, the canvas heading, the
+ * breadcrumb, the tab title, the WORKFLOW well, the input label and the
+ * report's kicker therefore all reverted to the validator's wording for a
+ * builder run reached by the test panel, by the Run switch or by a restored
+ * pointer — RV2 measured exactly that on 2026-09-06, and this pass reproduced
+ * it before changing anything (`evidence/R1/before-*.png`).
+ *
+ * `workflowIdentity` is pure and lives beside the composable that owns the
+ * descriptor; its docstring carries the measured JSON both rules rest on. The
+ * handoff's `name` is passed as the PROVISIONAL name and nothing else, which is
+ * the one thing it is genuinely for: it is right before the graph read
+ * resolves, and it is never allowed to override what the server served.
+ *
+ * BELOW the destructure, like the `watchEffect` under it and for the same
+ * reason — `descriptor`, `workflowId` and `inputField` are bound there.
+ */
+const identity = computed(() =>
+  workflowIdentity(descriptor.value, workflowId.value, inputField.value, handoff.value?.name ?? ''),
+)
+const workflowName = computed(() => identity.value.name)
+const canvasKicker = computed(() => identity.value.kicker)
+const canvasTitle = computed(() => identity.value.title)
+
+/**
  * The tab's name follows the route (U4). One workflow per tab, so the workflow
  * is what names it; `pageTitle` owns the separator and the product half, and
  * `PRODUCT_NAME` is spelled in `data/brand.ts` and nowhere else.
  *
- * BELOW the destructure and not beside `workflowName`, because a `watchEffect`
- * runs its body immediately: reading `descriptor` from above the `const` that
- * binds it is a temporal dead zone, which is a blank page at runtime rather
- * than a type error. The two computeds above are lazy and so may sit there.
+ * BELOW the destructure, because a `watchEffect` runs its body immediately:
+ * reading `descriptor` from above the `const` that binds it is a temporal
+ * dead zone, which is a blank page at runtime rather than a type error. The
+ * computeds above are lazy and so may sit here.
  */
 watchEffect(() => {
-  document.title = pageTitle(workflowName.value)
+  // `|| null` rather than the empty string: `pageTitle` reads a blank name as
+  // "no workflow" and gives the product name alone, which is the right tab for
+  // the one frame before a restored builder run has its descriptor.
+  document.title = pageTitle(workflowName.value || null)
 })
 
 /**
@@ -649,10 +653,17 @@ function backToValidator(): void {
           />
         </VueFlow>
 
+        <!--
+          The report's kicker read `VALIDATION REPORT` over every run, including
+          one from a graph that validates nothing (item 55's fourth surface).
+          It takes the workflow's own name now; the built-in keeps its wording
+          because `ReportPanel`'s default is the one it always had.
+        -->
         <ReportPanel
           :report="report"
           :verdict="verdictSummary"
           :open="reportOpen"
+          :workflow-name="identity.authored ? workflowName : undefined"
           @close="reportOpen = false"
         />
 
@@ -663,7 +674,7 @@ function backToValidator(): void {
           @click="reportOpen = true"
         >
           <FileText :size="14" aria-hidden="true" />
-          View validation report
+          {{ identity.authored ? 'View run report' : 'View validation report' }}
         </button>
       </section>
 
@@ -740,9 +751,9 @@ function backToValidator(): void {
             :graph-problem="graphProblem"
             :download-status="downloadStatus"
             :download-message="downloadMessage"
-            :workflow-name="handoff ? handoff.name : undefined"
-            :input-label="handoff ? `${handoff.inputField.replaceAll('_', ' ').toUpperCase()} TO RUN` : undefined"
-            :can-return-home="handoff !== null"
+            :workflow-name="workflowName || undefined"
+            :input-label="identity.inputLabel"
+            :can-return-home="identity.authored"
             @launch="launch"
             @cancel="cancel"
             @download="downloadLogs"

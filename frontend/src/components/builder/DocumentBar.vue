@@ -8,6 +8,7 @@ import {
   Keyboard,
   Moon,
   Lock,
+  Play,
   Redo2,
   Rocket,
   Save,
@@ -129,6 +130,17 @@ const emit = defineEmits<{
    * can reach it.
    */
   unpublish: []
+  /**
+   * R10 / item C1 (ROUND-2.md §5, row R10). The header's own
+   * `.workspace-switch` is `display: none` below 860px (`BuilderView.vue`'s
+   * own scoped style), so a builder document at 390 had no route to the run
+   * console at all except typing `#/run`. This is the SAME event the header
+   * switch's `Run` button already emits - a second way to reach it, not a
+   * second meaning for it. WB owns only that this reaches the menu; the
+   * emit's handler (what `Run` does for an unpublished document) is R3's,
+   * owned by WA.
+   */
+  runWorkspace: []
   /** Ask to delete. The confirm is DOCKED under the bar, never a dialog (R15). */
   delete: []
   /**
@@ -589,6 +601,25 @@ function cancelRename(): void {
             Unpublish
           </button>
           <!--
+            R10 / item C1: the header's `Run` half of `.workspace-switch` is
+            `display: none` below 860px, so this is the only route to the run
+            console a phone-width visitor has. Same event the header button
+            emits (`runWorkspace`) - a second door onto the same handler, not a
+            second handler. Grouped with the safe items, ABOVE the separator,
+            so D-15-6's rule ("Delete is the only one after the separator")
+            still holds.
+          -->
+          <button
+            class="document-menu-item"
+            type="button"
+            role="menuitem"
+            data-testid="menu-run"
+            @click="choose(() => emit('runWorkspace'))"
+          >
+            <Play :size="14" aria-hidden="true" />
+            Run
+          </button>
+          <!--
             Round 2, D-15-6: Delete sat 34px under Duplicate in the same colour
             and weight as every safe item. A separator and the error colour at
             rest, so the one destructive row reads as one before the pointer
@@ -730,6 +761,14 @@ function cancelRename(): void {
    shell's grid rows - and `Export head (vN)` above is the other half of the
    answer: the one fact the covered rows were being read for is now in the
    menu itself. */
+/* R9 / item C3: measured at `rgba(255, 255, 255, 0.03)` - the same wash
+   `InspectorRail.vue` carries for a DOCKED column - over a floating overlay,
+   where `$10.00 ceiling`, `2 of 13` and the rest of the budget meter behind it
+   read straight through the menu's own words. `--bg-app` is the ground every
+   other overlay in this product sits on; `--shadow-overlay` replaces the
+   hand-written shadow with the token the rest of the system already carries
+   this exact box-shadow value under (`tokens.css`), so a theme's shadow moves
+   with everything else that uses it instead of staying frozen here. */
 .document-menu {
   position: absolute;
   z-index: 3;
@@ -741,7 +780,7 @@ function cancelRename(): void {
   gap: 2px;
   min-width: 212px;
   padding: 6px;
-  background: var(--surface-panel);
+  background: var(--bg-app);
   border: 1px solid var(--border-default);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-overlay);
@@ -780,5 +819,85 @@ function cancelRename(): void {
   clip: rect(0 0 0 0);
   opacity: 0;
   pointer-events: none;
+}
+
+/* -----------------------------------------------------------------------
+   R8 / item C2 - THE BAR FITS AT 390 (ROUND-2.md AUDIT-R2.md §3, measured in
+   `evidence/audit/measure.json` -> C2_documentBar390).
+
+   Measured before this rule existed: `barScrollWidth: 415` against a 390px
+   viewport, `.document-identity` at `w: 0` and `Publish`'s right edge at 415 -
+   9 to 25px of horizontal overflow depending on the document's own name and
+   template, because `.document-actions` carries `flex-shrink: 0` (six 32px
+   icon buttons plus Publish do not shrink) while `.document-identity` has no
+   floor below `min-width: 0` - so ALL of the missing space came out of the one
+   child allowed to give it up, which is also the one holding the workflow's
+   name. No `flex-shrink` value on either side changes that arithmetic: the
+   icon cluster and Publish, at their own natural width, already exceed the
+   ~310px this padding leaves at 390px, so a single row was never going to fit
+   both without hiding a control - and R8's own criterion is that nothing here
+   is hidden.
+
+   Two rows, as the audit itself proposes, is what removes the row that was
+   losing the argument for space: `.document-identity` gets a full row of its
+   own, `.document-name` gets `flex: 1 1 auto` instead of the 320px cap that
+   meant nothing once its row was this narrow, and `.document-actions` gets
+   the row below it - `flex-wrap: wrap` there rather than a hard assumption
+   that six icons plus Publish fit 310px on the nose, so a slightly longer
+   Publish/Republish label wraps to its own line instead of pushing the bar
+   wider than the viewport again.
+
+   NOT right-aligned (`justify-content: flex-end`), though every wider layout
+   right-aligns this row. Tried first, and it moved a defect rather than
+   fixing one: six 32px icons already fill 232px of the 310px row on their
+   own, so the trigger button (the sixth) sits near whichever edge the row
+   packs TOWARD - flex-end put it at 248px in, 30px from the row's own right
+   edge, with nowhere for `.document-menu`'s 212px to open into (see the menu's
+   own rule, below, for the other half of this fix). Left at the default
+   (`flex-start`), the same six icons still end within 40px of that edge -
+   this row was never going to leave much room on either side - but the
+   trigger's own position barely moves either way, so the choice is cosmetic:
+   `Publish`, alone on its own line, now reads on the left rather than the
+   right. R8's criterion is that `Publish` is reachable, not where it sits.
+
+   `520px` is the audit's own measured threshold, not a token: no breakpoint
+   in this codebase is a custom property (640/860/1180 are all literals of the
+   same kind), so this one is written the same way its neighbours are. */
+@media (max-width: 520px) {
+  .document-bar {
+    flex-wrap: wrap;
+  }
+
+  .document-identity {
+    flex: 1 1 100%;
+  }
+
+  .document-name,
+  .document-name-input {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .document-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  /* THE MENU ITSELF HAS TO FLIP, independently of where its trigger sits in
+     the row above. `.document-menu`'s base rule opens `left: 0` - rightward
+     from the button - which a round-2 fix chose for a WIDE bar where the
+     trigger sits well short of the right edge. At 390 the trigger is the
+     LAST of six icons in a 310px row regardless of `justify-content`
+     (measured: both alignments land it within ~40px of the row's own right
+     edge), so a menu opening rightward from there has nowhere to go -
+     reachable by neither a width measurement (the bar itself never
+     overflows) nor a glance at the closed bar, only by trying to open it.
+     Opening LEFTWARD instead - `right: 0; left: auto` - lands the menu
+     against the trigger's own right edge and extends back across the row,
+     which is exactly where five icons' worth of open space already is. */
+  .document-menu {
+    left: auto;
+    right: 0;
+  }
 }
 </style>

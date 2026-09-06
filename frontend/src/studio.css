@@ -1159,6 +1159,44 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* R5 / item 59 - THE CONTROL CLUSTER ESCAPES THE SCRIM.
+
+     RV1 measured `elementFromPoint` at each of the five buttons' centres and
+     got `button.rail-scrim` for four of them and `button.control-toggle` for
+     the fifth (Hand): the cluster grew from three buttons to five with the
+     unified shell, but `.graph-workspace`'s own z-index never moved, so the
+     44px gutter this file already reserves for the toggle (`.control-rail`'s
+     width is `calc(100vw - 44px)` for exactly that reason, two blocks up) was
+     still painted OVER by the scrim, which sits above the canvas precisely
+     because a rail can be open. The scrim's own coverage is not the bug -
+     everywhere the rail's own 346px body actually reaches, `--z-rail`
+     unambiguously beats this and nothing the rail visibly covers changes.
+     Only the sliver the rail was already leaving alone stops being dimmed
+     through a scrim nothing there could ever reach anyway.
+
+     Same expression the scrim itself uses, not a new one: tied at
+     `--z-rail - 1`, so DOM order breaks the tie - the canvas paints after the
+     scrim and before either rail, so it wins the tie against the scrim and
+     correctly loses to both rails, which are unambiguously `--z-rail` itself. */
+  .studio-shell:not(.is-builder) .graph-workspace {
+    z-index: calc(var(--z-rail) - 1);
+  }
+
+  /* R5 / item 59, part two - THE HAND BUTTON CLEARS THE TOGGLE.
+
+     Winning back the scrim was not enough on its own: the fifth button
+     (Hand) sits, at the cluster's default position, inside `.control-toggle`'s
+     own 44x44 box (`bottom: var(--space-5); left: -44px`, above) - and the
+     toggle is part of the RAIL's own stacking context, so it keeps beating the
+     canvas regardless of the canvas's z-index, by design, because it has to
+     stay reachable to CLOSE the rail. Every term below is already named at the
+     site that positions the toggle: its own height, its own gap from the
+     bottom, and one more spacing step so the fifth button's box ends above the
+     toggle's top edge with room rather than flush against it. */
+  .studio-shell:not(.is-builder) .validator-flow .vue-flow__controls {
+    margin-bottom: calc(var(--space-5) + 44px + var(--space-4));
+  }
+
   /* THE WORDMARK STANDS DOWN ON A PHONE, and both canvases, not one.
 
      Measured at 390 with the wordmark in: the console's header read

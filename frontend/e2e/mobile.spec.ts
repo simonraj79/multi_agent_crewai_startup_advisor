@@ -186,4 +186,82 @@ test.describe('the builder at 390x844', () => {
 
     expect(errors).toEqual([])
   })
+
+  /**
+   * R8 / item C2 (ROUND-2.md AUDIT-R2.md §3, `measure.json` -> C2_documentBar390).
+   *
+   * Measured before `DocumentBar.vue`'s own `@media (max-width: 520px)`
+   * existed: `barScrollWidth: 415` against a 390px viewport, with
+   * `.document-identity` - the element holding the workflow's NAME - at
+   * `w: 0`. The bar overflowed the viewport and lost the one piece of
+   * information it exists to show, in the same measurement.
+   */
+  test('keeps the document bar inside the viewport, with the name given real width', async ({
+    page,
+  }) => {
+    const errors = watchConsole(page)
+    await page.goto('/#/build')
+    await page.locator('.template-card').filter({ hasText: 'Minimal gated agent' }).click()
+    await expect(page.locator('.document-bar')).toBeVisible()
+
+    const bar = page.locator('.document-bar')
+    const overflow = await bar.evaluate((el) => el.scrollWidth - el.clientWidth)
+    expect(overflow, 'the document bar scrolls sideways inside itself').toBeLessThanOrEqual(1)
+    expect(await horizontalOverflow(page), 'the page scrolls sideways at 390px').toBeLessThanOrEqual(1)
+
+    const identityWidth = await page
+      .locator('.document-identity')
+      .evaluate((el) => el.getBoundingClientRect().width)
+    expect(identityWidth, 'the name column has width').toBeGreaterThan(0)
+
+    // Reachable, not merely present: a button under an overflowing sibling can
+    // still report `toBeVisible()` while `elementFromPoint` answers something
+    // else entirely (R5's own lesson, one component over).
+    const publish = page.getByTestId('document-publish')
+    await expect(publish).toBeVisible()
+    const publishBox = (await publish.boundingBox())!
+    const hitsPublish = await page.evaluate(
+      (point) => document.elementFromPoint(point.x, point.y)?.closest('[data-testid="document-publish"]') !== null,
+      { x: publishBox.x + publishBox.width / 2, y: publishBox.y + publishBox.height / 2 },
+    )
+    expect(hitsPublish, 'Publish is reachable at its own centre').toBe(true)
+
+    expect(errors).toEqual([])
+  })
+
+  /**
+   * R10 / item C1 (ROUND-2.md row R10).
+   *
+   * `.workspace-switch`'s `Run` half is `display: none` below 860px
+   * (`BuilderView.vue`'s own scoped style), so a builder document at 390 had
+   * no route to the run console at all short of typing `#/run`. `menu-run`
+   * emits the SAME `runWorkspace` event the header button does - this test
+   * proves the door, not a new room behind it.
+   */
+  test('still offers a route to Run mode, through the document menu', async ({ page }) => {
+    const errors = watchConsole(page)
+    await page.goto('/#/build')
+    await page.locator('.template-card').filter({ hasText: 'Minimal gated agent' }).click()
+    await expect(page.locator('.document-bar')).toBeVisible()
+
+    // The header's own switch really is hidden at this width - the premise,
+    // not an aside. If a future fix gives it back directly, this row (and the
+    // menu item it is about) may retire.
+    await expect(page.locator('.workspace-switch')).toBeHidden()
+
+    await page.getByTestId('document-menu-button').click()
+    const runItem = page.getByTestId('menu-run')
+    await expect(runItem).toBeVisible()
+    const runBox = (await runItem.boundingBox())!
+    const hitsRun = await page.evaluate(
+      (point) => document.elementFromPoint(point.x, point.y)?.closest('[data-testid="menu-run"]') !== null,
+      { x: runBox.x + runBox.width / 2, y: runBox.y + runBox.height / 2 },
+    )
+    expect(hitsRun, 'Run is reachable at its own centre').toBe(true)
+
+    await runItem.click()
+    await expect(page).toHaveURL(/#\/run/)
+
+    expect(errors).toEqual([])
+  })
 })
